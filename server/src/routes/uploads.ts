@@ -1,0 +1,366 @@
+import { Router, Request, Response, NextFunction } from 'express';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import crypto from 'crypto';
+import { fileURLToPath } from 'url';
+import jwt from 'jsonwebtoken';
+import { getDb } from '../models/database';
+import { authenticateToken, type JwtPayload } from '../middleware/auth';
+import config from '../config';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Use RMPG_UPLOADS_DIR env var if provided (set by Electron desktop app for
+// writable user-data location), otherwise fall back to project-relative path
+const UPLOAD_DIR = process.env.RMPG_UPLOADS_DIR || path.resolve(__dirname, '../../uploads');
+
+// Ensure upload directory exists
+if (!fs.existsSync(UPLOAD_DIR)) {
+  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+}
+
+/** Resolve file path and verify it stays within UPLOAD_DIR to prevent path traversal */
+function safeFilePath(relativePath: string): string | null {
+  const resolved = path.resolve(UPLOAD_DIR, relativePath);
+  if (!resolved.startsWith(UPLOAD_DIR)) return null;
+  return resolved;
+}
+
+// Allowed MIME types
+const ALLOWED_TYPES = new Set([
+  // Images
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff',
+  // Documents
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'text/plain', 'text/csv',
+  // Video
+  'video/mp4', 'video/quicktime', 'video/x-msvideo',
+  // Audio
+  'audio/mpeg', 'audio/wav', 'audio/ogg',
+]);
+
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+
+// Configure multer storage
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    // Organize by year/month subdirectories
+    const now = new Date();
+    const subDir = path.join(UPLOAD_DIR, `${now.getFullYear()}`, String(now.getMonth() + 1).padStart(2, '0'));
+    if (!fs.existsSync(subDir)) {
+      fs.mkdirSync(subDir, { recursive: true });
+    }
+    cb(null, subDir);
+  },
+  filename: (_req, file, cb) => {
+    // Generate a unique filename while preserving extension
+    const ext = path.extname(file.originalname).toLowerCase();
+    const uniqueName = `${crypto.randomUUID()}${ext}`;
+    cb(null, uniqueName);
+  },
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: MAX_FILE_SIZE },
+  fileFilter: (_req, file, cb) => {
+    if (ALLOWED_TYPES.has(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`File type ${file.mimetype} is not allowed`));
+    }
+  },
+});
+
+// Auth middleware that also accepts ?token= query parameter
+// This allows <img src="...">, <iframe src="...">, and <a href="..."> to work
+function authenticateTokenOrQuery(req: Request, res: Response, next: NextFunction): void {
+  // First try standard Authorization header
+  const authHeader = req.headers['authorization'];
+  const headerToken = authHeader && authHeader.startsWith('Bearer ') ? authHeader.substring(7) : null;
+
+  // Then try ?token= query parameter (for img/iframe/a tags)
+  const queryToken = typeof req.query.token === 'string' ? req.query.token : null;
+
+  const token = headerToken || queryToken;
+
+  if (!token) {
+    res.status(401).json({ error: 'Authentication required' });
+    return;
+  }
+
+  try {
+    const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
+    if (decoded.type === 'refresh') {
+      res.status(403).json({ error: 'Invalid token type' });
+      return;
+    }
+    req.user = decoded;
+    next();
+  } catch (err: any) {
+    if (err.name === 'TokenExpiredError') {
+      res.status(401).json({ error: 'Token expired', code: 'TOKEN_EXPIRED' });
+    } else {
+      res.status(403).json({ error: 'Invalid or expired token' });
+    }
+  }
+}
+
+const router = Router();
+
+// ─── GET /api/uploads/entity/:type/:id ─── List files for entity ───
+// (Must be before /:fileId catch-all to avoid route conflict)
+router.get('/entity/:type/:id', authenticateToken, (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const attachments = db.prepare(`
+      SELECT a.*, u.full_name as uploader_name
+      FROM attachments a
+      LEFT JOIN users u ON a.uploaded_by = u.id
+      WHERE a.entity_type = ? AND a.entity_id = ?
+      ORDER BY a.created_at DESC
+    `).all(String(req.params.type), parseInt(String(req.params.id), 10));
+
+    res.json(attachments);
+  } catch (error: any) {
+    console.error('List attachments error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// File-serving routes use flexible auth (header OR query param)
+// This allows <img src="...">, <iframe src="...">, and <a href="..."> to work
+
+// ─── GET /api/uploads/:fileId ─── Serve/inline a file ───
+router.get('/:fileId', authenticateTokenOrQuery, (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const attachment = db.prepare('SELECT * FROM attachments WHERE file_id = ?').get(req.params.fileId) as any;
+
+    if (!attachment) {
+      res.status(404).json({ error: 'File not found' });
+      return;
+    }
+
+    const filePath = safeFilePath(attachment.file_path);
+    if (!filePath) { res.status(403).json({ error: 'Invalid file path' }); return; }
+    if (!fs.existsSync(filePath)) {
+      res.status(404).json({ error: 'File not found on disk' });
+      return;
+    }
+
+    // Set appropriate headers
+    res.set('Content-Type', attachment.mime_type);
+    res.set('Content-Disposition', `inline; filename="${attachment.original_name}"`);
+    res.set('Content-Length', String(attachment.file_size));
+    // Allow browser caching for 5 minutes
+    res.set('Cache-Control', 'private, max-age=300');
+
+    res.sendFile(filePath);
+  } catch (error: any) {
+    console.error('Download error:', error);
+    res.status(500).json({ error: 'Download failed' });
+  }
+});
+
+// ─── GET /api/uploads/:fileId/download ─── Force download ───
+router.get('/:fileId/download', authenticateTokenOrQuery, (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const attachment = db.prepare('SELECT * FROM attachments WHERE file_id = ?').get(req.params.fileId) as any;
+
+    if (!attachment) {
+      res.status(404).json({ error: 'File not found' });
+      return;
+    }
+
+    const filePath = safeFilePath(attachment.file_path);
+    if (!filePath) { res.status(403).json({ error: 'Invalid file path' }); return; }
+    if (!fs.existsSync(filePath)) {
+      res.status(404).json({ error: 'File not found on disk' });
+      return;
+    }
+
+    res.set('Content-Type', 'application/octet-stream');
+    res.set('Content-Disposition', `attachment; filename="${attachment.original_name}"`);
+    res.sendFile(filePath);
+  } catch (error: any) {
+    console.error('Download error:', error);
+    res.status(500).json({ error: 'Download failed' });
+  }
+});
+
+// ─── GET /api/uploads/:fileId/thumbnail ─── Serve image thumbnail (same as inline but with aggressive caching) ───
+router.get('/:fileId/thumbnail', authenticateTokenOrQuery, (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const attachment = db.prepare('SELECT * FROM attachments WHERE file_id = ?').get(req.params.fileId) as any;
+
+    if (!attachment) {
+      res.status(404).json({ error: 'File not found' });
+      return;
+    }
+
+    // Only serve images as thumbnails
+    if (!attachment.mime_type.startsWith('image/')) {
+      res.status(400).json({ error: 'Not an image' });
+      return;
+    }
+
+    const filePath = safeFilePath(attachment.file_path);
+    if (!filePath) { res.status(403).json({ error: 'Invalid file path' }); return; }
+    if (!fs.existsSync(filePath)) {
+      res.status(404).json({ error: 'File not found on disk' });
+      return;
+    }
+
+    res.set('Content-Type', attachment.mime_type);
+    res.set('Content-Disposition', `inline; filename="${attachment.original_name}"`);
+    res.set('Content-Length', String(attachment.file_size));
+    res.set('Cache-Control', 'private, max-age=600');
+
+    res.sendFile(filePath);
+  } catch (error: any) {
+    console.error('Thumbnail error:', error);
+    res.status(500).json({ error: 'Thumbnail failed' });
+  }
+});
+
+// ── All routes below require standard header auth ──
+router.use(authenticateToken);
+
+// ─── POST /api/uploads ─── Upload one or more files ───
+router.post('/', upload.array('files', 10), (req: Request, res: Response) => {
+  try {
+    const files = req.files as Express.Multer.File[];
+    if (!files || files.length === 0) {
+      res.status(400).json({ error: 'No files provided' });
+      return;
+    }
+
+    const { entity_type, entity_id } = req.body;
+    const db = getDb();
+    const results: any[] = [];
+
+    for (const file of files) {
+      // Store path relative to uploads dir
+      const relativePath = path.relative(UPLOAD_DIR, file.path);
+
+      const result = db.prepare(`
+        INSERT INTO attachments (
+          file_id, original_name, stored_name, file_path, mime_type, file_size,
+          entity_type, entity_id, uploaded_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        crypto.randomUUID(),
+        file.originalname,
+        file.filename,
+        relativePath,
+        file.mimetype,
+        file.size,
+        entity_type || null,
+        entity_id ? parseInt(entity_id, 10) : null,
+        req.user!.userId,
+      );
+
+      const attachment = db.prepare('SELECT * FROM attachments WHERE id = ?').get(result.lastInsertRowid);
+      results.push(attachment);
+    }
+
+    // Log the upload
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'file_uploaded', ?, ?, ?, ?)
+    `).run(
+      req.user!.userId,
+      entity_type || 'attachment',
+      entity_id ? parseInt(entity_id, 10) : null,
+      `Uploaded ${files.length} file(s): ${files.map(f => f.originalname).join(', ')}`,
+      req.ip || 'unknown',
+    );
+
+    res.status(201).json(results);
+  } catch (error: any) {
+    console.error('Upload error:', error);
+    if (error.message?.includes('not allowed')) {
+      res.status(400).json({ error: error.message });
+    } else {
+      res.status(500).json({ error: 'Upload failed' });
+    }
+  }
+});
+
+// ─── PUT /api/uploads/:fileId/link ─── Link file to entity ───
+router.put('/:fileId/link', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { entity_type, entity_id } = req.body;
+
+    if (!entity_type || !entity_id) {
+      res.status(400).json({ error: 'entity_type and entity_id are required' });
+      return;
+    }
+
+    const result = db.prepare(`
+      UPDATE attachments SET entity_type = ?, entity_id = ? WHERE file_id = ?
+    `).run(entity_type, parseInt(entity_id, 10), req.params.fileId);
+
+    if (result.changes === 0) {
+      res.status(404).json({ error: 'File not found' });
+      return;
+    }
+
+    const attachment = db.prepare('SELECT * FROM attachments WHERE file_id = ?').get(req.params.fileId);
+    res.json(attachment);
+  } catch (error: any) {
+    console.error('Link attachment error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── DELETE /api/uploads/:fileId ─── Delete a file ───
+router.delete('/:fileId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const attachment = db.prepare('SELECT * FROM attachments WHERE file_id = ?').get(req.params.fileId) as any;
+
+    if (!attachment) {
+      res.status(404).json({ error: 'File not found' });
+      return;
+    }
+
+    // Delete file from disk
+    const filePath = path.join(UPLOAD_DIR, attachment.file_path);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+
+    // Delete record
+    db.prepare('DELETE FROM attachments WHERE file_id = ?').run(req.params.fileId);
+
+    // Log deletion
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'file_deleted', ?, ?, ?, ?)
+    `).run(
+      req.user!.userId,
+      attachment.entity_type || 'attachment',
+      attachment.entity_id,
+      `Deleted file: ${attachment.original_name}`,
+      req.ip || 'unknown',
+    );
+
+    res.json({ message: 'File deleted' });
+  } catch (error: any) {
+    console.error('Delete attachment error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+export default router;

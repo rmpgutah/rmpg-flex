@@ -1,0 +1,60 @@
+# ─── Dependencies ──────────────────────────────────
+node_modules/
+
+# ─── Environment Variables (contain secrets) ───────
+.env
+client/.env
+server/.env
+
+# ─── Build Output ──────────────────────────────────
+client/dist/
+server/dist/
+
+# ─── Database & Uploads (local data) ──────────────
+server/data/
+server/uploads/
+
+# ─── Binary Installers (too large for git) ────────
+server/downloads/*.exe
+server/downloads/*.exe.blockmap
+server/downloads/*.dmg
+server/downloads/*.dmg.blockmap
+server/downloads/*.apk
+server/downloads/*.zip
+
+# ─── Certificates ────────────────────────────────
+server/certs/
+
+# ─── Environment Production ──────────────────────
+server/.env.production
+
+# ─── Android Build Artifacts ─────────────────────
+client/android/.gradle/
+client/android/app/build/
+client/android/build/
+client/android/.idea/
+client/android/local.properties
+
+# ─── Desktop/Electron Build Artifacts ────────────
+desktop/dist/
+desktop/out/
+
+# ─── OS Generated Files ───────────────────────────
+.DS_Store
+Thumbs.db
+
+# ─── IDE / Editor ─────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ─── Logs ─────────────────────────────────────────
+*.log
+npm-debug.log*
+firebase-debug.log
+
+# ─── TypeScript Cache ─────────────────────────────
+*.tsbuildinfo
+.claude/

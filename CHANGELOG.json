@@ -1,0 +1,153 @@
+{
+  "version": "2.2.1",
+  "changelog": [
+    {
+      "version": "2.2.1",
+      "date": "2026-02-20",
+      "type": "patch",
+      "summary": "Panic system fixes and version tooling",
+      "changes": [
+        {
+          "type": "fix",
+          "description": "Fixed panic button using separate GPS instance instead of shared coordinates"
+        },
+        {
+          "type": "fix",
+          "description": "Fixed panic audio relay missing sender userId for talk-back"
+        },
+        {
+          "type": "fix",
+          "description": "Prevented panic alert showing to the sender themselves"
+        },
+        {
+          "type": "feature",
+          "description": "Version bump script with semantic versioning support"
+        }
+      ]
+    },
+    {
+      "version": "2.2.0",
+      "date": "2026-02-20",
+      "type": "minor",
+      "summary": "GPS breadcrumb trails, VPS health monitoring, semantic versioning",
+      "changes": [
+        {
+          "type": "feature",
+          "description": "GPS breadcrumb trail tracking with colored polylines on map"
+        },
+        {
+          "type": "feature",
+          "description": "VPS/host health monitoring (CPU, RAM, disk, load, OS) in System Health tab"
+        },
+        {
+          "type": "feature",
+          "description": "Semantic versioning system with detailed changelog"
+        },
+        {
+          "type": "feature",
+          "description": "Version display with changelog viewer in System Health tab"
+        },
+        {
+          "type": "fix",
+          "description": "Login 'Initializing...' flash after successful authentication"
+        }
+      ]
+    },
+    {
+      "version": "2.1.0",
+      "date": "2026-02-15",
+      "type": "minor",
+      "summary": "ServeManager integration, shift planning, Android app",
+      "changes": [
+        {
+          "type": "feature",
+          "description": "ServeManager API integration for civil process serving"
+        },
+        {
+          "type": "feature",
+          "description": "Shift planning and scheduling module"
+        },
+        {
+          "type": "feature",
+          "description": "Android mobile app via Capacitor"
+        },
+        {
+          "type": "feature",
+          "description": "Desktop app auto-update system"
+        },
+        {
+          "type": "enhancement",
+          "description": "Improved notification rules and alert system"
+        }
+      ]
+    },
+    {
+      "version": "2.0.0",
+      "date": "2026-01-20",
+      "type": "major",
+      "summary": "Complete CAD/RMS rewrite with real-time dispatch",
+      "changes": [
+        {
+          "type": "feature",
+          "description": "Real-time WebSocket dispatch with live sync"
+        },
+        {
+          "type": "feature",
+          "description": "Google Maps integration with unit tracking"
+        },
+        {
+          "type": "feature",
+          "description": "SSL/TLS encryption support"
+        },
+        {
+          "type": "feature",
+          "description": "Fleet management module"
+        },
+        {
+          "type": "feature",
+          "description": "Citation and warrant management"
+        },
+        {
+          "type": "feature",
+          "description": "Invoice system"
+        },
+        {
+          "type": "enhancement",
+          "description": "Complete UI redesign with beveled panel system"
+        },
+        {
+          "type": "security",
+          "description": "JWT token refresh, session management, account lockout"
+        }
+      ]
+    },
+    {
+      "version": "1.0.0",
+      "date": "2025-10-01",
+      "type": "major",
+      "summary": "Initial release — basic CAD dispatch and records management",
+      "changes": [
+        {
+          "type": "feature",
+          "description": "Calls for service dispatch"
+        },
+        {
+          "type": "feature",
+          "description": "Incident report management"
+        },
+        {
+          "type": "feature",
+          "description": "Person and vehicle records"
+        },
+        {
+          "type": "feature",
+          "description": "User authentication and role-based access"
+        },
+        {
+          "type": "feature",
+          "description": "Activity logging and audit trail"
+        }
+      ]
+    }
+  ]
+}

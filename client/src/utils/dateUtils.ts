@@ -1,0 +1,78 @@
+// ============================================================
+// RMPG Flex — Date/Time Utility Functions
+// ============================================================
+// Handles parsing of server timestamps, including backward
+// compatibility with legacy timezone-naive strings.
+// ============================================================
+
+/**
+ * Parse a server timestamp string into a Date object.
+ *
+ * New timestamps from the server are ISO 8601 with timezone offset:
+ *   "2025-01-15T14:30:00-07:00"
+ *
+ * Legacy timestamps stored in the DB lack timezone info:
+ *   "2025-01-15 14:30:00"
+ *
+ * JavaScript's `new Date("2025-01-15 14:30:00")` treats timezone-naive
+ * strings as UTC, causing times to display ~6–7 hours ahead of actual
+ * Mountain Time. This helper detects legacy formats and appends the
+ * Mountain Time offset so they're interpreted correctly.
+ */
+export function parseTimestamp(dateStr: string | null | undefined): Date {
+  if (!dateStr) return new Date();
+
+  // Already has timezone info (T with + or -, or Z suffix) — parse directly
+  if (dateStr.includes('T') && (dateStr.includes('+') || dateStr.includes('Z') || dateStr.lastIndexOf('-') > 10)) {
+    return new Date(dateStr);
+  }
+
+  // Legacy format: "YYYY-MM-DD HH:MM:SS" — assume Mountain Time (UTC-7 MST / UTC-6 MDT)
+  // We use -07:00 (MST) as the safe default; the error is at most 1 hour during DST
+  if (dateStr.includes(' ') && !dateStr.includes('T')) {
+    return new Date(dateStr.replace(' ', 'T') + '-07:00');
+  }
+
+  // Date-only "YYYY-MM-DD" or other formats — let the browser handle it
+  return new Date(dateStr);
+}
+
+/**
+ * Format a server timestamp for display as a short time (HH:MM 24h).
+ */
+export function formatShortTime(dateStr: string | null | undefined): string {
+  const d = parseTimestamp(dateStr);
+  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+/**
+ * Format a server timestamp for display as date + time.
+ */
+export function formatDateTime(dateStr: string | null | undefined): string {
+  const d = parseTimestamp(dateStr);
+  return d.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+}
+
+/**
+ * Format a server timestamp as a relative date (e.g., "2 hours ago").
+ */
+export function formatRelativeTime(dateStr: string | null | undefined): string {
+  const d = parseTimestamp(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+
+  if (diffMin < 1) return 'just now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDays = Math.floor(diffHr / 24);
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}

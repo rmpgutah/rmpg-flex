@@ -1,0 +1,396 @@
+import React, { useState } from 'react';
+import {
+  Search,
+  Plus,
+  Edit,
+  Trash2,
+  CheckCircle,
+  XCircle,
+  Loader2,
+  Settings,
+} from 'lucide-react';
+import type { User, UserRole } from '../../types';
+import type { UserFormData } from '../../components/UserFormModal';
+
+// ============================================================
+// Shared types
+// ============================================================
+
+export interface AuditEntry {
+  id: string;
+  user: string;
+  action: string;
+  details: string;
+  timestamp: string;
+}
+
+const ROLE_COLORS: Record<UserRole, string> = {
+  admin: 'bg-red-900/50 text-red-400 border-red-700/50',
+  manager: 'bg-purple-900/50 text-purple-400 border-purple-700/50',
+  supervisor: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
+  officer: 'bg-brand-900/50 text-brand-400 border-brand-700/50',
+  dispatcher: 'bg-green-900/50 text-green-400 border-green-700/50',
+};
+
+// ============================================================
+// Props
+// ============================================================
+
+interface AdminUsersTabProps {
+  users: (User & { last_login_display?: string })[];
+  loadingUsers: boolean;
+  error: string | null;
+  setError: (error: string | null) => void;
+
+  // Selected user detail
+  selectedUser: (User & { last_login_display?: string }) | null;
+  setSelectedUser: (user: (User & { last_login_display?: string }) | null) => void;
+  userActivity: AuditEntry[];
+  loadingUserActivity: boolean;
+
+  // Modal handlers
+  openAddUser: () => void;
+  openEditUser: (user: User & { last_login_display?: string }) => void;
+  openDeleteUser: (user: User & { last_login_display?: string }) => void;
+
+  // Loading spinner component
+  LoadingSpinner: React.FC;
+}
+
+// ============================================================
+// Component
+// ============================================================
+
+export default function AdminUsersTab({
+  users,
+  loadingUsers,
+  selectedUser,
+  setSelectedUser,
+  userActivity,
+  loadingUserActivity,
+  openAddUser,
+  openEditUser,
+  openDeleteUser,
+  LoadingSpinner,
+}: AdminUsersTabProps) {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [userDetailTab, setUserDetailTab] = useState<'profile' | 'personal' | 'credentials' | 'activity' | 'email'>('profile');
+
+  return (
+    <div className="flex h-full overflow-hidden">
+      {/* Left: User List */}
+      <div className={`${selectedUser ? 'w-[40%]' : 'w-full'} border-r border-rmpg-600 flex flex-col overflow-hidden transition-all`}>
+        <div className="px-4 py-3 flex items-center justify-between border-b border-rmpg-600 flex-shrink-0">
+          <div className="relative w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
+            <input
+              type="text"
+              className="input-dark pl-9 text-xs"
+              placeholder="Search users..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+          <button className="toolbar-btn toolbar-btn-primary" onClick={openAddUser}>
+            <Plus className="w-3.5 h-3.5" /> Add User
+          </button>
+        </div>
+
+        {loadingUsers ? (
+          <LoadingSpinner />
+        ) : (
+          <div className="flex-1 overflow-auto">
+            {users
+              .filter((u) => {
+                if (!searchQuery) return true;
+                const q = searchQuery.toLowerCase();
+                return (
+                  u.username.toLowerCase().includes(q) ||
+                  `${u.first_name} ${u.last_name}`.toLowerCase().includes(q) ||
+                  u.email.toLowerCase().includes(q)
+                );
+              })
+              .map((user) => (
+                <div
+                  key={user.id}
+                  onClick={() => { setSelectedUser(selectedUser?.id === user.id ? null : user); setUserDetailTab('profile'); }}
+                  className={`px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-colors ${
+                    selectedUser?.id === user.id
+                      ? 'bg-brand-900/20 border-l-2 border-l-brand-500'
+                      : 'hover:bg-rmpg-700/30 border-l-2 border-l-transparent'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`flex-shrink-0 w-9 h-9 rounded-full border flex items-center justify-center text-xs font-bold ${
+                      user.is_active ? 'bg-rmpg-700 border-rmpg-600 text-rmpg-300' : 'bg-rmpg-800 border-rmpg-700 text-rmpg-500'
+                    }`}>
+                      {user.first_name?.[0]}{user.last_name?.[0]}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-white truncate">
+                          {user.first_name} {user.last_name}
+                        </span>
+                        <span className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-semibold uppercase border ${ROLE_COLORS[user.role]}`}>
+                          {user.role}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 mt-0.5 text-[10px] text-rmpg-400">
+                        <span className="font-mono">@{user.username}</span>
+                        {user.badge_number && <span>Badge: {user.badge_number}</span>}
+                        {user.rank && <span>{user.rank}</span>}
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-semibold ${
+                        user.is_active ? 'text-green-400' : 'text-rmpg-500'
+                      }`}>
+                        {user.is_active ? <CheckCircle className="w-2.5 h-2.5" /> : <XCircle className="w-2.5 h-2.5" />}
+                        {user.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openEditUser(user); }}
+                        className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors"
+                        title="Edit"
+                      >
+                        <Edit className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            {users.length === 0 && !loadingUsers && (
+              <div className="text-center text-rmpg-400 py-12">No users found</div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Right: User Detail Panel */}
+      {selectedUser && (
+        <div className="w-[60%] flex flex-col overflow-hidden">
+          {/* Detail Header */}
+          <div className="p-4 border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                {selectedUser.profile_image ? (
+                  <img src={selectedUser.profile_image} alt="" className="w-12 h-12 rounded-full border border-rmpg-600 object-cover" />
+                ) : (
+                  <div className="w-12 h-12 rounded-full bg-rmpg-700 border border-rmpg-600 flex items-center justify-center text-sm font-bold text-rmpg-300">
+                    {selectedUser.first_name?.[0]}{selectedUser.last_name?.[0]}
+                  </div>
+                )}
+                <div>
+                  <h2 className="text-lg font-bold text-white">
+                    {selectedUser.first_name} {selectedUser.last_name}
+                  </h2>
+                  <div className="flex items-center gap-3 mt-0.5 text-xs text-rmpg-300">
+                    <span className="font-mono">@{selectedUser.username}</span>
+                    <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-semibold uppercase border ${ROLE_COLORS[selectedUser.role]}`}>
+                      {selectedUser.role}
+                    </span>
+                    {selectedUser.rank && <span className="text-rmpg-400">{selectedUser.rank}</span>}
+                    {selectedUser.badge_number && <span className="font-mono text-rmpg-400">Badge #{selectedUser.badge_number}</span>}
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => openEditUser(selectedUser)}
+                  className="toolbar-btn"
+                >
+                  <Edit className="w-3.5 h-3.5" /> Edit
+                </button>
+                <button
+                  onClick={() => openDeleteUser(selectedUser)}
+                  className="toolbar-btn text-red-400 hover:text-red-300 hover:bg-red-900/30"
+                  title="Terminate user"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Terminate
+                </button>
+                <button onClick={() => setSelectedUser(null)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors">
+                  <XCircle className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Detail Tabs */}
+          <div className="flex gap-1 px-4 pt-2 border-b border-rmpg-600 flex-shrink-0">
+            {([
+              { id: 'profile' as const, label: 'Profile' },
+              { id: 'personal' as const, label: 'Personal' },
+              { id: 'credentials' as const, label: 'Credentials' },
+              { id: 'activity' as const, label: 'Activity Log' },
+              { id: 'email' as const, label: 'Email Integration' },
+            ]).map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setUserDetailTab(tab.id)}
+                className={`px-3 py-1.5 text-[10px] font-medium transition-colors ${
+                  userDetailTab === tab.id
+                    ? 'bg-rmpg-700 text-white border border-rmpg-600 border-b-rmpg-700'
+                    : 'text-rmpg-400 hover:text-white hover:bg-rmpg-700/50'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Detail Content */}
+          <div className="flex-1 overflow-auto p-4 space-y-4">
+            {/* Profile Tab */}
+            {userDetailTab === 'profile' && (
+              <>
+                <div className="panel-beveled p-3 bg-surface-base">
+                  <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Employment Information</h3>
+                  <div className="grid grid-cols-3 gap-3 text-xs">
+                    <div><span className="text-rmpg-400">Department:</span> <span className="text-rmpg-200 ml-1">{selectedUser.department || '--'}</span></div>
+                    <div><span className="text-rmpg-400">Rank:</span> <span className="text-rmpg-200 ml-1">{selectedUser.rank || '--'}</span></div>
+                    <div><span className="text-rmpg-400">Badge #:</span> <span className="text-rmpg-200 font-mono ml-1">{selectedUser.badge_number || '--'}</span></div>
+                    <div><span className="text-rmpg-400">Employee ID:</span> <span className="text-rmpg-200 font-mono ml-1">{selectedUser.employee_id || '--'}</span></div>
+                    <div><span className="text-rmpg-400">Hire Date:</span> <span className="text-rmpg-200 ml-1">{selectedUser.hire_date || '--'}</span></div>
+                    <div><span className="text-rmpg-400">Termination:</span> <span className="text-rmpg-200 ml-1">{selectedUser.termination_date || '--'}</span></div>
+                    <div><span className="text-rmpg-400">Status:</span> <span className={`ml-1 font-bold ${selectedUser.is_active ? 'text-green-400' : 'text-red-400'}`}>{selectedUser.is_active ? 'Active' : 'Inactive'}</span></div>
+                    <div><span className="text-rmpg-400">Shift:</span> <span className="text-rmpg-200 ml-1">{selectedUser.shift_preference || '--'}</span></div>
+                  </div>
+                </div>
+
+                <div className="panel-beveled p-3 bg-surface-base">
+                  <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Contact Information</h3>
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div><span className="text-rmpg-400">Email:</span> <span className="text-rmpg-200 ml-1">{selectedUser.email || '--'}</span></div>
+                    <div><span className="text-rmpg-400">Phone:</span> <span className="text-rmpg-200 ml-1">{selectedUser.phone || '--'}</span></div>
+                    <div className="col-span-2"><span className="text-rmpg-400">Address:</span> <span className="text-rmpg-200 ml-1">{[selectedUser.address, selectedUser.city, selectedUser.state, selectedUser.zip].filter(Boolean).join(', ') || '--'}</span></div>
+                  </div>
+                </div>
+
+                <div className="panel-beveled p-3 bg-surface-base">
+                  <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Account Statistics</h3>
+                  <div className="grid grid-cols-3 gap-3 text-xs">
+                    <div><span className="text-rmpg-400">Last Login:</span> <span className="text-rmpg-200 ml-1">{selectedUser.last_login || selectedUser.last_login_display || '--'}</span></div>
+                    <div><span className="text-rmpg-400">Login Count:</span> <span className="text-rmpg-200 ml-1">{selectedUser.login_count ?? '--'}</span></div>
+                    <div><span className="text-rmpg-400">Created:</span> <span className="text-rmpg-200 ml-1">{selectedUser.created_at ? new Date(selectedUser.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '--'}</span></div>
+                  </div>
+                </div>
+
+                {selectedUser.notes && (
+                  <div className="panel-beveled p-3 bg-surface-base">
+                    <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-2">Notes</h3>
+                    <p className="text-xs text-rmpg-200 leading-relaxed">{selectedUser.notes}</p>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Personal Tab */}
+            {userDetailTab === 'personal' && (
+              <>
+                <div className="panel-beveled p-3 bg-surface-base">
+                  <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Personal Information</h3>
+                  <div className="grid grid-cols-3 gap-3 text-xs">
+                    <div><span className="text-rmpg-400">Date of Birth:</span> <span className="text-rmpg-200 ml-1">{selectedUser.date_of_birth || '--'}</span></div>
+                    <div><span className="text-rmpg-400">Blood Type:</span> <span className="text-rmpg-200 ml-1">{selectedUser.blood_type || '--'}</span></div>
+                    <div><span className="text-rmpg-400">Allergies:</span> <span className="text-rmpg-200 ml-1">{selectedUser.allergies || '--'}</span></div>
+                    <div><span className="text-rmpg-400">Uniform Size:</span> <span className="text-rmpg-200 ml-1">{selectedUser.uniform_size || '--'}</span></div>
+                  </div>
+                </div>
+
+                <div className="panel-beveled p-3 bg-surface-base">
+                  <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Driver License</h3>
+                  <div className="grid grid-cols-3 gap-3 text-xs">
+                    <div><span className="text-rmpg-400">DL #:</span> <span className="text-rmpg-200 font-mono ml-1">{selectedUser.dl_number || '--'}</span></div>
+                    <div><span className="text-rmpg-400">State:</span> <span className="text-rmpg-200 ml-1">{selectedUser.dl_state || '--'}</span></div>
+                    <div><span className="text-rmpg-400">Expiry:</span> <span className="text-rmpg-200 ml-1">{selectedUser.dl_expiry || '--'}</span></div>
+                  </div>
+                </div>
+
+                <div className="panel-beveled p-3 border-l-2 border-l-red-600 bg-surface-base">
+                  <h3 className="text-[10px] text-red-400 uppercase font-bold tracking-wider mb-3">Emergency Contact</h3>
+                  <div className="grid grid-cols-3 gap-3 text-xs">
+                    <div><span className="text-rmpg-400">Name:</span> <span className="text-rmpg-200 ml-1">{selectedUser.emergency_contact_name || '--'}</span></div>
+                    <div><span className="text-rmpg-400">Phone:</span> <span className="text-rmpg-200 ml-1">{selectedUser.emergency_contact_phone || '--'}</span></div>
+                    <div><span className="text-rmpg-400">Relationship:</span> <span className="text-rmpg-200 ml-1">{selectedUser.emergency_contact_relationship || '--'}</span></div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Credentials Tab */}
+            {userDetailTab === 'credentials' && (
+              <>
+                <div className="panel-beveled p-3 bg-surface-base">
+                  <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Certifications & Training</h3>
+                  {selectedUser.certifications ? (
+                    <div className="flex flex-wrap gap-2">
+                      {selectedUser.certifications.split(',').map((cert, i) => (
+                        <span key={i} className="px-2 py-1 bg-brand-900/30 text-brand-300 text-[10px] font-medium border border-brand-700/40">
+                          {cert.trim()}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-rmpg-500">No certifications on file</p>
+                  )}
+                </div>
+
+                <div className="panel-beveled p-3 bg-surface-base">
+                  <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Password</h3>
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div><span className="text-rmpg-400">Last Changed:</span> <span className="text-rmpg-200 ml-1">{selectedUser.last_password_change || '--'}</span></div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Activity Log Tab */}
+            {userDetailTab === 'activity' && (
+              <div className="panel-beveled p-3 bg-surface-base">
+                <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">
+                  Recent Activity ({userActivity.length})
+                </h3>
+                {loadingUserActivity ? (
+                  <div className="flex items-center gap-2"><Loader2 className="w-3 h-3 animate-spin text-brand-400" /><span className="text-[11px] text-rmpg-400">Loading...</span></div>
+                ) : userActivity.length > 0 ? (
+                  <div className="space-y-1">
+                    {userActivity.map((entry) => (
+                      <div key={entry.id} className="flex items-center gap-3 text-xs px-2 py-1.5 bg-surface-raised border border-rmpg-700">
+                        <span className="text-rmpg-400 font-mono text-[10px] flex-shrink-0">
+                          {new Date(entry.timestamp).toLocaleString('en-US', {
+                            month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
+                          })}
+                        </span>
+                        <span className="text-brand-400 font-medium">{entry.action}</span>
+                        <span className="text-rmpg-300 flex-1 truncate">{entry.details}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-rmpg-500">No activity recorded</p>
+                )}
+              </div>
+            )}
+
+            {/* Email Integration Tab */}
+            {userDetailTab === 'email' && (
+              <div className="panel-beveled p-3 bg-surface-base">
+                <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Microsoft 365 Business Email</h3>
+                <div className="py-8 text-center border border-dashed border-rmpg-700">
+                  <Settings className="w-8 h-8 text-rmpg-500 mx-auto mb-3" />
+                  <p className="text-sm text-rmpg-300 font-medium">Email Integration Coming Soon</p>
+                  <p className="text-[11px] text-rmpg-500 mt-1 max-w-sm mx-auto">
+                    Microsoft 365 business email connection will be established when online live integration between dispatchers and officers is implemented.
+                  </p>
+                  <button className="toolbar-btn mt-4 opacity-50 cursor-not-allowed" disabled>
+                    Connect Microsoft 365
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

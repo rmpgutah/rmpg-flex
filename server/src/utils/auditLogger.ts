@@ -1,0 +1,224 @@
+// ============================================================
+// RMPG Flex — Audit Logger Utility
+// ============================================================
+// Centralized audit logging for all data-modifying operations.
+// Replaces ad-hoc INSERT INTO activity_log calls scattered
+// throughout route handlers with a clean, type-safe API.
+//
+// Usage in routes:
+//   import { auditLog } from '../utils/auditLogger';
+//   auditLog(req, 'incident_created', 'incident', newId, 'Created incident #RKY26-00001');
+// ============================================================
+
+import { Request } from 'express';
+import { getDb } from '../models/database';
+import { localNow } from './timeUtils';
+
+export type AuditAction =
+  // Auth
+  | 'user_login'
+  | 'user_logout'
+  | 'password_changed'
+  | 'login_failed'
+  // Dispatch
+  | 'call_created'
+  | 'call_updated'
+  | 'call_closed'
+  | 'call_deleted'
+  | 'unit_status_changed'
+  | 'unit_assigned'
+  | 'unit_unassigned'
+  | 'panic_activated'
+  // Incidents
+  | 'incident_created'
+  | 'incident_updated'
+  | 'incident_status_changed'
+  | 'incident_deleted'
+  | 'supplement_added'
+  // Records
+  | 'person_created'
+  | 'person_updated'
+  | 'person_deleted'
+  | 'vehicle_created'
+  | 'vehicle_updated'
+  | 'vehicle_deleted'
+  | 'evidence_created'
+  | 'evidence_updated'
+  | 'evidence_deleted'
+  | 'record_linked'
+  | 'record_unlinked'
+  // Warrants & Citations
+  | 'warrant_created'
+  | 'warrant_updated'
+  | 'warrant_served'
+  | 'warrant_deleted'
+  | 'citation_created'
+  | 'citation_updated'
+  | 'citation_voided'
+  | 'citation_deleted'
+  // Personnel
+  | 'officer_created'
+  | 'officer_updated'
+  | 'officer_archived'
+  | 'schedule_created'
+  | 'schedule_updated'
+  | 'time_entry_created'
+  | 'time_entry_updated'
+  | 'credential_added'
+  | 'credential_updated'
+  | 'training_added'
+  | 'training_updated'
+  | 'deployment_created'
+  | 'deployment_updated'
+  // Fleet
+  | 'vehicle_fleet_created'
+  | 'vehicle_fleet_updated'
+  | 'maintenance_logged'
+  | 'inspection_completed'
+  | 'fuel_logged'
+  // Communications
+  | 'message_sent'
+  | 'bolo_created'
+  | 'bolo_updated'
+  | 'bolo_cancelled'
+  | 'broadcast_sent'
+  // Admin
+  | 'user_created'
+  | 'user_updated'
+  | 'user_deactivated'
+  | 'config_updated'
+  | 'client_created'
+  | 'client_updated'
+  // Uploads
+  | 'file_uploaded'
+  | 'file_deleted'
+  // Reports
+  | 'report_generated'
+  | 'report_exported'
+  // Patrol
+  | 'checkpoint_created'
+  | 'checkpoint_updated'
+  | 'checkpoint_deleted'
+  | 'patrol_scan_logged'
+  // Invoices
+  | 'invoice_created'
+  | 'invoice_updated'
+  | 'payment_recorded';
+
+export type AuditEntityType =
+  | 'user'
+  | 'call'
+  | 'incident'
+  | 'person'
+  | 'vehicle'
+  | 'evidence'
+  | 'unit'
+  | 'warrant'
+  | 'citation'
+  | 'officer'
+  | 'schedule'
+  | 'time_entry'
+  | 'credential'
+  | 'training'
+  | 'deployment'
+  | 'fleet_vehicle'
+  | 'maintenance'
+  | 'inspection'
+  | 'fuel_log'
+  | 'message'
+  | 'bolo'
+  | 'config'
+  | 'client'
+  | 'file'
+  | 'report'
+  | 'checkpoint'
+  | 'patrol_scan'
+  | 'invoice'
+  | 'payment';
+
+/**
+ * Log an action to the activity_log table.
+ *
+ * @param req        Express request (extracts user_id and IP)
+ * @param action     What happened (e.g., 'incident_created')
+ * @param entityType What kind of entity was affected
+ * @param entityId   The ID of the affected entity
+ * @param details    Human-readable description of the action
+ */
+export function auditLog(
+  req: Request,
+  action: AuditAction,
+  entityType: AuditEntityType,
+  entityId: string | number,
+  details: string,
+): void {
+  try {
+    const db = getDb();
+    const userId = req.user?.userId ?? null;
+    const ip = req.ip || req.socket.remoteAddress || 'unknown';
+
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(userId, action, entityType, String(entityId), details, ip, localNow());
+  } catch (err) {
+    // Never let audit logging break the actual operation
+    console.error('[AUDIT] Failed to log:', action, entityType, entityId, err);
+  }
+}
+
+/**
+ * Log an action with a system user (for automated operations).
+ */
+export function auditLogSystem(
+  action: AuditAction,
+  entityType: AuditEntityType,
+  entityId: string | number,
+  details: string,
+): void {
+  try {
+    const db = getDb();
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (NULL, ?, ?, ?, ?, 'system', ?)
+    `).run(action, entityType, String(entityId), details, localNow());
+  } catch (err) {
+    console.error('[AUDIT] Failed to log system action:', action, entityType, entityId, err);
+  }
+}
+
+/**
+ * Bulk-log multiple actions in a single transaction.
+ * Useful for batch operations.
+ */
+export function auditLogBatch(
+  req: Request,
+  entries: Array<{
+    action: AuditAction;
+    entityType: AuditEntityType;
+    entityId: string | number;
+    details: string;
+  }>,
+): void {
+  try {
+    const db = getDb();
+    const userId = req.user?.userId ?? null;
+    const ip = req.ip || req.socket.remoteAddress || 'unknown';
+    const now = localNow();
+
+    const stmt = db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const batchInsert = db.transaction(() => {
+      for (const entry of entries) {
+        stmt.run(userId, entry.action, entry.entityType, String(entry.entityId), entry.details, ip, now);
+      }
+    });
+
+    batchInsert();
+  } catch (err) {
+    console.error('[AUDIT] Failed to batch-log:', err);
+  }
+}

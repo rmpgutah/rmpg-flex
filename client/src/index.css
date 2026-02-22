@@ -1,0 +1,1871 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   RMPG Flex - Custom Styles
+   Rocky Mountain Protective Group — Crimson Red, Charcoal, Gold
+   Logo-derived color theme on dark CAD/RMS console
+   ============================================================ */
+
+/* --- Theme Custom Properties ─────────────────────────────── */
+:root {
+  --surface-base: #1a1a1a;
+  --surface-raised: #1e1e1e;
+  --surface-sunken: #141414;
+  --surface-overlay: #111111;
+  --surface-deep: #0a0a0a;
+  --border-default: #2a2a2a;
+  --border-subtle: #222222;
+  --border-strong: #383838;
+  --text-primary: #e5e7eb;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
+  --brand-red: #bc1010;
+  --brand-gold: #d4a017;
+}
+
+/* --- Global Base Overrides --- */
+@layer base {
+  html {
+    font-size: 13px;
+  }
+  body {
+    background: var(--surface-base);
+    background-image:
+      linear-gradient(rgba(188, 16, 16, 0.02) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(188, 16, 16, 0.02) 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+
+  /* --- CRT Scan-line Overlay (Spillman Flex console effect) --- */
+  body::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 9998;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.03) 0px,
+      rgba(0, 0, 0, 0.03) 1px,
+      transparent 1px,
+      transparent 2px
+    );
+    mix-blend-mode: multiply;
+  }
+}
+
+/* --- Scrollbar Styling (Dark Theme) --- */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--surface-base);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #484848;
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) var(--surface-base);
+}
+
+/* --- Emergency Pulse Animation --- */
+@keyframes emergency-pulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(188, 16, 16, 0.7);
+  }
+  50% {
+    opacity: 0.85;
+    box-shadow: 0 0 0 8px rgba(188, 16, 16, 0);
+  }
+}
+
+@keyframes emergency-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@keyframes bolo-scroll {
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slide-in-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* --- LED Indicator Animations (Spillman Flex) --- */
+@keyframes led-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@keyframes led-pulse {
+  0%, 100% {
+    box-shadow: 0 0 4px currentColor, 0 0 8px currentColor;
+  }
+  50% {
+    box-shadow: 0 0 8px currentColor, 0 0 16px currentColor;
+  }
+}
+
+@layer utilities {
+  .animate-emergency-pulse {
+    animation: emergency-pulse 1.5s ease-in-out infinite;
+  }
+
+  .animate-emergency-blink {
+    animation: emergency-blink 1s ease-in-out infinite;
+  }
+
+  .animate-bolo-scroll {
+    animation: bolo-scroll 20s linear infinite;
+  }
+
+  .animate-fade-in {
+    animation: fade-in 0.3s ease-out;
+  }
+
+  .animate-slide-in-right {
+    animation: slide-in-right 0.3s ease-out;
+  }
+
+  .animate-slide-in-up {
+    animation: slide-in-up 0.2s ease-out;
+  }
+
+  .animate-led-blink {
+    animation: led-blink 1s ease-in-out infinite;
+  }
+
+  .animate-led-pulse {
+    animation: led-pulse 1.5s ease-in-out infinite;
+  }
+
+  .animate-slide-in {
+    animation: slideIn 0.3s ease-out;
+  }
+}
+
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes dropdown-appear {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* --- Nav dropdown animation --- */
+[data-nav-dropdown] > div:not(button) {
+  animation: dropdown-appear 0.12s ease-out;
+}
+
+/* --- Table Styles --- */
+@layer components {
+  .table-dark {
+    @apply w-full text-sm text-left;
+  }
+
+  .table-dark thead {
+    @apply border-b;
+    background: linear-gradient(180deg, #303030 0%, #252525 100%);
+    border-color: #484848;
+  }
+
+  .table-dark thead th {
+    @apply px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider;
+    color: #a0a0a0;
+    border-right: 1px solid rgba(56, 56, 56, 0.5);
+  }
+
+  .table-dark thead th:last-child {
+    border-right: none;
+  }
+
+  .table-dark tbody tr {
+    @apply transition-colors duration-150;
+    border-bottom: 1px solid rgba(56, 56, 56, 0.5);
+  }
+
+  .table-dark tbody tr:hover {
+    background: rgba(48, 48, 48, 0.25);
+  }
+
+  .table-dark tbody tr:nth-child(even) {
+    background: rgba(48, 48, 48, 0.15);
+  }
+
+  .table-dark tbody td {
+    @apply px-3 py-1.5;
+    color: #c8c8c8;
+    font-size: 11px;
+  }
+
+  /* Priority row highlighting */
+  .table-dark tbody tr.priority-row-P1 {
+    background: rgba(188, 16, 16, 0.12) !important;
+  }
+
+  .table-dark tbody tr.priority-row-P2 {
+    background: rgba(212, 160, 23, 0.08) !important;
+  }
+
+  .table-dark tbody tr.priority-row-P1:hover {
+    background: rgba(188, 16, 16, 0.2) !important;
+  }
+
+  .table-dark tbody tr.priority-row-P2:hover {
+    background: rgba(212, 160, 23, 0.15) !important;
+  }
+
+  /* --- Status Badge Styles (Blocky) --- */
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 text-xs font-bold tracking-wide uppercase;
+  }
+
+  .badge-p1 {
+    background: rgba(188, 16, 16, 0.3);
+    color: #ef7a7a;
+    border: 1px solid rgba(188, 16, 16, 0.4);
+  }
+
+  .badge-p2 {
+    background: rgba(212, 160, 23, 0.2);
+    color: #e8b820;
+    border: 1px solid rgba(212, 160, 23, 0.35);
+  }
+
+  .badge-p3 {
+    background: rgba(74, 144, 196, 0.2);
+    color: #7ab8e0;
+    border: 1px solid rgba(74, 144, 196, 0.35);
+  }
+
+  .badge-p4 {
+    background: rgba(72, 72, 72, 0.4);
+    color: #a0a0a0;
+    border: 1px solid rgba(72, 72, 72, 0.5);
+  }
+
+  .badge-available {
+    @apply bg-green-900/50 text-green-400 border border-green-700/50;
+  }
+
+  .badge-dispatched {
+    background: rgba(212, 160, 23, 0.2);
+    color: #e8b820;
+    border: 1px solid rgba(212, 160, 23, 0.35);
+  }
+
+  .badge-enroute {
+    background: rgba(74, 144, 196, 0.2);
+    color: #7ab8e0;
+    border: 1px solid rgba(74, 144, 196, 0.35);
+  }
+
+  .badge-onscene {
+    @apply bg-purple-900/50 text-purple-400 border border-purple-700/50;
+  }
+
+  .badge-busy {
+    background: rgba(188, 16, 16, 0.3);
+    color: #ef7a7a;
+    border: 1px solid rgba(188, 16, 16, 0.4);
+  }
+
+  .badge-off_duty {
+    background: rgba(72, 72, 72, 0.4);
+    color: #a0a0a0;
+    border: 1px solid rgba(72, 72, 72, 0.5);
+  }
+
+  /* Call Status badges */
+  .badge-pending {
+    background: rgba(212, 160, 23, 0.2);
+    color: #e8b820;
+    border: 1px solid rgba(212, 160, 23, 0.35);
+  }
+
+  .badge-cleared {
+    background: rgba(72, 72, 72, 0.35);
+    color: #c8c8c8;
+    border: 1px solid rgba(72, 72, 72, 0.5);
+  }
+
+  .badge-closed {
+    background: rgba(72, 72, 72, 0.4);
+    color: #a0a0a0;
+    border: 1px solid rgba(72, 72, 72, 0.5);
+  }
+
+  .badge-cancelled {
+    background: rgba(72, 72, 72, 0.4);
+    color: #a0a0a0;
+    border: 1px solid rgba(72, 72, 72, 0.5);
+  }
+
+  /* Incident Status badges */
+  .badge-draft {
+    background: rgba(72, 72, 72, 0.4);
+    color: #a0a0a0;
+    border: 1px solid rgba(72, 72, 72, 0.5);
+  }
+
+  .badge-submitted {
+    background: rgba(74, 144, 196, 0.2);
+    color: #7ab8e0;
+    border: 1px solid rgba(74, 144, 196, 0.35);
+  }
+
+  .badge-under_review {
+    background: rgba(212, 160, 23, 0.2);
+    color: #e8b820;
+    border: 1px solid rgba(212, 160, 23, 0.35);
+  }
+
+  .badge-approved {
+    @apply bg-green-900/50 text-green-400 border border-green-700/50;
+  }
+
+  .badge-returned {
+    background: rgba(188, 16, 16, 0.3);
+    color: #ef7a7a;
+    border: 1px solid rgba(188, 16, 16, 0.4);
+  }
+
+  /* --- Card Styles (Blocky) --- */
+  .card-dark {
+    background: var(--surface-base);
+    border: 1px solid var(--border-strong);
+    @apply shadow-sm;
+  }
+
+  .card-dark-hover {
+    background: var(--surface-base);
+    border: 1px solid var(--border-strong);
+    @apply shadow-sm hover:border-rmpg-400 transition-all duration-150 cursor-pointer;
+  }
+  .card-dark-hover:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  }
+
+  /* --- Section & Field Labels --- */
+  .section-header {
+    @apply text-label font-bold uppercase tracking-wider;
+    color: var(--text-secondary);
+  }
+
+  .section-header-bordered {
+    @apply text-label font-bold uppercase tracking-wider pb-2 mb-3 flex items-center gap-2;
+    color: var(--text-secondary);
+    border-bottom: 1px solid #303030;
+  }
+
+  .field-label {
+    @apply text-label uppercase font-semibold block mb-0.5;
+    color: #707070;
+  }
+
+  /* --- Priority Left Border --- */
+  .priority-border-P1 {
+    border-left: 4px solid #bc1010;
+  }
+
+  .priority-border-P2 {
+    border-left: 4px solid #d4a017;
+  }
+
+  .priority-border-P3 {
+    border-left: 4px solid #4a90c4;
+  }
+
+  .priority-border-P4 {
+    border-left: 4px solid #707070;
+  }
+
+  /* --- Input Styles (Blocky) --- RMPG Crimson focus accent */
+  .input-dark {
+    @apply w-full px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none;
+    background: var(--surface-sunken);
+    border: 1px solid var(--border-strong);
+    border-top-color: #282828;
+    border-left-color: #282828;
+    border-bottom-color: #484848;
+    border-right-color: #484848;
+    caret-color: #bc1010;
+    transition: border-color 0.1s;
+  }
+  .input-dark:focus {
+    border-color: var(--brand-red);
+    box-shadow: 0 0 0 1px rgba(188, 16, 16, 0.25);
+  }
+
+  .select-dark {
+    @apply w-full px-3 py-1.5 text-sm text-white focus:outline-none;
+    background: var(--surface-sunken);
+    border: 1px solid var(--border-strong);
+    border-top-color: #282828;
+    border-left-color: #282828;
+    border-bottom-color: #484848;
+    border-right-color: #484848;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23707070'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    padding-right: 24px;
+    transition: border-color 0.1s;
+  }
+  .select-dark:focus {
+    border-color: var(--brand-red);
+    box-shadow: 0 0 0 1px rgba(188, 16, 16, 0.25);
+  }
+  .select-dark option {
+    background: var(--surface-base);
+    color: #e0e0e0;
+  }
+
+  .textarea-dark {
+    @apply w-full px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none resize-none;
+    background: var(--surface-sunken);
+    border: 1px solid var(--border-strong);
+    border-top-color: #282828;
+    border-left-color: #282828;
+    border-bottom-color: #484848;
+    border-right-color: #484848;
+    caret-color: #bc1010;
+    transition: border-color 0.1s;
+  }
+  .textarea-dark:focus {
+    border-color: var(--brand-red);
+    box-shadow: 0 0 0 1px rgba(188, 16, 16, 0.25);
+  }
+
+  /* --- Button Styles (Blocky / Raised) --- RMPG Crimson primary */
+  .btn-primary {
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-bold uppercase tracking-wide shadow-sm transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed;
+    background: #a00e0e;
+    border: 1px solid #bc1010;
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: #bc1010;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wide shadow-sm transition-colors focus:outline-none;
+    background: #303030;
+    border: 1px solid #484848;
+    color: #e0e0e0;
+  }
+  .btn-secondary:hover {
+    background: #383838;
+  }
+
+  .btn-danger {
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-bold uppercase tracking-wide shadow-sm transition-colors focus:outline-none;
+    background: #8a0c0c;
+    border: 1px solid #a00e0e;
+  }
+  .btn-danger:hover {
+    background: #a00e0e;
+  }
+
+  .btn-success {
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-bold uppercase tracking-wide shadow-sm transition-colors focus:outline-none;
+    background: #047857;
+    border: 1px solid #059669;
+  }
+  .btn-success:hover {
+    background: #059669;
+  }
+
+  .btn-sm {
+    @apply px-2 py-1 text-[10px];
+  }
+
+  .btn-xs {
+    @apply px-1.5 py-0.5 text-[9px];
+  }
+
+  /* ============================================================
+     Spillman Flex Console Styles
+     LED indicators, beveled panels, toolbar UI, status bar
+     ============================================================ */
+
+  /* --- LED-Style Status Indicators --- */
+  .led-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    display: inline-block;
+    flex-shrink: 0;
+  }
+
+  .led-green {
+    background: #22c55e;
+    box-shadow: 0 0 4px #22c55e, 0 0 8px rgba(34, 197, 94, 0.4);
+  }
+
+  .led-amber {
+    background: #f59e0b;
+    box-shadow: 0 0 4px #f59e0b, 0 0 8px rgba(245, 158, 11, 0.4);
+  }
+
+  .led-red {
+    background: #ef4444;
+    box-shadow: 0 0 4px #ef4444, 0 0 8px rgba(239, 68, 68, 0.4);
+  }
+
+  .led-blue {
+    background: #3b82f6;
+    box-shadow: 0 0 4px #3b82f6, 0 0 8px rgba(59, 130, 246, 0.4);
+  }
+
+  .led-purple {
+    background: #a855f7;
+    box-shadow: 0 0 4px #a855f7, 0 0 8px rgba(168, 85, 247, 0.4);
+  }
+
+  .led-off {
+    background: #4b5563;
+    box-shadow: none;
+  }
+
+  /* --- Beveled Panel Borders (3D Raised / Inset) --- */
+  .panel-beveled {
+    border: 1px solid #484848;
+    border-top-color: #585858;
+    border-left-color: #585858;
+    border-bottom-color: #282828;
+    border-right-color: #282828;
+  }
+
+  .panel-inset {
+    border: 1px solid #282828;
+    border-top-color: #202020;
+    border-left-color: #202020;
+    border-bottom-color: #484848;
+    border-right-color: #484848;
+  }
+
+  /* --- Panel Title Bar (Desktop Window Chrome) --- */
+  .panel-title-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    background: linear-gradient(180deg, #383838 0%, #282828 50%, #303030 100%);
+    border-bottom: 1px solid #202020;
+    border-top: 1px solid #484848;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #c8c8c8;
+    user-select: none;
+  }
+
+  .panel-title-bar .title-icon {
+    width: 12px;
+    height: 12px;
+    color: #d93030;
+  }
+
+  /* --- Tab Bar (Spillman Flex Tabs) --- */
+  .tab-bar {
+    display: flex;
+    gap: 0;
+    background: #1a1a1a;
+    border-bottom: 2px solid #303030;
+    padding: 0 4px;
+  }
+
+  .tab-bar-item {
+    padding: 4px 12px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #a0a0a0;
+    border: 1px solid transparent;
+    border-bottom: none;
+    cursor: pointer;
+    transition: color 0.1s, background 0.1s;
+    position: relative;
+    top: 2px;
+  }
+
+  .tab-bar-item:hover {
+    color: #e0e0e0;
+    background: rgba(48, 48, 48, 0.4);
+  }
+
+  .tab-bar-item.active {
+    color: #ffffff;
+    background: #1e1e1e;
+    border-color: #303030;
+    border-bottom: 2px solid #1e1e1e;
+  }
+
+  /* --- Toolbar Buttons (Spillman Flex) --- */
+  .toolbar-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #c8c8c8;
+    background: linear-gradient(180deg, #383838 0%, #303030 100%);
+    border: 1px solid #484848;
+    border-bottom-color: #282828;
+    border-right-color: #282828;
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+
+  .toolbar-btn:hover {
+    background: linear-gradient(180deg, #484848 0%, #383838 100%);
+    color: #ffffff;
+  }
+
+  .toolbar-btn:active {
+    background: #282828;
+    border-top-color: #282828;
+    border-left-color: #282828;
+    border-bottom-color: #484848;
+    border-right-color: #484848;
+  }
+
+  .toolbar-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+
+  .toolbar-btn-primary {
+    background: linear-gradient(180deg, #bc1010 0%, #8a0c0c 100%);
+    border-color: #d93030;
+    border-bottom-color: #6e0a0a;
+    border-right-color: #6e0a0a;
+    color: #ffffff;
+  }
+
+  .toolbar-btn-primary:hover {
+    background: linear-gradient(180deg, #d93030 0%, #a00e0e 100%);
+  }
+
+  .toolbar-btn-danger {
+    background: linear-gradient(180deg, #8a0c0c 0%, #6e0a0a 100%);
+    border-color: #a00e0e;
+    color: #ffffff;
+  }
+  .toolbar-btn-danger:hover {
+    background: linear-gradient(180deg, #a00e0e 0%, #8a0c0c 100%);
+  }
+
+  .toolbar-btn-success {
+    background: linear-gradient(180deg, #047857 0%, #065f46 100%);
+    border-color: #059669;
+    color: #ffffff;
+  }
+  .toolbar-btn-success:hover {
+    background: linear-gradient(180deg, #059669 0%, #047857 100%);
+  }
+
+  .toolbar-separator {
+    width: 1px;
+    height: 20px;
+    background: #383838;
+    margin: 0 4px;
+    align-self: center;
+  }
+
+  /* --- Menu Bar Buttons (Spillman Flex top menu) --- */
+  .menu-bar-btn {
+    padding: 1px 10px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #a0a0a0;
+    background: transparent;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background 0.1s, color 0.1s;
+    position: relative;
+    white-space: nowrap;
+  }
+  .menu-bar-btn:hover {
+    background: rgba(48, 48, 48, 0.6);
+    color: #e0e0e0;
+  }
+  .menu-bar-btn-active {
+    background: #1a1a1a;
+    color: #ffffff;
+    border-color: #383838;
+    border-bottom-color: #1a1a1a;
+  }
+
+  /* --- Dropdown Menu Container --- */
+  .menu-dropdown {
+    position: absolute;
+    z-index: 9990;
+    min-width: 220px;
+    background: #1a1a1a;
+    border: 1px solid #484848;
+    border-top-color: #585858;
+    border-left-color: #585858;
+    border-bottom-color: #282828;
+    border-right-color: #282828;
+    box-shadow: 3px 3px 8px rgba(0, 0, 0, 0.5);
+    padding: 2px 0;
+  }
+  .menu-dropdown-root {
+    top: 100%;
+    left: 0;
+  }
+  .menu-submenu {
+    top: -2px;
+    left: 100%;
+  }
+
+  /* --- Menu Items --- */
+  .menu-item-container {
+    position: relative;
+  }
+  .menu-item {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 4px 8px;
+    font-size: 11px;
+    color: #d0d0d0;
+    background: transparent;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background 0.08s, color 0.08s;
+    text-align: left;
+    gap: 6px;
+    white-space: nowrap;
+  }
+  .menu-item:hover {
+    background: linear-gradient(180deg, #a00e0e 0%, #8a0c0c 100%);
+    color: #ffffff;
+  }
+  .menu-item:hover .menu-item-shortcut {
+    color: rgba(255, 255, 255, 0.6);
+  }
+  .menu-item:hover .menu-item-arrow {
+    color: #ffffff;
+  }
+  .menu-item-disabled {
+    color: #505050 !important;
+    cursor: default;
+    pointer-events: none;
+  }
+  .menu-item-disabled:hover {
+    background: transparent !important;
+  }
+  .menu-item-icon {
+    width: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: inherit;
+  }
+  .menu-item-label {
+    flex: 1;
+  }
+  .menu-item-shortcut {
+    margin-left: auto;
+    padding-left: 16px;
+    font-size: 10px;
+    color: #707070;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  }
+  .menu-item-arrow {
+    margin-left: auto;
+    padding-left: 8px;
+    color: #606060;
+    display: flex;
+    align-items: center;
+  }
+  .menu-item-check {
+    width: 14px;
+    font-size: 11px;
+    color: #22c55e;
+    text-align: center;
+    margin-left: auto;
+    padding-left: 8px;
+  }
+
+  /* --- Menu Separator --- */
+  .menu-separator {
+    height: 1px;
+    margin: 3px 6px;
+    background: linear-gradient(90deg, transparent, #383838 20%, #383838 80%, transparent);
+  }
+
+  /* --- CRT Scanline Toggle --- */
+  body.no-scanlines::after {
+    display: none !important;
+  }
+
+  /* --- PANIC Button Styles --- */
+  .panic-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 14px;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #ffffff;
+    background: linear-gradient(180deg, #d93030 0%, #8a0c0c 100%);
+    border: 2px solid #ff4444;
+    cursor: pointer;
+    transition: background 0.1s, box-shadow 0.1s;
+    box-shadow: 0 0 8px rgba(255, 68, 68, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  }
+
+  .panic-btn:hover {
+    background: linear-gradient(180deg, #ff4444 0%, #bc1010 100%);
+    box-shadow: 0 0 16px rgba(255, 68, 68, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  }
+
+  .panic-btn:active {
+    background: #6e0a0a;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5);
+  }
+
+  .panic-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .panic-btn-confirm {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 12px;
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #ffffff;
+    background: #ff0000;
+    border: 2px solid #ff4444;
+    cursor: pointer;
+    box-shadow: 0 0 20px rgba(255, 0, 0, 0.6);
+  }
+
+  .panic-btn-confirm:hover {
+    background: #ff3333;
+  }
+
+  /* Panic alert card */
+  .panic-alert-card {
+    background: #1a1a1a;
+    border: 3px solid #ff0000;
+    box-shadow: 0 0 40px rgba(255, 0, 0, 0.4), 0 0 80px rgba(255, 0, 0, 0.2);
+  }
+
+  .panic-overlay {
+    backdrop-filter: blur(2px);
+  }
+
+  /* --- Status Bar (Bottom Bar) --- */
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    height: 22px;
+    background: linear-gradient(180deg, #282828 0%, #1a1a1a 100%);
+    border-top: 1px solid #383838;
+    font-size: 10px;
+    font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+    color: #a0a0a0;
+    padding: 0 8px;
+    flex-shrink: 0;
+  }
+
+  .status-bar-section {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 8px;
+    height: 100%;
+    border-right: 1px solid #303030;
+  }
+
+  .status-bar-section:last-child {
+    border-right: none;
+    margin-left: auto;
+  }
+
+  /* --- Dispatch Edit Mode Indicator --- */
+  .edit-mode-active {
+    position: relative;
+  }
+  .edit-mode-active::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, #f59e0b, transparent);
+    z-index: 10;
+    animation: edit-pulse 2s ease-in-out infinite;
+  }
+
+  /* --- Dispatch Data Monospace Override --- */
+  .dispatch-mono {
+    font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+    letter-spacing: 0.02em;
+  }
+}
+
+@keyframes edit-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+/* --- Leaflet Map Overrides (Blocky) --- */
+.leaflet-container {
+  background-color: #1a1a1a !important;
+  font-family: inherit;
+}
+
+.leaflet-control-zoom a {
+  background-color: #1a1a1a !important;
+  color: #c8c8c8 !important;
+  border-color: #383838 !important;
+  border-radius: 0 !important;
+}
+
+.leaflet-control-zoom a:hover {
+  background-color: #303030 !important;
+}
+
+.leaflet-popup-content-wrapper {
+  background-color: #1a1a1a !important;
+  color: #e0e0e0 !important;
+  border: 1px solid #383838;
+  border-radius: 2px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.7) !important;
+}
+
+.leaflet-popup-tip {
+  background-color: #1a1a1a !important;
+  border: 1px solid #383838;
+}
+
+.leaflet-popup-close-button {
+  color: #a0a0a0 !important;
+}
+
+/* --- Recharts Overrides --- */
+.recharts-cartesian-grid line {
+  stroke: #303030;
+}
+
+.recharts-text {
+  fill: #a0a0a0;
+}
+
+/* --- Toolbar-style headers --- */
+.toolbar-header {
+  background: linear-gradient(180deg, #303030 0%, #1a1a1a 100%);
+  border-bottom: 1px solid #383838;
+  border-top: 1px solid #383838;
+}
+
+/* ============================================================
+   MOBILE / ANDROID RESPONSIVE STYLES
+   Optimized for 360-430px phone screens
+   ============================================================ */
+@media (max-width: 768px) {
+  /* Increase base font for readability on phones */
+  html {
+    font-size: 14px;
+  }
+
+  /* Remove CRT scanlines on mobile (performance) */
+  body::after {
+    display: none !important;
+  }
+
+  /* Safe area for Android notch/status bar */
+  body {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* --- Layout: Hide desktop toolbars, show compact header --- */
+  .mobile-hidden {
+    display: none !important;
+  }
+
+  /* Status bar: horizontal scroll on small screens */
+  .status-bar {
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .status-bar-section {
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* Tables: horizontal scroll wrapper */
+  .table-dark {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .table-dark thead,
+  .table-dark tbody {
+    min-width: 600px;
+  }
+
+  .table-dark tbody td {
+    font-size: 12px;
+    padding: 6px 8px;
+  }
+
+  .table-dark thead th {
+    font-size: 11px;
+    padding: 6px 8px;
+    white-space: nowrap;
+  }
+
+  /* Tab bars: scrollable on mobile */
+  .tab-bar {
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+  }
+
+  .tab-bar-item {
+    white-space: nowrap;
+    flex-shrink: 0;
+    padding: 6px 14px;
+    font-size: 11px;
+  }
+
+  /* Buttons: larger touch targets (44px min) */
+  .toolbar-btn {
+    min-height: 36px;
+    min-width: 36px;
+    padding: 6px 8px;
+    font-size: 11px;
+  }
+
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger,
+  .btn-success {
+    min-height: 40px;
+    padding: 8px 14px;
+    font-size: 12px;
+  }
+
+  /* Input fields: larger for touch */
+  .input-dark,
+  .select-dark,
+  .textarea-dark {
+    min-height: 40px;
+    font-size: 14px;
+    padding: 8px 12px;
+  }
+
+  /* Panel title bars: slightly larger */
+  .panel-title-bar {
+    padding: 6px 10px;
+    font-size: 11px;
+  }
+
+  /* Menu dropdowns: full width on mobile */
+  .menu-dropdown {
+    position: fixed !important;
+    left: 8px !important;
+    right: 8px !important;
+    max-height: 60vh;
+    overflow-y: auto;
+    min-width: unset !important;
+  }
+
+  .menu-item {
+    padding: 10px 12px;
+    font-size: 13px;
+    min-height: 40px;
+  }
+
+  /* PANIC button: larger on mobile */
+  .panic-btn {
+    padding: 8px 16px;
+    font-size: 12px;
+  }
+
+  /* Cards: full width */
+  .card-dark,
+  .card-dark-hover {
+    margin: 0;
+  }
+
+  /* Badges: slightly larger for readability */
+  .badge {
+    font-size: 10px;
+    padding: 2px 6px;
+  }
+
+  /* LED dots: larger */
+  .led-dot {
+    width: 10px;
+    height: 10px;
+  }
+
+  /* Scrollbar: thinner on mobile */
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+}
+
+/* Extra small screens (< 400px) */
+@media (max-width: 400px) {
+  .toolbar-btn span:not([class*="led"]) {
+    display: none;
+  }
+
+  .status-bar {
+    font-size: 9px;
+  }
+}
+
+/* ============================================================
+   PRINT STYLES
+   Transform dark CAD interface → clean B&W professional layout
+   ============================================================ */
+@media print {
+
+  /* --- Page Setup --- */
+  @page {
+    margin: 0.4in 0.5in;
+    size: letter;
+  }
+
+  @page :first {
+    margin-top: 0.3in;
+  }
+
+  /* --- Global Reset: Dark → White --- */
+  :root {
+    --surface-base: #ffffff !important;
+    --surface-raised: #ffffff !important;
+    --surface-sunken: #ffffff !important;
+    --surface-overlay: #ffffff !important;
+    --surface-deep: #ffffff !important;
+    --border-default: #cccccc !important;
+    --border-subtle: #dddddd !important;
+    --border-strong: #999999 !important;
+    --text-primary: #111111 !important;
+    --text-secondary: #333333 !important;
+    --text-muted: #666666 !important;
+    --brand-red: #8a0c0c !important;
+    --brand-gold: #8a6b0a !important;
+  }
+
+  html {
+    font-size: 11px !important;
+  }
+
+  body {
+    background: white !important;
+    background-image: none !important;
+    color: #111 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
+  }
+
+  /* Remove CRT scanline overlay */
+  body::after {
+    display: none !important;
+  }
+
+  /* Kill all animations/transitions */
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  /* --- Hide ALL UI Chrome --- */
+  .status-bar,
+  .menu-bar-btn,
+  .toolbar-btn,
+  .toolbar-separator,
+  .menu-dropdown,
+  .led-dot,
+  .led-green,
+  .led-amber,
+  .led-red,
+  .led-blue,
+  .led-purple,
+  .led-off,
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger,
+  .btn-success,
+  button[type="submit"],
+  button[type="button"] {
+    display: none !important;
+  }
+
+  /* Hide top chrome bars (brand, menu, action) + status bar footer */
+  body > #root > div > div:first-child,
+  body > #root > div > div:nth-child(2),
+  body > #root > div > div:nth-child(3),
+  body > #root > div > .status-bar {
+    display: none !important;
+  }
+
+  /* ---- Layout: Break free from flex/overflow constraints ---- */
+  body > #root,
+  body > #root > div {
+    height: auto !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+
+  body > #root > div > main {
+    overflow: visible !important;
+    border: none !important;
+    padding: 8px !important;
+    background: white !important;
+    display: block !important;
+    height: auto !important;
+  }
+
+  /* All flex containers inside main should flow for print */
+  main * {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  main > div {
+    height: auto !important;
+    min-height: 0 !important;
+    position: relative !important;
+  }
+
+  /* Split panel layouts — stack vertically for print */
+  main [class*="absolute inset-0"],
+  main > div > div[class*="flex"][style*="overflow"] {
+    position: relative !important;
+    inset: auto !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  /* --- PRINT HEADER: Show logo + page info on printed pages --- */
+  .panel-beveled {
+    background: white !important;
+    border: none !important;
+    border-bottom: 2px solid #333 !important;
+    margin-bottom: 12px !important;
+    break-inside: avoid;
+  }
+
+  /* --- Logo: Grayscale, Smaller for Print --- */
+  img[alt*="RMPG"],
+  img[alt*="Rocky Mountain"] {
+    filter: grayscale(1) contrast(1.5) !important;
+    max-height: 44px !important;
+  }
+
+  /* Remove crimson accent lines (decorative) */
+  [style*="background: linear-gradient(90deg, #6e0a0a"] {
+    display: none !important;
+  }
+
+  /* --- Portal/Page Title Headers --- */
+  .panel-title-bar {
+    background: #e8e8e8 !important;
+    color: #111 !important;
+    border-bottom: 2px solid #555 !important;
+    border-top: none !important;
+    padding: 4px 10px !important;
+    font-size: 11px !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* --- Tables: Professional Print Grid --- */
+  .table-dark {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    border: 1px solid #999 !important;
+    font-size: 9px !important;
+  }
+
+  .table-dark thead {
+    background: #e8e8e8 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .table-dark thead th {
+    color: #111 !important;
+    font-size: 8px !important;
+    font-weight: 700 !important;
+    padding: 4px 5px !important;
+    border: 1px solid #999 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.03em !important;
+  }
+
+  .table-dark tbody tr {
+    border-bottom: 1px solid #ccc !important;
+    background: white !important;
+  }
+
+  .table-dark tbody tr:nth-child(even) {
+    background: #f5f5f5 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .table-dark tbody tr:hover {
+    background: inherit !important;
+  }
+
+  .table-dark tbody td {
+    color: #222 !important;
+    font-size: 9px !important;
+    padding: 3px 5px !important;
+    border-right: 1px solid #ddd !important;
+  }
+
+  /* Priority rows */
+  .table-dark tbody tr.priority-row-P1 {
+    background: #fff0f0 !important;
+    border-left: 3px solid #333 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .table-dark tbody tr.priority-row-P2 {
+    background: #fffff0 !important;
+    border-left: 3px solid #888 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* --- Badges: Bordered Labels --- */
+  .badge,
+  [class*="badge-"] {
+    background: white !important;
+    color: #111 !important;
+    border: 1.5px solid #555 !important;
+    font-size: 7px !important;
+    padding: 1px 4px !important;
+    font-weight: 700 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .badge-p1 { border-color: #222 !important; }
+  .badge-p2 { border-color: #666 !important; }
+  .badge-p3 { border-color: #999 !important; }
+  .badge-p4 { border-color: #bbb !important; }
+  .badge-available { border-color: #2a7a2a !important; color: #2a7a2a !important; }
+  .badge-dispatched { border-color: #8a6b0a !important; color: #8a6b0a !important; }
+  .badge-onscene { border-color: #6a2aaa !important; color: #6a2aaa !important; }
+
+  /* --- Cards & Panels --- */
+  .card-dark,
+  .card-dark-hover {
+    background: white !important;
+    border: 1px solid #bbb !important;
+    padding: 6px !important;
+    break-inside: avoid;
+  }
+
+  .panel-inset {
+    background: white !important;
+    border: 1px solid #ccc !important;
+  }
+
+  /* --- Section Headers --- */
+  .section-header,
+  .section-header-bordered {
+    color: #111 !important;
+    border-color: #666 !important;
+    font-size: 10px !important;
+    font-weight: 700 !important;
+  }
+
+  .field-label {
+    color: #444 !important;
+    font-size: 8px !important;
+  }
+
+  /* --- Form Fields: Show values with underlines --- */
+  .input-dark,
+  .select-dark,
+  .textarea-dark {
+    background: white !important;
+    border: none !important;
+    border-bottom: 1px solid #888 !important;
+    color: #111 !important;
+    padding: 2px 2px !important;
+    font-size: 10px !important;
+    -webkit-appearance: none !important;
+    background-image: none !important;
+  }
+
+  /* --- Tab Bars: Only show active --- */
+  .tab-bar {
+    border-bottom: 2px solid #333 !important;
+    background: white !important;
+  }
+
+  .tab-bar-item {
+    display: none !important;
+  }
+
+  .tab-bar-item.active {
+    display: inline-flex !important;
+    color: #111 !important;
+    background: white !important;
+    border-bottom: 2px solid #111 !important;
+    font-weight: 700 !important;
+    font-size: 10px !important;
+  }
+
+  /* --- Priority Borders --- */
+  .priority-border-P1 { border-left: 4px solid #333 !important; }
+  .priority-border-P2 { border-left: 4px solid #666 !important; }
+  .priority-border-P3 { border-left: 4px solid #999 !important; }
+  .priority-border-P4 { border-left: 4px solid #ccc !important; }
+
+  /* --- Scrollbars: Remove --- */
+  ::-webkit-scrollbar { display: none !important; }
+  * { scrollbar-width: none !important; }
+
+  /* --- Page Break Control --- */
+  h1, h2, h3, h4, h5, h6 { break-after: avoid; }
+  table, figure, img, .card-dark, .panel-beveled { break-inside: avoid; }
+  tr { break-inside: avoid; }
+
+  /* --- Charts: Grayscale with border --- */
+  .recharts-wrapper,
+  .recharts-surface {
+    filter: grayscale(1) !important;
+  }
+
+  .recharts-wrapper {
+    border: 1px solid #ccc !important;
+    break-inside: avoid;
+  }
+
+  /* --- Leaflet Maps: Hide (not useful on paper) --- */
+  .leaflet-container {
+    display: none !important;
+  }
+
+  /* --- Links --- */
+  a {
+    color: #111 !important;
+    text-decoration: underline !important;
+  }
+
+  /* --- Force inline-style dark backgrounds to white --- */
+  [style*="background: #0e0e0e"],
+  [style*="background: #111"],
+  [style*="background: #141414"],
+  [style*="background: #161616"],
+  [style*="background: #1a1a1a"],
+  [style*="background: #1e1e1e"],
+  [style*="background: #202020"],
+  [style*="background: #252525"],
+  [style*="background: #282828"],
+  [style*="background: #303030"],
+  [style*="background: #383838"],
+  [style*="background: linear-gradient"] {
+    background: white !important;
+  }
+
+  /* --- Force inline-style dark text colors to readable black --- */
+  [style*="color: #484848"],
+  [style*="color: #505050"],
+  [style*="color: #585858"],
+  [style*="color: #606060"],
+  [style*="color: #707070"],
+  [style*="color: #a0a0a0"],
+  [style*="color: #c8c8c8"],
+  [style*="color: #d0d0d0"],
+  [style*="color: #d4d4d4"],
+  [style*="color: #e0e0e0"] {
+    color: #333 !important;
+  }
+
+  /* Force bright/colored text to be darker for print */
+  [style*="color: #22c55e"],
+  [style*="color: #ef4444"],
+  [style*="color: #ef7a7a"],
+  [style*="color: #e8b820"],
+  [style*="color: #d93030"],
+  [style*="color: #7ab8e0"] {
+    color: #111 !important;
+  }
+
+  /* Force white text dark */
+  [style*="color: #fff"],
+  [style*="color: white"],
+  .text-white {
+    color: #111 !important;
+  }
+
+  /* --- Force inline dark borders to lighter print borders --- */
+  [style*="border-color: #282828"],
+  [style*="border-color: #303030"],
+  [style*="border-color: #383838"],
+  [style*="border-color: #484848"] {
+    border-color: #ccc !important;
+  }
+
+  [style*="border-bottom: 1px solid #202020"],
+  [style*="border-bottom: 1px solid #303030"] {
+    border-bottom-color: #ccc !important;
+  }
+
+  /* --- Tailwind bg color overrides --- */
+  .bg-surface-base,
+  .bg-surface-sunken {
+    background: white !important;
+  }
+
+  /* Text color overrides for Tailwind classes */
+  .text-rmpg-300,
+  .text-rmpg-400,
+  .text-rmpg-500,
+  .text-gray-400,
+  .text-gray-500,
+  .text-gray-600 {
+    color: #444 !important;
+  }
+
+  .text-red-400,
+  .text-green-400,
+  .text-amber-400,
+  .text-blue-400,
+  .text-purple-400 {
+    color: #222 !important;
+  }
+
+  /* --- Printed Page Footer (generated via CSS) --- */
+  body::before {
+    content: "RMPG Flex — Rocky Mountain Protective Group, LLC — Printed: " attr(data-print-date);
+    display: block;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 7px;
+    color: #999;
+    padding: 4px;
+    border-top: 1px solid #ddd;
+  }
+
+  /* ============================================================
+     SINGLE RECORD PRINT MODE
+     When .print-record-target is present, hide everything EXCEPT
+     the marked element and its ancestors. This allows printing
+     a single call, incident, warrant, person, vehicle, etc.
+     ============================================================ */
+
+  /* When a record target exists, hide ALL direct page content by default */
+  .print-record-target ~ *,
+  .print-record-target ~ div {
+    display: none !important;
+  }
+
+  /* The target itself: full width, visible, flow naturally */
+  .print-record-target {
+    position: relative !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+    border: none !important;
+    flex: none !important;
+    page-break-inside: avoid;
+  }
+
+  /* Ensure parent containers don't clip the target */
+  .print-record-target,
+  .print-record-target * {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  /* Hide the left-panel sibling list when printing a record */
+  .print-record-target ~ div[class*="overflow"],
+  div:has(> .print-record-target) > div:not(:has(.print-record-target)) {
+    display: none !important;
+  }
+
+  /* In a flex parent, hide all siblings of the target */
+  div:has(> .print-record-target) {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  div:has(> .print-record-target) > *:not(.print-record-target) {
+    display: none !important;
+  }
+
+  /* Make target panel fill the page */
+  .print-record-target {
+    background: white !important;
+    color: #111 !important;
+    padding: 0 !important;
+  }
+
+  /* Show a clean header in the record panel */
+  .print-record-target .panel-title-bar {
+    display: flex !important;
+    background: #e8e8e8 !important;
+    color: #111 !important;
+    border-bottom: 2px solid #555 !important;
+    padding: 6px 10px !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Show the detail header in record panels (custom headers) */
+  .print-record-target > div:first-child {
+    background: #f0f0f0 !important;
+    border-bottom: 2px solid #555 !important;
+    padding: 10px 16px !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Record content area — expand fully */
+  .print-record-target > div[class*="overflow-auto"],
+  .print-record-target > div[class*="overflow-y-auto"],
+  .print-record-target > div:last-child {
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+    padding: 12px 16px !important;
+  }
+
+  /* Record sections: clean bordered boxes */
+  .print-record-target .panel-beveled {
+    background: white !important;
+    border: 1px solid #ccc !important;
+    border-bottom: 2px solid #555 !important;
+    padding: 8px 12px !important;
+    margin-bottom: 10px !important;
+    break-inside: avoid;
+  }
+
+  /* Section headers inside record */
+  .print-record-target h3,
+  .print-record-target h4 {
+    color: #111 !important;
+    font-weight: 700 !important;
+    border-bottom: 1px solid #ccc !important;
+    padding-bottom: 3px !important;
+    margin-bottom: 6px !important;
+  }
+
+  /* Grid fields inside record */
+  .print-record-target .grid {
+    display: grid !important;
+  }
+
+  /* Field labels */
+  .print-record-target span[class*="text-rmpg-400"],
+  .print-record-target span[class*="text-rmpg-300"],
+  .print-record-target span[class*="text-gray-400"],
+  .print-record-target span[class*="text-gray-500"] {
+    color: #555 !important;
+    font-weight: 600 !important;
+  }
+
+  /* Field values */
+  .print-record-target span[class*="text-rmpg-200"],
+  .print-record-target span[class*="text-white"],
+  .print-record-target span[class*="text-gray-300"],
+  .print-record-target span[class*="text-gray-200"] {
+    color: #111 !important;
+    font-weight: 400 !important;
+  }
+
+  /* Status badges in record - keep readable with borders */
+  .print-record-target span[class*="inline-flex"] {
+    background: white !important;
+    color: #111 !important;
+    border: 1.5px solid #555 !important;
+    font-size: 8px !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Alert banners — show as bordered notices */
+  .print-record-target .alert-banner,
+  .print-record-target [class*="bg-red-900"],
+  .print-record-target [class*="bg-amber-900"] {
+    background: #fff8f0 !important;
+    border: 2px solid #333 !important;
+    color: #111 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Collapsible sections — force all open for print */
+  .print-record-target [class*="CollapsibleSection"],
+  .print-record-target details {
+    display: block !important;
+  }
+
+  .print-record-target details > summary {
+    font-weight: 700 !important;
+    color: #111 !important;
+  }
+
+  /* Tables inside record */
+  .print-record-target table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    border: 1px solid #999 !important;
+    font-size: 9px !important;
+    break-inside: avoid;
+  }
+
+  .print-record-target table thead {
+    background: #e8e8e8 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .print-record-target table th {
+    color: #111 !important;
+    font-weight: 700 !important;
+    padding: 3px 5px !important;
+    border: 1px solid #999 !important;
+    font-size: 8px !important;
+    text-transform: uppercase !important;
+  }
+
+  .print-record-target table td {
+    color: #222 !important;
+    padding: 3px 5px !important;
+    border: 1px solid #ddd !important;
+    font-size: 9px !important;
+  }
+
+  .print-record-target table tbody tr:nth-child(even) {
+    background: #f5f5f5 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Tabs inside record — hide tab bar, show all tab content */
+  .print-record-target > div[class*="border-b"][class*="px-1"] {
+    display: none !important;
+  }
+
+  /* Quick stats row — show as clean grid */
+  .print-record-target > div[class*="grid-cols"] {
+    background: #f8f8f8 !important;
+    border-bottom: 1px solid #ccc !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Narrative / Notes text blocks */
+  .print-record-target textarea,
+  .print-record-target pre,
+  .print-record-target [class*="whitespace-pre"] {
+    background: white !important;
+    color: #111 !important;
+    border: 1px solid #ccc !important;
+    padding: 6px !important;
+    font-family: 'Courier New', monospace !important;
+    font-size: 9px !important;
+    white-space: pre-wrap !important;
+    word-break: break-word !important;
+  }
+
+  /* Avatar images — keep but grayscale */
+  .print-record-target img {
+    filter: grayscale(1) !important;
+    max-height: 60px !important;
+  }
+
+  /* Record print — add RMPG header at top */
+  .print-record-target::before {
+    content: "ROCKY MOUNTAIN PROTECTIVE GROUP — RECORD PRINT";
+    display: block;
+    text-align: center;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    color: #555;
+    border-bottom: 2px solid #333;
+    padding: 6px 0;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+  }
+}

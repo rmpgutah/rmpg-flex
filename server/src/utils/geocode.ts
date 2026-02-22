@@ -1,0 +1,75 @@
+import { getDb } from '../models/database';
+
+const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
+
+interface GeocodeResult {
+  latitude: number;
+  longitude: number;
+}
+
+/**
+ * Geocode an address string using the Google Geocoding API.
+ * Returns { latitude, longitude } or null if geocoding fails.
+ */
+export async function geocodeAddress(address: string): Promise<GeocodeResult | null> {
+  if (!GOOGLE_MAPS_API_KEY || !address.trim()) return null;
+
+  try {
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${GOOGLE_MAPS_API_KEY}`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    if (data.status === 'OK' && data.results?.length > 0) {
+      const loc = data.results[0].geometry.location;
+      return { latitude: loc.lat, longitude: loc.lng };
+    }
+    return null;
+  } catch (err) {
+    console.error('[geocode] Error geocoding address:', err);
+    return null;
+  }
+}
+
+/**
+ * Reverse-geocode GPS coordinates to a street address using Google Geocoding API.
+ * Returns the formatted address string or null if reverse geocoding fails.
+ */
+export async function reverseGeocodeAddress(lat: number, lng: number): Promise<string | null> {
+  if (!GOOGLE_MAPS_API_KEY) return null;
+
+  try {
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${GOOGLE_MAPS_API_KEY}`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    if (data.status === 'OK' && data.results?.length > 0) {
+      return data.results[0].formatted_address;
+    }
+    return null;
+  } catch (err) {
+    console.error('[geocode] Error reverse-geocoding:', err);
+    return null;
+  }
+}
+
+/**
+ * If a call has an address but no coordinates, geocode it and update the DB.
+ * Runs asynchronously — does not block the response.
+ */
+export function geocodeCallIfNeeded(callId: number, address: string, lat: any, lng: any): void {
+  if (lat || lng || !address.trim()) return;
+
+  geocodeAddress(address).then((result) => {
+    if (!result) return;
+    try {
+      const db = getDb();
+      db.prepare('UPDATE calls_for_service SET latitude = ?, longitude = ? WHERE id = ?')
+        .run(result.latitude, result.longitude, callId);
+      console.log(`[geocode] Geocoded call ${callId}: ${result.latitude}, ${result.longitude}`);
+    } catch (err) {
+      console.error('[geocode] Failed to update call coordinates:', err);
+    }
+  });
+}

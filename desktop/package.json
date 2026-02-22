@@ -1,0 +1,111 @@
+{
+  "name": "rmpg-flex-desktop",
+  "version": "2.2.3",
+  "description": "RMPG Flex CAD/RMS — Desktop Application",
+  "author": "Rocky Mountain Protective Group",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron . --dev",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:all": "electron-builder --mac --win"
+  },
+  "build": {
+    "appId": "com.rmpg.flex",
+    "productName": "RMPG Flex",
+    "copyright": "Copyright (c) Rocky Mountain Protective Group, LLC",
+    "afterPack": "./scripts/afterPack.cjs",
+    "directories": {
+      "output": "dist"
+    },
+    "publish": {
+      "provider": "generic",
+      "url": "http://194.113.64.90/updates"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "updater.js"
+    ],
+    "extraResources": [
+      {
+        "from": "../server",
+        "to": "server",
+        "filter": [
+          "**/*",
+          "!node_modules/.cache/**",
+          "!dist/**",
+          "!.env",
+          "!data/**",
+          "!downloads/**"
+        ]
+      },
+      {
+        "from": "../client/dist",
+        "to": "client/dist"
+      },
+      {
+        "from": "../client/public/favicon.png",
+        "to": "icon.png"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.business",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "../client/public/rmpg-seal.icns",
+      "darkModeSupport": true,
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false
+    },
+    "dmg": {
+      "backgroundColor": "#1a1a1a",
+      "title": "RMPG Flex Installer"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "../client/public/rmpg-seal.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "../client/public/rmpg-seal.ico",
+      "uninstallerIcon": "../client/public/rmpg-seal.ico",
+      "installerHeaderIcon": "../client/public/rmpg-seal.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "RMPG Flex"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Office",
+      "icon": "../client/public/rmpg-seal.png"
+    }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.3"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  }
+}

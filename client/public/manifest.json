@@ -1,0 +1,24 @@
+{
+  "name": "RMPG Flex — CAD/RMS",
+  "short_name": "RMPG Flex",
+  "description": "Rocky Mountain Protective Group — Computer-Aided Dispatch & Records Management System",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1a1a1a",
+  "theme_color": "#bc1010",
+  "orientation": "any",
+  "categories": ["business", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "64x64",
+      "type": "image/png"
+    },
+    {
+      "src": "/rmpg flex.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
