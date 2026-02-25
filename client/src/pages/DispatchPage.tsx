@@ -1433,18 +1433,12 @@ export default function DispatchPage() {
         </button>
 
         {/* New Call Modal (shared with desktop) */}
-        {showNewCallModal && (
-          <NewCallModal
-            onClose={() => { setShowNewCallModal(false); setTemplateInitialData(undefined); }}
-            onCreated={(newCall) => {
-              setCalls((prev) => [newCall, ...prev]);
-              setSelectedCall(newCall);
-              setShowNewCallModal(false);
-              setTemplateInitialData(undefined);
-            }}
-            initialData={templateInitialData}
-          />
-        )}
+        <NewCallModal
+          isOpen={showNewCallModal}
+          onClose={() => { setShowNewCallModal(false); setTemplateInitialData(undefined); }}
+          onSubmit={handleNewCall}
+          initialData={templateInitialData}
+        />
       </div>
     );
   }

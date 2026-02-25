@@ -17,6 +17,7 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
 import ExportButton from '../components/ExportButton';
+import { localToday } from '../utils/dateUtils';
 
 interface AuditLogEntry {
   id: number;
@@ -247,7 +248,7 @@ const AuditLogPage: React.FC = () => {
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `audit-log-${new Date().toISOString().split('T')[0]}.csv`;
+    link.download = `audit-log-${localToday()}.csv`;
     link.click();
     window.URL.revokeObjectURL(url);
   };

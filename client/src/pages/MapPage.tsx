@@ -44,6 +44,7 @@ import { useWebSocket } from '../context/WebSocketContext';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { formatIncidentType } from '../utils/caseNumbers';
 import { escapeHtml } from '../utils/sanitize';
+import { localToday, dateToLocalYMD } from '../utils/dateUtils';
 import { useGeoJsonLayers, GEO_LAYER_CONFIGS } from '../hooks/useGeoJsonLayers';
 import { useEventPlanning, PLAN_COLORS, PLAN_TYPE_LABELS, type PlanItemType } from '../hooks/useEventPlanning';
 import { useShiftPlanning, SHIFT_TYPES, type ShiftType } from '../hooks/useShiftPlanning';
@@ -572,7 +573,7 @@ export default function MapPage() {
   const shiftPlanning = useShiftPlanning();
   const [showShiftPanel, setShowShiftPanel] = useState(false);
   const [newShiftPlanName, setNewShiftPlanName] = useState('');
-  const [newShiftPlanDate, setNewShiftPlanDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [newShiftPlanDate, setNewShiftPlanDate] = useState(() => localToday());
   const [newShiftPlanType, setNewShiftPlanType] = useState<ShiftType>('day');
   const [assignOfficerIds, setAssignOfficerIds] = useState<string[]>([]);
   const [assignUnitIds, setAssignUnitIds] = useState<string[]>([]);
@@ -971,6 +972,7 @@ export default function MapPage() {
                   ` : `<div style="font-size:9px;color:#4b5563;margin-top:4px;">${escapeHtml(location)}</div>`}
                 </div>
               `);
+              infoWindowRef.current?.setPosition({ lat: unit.latitude!, lng: unit.longitude! });
               infoWindowRef.current?.open(map);
             },
           });
@@ -1025,6 +1027,7 @@ export default function MapPage() {
                   ${unitsHtml}
                 </div>
               `);
+              infoWindowRef.current?.setPosition({ lat: call.latitude!, lng: call.longitude! });
               infoWindowRef.current?.open(map);
             },
           });
@@ -1054,6 +1057,7 @@ export default function MapPage() {
                   ${prop.client_name ? `<div style="font-size:9px;margin-top:6px;color:#9ca3af;font-weight:600;">Client: ${escapeHtml(prop.client_name)}</div>` : ''}
                 </div>
               `);
+              infoWindowRef.current?.setPosition({ lat: prop.latitude!, lng: prop.longitude! });
               infoWindowRef.current?.open(map);
             },
           });
@@ -1223,8 +1227,9 @@ export default function MapPage() {
           for (let i = 0; i < trail.points.length - 1; i++) {
             const p1 = trail.points[i];
             const p2 = trail.points[i + 1];
-            const age = (trail.points.length - i) / trail.points.length;
-            const opacity = 0.3 + age * 0.5;
+            // Freshness: 0 for oldest segment, 1 for newest — newer = brighter
+            const freshness = (i + 1) / trail.points.length;
+            const opacity = 0.2 + freshness * 0.6;
 
             const seg = new google.maps.Polyline({
               path: [{ lat: p1.lat, lng: p1.lng }, { lat: p2.lat, lng: p2.lng }],
@@ -2017,7 +2022,7 @@ export default function MapPage() {
                           onClick={() => {
                             const tomorrow = new Date();
                             tomorrow.setDate(tomorrow.getDate() + 1);
-                            shiftPlanning.duplicatePlan(shiftPlanning.activePlanId!, tomorrow.toISOString().split('T')[0]);
+                            shiftPlanning.duplicatePlan(shiftPlanning.activePlanId!, dateToLocalYMD(tomorrow));
                           }}
                           className="flex items-center gap-1 px-1.5 py-0.5 text-[8px] text-rmpg-400 hover:text-rmpg-200 border border-rmpg-700 rounded hover:bg-rmpg-700/30 transition-colors"
                           title="Duplicate for next day"

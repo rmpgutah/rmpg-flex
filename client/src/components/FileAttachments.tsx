@@ -25,6 +25,10 @@ interface Attachment {
   file_size: number;
   uploader_name?: string;
   created_at: string;
+  /** HMAC signature for session-independent file access (24h TTL) */
+  access_sig?: string;
+  /** Expiry timestamp (unix seconds) for access_sig */
+  access_exp?: number;
 }
 
 interface FileAttachmentsProps {
@@ -36,11 +40,43 @@ interface FileAttachmentsProps {
 
 const TOKEN_KEY = 'rmpg_token';
 
-/** Build an authenticated URL for img/iframe/download tags */
-export function authUrl(path: string): string {
-  const token = localStorage.getItem(TOKEN_KEY) || '';
+/**
+ * Build an authenticated URL for img/iframe/download tags.
+ *
+ * Prefers HMAC-signed file access (`sig` + `exp`) which is session-independent
+ * and lasts 24 hours.  Falls back to the JWT access token for backwards
+ * compatibility (but this is what caused TOKEN_EXPIRED errors).
+ */
+export function authUrl(path: string, sig?: string, exp?: number): string {
   const separator = path.includes('?') ? '&' : '?';
+
+  // Prefer HMAC signature — session-independent, 24h TTL
+  if (sig && exp) {
+    return `${path}${separator}sig=${encodeURIComponent(sig)}&exp=${exp}`;
+  }
+
+  // Fallback to JWT token (short-lived, same session only)
+  const token = localStorage.getItem(TOKEN_KEY) || '';
   return `${path}${separator}token=${encodeURIComponent(token)}`;
+}
+
+/**
+ * Fetch a fresh HMAC signature from the server for a given file.
+ * Used when an existing signature has expired (e.g. page open > 24h).
+ */
+async function fetchFreshSignature(fileId: string): Promise<{ sig: string; exp: number } | null> {
+  try {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) return null;
+    const res = await fetch(`/api/uploads/sign/${fileId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return { sig: data.sig, exp: data.exp };
+    }
+  } catch { /* silent */ }
+  return null;
 }
 
 function formatFileSize(bytes: number): string {
@@ -152,7 +188,7 @@ export default function FileAttachments({
       setPreviewAttachment(attachment);
     } else {
       // Direct download for non-previewable files
-      window.open(authUrl(`/api/uploads/${attachment.file_id}/download`), '_blank');
+      window.open(authUrl(`/api/uploads/${attachment.file_id}/download`, attachment.access_sig, attachment.access_exp), '_blank');
     }
   };
 
@@ -235,13 +271,22 @@ export default function FileAttachments({
                   onClick={() => openPreview(att)}
                 >
                   <img
-                    src={authUrl(`/api/uploads/${att.file_id}/thumbnail`)}
+                    src={authUrl(`/api/uploads/${att.file_id}/thumbnail`, att.access_sig, att.access_exp)}
                     alt={att.original_name}
                     className="w-full h-28 object-cover"
                     loading="lazy"
-                    onError={(e) => {
-                      // Hide broken image, show icon instead
+                    onError={async (e) => {
                       const target = e.target as HTMLImageElement;
+                      // Try once with a fresh signature before giving up
+                      if (!target.dataset.retried) {
+                        target.dataset.retried = '1';
+                        const fresh = await fetchFreshSignature(att.file_id);
+                        if (fresh) {
+                          target.src = authUrl(`/api/uploads/${att.file_id}/thumbnail`, fresh.sig, fresh.exp);
+                          return;
+                        }
+                      }
+                      // Hide broken image, show icon instead
                       target.style.display = 'none';
                       const fallback = target.nextElementSibling as HTMLElement;
                       if (fallback) fallback.style.display = 'flex';
@@ -305,7 +350,7 @@ export default function FileAttachments({
                         </button>
                       )}
                       <a
-                        href={authUrl(`/api/uploads/${att.file_id}/download`)}
+                        href={authUrl(`/api/uploads/${att.file_id}/download`, att.access_sig, att.access_exp)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-green-400 transition-colors"
@@ -347,7 +392,7 @@ export default function FileAttachments({
               <span className="text-sm text-rmpg-200 truncate mr-4">{previewAttachment.original_name}</span>
               <div className="flex items-center gap-2">
                 <a
-                  href={authUrl(`/api/uploads/${previewAttachment.file_id}/download`)}
+                  href={authUrl(`/api/uploads/${previewAttachment.file_id}/download`, previewAttachment.access_sig, previewAttachment.access_exp)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-green-400 transition-colors"
@@ -365,13 +410,13 @@ export default function FileAttachments({
             </div>
             {previewAttachment.mime_type === 'application/pdf' ? (
               <iframe
-                src={authUrl(`/api/uploads/${previewAttachment.file_id}`)}
+                src={authUrl(`/api/uploads/${previewAttachment.file_id}`, previewAttachment.access_sig, previewAttachment.access_exp)}
                 className="w-[800px] h-[600px] bg-white"
                 title="PDF Preview"
               />
             ) : (
               <img
-                src={authUrl(`/api/uploads/${previewAttachment.file_id}`)}
+                src={authUrl(`/api/uploads/${previewAttachment.file_id}`, previewAttachment.access_sig, previewAttachment.access_exp)}
                 alt={previewAttachment.original_name}
                 className="max-w-full max-h-[80vh] object-contain border border-rmpg-600"
               />

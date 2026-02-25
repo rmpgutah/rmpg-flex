@@ -35,6 +35,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import StatuteLookup, { type StatuteResult } from '../components/StatuteLookup';
 import PrintRecordButton from '../components/PrintRecordButton';
 import type { CitationPdfData } from '../utils/recordPdfGenerator';
+import { localToday } from '../utils/dateUtils';
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -167,7 +168,7 @@ const EMPTY_FORM: CitationForm = {
   violation_description: '',
   offense_level: '',
   fine_amount: '',
-  violation_date: new Date().toISOString().split('T')[0],
+  violation_date: localToday(),
   violation_time: new Date().toTimeString().slice(0, 5),
   location: '',
   issuing_officer_name: '',
@@ -354,7 +355,7 @@ export default function CitationsPage() {
   const handleNewCitation = () => {
     setForm({
       ...EMPTY_FORM,
-      violation_date: new Date().toISOString().split('T')[0],
+      violation_date: localToday(),
       violation_time: new Date().toTimeString().slice(0, 5),
       issuing_officer_name: (user as any)?.full_name || (user as any)?.username || '',
       badge_number: (user as any)?.badge_number || '',

@@ -52,6 +52,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/records': 'Records',
   '/personnel': 'Personnel',
   '/communications': 'Communications',
+  '/radio': 'Radio',
   '/patrol': 'Patrol',
   '/fleet': 'Fleet',
   '/warrants': 'Warrants',
@@ -88,6 +89,7 @@ const TOOLBAR_NAV: NavItem[] = [
   ]},
   { path: '/communications', icon: MessageSquare, label: 'Comms', group: 'comms', children: [
     { path: '/communications', icon: MessageSquare, label: 'Comms' },
+    { path: '/radio', icon: Radio, label: 'Radio' },
     { path: '/patrol', icon: QrCode, label: 'Patrol' },
   ]},
   { path: '/reports', icon: BarChart3, label: 'Reports', group: 'analysis' },

@@ -917,7 +917,7 @@ export default function PersonnelPage() {
             <div className="text-center">
               <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto mb-2" />
               <p className="text-sm text-rmpg-300">{error}</p>
-              <button onClick={fetchCoreData} className="toolbar-btn mt-3">Retry</button>
+              <button onClick={() => fetchCoreData()} className="toolbar-btn mt-3">Retry</button>
             </div>
           </div>
         )}
