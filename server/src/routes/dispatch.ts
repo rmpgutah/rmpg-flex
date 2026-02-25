@@ -73,8 +73,10 @@ router.get('/calls', (req: Request, res: Response) => {
       LEFT JOIN clients cl ON COALESCE(c.client_id, p.client_id) = cl.id
       ${whereClause}
       ORDER BY
-        CASE c.priority WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 END,
-        c.created_at DESC
+        ${archived === 'true'
+          ? 'c.call_number DESC'
+          : "CASE c.priority WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 END, c.created_at DESC"
+        }
       LIMIT ? OFFSET ?
     `).all(...params, limitNum, offset);
 

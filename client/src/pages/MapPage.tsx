@@ -1260,19 +1260,19 @@ export default function MapPage() {
             dot.addListener('click', () => {
               const time = new Date(pt.time).toLocaleString();
               const html = `
-                <div style="font-family:monospace;font-size:11px;color:#111;min-width:200px;line-height:1.6">
-                  <div style="font-weight:bold;font-size:13px;margin-bottom:4px;color:#c41e1e">
+                <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:200px;line-height:1.6;background:#0a0e14;padding:10px 12px;border-radius:6px;border:1px solid #1e2a3a">
+                  <div style="font-weight:bold;font-size:13px;margin-bottom:4px;color:#ff4444">
                     ${trail.call_sign} — ${trail.officer_name || 'Unknown'}
                   </div>
-                  <div style="color:#666;font-size:10px;margin-bottom:6px">${trail.badge_number || ''}</div>
+                  <div style="color:#8899aa;font-size:10px;margin-bottom:6px">${trail.badge_number || ''}</div>
                   <table style="width:100%;font-size:11px;border-collapse:collapse">
-                    <tr><td style="color:#888;padding:1px 6px 1px 0">Time</td><td style="font-weight:bold">${time}</td></tr>
-                    <tr><td style="color:#888;padding:1px 6px 1px 0">Status</td><td style="font-weight:bold">${STATUS_LABELS[pt.status] || pt.status}</td></tr>
-                    <tr><td style="color:#888;padding:1px 6px 1px 0">Speed</td><td>${formatSpeed(pt.speed)}</td></tr>
-                    <tr><td style="color:#888;padding:1px 6px 1px 0">Heading</td><td>${formatHeading(pt.heading)}</td></tr>
-                    <tr><td style="color:#888;padding:1px 6px 1px 0">Accuracy</td><td>${pt.accuracy != null ? `±${Math.round(pt.accuracy)}m` : '—'}</td></tr>
-                    <tr><td style="color:#888;padding:1px 6px 1px 0">Position</td><td style="font-size:10px">${pt.lat.toFixed(6)}, ${pt.lng.toFixed(6)}</td></tr>
-                    ${pt.call_number ? `<tr><td style="color:#888;padding:1px 6px 1px 0">Call</td><td style="font-weight:bold">${pt.call_number} — ${pt.call_type || ''}</td></tr>` : ''}
+                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Time</td><td style="font-weight:bold;color:#fff">${time}</td></tr>
+                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Status</td><td style="font-weight:bold;color:#4fc3f7">${STATUS_LABELS[pt.status] || pt.status}</td></tr>
+                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Speed</td><td style="color:#e0e0e0">${formatSpeed(pt.speed)}</td></tr>
+                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Heading</td><td style="color:#e0e0e0">${formatHeading(pt.heading)}</td></tr>
+                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Accuracy</td><td style="color:#e0e0e0">${pt.accuracy != null ? `±${Math.round(pt.accuracy)}m` : '—'}</td></tr>
+                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Position</td><td style="font-size:10px;color:#e0e0e0">${pt.lat.toFixed(6)}, ${pt.lng.toFixed(6)}</td></tr>
+                    ${pt.call_number ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Call</td><td style="font-weight:bold;color:#4fc3f7">${pt.call_number} — ${pt.call_type || ''}</td></tr>` : ''}
                   </table>
                 </div>
               `;
