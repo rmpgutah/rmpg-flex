@@ -4,6 +4,7 @@ import { Server as HttpsServer } from 'https';
 import jwt from 'jsonwebtoken';
 import config from '../config';
 import crypto from 'crypto';
+import database from '../models/database';
 
 interface JwtPayload {
   userId: number;
@@ -231,7 +232,7 @@ function handleClientMessage(clientId: string, message: any): void {
 
     case 'radio_transmit_end':
       if (!client.authenticated) return;
-      handleRadioTransmitEnd(clientId);
+      handleRadioTransmitEnd(clientId, message.data);
       break;
 
     case 'radio_audio':
@@ -550,8 +551,8 @@ function handleRadioTransmitStart(clientId: string): void {
   });
 }
 
-/** Handle PTT key-up — stop transmitting */
-function handleRadioTransmitEnd(clientId: string): void {
+/** Handle PTT key-up — stop transmitting, save transcript to DB */
+function handleRadioTransmitEnd(clientId: string, data?: any): void {
   const client = clients.get(clientId);
   if (!client || !client.radioChannel) return;
 
@@ -562,7 +563,28 @@ function handleRadioTransmitEnd(clientId: string): void {
 
   activeTransmitters.delete(channel);
 
-  // Notify all channel members
+  const transcript = data?.transcript || null;
+  const duration = data?.duration || 0;
+
+  // Save transcript to database (non-blocking — don't let DB errors block radio)
+  try {
+    const db = database.getDb();
+    db.prepare(
+      `INSERT INTO radio_transcripts (user_id, username, full_name, channel, transcript, duration, transmitted_at)
+       VALUES (?, ?, ?, ?, ?, ?, datetime('now','localtime'))`
+    ).run(
+      client.userId,
+      client.username || 'Unknown',
+      client.fullName || client.username || 'Unknown',
+      channel,
+      transcript,
+      duration
+    );
+  } catch (err) {
+    console.error('Failed to save radio transcript:', err);
+  }
+
+  // Notify all channel members (include transcript so listeners can display it)
   const payload = JSON.stringify({
     type: 'radio_transmit_end',
     data: {
@@ -570,6 +592,8 @@ function handleRadioTransmitEnd(clientId: string): void {
       username: client.username,
       fullName: client.fullName || client.username || 'Unknown',
       role: client.role,
+      transcript,
+      duration,
     },
     timestamp: new Date().toISOString(),
   });

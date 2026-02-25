@@ -687,6 +687,24 @@ function createTables(): void {
     CREATE INDEX IF NOT EXISTS idx_officer_equipment_officer ON officer_equipment(officer_id);
     CREATE INDEX IF NOT EXISTS idx_officer_equipment_status ON officer_equipment(status);
     CREATE INDEX IF NOT EXISTS idx_officer_equipment_type ON officer_equipment(equipment_type);
+
+    -- Radio transmission transcripts — permanent log of PTT voice comms
+    CREATE TABLE IF NOT EXISTS radio_transcripts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      username TEXT NOT NULL,
+      full_name TEXT,
+      channel TEXT NOT NULL,
+      transcript TEXT,
+      duration INTEGER NOT NULL DEFAULT 0,
+      transmitted_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_radio_transcripts_channel ON radio_transcripts(channel);
+    CREATE INDEX IF NOT EXISTS idx_radio_transcripts_user ON radio_transcripts(user_id);
+    CREATE INDEX IF NOT EXISTS idx_radio_transcripts_time ON radio_transcripts(transmitted_at);
   `);
 }
 
