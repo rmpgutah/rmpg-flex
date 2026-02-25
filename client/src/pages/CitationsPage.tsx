@@ -31,6 +31,7 @@ import {
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useAuth } from '../context/AuthContext';
+import { useIsMobile } from '../hooks/useIsMobile';
 import StatuteLookup, { type StatuteResult } from '../components/StatuteLookup';
 import PrintRecordButton from '../components/PrintRecordButton';
 import type { CitationPdfData } from '../utils/recordPdfGenerator';
@@ -195,6 +196,7 @@ function formatCurrency(n: number | null | undefined): string {
 
 export default function CitationsPage() {
   const { user } = useAuth();
+  const isMobile = useIsMobile();
 
   // List state
   const [citations, setCitations] = useState<Citation[]>([]);
@@ -1147,25 +1149,52 @@ export default function CitationsPage() {
   // Main layout
   // ============================================================
 
+  // On mobile, show list OR detail/form — not both side by side
+  const showListOnMobile = !isMobile || (mode === 'list' && !selectedCitation);
+  const showRightOnMobile = !isMobile || mode !== 'list' || !!selectedCitation;
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Stats bar */}
-      <div className="px-4 pt-4 pb-0 shrink-0">
-        {renderStatsBar()}
+      <div className={`${isMobile ? 'px-3 pt-3' : 'px-4 pt-4'} pb-0 shrink-0`}>
+        {isMobile ? (
+          <div className="overflow-x-auto -mx-3 px-3 pb-2">
+            {renderStatsBar()}
+          </div>
+        ) : (
+          renderStatsBar()
+        )}
       </div>
 
       {/* Split view */}
-      <div className="flex flex-1 overflow-hidden px-4 pb-4 gap-4">
+      <div className={`flex flex-1 overflow-hidden ${isMobile ? 'px-2 pb-2 flex-col' : 'px-4 pb-4 gap-4'}`}>
         {/* Left panel */}
-        <div className="w-[420px] min-w-[360px] shrink-0 panel-beveled bg-surface-base border border-rmpg-700 flex flex-col overflow-hidden">
-          {renderListPanel()}
-        </div>
+        {showListOnMobile && (
+          <div className={`${isMobile ? 'flex-1' : 'w-[420px] min-w-[360px] shrink-0'} panel-beveled bg-surface-base border border-rmpg-700 flex flex-col overflow-hidden`}>
+            {renderListPanel()}
+          </div>
+        )}
 
         {/* Right panel */}
-        <div className="flex-1 panel-beveled bg-surface-base border border-rmpg-700 overflow-hidden flex flex-col">
-          {renderRightPanel()}
-        </div>
+        {showRightOnMobile && (
+          <div className={`flex-1 panel-beveled bg-surface-base border border-rmpg-700 overflow-hidden flex flex-col ${isMobile && !showListOnMobile ? '' : ''}`}>
+            {isMobile && selectedCitation && mode === 'list' && (
+              <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700">
+                <button onClick={() => setSelectedCitation(null)} className="toolbar-btn text-[10px]">← Back</button>
+                <span className="text-xs text-rmpg-400 font-mono">{selectedCitation.citation_number}</span>
+              </div>
+            )}
+            {renderRightPanel()}
+          </div>
+        )}
       </div>
+
+      {/* Mobile FAB for new citation */}
+      {isMobile && !selectedCitation && mode === 'list' && (
+        <button onClick={handleNewCitation} className="mobile-fab" aria-label="New Citation">
+          <Plus size={24} />
+        </button>
+      )}
     </div>
   );
 }

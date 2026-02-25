@@ -15,6 +15,7 @@ import { apiFetch } from '../../hooks/useApi';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useToast } from '../../components/ToastProvider';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { mapUser, mapSchedule, mapTimeEntry, mapCredential, mapTraining, mapDeployment } from './utils/personnelMappers';
 import type { OfficerWithStatus } from './utils/personnelMappers';
 import { MAIN_TABS, type MainTab, type DetailTab, type ModalMode } from './utils/personnelConstants';
@@ -61,6 +62,7 @@ interface ActivityEntry {
 
 export default function PersonnelPage() {
   const { addToast } = useToast();
+  const isMobile = useIsMobile();
 
   // Tab state
   const [activeTab, setActiveTab] = usePersistedTab(
@@ -834,7 +836,7 @@ export default function PersonnelPage() {
       </PanelTitleBar>
 
       {/* Stats Bar — compact stat cards */}
-      <div className="panel-inset px-4 py-1.5 border-b border-rmpg-600 flex items-center gap-3">
+      <div className={`panel-inset ${isMobile ? 'px-3 overflow-x-auto' : 'px-4'} py-1.5 border-b border-rmpg-600 flex items-center gap-3`}>
         <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono">
           <span className="led-dot led-green" />
           <span className="text-rmpg-400 uppercase tracking-wider">Active</span>
@@ -869,7 +871,7 @@ export default function PersonnelPage() {
       </div>
 
       {/* Tab Navigation */}
-      <div className="tab-bar">
+      <div className={`tab-bar ${isMobile ? 'overflow-x-auto' : ''}`}>
         {MAIN_TABS.map(tab => {
           const Icon = tab.icon;
           const count = tab.id === 'roster' ? officers.length

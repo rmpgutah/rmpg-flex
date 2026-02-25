@@ -47,6 +47,8 @@ import { escapeHtml } from '../utils/sanitize';
 import { useGeoJsonLayers, GEO_LAYER_CONFIGS } from '../hooks/useGeoJsonLayers';
 import { useEventPlanning, PLAN_COLORS, PLAN_TYPE_LABELS, type PlanItemType } from '../hooks/useEventPlanning';
 import { useShiftPlanning, SHIFT_TYPES, type ShiftType } from '../hooks/useShiftPlanning';
+import { useIsMobile } from '../hooks/useIsMobile';
+import MobileBottomSheet from '../components/mobile/MobileBottomSheet';
 
 // ============================================================
 // Types
@@ -515,6 +517,8 @@ function injectKeyframes() {
 // ============================================================
 
 export default function MapPage() {
+  const isMobile = useIsMobile();
+  const [mobileLayersOpen, setMobileLayersOpen] = useState(false);
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<any[]>([]); // AdvancedMarkerElement or OverlayView
@@ -1480,8 +1484,8 @@ export default function MapPage() {
           </div>
         )}
 
-        {/* ── Layer Controls Panel - Top Left ── */}
-        <div className="absolute top-4 left-4 z-[1000]">
+        {/* ── Layer Controls Panel - Top Left (Desktop only) ── */}
+        {!isMobile && <div className="absolute top-4 left-4 z-[1000]">
           <div className="bg-surface-deep/95 border border-rmpg-600 backdrop-blur-sm shadow-2xl" style={{ minWidth: 180, borderRadius: 4 }}>
             <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700">
               <Layers className="w-3.5 h-3.5 text-brand-400" />
@@ -2214,10 +2218,10 @@ export default function MapPage() {
               )}
             </div>
           </div>
-        </div>
+        </div>}
 
-        {/* ── Status Legend - Bottom Left ── */}
-        <div className="absolute bottom-4 left-4 z-[1000]">
+        {/* ── Status Legend - Bottom Left (desktop only) ── */}
+        {!isMobile && <div className="absolute bottom-4 left-4 z-[1000]">
           <div className="bg-surface-deep/95 border border-rmpg-600 p-3 backdrop-blur-sm shadow-xl" style={{ borderRadius: 4 }}>
             <span className="text-[9px] font-bold text-rmpg-400 uppercase tracking-widest">Unit Status Legend</span>
             <div className="grid grid-cols-3 gap-x-4 gap-y-1.5 mt-2">
@@ -2231,7 +2235,7 @@ export default function MapPage() {
                 ))}
             </div>
           </div>
-        </div>
+        </div>}
 
         {/* ── Stats Bar - Top Center ── */}
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000]">
@@ -2344,8 +2348,8 @@ export default function MapPage() {
         </div>
       </div>
 
-      {/* ── Right Sidebar - Unit/Call List ── */}
-      <div
+      {/* ── Right Sidebar - Unit/Call List (Desktop only) ── */}
+      {!isMobile && <div
         className="flex flex-col border-l border-rmpg-600 transition-all"
         style={{
           width: sidebarOpen ? 300 : 36,
@@ -2510,7 +2514,91 @@ export default function MapPage() {
             </div>
           </>
         )}
-      </div>
+      </div>}
+
+      {/* ── Mobile: Floating layer button + bottom sheet ── */}
+      {isMobile && (
+        <>
+          <button
+            className="mobile-fab"
+            style={{ bottom: 'calc(80px + env(safe-area-inset-bottom))', right: 16 }}
+            onClick={() => setMobileLayersOpen(!mobileLayersOpen)}
+            aria-label="Toggle layers"
+          >
+            <Layers style={{ width: 22, height: 22 }} />
+          </button>
+
+          <MobileBottomSheet
+            open={mobileLayersOpen}
+            onClose={() => setMobileLayersOpen(false)}
+            initialSnap="half"
+            collapsedHeight={0}
+            header={
+              <div className="flex items-center gap-2">
+                <Layers className="w-4 h-4 text-brand-400" />
+                <span className="text-xs font-bold text-rmpg-200 uppercase tracking-wider">Map Layers</span>
+              </div>
+            }
+          >
+            <div className="p-3 space-y-2">
+              {[
+                { key: 'units' as const, icon: Shield, label: 'Units', color: '#22c55e' },
+                { key: 'incidents' as const, icon: AlertTriangle, label: 'Active Calls', color: '#ef4444' },
+                { key: 'properties' as const, icon: Building2, label: 'Properties', color: '#3b82f6' },
+              ].map(({ key, icon: Icon, label, color }) => (
+                <button
+                  key={key}
+                  onClick={() => toggleLayer(key)}
+                  className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
+                  style={{
+                    background: layers[key] ? 'rgba(34,197,94,0.08)' : '#1a1a1a',
+                    border: '1px solid #2a2a2a',
+                    minHeight: 44,
+                  }}
+                >
+                  {layers[key] ? <Eye className="w-4 h-4 text-green-400" /> : <EyeOff className="w-4 h-4 text-rmpg-500" />}
+                  <Icon style={{ width: 16, height: 16, color: layers[key] ? color : '#6b7280' }} />
+                  <span className="text-sm text-rmpg-200 flex-1">{label}</span>
+                </button>
+              ))}
+
+              <button
+                onClick={() => setShowHeatmap(!showHeatmap)}
+                className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
+                style={{
+                  background: showHeatmap ? 'rgba(239,68,68,0.08)' : '#1a1a1a',
+                  border: '1px solid #2a2a2a',
+                  minHeight: 44,
+                }}
+              >
+                {showHeatmap ? <Eye className="w-4 h-4 text-red-400" /> : <EyeOff className="w-4 h-4 text-rmpg-500" />}
+                <Thermometer style={{ width: 16, height: 16 }} className="text-red-400" />
+                <span className="text-sm text-rmpg-200 flex-1">Heat Map</span>
+              </button>
+
+              {/* GPS Center button */}
+              <button
+                onClick={() => {
+                  const map = mapInstanceRef.current;
+                  if (map && gps.latitude && gps.longitude) {
+                    map.panTo({ lat: gps.latitude, lng: gps.longitude });
+                    map.setZoom(16);
+                  }
+                }}
+                className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
+                style={{
+                  background: '#1a1a1a',
+                  border: '1px solid #2a2a2a',
+                  minHeight: 44,
+                }}
+              >
+                <Navigation2 style={{ width: 16, height: 16 }} className="text-green-400" />
+                <span className="text-sm text-rmpg-200 flex-1">Center on My Location</span>
+              </button>
+            </div>
+          </MobileBottomSheet>
+        </>
+      )}
     </div>
   );
 }
