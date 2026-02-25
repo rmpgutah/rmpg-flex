@@ -27,6 +27,7 @@ import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
+import { localToday, dateToLocalYMD } from '../utils/dateUtils';
 
 // ============================================================
 // Types
@@ -108,48 +109,48 @@ function getDateRange(range: string): { startDate: string; endDate?: string } {
 
   switch (range) {
     case 'today':
-      return { startDate: today.toISOString().split('T')[0] };
+      return { startDate: dateToLocalYMD(today) };
 
     case 'last_7_days': {
       const date = new Date(today);
       date.setDate(date.getDate() - 7);
-      return { startDate: date.toISOString().split('T')[0] };
+      return { startDate: dateToLocalYMD(date) };
     }
 
     case 'last_14_days': {
       const date = new Date(today);
       date.setDate(date.getDate() - 14);
-      return { startDate: date.toISOString().split('T')[0] };
+      return { startDate: dateToLocalYMD(date) };
     }
 
     case 'last_30_days': {
       const date = new Date(today);
       date.setDate(date.getDate() - 30);
-      return { startDate: date.toISOString().split('T')[0] };
+      return { startDate: dateToLocalYMD(date) };
     }
 
     case 'this_month': {
       const date = new Date(today.getFullYear(), today.getMonth(), 1);
-      return { startDate: date.toISOString().split('T')[0] };
+      return { startDate: dateToLocalYMD(date) };
     }
 
     case 'last_month': {
       const startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
       const endDate = new Date(today.getFullYear(), today.getMonth(), 0);
       return {
-        startDate: startDate.toISOString().split('T')[0],
-        endDate: endDate.toISOString().split('T')[0],
+        startDate: dateToLocalYMD(startDate),
+        endDate: dateToLocalYMD(endDate),
       };
     }
 
     case 'this_quarter': {
       const quarter = Math.floor(today.getMonth() / 3);
       const date = new Date(today.getFullYear(), quarter * 3, 1);
-      return { startDate: date.toISOString().split('T')[0] };
+      return { startDate: dateToLocalYMD(date) };
     }
 
     default:
-      return { startDate: today.toISOString().split('T')[0] };
+      return { startDate: dateToLocalYMD(today) };
   }
 }
 
@@ -233,7 +234,7 @@ function exportToCSV(
   const url = URL.createObjectURL(blob);
 
   link.setAttribute('href', url);
-  link.setAttribute('download', `rmpg-reports-${new Date().toISOString().split('T')[0]}.csv`);
+  link.setAttribute('download', `rmpg-reports-${localToday()}.csv`);
   link.style.visibility = 'hidden';
   document.body.appendChild(link);
   link.click();

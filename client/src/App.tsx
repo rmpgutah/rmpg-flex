@@ -24,6 +24,7 @@ import PatrolPage from './pages/PatrolPage';
 import FleetPage from './pages/fleet';
 import WarrantsPage from './pages/WarrantsPage';
 import CitationsPage from './pages/CitationsPage';
+import RadioPage from './pages/RadioPage';
 import IncidentDetailWindow from './pages/detached/IncidentDetailWindow';
 import RecordDetailWindow from './pages/detached/RecordDetailWindow';
 
@@ -92,6 +93,7 @@ function AppRoutes() {
           <Route path="/records" element={<RecordsPage />} />
           <Route path="/personnel" element={<PersonnelPage />} />
           <Route path="/communications" element={<CommunicationsPage />} />
+          <Route path="/radio" element={<RadioPage />} />
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/patrol" element={<PatrolPage />} />
           <Route path="/fleet" element={<FleetPage />} />
