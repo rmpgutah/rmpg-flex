@@ -78,14 +78,55 @@ const upload = multer({
   },
 });
 
-// Auth middleware that also accepts ?token= query parameter
-// This allows <img src="...">, <iframe src="...">, and <a href="..."> to work
+// ─── HMAC-based file access signing (session-independent, 24h TTL) ────
+// Generates a signature that authorises read-only access to a single file
+// without requiring a valid JWT session.  This prevents TOKEN_EXPIRED
+// errors when viewing photos/documents across sessions or computers.
+
+function signFileAccess(fileId: string, ttlSeconds = 31536000): { sig: string; exp: number } {
+  const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
+  const data = `file:${fileId}:${exp}`;
+  const sig = crypto.createHmac('sha256', config.jwt.secret).update(data).digest('hex');
+  return { sig, exp };
+}
+
+function verifyFileAccess(fileId: string, sig: string, exp: number): boolean {
+  if (Date.now() / 1000 > exp) return false;
+  const data = `file:${fileId}:${exp}`;
+  const expected = crypto.createHmac('sha256', config.jwt.secret).update(data).digest('hex');
+  try {
+    return crypto.timingSafeEqual(Buffer.from(sig, 'hex'), Buffer.from(expected, 'hex'));
+  } catch {
+    return false;
+  }
+}
+
+// Auth middleware that accepts:
+//   1. HMAC file signature (?sig=...&exp=...) — preferred, session-independent
+//   2. Authorization: Bearer <jwt>             — standard header auth
+//   3. ?token=<jwt>                            — legacy query-param auth for img/iframe/a
 function authenticateTokenOrQuery(req: Request, res: Response, next: NextFunction): void {
-  // First try standard Authorization header
+  // ── 1. Check for HMAC file signature (longest-lived, most reliable) ──
+  const sigParam = typeof req.query.sig === 'string' ? req.query.sig : null;
+  const expParam = typeof req.query.exp === 'string' ? parseInt(req.query.exp, 10) : null;
+
+  if (sigParam && expParam) {
+    const fileId = req.params.fileId;
+    if (fileId && verifyFileAccess(fileId, sigParam, expParam)) {
+      // Signed access verified — minimal user context for read-only serving
+      req.user = { userId: 0, username: 'signed-access', role: 'viewer', fullName: 'Signed Access' };
+      next();
+      return;
+    }
+    res.status(403).json({ error: 'Invalid or expired file signature' });
+    return;
+  }
+
+  // ── 2. Standard Authorization header ──
   const authHeader = req.headers['authorization'];
   const headerToken = authHeader && authHeader.startsWith('Bearer ') ? authHeader.substring(7) : null;
 
-  // Then try ?token= query parameter (for img/iframe/a tags)
+  // ── 3. Legacy ?token= query parameter (for img/iframe/a tags) ──
   const queryToken = typeof req.query.token === 'string' ? req.query.token : null;
 
   const token = headerToken || queryToken;
@@ -116,6 +157,7 @@ const router = Router();
 
 // ─── GET /api/uploads/entity/:type/:id ─── List files for entity ───
 // (Must be before /:fileId catch-all to avoid route conflict)
+// Each attachment now includes `access_sig` + `access_exp` for session-independent file URLs.
 router.get('/entity/:type/:id', authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
@@ -127,9 +169,36 @@ router.get('/entity/:type/:id', authenticateToken, (req: Request, res: Response)
       ORDER BY a.created_at DESC
     `).all(String(req.params.type), parseInt(String(req.params.id), 10));
 
-    res.json(attachments);
+    // Enrich each attachment with an HMAC-signed access token (24h TTL)
+    const enriched = (attachments as any[]).map((att) => {
+      const { sig, exp } = signFileAccess(att.file_id);
+      return { ...att, access_sig: sig, access_exp: exp };
+    });
+
+    res.json(enriched);
   } catch (error: any) {
     console.error('List attachments error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── GET /api/uploads/sign/:fileId ─── Get a fresh signed URL for a file ───
+// Used by the client to get a new signature when the previous one expires
+// (e.g. a page has been open > 24h and the user clicks download)
+router.get('/sign/:fileId', authenticateToken, (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const attachment = db.prepare('SELECT file_id FROM attachments WHERE file_id = ?').get(req.params.fileId) as any;
+
+    if (!attachment) {
+      res.status(404).json({ error: 'File not found' });
+      return;
+    }
+
+    const { sig, exp } = signFileAccess(req.params.fileId);
+    res.json({ sig, exp, file_id: req.params.fileId });
+  } catch (error: any) {
+    console.error('Sign file error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

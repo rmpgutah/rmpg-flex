@@ -44,9 +44,12 @@ import { useWebSocket } from '../context/WebSocketContext';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { formatIncidentType } from '../utils/caseNumbers';
 import { escapeHtml } from '../utils/sanitize';
+import { localToday, dateToLocalYMD } from '../utils/dateUtils';
 import { useGeoJsonLayers, GEO_LAYER_CONFIGS } from '../hooks/useGeoJsonLayers';
 import { useEventPlanning, PLAN_COLORS, PLAN_TYPE_LABELS, type PlanItemType } from '../hooks/useEventPlanning';
 import { useShiftPlanning, SHIFT_TYPES, type ShiftType } from '../hooks/useShiftPlanning';
+import { useIsMobile } from '../hooks/useIsMobile';
+import MobileBottomSheet from '../components/mobile/MobileBottomSheet';
 
 // ============================================================
 // Types
@@ -515,6 +518,8 @@ function injectKeyframes() {
 // ============================================================
 
 export default function MapPage() {
+  const isMobile = useIsMobile();
+  const [mobileLayersOpen, setMobileLayersOpen] = useState(false);
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<any[]>([]); // AdvancedMarkerElement or OverlayView
@@ -568,7 +573,7 @@ export default function MapPage() {
   const shiftPlanning = useShiftPlanning();
   const [showShiftPanel, setShowShiftPanel] = useState(false);
   const [newShiftPlanName, setNewShiftPlanName] = useState('');
-  const [newShiftPlanDate, setNewShiftPlanDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [newShiftPlanDate, setNewShiftPlanDate] = useState(() => localToday());
   const [newShiftPlanType, setNewShiftPlanType] = useState<ShiftType>('day');
   const [assignOfficerIds, setAssignOfficerIds] = useState<string[]>([]);
   const [assignUnitIds, setAssignUnitIds] = useState<string[]>([]);
@@ -967,6 +972,7 @@ export default function MapPage() {
                   ` : `<div style="font-size:9px;color:#4b5563;margin-top:4px;">${escapeHtml(location)}</div>`}
                 </div>
               `);
+              infoWindowRef.current?.setPosition({ lat: unit.latitude!, lng: unit.longitude! });
               infoWindowRef.current?.open(map);
             },
           });
@@ -1021,6 +1027,7 @@ export default function MapPage() {
                   ${unitsHtml}
                 </div>
               `);
+              infoWindowRef.current?.setPosition({ lat: call.latitude!, lng: call.longitude! });
               infoWindowRef.current?.open(map);
             },
           });
@@ -1050,6 +1057,7 @@ export default function MapPage() {
                   ${prop.client_name ? `<div style="font-size:9px;margin-top:6px;color:#9ca3af;font-weight:600;">Client: ${escapeHtml(prop.client_name)}</div>` : ''}
                 </div>
               `);
+              infoWindowRef.current?.setPosition({ lat: prop.latitude!, lng: prop.longitude! });
               infoWindowRef.current?.open(map);
             },
           });
@@ -1219,8 +1227,9 @@ export default function MapPage() {
           for (let i = 0; i < trail.points.length - 1; i++) {
             const p1 = trail.points[i];
             const p2 = trail.points[i + 1];
-            const age = (trail.points.length - i) / trail.points.length;
-            const opacity = 0.3 + age * 0.5;
+            // Freshness: 0 for oldest segment, 1 for newest — newer = brighter
+            const freshness = (i + 1) / trail.points.length;
+            const opacity = 0.2 + freshness * 0.6;
 
             const seg = new google.maps.Polyline({
               path: [{ lat: p1.lat, lng: p1.lng }, { lat: p2.lat, lng: p2.lng }],
@@ -1251,19 +1260,19 @@ export default function MapPage() {
             dot.addListener('click', () => {
               const time = new Date(pt.time).toLocaleString();
               const html = `
-                <div style="font-family:monospace;font-size:11px;color:#111;min-width:200px;line-height:1.6">
-                  <div style="font-weight:bold;font-size:13px;margin-bottom:4px;color:#c41e1e">
+                <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:200px;line-height:1.6;background:#0a0e14;padding:10px 12px;border-radius:6px;border:1px solid #1e2a3a">
+                  <div style="font-weight:bold;font-size:13px;margin-bottom:4px;color:#ff4444">
                     ${trail.call_sign} — ${trail.officer_name || 'Unknown'}
                   </div>
-                  <div style="color:#666;font-size:10px;margin-bottom:6px">${trail.badge_number || ''}</div>
+                  <div style="color:#8899aa;font-size:10px;margin-bottom:6px">${trail.badge_number || ''}</div>
                   <table style="width:100%;font-size:11px;border-collapse:collapse">
-                    <tr><td style="color:#888;padding:1px 6px 1px 0">Time</td><td style="font-weight:bold">${time}</td></tr>
-                    <tr><td style="color:#888;padding:1px 6px 1px 0">Status</td><td style="font-weight:bold">${STATUS_LABELS[pt.status] || pt.status}</td></tr>
-                    <tr><td style="color:#888;padding:1px 6px 1px 0">Speed</td><td>${formatSpeed(pt.speed)}</td></tr>
-                    <tr><td style="color:#888;padding:1px 6px 1px 0">Heading</td><td>${formatHeading(pt.heading)}</td></tr>
-                    <tr><td style="color:#888;padding:1px 6px 1px 0">Accuracy</td><td>${pt.accuracy != null ? `±${Math.round(pt.accuracy)}m` : '—'}</td></tr>
-                    <tr><td style="color:#888;padding:1px 6px 1px 0">Position</td><td style="font-size:10px">${pt.lat.toFixed(6)}, ${pt.lng.toFixed(6)}</td></tr>
-                    ${pt.call_number ? `<tr><td style="color:#888;padding:1px 6px 1px 0">Call</td><td style="font-weight:bold">${pt.call_number} — ${pt.call_type || ''}</td></tr>` : ''}
+                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Time</td><td style="font-weight:bold;color:#fff">${time}</td></tr>
+                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Status</td><td style="font-weight:bold;color:#4fc3f7">${STATUS_LABELS[pt.status] || pt.status}</td></tr>
+                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Speed</td><td style="color:#e0e0e0">${formatSpeed(pt.speed)}</td></tr>
+                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Heading</td><td style="color:#e0e0e0">${formatHeading(pt.heading)}</td></tr>
+                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Accuracy</td><td style="color:#e0e0e0">${pt.accuracy != null ? `±${Math.round(pt.accuracy)}m` : '—'}</td></tr>
+                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Position</td><td style="font-size:10px;color:#e0e0e0">${pt.lat.toFixed(6)}, ${pt.lng.toFixed(6)}</td></tr>
+                    ${pt.call_number ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Call</td><td style="font-weight:bold;color:#4fc3f7">${pt.call_number} — ${pt.call_type || ''}</td></tr>` : ''}
                   </table>
                 </div>
               `;
@@ -1480,8 +1489,8 @@ export default function MapPage() {
           </div>
         )}
 
-        {/* ── Layer Controls Panel - Top Left ── */}
-        <div className="absolute top-4 left-4 z-[1000]">
+        {/* ── Layer Controls Panel - Top Left (Desktop only) ── */}
+        {!isMobile && <div className="absolute top-4 left-4 z-[1000]">
           <div className="bg-surface-deep/95 border border-rmpg-600 backdrop-blur-sm shadow-2xl" style={{ minWidth: 180, borderRadius: 4 }}>
             <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700">
               <Layers className="w-3.5 h-3.5 text-brand-400" />
@@ -2013,7 +2022,7 @@ export default function MapPage() {
                           onClick={() => {
                             const tomorrow = new Date();
                             tomorrow.setDate(tomorrow.getDate() + 1);
-                            shiftPlanning.duplicatePlan(shiftPlanning.activePlanId!, tomorrow.toISOString().split('T')[0]);
+                            shiftPlanning.duplicatePlan(shiftPlanning.activePlanId!, dateToLocalYMD(tomorrow));
                           }}
                           className="flex items-center gap-1 px-1.5 py-0.5 text-[8px] text-rmpg-400 hover:text-rmpg-200 border border-rmpg-700 rounded hover:bg-rmpg-700/30 transition-colors"
                           title="Duplicate for next day"
@@ -2214,10 +2223,10 @@ export default function MapPage() {
               )}
             </div>
           </div>
-        </div>
+        </div>}
 
-        {/* ── Status Legend - Bottom Left ── */}
-        <div className="absolute bottom-4 left-4 z-[1000]">
+        {/* ── Status Legend - Bottom Left (desktop only) ── */}
+        {!isMobile && <div className="absolute bottom-4 left-4 z-[1000]">
           <div className="bg-surface-deep/95 border border-rmpg-600 p-3 backdrop-blur-sm shadow-xl" style={{ borderRadius: 4 }}>
             <span className="text-[9px] font-bold text-rmpg-400 uppercase tracking-widest">Unit Status Legend</span>
             <div className="grid grid-cols-3 gap-x-4 gap-y-1.5 mt-2">
@@ -2231,7 +2240,7 @@ export default function MapPage() {
                 ))}
             </div>
           </div>
-        </div>
+        </div>}
 
         {/* ── Stats Bar - Top Center ── */}
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000]">
@@ -2344,8 +2353,8 @@ export default function MapPage() {
         </div>
       </div>
 
-      {/* ── Right Sidebar - Unit/Call List ── */}
-      <div
+      {/* ── Right Sidebar - Unit/Call List (Desktop only) ── */}
+      {!isMobile && <div
         className="flex flex-col border-l border-rmpg-600 transition-all"
         style={{
           width: sidebarOpen ? 300 : 36,
@@ -2510,7 +2519,91 @@ export default function MapPage() {
             </div>
           </>
         )}
-      </div>
+      </div>}
+
+      {/* ── Mobile: Floating layer button + bottom sheet ── */}
+      {isMobile && (
+        <>
+          <button
+            className="mobile-fab"
+            style={{ bottom: 'calc(80px + env(safe-area-inset-bottom))', right: 16 }}
+            onClick={() => setMobileLayersOpen(!mobileLayersOpen)}
+            aria-label="Toggle layers"
+          >
+            <Layers style={{ width: 22, height: 22 }} />
+          </button>
+
+          <MobileBottomSheet
+            open={mobileLayersOpen}
+            onClose={() => setMobileLayersOpen(false)}
+            initialSnap="half"
+            collapsedHeight={0}
+            header={
+              <div className="flex items-center gap-2">
+                <Layers className="w-4 h-4 text-brand-400" />
+                <span className="text-xs font-bold text-rmpg-200 uppercase tracking-wider">Map Layers</span>
+              </div>
+            }
+          >
+            <div className="p-3 space-y-2">
+              {[
+                { key: 'units' as const, icon: Shield, label: 'Units', color: '#22c55e' },
+                { key: 'incidents' as const, icon: AlertTriangle, label: 'Active Calls', color: '#ef4444' },
+                { key: 'properties' as const, icon: Building2, label: 'Properties', color: '#3b82f6' },
+              ].map(({ key, icon: Icon, label, color }) => (
+                <button
+                  key={key}
+                  onClick={() => toggleLayer(key)}
+                  className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
+                  style={{
+                    background: layers[key] ? 'rgba(34,197,94,0.08)' : '#1a1a1a',
+                    border: '1px solid #2a2a2a',
+                    minHeight: 44,
+                  }}
+                >
+                  {layers[key] ? <Eye className="w-4 h-4 text-green-400" /> : <EyeOff className="w-4 h-4 text-rmpg-500" />}
+                  <Icon style={{ width: 16, height: 16, color: layers[key] ? color : '#6b7280' }} />
+                  <span className="text-sm text-rmpg-200 flex-1">{label}</span>
+                </button>
+              ))}
+
+              <button
+                onClick={() => setShowHeatmap(!showHeatmap)}
+                className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
+                style={{
+                  background: showHeatmap ? 'rgba(239,68,68,0.08)' : '#1a1a1a',
+                  border: '1px solid #2a2a2a',
+                  minHeight: 44,
+                }}
+              >
+                {showHeatmap ? <Eye className="w-4 h-4 text-red-400" /> : <EyeOff className="w-4 h-4 text-rmpg-500" />}
+                <Thermometer style={{ width: 16, height: 16 }} className="text-red-400" />
+                <span className="text-sm text-rmpg-200 flex-1">Heat Map</span>
+              </button>
+
+              {/* GPS Center button */}
+              <button
+                onClick={() => {
+                  const map = mapInstanceRef.current;
+                  if (map && gps.latitude && gps.longitude) {
+                    map.panTo({ lat: gps.latitude, lng: gps.longitude });
+                    map.setZoom(16);
+                  }
+                }}
+                className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
+                style={{
+                  background: '#1a1a1a',
+                  border: '1px solid #2a2a2a',
+                  minHeight: 44,
+                }}
+              >
+                <Navigation2 style={{ width: 16, height: 16 }} className="text-green-400" />
+                <span className="text-sm text-rmpg-200 flex-1">Center on My Location</span>
+              </button>
+            </div>
+          </MobileBottomSheet>
+        </>
+      )}
     </div>
   );
 }

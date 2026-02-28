@@ -5,10 +5,9 @@ const config: CapacitorConfig = {
   appName: 'RMPG Flex',
   webDir: 'dist',
   server: {
-    // Connect to the live production server
+    // Connect to the live production server over HTTPS
     // The Android app is a lightweight shell that loads the web UI from the server
-    url: 'http://194.113.64.90',
-    cleartext: true, // Allow HTTP fallback during development
+    url: 'https://rmpgutah.us',
   },
   plugins: {
     SplashScreen: {
@@ -25,7 +24,7 @@ const config: CapacitorConfig = {
   },
   android: {
     backgroundColor: '#0a0e14',
-    allowMixedContent: true,
+    allowMixedContent: false,
     captureInput: true,
     webContentsDebuggingEnabled: false,
     // Allow geolocation in the WebView (critical for GPS tracking)
