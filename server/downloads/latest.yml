@@ -1,8 +1,8 @@
-version: 2.2.3
+version: 5.3.9
 files:
-  - url: RMPG Flex Setup 2.2.3.exe
-    sha512: S9XzHu/TZz+grxtdaw/M2sDTw/q9sZVQ/EBK4XxRrSjpa5tNn7+nN5lVEucqC6TN1WFsMteLmKMlTBi+C63gqA==
-    size: 172488043
-path: RMPG Flex Setup 2.2.3.exe
-sha512: S9XzHu/TZz+grxtdaw/M2sDTw/q9sZVQ/EBK4XxRrSjpa5tNn7+nN5lVEucqC6TN1WFsMteLmKMlTBi+C63gqA==
-releaseDate: '2026-02-22T07:29:56.186Z'
+  - url: RMPG-Flex-Setup-5.3.9.exe
+    sha512: i8savGuE8Q+fjzUj6hZTXK8ct87r0Lz18LpG9WPFLmAAJMVyMTz60XUCCNaPkoJjrDGA3iU9eB3aWVZNhDkprA==
+    size: 115901317
+path: RMPG-Flex-Setup-5.3.9.exe
+sha512: i8savGuE8Q+fjzUj6hZTXK8ct87r0Lz18LpG9WPFLmAAJMVyMTz60XUCCNaPkoJjrDGA3iU9eB3aWVZNhDkprA==
+releaseDate: '2026-02-28T11:44:48.557Z'

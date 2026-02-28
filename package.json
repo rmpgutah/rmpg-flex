@@ -1,6 +1,6 @@
 {
   "name": "rmpg-flex",
-  "version": "2.2.1",
+  "version": "5.3.9",
   "description": "RMPG Flex - CAD/RMS for Rocky Mountain Protective Group",
   "private": true,
   "scripts": {

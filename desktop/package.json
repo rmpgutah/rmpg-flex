@@ -1,6 +1,6 @@
 {
   "name": "rmpg-flex-desktop",
-  "version": "2.2.3",
+  "version": "5.3.9",
   "description": "RMPG Flex CAD/RMS — Desktop Application",
   "author": "Rocky Mountain Protective Group",
   "license": "UNLICENSED",
@@ -21,8 +21,9 @@
       "output": "dist"
     },
     "publish": {
-      "provider": "generic",
-      "url": "http://194.113.64.90/updates"
+      "provider": "github",
+      "owner": "rmpgutah",
+      "repo": "rmpg-flex"
     },
     "files": [
       "main.js",

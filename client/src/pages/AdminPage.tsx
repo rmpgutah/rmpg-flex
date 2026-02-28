@@ -118,13 +118,19 @@ function mapPersonnelToUser(row: PersonnelRow): User & { last_login_display?: st
   const last_name = row.last_name || (row.full_name || '').trim().split(/\s+/).slice(1).join(' ') || '';
 
   // Spread all server fields through so no data is lost (profile_image, notes, etc.)
-  const { status, full_name, ...rest } = row;
+  const { status, full_name, totp_enabled, totp_setup_required, password_expires_at, force_password_change, password_changed_at, ...rest } = row as PersonnelRow & Record<string, any>;
   return {
     ...rest,
     first_name,
     last_name,
     full_name: full_name || `${first_name} ${last_name}`.trim(),
     is_active: status === 'active',
+    // Map snake_case security fields to camelCase for UI components
+    totpEnabled: totp_enabled === 1,
+    totpSetupRequired: totp_setup_required === 1,
+    passwordExpiresAt: password_expires_at || undefined,
+    forcePasswordChange: force_password_change === 1,
+    passwordChangedAt: password_changed_at || undefined,
   };
 }
 

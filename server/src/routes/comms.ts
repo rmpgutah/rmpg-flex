@@ -509,4 +509,56 @@ router.get('/activity-feed', (req: Request, res: Response) => {
   }
 });
 
+// ─── RADIO TRANSCRIPTS ─────────────────────────────────
+
+// GET /api/comms/radio/transcripts - List radio transcripts with pagination + filtering
+router.get('/radio/transcripts', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { channel, user_id, search, limit, offset, from, to } = req.query;
+
+    let whereClause = 'WHERE 1=1';
+    const params: any[] = [];
+
+    if (channel) {
+      whereClause += ' AND rt.channel = ?';
+      params.push(channel);
+    }
+    if (user_id) {
+      whereClause += ' AND rt.user_id = ?';
+      params.push(user_id);
+    }
+    if (search) {
+      whereClause += ' AND rt.transcript LIKE ?';
+      params.push(`%${search}%`);
+    }
+    if (from) {
+      whereClause += ' AND rt.transmitted_at >= ?';
+      params.push(from);
+    }
+    if (to) {
+      whereClause += ' AND rt.transmitted_at <= ?';
+      params.push(to);
+    }
+
+    const limitNum = Math.min(500, Math.max(1, parseInt(limit as string, 10) || 100));
+    const offsetNum = Math.max(0, parseInt(offset as string, 10) || 0);
+
+    const countRow = db.prepare(`SELECT COUNT(*) as total FROM radio_transcripts rt ${whereClause}`).get(...params) as any;
+    const transcripts = db.prepare(`
+      SELECT rt.*, u.full_name as user_full_name
+      FROM radio_transcripts rt
+      LEFT JOIN users u ON rt.user_id = u.id
+      ${whereClause}
+      ORDER BY rt.transmitted_at DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, limitNum, offsetNum);
+
+    res.json({ data: transcripts, total: countRow.total, limit: limitNum, offset: offsetNum });
+  } catch (error: any) {
+    console.error('Get radio transcripts error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;
