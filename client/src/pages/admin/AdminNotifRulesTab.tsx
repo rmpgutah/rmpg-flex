@@ -58,10 +58,14 @@ const NOTIF_TYPE_ICONS: Record<string, React.ElementType> = {
   both: Bell,
 };
 
-const emptyForm = {
+const emptyForm: {
+  name: string; description: string; trigger_event: string;
+  conditions: string; target_roles: string; target_user_ids: string;
+  notification_type: NotificationRule['notification_type']; is_active: number;
+} = {
   name: '', description: '', trigger_event: 'call_created_p1',
   conditions: '{}', target_roles: '[]', target_user_ids: '[]',
-  notification_type: 'in_app' as const, is_active: 1,
+  notification_type: 'in_app', is_active: 1,
 };
 
 export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setError }: Props) {

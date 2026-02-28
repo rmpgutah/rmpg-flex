@@ -110,7 +110,7 @@ function createTables(): void {
       longitude REAL,
       description TEXT,
       notes TEXT,
-      source TEXT DEFAULT 'phone' CHECK(source IN ('phone','radio','alarm','walk_in','email','patrol','online','dispatch','other')),
+      source TEXT DEFAULT 'phone' CHECK(source IN ('phone','radio','alarm','walk_in','email','patrol','online','dispatch','panic','other')),
       assigned_unit_ids TEXT DEFAULT '[]',
       dispatcher_id INTEGER,
       created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
@@ -747,6 +747,24 @@ function createTables(): void {
       created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
+
+    -- Radio transmission transcripts — permanent log of PTT voice comms
+    CREATE TABLE IF NOT EXISTS radio_transcripts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      username TEXT NOT NULL,
+      full_name TEXT,
+      channel TEXT NOT NULL,
+      transcript TEXT,
+      duration INTEGER NOT NULL DEFAULT 0,
+      transmitted_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_radio_transcripts_channel ON radio_transcripts(channel);
+    CREATE INDEX IF NOT EXISTS idx_radio_transcripts_user ON radio_transcripts(user_id);
+    CREATE INDEX IF NOT EXISTS idx_radio_transcripts_time ON radio_transcripts(transmitted_at);
   `);
 }
 
@@ -905,7 +923,7 @@ function migrateSchema(): void {
           longitude REAL,
           description TEXT,
           notes TEXT,
-          source TEXT DEFAULT 'phone' CHECK(source IN ('phone','radio','alarm','walk_in','email','patrol','online','dispatch','other')),
+          source TEXT DEFAULT 'phone' CHECK(source IN ('phone','radio','alarm','walk_in','email','patrol','online','dispatch','panic','other')),
           assigned_unit_ids TEXT DEFAULT '[]',
           dispatcher_id INTEGER,
           created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
@@ -966,6 +984,35 @@ function migrateSchema(): void {
   } catch (err) {
     db.pragma('foreign_keys = ON');
     console.log('calls_for_service source migration skipped or already done:', (err as Error).message);
+  }
+
+  // ── calls_for_service — add 'panic' to source CHECK constraint ──────
+  // The panic button needs source='panic' but it wasn't in the original list.
+  try {
+    const cfsSchema2 = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='calls_for_service'").get() as any;
+    if (cfsSchema2 && cfsSchema2.sql && !cfsSchema2.sql.includes("'panic'")) {
+      db.pragma('foreign_keys = OFF');
+      db.exec(`DROP TABLE IF EXISTS calls_for_service_new`);
+      // Rebuild with 'panic' added to the source CHECK constraint
+      const currentSql = cfsSchema2.sql as string;
+      const newSql = currentSql
+        .replace('calls_for_service', 'calls_for_service_new')
+        .replace(
+          "source IN ('phone','radio','alarm','walk_in','email','patrol','online','dispatch','other')",
+          "source IN ('phone','radio','alarm','walk_in','email','patrol','online','dispatch','panic','other')"
+        );
+      db.exec(newSql);
+      const cfsCols2 = db.prepare("PRAGMA table_info(calls_for_service)").all() as any[];
+      const cfsColNames2 = cfsCols2.map((c: any) => c.name).join(', ');
+      db.exec(`INSERT INTO calls_for_service_new (${cfsColNames2}) SELECT ${cfsColNames2} FROM calls_for_service`);
+      db.exec(`DROP TABLE calls_for_service`);
+      db.exec(`ALTER TABLE calls_for_service_new RENAME TO calls_for_service`);
+      db.pragma('foreign_keys = ON');
+      console.log("Migrated calls_for_service: source CHECK now includes 'panic'");
+    }
+  } catch (err) {
+    db.pragma('foreign_keys = ON');
+    console.log('calls_for_service panic source migration skipped or already done:', (err as Error).message);
   }
 
   // ── INCIDENTS — new detail fields ─────────────────────
@@ -1130,7 +1177,7 @@ function migrateSchema(): void {
           collected_by INTEGER,
           status TEXT NOT NULL DEFAULT 'received' CHECK(status IN ('received','in_storage','submitted_to_le','released','disposed')),
           chain_of_custody TEXT DEFAULT '[]',
-          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
           location_found TEXT,
           condition TEXT,
           quantity INTEGER DEFAULT 1,
@@ -1513,6 +1560,44 @@ function migrateSchema(): void {
         db.exec(`UPDATE ${tbl} SET ${col.name} = REPLACE(${col.name}, '&amp;', '&') WHERE ${col.name} LIKE '%&amp;%'`);
       }
     } catch { /* table may not exist */ }
+  }
+
+  // ── TIME ENTRIES — add 'on_break' to CHECK constraint (production fix) ──
+  // Production DBs created before 'on_break' was added to the schema still have the old
+  // CHECK(status IN ('active','completed','edited')). Recreate the table to update.
+  try {
+    const teInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='time_entries'").get() as { sql: string } | undefined;
+    if (teInfo && !teInfo.sql.includes('on_break')) {
+      db.pragma('foreign_keys = OFF');
+      db.exec(`
+        CREATE TABLE time_entries_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          officer_id INTEGER NOT NULL,
+          schedule_id INTEGER,
+          clock_in TEXT NOT NULL,
+          clock_out TEXT,
+          clock_in_latitude REAL,
+          clock_in_longitude REAL,
+          total_hours REAL,
+          break_start TEXT,
+          break_minutes REAL NOT NULL DEFAULT 0,
+          status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','completed','edited','on_break')),
+          created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+          FOREIGN KEY (officer_id) REFERENCES users(id),
+          FOREIGN KEY (schedule_id) REFERENCES schedules(id)
+        )
+      `);
+      const teCols = db.prepare("PRAGMA table_info(time_entries)").all() as any[];
+      const teColNames = teCols.map((c: any) => c.name).join(', ');
+      db.exec(`INSERT INTO time_entries_new (${teColNames}) SELECT ${teColNames} FROM time_entries`);
+      db.exec(`DROP TABLE time_entries`);
+      db.exec(`ALTER TABLE time_entries_new RENAME TO time_entries`);
+      db.pragma('foreign_keys = ON');
+      console.log("Migrated time_entries: status CHECK now includes 'on_break'");
+    }
+  } catch (err) {
+    try { db.pragma('foreign_keys = ON'); } catch {}
+    console.log('time_entries CHECK migration skipped or already done:', (err as Error).message);
   }
 
   // ── Migrate existing height text into feet/inches ──

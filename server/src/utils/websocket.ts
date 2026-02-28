@@ -4,6 +4,7 @@ import { Server as HttpsServer } from 'https';
 import jwt from 'jsonwebtoken';
 import config from '../config';
 import crypto from 'crypto';
+import database from '../models/database';
 
 interface JwtPayload {
   userId: number;
@@ -18,9 +19,12 @@ interface WSClient {
   ws: WebSocket;
   userId?: number;
   username?: string;
+  fullName?: string;
   role?: string;
   authenticated: boolean;
   channels: Set<string>;
+  /** Current radio channel (null = not on radio) */
+  radioChannel: string | null;
 }
 
 const clients: Map<string, WSClient> = new Map();
@@ -32,6 +36,15 @@ const AUTH_TIMEOUT_MS = 10_000;
 // All channels every authenticated client auto-subscribes to
 const DEFAULT_CHANNELS = ['dispatch', 'alerts', 'records', 'personnel', 'fleet', 'incidents', 'citations', 'patrol', 'admin', 'presence'];
 
+// ─── Radio State ────────────────────────────────────────────
+// Tracks which radio channel each client is on, and who is
+// currently transmitting on each channel (one at a time).
+
+/** channel → clientId of the active transmitter (null = channel is clear) */
+const activeTransmitters: Map<string, string> = new Map();
+
+const RADIO_CHANNELS = ['dispatch', 'tac-1', 'tac-2', 'tac-3', 'patrol', 'admin'];
+
 export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
   wss = new WebSocketServer({ server });
 
@@ -41,6 +54,7 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
       ws,
       authenticated: false,
       channels: new Set(DEFAULT_CHANNELS),
+      radioChannel: null,
     };
     clients.set(clientId, client);
 
@@ -76,6 +90,8 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
 
     ws.on('close', () => {
       clearTimeout(authTimer);
+      // Clean up radio state before removing client
+      handleRadioDisconnect(clientId);
       clients.delete(clientId);
       // Broadcast updated presence when a user disconnects
       setTimeout(() => broadcastPresence(), 100);
@@ -83,6 +99,7 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
 
     ws.on('error', () => {
       clearTimeout(authTimer);
+      handleRadioDisconnect(clientId);
       clients.delete(clientId);
       setTimeout(() => broadcastPresence(), 100);
     });
@@ -118,6 +135,7 @@ function authenticateClient(client: WSClient, token: string): boolean {
 
     client.userId = decoded.userId;
     client.username = decoded.username;
+    client.fullName = decoded.fullName;
     client.role = decoded.role;
     client.authenticated = true;
 
@@ -195,8 +213,36 @@ function handleClientMessage(clientId: string, message: any): void {
         });
       }
       break;
+
+    // ─── Radio PTT ──────────────────────────────────────────
+    case 'radio_channel_join':
+      if (!client.authenticated) return;
+      handleRadioJoin(clientId, message.radioChannel);
+      break;
+
+    case 'radio_channel_leave':
+      if (!client.authenticated) return;
+      handleRadioLeave(clientId);
+      break;
+
+    case 'radio_transmit_start':
+      if (!client.authenticated) return;
+      handleRadioTransmitStart(clientId);
+      break;
+
+    case 'radio_transmit_end':
+      if (!client.authenticated) return;
+      handleRadioTransmitEnd(clientId, message.data);
+      break;
+
+    case 'radio_audio':
+      if (!client.authenticated) return;
+      relayRadioAudio(clientId, message.data);
+      break;
   }
 }
+
+// ─── Generic Broadcast / Send ─────────────────────────────────
 
 export function broadcast(channel: string, type: string, data: any): void {
   const payload = JSON.stringify({
@@ -227,6 +273,8 @@ export function sendToUser(userId: number, type: string, data: any): void {
     }
   });
 }
+
+// ─── Module-specific broadcast helpers ────────────────────────
 
 export function broadcastDispatchUpdate(data: any): void {
   broadcast('dispatch', 'dispatch_update', data);
@@ -290,9 +338,6 @@ export function getConnectedClientCount(): number {
   return count;
 }
 
-// ─── Module-specific broadcast helpers ────────────────────────
-// Each module broadcasts to its own channel so clients can subscribe selectively.
-
 export function broadcastRecordUpdate(data: any): void {
   broadcast('records', 'record_update', data);
 }
@@ -322,7 +367,6 @@ export function broadcastAdminUpdate(data: any): void {
 }
 
 // ─── Presence system ──────────────────────────────────────────
-// Broadcasts the list of connected users to all clients.
 
 export function broadcastPresence(): void {
   const users: { userId: number; username: string; role: string }[] = [];
@@ -358,4 +402,248 @@ export function getConnectedUsers(): { userId: number; username: string; role: s
   });
 
   return users;
+}
+
+// ─── Radio System ─────────────────────────────────────────────
+// PTT two-way radio with named channels. Only one user can
+// transmit per channel at a time.
+
+/** Build the list of users on a specific radio channel */
+function getRadioChannelUsers(radioChannel: string): Array<{ userId: number; username: string; fullName: string; role: string }> {
+  const users: Array<{ userId: number; username: string; fullName: string; role: string }> = [];
+  const seen = new Set<number>();
+
+  clients.forEach((client) => {
+    if (client.authenticated && client.radioChannel === radioChannel && client.userId && !seen.has(client.userId)) {
+      seen.add(client.userId);
+      users.push({
+        userId: client.userId,
+        username: client.username || 'Unknown',
+        fullName: client.fullName || client.username || 'Unknown',
+        role: client.role || 'unknown',
+      });
+    }
+  });
+
+  return users;
+}
+
+/** Send a message to all clients on a specific radio channel */
+function broadcastToRadioChannel(radioChannel: string, type: string, data: any, excludeClientId?: string): void {
+  const payload = JSON.stringify({
+    type,
+    data,
+    timestamp: new Date().toISOString(),
+  });
+
+  clients.forEach((client, id) => {
+    if (
+      client.authenticated &&
+      client.radioChannel === radioChannel &&
+      client.ws.readyState === WebSocket.OPEN &&
+      id !== excludeClientId
+    ) {
+      client.ws.send(payload);
+    }
+  });
+}
+
+/** Handle a client joining a radio channel */
+function handleRadioJoin(clientId: string, radioChannel: string): void {
+  const client = clients.get(clientId);
+  if (!client || !RADIO_CHANNELS.includes(radioChannel)) return;
+
+  // Leave current channel first
+  if (client.radioChannel) {
+    handleRadioLeave(clientId);
+  }
+
+  client.radioChannel = radioChannel;
+
+  // Notify everyone on that channel about the new user
+  broadcastToRadioChannel(radioChannel, 'radio_channel_join', {
+    userId: client.userId,
+    username: client.username,
+    fullName: client.fullName,
+    role: client.role,
+  });
+
+  // Send the full channel state to the joining client
+  const transmitterClientId = activeTransmitters.get(radioChannel);
+  const transmitter = transmitterClientId ? clients.get(transmitterClientId) : null;
+
+  client.ws.send(JSON.stringify({
+    type: 'radio_channel_state',
+    data: {
+      radioChannel,
+      users: getRadioChannelUsers(radioChannel),
+      activeSpeaker: transmitter ? {
+        userId: transmitter.userId,
+        username: transmitter.username,
+        fullName: transmitter.fullName,
+      } : null,
+    },
+    timestamp: new Date().toISOString(),
+  }));
+}
+
+/** Handle a client leaving their radio channel */
+function handleRadioLeave(clientId: string): void {
+  const client = clients.get(clientId);
+  if (!client || !client.radioChannel) return;
+
+  const channel = client.radioChannel;
+
+  // If this client was transmitting, end the transmission
+  if (activeTransmitters.get(channel) === clientId) {
+    activeTransmitters.delete(channel);
+    broadcastToRadioChannel(channel, 'radio_transmit_end', {
+      userId: client.userId,
+      username: client.username,
+    }, clientId);
+  }
+
+  client.radioChannel = null;
+
+  // Notify remaining channel members
+  broadcastToRadioChannel(channel, 'radio_channel_leave', {
+    userId: client.userId,
+    username: client.username,
+  });
+}
+
+/** Handle PTT key-down — start transmitting */
+function handleRadioTransmitStart(clientId: string): void {
+  const client = clients.get(clientId);
+  if (!client || !client.radioChannel) return;
+
+  const channel = client.radioChannel;
+
+  // Enforce one-at-a-time: reject if someone else is already transmitting
+  const currentTransmitter = activeTransmitters.get(channel);
+  if (currentTransmitter && currentTransmitter !== clientId) {
+    client.ws.send(JSON.stringify({
+      type: 'radio_transmit_start',
+      data: { denied: true, reason: 'Channel busy' },
+      timestamp: new Date().toISOString(),
+    }));
+    return;
+  }
+
+  activeTransmitters.set(channel, clientId);
+
+  // Notify all channel members (including sender for confirmation)
+  const payload = JSON.stringify({
+    type: 'radio_transmit_start',
+    data: {
+      userId: client.userId,
+      username: client.username,
+      fullName: client.fullName,
+      role: client.role,
+    },
+    timestamp: new Date().toISOString(),
+  });
+
+  clients.forEach((c) => {
+    if (c.authenticated && c.radioChannel === channel && c.ws.readyState === WebSocket.OPEN) {
+      c.ws.send(payload);
+    }
+  });
+}
+
+/** Handle PTT key-up — stop transmitting, save transcript to DB */
+function handleRadioTransmitEnd(clientId: string, data?: any): void {
+  const client = clients.get(clientId);
+  if (!client || !client.radioChannel) return;
+
+  const channel = client.radioChannel;
+
+  // Only the active transmitter can end
+  if (activeTransmitters.get(channel) !== clientId) return;
+
+  activeTransmitters.delete(channel);
+
+  const transcript = data?.transcript || null;
+  const duration = data?.duration || 0;
+
+  // Save transcript to database (non-blocking — don't let DB errors block radio)
+  try {
+    const db = database.getDb();
+    db.prepare(
+      `INSERT INTO radio_transcripts (user_id, username, full_name, channel, transcript, duration, transmitted_at)
+       VALUES (?, ?, ?, ?, ?, ?, datetime('now','localtime'))`
+    ).run(
+      client.userId,
+      client.username || 'Unknown',
+      client.fullName || client.username || 'Unknown',
+      channel,
+      transcript,
+      duration
+    );
+  } catch (err) {
+    console.error('Failed to save radio transcript:', err);
+  }
+
+  // Notify all channel members (include transcript so listeners can display it)
+  const payload = JSON.stringify({
+    type: 'radio_transmit_end',
+    data: {
+      userId: client.userId,
+      username: client.username,
+      fullName: client.fullName || client.username || 'Unknown',
+      role: client.role,
+      transcript,
+      duration,
+    },
+    timestamp: new Date().toISOString(),
+  });
+
+  clients.forEach((c) => {
+    if (c.authenticated && c.radioChannel === channel && c.ws.readyState === WebSocket.OPEN) {
+      c.ws.send(payload);
+    }
+  });
+}
+
+/** Relay radio audio chunk to all clients on the same channel (except sender) */
+function relayRadioAudio(senderClientId: string, data: any): void {
+  const sender = clients.get(senderClientId);
+  if (!sender || !sender.radioChannel) return;
+
+  const channel = sender.radioChannel;
+
+  // Only the active transmitter can send audio
+  if (activeTransmitters.get(channel) !== senderClientId) return;
+
+  const enrichedData = {
+    ...data,
+    fromUserId: sender.userId,
+    fromUser: sender.username,
+    fromFullName: sender.fullName,
+    radioChannel: channel,
+  };
+
+  const payload = JSON.stringify({
+    type: 'radio_audio',
+    data: enrichedData,
+    timestamp: new Date().toISOString(),
+  });
+
+  clients.forEach((client, id) => {
+    if (
+      id !== senderClientId &&
+      client.authenticated &&
+      client.radioChannel === channel &&
+      client.ws.readyState === WebSocket.OPEN
+    ) {
+      client.ws.send(payload);
+    }
+  });
+}
+
+/** Clean up radio state when a client disconnects */
+function handleRadioDisconnect(clientId: string): void {
+  const client = clients.get(clientId);
+  if (!client || !client.radioChannel) return;
+  handleRadioLeave(clientId);
 }

@@ -39,6 +39,9 @@ import NotificationCenter from './NotificationCenter';
 import PanicButton from './PanicButton';
 import UserProfileModal from './UserProfileModal';
 import UpdateBanner from './UpdateBanner';
+import MobileHeader from './mobile/MobileHeader';
+import MobileDrawer from './mobile/MobileDrawer';
+import { useIsMobile } from '../hooks/useIsMobile';
 // LocationGate removed — GPS tracking runs silently per employment agreement
 
 const PAGE_TITLES: Record<string, string> = {
@@ -49,6 +52,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/records': 'Records',
   '/personnel': 'Personnel',
   '/communications': 'Communications',
+  '/radio': 'Radio',
   '/patrol': 'Patrol',
   '/fleet': 'Fleet',
   '/warrants': 'Warrants',
@@ -85,6 +89,7 @@ const TOOLBAR_NAV: NavItem[] = [
   ]},
   { path: '/communications', icon: MessageSquare, label: 'Comms', group: 'comms', children: [
     { path: '/communications', icon: MessageSquare, label: 'Comms' },
+    { path: '/radio', icon: Radio, label: 'Radio' },
     { path: '/patrol', icon: QrCode, label: 'Patrol' },
   ]},
   { path: '/reports', icon: BarChart3, label: 'Reports', group: 'analysis' },
@@ -125,9 +130,9 @@ export default function Layout() {
     return () => document.removeEventListener('mousedown', handler);
   }, [openDropdown]);
 
-  // Mobile menu
+  // Mobile menu & responsive detection
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+  const isMobile = useIsMobile();
 
   // Close mobile menu on route change
   useEffect(() => { setMobileMenuOpen(false); }, [location.pathname]);
@@ -206,252 +211,180 @@ export default function Layout() {
       {/* GPS tracking runs silently — no blocking gate */}
 
       {/* ============================================================ */}
-      {/* Brand Bar — Logo Left | PANIC Center-Right | Profile Right */}
+      {/* MOBILE: Compact 48px header + polished slide-in drawer       */}
       {/* ============================================================ */}
-      <div
-        className="flex items-center justify-between relative"
-        style={{
-          height: '52px',
-          paddingLeft: isMacElectron ? '78px' : '12px',
-          paddingRight: '12px',
-          background: 'linear-gradient(180deg, #252525 0%, #1a1a1a 100%)',
-          borderBottom: '1px solid #303030',
-          flexShrink: 0,
-          WebkitAppRegion: isElectron ? 'drag' : undefined,
-        } as React.CSSProperties}
-      >
-        {/* Crimson accent at very top */}
-        <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #6e0a0a, #bc1010, #6e0a0a)', zIndex: 1 }} />
-
-        {/* Left — Mobile Hamburger + Logo */}
-        <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          {/* Mobile hamburger */}
-          <button
-            className="md:hidden flex items-center justify-center w-8 h-8"
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            style={{ color: '#c8c8c8' }}
-          >
-            {mobileMenuOpen ? <X style={{ width: 20, height: 20 }} /> : <Menu style={{ width: 20, height: 20 }} />}
-          </button>
-
-          <div onClick={() => navigate('/')} className="cursor-pointer" title="Rocky Mountain Protective Group — Dashboard">
-            <RmpgLogo height={44} />
-          </div>
-          {/* Page title */}
-          <div className="hidden md:flex items-center gap-1.5">
-            <div className="w-px h-6" style={{ background: '#383838' }} />
-            <span className="text-[11px] font-mono font-bold tracking-wider text-rmpg-500">
-              {pageTitle.toUpperCase()}
-            </span>
-          </div>
-        </div>
-
-        {/* Right — PANIC + Profile */}
-        <div className="flex items-center gap-2 md:gap-3" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          {/* PANIC Button */}
-          <PanicButton latitude={gps.latitude} longitude={gps.longitude} />
-
-          {/* Vertical separator */}
-          <div className="w-px h-7" style={{ background: '#383838' }} />
-
-          {/* Profile Menu */}
-          <div className="relative" ref={profileDropdownRef}>
-            <button
-              onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
-              className={`flex items-center gap-2 px-2 py-1 transition-all duration-100 border ${
-                profileDropdownOpen
-                  ? 'bg-rmpg-700 border-rmpg-600'
-                  : 'bg-transparent border-transparent hover:bg-rmpg-800 hover:border-rmpg-700'
-              }`}
-            >
-              {/* Avatar */}
-              {user?.profile_image ? (
-                <img
-                  src={user.profile_image}
-                  alt={user.first_name}
-                  className="w-7 h-7 object-cover"
-                  style={{ border: '2px solid #484848', borderRadius: 2 }}
-                />
-              ) : (
-                <div
-                  className="w-7 h-7 flex items-center justify-center text-[10px] font-bold"
-                  style={{
-                    background: 'linear-gradient(135deg, #8a0c0c, #bc1010)',
-                    color: '#fff',
-                    border: '2px solid #d93030',
-                    borderRadius: 2,
-                  }}
-                >
-                  {initials}
-                </div>
-              )}
-
-              {/* Name + Badge */}
-              <div className="hidden sm:block text-left">
-                <div className="text-[11px] font-bold text-white leading-tight">
-                  {user?.last_name?.toUpperCase() || '---'}
-                </div>
-                <div className="text-[9px] font-mono leading-tight text-rmpg-500">
-                  {user?.badge_number || user?.role?.toUpperCase() || '---'}
-                </div>
-              </div>
-
-              <ChevronDown
-                style={{
-                  width: 10,
-                  height: 10,
-                  color: '#707070',
-                  transform: profileDropdownOpen ? 'rotate(180deg)' : undefined,
-                  transition: 'transform 0.15s',
-                }}
-              />
-            </button>
-
-            {/* Profile Dropdown */}
-            {profileDropdownOpen && (
-              <div
-                className="menu-dropdown absolute right-0 top-full mt-0.5"
-                style={{ minWidth: 200, zIndex: 9995 }}
-              >
-                {/* User info header */}
-                <div className="px-3 py-2 border-b border-rmpg-700">
-                  <div className="text-xs font-bold text-white">
-                    {user?.first_name} {user?.last_name}
-                  </div>
-                  <div className="text-[9px] font-mono text-rmpg-500">
-                    {user?.email}
-                  </div>
-                  <div className="flex items-center gap-2 mt-1">
-                    {user?.badge_number && (
-                      <span className="text-[9px] font-mono px-1.5 py-0.5 bg-surface-overlay text-rmpg-400 border border-rmpg-800">
-                        {user.badge_number}
-                      </span>
-                    )}
-                    <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 bg-brand-900/20 text-brand-300 border border-brand-800/40">
-                      {user?.role}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Menu items */}
-                <button onClick={() => openProfileModal('profile')} className="menu-item w-full">
-                  <span className="menu-item-icon"><User style={{ width: 12, height: 12 }} /></span>
-                  <span className="menu-item-label">Edit Profile</span>
-                </button>
-                <button onClick={() => openProfileModal('password')} className="menu-item w-full">
-                  <span className="menu-item-icon"><Lock style={{ width: 12, height: 12 }} /></span>
-                  <span className="menu-item-label">Change Password</span>
-                </button>
-                <button onClick={() => openProfileModal('sessions')} className="menu-item w-full">
-                  <span className="menu-item-icon"><Shield style={{ width: 12, height: 12 }} /></span>
-                  <span className="menu-item-label">Active Sessions</span>
-                </button>
-                {isAdmin && (
-                  <button onClick={() => { setProfileDropdownOpen(false); navigate('/admin'); }} className="menu-item w-full">
-                    <span className="menu-item-icon"><Settings style={{ width: 12, height: 12 }} /></span>
-                    <span className="menu-item-label">System Settings</span>
-                  </button>
-                )}
-
-                <div className="menu-separator" />
-
-                <button onClick={() => { setProfileDropdownOpen(false); logout(); }} className="menu-item w-full">
-                  <span className="menu-item-icon"><LogOut style={{ width: 12, height: 12, color: '#d93030' }} /></span>
-                  <span className="menu-item-label" style={{ color: '#d93030' }}>Sign Out</span>
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+      {isMobile && (
+        <>
+          <MobileHeader
+            pageTitle={pageTitle}
+            onMenuOpen={() => setMobileMenuOpen(true)}
+            user={user}
+            onProfileTap={() => openProfileModal('profile')}
+            gpsLatitude={gps.latitude}
+            gpsLongitude={gps.longitude}
+          />
+          <MobileDrawer
+            isOpen={mobileMenuOpen}
+            onClose={() => setMobileMenuOpen(false)}
+            user={user}
+            isAdmin={isAdmin}
+            isConnected={isConnected}
+            gpsTracking={gps.isTracking}
+            gpsAccuracy={gps.accuracy}
+            onlineCount={presence.count}
+            onLogout={logout}
+          />
+        </>
+      )}
 
       {/* ============================================================ */}
-      {/* MOBILE NAVIGATION DRAWER (slides in from left) */}
+      {/* DESKTOP: Brand Bar — Logo Left | PANIC Center-Right | Profile */}
       {/* ============================================================ */}
-      {mobileMenuOpen && (
-        <div className="md:hidden fixed inset-0 z-[9999]">
-          {/* Backdrop */}
-          <div className="absolute inset-0 bg-black/60" onClick={() => setMobileMenuOpen(false)} />
-          {/* Drawer */}
-          <div
-            className="absolute top-0 left-0 bottom-0 w-72 overflow-y-auto animate-slide-in-right"
-            style={{ background: '#1a1a1a', borderRight: '1px solid #383838' }}
-          >
-            {/* Drawer header */}
-            <div className="flex items-center gap-3 p-4 border-b border-rmpg-700">
-              <RmpgLogo height={32} iconOnly />
-              <div>
-                <div className="text-xs font-bold text-white">RMPG FLEX</div>
-                <div className="text-[9px] font-mono text-rmpg-500">
-                  {user?.first_name} {user?.last_name} — {user?.role?.toUpperCase()}
-                </div>
-              </div>
+      {!isMobile && (
+        <div
+          className="flex items-center justify-between relative"
+          style={{
+            height: '52px',
+            paddingLeft: isMacElectron ? '78px' : '12px',
+            paddingRight: '12px',
+            background: 'linear-gradient(180deg, #252525 0%, #1a1a1a 100%)',
+            borderBottom: '1px solid #303030',
+            flexShrink: 0,
+            WebkitAppRegion: isElectron ? 'drag' : undefined,
+          } as React.CSSProperties}
+        >
+          {/* Crimson accent at very top */}
+          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #6e0a0a, #bc1010, #6e0a0a)', zIndex: 1 }} />
+
+          {/* Left — Logo */}
+          <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+            <div onClick={() => navigate('/')} className="cursor-pointer" title="Rocky Mountain Protective Group — Dashboard">
+              <RmpgLogo height={44} />
             </div>
+            {/* Page title */}
+            <div className="flex items-center gap-1.5">
+              <div className="w-px h-6" style={{ background: '#383838' }} />
+              <span className="text-[11px] font-mono font-bold tracking-wider text-rmpg-500">
+                {pageTitle.toUpperCase()}
+              </span>
+            </div>
+          </div>
 
-            {/* Nav items */}
-            <div className="py-2">
-              {TOOLBAR_NAV.filter(item => !item.adminOnly || isAdmin).map((item) => {
-                const Icon = item.icon;
-                const hasChildren = item.children && item.children.length > 0;
+          {/* Right — PANIC + Profile */}
+          <div className="flex items-center gap-3" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+            {/* PANIC Button */}
+            <PanicButton latitude={gps.latitude} longitude={gps.longitude} />
 
-                if (hasChildren) {
-                  return (
-                    <div key={item.label}>
-                      <div className="px-4 py-1.5 text-[9px] font-bold uppercase tracking-wider text-rmpg-500 mt-2">
-                        {item.label}
-                      </div>
-                      {item.children!.filter(c => !c.adminOnly || isAdmin).map((child) => {
-                        const ChildIcon = child.icon;
-                        const childActive = location.pathname.startsWith(child.path);
-                        return (
-                          <button
-                            key={child.path}
-                            onClick={() => { navigate(child.path); setMobileMenuOpen(false); }}
-                            className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors"
-                            style={{
-                              background: childActive ? 'rgba(188, 16, 16, 0.15)' : 'transparent',
-                              color: childActive ? '#fff' : '#c8c8c8',
-                              borderLeft: childActive ? '3px solid #bc1010' : '3px solid transparent',
-                            }}
-                          >
-                            <ChildIcon style={{ width: 18, height: 18 }} className={childActive ? 'text-brand-400' : 'text-rmpg-500'} />
-                            <span className="text-sm font-medium">{child.label}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  );
-                }
+            {/* Vertical separator */}
+            <div className="w-px h-7" style={{ background: '#383838' }} />
 
-                const isActive = item.path === '/' ? location.pathname === '/' : location.pathname.startsWith(item.path);
-                return (
-                  <button
-                    key={item.path}
-                    onClick={() => { navigate(item.path); setMobileMenuOpen(false); }}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors"
+            {/* Profile Menu */}
+            <div className="relative" ref={profileDropdownRef}>
+              <button
+                onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
+                className={`flex items-center gap-2 px-2 py-1 transition-all duration-100 border ${
+                  profileDropdownOpen
+                    ? 'bg-rmpg-700 border-rmpg-600'
+                    : 'bg-transparent border-transparent hover:bg-rmpg-800 hover:border-rmpg-700'
+                }`}
+              >
+                {/* Avatar */}
+                {user?.profile_image ? (
+                  <img
+                    src={user.profile_image}
+                    alt={user.first_name}
+                    className="w-7 h-7 object-cover"
+                    style={{ border: '2px solid #484848', borderRadius: 2 }}
+                  />
+                ) : (
+                  <div
+                    className="w-7 h-7 flex items-center justify-center text-[10px] font-bold"
                     style={{
-                      background: isActive ? 'rgba(188, 16, 16, 0.15)' : 'transparent',
-                      color: isActive ? '#fff' : '#c8c8c8',
-                      borderLeft: isActive ? '3px solid #bc1010' : '3px solid transparent',
+                      background: 'linear-gradient(135deg, #8a0c0c, #bc1010)',
+                      color: '#fff',
+                      border: '2px solid #d93030',
+                      borderRadius: 2,
                     }}
                   >
-                    <Icon style={{ width: 18, height: 18 }} className={isActive ? 'text-brand-400' : 'text-rmpg-500'} />
-                    <span className="text-sm font-medium">{item.label}</span>
-                  </button>
-                );
-              })}
-            </div>
+                    {initials}
+                  </div>
+                )}
 
-            {/* Drawer footer — Sign Out */}
-            <div className="border-t border-rmpg-700 p-3 mt-2">
-              <button
-                onClick={() => { setMobileMenuOpen(false); logout(); }}
-                className="w-full flex items-center gap-3 px-3 py-3 text-left"
-                style={{ color: '#d93030' }}
-              >
-                <LogOut style={{ width: 18, height: 18 }} />
-                <span className="text-sm font-bold">Sign Out</span>
+                {/* Name + Badge */}
+                <div className="text-left">
+                  <div className="text-[11px] font-bold text-white leading-tight">
+                    {user?.last_name?.toUpperCase() || '---'}
+                  </div>
+                  <div className="text-[9px] font-mono leading-tight text-rmpg-500">
+                    {user?.badge_number || user?.role?.toUpperCase() || '---'}
+                  </div>
+                </div>
+
+                <ChevronDown
+                  style={{
+                    width: 10,
+                    height: 10,
+                    color: '#707070',
+                    transform: profileDropdownOpen ? 'rotate(180deg)' : undefined,
+                    transition: 'transform 0.15s',
+                  }}
+                />
               </button>
+
+              {/* Profile Dropdown */}
+              {profileDropdownOpen && (
+                <div
+                  className="menu-dropdown absolute right-0 top-full mt-0.5"
+                  style={{ minWidth: 200, zIndex: 9995 }}
+                >
+                  {/* User info header */}
+                  <div className="px-3 py-2 border-b border-rmpg-700">
+                    <div className="text-xs font-bold text-white">
+                      {user?.first_name} {user?.last_name}
+                    </div>
+                    <div className="text-[9px] font-mono text-rmpg-500">
+                      {user?.email}
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      {user?.badge_number && (
+                        <span className="text-[9px] font-mono px-1.5 py-0.5 bg-surface-overlay text-rmpg-400 border border-rmpg-800">
+                          {user.badge_number}
+                        </span>
+                      )}
+                      <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 bg-brand-900/20 text-brand-300 border border-brand-800/40">
+                        {user?.role}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Menu items */}
+                  <button onClick={() => openProfileModal('profile')} className="menu-item w-full">
+                    <span className="menu-item-icon"><User style={{ width: 12, height: 12 }} /></span>
+                    <span className="menu-item-label">Edit Profile</span>
+                  </button>
+                  <button onClick={() => openProfileModal('password')} className="menu-item w-full">
+                    <span className="menu-item-icon"><Lock style={{ width: 12, height: 12 }} /></span>
+                    <span className="menu-item-label">Change Password</span>
+                  </button>
+                  <button onClick={() => openProfileModal('sessions')} className="menu-item w-full">
+                    <span className="menu-item-icon"><Shield style={{ width: 12, height: 12 }} /></span>
+                    <span className="menu-item-label">Active Sessions</span>
+                  </button>
+                  {isAdmin && (
+                    <button onClick={() => { setProfileDropdownOpen(false); navigate('/admin'); }} className="menu-item w-full">
+                      <span className="menu-item-icon"><Settings style={{ width: 12, height: 12 }} /></span>
+                      <span className="menu-item-label">System Settings</span>
+                    </button>
+                  )}
+
+                  <div className="menu-separator" />
+
+                  <button onClick={() => { setProfileDropdownOpen(false); logout(); }} className="menu-item w-full">
+                    <span className="menu-item-icon"><LogOut style={{ width: 12, height: 12, color: '#d93030' }} /></span>
+                    <span className="menu-item-label" style={{ color: '#d93030' }}>Sign Out</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -688,17 +621,19 @@ export default function Layout() {
         </ErrorBoundary>
       </main>
 
-      {/* Status Bar Footer */}
-      <StatusBar
-        isConnected={isConnected}
-        user={user}
-        activeCallCount={activeCallCount}
-        activeBOLOs={activeBOLOs}
-        gpsTracking={gps.isTracking}
-        gpsUnitCallSign={gps.unitCallSign}
-        gpsAccuracy={gps.accuracy}
-        gpsLastSent={gps.lastSentAt}
-      />
+      {/* Status Bar Footer — Desktop only (mobile status is in the drawer) */}
+      {!isMobile && (
+        <StatusBar
+          isConnected={isConnected}
+          user={user}
+          activeCallCount={activeCallCount}
+          activeBOLOs={activeBOLOs}
+          gpsTracking={gps.isTracking}
+          gpsUnitCallSign={gps.unitCallSign}
+          gpsAccuracy={gps.accuracy}
+          gpsLastSent={gps.lastSentAt}
+        />
+      )}
 
       {/* Profile Modal */}
       <UserProfileModal
