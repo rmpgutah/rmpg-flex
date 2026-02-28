@@ -648,7 +648,17 @@
   </div>
 
   <script>
-    // Fetch installer info from API and update page dynamically
+    // GitHub Releases configuration
+    var GITHUB_OWNER = 'rmpgutah';
+    var GITHUB_REPO = 'rmpg-flex';
+    var GITHUB_RELEASES_URL = 'https://github.com/' + GITHUB_OWNER + '/' + GITHUB_REPO + '/releases';
+
+    // Build GitHub Release download URL (GitHub replaces spaces with dots in filenames)
+    function githubDownloadUrl(tag, filename) {
+      return GITHUB_RELEASES_URL + '/download/' + tag + '/' + filename.replace(/ /g, '.');
+    }
+
+    // Fetch installer info from API and link downloads to GitHub Releases
     fetch('/api/downloads/info')
       .then(function(r) { return r.json(); })
       .then(function(data) {
@@ -662,14 +672,15 @@
           for (var i = 0; i < 3; i++) { if ((pa[i]||0) !== (pb[i]||0)) return (pb[i]||0) - (pa[i]||0); }
           return 0;
         });
-        var version = versions[0] || '2.2.3';
-        document.getElementById('version-badge').textContent = 'v' + version;
-        document.getElementById('footer-version').textContent = 'RMPG Flex v' + version;
+        var version = versions[0] || '5.3.9';
+        var tag = 'v' + version;
+        document.getElementById('version-badge').textContent = tag;
+        document.getElementById('footer-version').textContent = 'RMPG Flex ' + tag;
 
         if (data.win) {
           document.getElementById('win-ver').textContent = 'v' + data.win.version + ' —';
           document.getElementById('win-size').textContent = data.win.size;
-          document.getElementById('win-btn').href = '/downloads/' + encodeURIComponent(data.win.filename);
+          document.getElementById('win-btn').href = githubDownloadUrl(tag, data.win.filename);
         } else {
           document.getElementById('win-size').textContent = 'Not available';
         }
@@ -677,7 +688,7 @@
         if (data.mac) {
           document.getElementById('mac-ver').textContent = 'v' + data.mac.version + ' —';
           document.getElementById('mac-size').textContent = data.mac.size;
-          document.getElementById('mac-btn').href = '/downloads/' + encodeURIComponent(data.mac.filename);
+          document.getElementById('mac-btn').href = githubDownloadUrl(tag, data.mac.filename);
         } else {
           document.getElementById('mac-size').textContent = 'Not available';
         }
@@ -685,12 +696,16 @@
         if (data.android) {
           document.getElementById('android-ver').textContent = 'v' + data.android.version + ' —';
           document.getElementById('android-size').textContent = data.android.size;
-          document.getElementById('android-btn').href = '/downloads/' + encodeURIComponent(data.android.filename);
+          document.getElementById('android-btn').href = githubDownloadUrl(tag, data.android.filename);
         } else {
           document.getElementById('android-size').textContent = 'Not available';
         }
       })
       .catch(function() {
+        // Fallback: link directly to GitHub Releases page
+        document.getElementById('win-btn').href = GITHUB_RELEASES_URL + '/latest';
+        document.getElementById('mac-btn').href = GITHUB_RELEASES_URL + '/latest';
+        document.getElementById('android-btn').href = GITHUB_RELEASES_URL + '/latest';
         document.getElementById('win-size').textContent = '';
         document.getElementById('mac-size').textContent = '';
         document.getElementById('android-size').textContent = '';
