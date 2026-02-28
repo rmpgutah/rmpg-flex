@@ -17,8 +17,9 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
   // Permissions policy (restrict browser features)
   res.set('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=(self), payment=()');
 
-  // Strict Transport Security (when SSL is enabled or in production)
-  if (config.isProduction || config.ssl.enabled) {
+  // Strict Transport Security — ONLY when SSL is actually enabled
+  // Sending HSTS without HTTPS causes browsers to refuse plain HTTP connections
+  if (config.ssl.enabled) {
     res.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
   }
 
