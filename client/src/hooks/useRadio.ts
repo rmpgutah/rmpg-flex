@@ -34,7 +34,6 @@ export interface TransmissionEntry {
   channel: string;
   startedAt: number;
   duration: number; // seconds
-  transcript?: string;
 }
 
 export interface RadioState {
@@ -47,8 +46,6 @@ export interface RadioState {
   error: string | null;
   /** True if the browser supports getUserMedia (requires HTTPS) */
   micSupported: boolean;
-  /** Live transcript text while transmitting (interim + final) */
-  liveTranscript: string;
 }
 
 export const RADIO_CHANNELS = [
@@ -82,15 +79,12 @@ export function useRadio() {
     channelBusy: false,
     error: null,
     micSupported: canAccessMic(),
-    liveTranscript: '',
   });
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const playerRef = useRef<StreamPlayer | null>(null);
   const transmitStartTimeRef = useRef<number>(0);
-  const recognitionRef = useRef<any>(null);
-  const transcriptRef = useRef<string>('');
 
   // Ref mirrors isTransmitting to avoid stale closures in event handlers.
   // When the Space key fires keyup, the callback closure may hold an old
@@ -123,10 +117,6 @@ export function useRadio() {
   const leaveChannel = useCallback(() => {
     // Stop transmitting if active
     if (isTransmittingRef.current) {
-      if (recognitionRef.current) {
-        try { recognitionRef.current.stop(); } catch { /* ok */ }
-        recognitionRef.current = null;
-      }
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         mediaRecorderRef.current.stop();
       }
@@ -221,38 +211,6 @@ export function useRadio() {
       transmitStartTimeRef.current = Date.now();
       isTransmittingRef.current = true;
 
-      // ── Speech-to-text (Chrome Web Speech API) ──────────
-      transcriptRef.current = '';
-      try {
-        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-        if (SpeechRecognition) {
-          const recognition = new SpeechRecognition();
-          recognition.continuous = true;
-          recognition.interimResults = true;
-          recognition.lang = 'en-US';
-          recognition.maxAlternatives = 1;
-
-          let finalText = '';
-          recognition.onresult = (event: any) => {
-            let interim = '';
-            for (let i = event.resultIndex; i < event.results.length; i++) {
-              const result = event.results[i];
-              if (result.isFinal) {
-                finalText += result[0].transcript + ' ';
-              } else {
-                interim += result[0].transcript;
-              }
-            }
-            transcriptRef.current = (finalText + interim).trim();
-            setState(prev => ({ ...prev, liveTranscript: transcriptRef.current }));
-          };
-
-          recognition.onerror = () => { /* Speech recognition is best-effort */ };
-          recognition.start();
-          recognitionRef.current = recognition;
-        }
-      } catch { /* Speech recognition not supported — radio still works */ }
-
       // Tell the server we're keying up
       send({ type: 'radio_transmit_start' });
 
@@ -261,7 +219,6 @@ export function useRadio() {
         isTransmitting: true,
         channelBusy: false,
         error: null,
-        liveTranscript: '',
       }));
     } catch (err) {
       // Clean up anything partially initialized
@@ -289,13 +246,6 @@ export function useRadio() {
     if (!isTransmittingRef.current) return;
     isTransmittingRef.current = false;
 
-    // Stop speech recognition and capture final transcript
-    if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch { /* already stopped */ }
-      recognitionRef.current = null;
-    }
-    const transcript = transcriptRef.current || undefined;
-
     // Release mic
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
@@ -306,15 +256,11 @@ export function useRadio() {
     }
     mediaRecorderRef.current = null;
 
+    // Tell server we're done
+    send({ type: 'radio_transmit_end' });
+
     // Calculate duration (only valid because guard above ensures we started)
     const duration = Math.max(0, Math.round((Date.now() - transmitStartTimeRef.current) / 1000));
-
-    // Tell server we're done — include transcript + duration for DB storage
-    send({
-      type: 'radio_transmit_end',
-      data: { transcript, duration },
-    });
-
     const userName = user
       ? `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username || 'You'
       : 'You';
@@ -322,7 +268,6 @@ export function useRadio() {
     setState(prev => ({
       ...prev,
       isTransmitting: false,
-      liveTranscript: '',
       transmissionLog: [
         {
           id: `tx-${Date.now()}`,
@@ -332,7 +277,6 @@ export function useRadio() {
           channel: prev.currentChannel || '',
           startedAt: transmitStartTimeRef.current,
           duration,
-          transcript,
         },
         ...prev.transmissionLog,
       ].slice(0, MAX_LOG_ENTRIES),
@@ -445,7 +389,6 @@ export function useRadio() {
                 channel: prev.currentChannel || '',
                 startedAt: Date.now(),
                 duration: data.duration || 0,
-                transcript: data.transcript || undefined,
               },
               ...prev.transmissionLog,
             ].slice(0, MAX_LOG_ENTRIES),
@@ -482,10 +425,6 @@ export function useRadio() {
   // ─── Cleanup on unmount ──────────────────────────────────────
   useEffect(() => {
     return () => {
-      if (recognitionRef.current) {
-        try { recognitionRef.current.stop(); } catch { /* ok */ }
-        recognitionRef.current = null;
-      }
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         mediaRecorderRef.current.stop();
       }
