@@ -46,6 +46,59 @@ export interface User {
   last_login?: string;
   created_at: string;
   updated_at: string;
+  // Security fields
+  totpEnabled?: boolean;
+  totpSetupRequired?: boolean;
+  passwordExpiresAt?: string;
+  passwordExpiringSoon?: boolean;
+  forcePasswordChange?: boolean;
+  passwordChangedAt?: string;
+}
+
+// --- Security Types ---
+
+export interface TrustedDevice {
+  id: number;
+  device_name: string;
+  ip_address: string;
+  trusted_until: string;
+  last_used_at: string;
+  created_at: string;
+}
+
+export interface LoginHistoryEntry {
+  id: number;
+  ip_address: string;
+  user_agent: string;
+  device_fingerprint: string;
+  success: number;
+  failure_reason: string | null;
+  created_at: string;
+}
+
+export interface SecurityNotification {
+  id: number;
+  event_type: string;
+  title: string;
+  details: string | null;
+  ip_address: string | null;
+  device_info: string | null;
+  is_read: number;
+  created_at: string;
+}
+
+export interface SecurityStatus {
+  totpEnabled: boolean;
+  totpSetupRequired: boolean;
+  backupCodesRemaining: number;
+  activeSessions: number;
+  trustedDevices: number;
+  passwordExpiresAt: string | null;
+  passwordExpiringSoon: boolean;
+  passwordExpired: boolean;
+  passwordChangedAt: string | null;
+  forcePasswordChange: boolean;
+  unreadSecurityNotifications: number;
 }
 
 // --- Clients & Properties ---

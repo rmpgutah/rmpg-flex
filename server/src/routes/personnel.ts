@@ -42,6 +42,7 @@ router.get('/', (req: Request, res: Response) => {
         dl_number, dl_state, dl_expiry, blood_type, allergies, uniform_size,
         emergency_contact_name, emergency_contact_phone, emergency_contact_relationship,
         employee_id, certifications, notes, profile_image,
+        totp_enabled, totp_setup_required, password_expires_at, force_password_change, password_changed_at,
         created_at, updated_at
       FROM users ${whereClause}
       ORDER BY full_name
