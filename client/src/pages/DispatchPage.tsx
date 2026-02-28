@@ -481,7 +481,7 @@ export default function DispatchPage() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await apiFetch<any>('/dispatch/templates');
+        const res = await apiFetch<any>('/admin/call-templates');
         setTemplates(Array.isArray(res) ? res : res?.data ?? []);
       } catch {
         // Templates are optional — silently ignore if endpoint is unavailable

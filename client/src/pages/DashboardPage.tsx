@@ -221,7 +221,7 @@ export default function DashboardPage() {
   // Fetch expiring credentials
   const fetchCredentials = useCallback(async () => {
     try {
-      const data = await apiFetch<any[]>('/credentials');
+      const data = await apiFetch<any[]>('/personnel/credentials');
       const now = new Date();
       const sixtyDaysOut = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
       const expiring = (data || []).filter((c: any) => {
