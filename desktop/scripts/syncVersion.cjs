@@ -32,4 +32,13 @@ if (fs.existsSync(rootPkgPath)) {
   console.log(`[SYNC] Updated root package.json → ${version}`);
 }
 
+// Update client/package.json
+const clientPkgPath = path.resolve(__dirname, '..', '..', 'client', 'package.json');
+if (fs.existsSync(clientPkgPath)) {
+  const clientPkg = JSON.parse(fs.readFileSync(clientPkgPath, 'utf-8'));
+  clientPkg.version = version;
+  fs.writeFileSync(clientPkgPath, JSON.stringify(clientPkg, null, 2) + '\n');
+  console.log(`[SYNC] Updated client/package.json → ${version}`);
+}
+
 console.log('[SYNC] Version sync complete.');
