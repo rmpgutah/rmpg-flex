@@ -22,7 +22,7 @@
     },
     "publish": {
       "provider": "generic",
-      "url": "http://194.113.64.90/updates"
+      "url": "http://194.113.64.90:443/updates"
     },
     "files": [
       "main.js",

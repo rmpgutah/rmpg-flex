@@ -16,7 +16,7 @@ const APP_TITLE = 'RMPG Flex — CAD/RMS';
 const DEV_MODE = process.argv.includes('--dev');
 const UPDATE_SERVER_URL = DEV_MODE
   ? `http://localhost:${SERVER_PORT}`
-  : (process.env.UPDATE_SERVER_URL || 'http://194.113.64.90');
+  : (process.env.UPDATE_SERVER_URL || 'http://194.113.64.90:443');
 
 let mainWindow = null;
 let splashWindow = null;
