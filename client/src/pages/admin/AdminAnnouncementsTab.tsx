@@ -58,11 +58,8 @@ const PRIORITY_COLORS: Record<string, string> = {
 
 const ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'];
 
-const emptyForm: {
-  title: string; body: string; type: Announcement['type']; priority: Announcement['priority'];
-  target_roles: string; starts_at: string; expires_at: string; is_active: number;
-} = {
-  title: '', body: '', type: 'info', priority: 'normal',
+const emptyForm = {
+  title: '', body: '', type: 'info' as const, priority: 'normal' as const,
   target_roles: '[]', starts_at: '', expires_at: '', is_active: 1,
 };
 

@@ -1,13 +1,11 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useWebSocket } from '../context/WebSocketContext';
-import { StreamPlayer } from '../utils/StreamPlayer';
 
 // ============================================================
 // RMPG Flex — Panic Audio Hook
 // Opens a live mic for 15 seconds when panic is activated.
-// Other users hear the audio in real-time via MediaSource
-// Extensions (MSE) streaming. After 15 seconds, responders
-// can talk back to the panic sender.
+// Other users hear the audio in real-time. After 15 seconds,
+// responders can talk back to the panic sender.
 // ============================================================
 
 export interface PanicAudioState {
@@ -27,8 +25,6 @@ export interface PanicAudioState {
 
 const BROADCAST_DURATION = 15; // seconds
 
-// ── Hook ─────────────────────────────────────────────────────
-
 export function usePanicAudio() {
   const { send, subscribe } = useWebSocket();
 
@@ -43,12 +39,9 @@ export function usePanicAudio() {
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
   const broadcastTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const broadcastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Stream players for incoming audio (separate for panic vs. response)
-  const panicPlayerRef = useRef<StreamPlayer | null>(null);
-  const responsePlayerRef = useRef<StreamPlayer | null>(null);
 
   // ─── Start broadcasting (sender — open mic) ─────────────────
   const startBroadcast = useCallback(async () => {
@@ -220,16 +213,52 @@ export function usePanicAudio() {
     setState(prev => ({ ...prev, isResponding: false }));
   }, []);
 
-  // ─── Receive and play audio via MSE streaming ────────────────
+  // ─── Receive and play audio chunks ──────────────────────────
   useEffect(() => {
-    // Listen for incoming panic audio (from the officer who triggered panic)
+    // Initialize AudioContext lazily
+    const getAudioCtx = () => {
+      if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
+        audioContextRef.current = new AudioContext();
+      }
+      return audioContextRef.current;
+    };
+
+    const playAudioChunk = async (base64: string, mimeType: string) => {
+      try {
+        const ctx = getAudioCtx();
+        if (ctx.state === 'suspended') await ctx.resume();
+
+        // Decode base64 to ArrayBuffer
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+
+        // Create blob and decode
+        const blob = new Blob([bytes], { type: mimeType });
+        const arrayBuffer = await blob.arrayBuffer();
+
+        try {
+          const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+          const source = ctx.createBufferSource();
+          source.buffer = audioBuffer;
+          source.connect(ctx.destination);
+          source.start(0);
+        } catch {
+          // Some chunks may not be decodable standalone — that's OK
+        }
+      } catch {
+        // Audio decode error — non-critical
+      }
+    };
+
+    // Listen for incoming panic audio
     const unsubAudio = subscribe('panic_audio', (msg: any) => {
       const data = msg.data || msg.payload || msg;
 
       if (data.end) {
-        // Broadcast ended — destroy player, allow responder talk-back
-        panicPlayerRef.current?.destroy();
-        panicPlayerRef.current = null;
+        // Broadcast ended — allow responder talk-back
         setState(prev => ({ ...prev, isReceiving: false }));
         return;
       }
@@ -240,36 +269,24 @@ export function usePanicAudio() {
           isReceiving: true,
           panicSenderUserId: data.fromUserId || prev.panicSenderUserId,
         }));
-
-        // Lazily create the stream player on first audio chunk
-        if (!panicPlayerRef.current) {
-          panicPlayerRef.current = new StreamPlayer();
-          panicPlayerRef.current.init(data.mimeType);
-        }
-        panicPlayerRef.current.appendChunk(data.audio);
+        playAudioChunk(data.audio, data.mimeType);
       }
     });
 
-    // Listen for incoming audio responses (talk-back from responders to sender)
+    // Listen for incoming audio responses (for the panic sender)
     const unsubResponse = subscribe('panic_audio_response', (msg: any) => {
       const data = msg.data || msg.payload || msg;
       if (data.audio && data.mimeType) {
-        // Lazily create response player
-        if (!responsePlayerRef.current) {
-          responsePlayerRef.current = new StreamPlayer();
-          responsePlayerRef.current.init(data.mimeType);
-        }
-        responsePlayerRef.current.appendChunk(data.audio);
+        playAudioChunk(data.audio, data.mimeType);
       }
     });
 
     return () => {
       unsubAudio();
       unsubResponse();
-      panicPlayerRef.current?.destroy();
-      panicPlayerRef.current = null;
-      responsePlayerRef.current?.destroy();
-      responsePlayerRef.current = null;
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.close();
+      }
     };
   }, [subscribe]);
 
@@ -284,8 +301,6 @@ export function usePanicAudio() {
       }
       if (broadcastTimerRef.current) clearInterval(broadcastTimerRef.current);
       if (broadcastTimeoutRef.current) clearTimeout(broadcastTimeoutRef.current);
-      panicPlayerRef.current?.destroy();
-      responsePlayerRef.current?.destroy();
     };
   }, []);
 

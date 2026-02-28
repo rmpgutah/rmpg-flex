@@ -81,8 +81,6 @@ interface ChangelogData {
 
 interface Props {
   LoadingSpinner: React.FC;
-  error: string | null;
-  setError: (e: string | null) => void;
 }
 
 export default function AdminHealthTab({ LoadingSpinner }: Props) {

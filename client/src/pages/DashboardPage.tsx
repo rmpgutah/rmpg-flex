@@ -28,7 +28,6 @@ import PrintButton from '../components/PrintButton';
 import { StatsCardSkeleton, CardSkeleton } from '../components/Skeleton';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
-import { useIsMobile } from '../hooks/useIsMobile';
 
 // ─── Backend Response Types ──────────────────────────────
 
@@ -187,7 +186,6 @@ export default function DashboardPage() {
   const [expiringCredentials, setExpiringCredentials] = useState<any[]>([]);
   const [activeWarrants, setActiveWarrants] = useState(0);
   const navigate = useNavigate();
-  const isMobile = useIsMobile();
 
   const fetchDashboardData = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) { setLoading(true); setError(null); }
@@ -276,26 +274,23 @@ export default function DashboardPage() {
     <div className="p-4 space-y-4 animate-fade-in">
       {/* Portal Header — RMPG Logo + System Title */}
       <div className="panel-beveled bg-surface-base overflow-hidden">
-        <div className={`flex items-center gap-4 ${isMobile ? 'px-3 py-2' : 'px-4 py-3'} relative`}>
+        <div className="flex items-center gap-4 px-4 py-3 relative">
           {/* Crimson accent line */}
           <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #6e0a0a, #bc1010 30%, #bc1010 70%, #6e0a0a)' }} />
-          {!isMobile && <RmpgLogo height={68} />}
-          {isMobile && <RmpgLogo height={36} iconOnly />}
+          <RmpgLogo height={68} />
           <div className="flex-1">
             <div className="flex items-center gap-3">
-              <h1 className={`${isMobile ? 'text-xs' : 'text-sm'} font-bold tracking-wider uppercase text-rmpg-200`}>
-                {isMobile ? 'C&C Dashboard' : 'Command & Control Dashboard'}
+              <h1 className="text-sm font-bold tracking-wider uppercase text-rmpg-200">
+                Command & Control Dashboard
               </h1>
               <div className="hidden sm:flex items-center gap-1.5">
                 <span className={`led-dot ${stats.active_calls > 0 ? 'led-green animate-led-pulse' : 'led-green'}`} />
                 <span className="text-[9px] font-mono font-bold text-green-500">OPERATIONAL</span>
               </div>
             </div>
-            {!isMobile && (
-              <p className="text-[9px] tracking-wide mt-0.5 text-rmpg-600">
-                Rocky Mountain Protective Group, LLC &mdash; Resolving today&rsquo;s concerns, to ensure tomorrow&rsquo;s solutions.
-              </p>
-            )}
+            <p className="text-[9px] tracking-wide mt-0.5 text-rmpg-600">
+              Rocky Mountain Protective Group, LLC &mdash; Resolving today&rsquo;s concerns, to ensure tomorrow&rsquo;s solutions.
+            </p>
           </div>
           <div className="hidden md:flex items-center gap-2 text-[9px] font-mono text-rmpg-600">
             <PrintButton />
@@ -417,7 +412,7 @@ export default function DashboardPage() {
         <div className="lg:col-span-2 panel-beveled bg-surface-base">
           <PanelTitleBar title="CALLS BY HOUR — TODAY" icon={Activity} />
           <div className="p-3">
-          <ResponsiveContainer width="100%" height={isMobile ? 160 : 220}>
+          <ResponsiveContainer width="100%" height={220}>
             <BarChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
               <XAxis

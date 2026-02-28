@@ -38,9 +38,6 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Microphone — required for PTT radio and panic audio broadcast -->
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
     <!-- GPS / Location — required for real-time officer tracking on dispatch map -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />

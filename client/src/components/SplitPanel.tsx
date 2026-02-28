@@ -5,7 +5,21 @@
 // ============================================================
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { useIsMobile } from '../hooks/useIsMobile';
+
+// --- Mobile detection hook ---
+function useIsMobile(breakpoint = 768) {
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth < breakpoint : false
+  );
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < breakpoint);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [breakpoint]);
+
+  return isMobile;
+}
 
 interface SplitPanelProps {
   left: React.ReactNode;

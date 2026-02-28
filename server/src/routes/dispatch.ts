@@ -73,10 +73,8 @@ router.get('/calls', (req: Request, res: Response) => {
       LEFT JOIN clients cl ON COALESCE(c.client_id, p.client_id) = cl.id
       ${whereClause}
       ORDER BY
-        ${archived === 'true'
-          ? 'c.call_number DESC'
-          : "CASE c.priority WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 END, c.created_at DESC"
-        }
+        CASE c.priority WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 END,
+        c.created_at DESC
       LIMIT ? OFFSET ?
     `).all(...params, limitNum, offset);
 
@@ -1118,20 +1116,18 @@ router.get('/gps/trails', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const hours = parseInt(req.query.hours as string) || 8;
+    const cutoff = new Date(Date.now() - hours * 3600000).toISOString();
 
-    // Use SQLite's datetime() for the cutoff so the format matches
-    // recorded_at's DEFAULT (datetime('now','localtime') → "YYYY-MM-DD HH:MM:SS").
-    // Using JS toISOString() produced "YYYY-MM-DDTHH:MM:SS.sssZ" which always
-    // compared > the space-separated stored format, returning zero results.
+    // Get trails grouped by unit with full snapshot data
     const rows = db.prepare(`
       SELECT b.unit_id, b.call_sign, b.latitude, b.longitude, b.accuracy,
         b.heading, b.speed, b.unit_status, b.officer_name, b.badge_number,
         b.current_call_number, b.current_call_type, b.recorded_at
       FROM gps_breadcrumbs b
       JOIN units u ON b.unit_id = u.id
-      WHERE b.recorded_at >= datetime('now', 'localtime', '-' || ? || ' hours')
+      WHERE b.recorded_at >= ?
       ORDER BY b.unit_id, b.recorded_at ASC
-    `).all(hours) as any[];
+    `).all(cutoff) as any[];
 
     // Group by unit
     const trails: Record<number, { unit_id: number; call_sign: string; officer_name: string; badge_number: string; points: any[] }> = {};
@@ -1170,12 +1166,10 @@ router.delete('/gps/breadcrumbs/cleanup', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const days = parseInt(req.query.days as string) || 7;
+    const cutoff = new Date(Date.now() - days * 86400000).toISOString();
 
-    // Use SQLite datetime() to match the stored format (datetime('now','localtime'))
-    const result = db.prepare(
-      `DELETE FROM gps_breadcrumbs WHERE recorded_at < datetime('now', 'localtime', '-' || ? || ' days')`
-    ).run(days);
-    res.json({ deleted: result.changes });
+    const result = db.prepare('DELETE FROM gps_breadcrumbs WHERE recorded_at < ?').run(cutoff);
+    res.json({ deleted: result.changes, cutoff });
   } catch (error: any) {
     console.error('Breadcrumb cleanup error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -1187,8 +1181,9 @@ router.get('/heatmap', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const days = parseInt(req.query.days as string) || 30;
+    const cutoff = new Date(Date.now() - days * 86400000).toISOString();
 
-    // Use SQLite datetime() for consistent format comparison
+    // Aggregate calls by rounded lat/lng grid (~200m cells)
     const points = db.prepare(`
       SELECT
         ROUND(latitude, 3) as latitude,
@@ -1197,11 +1192,11 @@ router.get('/heatmap', (req: Request, res: Response) => {
       FROM calls_for_service
       WHERE latitude IS NOT NULL
         AND longitude IS NOT NULL
-        AND created_at >= datetime('now', 'localtime', '-' || ? || ' days')
+        AND created_at >= ?
       GROUP BY ROUND(latitude, 3), ROUND(longitude, 3)
       ORDER BY count DESC
       LIMIT 200
-    `).all(days);
+    `).all(cutoff);
 
     res.json(points);
   } catch (error: any) {

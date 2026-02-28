@@ -7,7 +7,6 @@ import {
 import { apiFetch } from '../../hooks/useApi';
 import type { Invoice, InvoiceDetail, InvoiceLineItem, Payment, InvoiceStats, Client } from '../../types';
 import DocumentViewer from '../../components/DocumentViewer';
-import { localToday, dateToLocalYMD } from '../../utils/dateUtils';
 
 // ============================================================
 // Props
@@ -66,7 +65,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
   const [createForm, setCreateForm] = useState({
     period_start: '',
     period_end: '',
-    issue_date: localToday(),
+    issue_date: new Date().toISOString().split('T')[0],
     notes: '',
   });
 
@@ -76,7 +75,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
 
   // Payment form
   const [showPayment, setShowPayment] = useState(false);
-  const [payForm, setPayForm] = useState({ amount: '', payment_date: localToday(), payment_method: 'check', reference_number: '', notes: '' });
+  const [payForm, setPayForm] = useState({ amount: '', payment_date: new Date().toISOString().split('T')[0], payment_method: 'check', reference_number: '', notes: '' });
 
   // PDF Preview
   const [pdfViewerOpen, setPdfViewerOpen] = useState(false);
@@ -202,7 +201,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
       });
       await fetchInvoiceDetail(selectedInvoice.id);
       setShowPayment(false);
-      setPayForm({ amount: '', payment_date: localToday(), payment_method: 'check', reference_number: '', notes: '' });
+      setPayForm({ amount: '', payment_date: new Date().toISOString().split('T')[0], payment_method: 'check', reference_number: '', notes: '' });
       fetchInvoices();
       fetchStats();
     } catch (e: any) { setError(e.message); }
@@ -277,9 +276,9 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
           <button
             onClick={() => {
               const now = new Date();
-              const start = dateToLocalYMD(new Date(now.getFullYear(), now.getMonth(), 1));
-              const end = dateToLocalYMD(new Date(now.getFullYear(), now.getMonth() + 1, 0));
-              setCreateForm({ period_start: start, period_end: end, issue_date: localToday(), notes: '' });
+              const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+              const end = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+              setCreateForm({ period_start: start, period_end: end, issue_date: now.toISOString().split('T')[0], notes: '' });
               setView('create');
             }}
             className="toolbar-btn text-brand-400 hover:text-brand-300"

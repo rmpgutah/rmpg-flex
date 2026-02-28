@@ -1187,13 +1187,6 @@ export type WSMessageType =
   | 'citation_update'
   | 'patrol_update'
   | 'admin_update'
-  // Radio — PTT two-way radio
-  | 'radio_audio'
-  | 'radio_transmit_start'
-  | 'radio_transmit_end'
-  | 'radio_channel_join'
-  | 'radio_channel_leave'
-  | 'radio_channel_state'
   // Presence
   | 'presence_update';
 

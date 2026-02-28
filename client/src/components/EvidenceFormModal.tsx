@@ -3,7 +3,6 @@ import { Package } from 'lucide-react';
 import FormModal from './FormModal';
 import { apiFetch } from '../hooks/useApi';
 import type { Evidence } from '../types';
-import { localToday } from '../utils/dateUtils';
 
 interface EvidenceFormModalProps {
   isOpen: boolean;
@@ -62,7 +61,7 @@ const EMPTY_FORM: EvidenceFormData = {
   category: '',
   description: '',
   storage_location: '',
-  collected_date: localToday(),
+  collected_date: new Date().toISOString().split('T')[0],
   packaging_type: '',
   serial_number: '',
   brand: '',

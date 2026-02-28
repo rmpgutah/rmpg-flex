@@ -17,7 +17,6 @@ import {
 import { apiFetch } from '../hooks/useApi';
 import { usePersistedTab } from '../hooks/usePersistedState';
 import { useLiveSync } from '../hooks/useLiveSync';
-import { useIsMobile } from '../hooks/useIsMobile';
 import ConfirmDialog from '../components/ConfirmDialog';
 import PanelTitleBar from '../components/PanelTitleBar';
 import RmpgLogo from '../components/RmpgLogo';
@@ -44,7 +43,6 @@ type TabId = 'persons' | 'vehicles' | 'properties' | 'evidence';
 // ============================================================
 
 export default function RecordsPage() {
-  const isMobile = useIsMobile();
   const [activeTab, setActiveTab] = usePersistedTab('rmpg_records_tab', 'persons' as TabId, ['persons', 'vehicles', 'properties', 'evidence'] as const);
   const [searchQuery, setSearchQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
@@ -297,7 +295,7 @@ export default function RecordsPage() {
       </PanelTitleBar>
 
       {/* Stats Bar */}
-      <div className={`${isMobile ? 'px-3 overflow-x-auto' : 'px-6'} py-2 border-b border-rmpg-600 flex items-center gap-6 text-[10px] font-mono uppercase tracking-wider`}>
+      <div className="px-6 py-2 border-b border-rmpg-600 flex items-center gap-6 text-[10px] font-mono uppercase tracking-wider">
         <div className="flex items-center gap-1.5">
           <UserCircle className="w-3 h-3 text-brand-400" />
           <span className="text-rmpg-300">Persons:</span>
@@ -353,7 +351,7 @@ export default function RecordsPage() {
         )}
       </div>
 
-      <div className={`${isMobile ? 'px-3' : 'px-6'} py-3 border-b border-rmpg-600`}>
+      <div className="px-6 py-3 border-b border-rmpg-600">
         {/* Error banner */}
         {error && (
           <div className="mb-3 px-3 py-2 bg-red-900/40 border border-red-700/50 text-red-300 text-xs">
@@ -363,7 +361,7 @@ export default function RecordsPage() {
         )}
 
         {/* Tabs */}
-        <div className={`flex gap-1 items-center ${isMobile ? 'overflow-x-auto -mx-3 px-3 pb-1' : ''}`}>
+        <div className="flex gap-1 items-center">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             return (
@@ -371,7 +369,7 @@ export default function RecordsPage() {
                 key={tab.id}
                 onClick={() => { setActiveTab(tab.id); }}
                 className={`
-                  flex items-center gap-2 px-4 py-2 text-xs font-medium transition-colors whitespace-nowrap
+                  flex items-center gap-2 px-4 py-2 text-xs font-medium transition-colors
                   ${activeTab === tab.id
                     ? 'bg-rmpg-700 text-white border border-rmpg-600 border-b-rmpg-700'
                     : 'text-rmpg-300 hover:text-white hover:bg-rmpg-700/50'
@@ -386,10 +384,10 @@ export default function RecordsPage() {
           })}
 
           {/* Archive Toggle */}
-          <div className={isMobile ? '' : 'ml-auto'}>
+          <div className="ml-auto">
             <button
               onClick={() => setShowArchived(!showArchived)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors border whitespace-nowrap ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors border ${
                 showArchived
                   ? 'bg-amber-900/40 text-amber-400 border-amber-700/50 hover:bg-amber-900/60'
                   : 'bg-rmpg-700/50 text-rmpg-400 border-rmpg-600 hover:text-rmpg-200 hover:bg-rmpg-700'

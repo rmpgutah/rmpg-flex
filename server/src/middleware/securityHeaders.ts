@@ -15,7 +15,7 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
   res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
 
   // Permissions policy (restrict browser features)
-  res.set('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=(self), payment=()');
+  res.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(self), payment=()');
 
   // Strict Transport Security (when SSL is enabled or in production)
   if (config.isProduction || config.ssl.enabled) {

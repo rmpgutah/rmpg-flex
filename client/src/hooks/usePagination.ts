@@ -156,6 +156,7 @@ export function useServerPagination(
   const displayRange = `Showing ${rangeStart}–${rangeEnd} of ${total}`;
 
   return {
+    pageData: [] as never[],
     page: safePage, pageSize, total, totalPages,
     hasNext: safePage < totalPages, hasPrev: safePage > 1,
     goToPage, nextPage, prevPage, firstPage, lastPage,
