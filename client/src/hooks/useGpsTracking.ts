@@ -127,6 +127,12 @@ const HEARTBEAT_STALE_THRESHOLD = 30000; // 30 seconds
 /** How often to check for stale GPS (ms) */
 const HEARTBEAT_INTERVAL = 15000; // 15 seconds
 
+// ─── Electron Desktop Detection ──────────────────────────────
+// Desktop Electron apps often lack GPS hardware. Chromium's
+// navigator.geolocation may silently fail even with the Google API
+// key set. We detect Electron and provide an IP-based fallback.
+const IS_ELECTRON = typeof window !== 'undefined' && !!(window as any).electron?.isElectron;
+
 export function useGpsTracking(options?: UseGpsTrackingOptions) {
   const {
     batchIntervalMs = DEFAULT_BATCH_INTERVAL,
@@ -159,6 +165,9 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   /** Timestamp of last received position callback — used by heartbeat */
   const lastCallbackTimeRef = useRef<number>(Date.now());
+
+  // ─── Electron IP fallback ────────────────────────────────
+  const ipFallbackIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ─── Point queue ──────────────────────────────────────────
   // Every watchPosition callback pushes here. The batch interval drains it.
@@ -264,6 +273,65 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     return true;
   }, [maxAccuracyMeters, maxSpeedMs]);
 
+  // ─── Electron IP Geolocation Fallback ──────────────────────
+  // When navigator.geolocation fails on desktop Electron (no GPS
+  // hardware), poll the main process for IP-based geolocation.
+  const tryIpFallback = useCallback(async () => {
+    if (!IS_ELECTRON) return;
+    try {
+      const loc = await (window as any).electron.getIpLocation();
+      if (!loc || loc.latitude == null) return;
+
+      // Feed heartbeat so it doesn't trigger restart loops
+      lastCallbackTimeRef.current = Date.now();
+
+      // Update UI state exactly like a normal geolocation callback
+      setState((prev) => ({
+        ...prev,
+        latitude: loc.latitude,
+        longitude: loc.longitude,
+        accuracy: loc.accuracy || 5000,
+        heading: null,
+        speed: null,
+        error: null,
+        permissionDenied: false,
+        permissionPending: false,
+      }));
+
+      // Queue the point for batch send
+      const point: QueuedPoint = {
+        lat: loc.latitude,
+        lng: loc.longitude,
+        accuracy: loc.accuracy || 5000,
+        heading: null,
+        speed: null,
+        timestamp: new Date().toISOString(),
+      };
+
+      if (shouldAcceptPoint(loc.latitude, loc.longitude, loc.accuracy || 5000)) {
+        lastAcceptedRef.current = { lat: loc.latitude, lng: loc.longitude, time: Date.now() };
+        latestPositionRef.current = point;
+        queueRef.current.push(point);
+
+        // Send first position immediately for map icon
+        if (!firstPositionSentRef.current) {
+          firstPositionSentRef.current = true;
+          sendImmediate(point);
+        }
+      }
+    } catch {
+      // IP fallback failed — degrade gracefully
+    }
+  }, [shouldAcceptPoint, sendImmediate]);
+
+  // Starts the periodic IP fallback poller (Electron desktop only)
+  const startIpFallbackPoller = useCallback(() => {
+    if (!IS_ELECTRON || ipFallbackIntervalRef.current) return;
+    console.log('[GPS] Browser geolocation unavailable — starting IP fallback poller');
+    tryIpFallback(); // Immediate first attempt
+    ipFallbackIntervalRef.current = setInterval(tryIpFallback, DEFAULT_BATCH_INTERVAL);
+  }, [tryIpFallback]);
+
   // Start tracking
   const startTracking = useCallback(() => {
     if (!('geolocation' in navigator)) {
@@ -336,9 +404,13 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
             break;
           case err.POSITION_UNAVAILABLE:
             msg = 'Location unavailable. Check GPS/location services.';
+            // On desktop Electron without GPS hardware, start IP fallback
+            startIpFallbackPoller();
             break;
           case err.TIMEOUT:
             msg = 'Location request timed out. Retrying...';
+            // On desktop Electron, start IP fallback in case GPS never resolves
+            startIpFallbackPoller();
             break;
         }
         setState((prev) => ({
@@ -389,7 +461,12 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     heartbeatRef.current = setInterval(() => {
       const staleDuration = Date.now() - lastCallbackTimeRef.current;
       if (staleDuration > HEARTBEAT_STALE_THRESHOLD && watchIdRef.current !== null) {
-        console.warn(`[GPS] No position callback in ${Math.round(staleDuration / 1000)}s — restarting watchPosition`);
+        console.warn(`[GPS] No position callback in ${Math.round(staleDuration / 1000)}s`);
+        // On Electron desktop, use IP fallback instead of endlessly restarting
+        if (IS_ELECTRON) {
+          startIpFallbackPoller();
+          return;
+        }
         // Clear the stale watch and restart
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
@@ -399,7 +476,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     }, HEARTBEAT_INTERVAL);
 
     setIsTracking(true);
-  }, [batchIntervalMs, highAccuracy, sendBatch, sendImmediate, shouldAcceptPoint]);
+  }, [batchIntervalMs, highAccuracy, sendBatch, sendImmediate, shouldAcceptPoint, startIpFallbackPoller]);
 
   // Stop tracking (internal use only — users cannot call this)
   const stopTracking = useCallback(() => {
@@ -418,6 +495,10 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     if (heartbeatRef.current !== null) {
       clearInterval(heartbeatRef.current);
       heartbeatRef.current = null;
+    }
+    if (ipFallbackIntervalRef.current !== null) {
+      clearInterval(ipFallbackIntervalRef.current);
+      ipFallbackIntervalRef.current = null;
     }
     // Flush any remaining points before stopping
     if (queueRef.current.length > 0) {
@@ -456,6 +537,10 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       if (heartbeatRef.current !== null) {
         clearInterval(heartbeatRef.current);
         heartbeatRef.current = null;
+      }
+      if (ipFallbackIntervalRef.current !== null) {
+        clearInterval(ipFallbackIntervalRef.current);
+        ipFallbackIntervalRef.current = null;
       }
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

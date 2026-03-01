@@ -12,6 +12,13 @@ const { AppUpdater } = require('./updater');
 const { initLocalDb, getLocalDb, closeLocalDb, getConfig, setConfig, getQueueDepth, getSyncMeta } = require('./localDb');
 const { ConnectivityMonitor } = require('./connectivityMonitor');
 
+// ─── Chromium Geolocation ────────────────────────────────────
+// Electron strips Chrome's bundled Google API key. Without it,
+// navigator.geolocation silently fails on desktop (no GPS hardware).
+// Provide the same key used for Google Maps so Chromium's Network
+// Location Provider can resolve WiFi/IP-based positions.
+process.env.GOOGLE_API_KEY = 'AIzaSyCfKRUuJkUFlfuc9FvjJiVpm6_p5kASCtM';
+
 // ─── Configuration ──────────────────────────────────────────
 const APP_TITLE = 'RMPG Flex — CAD/RMS';
 const DEV_MODE = process.argv.includes('--dev');
@@ -364,6 +371,47 @@ ipcMain.on('window:maximize', () => {
 });
 ipcMain.on('window:close', () => mainWindow?.close());
 ipcMain.handle('app:version', () => app.getVersion());
+
+// ─── IP Geolocation Fallback ─────────────────────────────────
+// Desktop machines often lack GPS hardware. When Chromium's
+// navigator.geolocation fails, the renderer can call this to get
+// an approximate position via Google's Geolocation API (IP-based).
+ipcMain.handle('geo:ip-locate', async () => {
+  try {
+    const apiKey = process.env.GOOGLE_API_KEY;
+    const url = `https://www.googleapis.com/geolocation/v1/geolocate?key=${apiKey}`;
+    return await new Promise((resolve, reject) => {
+      const request = net.request({ method: 'POST', url });
+      request.setHeader('Content-Type', 'application/json');
+      let body = '';
+      request.on('response', (response) => {
+        response.on('data', (chunk) => { body += chunk.toString(); });
+        response.on('end', () => {
+          try {
+            const data = JSON.parse(body);
+            if (data.location) {
+              resolve({
+                latitude: data.location.lat,
+                longitude: data.location.lng,
+                accuracy: data.accuracy || 5000,
+              });
+            } else {
+              reject(new Error(data.error?.message || 'No location in response'));
+            }
+          } catch (e) {
+            reject(e);
+          }
+        });
+      });
+      request.on('error', reject);
+      request.write(JSON.stringify({}));
+      request.end();
+    });
+  } catch (err) {
+    console.error('[GEO] IP geolocation fallback failed:', err.message);
+    return null;
+  }
+});
 
 // ─── Offline Mode IPC Handlers ──────────────────────────────
 

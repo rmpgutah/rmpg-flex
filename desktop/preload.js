@@ -23,6 +23,11 @@ contextBridge.exposeInMainWorld('electron', {
     new Notification(title, { body });
   },
 
+  // ─── Geolocation Fallback ─────────────────────────
+  // IP-based geolocation via Google's Geolocation API when
+  // navigator.geolocation fails (common on desktop without GPS)
+  getIpLocation: () => ipcRenderer.invoke('geo:ip-locate'),
+
   // ─── Auto-Update API ────────────────────────────────
   // Listen for update status events from the main process
   onUpdateStatus: (callback) => {
