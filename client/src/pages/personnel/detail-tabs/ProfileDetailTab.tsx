@@ -5,11 +5,12 @@
 import React from 'react';
 import {
   User, Phone, Mail, MapPin, Briefcase, Hash, AlertTriangle,
-  Heart, Droplet, FileText, Award, Calendar, Paperclip,
+  Heart, Droplet, FileText, Award, Calendar, Paperclip, Radio, Shield,
 } from 'lucide-react';
 import type { Credential } from '../../../types';
 import type { OfficerWithStatus } from '../utils/personnelMappers';
 import { calcDaysUntilExpiry } from '../utils/personnelFormatters';
+import { toDisplayLabel } from '../../../utils/formatters';
 import FileAttachments from '../../../components/FileAttachments';
 
 interface Props {
@@ -54,8 +55,64 @@ export default function ProfileDetailTab({ officer, credentials }: Props) {
     return 'led-dot led-red';
   };
 
+  // Build OPR identifier: "D-101 #1234 MITCHELL, John" (call_sign + badge + name)
+  const oprCallSign = officer.unit_call_sign || null;
+  const oprLastName = officer.last_name?.toUpperCase() || '';
+  const oprFirstName = officer.first_name || '';
+  const oprBadge = officer.badge_number ? `#${officer.badge_number}` : '';
+  const oprNamePart = oprLastName && oprFirstName
+    ? `${oprLastName}, ${oprFirstName}`
+    : oprLastName || oprFirstName || '';
+  const oprLabel = [oprCallSign, oprBadge, oprNamePart].filter(Boolean).join(' ') || null;
+
   return (
     <div className="space-y-4">
+      {/* ---- OPR Identifier Banner ---- */}
+      <div
+        className="panel-beveled p-3 border-l-2 bg-surface-base"
+        style={{ borderLeftColor: '#d4a017' }}
+      >
+        <h3 className="field-label text-brand-400 flex items-center gap-1.5 border-b border-rmpg-700 pb-2 mb-3">
+          <Radio className="w-3 h-3" />
+          Operator Identification
+        </h3>
+        <div className="grid grid-cols-3 gap-x-6 gap-y-1">
+          <div className="flex items-start gap-2 py-1 col-span-2">
+            <span className="text-rmpg-400 mt-0.5 flex-shrink-0"><Shield className="w-3 h-3" /></span>
+            <div className="min-w-0">
+              <p className="field-label">OPR</p>
+              {oprLabel ? (
+                <p className="text-sm font-bold font-mono tracking-wide text-amber-400">{oprLabel}</p>
+              ) : (
+                <p className="text-xs text-rmpg-500 italic">No unit assigned</p>
+              )}
+            </div>
+          </div>
+          <div className="flex items-start gap-2 py-1">
+            <span className="text-rmpg-400 mt-0.5 flex-shrink-0"><Hash className="w-3 h-3" /></span>
+            <div className="min-w-0">
+              <p className="field-label">Badge Number</p>
+              {officer.badge_number ? (
+                <p className="text-sm font-bold font-mono tracking-wide text-rmpg-100">{officer.badge_number}</p>
+              ) : (
+                <p className="text-xs text-rmpg-500 italic">Not assigned</p>
+              )}
+            </div>
+          </div>
+          {oprCallSign && (
+            <div className="flex items-start gap-2 py-1">
+              <span className="text-rmpg-400 mt-0.5 flex-shrink-0"><Radio className="w-3 h-3" /></span>
+              <div className="min-w-0">
+                <p className="field-label">Unit Call Sign</p>
+                <p className="text-xs text-rmpg-100 font-mono">{oprCallSign}</p>
+              </div>
+            </div>
+          )}
+          {renderInfoRow('Rank', officer.rank)}
+          {renderInfoRow('Role', officer.role?.toUpperCase())}
+        </div>
+      </div>
+
       {/* ---- Personal Information ---- */}
       <div className="panel-beveled p-3 bg-surface-base">
         <h3 className="field-label text-brand-400 flex items-center gap-1.5 border-b border-rmpg-700 pb-2 mb-3">
@@ -143,7 +200,7 @@ export default function ProfileDetailTab({ officer, credentials }: Props) {
               return (
                 <div key={cred.id} className="flex items-center gap-2 text-xs">
                   <span className={credDotColor(cred.status)} />
-                  <span className="text-rmpg-100 flex-1 truncate">{cred.type}</span>
+                  <span className="text-rmpg-100 flex-1 truncate">{toDisplayLabel(cred.type)}</span>
                   <span className="text-rmpg-400 text-[10px] font-mono">
                     {days > 0
                       ? `${new Date(cred.expiry_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`

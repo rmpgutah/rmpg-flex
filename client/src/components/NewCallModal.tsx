@@ -3,6 +3,11 @@ import { X, Phone, AlertTriangle, Clock, History, Loader2 } from 'lucide-react';
 import type { CallForService, CallPriority, CallSource } from '../types';
 import { INCIDENT_TYPE_CATEGORIES, type IncidentType } from '../utils/caseNumbers';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
+import PremiseHistory from './PremiseHistory';
+import SafetyScreening from './SafetyScreening';
+import DuplicateCallWarning from './DuplicateCallWarning';
+import BoloAlertBanner from './BoloAlertBanner';
+import { useDistrictIdentify } from '../hooks/useDistrictLookup';
 
 interface NewCallModalProps {
   isOpen: boolean;
@@ -103,6 +108,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
   const [isSubmitting, setIsSubmitting] = useState(false);
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
+  const { identify: identifyDistrict } = useDistrictIdentify();
 
   // Pre-fill form when initialData changes (e.g. from a template)
   useEffect(() => {
@@ -329,6 +335,16 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
             </div>
           </div>
 
+          {/* Officer Safety Auto-Screening */}
+          <SafetyScreening callerName={formData.caller_name} subjectDescription={formData.subject_description} />
+
+          {/* BOLO Alert — auto-checks vehicle/subject descriptions */}
+          <BoloAlertBanner
+            address={formData.location}
+            subject={formData.subject_description}
+            vehicle={formData.vehicle_description}
+          />
+
           {/* Location */}
           <div>
             <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Location / Address</label>
@@ -337,12 +353,28 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               placeholder="123 Main St, Salt Lake City, UT"
               value={formData.location}
               onChange={(val) => update('location', val)}
-              onSelect={(addr: ParsedAddress) => {
+              onSelect={async (addr: ParsedAddress) => {
                 update('location', addr.formatted);
-                if (addr.latitude != null) setFormData((prev) => ({ ...prev, latitude: addr.latitude as any, longitude: addr.longitude as any }));
+                if (addr.latitude != null) {
+                  setFormData((prev) => ({ ...prev, latitude: addr.latitude as any, longitude: addr.longitude as any }));
+                  // Auto-fill section/zone/beat from 3Tier district lookup
+                  const district = await identifyDistrict(addr.latitude!, addr.longitude!);
+                  if (district) {
+                    setFormData((prev) => ({
+                      ...prev,
+                      section_id: district.section_id || prev.section_id,
+                      zone_id: district.zone_id || prev.zone_id,
+                      beat_id: district.beat_id || prev.beat_id,
+                    }));
+                  }
+                }
               }}
               required
             />
+            {/* Premise History — auto-checks when address has 3+ chars */}
+            <PremiseHistory address={formData.location} compact />
+            {/* Duplicate Call Warning — flags active calls at same address */}
+            <DuplicateCallWarning address={formData.location} />
           </div>
 
           {/* Property */}

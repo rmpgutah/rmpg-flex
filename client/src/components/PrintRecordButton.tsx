@@ -10,6 +10,7 @@ import React, { useCallback, useState, useEffect } from 'react';
 import { Printer, Eye } from 'lucide-react';
 import { downloadRecordPdf, generateRecordPdfBlobUrl, type RecordPdfType } from '../utils/recordPdfGenerator';
 import { fetchEntityImages, fetchImageFromUrl } from '../utils/pdfImageHelpers';
+import { apiFetch } from '../hooks/useApi';
 import DocumentViewer from './DocumentViewer';
 
 interface PrintRecordButtonProps {
@@ -55,29 +56,51 @@ export default function PrintRecordButton({
     };
   }, [pdfBlobUrl]);
 
-  /** Merge attachment images into recordData before PDF generation */
+  /** Merge attachment images and system history into recordData before PDF generation */
   const enrichWithImages = useCallback(async (data: any): Promise<any> => {
-    if (!entityType || !entityId) return data;
-    try {
-      const enriched = { ...data };
+    const enriched = { ...data };
 
-      // Fetch entity attachment images
-      const images = await fetchEntityImages(entityType, entityId);
-      if (images.length > 0) {
-        enriched.attachment_images = images;
+    // Fetch entity attachment images
+    if (entityType && entityId) {
+      try {
+        const images = await fetchEntityImages(entityType, entityId);
+        if (images.length > 0) {
+          enriched.attachment_images = images;
+        }
+
+        // For person records, also fetch ID photo if id_image_url exists
+        if (recordType === 'person' && data.id_image_url && !data.id_photo) {
+          const idPhoto = await fetchImageFromUrl(data.id_image_url, 'ID Photo');
+          if (idPhoto) enriched.id_photo = idPhoto;
+        }
+      } catch (err) {
+        console.warn('[PrintRecordButton] Image fetch failed, proceeding without images:', err);
       }
-
-      // For person records, also fetch ID photo if id_image_url exists
-      if (recordType === 'person' && data.id_image_url && !data.id_photo) {
-        const idPhoto = await fetchImageFromUrl(data.id_image_url, 'ID Photo');
-        if (idPhoto) enriched.id_photo = idPhoto;
-      }
-
-      return enriched;
-    } catch (err) {
-      console.warn('[PrintRecordButton] Image fetch failed, proceeding without images:', err);
-      return data;
     }
+
+    // For person records, fetch system history (warrants, incidents, citations, calls)
+    if (recordType === 'person' && data.id) {
+      try {
+        const history = await apiFetch<{
+          warrants: any[];
+          incidents: any[];
+          calls: any[];
+          citations: any[];
+          bolo_active: boolean;
+        }>(`/records/persons/${data.id}/system-history`);
+        if (history) {
+          enriched.warrants = history.warrants || [];
+          enriched.incidents = history.incidents || [];
+          enriched.calls = history.calls || [];
+          enriched.citations = history.citations || [];
+          enriched.bolo_active = history.bolo_active || false;
+        }
+      } catch (err) {
+        console.warn('[PrintRecordButton] System history fetch failed, proceeding without history:', err);
+      }
+    }
+
+    return enriched;
   }, [entityType, entityId, recordType]);
 
   const handlePrint = useCallback(async () => {

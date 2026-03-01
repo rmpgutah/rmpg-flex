@@ -1,5 +1,5 @@
 import React from 'react';
-import { Fuel, DollarSign, Gauge, Plus, MapPin, Calendar } from 'lucide-react';
+import { Fuel, DollarSign, Gauge, Plus, MapPin, Calendar, Pencil, Trash2 } from 'lucide-react';
 import type { FleetFuelLog, FleetFuelSummary, FuelType } from '../../../types';
 import { formatMilitary } from '../utils/fleetFormatters';
 
@@ -13,9 +13,11 @@ interface Props {
   fuelLogs: FleetFuelLog[];
   summary: FleetFuelSummary | null;
   onAddFuel: () => void;
+  onEditFuel?: (log: FleetFuelLog) => void;
+  onDeleteFuel?: (log: FleetFuelLog) => void;
 }
 
-export default function FleetFuelTab({ fuelLogs, summary, onAddFuel }: Props) {
+export default function FleetFuelTab({ fuelLogs, summary, onAddFuel, onEditFuel, onDeleteFuel }: Props) {
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
       {/* Summary Stats */}
@@ -126,6 +128,29 @@ export default function FleetFuelTab({ fuelLogs, summary, onAddFuel }: Props) {
                   </div>
                   {log.notes && <p className="text-[9px] text-rmpg-400 mt-0.5">{log.notes}</p>}
                 </div>
+                {/* Admin Edit / Delete */}
+                {(onEditFuel || onDeleteFuel) && (
+                  <div className="flex-shrink-0 flex items-center gap-1">
+                    {onEditFuel && (
+                      <button
+                        className="p-1 text-rmpg-500 hover:text-brand-400 hover:bg-rmpg-700 rounded transition-colors"
+                        onClick={(e) => { e.stopPropagation(); onEditFuel(log); }}
+                        title="Edit fuel log"
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                    )}
+                    {onDeleteFuel && (
+                      <button
+                        className="p-1 text-rmpg-500 hover:text-red-400 hover:bg-red-900/20 rounded transition-colors"
+                        onClick={(e) => { e.stopPropagation(); onDeleteFuel(log); }}
+                        title="Delete fuel log"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}

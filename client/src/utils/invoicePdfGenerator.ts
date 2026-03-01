@@ -16,7 +16,6 @@ import {
   addWrappedText,
   addTableWithShading,
   checkPageBreak,
-  resetSectionCounter,
   setGenerationTimestamp,
   fetchPdfBranding,
   setActiveBranding,
@@ -104,8 +103,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
   addConfidentialWatermark(doc);
 
   // ── Header with seal (same as all reports) ───────────
-  resetSectionCounter();
-  let y = addReportHeader(doc, data.invoice_number, 'Invoice', 'routine');
+  let y = addReportHeader(doc, data.invoice_number, 'Invoice', 'routine', undefined, { useLogo: true });
 
   // ── Invoice Information Section (auto-sizing) ─────────
   { const sec = openAutoSection(doc, 'Invoice Information', y); y = sec.contentY;
@@ -455,7 +453,7 @@ export function generatePrintableInvoiceHtml(data: InvoicePdfData): string {
 
   <div class="footer">
     <span class="form-num">FORM PS-301 | Rev. 2026-03</span> &mdash;
-    LAW ENFORCEMENT SENSITIVE &mdash; CONFIDENTIAL<br />
+    INTERNAL USE ONLY &mdash; CONFIDENTIAL<br />
     Generated on ${new Date().toLocaleString()} &mdash; ${data.invoice_number}
   </div>
 </body>

@@ -47,7 +47,7 @@ export default function StatusBar({
       {/* Server */}
       <div className="status-bar-section">
         <RmpgLogo height={12} iconOnly />
-        <span>RMPG-FLEX v2.0</span>
+        <span>RMPG-FLEX v5.3.9</span>
       </div>
 
       {/* Active Calls */}

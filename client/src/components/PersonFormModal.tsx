@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { UserCircle, Eye, EyeOff, Upload, X, CreditCard } from 'lucide-react';
 import FormModal from './FormModal';
+import { useFormDirty } from '../hooks/useFormDirty';
 import type { Person } from '../types';
 import { apiUploadFiles } from '../hooks/useApi';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
@@ -153,7 +154,7 @@ const BLOOD_TYPE_OPTIONS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 const PROBATION_OPTIONS = ['None', 'Probation', 'Parole', 'Both', 'Pre-Trial Supervision', 'Pre-Trial Supervision + Probation', 'Deferred Sentence', 'Diversion Program'];
 const LANGUAGE_OPTIONS = ['English', 'Spanish', 'Portuguese', 'French', 'Mandarin', 'Cantonese', 'Vietnamese', 'Korean', 'Japanese', 'Arabic', 'Russian', 'German', 'Tagalog', 'Hindi', 'Urdu', 'Farsi', 'Somali', 'Swahili', 'Navajo', 'American Sign Language', 'Other'];
 const CITIZENSHIP_OPTIONS = ['U.S. Citizen', 'Permanent Resident', 'Visa Holder', 'Refugee', 'Asylum Seeker', 'Undocumented', 'Foreign National', 'Dual Citizenship', 'Unknown', 'Other'];
-const OCCUPATION_OPTIONS = ['Unemployed', 'Student', 'Retired', 'Self-Employed', 'Construction', 'Food Service', 'Healthcare', 'Retail', 'Transportation', 'Manufacturing', 'Agriculture', 'Education', 'Law Enforcement', 'Military', 'IT / Technology', 'Finance / Banking', 'Legal', 'Sales', 'Skilled Trades', 'Government', 'Hospitality', 'Warehouse / Logistics', 'Maintenance / Janitorial', 'Security', 'Social Services', 'Other'];
+const OCCUPATION_OPTIONS = ['Unemployed', 'Student', 'Retired', 'Self-Employed', 'Construction', 'Food Service', 'Healthcare', 'Retail', 'Transportation', 'Manufacturing', 'Agriculture', 'Education', 'Public Safety', 'Military', 'IT / Technology', 'Finance / Banking', 'Legal', 'Sales', 'Skilled Trades', 'Government', 'Hospitality', 'Warehouse / Logistics', 'Maintenance / Janitorial', 'Security', 'Social Services', 'Other'];
 const GANG_OPTIONS = ['None', 'Sureños (13)', 'Norteños (14)', 'MS-13', 'Latin Kings', 'Bloods', 'Crips', '18th Street', 'Aryan Brotherhood', 'Hells Angels', 'Mongols MC', 'Bandidos MC', 'Vagos MC', 'Tongan Crip Gang', 'Other — See Notes'];
 
 export default function PersonFormModal({
@@ -164,6 +165,7 @@ export default function PersonFormModal({
   editingPerson,
 }: PersonFormModalProps) {
   const [form, setForm] = useState<PersonFormData>(EMPTY_FORM);
+  const { isDirty, snapshot } = useFormDirty(form, isOpen);
   const [activeSection, setActiveSection] = useState<'basic' | 'physical' | 'id' | 'contact' | 'other'>('basic');
   const [showSSN, setShowSSN] = useState(false);
   const [idImageFile, setIdImageFile] = useState<File | null>(null);
@@ -174,7 +176,7 @@ export default function PersonFormModal({
   useEffect(() => {
     if (isOpen) {
       if (editingPerson) {
-        setForm({
+        const initial: PersonFormData = {
           first_name: editingPerson.first_name || '',
           last_name: editingPerson.last_name || '',
           middle_name: editingPerson.middle_name || '',
@@ -234,9 +236,12 @@ export default function PersonFormModal({
           emergency_contact_relationship: editingPerson.emergency_contact_relationship || '',
           caution_flags: editingPerson.caution_flags || '',
           notes: editingPerson.notes || '',
-        });
+        };
+        setForm(initial);
+        snapshot(initial);
       } else {
         setForm(EMPTY_FORM);
+        snapshot(EMPTY_FORM);
       }
       setActiveSection('basic');
       setShowSSN(false);
@@ -332,6 +337,7 @@ export default function PersonFormModal({
       submitLabel={editingPerson ? 'Update' : 'Create'}
       isSubmitting={isSubmitting}
       maxWidth="max-w-4xl"
+      isDirty={isDirty}
     >
       {/* Section Tabs */}
       <div className="flex gap-1 -mt-2 mb-3 border-b border-rmpg-700 pb-2">

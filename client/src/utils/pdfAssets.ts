@@ -21,8 +21,8 @@ export async function loadSealBase64(): Promise<string | null> {
     const blob = await res.blob();
     const bmp = await createImageBitmap(blob);
 
-    // Downscale to 128x128 for PDF (original is 1024x1024 / 1.8MB)
-    const size = 128;
+    // Downscale to 192x192 for higher-res bold PDF header (original is 1024x1024)
+    const size = 192;
     const canvas = new OffscreenCanvas(size, size);
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
@@ -57,9 +57,9 @@ export async function loadLogoBase64(): Promise<string | null> {
     const blob = await res.blob();
     const bmp = await createImageBitmap(blob);
 
-    // Downscale to 200x66 (maintain approx aspect ratio of 1236x406)
-    const w = 200;
-    const h = 66;
+    // Downscale to 300x99 for bolder PDF header (maintain approx aspect ratio of 1236x406)
+    const w = 300;
+    const h = 99;
     const canvas = new OffscreenCanvas(w, h);
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
@@ -94,8 +94,8 @@ export async function loadLogoDarkBase64(): Promise<string | null> {
     const blob = await res.blob();
     const bmp = await createImageBitmap(blob);
 
-    // Downscale to 128x128 (original is 564x570, nearly square)
-    const size = 128;
+    // Downscale to 192x192 (original is 564x570, nearly square)
+    const size = 192;
     const canvas = new OffscreenCanvas(size, size);
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
@@ -149,6 +149,8 @@ export const FORM_NUMBERS: Record<string, string> = {
   personnel: 'FORM PS-207',
   property: 'FORM PS-208',
   citation: 'FORM PS-209',
+  // Tracking & Analytics (PS-2xx cont.)
+  patrol_tracking: 'FORM PS-210',
   // Financial (PS-3xx)
   invoice: 'FORM PS-301',
 };

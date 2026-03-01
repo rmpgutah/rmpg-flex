@@ -16,6 +16,7 @@ import {
   Archive,
   RotateCcw,
   Copy,
+  Map as MapIcon,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -26,6 +27,8 @@ import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
 import ExportButton from '../components/ExportButton';
 import TabBar from '../components/TabBar';
+import { useIsMobile } from '../hooks/useIsMobile';
+import { loadGoogleMaps, DARK_MAP_STYLE, registerMapInstance, unregisterMapInstance, onOnlineRetryMaps } from '../utils/googleMapsLoader';
 
 type Checkpoint = {
   id: number;
@@ -72,10 +75,155 @@ type Property = {
   name: string;
 };
 
+// ── Patrol Map View ─────────────────────────────────────────
+// Shows checkpoint markers + scan route polylines on Google Maps.
+
+function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scans: Scan[] }) {
+  const mapRef = React.useRef<HTMLDivElement>(null);
+  const mapInstanceRef = React.useRef<google.maps.Map | null>(null);
+  const [mapReady, setMapReady] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!mapRef.current) return;
+
+    const apiKey = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string || '';
+    if (!apiKey) return;
+
+    let cancelled = false;
+
+    function initPatrolMap() {
+      if (cancelled || !mapRef.current || mapInstanceRef.current) return;
+
+      const map = new google.maps.Map(mapRef.current, {
+        center: { lat: 40.76, lng: -111.89 },
+        zoom: 12,
+        styles: DARK_MAP_STYLE,
+        disableDefaultUI: true,
+        zoomControl: true,
+        backgroundColor: '#0a0a0a',
+        gestureHandling: 'greedy',
+      });
+      mapInstanceRef.current = map;
+      registerMapInstance(map);
+      setMapReady(true);
+    }
+
+    // Retry with backoff (3 attempts) for intermittent WiFi
+    function attemptLoad(attempt: number) {
+      if (cancelled) return;
+      loadGoogleMaps(apiKey)
+        .then(() => initPatrolMap())
+        .catch(() => {
+          if (cancelled) return;
+          if (attempt < 3) {
+            setTimeout(() => attemptLoad(attempt + 1), [3000, 6000, 12000][attempt]);
+          }
+        });
+    }
+    attemptLoad(0);
+
+    // Auto-retry when device comes back online
+    const unsubOnline = onOnlineRetryMaps(apiKey, () => {
+      if (!cancelled && !mapInstanceRef.current) initPatrolMap();
+    });
+
+    return () => {
+      cancelled = true;
+      unsubOnline();
+      if (mapInstanceRef.current) unregisterMapInstance(mapInstanceRef.current);
+    };
+  }, []);
+
+  // Add markers + polylines when map is ready
+  React.useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapReady) return;
+
+    const bounds = new google.maps.LatLngBounds();
+    let hasPoints = false;
+
+    // Checkpoint markers
+    checkpoints.forEach(cp => {
+      if (!cp.latitude || !cp.longitude) return;
+      const pos = { lat: cp.latitude, lng: cp.longitude };
+      bounds.extend(pos);
+      hasPoints = true;
+
+      const marker = new google.maps.Marker({
+        map,
+        position: pos,
+        title: cp.name,
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          fillColor: cp.is_active ? '#22c55e' : '#6b7280',
+          fillOpacity: 0.9,
+          strokeColor: '#fff',
+          strokeWeight: 2,
+          scale: 8,
+        },
+      });
+
+      const info = new google.maps.InfoWindow({
+        content: `<div style="color:#000;font-size:12px;font-weight:bold">${cp.name}</div>
+          <div style="color:#666;font-size:10px">${cp.is_active ? 'Active' : 'Inactive'} • Every ${cp.scan_required_interval_minutes || '?'} min</div>`,
+      });
+      marker.addListener('click', () => info.open(map, marker));
+    });
+
+    // Scan route polylines (group by date, draw chronological lines)
+    const scansByDate = new Map<string, Scan[]>();
+    scans.forEach(s => {
+      if (!s.latitude || !s.longitude) return;
+      const date = s.scanned_at.split('T')[0];
+      const list = scansByDate.get(date) || [];
+      list.push(s);
+      scansByDate.set(date, list);
+    });
+
+    const colors = ['#3b82f6', '#a855f7', '#f59e0b', '#ef4444', '#22c55e'];
+    let colorIdx = 0;
+    scansByDate.forEach((dayScans) => {
+      const sorted = dayScans.sort((a, b) => new Date(a.scanned_at).getTime() - new Date(b.scanned_at).getTime());
+      const path = sorted.map(s => {
+        const pos = { lat: s.latitude!, lng: s.longitude! };
+        bounds.extend(pos);
+        hasPoints = true;
+        return pos;
+      });
+
+      if (path.length > 1) {
+        new google.maps.Polyline({
+          map,
+          path,
+          strokeColor: colors[colorIdx % colors.length],
+          strokeOpacity: 0.7,
+          strokeWeight: 2,
+        });
+      }
+      colorIdx++;
+    });
+
+    if (hasPoints) {
+      map.fitBounds(bounds, 50);
+    }
+  }, [mapReady, checkpoints, scans]);
+
+  return (
+    <div className="relative w-full flex-1" style={{ minHeight: 400 }}>
+      <div ref={mapRef} className="absolute inset-0" />
+      <div className="absolute top-2 left-2 text-[9px] font-mono text-rmpg-400 bg-black/60 px-2 py-1 border border-rmpg-700">
+        {checkpoints.filter(c => c.latitude && c.longitude).length} checkpoints •{' '}
+        {scans.filter(s => s.latitude && s.longitude).length} scan points
+      </div>
+    </div>
+  );
+}
+
 const PatrolPage: React.FC = () => {
+  const isMobile = useIsMobile();
   const checkpointModalTitleId = useId();
   const qrModalTitleId = useId();
-  const [activeTab, setActiveTab] = usePersistedTab('rmpg_patrol_tab', 'checkpoints', ['checkpoints', 'scans', 'compliance'] as const);
+  const [activeTab, setActiveTab] = usePersistedTab('rmpg_patrol_tab', 'checkpoints', ['checkpoints', 'scans', 'compliance', 'map'] as const);
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
   const [scans, setScans] = useState<Scan[]>([]);
   const [compliance, setCompliance] = useState<Compliance[]>([]);
@@ -358,23 +506,26 @@ const PatrolPage: React.FC = () => {
     { id: 'checkpoints' as const, label: 'Checkpoints', icon: QrCode },
     { id: 'scans' as const, label: 'Scan Log', icon: Clock },
     { id: 'compliance' as const, label: 'Compliance', icon: CheckCircle },
+    { id: 'map' as const, label: 'Map', icon: MapIcon },
   ];
 
   return (
     <div className="flex flex-col h-full animate-fade-in">
       {/* Portal Header */}
-      <div className="panel-beveled bg-surface-base overflow-hidden">
-        <div className="flex items-center gap-4 px-4 py-2.5 relative">
-          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #6e0a0a, #bc1010 30%, #bc1010 70%, #6e0a0a)' }} />
-          <RmpgLogo height={64} />
-          <div className="flex-1">
-            <h1 className="text-sm font-bold tracking-wider uppercase text-rmpg-200">Patrol Operations</h1>
-            <p className="text-[9px] tracking-wide text-rmpg-600">Rocky Mountain Protective Group, LLC</p>
+      {!isMobile && (
+        <div className="panel-beveled bg-surface-base overflow-hidden">
+          <div className="flex items-center gap-4 px-4 py-2.5 relative">
+            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #6e0a0a, #bc1010 30%, #bc1010 70%, #6e0a0a)' }} />
+            <RmpgLogo height={64} />
+            <div className="flex-1">
+              <h1 className="text-sm font-bold tracking-wider uppercase text-rmpg-200">Patrol Operations</h1>
+              <p className="text-[9px] tracking-wide text-rmpg-600">Rocky Mountain Protective Group, LLC</p>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
-      <PanelTitleBar title="PATROL MANAGEMENT" icon={MapPin}>
+      {!isMobile && <PanelTitleBar title="PATROL MANAGEMENT" icon={MapPin}>
         <PrintButton />
         {activeTab === 'scans' && (
           <ExportButton exportUrl="/patrol/scans/export?format=csv" exportFilename="patrol_scans_export.csv" />
@@ -389,13 +540,13 @@ const PatrolPage: React.FC = () => {
             <RefreshCw className="w-3.5 h-3.5" /> Refresh
           </button>
         )}
-      </PanelTitleBar>
+      </PanelTitleBar>}
 
       {/* Tabs */}
       <TabBar
         tabs={patrolTabs}
         activeTab={activeTab}
-        onTabChange={(id) => setActiveTab(id as 'checkpoints' | 'scans' | 'compliance')}
+        onTabChange={(id) => setActiveTab(id as 'checkpoints' | 'scans' | 'compliance' | 'map')}
       />
 
       {/* Error Banner */}
@@ -411,7 +562,7 @@ const PatrolPage: React.FC = () => {
 
       {/* Stats Strip */}
       {!loading && (
-        <div className="px-4 py-1.5 border-b border-rmpg-700/50 flex items-center gap-4 text-[9px] font-mono flex-shrink-0 bg-surface-sunken">
+        <div className={`px-4 py-1.5 border-b border-rmpg-700/50 flex items-center gap-4 text-[9px] font-mono flex-shrink-0 bg-surface-sunken ${isMobile ? 'flex-wrap gap-2' : ''}`}>
           <div className="flex items-center gap-1">
             <QrCode className="w-3 h-3 text-brand-400" />
             <span className="text-rmpg-400">Checkpoints:</span>
@@ -449,6 +600,7 @@ const PatrolPage: React.FC = () => {
           {/* Checkpoints Tab */}
           {activeTab === 'checkpoints' && (
             <div className="panel-beveled overflow-hidden bg-[var(--surface-base)]">
+              <div className={isMobile ? 'overflow-x-auto' : ''}>
               <table className="table-dark">
                 <thead>
                   <tr>
@@ -538,6 +690,7 @@ const PatrolPage: React.FC = () => {
                   ))}
                 </tbody>
               </table>
+              </div>
               {checkpoints.length === 0 && (
                 <div className="text-center py-12 text-rmpg-300">
                   No checkpoints found. Create one to get started.
@@ -617,6 +770,7 @@ const PatrolPage: React.FC = () => {
               </div>
 
               <div className="panel-beveled overflow-hidden bg-[var(--surface-base)]">
+                <div className={isMobile ? 'overflow-x-auto' : ''}>
                 <table className="table-dark">
                   <thead>
                     <tr>
@@ -648,6 +802,7 @@ const PatrolPage: React.FC = () => {
                     ))}
                   </tbody>
                 </table>
+                </div>
                 {scans.length === 0 && (
                   <div className="text-center py-12 text-rmpg-300">
                     No scans found matching the filters.
@@ -655,6 +810,11 @@ const PatrolPage: React.FC = () => {
                 )}
               </div>
             </>
+          )}
+
+          {/* Map Tab */}
+          {activeTab === 'map' && (
+            <PatrolMapView checkpoints={checkpoints} scans={scans} />
           )}
 
           {/* Compliance Tab */}

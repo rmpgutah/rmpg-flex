@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Car } from 'lucide-react';
 import FormModal from './FormModal';
+import { useFormDirty } from '../hooks/useFormDirty';
 import type { Vehicle } from '../types';
 import AddressAutocomplete from './AddressAutocomplete';
 
@@ -125,13 +126,14 @@ export default function VehicleFormModal({
   editingVehicle,
 }: VehicleFormModalProps) {
   const [form, setForm] = useState<VehicleFormData>(EMPTY_FORM);
+  const { isDirty, snapshot } = useFormDirty(form, isOpen);
   const [activeSection, setActiveSection] = useState<'vehicle' | 'mechanical' | 'registration' | 'condition'>('vehicle');
 
   useEffect(() => {
     if (isOpen) {
       setActiveSection('vehicle');
       if (editingVehicle) {
-        setForm({
+        const initial: VehicleFormData = {
           plate_number: editingVehicle.license_plate || '',
           state: editingVehicle.plate_state || 'UT',
           make: editingVehicle.make || '',
@@ -166,9 +168,12 @@ export default function VehicleFormModal({
           stolen_date: editingVehicle.stolen_date || '',
           recovery_date: editingVehicle.recovery_date || '',
           notes: editingVehicle.notes || '',
-        });
+        };
+        setForm(initial);
+        snapshot(initial);
       } else {
         setForm(EMPTY_FORM);
+        snapshot(EMPTY_FORM);
       }
     }
   }, [isOpen, editingVehicle]);
@@ -197,6 +202,7 @@ export default function VehicleFormModal({
       submitLabel={editingVehicle ? 'Update' : 'Create'}
       isSubmitting={isSubmitting}
       maxWidth="max-w-3xl"
+      isDirty={isDirty}
     >
       {/* Section Tabs */}
       <div className="flex gap-1 -mt-2 mb-3 border-b border-rmpg-700 pb-2">

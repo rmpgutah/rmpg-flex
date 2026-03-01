@@ -14,9 +14,17 @@ import {
   Network,
   Zap,
   Link2,
+  Shield,
+  GraduationCap,
+  Radio,
+  WifiOff,
+  DatabaseZap,
+  Lock,
+  Palette,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
+import { useIsMobile } from '../hooks/useIsMobile';
 import PanelTitleBar from '../components/PanelTitleBar';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
@@ -36,6 +44,13 @@ import AdminRetentionTab from './admin/AdminRetentionTab';
 import AdminDepartmentsTab from './admin/AdminDepartmentsTab';
 import AdminNotifRulesTab from './admin/AdminNotifRulesTab';
 import AdminServeManagerTab from './admin/AdminServeManagerTab';
+import AdminSessionsTab from './admin/AdminSessionsTab';
+import AdminTrainingTab from './admin/AdminTrainingTab';
+import AdminRadioTab from './admin/AdminRadioTab';
+import AdminOfflineTab from './admin/AdminOfflineTab';
+import AdminMicrobiltTab from './admin/AdminMicrobiltTab';
+import AdminSecurityTab from './admin/AdminSecurityTab';
+import AdminBrandingTab from './admin/AdminBrandingTab';
 
 // ============================================================
 // Shared sub-components (module-level to avoid remounting)
@@ -112,19 +127,21 @@ interface AuditRow {
 // Mappers
 // ============================================================
 
-function mapPersonnelToUser(row: PersonnelRow): User & { last_login_display?: string } {
+function mapPersonnelToUser(row: PersonnelRow): User & { last_login_display?: string; raw_status?: string } {
   // Use server-provided first_name/last_name if available, otherwise derive from full_name
   const first_name = row.first_name || (row.full_name || '').trim().split(/\s+/)[0] || '';
   const last_name = row.last_name || (row.full_name || '').trim().split(/\s+/).slice(1).join(' ') || '';
 
   // Spread all server fields through so no data is lost (profile_image, notes, etc.)
-  const { status, full_name, ...rest } = row;
+  const { status, full_name, last_login_at, ...rest } = row;
   return {
     ...rest,
     first_name,
     last_name,
     full_name: full_name || `${first_name} ${last_name}`.trim(),
     is_active: status === 'active',
+    raw_status: status, // Preserve for admin UI (active/inactive/terminated)
+    last_login: last_login_at || rest.last_login, // Map DB column to User type field
   };
 }
 
@@ -192,7 +209,7 @@ function mapAuditRow(row: AuditRow): AuditEntry {
 // Constants
 // ============================================================
 
-type TabId = 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager';
+type TabId = 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'sessions' | 'training' | 'radio' | 'offline' | 'security' | 'branding';
 
 const LS_ADMIN_TAB = 'rmpg_admin_tab';
 
@@ -201,6 +218,7 @@ const LS_ADMIN_TAB = 'rmpg_admin_tab';
 // ============================================================
 
 export default function AdminPage() {
+  const isMobile = useIsMobile();
   // Ref to suppress LiveSync refresh while a client inline edit is pending save
   const clientEditPendingRef = useRef(false);
 
@@ -208,7 +226,7 @@ export default function AdminPage() {
   const [activeTab, setActiveTabState] = useState<TabId>(() => {
     try {
       const saved = localStorage.getItem(LS_ADMIN_TAB);
-      if (saved && ['users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager'].includes(saved)) return saved as TabId;
+      if (saved && ['users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'sessions', 'training', 'radio', 'offline', 'security', 'branding'].includes(saved)) return saved as TabId;
     } catch { /* ignore */ }
     return 'users';
   });
@@ -387,6 +405,9 @@ export default function AdminPage() {
         if (data.password) {
           body.password = data.password;
         }
+        if (data.status) {
+          body.status = data.status;
+        }
         const updated = await apiFetch(`/personnel/${editingUser.id}`, {
           method: 'PUT',
           body: JSON.stringify(body),
@@ -442,6 +463,18 @@ export default function AdminPage() {
       setError(err instanceof Error ? err.message : 'Failed to terminate user');
     } finally {
       setUserDeleteLoading(false);
+    }
+  };
+
+  const handleStatusChange = async (userId: string, newStatus: string) => {
+    try {
+      await apiFetch(`/personnel/${userId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: newStatus }),
+      });
+      await fetchUsers({ silent: true });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update user status');
     }
   };
 
@@ -545,17 +578,49 @@ export default function AdminPage() {
   // Render helpers
   // ============================================================
 
-  const tabs: { id: TabId; label: string; icon: React.ElementType }[] = [
-    { id: 'users', label: 'Users', icon: Users },
-    { id: 'clients', label: 'Clients', icon: Building2 },
-    { id: 'departments', label: 'Departments', icon: Network },
-    { id: 'system', label: 'System Config', icon: Cog },
-    { id: 'announcements', label: 'Announcements', icon: Megaphone },
-    { id: 'notif_rules', label: 'Alert Rules', icon: Zap },
-    { id: 'retention', label: 'Data Retention', icon: Archive },
-    { id: 'health', label: 'System Health', icon: Activity },
-    { id: 'servemanager', label: 'ServeManager', icon: Link2 },
-    { id: 'audit', label: 'Audit Log', icon: ScrollText },
+  const tabGroups: { category: string; tabs: { id: TabId; label: string; icon: React.ElementType }[] }[] = [
+    {
+      category: 'People & Access',
+      tabs: [
+        { id: 'users', label: 'Users', icon: Users },
+        { id: 'clients', label: 'Clients', icon: Building2 },
+        { id: 'departments', label: 'Departments', icon: Network },
+        { id: 'sessions', label: 'Sessions', icon: Shield },
+        { id: 'security', label: 'Security Policy', icon: Lock },
+      ],
+    },
+    {
+      category: 'System',
+      tabs: [
+        { id: 'system', label: 'System Config', icon: Cog },
+        { id: 'health', label: 'System Health', icon: Activity },
+        { id: 'branding', label: 'Branding & Reports', icon: Palette },
+        { id: 'retention', label: 'Data Retention', icon: Archive },
+        { id: 'offline', label: 'Offline Mode', icon: WifiOff },
+      ],
+    },
+    {
+      category: 'Communications',
+      tabs: [
+        { id: 'announcements', label: 'Announcements', icon: Megaphone },
+        { id: 'notif_rules', label: 'Alert Rules', icon: Zap },
+        { id: 'radio', label: 'Radio Config', icon: Radio },
+      ],
+    },
+    {
+      category: 'Integrations',
+      tabs: [
+        { id: 'servemanager', label: 'ServeManager', icon: Link2 },
+        { id: 'microbilt', label: 'Microbilt', icon: DatabaseZap },
+        { id: 'training', label: 'Training', icon: GraduationCap },
+      ],
+    },
+    {
+      category: 'Compliance',
+      tabs: [
+        { id: 'audit', label: 'Audit Log', icon: ScrollText },
+      ],
+    },
   ];
 
 
@@ -566,49 +631,99 @@ export default function AdminPage() {
   return (
     <div className="flex flex-col h-full animate-fade-in">
       {/* Portal Header */}
-      <div className="panel-beveled bg-surface-base overflow-hidden">
-        <div className="flex items-center gap-4 px-4 py-2.5 relative">
-          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #6e0a0a, #bc1010 30%, #bc1010 70%, #6e0a0a)' }} />
-          <RmpgLogo height={64} />
-          <div className="flex-1">
-            <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: '#d0d0d0' }}>System Administration</h1>
-            <p className="text-[9px] tracking-wide" style={{ color: '#484848' }}>Rocky Mountain Protective Group, LLC</p>
+      {!isMobile && (
+        <div className="panel-beveled bg-surface-base overflow-hidden">
+          <div className="flex items-center gap-4 px-4 py-2.5 relative">
+            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #6e0a0a, #bc1010 30%, #bc1010 70%, #6e0a0a)' }} />
+            <RmpgLogo height={64} />
+            <div className="flex-1">
+              <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: '#d0d0d0' }}>System Administration</h1>
+              <p className="text-[9px] tracking-wide" style={{ color: '#484848' }}>Rocky Mountain Protective Group, LLC</p>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Header */}
-      <PanelTitleBar title="ADMINISTRATION" icon={Settings}><PrintButton /></PanelTitleBar>
-      <div className="px-6 py-3 border-b border-rmpg-600">
-        {/* Tabs */}
-        <div className="flex gap-1">
-          {tabs.map((tab) => {
+      {!isMobile && <PanelTitleBar title="ADMINISTRATION" icon={Settings}><PrintButton /></PanelTitleBar>}
+
+      {/* Error banner */}
+      <ErrorBanner error={error} setError={setError} />
+
+      {/* Mobile: horizontal scroll tabs */}
+      {isMobile && (
+        <div
+          className="flex overflow-x-auto flex-shrink-0 gap-1 px-2 py-1.5"
+          style={{ background: '#141414', borderBottom: '1px solid #282828' }}
+        >
+          {tabGroups.flatMap(g => g.tabs).map((tab) => {
             const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
             return (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`
-                  flex items-center gap-2 px-4 py-2 text-xs font-medium transition-colors
-                  ${activeTab === tab.id
-                    ? 'bg-gray-700 text-white border border-rmpg-600 border-b-gray-700'
-                    : 'text-rmpg-300 hover:text-white hover:bg-rmpg-700/50'
-                  }
-                `}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold whitespace-nowrap shrink-0 transition-colors"
+                style={{
+                  color: isActive ? '#ffffff' : '#888888',
+                  background: isActive ? 'rgba(188, 16, 16, 0.15)' : 'transparent',
+                  border: isActive ? '1px solid rgba(188,16,16,0.4)' : '1px solid transparent',
+                }}
               >
-                <Icon className="w-4 h-4" />
+                <Icon style={{ width: 12, height: 12 }} className={isActive ? 'text-brand-400' : 'text-rmpg-600'} />
                 {tab.label}
               </button>
             );
           })}
         </div>
-      </div>
+      )}
 
-      {/* Error banner */}
-      <ErrorBanner error={error} setError={setError} />
+      {/* Sidebar + Content */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Desktop Sidebar */}
+        {!isMobile && (
+          <div
+            className="flex-shrink-0 overflow-y-auto py-2"
+            style={{
+              width: 200,
+              background: '#141414',
+              borderRight: '1px solid #282828',
+            }}
+          >
+            {tabGroups.map((group) => (
+              <div key={group.category} className="mb-1">
+                <div
+                  className="px-3 py-1.5 text-[8px] font-bold uppercase tracking-[0.15em]"
+                  style={{ color: '#585858' }}
+                >
+                  {group.category}
+                </div>
+                {group.tabs.map((tab) => {
+                  const Icon = tab.icon;
+                  const isActive = activeTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[11px] transition-colors"
+                      style={{
+                        color: isActive ? '#ffffff' : '#888888',
+                        background: isActive ? 'rgba(188, 16, 16, 0.12)' : 'transparent',
+                        borderLeft: isActive ? '2px solid #bc1010' : '2px solid transparent',
+                      }}
+                    >
+                      <Icon style={{ width: 13, height: 13 }} className={isActive ? 'text-brand-400' : 'text-rmpg-600'} />
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        )}
 
-      {/* Content */}
-      <div className="flex-1 overflow-auto">
+        {/* Content */}
+        <div className="flex-1 overflow-auto">
         {activeTab === 'users' && (
           <AdminUsersTab
             users={users}
@@ -622,6 +737,7 @@ export default function AdminPage() {
             openAddUser={openAddUser}
             openEditUser={openEditUser}
             openDeleteUser={openDeleteUser}
+            onStatusChange={handleStatusChange}
             LoadingSpinner={LoadingSpinner}
           />
         )}
@@ -705,6 +821,62 @@ export default function AdminPage() {
           />
         )}
 
+        {activeTab === 'microbilt' && (
+          <AdminMicrobiltTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
+        {activeTab === 'sessions' && (
+          <AdminSessionsTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
+        {activeTab === 'training' && (
+          <AdminTrainingTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
+        {activeTab === 'radio' && (
+          <AdminRadioTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
+        {activeTab === 'offline' && (
+          <AdminOfflineTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
+        {activeTab === 'security' && (
+          <AdminSecurityTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
+        {activeTab === 'branding' && (
+          <AdminBrandingTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
         {activeTab === 'audit' && (
           <AdminAuditTab
             auditLog={auditLog}
@@ -712,6 +884,7 @@ export default function AdminPage() {
             LoadingSpinner={LoadingSpinner}
           />
         )}
+      </div>
       </div>
 
       {/* ===================== Modals ===================== */}
@@ -724,7 +897,7 @@ export default function AdminPage() {
         }}
         onSubmit={handleUserSubmit}
         isSubmitting={userSubmitting}
-        editingUser={editingUser}
+        editingUser={editingUser ? { ...editingUser, status: (editingUser as any).raw_status || (editingUser.is_active ? 'active' : 'inactive') } : null}
       />
 
       <ClientFormModal

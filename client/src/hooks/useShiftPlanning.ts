@@ -113,7 +113,7 @@ export function useShiftPlanning() {
   const fetchPersonnel = useCallback(async () => {
     try {
       const [officerData, unitData] = await Promise.all([
-        apiFetch('/admin/users'),
+        apiFetch('/personnel'),
         apiFetch('/dispatch/units'),
       ]);
       const activeOfficers = (officerData as OfficerOption[]).filter(

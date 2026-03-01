@@ -4,7 +4,7 @@
 
 // --- Auth & Users ---
 
-export type UserRole = 'admin' | 'manager' | 'supervisor' | 'officer' | 'dispatcher';
+export type UserRole = 'admin' | 'manager' | 'supervisor' | 'officer' | 'dispatcher' | 'contract_manager';
 
 export interface User {
   id: string;
@@ -41,7 +41,12 @@ export interface User {
   notes?: string;
   profile_image?: string;
   last_password_change?: string;
+  must_change_password?: boolean;
   login_count?: number;
+  /** Unit call sign from the units table (e.g. "D-101") */
+  unit_call_sign?: string;
+  totp_enabled?: boolean;
+  requires_2fa_setup?: boolean;
   is_active: boolean;
   last_login?: string;
   created_at: string;
@@ -127,7 +132,8 @@ export type CallStatus =
   | 'cleared'
   | 'closed'
   | 'cancelled'
-  | 'archived';
+  | 'archived'
+  | 'on_hold';
 
 import type { IncidentType as _IncidentType } from '../utils/caseNumbers';
 export type IncidentType = _IncidentType;
@@ -209,6 +215,9 @@ export interface CallForService {
   responding_officer?: string;
   secondary_type?: string;
   contact_method?: string;
+  // Mileage
+  starting_mileage?: number;
+  ending_mileage?: number;
   // Timestamps
   created_at: string;
   dispatched_at?: string;
@@ -217,6 +226,7 @@ export interface CallForService {
   cleared_at?: string;
   closed_at?: string;
   archived_at?: string;
+  previous_status?: CallStatus;
   created_by: string;
   updated_at: string;
 }
@@ -587,6 +597,52 @@ export interface TrainingRequirement {
   is_mandatory: boolean;
   description?: string;
   created_at: string;
+}
+
+// --- Body Camera ---
+
+export type CameraStatus = 'available' | 'assigned' | 'maintenance' | 'retired' | 'lost';
+export type VideoClassification = 'routine' | 'evidence' | 'flagged' | 'restricted';
+export type VideoRetention = 'active' | 'archived' | 'pending_deletion';
+
+export interface BodyCamera {
+  id: number;
+  officer_id: number;
+  camera_id: string;
+  make: string;
+  model: string;
+  firmware_version: string;
+  storage_capacity_gb: number;
+  status: CameraStatus;
+  condition: string;
+  assigned_at: string;
+  returned_at: string;
+  notes: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  officer_name?: string;
+}
+
+export interface BodyCamVideo {
+  id: number;
+  camera_id: number;
+  officer_id: number;
+  title: string;
+  file_path: string;
+  file_size: number;
+  duration_seconds: number;
+  mime_type: string;
+  recorded_at: string;
+  case_number: string;
+  classification: VideoClassification;
+  retention_status: VideoRetention;
+  notes: string;
+  uploaded_by: string;
+  created_at: string;
+  updated_at: string;
+  officer_name?: string;
+  camera_serial?: string;
 }
 
 // --- Equipment ---
@@ -1141,6 +1197,18 @@ export type WSMessageType =
   | 'radio_channel_join'
   | 'radio_channel_leave'
   | 'radio_channel_state'
+  // Private calls — full-duplex 1:1 voice
+  | 'private_call_request'
+  | 'private_call_ringing'
+  | 'private_call_incoming'
+  | 'private_call_accept'
+  | 'private_call_decline'
+  | 'private_call_declined'
+  | 'private_call_connected'
+  | 'private_call_end'
+  | 'private_call_ended'
+  | 'private_call_audio'
+  | 'private_call_error'
   // Presence
   | 'presence_update';
 
@@ -1382,6 +1450,336 @@ export interface NotificationRule {
   is_active: boolean;
   created_by: number;
   created_by_name?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// ── Field Interview (FI) Cards ──────────────────────────
+
+export type FIContactReason = 'suspicious_activity' | 'traffic_stop' | 'trespass' | 'welfare_check' | 'investigation' | 'other';
+export type FIContactType = 'field' | 'traffic' | 'foot' | 'phone';
+export type FIActionTaken = 'warned' | 'cited' | 'arrested' | 'released' | 'referred' | 'none';
+
+export interface FieldInterview {
+  id: number;
+  fi_number: string;
+  person_id?: number;
+  subject_first_name?: string;
+  subject_last_name?: string;
+  subject_dob?: string;
+  subject_gender?: string;
+  subject_race?: string;
+  subject_height?: string;
+  subject_weight?: string;
+  subject_hair?: string;
+  subject_eye?: string;
+  subject_clothing?: string;
+  subject_description?: string;
+  location: string;
+  latitude?: number;
+  longitude?: number;
+  property_id?: number;
+  contact_reason: FIContactReason;
+  contact_type: FIContactType;
+  action_taken: FIActionTaken;
+  narrative?: string;
+  vehicle_plate?: string;
+  vehicle_description?: string;
+  vehicle_id?: number;
+  associated_call_id?: string;
+  associated_incident_id?: string;
+  officer_id: number;
+  officer_name?: string;
+  officer_display_name?: string;
+  linked_person_first?: string;
+  linked_person_last?: string;
+  status: 'active' | 'archived';
+  created_at: string;
+  archived_at?: string;
+}
+
+// ── Trespass / Exclusion Orders ─────────────────────────
+
+export type TrespassOrderType = 'trespass_warning' | 'exclusion_order' | 'ban' | 'no_contact';
+export type TrespassOrderStatus = 'active' | 'served' | 'expired' | 'lifted' | 'violated';
+
+export interface TrespassOrder {
+  id: number;
+  order_number: string;
+  person_id?: number;
+  subject_first_name: string;
+  subject_last_name: string;
+  subject_dob?: string;
+  subject_description?: string;
+  property_id?: number;
+  property_name?: string;
+  location: string;
+  order_type: TrespassOrderType;
+  status: TrespassOrderStatus;
+  reason?: string;
+  conditions?: string;
+  duration_days?: number;
+  effective_date?: string;
+  expiration_date?: string;
+  served_at?: string;
+  served_by?: number;
+  served_by_name?: string;
+  originating_call_id?: string;
+  originating_incident_id?: string;
+  issued_by: number;
+  issued_by_name?: string;
+  issued_by_display?: string;
+  authorized_by?: string;
+  linked_person_first?: string;
+  linked_person_last?: string;
+  linked_property_name?: string;
+  notes?: string;
+  archived_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// --- Evidence Property Room ---
+
+export type EvidenceAction = 'check_in' | 'check_out' | 'transfer' | 'lab_submit' | 'release' | 'dispose';
+
+export interface EvidenceChainEntry {
+  action: EvidenceAction;
+  timestamp: string;
+  user_id: number;
+  user_name: string;
+  from_location?: string;
+  to_location?: string;
+  notes?: string;
+}
+
+// --- Case Management ---
+
+export type CaseStatus = 'open' | 'assigned' | 'active' | 'suspended' | 'closed_cleared' | 'closed_unfounded' | 'closed_exception';
+export type CaseType = 'general' | 'theft' | 'assault' | 'fraud' | 'narcotics' | 'missing_person' | 'other';
+export type CasePriority = 'low' | 'normal' | 'high' | 'critical';
+export type CaseNoteType = 'general' | 'lead' | 'interview' | 'evidence' | 'followup';
+
+export interface SolvabilityFactors {
+  witness_available?: boolean;
+  physical_evidence?: boolean;
+  suspect_named?: boolean;
+  suspect_described?: boolean;
+  suspect_vehicle?: boolean;
+  video_available?: boolean;
+  traceable_property?: boolean;
+  significant_modus?: boolean;
+}
+
+export interface Case {
+  id: number;
+  case_number: string;
+  title: string;
+  case_type: CaseType;
+  status: CaseStatus;
+  priority: CasePriority;
+  lead_investigator_id?: number;
+  lead_investigator_name?: string;
+  assigned_officers: string; // JSON array
+  assigned_at?: string;
+  solvability_score: number;
+  solvability_factors: string; // JSON
+  linked_incidents: string;
+  linked_citations: string;
+  linked_evidence: string;
+  linked_persons: string;
+  linked_field_interviews: string;
+  summary?: string;
+  narrative?: string;
+  disposition?: string;
+  disposition_date?: string;
+  opened_date: string;
+  due_date?: string;
+  closed_date?: string;
+  created_by: number;
+  created_at: string;
+  updated_at: string;
+  archived_at?: string;
+}
+
+export interface CaseNote {
+  id: number;
+  case_id: number;
+  author_id: number;
+  author_name?: string;
+  note_type: CaseNoteType;
+  content: string;
+  is_pinned: boolean;
+  created_at: string;
+}
+
+// --- Code Enforcement ---
+
+export type ViolationType = 'noise' | 'property_maintenance' | 'zoning' | 'signage' | 'health' | 'fire' | 'nuisance' | 'other';
+export type ViolationStatus = 'open' | 'notice_sent' | 'reinspection' | 'resolved' | 'referred' | 'voided';
+export type ViolationSeverity = 'minor' | 'moderate' | 'major' | 'critical';
+
+export interface CodeViolation {
+  id: number;
+  violation_number: string;
+  violation_type: ViolationType;
+  status: ViolationStatus;
+  location: string;
+  property_id?: number;
+  latitude?: number;
+  longitude?: number;
+  person_id?: number;
+  violator_name?: string;
+  violator_contact?: string;
+  description: string;
+  code_section?: string;
+  severity: ViolationSeverity;
+  compliance_deadline?: string;
+  resolved_date?: string;
+  resolution_notes?: string;
+  fine_amount: number;
+  reporting_officer_id: number;
+  reporting_officer_name?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type TowStatus = 'ordered' | 'dispatched' | 'in_progress' | 'completed' | 'released' | 'cancelled';
+export type TowReason = 'parking_violation' | 'abandoned' | 'evidence' | 'accident' | 'stolen_recovery' | 'private_property' | 'other';
+
+export interface VehicleTow {
+  id: number;
+  tow_number: string;
+  status: TowStatus;
+  vehicle_plate?: string;
+  vehicle_state?: string;
+  vehicle_vin?: string;
+  vehicle_year?: string;
+  vehicle_make?: string;
+  vehicle_model?: string;
+  vehicle_color?: string;
+  vehicle_id?: number;
+  tow_from: string;
+  tow_to?: string;
+  latitude?: number;
+  longitude?: number;
+  tow_reason: TowReason;
+  authorization?: string;
+  tow_company?: string;
+  tow_driver?: string;
+  tow_company_phone?: string;
+  call_id?: string;
+  citation_id?: number;
+  incident_id?: number;
+  ordered_at: string;
+  dispatched_at?: string;
+  completed_at?: string;
+  released_at?: string;
+  released_to?: string;
+  tow_fee: number;
+  storage_fee_daily: number;
+  officer_id: number;
+  officer_name?: string;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// --- Court & Legal Tracker ---
+
+export type CourtEventType = 'arraignment' | 'hearing' | 'trial' | 'sentencing' | 'motion' | 'subpoena' | 'continuance' | 'disposition';
+export type CourtEventStatus = 'scheduled' | 'continued' | 'completed' | 'cancelled' | 'missed';
+export type CourtOutcome = 'guilty' | 'not_guilty' | 'dismissed' | 'plea_deal' | 'deferred' | 'continued' | 'warrant_issued';
+
+export interface CourtEvent {
+  id: number;
+  event_number: string;
+  event_type: CourtEventType;
+  status: CourtEventStatus;
+  event_date: string;
+  event_time?: string;
+  court_name?: string;
+  courtroom?: string;
+  judge_name?: string;
+  court_case_number?: string;
+  citation_id?: number;
+  incident_id?: number;
+  case_id?: number;
+  defendant_person_id?: number;
+  defendant_name?: string;
+  prosecutor?: string;
+  defense_attorney?: string;
+  officers_required: string; // JSON array
+  outcome?: CourtOutcome;
+  sentence?: string;
+  fine_amount?: number;
+  notes?: string;
+  created_by: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// --- Daily Activity Reports ---
+
+export type DARStatus = 'draft' | 'submitted' | 'approved' | 'returned' | 'archived';
+
+export interface DailyActivityReport {
+  id: number;
+  dar_number: string;
+  status: DARStatus;
+  officer_id: number;
+  officer_name?: string;
+  shift_date: string;
+  shift_start?: string;
+  shift_end?: string;
+  property_id?: number;
+  property_name?: string;
+  post_assignment?: string;
+  calls_handled: string; // JSON
+  incidents_created: string; // JSON
+  citations_issued: string; // JSON
+  patrols_completed: string; // JSON
+  activities_narrative?: string;
+  notable_events?: string;
+  equipment_issues?: string;
+  safety_concerns?: string;
+  recommendations?: string;
+  reviewed_by?: number;
+  reviewed_by_name?: string;
+  reviewed_at?: string;
+  review_notes?: string;
+  created_at: string;
+  updated_at: string;
+  submitted_at?: string;
+}
+
+// --- Known Offender Registry ---
+
+export type OffenderAlertType = 'ban_zone' | 'watch_list' | 'sex_offender' | 'gang_member' | 'probation' | 'parole' | 'mental_health' | 'violent_history' | 'warrant_flag';
+export type AlertSeverity = 'info' | 'caution' | 'warning' | 'danger';
+export type OffenderAlertStatus = 'active' | 'expired' | 'cleared';
+
+export interface OffenderAlert {
+  id: number;
+  person_id: number;
+  person_name?: string; // joined from persons
+  dob?: string; // joined from persons
+  is_sex_offender?: boolean; // joined from persons
+  gang_affiliation?: string; // joined from persons
+  alert_type: OffenderAlertType;
+  status: OffenderAlertStatus;
+  description: string;
+  severity: AlertSeverity;
+  restricted_properties: string; // JSON
+  restricted_zones: string; // JSON
+  restriction_radius_ft?: number;
+  effective_date: string;
+  expiration_date?: string;
+  source_incident_id?: number;
+  source_citation_id?: number;
+  source_case_id?: number;
+  created_by: number;
+  notes?: string;
   created_at: string;
   updated_at: string;
 }

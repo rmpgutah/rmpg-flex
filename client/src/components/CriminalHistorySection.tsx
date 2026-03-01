@@ -18,6 +18,7 @@ import {
   Gavel,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { toDisplayLabel } from '../utils/formatters';
 
 // ── Types ──────────────────────────────────────────
 
@@ -449,7 +450,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                           OFFENSE_LEVEL_CLASSES[rec.offense_level] || OFFENSE_LEVEL_CLASSES.unknown
                         }`}
                       >
-                        {rec.offense_level}
+                        {toDisplayLabel(rec.offense_level)}
                       </span>
                     )}
                     <span className="text-white font-semibold text-[11px] flex-1">{rec.offense}</span>

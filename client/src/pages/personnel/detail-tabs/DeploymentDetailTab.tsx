@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import type { Deployment } from '../../../types';
 import { DEPLOYMENT_STATUS_COLORS } from '../utils/personnelConstants';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 interface Props {
   deployments: Deployment[];
@@ -134,7 +135,7 @@ export default function DeploymentDetailTab({ deployments, loading, onAddDeploym
                 <span className={`inline-block px-1.5 py-0.5 text-[9px] font-bold uppercase ${
                   DEPLOYMENT_STATUS_COLORS[dep.status] || DEPLOYMENT_STATUS_COLORS.completed
                 }`}>
-                  {dep.status}
+                  {toDisplayLabel(dep.status)}
                 </span>
               </div>
               <div className="grid grid-cols-3 gap-x-4 gap-y-1">

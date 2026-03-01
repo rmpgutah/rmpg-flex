@@ -18,17 +18,32 @@ import {
   Car,
   AlertTriangle,
   FileWarning,
+  Video,
+  ClipboardList,
+  ShieldBan,
+  Monitor,
   User,
   Lock,
   ChevronDown,
   Shield,
   Menu,
   X,
+  Calendar,
+  Briefcase,
+  Package,
+  TrendingUp,
+  Landmark,
+  Construction,
+  Truck,
+  ClipboardCheck,
+  UserX,
+  Gavel,
+  Terminal,
 } from 'lucide-react';
 import { Navigation2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useWebSocket } from '../context/WebSocketContext';
-import { apiFetch } from '../hooks/useApi';
+import { apiFetch, OfflineUnauthorizedError } from '../hooks/useApi';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { usePresence } from '../hooks/usePresence';
 import RmpgLogo from './RmpgLogo';
@@ -39,10 +54,15 @@ import NotificationCenter from './NotificationCenter';
 import PanicButton from './PanicButton';
 import UserProfileModal from './UserProfileModal';
 import UpdateBanner from './UpdateBanner';
+import OfflineStatusBar from './OfflineStatusBar';
+import PinEntryModal from './PinEntryModal';
+import ForcePasswordChangeModal from './ForcePasswordChangeModal';
+import Force2FASetupModal from './Force2FASetupModal';
 import MobileHeader from './mobile/MobileHeader';
 import MobileDrawer from './mobile/MobileDrawer';
 import { useIsMobile } from '../hooks/useIsMobile';
-// LocationGate removed — GPS tracking runs silently per employment agreement
+import { toDisplayLabel } from '../utils/formatters';
+import LocationGate from './LocationGate';
 
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Dashboard',
@@ -57,6 +77,21 @@ const PAGE_TITLES: Record<string, string> = {
   '/fleet': 'Fleet',
   '/warrants': 'Warrants',
   '/citations': 'Citations',
+  '/field-interviews': 'Field Interviews',
+  '/trespass-orders': 'Trespass Orders',
+  '/mdt': 'MDT',
+  '/ncic': 'NCIC Terminal',
+  '/shift-plans': 'Shift Plans',
+  '/statute-analytics': 'Statute Analytics',
+  '/reports/custom': 'Report Builder',
+  '/criminal-history': 'Criminal History',
+  '/evidence': 'Evidence / Property',
+  '/cases': 'Case Management',
+  '/crime-analysis': 'Crime Analysis',
+  '/code-enforcement': 'Code Enforcement',
+  '/court': 'Court Tracker',
+  '/dar': 'Daily Activity Reports',
+  '/offender-registry': 'Offender Registry',
   '/reports': 'Reports',
   '/audit': 'Audit Log',
   '/admin': 'Admin',
@@ -77,25 +112,52 @@ const TOOLBAR_NAV: NavItem[] = [
   { path: '/', icon: LayoutDashboard, label: 'Dashboard', group: 'ops' },
   { path: '/dispatch', icon: Radio, label: 'Dispatch', group: 'ops' },
   { path: '/map', icon: Map, label: 'Map', group: 'ops' },
+  { path: '/mdt', icon: Monitor, label: 'MDT', group: 'ops' },
+  { path: '/ncic', icon: Terminal, label: 'NCIC', group: 'ops' },
   { path: '/records', icon: Database, label: 'Records', group: 'records', children: [
     { path: '/incidents', icon: FileText, label: 'Incidents' },
     { path: '/records', icon: Database, label: 'Records' },
+    { path: '/field-interviews', icon: ClipboardList, label: 'Field Interviews' },
+    { path: '/criminal-history', icon: Search, label: 'Criminal History' },
+    { path: '/evidence', icon: Package, label: 'Evidence / Property' },
+    { path: '/cases', icon: Briefcase, label: 'Case Management' },
+  ]},
+  { path: '/warrants', icon: AlertTriangle, label: 'Enforcement', group: 'records', children: [
     { path: '/warrants', icon: AlertTriangle, label: 'Warrants' },
     { path: '/citations', icon: FileWarning, label: 'Citations' },
+    { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders' },
+    { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement' },
+    { path: '/court', icon: Gavel, label: 'Court Tracker' },
+    { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
   ]},
   { path: '/personnel', icon: Users, label: 'Personnel', group: 'records', children: [
     { path: '/personnel', icon: Users, label: 'Personnel' },
     { path: '/fleet', icon: Car, label: 'Fleet' },
+    { path: '/body-cameras', icon: Video, label: 'Body Cameras' },
   ]},
   { path: '/communications', icon: MessageSquare, label: 'Comms', group: 'comms', children: [
     { path: '/communications', icon: MessageSquare, label: 'Comms' },
     { path: '/radio', icon: Radio, label: 'Radio' },
     { path: '/patrol', icon: QrCode, label: 'Patrol' },
   ]},
-  { path: '/reports', icon: BarChart3, label: 'Reports', group: 'analysis' },
+  { path: '/reports', icon: BarChart3, label: 'Reports', group: 'analysis', children: [
+    { path: '/reports', icon: BarChart3, label: 'Reports' },
+    { path: '/shift-plans', icon: Calendar, label: 'Shift Plans' },
+    { path: '/statute-analytics', icon: BarChart3, label: 'Statute Analytics' },
+    { path: '/reports/custom', icon: Database, label: 'Report Builder' },
+    { path: '/crime-analysis', icon: TrendingUp, label: 'Crime Analysis' },
+    { path: '/dar', icon: ClipboardCheck, label: 'Daily Activity' },
+  ]},
   { path: '/audit', icon: ScrollText, label: 'Audit', group: 'system', adminOnly: true },
   { path: '/admin', icon: Settings, label: 'Admin', group: 'system', adminOnly: true },
 ];
+
+// Paths that contract_manager role is NOT allowed to see
+const CONTRACT_MANAGER_BLOCKED_PATHS = new Set([
+  '/admin', '/audit', '/personnel', '/fleet', '/ncic',
+  '/radio', '/patrol', '/shift-plans', '/statute-analytics',
+  '/reports/custom', '/crime-analysis', '/dar',
+]);
 
 export default function Layout() {
   const { user, logout, refreshUser } = useAuth();
@@ -106,7 +168,71 @@ export default function Layout() {
   const gps = useGpsTracking();
   const presence = usePresence();
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
+  const isContractManager = user?.role === 'contract_manager';
   const pageTitle = PAGE_TITLES[location.pathname] || 'Dashboard';
+
+  // ── Offline PIN Modal (global catch for OfflineUnauthorizedError) ──
+  const [offlinePinModalOpen, setOfflinePinModalOpen] = useState(false);
+
+  useEffect(() => {
+    // Listen for unhandled OfflineUnauthorizedError rejections
+    const handler = (event: PromiseRejectionEvent) => {
+      if (event.reason instanceof OfflineUnauthorizedError) {
+        event.preventDefault(); // suppress console error
+        setOfflinePinModalOpen(true);
+      }
+    };
+    window.addEventListener('unhandledrejection', handler);
+    return () => window.removeEventListener('unhandledrejection', handler);
+  }, []);
+
+  // ── Mandatory Name Setup ──────────────────────────────────
+  // If user has no first_name or last_name, force a one-time setup prompt.
+  // The prompt cannot be dismissed until both fields are filled.
+  // A ref prevents race conditions where React re-renders re-open the modal.
+  const [nameSetupOpen, setNameSetupOpen] = useState(false);
+  const [setupFirstName, setSetupFirstName] = useState('');
+  const [setupLastName, setSetupLastName] = useState('');
+  const [setupSaving, setSetupSaving] = useState(false);
+  const [setupError, setSetupError] = useState('');
+  const nameSetupDone = useRef(false);
+
+  useEffect(() => {
+    if (!user || nameSetupDone.current) return;
+    if (!user.first_name?.trim() || !user.last_name?.trim()) {
+      setNameSetupOpen(true);
+      setSetupFirstName(user.first_name || '');
+      setSetupLastName(user.last_name || '');
+    } else {
+      setNameSetupOpen(false);
+    }
+  }, [user]);
+
+  const handleNameSetupSave = async () => {
+    const fn = setupFirstName.trim();
+    const ln = setupLastName.trim();
+    if (!fn || !ln) {
+      setSetupError('Both first and last name are required.');
+      return;
+    }
+    setSetupSaving(true);
+    setSetupError('');
+    try {
+      await apiFetch('/auth/profile', {
+        method: 'PUT',
+        body: JSON.stringify({ first_name: fn, last_name: ln }),
+      });
+      // Mark as done BEFORE refreshUser to prevent the useEffect from re-opening
+      nameSetupDone.current = true;
+      setNameSetupOpen(false);
+      // Fire-and-forget — don't await so the modal closes immediately
+      refreshUser();
+    } catch (err: any) {
+      setSetupError(err.message || 'Failed to save. Try again.');
+    } finally {
+      setSetupSaving(false);
+    }
+  };
 
   // Live header stats
   const [activeCallCount, setActiveCallCount] = useState(0);
@@ -208,7 +334,75 @@ export default function Layout() {
       {/* Auto-Update Banner (Electron only) */}
       {isElectron && <UpdateBanner />}
 
+      {/* Offline Status Bar (Electron only — shows when offline or syncing) */}
+      {isElectron && <OfflineStatusBar />}
+
       {/* GPS tracking runs silently — no blocking gate */}
+
+      {/* ============================================================ */}
+      {/* MANDATORY NAME SETUP — blocks UI until first/last name set   */}
+      {/* ============================================================ */}
+      {nameSetupOpen && (
+        <div
+          className="fixed inset-0 flex items-center justify-center"
+          style={{ background: 'rgba(0,0,0,0.85)', zIndex: 99999, WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+        >
+          <div
+            className="w-full max-w-sm mx-4 p-6 space-y-4"
+            style={{
+              background: '#1a1a1a',
+              border: '1px solid #303030',
+              borderTop: '3px solid #bc1010',
+              WebkitAppRegion: 'no-drag',
+            } as React.CSSProperties}
+          >
+            <div className="text-center space-y-1">
+              <div className="text-lg font-bold text-white">Operator Identification Required</div>
+              <div className="text-xs text-gray-400">
+                Enter your name to continue. This will appear in the OPR system and all reports.
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="field-label">First Name <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  value={setupFirstName}
+                  onChange={e => setSetupFirstName(e.target.value)}
+                  className="input-dark"
+                  placeholder="First"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="field-label">Last Name <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  value={setupLastName}
+                  onChange={e => setSetupLastName(e.target.value)}
+                  className="input-dark"
+                  placeholder="Last"
+                />
+              </div>
+            </div>
+
+            {setupError && (
+              <div className="text-xs text-red-400 bg-red-900/20 border border-red-800/40 px-3 py-2">
+                {setupError}
+              </div>
+            )}
+
+            <button
+              onClick={handleNameSetupSave}
+              disabled={setupSaving || !setupFirstName.trim() || !setupLastName.trim()}
+              className="btn-primary w-full justify-center"
+            >
+              {setupSaving ? 'Saving...' : 'Continue'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ============================================================ */}
       {/* MOBILE: Compact 48px header + polished slide-in drawer       */}
@@ -313,10 +507,12 @@ export default function Layout() {
                 {/* Name + Badge */}
                 <div className="text-left">
                   <div className="text-[11px] font-bold text-white leading-tight">
-                    {user?.last_name?.toUpperCase() || '---'}
+                    {user?.first_name && user?.last_name
+                      ? `${user.last_name.toUpperCase()}, ${user.first_name}`
+                      : user?.last_name?.toUpperCase() || user?.first_name?.toUpperCase() || '---'}
                   </div>
                   <div className="text-[9px] font-mono leading-tight text-rmpg-500">
-                    {user?.badge_number || user?.role?.toUpperCase() || '---'}
+                    {user?.badge_number ? `#${user.badge_number}` : toDisplayLabel(user?.role || '---').toUpperCase()}
                   </div>
                 </div>
 
@@ -352,7 +548,7 @@ export default function Layout() {
                         </span>
                       )}
                       <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 bg-brand-900/20 text-brand-300 border border-brand-800/40">
-                        {user?.role}
+                        {toDisplayLabel(user?.role || '')}
                       </span>
                     </div>
                   </div>
@@ -390,6 +586,26 @@ export default function Layout() {
         </div>
       )}
 
+      {/* Contract Manager Banner */}
+      {isContractManager && (
+        <div
+          className="flex items-center justify-center gap-2 px-4"
+          style={{
+            height: '22px',
+            background: 'linear-gradient(90deg, #1a1a1a, #1e2a1e, #1a1a1a)',
+            borderBottom: '1px solid #2a3a2a',
+            flexShrink: 0,
+          }}
+        >
+          <span className="text-[9px] font-bold uppercase tracking-widest text-green-500">
+            Contract Manager View — ICU Investigations
+          </span>
+          <span className="text-[8px] font-mono px-1.5 py-0.5 bg-amber-900/30 text-amber-400 border border-amber-800/40">
+            DEMO DATA
+          </span>
+        </div>
+      )}
+
       {/* ============================================================ */}
       {/* TOOLBAR ROW 1 — Menu Bar (Spillman Flex style) HIDDEN ON MOBILE */}
       {/* ============================================================ */}
@@ -412,10 +628,10 @@ export default function Layout() {
           onRefreshData={fetchHeaderStats}
         />
 
-        {/* Right side — Operator info */}
+        {/* Right side — Operator info (persists name + badge from user profile) */}
         <div className="flex items-center gap-2 text-[10px] font-mono text-rmpg-400">
           <span>
-            OPR: {user?.badge_number || '---'} {user?.last_name?.toUpperCase() || '---'} | {user?.role?.toUpperCase() || '---'}
+            OPR: {user?.badge_number ? `#${user.badge_number}` : '---'} {user?.last_name?.toUpperCase() || '---'}, {user?.first_name || '---'} | {toDisplayLabel(user?.role || '---').toUpperCase()}
           </span>
         </div>
       </div>
@@ -430,11 +646,16 @@ export default function Layout() {
           background: 'linear-gradient(180deg, #2a2a2a 0%, #1e1e1e 100%)',
           borderBottom: '1px solid #303030',
           flexShrink: 0,
+          overflow: 'visible',
         }}
       >
         {/* Left — Nav toolbar buttons (with dropdown groups) */}
-        <div className="flex items-center gap-0">
-          {TOOLBAR_NAV.filter(item => !item.adminOnly || isAdmin).map((item, idx, filtered) => {
+        <div className="flex items-center gap-0 flex-shrink-0">
+          {TOOLBAR_NAV.filter(item => {
+            if (item.adminOnly && !isAdmin) return false;
+            if (isContractManager && CONTRACT_MANAGER_BLOCKED_PATHS.has(item.path)) return false;
+            return true;
+          }).map((item, idx, filtered) => {
             const Icon = item.icon;
             const prevGroup = idx > 0 ? filtered[idx - 1].group : item.group;
             const showSep = idx > 0 && item.group !== prevGroup;
@@ -478,7 +699,11 @@ export default function Layout() {
                           marginTop: 1,
                         }}
                       >
-                        {item.children!.filter(c => !c.adminOnly || isAdmin).map((child) => {
+                        {item.children!.filter(c => {
+                          if (c.adminOnly && !isAdmin) return false;
+                          if (isContractManager && CONTRACT_MANAGER_BLOCKED_PATHS.has(c.path)) return false;
+                          return true;
+                        }).map((child) => {
                           const ChildIcon = child.icon;
                           const childActive = location.pathname.startsWith(child.path);
                           return (
@@ -520,8 +745,8 @@ export default function Layout() {
           })}
         </div>
 
-        {/* Middle — Status indicators */}
-        <div className="flex items-center gap-2">
+        {/* Middle — Status indicators (scrollable on narrow screens) */}
+        <div className="flex items-center gap-1 lg:gap-2 flex-1 min-w-0 overflow-x-auto mx-2" style={{ scrollbarWidth: 'none' }}>
           {/* Active Calls */}
           <button
             onClick={() => navigate('/dispatch')}
@@ -614,8 +839,16 @@ export default function Layout() {
         </div>
       </div>
 
+      {/* Mandatory Location Gate — blocks app if GPS permission denied */}
+      <LocationGate
+        permissionDenied={gps.permissionDenied}
+        permissionPending={gps.permissionPending}
+        error={gps.error}
+        onRetry={gps.startTracking}
+      />
+
       {/* Page Content (recessed panel — charcoal bg matching borders) */}
-      <main className="flex-1 overflow-auto panel-inset" style={{ background: '#1e1e1e' }}>
+      <main className="flex-1 overflow-auto min-h-0 panel-inset" style={{ background: '#1e1e1e' }}>
         <ErrorBoundary>
           <Outlet />
         </ErrorBoundary>
@@ -641,6 +874,18 @@ export default function Layout() {
         onClose={() => setProfileModalOpen(false)}
         initialTab={profileModalTab}
       />
+
+      {/* Offline PIN Entry Modal — triggered globally when an offline write needs authorization */}
+      <PinEntryModal
+        isOpen={offlinePinModalOpen}
+        onClose={() => setOfflinePinModalOpen(false)}
+      />
+
+      {/* Force Password Change Modal — blocks UI until password changed */}
+      <ForcePasswordChangeModal />
+
+      {/* Force 2FA Setup Modal — blocks UI until 2FA is enabled */}
+      <Force2FASetupModal />
     </div>
   );
 }

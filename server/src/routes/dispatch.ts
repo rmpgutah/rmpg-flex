@@ -5,7 +5,8 @@ import { broadcastDispatchUpdate, broadcastUnitUpdate, broadcastPanic } from '..
 import { generateIncidentNumber, generateCallNumber } from '../utils/caseNumbers';
 import { sendCsv } from '../utils/csvExport';
 import { localNow } from '../utils/timeUtils';
-import { geocodeCallIfNeeded, reverseGeocodeAddress } from '../utils/geocode';
+import { geocodeCallIfNeeded, reverseGeocodeAddress, reverseGeocodeDetailed } from '../utils/geocode';
+import { identifyBeat } from '../utils/geofence';
 
 const router = Router();
 
@@ -142,6 +143,36 @@ router.post('/calls', (req: Request, res: Response) => {
       if (prop) resolvedClientId = prop.client_id;
     }
 
+    // ── Auto-fill Beat / Zone / Sector from GPS coordinates + 3-Tier dispatch districts ──
+    let autoZoneBeat = zone_beat || null;
+    let autoSectionId = section_id || null;
+    let autoZoneId = zone_id || null;
+    let autoBeatId = beat_id || null;
+    if (latitude && longitude) {
+      try {
+        const beat = identifyBeat(Number(latitude), Number(longitude));
+        if (beat) {
+          if (!autoZoneBeat) autoZoneBeat = beat.beat_code;
+
+          // Look up 3-tier dispatch district for richer naming
+          const district = db.prepare(
+            'SELECT * FROM dispatch_districts WHERE zone_id = ? AND beat_id = ?'
+          ).get(beat.city_code, beat.district_letter) as any;
+
+          if (district) {
+            if (!autoSectionId) autoSectionId = district.section_id;
+            if (!autoZoneId) autoZoneId = district.zone_name;
+            if (!autoBeatId) autoBeatId = `${district.beat_name} — ${district.beat_descriptor}`;
+          } else {
+            // Fallback to raw geofence data
+            if (!autoBeatId) autoBeatId = beat.beat_id;
+            if (!autoZoneId) autoZoneId = `${beat.city} ${beat.district_letter}${beat.beat_number}`;
+            if (!autoSectionId) autoSectionId = beat.district_letter;
+          }
+        }
+      } catch { /* geofence not configured, skip */ }
+    }
+
     const result = db.prepare(`
       INSERT INTO calls_for_service (call_number, incident_type, priority, status, caller_name, caller_phone,
         caller_relationship, caller_address, location_address, property_id, latitude, longitude, description, notes, source, dispatcher_id,
@@ -163,8 +194,8 @@ router.post('/calls', (req: Request, res: Response) => {
       caller_relationship || null, caller_address || null, location_address, property_id || null,
       latitude || null, longitude || null, description || null, notes || null,
       source || 'phone', req.user!.userId,
-      cross_street || null, location_building || null, location_floor || null, location_room || null, zone_beat || null,
-      section_id || null, zone_id || null, beat_id || null,
+      cross_street || null, location_building || null, location_floor || null, location_room || null, autoZoneBeat,
+      autoSectionId, autoZoneId, autoBeatId,
       weapons_involved || null, injuries_reported ? 1 : 0, num_subjects || null, num_victims || null,
       subject_description || null, vehicle_description || null, direction_of_travel || null,
       scene_safety || null, weather_conditions || null, lighting_conditions || null,
@@ -255,6 +286,36 @@ router.get('/calls/export', (req: Request, res: Response) => {
   }
 });
 
+// GET /api/dispatch/calls/check-duplicate - Check for active calls at same/similar address
+router.get('/calls/check-duplicate', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { address } = req.query;
+    if (!address || typeof address !== 'string' || address.length < 3) {
+      res.json({ duplicates: [], count: 0 });
+      return;
+    }
+
+    // Normalize: uppercase, strip extra spaces, trim
+    const normalized = (address as string).toUpperCase().replace(/\s+/g, ' ').trim();
+
+    // Find active calls (not cleared/closed/cancelled/archived) at the same address
+    const duplicates = db.prepare(`
+      SELECT id, call_number, incident_type, priority, status, location_address, created_at
+      FROM calls_for_service
+      WHERE status NOT IN ('cleared','closed','cancelled','archived')
+        AND UPPER(REPLACE(location_address, '  ', ' ')) LIKE ?
+      ORDER BY created_at DESC
+      LIMIT 5
+    `).all(`%${normalized}%`) as any[];
+
+    res.json({ duplicates, count: duplicates.length });
+  } catch (error: any) {
+    console.error('Duplicate check error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // GET /api/dispatch/calls/:id - Get single call with details
 router.get('/calls/:id', (req: Request, res: Response) => {
   try {
@@ -339,6 +400,7 @@ router.put('/calls/:id', (req: Request, res: Response) => {
       num_victims, alcohol_involved, drugs_involved, domestic_violence,
       supervisor_notified, le_notified, le_agency, le_case_number,
       damage_estimate, damage_description, action_taken,
+      starting_mileage, ending_mileage,
       client_id: updateClientId,
     } = req.body;
 
@@ -347,6 +409,56 @@ router.put('/calls/:id', (req: Request, res: Response) => {
     if (resolvedUpdateClientId === undefined && property_id !== undefined && property_id) {
       const prop = db.prepare('SELECT client_id FROM properties WHERE id = ?').get(property_id) as any;
       if (prop) resolvedUpdateClientId = prop.client_id;
+    }
+
+    // ── Auto-fill Beat / Zone / Sector when coords change + 3-Tier lookup ──
+    let autoZoneBeat = zone_beat;
+    let autoSectionId = section_id;
+    let autoZoneId = zone_id;
+    let autoBeatId = beat_id;
+    const effectiveLat = latitude !== undefined ? latitude : call.latitude;
+    const effectiveLng = longitude !== undefined ? longitude : call.longitude;
+    if (effectiveLat && effectiveLng && (latitude !== undefined || (!call.beat_id && !call.zone_id))) {
+      try {
+        const beat = identifyBeat(Number(effectiveLat), Number(effectiveLng));
+        if (beat) {
+          if (autoZoneBeat === undefined && !call.zone_beat) autoZoneBeat = beat.beat_code;
+
+          // Look up 3-tier dispatch district for richer naming
+          const district = db.prepare(
+            'SELECT * FROM dispatch_districts WHERE zone_id = ? AND beat_id = ?'
+          ).get(beat.city_code, beat.district_letter) as any;
+
+          if (district) {
+            if (autoBeatId === undefined && !call.beat_id) autoBeatId = `${district.beat_name} — ${district.beat_descriptor}`;
+            if (autoZoneId === undefined && !call.zone_id) autoZoneId = district.zone_name;
+            if (autoSectionId === undefined && !call.section_id) autoSectionId = district.section_id;
+          } else {
+            if (autoBeatId === undefined && !call.beat_id) autoBeatId = beat.beat_id;
+            if (autoZoneId === undefined && !call.zone_id) autoZoneId = `${beat.city} ${beat.district_letter}${beat.beat_number}`;
+            if (autoSectionId === undefined && !call.section_id) autoSectionId = beat.district_letter;
+          }
+
+          // If coords explicitly changed, always update beat data
+          if (latitude !== undefined) {
+            if (autoZoneBeat === undefined) autoZoneBeat = beat.beat_code;
+
+            const districtForce = db.prepare(
+              'SELECT * FROM dispatch_districts WHERE zone_id = ? AND beat_id = ?'
+            ).get(beat.city_code, beat.district_letter) as any;
+
+            if (districtForce) {
+              autoBeatId = autoBeatId !== undefined ? autoBeatId : `${districtForce.beat_name} — ${districtForce.beat_descriptor}`;
+              autoZoneId = autoZoneId !== undefined ? autoZoneId : districtForce.zone_name;
+              autoSectionId = autoSectionId !== undefined ? autoSectionId : districtForce.section_id;
+            } else {
+              autoBeatId = autoBeatId !== undefined ? autoBeatId : beat.beat_id;
+              autoZoneId = autoZoneId !== undefined ? autoZoneId : `${beat.city} ${beat.district_letter}${beat.beat_number}`;
+              autoSectionId = autoSectionId !== undefined ? autoSectionId : beat.district_letter;
+            }
+          }
+        }
+      } catch { /* geofence not configured, skip */ }
     }
 
     // Build dynamic SET clause so we only update provided fields
@@ -381,10 +493,10 @@ router.put('/calls/:id', (req: Request, res: Response) => {
     addField('direction_of_travel', direction_of_travel);
     addField('source', source);
     addField('caller_address', caller_address);
-    addField('zone_beat', zone_beat);
-    addField('section_id', section_id);
-    addField('zone_id', zone_id);
-    addField('beat_id', beat_id);
+    addField('zone_beat', autoZoneBeat);
+    addField('section_id', autoSectionId);
+    addField('zone_id', autoZoneId);
+    addField('beat_id', autoBeatId);
     addField('responding_officer', responding_officer);
     addField('secondary_type', secondary_type);
     addField('contact_method', contact_method);
@@ -402,6 +514,8 @@ router.put('/calls/:id', (req: Request, res: Response) => {
     addField('damage_estimate', damage_estimate);
     addField('damage_description', damage_description);
     addField('action_taken', action_taken);
+    addField('starting_mileage', starting_mileage);
+    addField('ending_mileage', ending_mileage);
     addField('client_id', resolvedUpdateClientId);
 
     if (updates.length === 0) {
@@ -636,7 +750,7 @@ router.post('/calls/:id/status', (req: Request, res: Response) => {
       return;
     }
 
-    const validStatuses = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived'];
+    const validStatuses = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived', 'on_hold'];
     if (!validStatuses.includes(status)) {
       res.status(400).json({ error: 'Invalid status', valid: validStatuses });
       return;
@@ -781,6 +895,164 @@ router.post('/calls/:id/revert-status', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Revert status error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/dispatch/calls/:id/hold - Put call on hold (saves previous status)
+router.post('/calls/:id/hold', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) {
+      res.status(404).json({ error: 'Call not found' });
+      return;
+    }
+
+    if (call.status === 'on_hold') {
+      res.status(400).json({ error: 'Call is already on hold' });
+      return;
+    }
+
+    // Only active statuses can be held (not cleared/closed/cancelled/archived)
+    const holdable = ['pending', 'dispatched', 'enroute', 'onscene'];
+    if (!holdable.includes(call.status)) {
+      res.status(400).json({ error: `Cannot hold a call with status "${call.status}"` });
+      return;
+    }
+
+    db.prepare(`
+      UPDATE calls_for_service SET status = 'on_hold', previous_status = ? WHERE id = ?
+    `).run(call.status, call.id);
+
+    // Log activity
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'call_held', 'call', ?, ?, ?)
+    `).run(req.user!.userId, call.id, `${call.call_number} put on hold from ${call.status}`, req.ip || 'unknown');
+
+    const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
+    broadcastDispatchUpdate({ action: 'call_status_changed', call: updated, status: 'on_hold' });
+
+    res.json(updated);
+  } catch (error: any) {
+    console.error('Hold call error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/dispatch/calls/:id/resume - Resume a held call (restores previous status)
+router.post('/calls/:id/resume', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) {
+      res.status(404).json({ error: 'Call not found' });
+      return;
+    }
+
+    if (call.status !== 'on_hold') {
+      res.status(400).json({ error: 'Call is not on hold' });
+      return;
+    }
+
+    const restoreStatus = call.previous_status || 'pending';
+
+    db.prepare(`
+      UPDATE calls_for_service SET status = ?, previous_status = NULL WHERE id = ?
+    `).run(restoreStatus, call.id);
+
+    // Log activity
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'call_resumed', 'call', ?, ?, ?)
+    `).run(req.user!.userId, call.id, `${call.call_number} resumed to ${restoreStatus}`, req.ip || 'unknown');
+
+    const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
+    broadcastDispatchUpdate({ action: 'call_status_changed', call: updated, status: restoreStatus });
+
+    res.json(updated);
+  } catch (error: any) {
+    console.error('Resume call error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/dispatch/calls/:id/promote-to-incident - Create incident from call
+router.post('/calls/:id/promote-to-incident', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+
+    // Generate incident number
+    const { generateIncidentNumber } = require('../utils/caseNumbers');
+    const incidentNumber = generateIncidentNumber(db, call.incident_type || 'general');
+
+    const result = db.prepare(`
+      INSERT INTO incidents (incident_number, call_id, incident_type, priority, status,
+        location_address, property_id, latitude, longitude, narrative, officer_id,
+        zone_beat, section_id, zone_id, beat_id, domestic_violence, weapons_involved,
+        injuries, created_by)
+      VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      incidentNumber,
+      call.id,
+      call.incident_type || 'general',
+      call.priority || 'P3',
+      call.location_address || null,
+      call.property_id || null,
+      call.latitude || null,
+      call.longitude || null,
+      call.description || null,
+      req.user!.userId,
+      call.zone_beat || null,
+      call.section_id || null,
+      call.zone_id || null,
+      call.beat_id || null,
+      call.domestic_violence || 0,
+      call.weapons_involved || 0,
+      call.injuries_reported || 0,
+      req.user!.userId
+    );
+
+    const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(result.lastInsertRowid);
+    res.status(201).json(incident);
+  } catch (error: any) {
+    console.error('Promote to incident error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/dispatch/calls/:id/le-notification - Notify external agency
+router.post('/calls/:id/le-notification', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+
+    const { agency, case_number, notes } = req.body;
+    const now = localNow();
+
+    db.prepare(`
+      UPDATE calls_for_service
+      SET le_notified = 1, le_agency = ?, le_case_number = ?, le_notified_at = ?, le_notified_by = ?,
+          updated_at = ?
+      WHERE id = ?
+    `).run(
+      agency || 'Local PD',
+      case_number || null,
+      now,
+      req.user!.userId,
+      now,
+      req.params.id
+    );
+
+    const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id);
+    broadcastDispatchUpdate({ action: 'call_updated', call: updated });
+    res.json(updated);
+  } catch (error: any) {
+    console.error('LE notification error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1009,15 +1281,57 @@ router.put('/units/:id/status', (req: Request, res: Response) => {
   }
 });
 
-// POST /api/dispatch/gps - Lightweight GPS position ping from officer
-// Updates the unit assigned to the current user (no status change, no activity log for performance)
+// POST /api/dispatch/gps - Batch GPS position update from officer
+// Accepts either a single point or an array of points collected at ~1-second intervals.
+// Updates the unit's live position (latest point only), bulk-inserts all breadcrumbs,
+// and broadcasts the latest position via WebSocket.
+//
+// Body formats:
+//   Single (legacy):  { latitude, longitude, accuracy, heading, speed }
+//   Batch (v4.3+):    { points: [{ lat, lng, accuracy, heading, speed, timestamp }] }
 router.post('/gps', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { latitude, longitude, accuracy, heading, speed } = req.body;
 
-    if (latitude == null || longitude == null) {
-      res.status(400).json({ error: 'latitude and longitude are required' });
+    // ── Normalize input: single point or batch ──
+    interface GpsPoint {
+      lat: number;
+      lng: number;
+      accuracy: number | null;
+      heading: number | null;
+      speed: number | null;
+      timestamp: string | null;
+    }
+
+    let points: GpsPoint[];
+
+    if (Array.isArray(req.body.points)) {
+      // Batch format: { points: [...] }
+      points = req.body.points.slice(0, 60); // Cap at 60 points per request
+    } else if (req.body.latitude != null && req.body.longitude != null) {
+      // Legacy single-point format
+      points = [{
+        lat: req.body.latitude,
+        lng: req.body.longitude,
+        accuracy: req.body.accuracy ?? null,
+        heading: req.body.heading ?? null,
+        speed: req.body.speed ?? null,
+        timestamp: null,
+      }];
+    } else {
+      res.status(400).json({ error: 'latitude/longitude or points[] required' });
+      return;
+    }
+
+    // Validate: at least one point with valid coordinates
+    const validPoints = points.filter(
+      (p) => p.lat != null && p.lng != null &&
+        p.lat >= -90 && p.lat <= 90 &&
+        p.lng >= -180 && p.lng <= 180
+    );
+
+    if (validPoints.length === 0) {
+      res.status(400).json({ error: 'No valid GPS points provided' });
       return;
     }
 
@@ -1028,18 +1342,18 @@ router.post('/gps', (req: Request, res: Response) => {
       return;
     }
 
-    // Only update GPS for active units (not off_duty)
-    if (unit.status === 'off_duty') {
-      res.json({ ok: true, skipped: true, reason: 'off_duty' });
-      return;
-    }
+    // GPS tracking is mandatory for ALL logged-in users regardless of status.
+    // Previously off_duty units were skipped — now we always record breadcrumbs.
+
+    // ── Use the LATEST point for live unit position and broadcast ──
+    const latest = validPoints[validPoints.length - 1];
 
     db.prepare(`
       UPDATE units SET latitude = ?, longitude = ?
       WHERE id = ?
-    `).run(latitude, longitude, unit.id);
+    `).run(latest.lat, latest.lng, unit.id);
 
-    // Broadcast position update to all connected clients
+    // Fetch full unit info for broadcast
     const updated = db.prepare(`
       SELECT u.*, usr.full_name as officer_name, usr.badge_number,
         c.call_number, c.incident_type as current_call_type, c.location_address as current_call_location
@@ -1049,22 +1363,54 @@ router.post('/gps', (req: Request, res: Response) => {
       WHERE u.id = ?
     `).get(unit.id) as any;
 
-    // Record breadcrumb with full snapshot of unit state at this moment
-    db.prepare(`
+    // ── Bulk-insert all breadcrumb points in a single transaction ──
+    const insertStmt = db.prepare(`
       INSERT INTO gps_breadcrumbs (unit_id, officer_id, latitude, longitude, accuracy, heading, speed,
-        unit_status, call_sign, officer_name, badge_number, current_call_id, current_call_number, current_call_type)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      unit.id, req.user!.userId, latitude, longitude,
-      accuracy ?? null, heading ?? null, speed ?? null,
-      updated?.status ?? unit.status, updated?.call_sign ?? unit.call_sign,
-      updated?.officer_name ?? null, updated?.badge_number ?? null,
-      updated?.current_call_id ?? null, updated?.call_number ?? null, updated?.current_call_type ?? null,
-    );
+        unit_status, call_sign, officer_name, badge_number, current_call_id, current_call_number, current_call_type,
+        road_name, nearest_intersection, recorded_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+        NULL, NULL,
+        COALESCE(?, datetime('now','localtime')))
+    `);
 
+    const insertMany = db.transaction((pts: GpsPoint[]) => {
+      for (const pt of pts) {
+        insertStmt.run(
+          unit.id, req.user!.userId, pt.lat, pt.lng,
+          pt.accuracy, pt.heading, pt.speed,
+          updated?.status ?? unit.status, updated?.call_sign ?? unit.call_sign,
+          updated?.officer_name ?? null, updated?.badge_number ?? null,
+          updated?.current_call_id ?? null, updated?.call_number ?? null, updated?.current_call_type ?? null,
+          pt.timestamp ?? null,
+        );
+      }
+    });
+
+    insertMany(validPoints);
+
+    // Broadcast ONLY the latest position (not every batch point)
     broadcastUnitUpdate({ action: 'unit_position_update', unit: updated });
 
-    res.json({ ok: true, unit_id: unit.id, call_sign: unit.call_sign });
+    res.json({ ok: true, unit_id: unit.id, call_sign: unit.call_sign, inserted: validPoints.length });
+
+    // ── Async geocode: reverse-geocode the latest point, then backfill the batch ──
+    // Runs after the response is sent so it doesn't slow down the GPS endpoint.
+    (async () => {
+      try {
+        const geo = await reverseGeocodeDetailed(latest.lat, latest.lng);
+        if (!geo || (!geo.road_name && !geo.nearest_intersection)) return;
+
+        // Update all points in this batch that were just inserted (last N for this unit)
+        db.prepare(`
+          UPDATE gps_breadcrumbs
+          SET road_name = ?, nearest_intersection = ?
+          WHERE unit_id = ? AND road_name IS NULL
+          ORDER BY id DESC LIMIT ?
+        `).run(geo.road_name, geo.nearest_intersection, unit.id, validPoints.length);
+      } catch (err) {
+        // Non-critical — don't log excessively
+      }
+    })();
   } catch (error: any) {
     console.error('GPS update error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -1088,25 +1434,63 @@ router.get('/gps/my-unit', (req: Request, res: Response) => {
 });
 
 // GET /api/dispatch/gps/trail/:unitId - Get GPS breadcrumb trail for a unit
+// Also applies the same starburst-prevention filters as /trails.
 router.get('/gps/trail/:unitId', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const unitId = parseInt(req.params.unitId);
     const hours = parseInt(req.query.hours as string) || 8;
 
-    const cutoff = new Date(Date.now() - hours * 3600000).toISOString();
-
-    const trail = db.prepare(`
+    const rows = db.prepare(`
       SELECT latitude, longitude, accuracy, heading, speed,
         unit_status, call_sign, officer_name, badge_number,
         current_call_id, current_call_number, current_call_type,
         recorded_at
       FROM gps_breadcrumbs
-      WHERE unit_id = ? AND recorded_at >= ?
+      WHERE unit_id = ? AND recorded_at >= datetime('now', 'localtime', '-' || ? || ' hours')
       ORDER BY recorded_at ASC
-    `).all(unitId, cutoff);
+    `).all(unitId, hours) as any[];
 
-    res.json(trail);
+    // ── Filter: accuracy gate + jump detection + stationary collapse ──
+    const haversineM = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+      const R = 6_371_000;
+      const toRad = (d: number) => (d * Math.PI) / 180;
+      const dLat = toRad(lat2 - lat1);
+      const dLng = toRad(lng2 - lng1);
+      const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    };
+
+    const MAX_ACCURACY = 150;
+    const MAX_SPEED    = 80;
+    const MIN_DISTANCE = 3;
+    const filtered: any[] = [];
+
+    for (const row of rows) {
+      if (row.accuracy != null && row.accuracy > MAX_ACCURACY) continue;
+
+      if (filtered.length === 0) {
+        filtered.push(row);
+        continue;
+      }
+
+      const prev = filtered[filtered.length - 1];
+      const dist = haversineM(prev.latitude, prev.longitude, row.latitude, row.longitude);
+
+      if (dist < MIN_DISTANCE) continue;
+
+      const dtSec = Math.max(
+        (new Date(row.recorded_at).getTime() - new Date(prev.recorded_at).getTime()) / 1000,
+        0.5
+      );
+      if (dist / dtSec > MAX_SPEED) continue;
+
+      filtered.push(row);
+    }
+
+    res.json(filtered);
   } catch (error: any) {
     console.error('GPS trail error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -1114,15 +1498,27 @@ router.get('/gps/trail/:unitId', (req: Request, res: Response) => {
 });
 
 // GET /api/dispatch/gps/trails - Get breadcrumb trails for all active units
+// Applies server-side filtering to eliminate starburst artifacts caused by
+// WiFi-triangulation jumps stored in the database (pre-v4.3 data).
 router.get('/gps/trails', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const hours = parseInt(req.query.hours as string) || 8;
 
+    // Haversine distance in meters between two lat/lng pairs
+    const haversineM = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+      const R = 6_371_000;
+      const toRad = (d: number) => (d * Math.PI) / 180;
+      const dLat = toRad(lat2 - lat1);
+      const dLng = toRad(lng2 - lng1);
+      const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    };
+
     // Use SQLite's datetime() for the cutoff so the format matches
     // recorded_at's DEFAULT (datetime('now','localtime') → "YYYY-MM-DD HH:MM:SS").
-    // Using JS toISOString() produced "YYYY-MM-DDTHH:MM:SS.sssZ" which always
-    // compared > the space-separated stored format, returning zero results.
     const rows = db.prepare(`
       SELECT b.unit_id, b.call_sign, b.latitude, b.longitude, b.accuracy,
         b.heading, b.speed, b.unit_status, b.officer_name, b.badge_number,
@@ -1133,8 +1529,17 @@ router.get('/gps/trails', (req: Request, res: Response) => {
       ORDER BY b.unit_id, b.recorded_at ASC
     `).all(hours) as any[];
 
-    // Group by unit
+    // ── Group by unit, then filter each trail to remove starburst artifacts ──
+    // Two filters applied per-unit:
+    //   1. Accuracy gate: skip points with accuracy > 150 m (WiFi triangulation)
+    //   2. Jump detection: skip points implying > 80 m/s (~180 mph) from last accepted point
+    //      This catches WiFi "teleportation" back to a router's estimated position.
+    const MAX_ACCURACY = 250;   // meters — accept WiFi/cell-tower positioning
+    const MAX_SPEED    = 100;   // m/s (~224 mph) — reject impossible jumps
+    const MIN_DISTANCE = 2;     // meters — collapse stationary duplicates
+
     const trails: Record<number, { unit_id: number; call_sign: string; officer_name: string; badge_number: string; points: any[] }> = {};
+
     for (const row of rows) {
       if (!trails[row.unit_id]) {
         trails[row.unit_id] = {
@@ -1145,7 +1550,11 @@ router.get('/gps/trails', (req: Request, res: Response) => {
           points: [],
         };
       }
-      trails[row.unit_id].points.push({
+
+      // ── Accuracy gate ──
+      if (row.accuracy != null && row.accuracy > MAX_ACCURACY) continue;
+
+      const pt = {
         lat: row.latitude,
         lng: row.longitude,
         accuracy: row.accuracy,
@@ -1155,7 +1564,29 @@ router.get('/gps/trails', (req: Request, res: Response) => {
         call_number: row.current_call_number,
         call_type: row.current_call_type,
         time: row.recorded_at,
-      });
+      };
+
+      const trailPts = trails[row.unit_id].points;
+
+      if (trailPts.length === 0) {
+        trailPts.push(pt);
+        continue;
+      }
+
+      const prev = trailPts[trailPts.length - 1];
+      const dist = haversineM(prev.lat, prev.lng, pt.lat, pt.lng);
+
+      // ── Collapse stationary duplicates ──
+      if (dist < MIN_DISTANCE) continue;
+
+      // ── Jump detection: check implied speed between consecutive accepted points ──
+      const prevTime = new Date(prev.time).getTime();
+      const curTime  = new Date(pt.time).getTime();
+      const dtSec    = Math.max((curTime - prevTime) / 1000, 0.5); // floor at 0.5s to avoid /0
+
+      if (dist / dtSec > MAX_SPEED) continue; // impossible jump — skip
+
+      trailPts.push(pt);
     }
 
     res.json(Object.values(trails));
@@ -1889,6 +2320,337 @@ router.post('/panic', authenticateToken, async (req: Request, res: Response) => 
     });
   } catch (error: any) {
     console.error('Panic alert error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── GET /api/dispatch/premise-history ───────────────────────
+// Premise history lookup — returns prior calls at or near a given address.
+// Used by the command line (PR command) and NewCallModal for officer safety alerts.
+router.get('/premise-history', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { address } = req.query;
+
+    if (!address || (address as string).length < 3) {
+      res.status(400).json({ error: 'Address must be at least 3 characters' });
+      return;
+    }
+
+    const searchTerm = `%${address}%`;
+
+    // Find prior calls at this address (fuzzy match on location_address)
+    const calls = db.prepare(`
+      SELECT c.id, c.call_number, c.incident_type, c.priority, c.status, c.disposition,
+        c.location_address, c.created_at, c.cleared_at,
+        c.weapons_involved, c.domestic_violence, c.injuries_reported,
+        c.alcohol_involved, c.drugs_involved, c.description
+      FROM calls_for_service c
+      WHERE c.location_address LIKE ?
+      ORDER BY c.created_at DESC
+      LIMIT 20
+    `).all(searchTerm) as any[];
+
+    // Determine if there are hazardous warnings
+    const warningTypes: string[] = [];
+    for (const call of calls) {
+      if (call.weapons_involved && !warningTypes.includes('ARMED'))
+        warningTypes.push('ARMED');
+      if (call.domestic_violence && !warningTypes.includes('DV'))
+        warningTypes.push('DV');
+      if (call.injuries_reported && !warningTypes.includes('INJURIES'))
+        warningTypes.push('INJURIES');
+      if (call.alcohol_involved && !warningTypes.includes('ALCOHOL'))
+        warningTypes.push('ALCOHOL');
+      if (call.drugs_involved && !warningTypes.includes('DRUGS'))
+        warningTypes.push('DRUGS');
+    }
+
+    // Check for high-risk incident types in history
+    const highRiskTypes = ['shooting', 'shots_fired', 'armed', 'barricade', 'hostage', 'hazmat', 'officer_assist'];
+    for (const call of calls) {
+      const itype = (call.incident_type || '').toLowerCase();
+      if (highRiskTypes.some(t => itype.includes(t)) && !warningTypes.includes('HIGH_RISK_HISTORY'))
+        warningTypes.push('HIGH_RISK_HISTORY');
+    }
+
+    // Also check property hazard notes if we can match a property
+    let propertyHazard: string | null = null;
+    try {
+      const prop = db.prepare(`
+        SELECT hazard_notes FROM properties WHERE address LIKE ? AND hazard_notes IS NOT NULL LIMIT 1
+      `).get(searchTerm) as any;
+      if (prop?.hazard_notes) {
+        propertyHazard = prop.hazard_notes;
+        if (!warningTypes.includes('PROPERTY_HAZARD')) warningTypes.push('PROPERTY_HAZARD');
+      }
+    } catch { /* properties table may not have hazard_notes */ }
+
+    res.json({
+      calls,
+      total: calls.length,
+      hasWarnings: warningTypes.length > 0,
+      warningTypes,
+      propertyHazard,
+    });
+  } catch (error: any) {
+    console.error('Premise history error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── GET /api/dispatch/safety-screen ─────────────────────────
+// Officer Safety Auto-Screening — searches persons and warrants
+// by name to detect active warrants, caution flags, criminal history.
+// Used by NewCallModal for real-time safety alerts during call creation.
+router.get('/safety-screen', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { name } = req.query;
+
+    if (!name || typeof name !== 'string' || name.trim().length < 2) {
+      return res.json({ persons: [], directWarrantHits: [], hasWarnings: false });
+    }
+
+    const searchName = name.trim();
+
+    // Split into possible first/last name parts
+    const parts = searchName.split(/[\s,]+/).filter(Boolean);
+
+    // ── Search persons table ──
+    let personRows: any[] = [];
+    if (parts.length >= 2) {
+      // Try both orderings: "first last" and "last, first"
+      personRows = db.prepare(`
+        SELECT * FROM persons
+        WHERE (first_name LIKE ? AND last_name LIKE ?)
+           OR (first_name LIKE ? AND last_name LIKE ?)
+           OR (first_name || ' ' || last_name LIKE ?)
+        LIMIT 10
+      `).all(
+        `%${parts[0]}%`, `%${parts[1]}%`,
+        `%${parts[1]}%`, `%${parts[0]}%`,
+        `%${searchName}%`
+      );
+    } else {
+      personRows = db.prepare(`
+        SELECT * FROM persons
+        WHERE first_name LIKE ? OR last_name LIKE ?
+        LIMIT 10
+      `).all(`%${parts[0]}%`, `%${parts[0]}%`);
+    }
+
+    // Enrich each person with warrants and criminal history
+    const persons = personRows.map((person: any) => {
+      const warrants = db.prepare(`
+        SELECT * FROM warrants
+        WHERE status = 'active'
+          AND subject_first_name LIKE ? AND subject_last_name LIKE ?
+      `).all(`%${person.first_name}%`, `%${person.last_name}%`);
+
+      const criminalHistory = db.prepare(`
+        SELECT * FROM criminal_history WHERE person_id = ? ORDER BY charge_date DESC LIMIT 10
+      `).all(person.id);
+
+      return { person, warrants, criminalHistory };
+    });
+
+    // ── Search warrants directly by subject name ──
+    let directWarrantHits: any[] = [];
+    if (parts.length >= 2) {
+      directWarrantHits = db.prepare(`
+        SELECT * FROM warrants
+        WHERE status = 'active'
+          AND ((subject_first_name LIKE ? AND subject_last_name LIKE ?)
+            OR (subject_first_name LIKE ? AND subject_last_name LIKE ?))
+        LIMIT 10
+      `).all(
+        `%${parts[0]}%`, `%${parts[1]}%`,
+        `%${parts[1]}%`, `%${parts[0]}%`
+      );
+    } else {
+      directWarrantHits = db.prepare(`
+        SELECT * FROM warrants
+        WHERE status = 'active'
+          AND (subject_first_name LIKE ? OR subject_last_name LIKE ?)
+        LIMIT 10
+      `).all(`%${parts[0]}%`, `%${parts[0]}%`);
+    }
+
+    // Deduplicate warrant hits (already found via person enrichment)
+    const personWarrantIds = new Set(
+      persons.flatMap(p => p.warrants.map((w: any) => w.id))
+    );
+    const uniqueDirectWarrants = directWarrantHits.filter(
+      (w: any) => !personWarrantIds.has(w.id)
+    );
+
+    // Determine if any warnings exist
+    const hasWarnings =
+      persons.some(p =>
+        p.warrants.length > 0 ||
+        p.person.caution_flags ||
+        p.person.is_sex_offender ||
+        p.person.has_criminal_history
+      ) ||
+      uniqueDirectWarrants.length > 0;
+
+    res.json({
+      persons,
+      directWarrantHits: uniqueDirectWarrants,
+      hasWarnings,
+    });
+  } catch (error: any) {
+    console.error('Safety screen error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── GET /api/dispatch/districts ─ List all 3-tier dispatch districts ──
+router.get('/districts', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const districts = db.prepare('SELECT * FROM dispatch_districts ORDER BY section_id, zone_id, beat_id').all();
+    res.json(districts);
+  } catch (error: any) {
+    console.error('Districts list error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── GET /api/dispatch/districts/lookup ─ Lookup 3-tier by zone_id + beat_id ──
+router.get('/districts/lookup', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { zone_id, beat_id } = req.query;
+
+    if (!zone_id) {
+      res.status(400).json({ error: 'zone_id is required' });
+      return;
+    }
+
+    let district: any;
+    if (beat_id) {
+      district = db.prepare(
+        'SELECT * FROM dispatch_districts WHERE zone_id = ? AND beat_id = ?'
+      ).get(zone_id, beat_id);
+    } else {
+      // Return first matching zone entry
+      district = db.prepare(
+        'SELECT * FROM dispatch_districts WHERE zone_id = ? LIMIT 1'
+      ).get(zone_id);
+    }
+
+    if (!district) {
+      res.json({ found: false });
+      return;
+    }
+
+    res.json({ found: true, district });
+  } catch (error: any) {
+    console.error('District lookup error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── GET /api/dispatch/districts/identify ─ Identify district from GPS coordinates ──
+router.get('/districts/identify', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { lat, lng } = req.query;
+    if (!lat || !lng) {
+      res.status(400).json({ error: 'lat and lng are required' });
+      return;
+    }
+
+    const beat = identifyBeat(Number(lat), Number(lng));
+    if (!beat) {
+      res.json({ found: false });
+      return;
+    }
+
+    // Lookup dispatch_districts table for rich names
+    const district = db.prepare(
+      'SELECT * FROM dispatch_districts WHERE zone_id = ? AND beat_id = ?'
+    ).get(beat.city_code, beat.district_letter) as any;
+
+    if (district) {
+      res.json({
+        found: true,
+        section_id: district.section_id,
+        zone_id: district.zone_name,
+        beat_id: `${district.beat_name} — ${district.beat_descriptor || ''}`.trim(),
+        dispatch_code: district.dispatch_code,
+        section_name: district.section_name,
+        zone_name: district.zone_name,
+        beat_name: district.beat_name,
+        beat_descriptor: district.beat_descriptor,
+      });
+    } else {
+      // Fallback to raw geofence data
+      res.json({
+        found: true,
+        section_id: beat.district_letter,
+        zone_id: `${beat.city} ${beat.district_letter}${beat.beat_number}`,
+        beat_id: beat.beat_id,
+      });
+    }
+  } catch (error: any) {
+    console.error('District identify error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── PUT /api/dispatch/calls/:id/mileage ─ Update starting/ending mileage ──
+router.put('/calls/:id/mileage', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) {
+      res.status(404).json({ error: 'Call not found' });
+      return;
+    }
+
+    const { starting_mileage, ending_mileage } = req.body;
+
+    const updates: string[] = [];
+    const params: any[] = [];
+
+    if (starting_mileage !== undefined) {
+      updates.push('starting_mileage = ?');
+      params.push(starting_mileage || null);
+    }
+    if (ending_mileage !== undefined) {
+      updates.push('ending_mileage = ?');
+      params.push(ending_mileage || null);
+    }
+
+    if (updates.length === 0) {
+      res.status(400).json({ error: 'No mileage fields provided' });
+      return;
+    }
+
+    updates.push('updated_at = ?');
+    params.push(localNow());
+    params.push(req.params.id);
+
+    db.prepare(`UPDATE calls_for_service SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+
+    // Log activity
+    const details = [];
+    if (starting_mileage !== undefined) details.push(`start: ${starting_mileage}`);
+    if (ending_mileage !== undefined) details.push(`end: ${ending_mileage}`);
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'mileage_updated', 'call', ?, ?, ?)
+    `).run(req.user!.userId, req.params.id, `Mileage for ${call.call_number}: ${details.join(', ')}`, req.ip || 'unknown');
+
+    const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id);
+    broadcastDispatchUpdate({ action: 'call_updated', call: updated });
+
+    res.json(updated);
+  } catch (error: any) {
+    console.error('Mileage update error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -4,53 +4,48 @@ import { useWebSocket } from '../context/WebSocketContext';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../hooks/useApi';
 import { usePanicAudio } from '../hooks/usePanicAudio';
+import { playRadioTone } from '../utils/radioTones';
 
-// ─── Motorola MCC7500 Alert Tone 2 ──────────────────────────────
-// Standard public-safety dispatch console emergency warble.
-// Fast alternating two-tone: 1000 Hz ↔ 1500 Hz, sine wave,
-// switching every 0.25 s  ("dee-doo-dee-doo" pattern).
-// Ref: Motorola MCC 7500 IP Dispatch Console alert tones.
+// ─── Panic Alarm — loops the unified panicWarble tone ────────────
+// Plays the Motorola APX emergency warble (960/1500Hz, 3s) in a
+// loop for the specified duration. Uses the unified radioTones
+// system so all emergency sounds are consistent.
 // ─────────────────────────────────────────────────────────────────
 function playPanicAlarm(durationMs = 10000): { stop: () => void } {
-  const ctx = new AudioContext();
+  let stopped = false;
+  const handles: Array<{ stop: () => void }> = [];
 
-  // Master gain — keep audible but not ear-splitting in a browser
-  const masterGain = ctx.createGain();
-  masterGain.gain.value = 0.38;
-  masterGain.connect(ctx.destination);
+  // panicWarble is ~3s; loop it to fill the requested duration
+  const loopInterval = 3100; // slightly over 3s to avoid overlap
+  const maxLoops = Math.ceil(durationMs / loopInterval);
 
-  // Single sine oscillator — switches between the two tones
-  const osc = ctx.createOscillator();
-  osc.type = 'sine';
-  osc.connect(masterGain);
+  // Play first immediately
+  const first = playRadioTone('panicWarble');
+  if (first) handles.push(first);
 
-  const LOW  = 1000;   // Hz  — low tone
-  const HIGH = 1500;   // Hz  — high tone
-  const STEP = 0.25;   // seconds per tone (fast warble)
-
-  const now = ctx.currentTime;
-  const end = now + durationMs / 1000;
-
-  // Schedule the alternating pattern
-  for (let t = now; t < end; t += STEP * 2) {
-    osc.frequency.setValueAtTime(LOW,  t);
-    osc.frequency.setValueAtTime(HIGH, t + STEP);
+  // Schedule subsequent loops
+  const timers: ReturnType<typeof setTimeout>[] = [];
+  for (let i = 1; i < maxLoops && !stopped; i++) {
+    const timer = setTimeout(() => {
+      if (stopped) return;
+      const h = playRadioTone('panicWarble');
+      if (h) handles.push(h);
+    }, i * loopInterval);
+    timers.push(timer);
   }
 
-  osc.start(now);
-  osc.stop(end);
-
-  // Clean fade-out at the very end so it doesn't click
-  masterGain.gain.setValueAtTime(0.38, end - 0.05);
-  masterGain.gain.linearRampToValueAtTime(0, end);
+  // Auto-stop after duration
+  const autoStop = setTimeout(() => {
+    stopped = true;
+    handles.forEach(h => h.stop());
+  }, durationMs);
 
   return {
     stop: () => {
-      try {
-        masterGain.gain.setValueAtTime(0, ctx.currentTime);
-        osc.stop();
-        ctx.close();
-      } catch { /* already stopped */ }
+      stopped = true;
+      timers.forEach(clearTimeout);
+      clearTimeout(autoStop);
+      handles.forEach(h => h.stop());
     },
   };
 }

@@ -1,6 +1,138 @@
 {
-  "version": "2.2.1",
+  "version": "5.3.9",
   "changelog": [
+    {
+      "version": "5.3.9",
+      "date": "2026-02-28",
+      "type": "major",
+      "summary": "High-security login system overhaul with TOTP 2FA, CJIS-compliant login UI, password policy enforcement, and admin CRUD access",
+      "changes": [
+        {
+          "type": "feature",
+          "description": "TOTP two-factor authentication via Google Authenticator with QR code enrollment"
+        },
+        {
+          "type": "feature",
+          "description": "Mandatory 2FA enforcement for all roles with blocking setup modal"
+        },
+        {
+          "type": "feature",
+          "description": "CJIS-compliant login page with security banners and two-step authentication flow"
+        },
+        {
+          "type": "feature",
+          "description": "Backup recovery codes (10 one-time codes) with AES-256-GCM encrypted secret storage"
+        },
+        {
+          "type": "enhancement",
+          "description": "Strengthened password policy: 12+ characters, special characters required, 90-day expiry, 5-password history"
+        },
+        {
+          "type": "enhancement",
+          "description": "Admin panel: 2FA policy controls, IP session binding settings, per-user 2FA reset"
+        },
+        {
+          "type": "enhancement",
+          "description": "Admin role granted full CRUD access across all modules"
+        },
+        {
+          "type": "fix",
+          "description": "Fixed QR code not appearing during 2FA setup (property name mismatch)"
+        }
+      ]
+    },
+    {
+      "version": "4.3.1",
+      "date": "2026-02-27",
+      "type": "patch",
+      "summary": "Fix dropdown menus, mobile drawer, mobile layout optimizations",
+      "changes": [
+        {
+          "type": "fix",
+          "description": "Fixed mobile drawer not opening (missing CSS .open class)"
+        },
+        {
+          "type": "fix",
+          "description": "Fixed desktop nav dropdown menus clipped by overflow:hidden"
+        },
+        {
+          "type": "enhancement",
+          "description": "Mobile layout optimized for all 10 remaining pages"
+        },
+        {
+          "type": "enhancement",
+          "description": "MapPage bottom sheet with Units/Calls/Layers tabs"
+        }
+      ]
+    },
+    {
+      "version": "4.3.0",
+      "date": "2026-02-26",
+      "type": "minor",
+      "summary": "Thin client, HTTPS encryption, GPS breadcrumb trails, version unification",
+      "changes": [
+        {
+          "type": "feature",
+          "description": "Desktop app converted to thin client — loads from remote VPS instead of local server"
+        },
+        {
+          "type": "security",
+          "description": "Full HTTPS/SSL encryption for all connections and auto-updates"
+        },
+        {
+          "type": "feature",
+          "description": "GPS breadcrumb trails at 1-second intervals with accuracy filtering and jump detection"
+        },
+        {
+          "type": "fix",
+          "description": "Server-side trail smoothing eliminates starburst artifacts from WiFi triangulation"
+        },
+        {
+          "type": "enhancement",
+          "description": "Mandatory operator name input with persistent OPR display"
+        },
+        {
+          "type": "enhancement",
+          "description": "Unified version propagation across all system components"
+        }
+      ]
+    },
+    {
+      "version": "4.2.5",
+      "date": "2026-02-26",
+      "type": "minor",
+      "summary": "Radio system overhaul, PDF readability, Motorola tones, two-way PTT audio",
+      "changes": [
+        {
+          "type": "feature",
+          "description": "Two-way PTT radio with real-time audio streaming via WebSocket"
+        },
+        {
+          "type": "feature",
+          "description": "Motorola APX-authentic radio tones (MDC-1200 FSK, 1050Hz talk-permit, bandpass filtering)"
+        },
+        {
+          "type": "feature",
+          "description": "500ms PTT release delay (hang time) to prevent syllable clipping"
+        },
+        {
+          "type": "feature",
+          "description": "PDF readability overhaul with professional print formatting"
+        },
+        {
+          "type": "fix",
+          "description": "Audio pipeline race condition — transmit_start now sent before recorder starts"
+        },
+        {
+          "type": "fix",
+          "description": "StreamPlayer rewritten with AudioContext + decodeAudioData for reliable cross-browser playback"
+        },
+        {
+          "type": "enhancement",
+          "description": "Comprehensive server-side radio debug logging for audio relay diagnostics"
+        }
+      ]
+    },
     {
       "version": "2.2.1",
       "date": "2026-02-20",

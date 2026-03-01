@@ -7,6 +7,7 @@ import {
 import { apiFetch } from '../../../hooks/useApi';
 import type { FleetPersonnelData, FleetPersonnelNote, FleetAssignment, Unit } from '../../../types';
 import { formatMilitary, daysUntilExpiry, expiryProgress } from '../utils/fleetFormatters';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 interface Props {
   vehicleId: string;
@@ -221,7 +222,7 @@ export default function FleetPersonnelTab({
               <option value="">Select a unit...</option>
               {units.map((u) => (
                 <option key={u.id} value={u.id}>
-                  {u.call_sign} — {u.officer_name || 'No officer'} ({u.status})
+                  {u.call_sign} — {u.officer_name || 'No officer'} ({toDisplayLabel(u.status)})
                 </option>
               ))}
             </select>
@@ -292,7 +293,7 @@ export default function FleetPersonnelTab({
                         s.status === 'pending' ? 'bg-amber-900/30 text-amber-400 border-amber-700/40' :
                         'bg-rmpg-800 text-rmpg-400 border-rmpg-600'
                       }`}>
-                        {s.status}
+                        {toDisplayLabel(s.status)}
                       </span>
                     </div>
                   ))}
@@ -392,7 +393,7 @@ export default function FleetPersonnelTab({
                 <div key={cred.id} className="p-2 bg-surface-sunken border border-rmpg-700">
                   <div className="flex items-center gap-2 mb-1">
                     <Award className="w-3 h-3 text-rmpg-400" />
-                    <span className="text-[10px] font-bold text-rmpg-200 truncate">{cred.type}</span>
+                    <span className="text-[10px] font-bold text-rmpg-200 truncate">{toDisplayLabel(cred.type)}</span>
                     <span className={`ml-auto px-1 py-0.5 text-[7px] font-bold uppercase border ${credentialStatusColor(cred.status)}`}>
                       {cred.status.replace('_', ' ')}
                     </span>

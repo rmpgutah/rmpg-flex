@@ -25,6 +25,10 @@ interface WSClient {
   channels: Set<string>;
   /** Current radio channel (null = not on radio) */
   radioChannel: string | null;
+  /** Active private call ID (null = not in a call) */
+  privateCallId: string | null;
+  /** Client ID of private call partner */
+  privateCallPartner: string | null;
 }
 
 const clients: Map<string, WSClient> = new Map();
@@ -43,7 +47,19 @@ const DEFAULT_CHANNELS = ['dispatch', 'alerts', 'records', 'personnel', 'fleet',
 /** channel → clientId of the active transmitter (null = channel is clear) */
 const activeTransmitters: Map<string, string> = new Map();
 
-const RADIO_CHANNELS = ['dispatch', 'tac-1', 'tac-2', 'tac-3', 'patrol', 'admin'];
+const DEFAULT_RADIO_CHANNELS = ['dispatch', 'tac-1', 'tac-2', 'tac-3', 'patrol', 'admin'];
+
+/** Dynamically load active radio channel names from DB, with fallback to defaults */
+function getRadioChannelNames(): string[] {
+  try {
+    const db = database.getDb();
+    const rows = db.prepare(
+      "SELECT config_key FROM system_config WHERE category = 'radio_channel' AND is_active = 1 ORDER BY sort_order"
+    ).all() as { config_key: string }[];
+    if (rows.length > 0) return rows.map(r => r.config_key);
+  } catch { /* DB not ready yet or no rows — use defaults */ }
+  return DEFAULT_RADIO_CHANNELS;
+}
 
 export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
   wss = new WebSocketServer({ server });
@@ -55,6 +71,8 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
       authenticated: false,
       channels: new Set(DEFAULT_CHANNELS),
       radioChannel: null,
+      privateCallId: null,
+      privateCallPartner: null,
     };
     clients.set(clientId, client);
 
@@ -90,7 +108,8 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
 
     ws.on('close', () => {
       clearTimeout(authTimer);
-      // Clean up radio state before removing client
+      // Clean up private call and radio state before removing client
+      handlePrivateCallDisconnect(clientId);
       handleRadioDisconnect(clientId);
       clients.delete(clientId);
       // Broadcast updated presence when a user disconnects
@@ -99,6 +118,7 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
 
     ws.on('error', () => {
       clearTimeout(authTimer);
+      handlePrivateCallDisconnect(clientId);
       handleRadioDisconnect(clientId);
       clients.delete(clientId);
       setTimeout(() => broadcastPresence(), 100);
@@ -238,6 +258,32 @@ function handleClientMessage(clientId: string, message: any): void {
     case 'radio_audio':
       if (!client.authenticated) return;
       relayRadioAudio(clientId, message.data);
+      break;
+
+    // ─── Private Calls (Full-Duplex) ─────────────────────
+    case 'private_call_request':
+      if (!client.authenticated) return;
+      handlePrivateCallRequest(clientId, message.targetUserId);
+      break;
+
+    case 'private_call_accept':
+      if (!client.authenticated) return;
+      handlePrivateCallAccept(clientId, message.callId);
+      break;
+
+    case 'private_call_decline':
+      if (!client.authenticated) return;
+      handlePrivateCallDecline(clientId, message.callId);
+      break;
+
+    case 'private_call_end':
+      if (!client.authenticated) return;
+      handlePrivateCallEnd(clientId);
+      break;
+
+    case 'private_call_audio':
+      if (!client.authenticated) return;
+      relayPrivateCallAudio(clientId, message.data);
       break;
   }
 }
@@ -451,7 +497,17 @@ function broadcastToRadioChannel(radioChannel: string, type: string, data: any, 
 /** Handle a client joining a radio channel */
 function handleRadioJoin(clientId: string, radioChannel: string): void {
   const client = clients.get(clientId);
-  if (!client || !RADIO_CHANNELS.includes(radioChannel)) return;
+  const validChannels = getRadioChannelNames();
+  if (!client) {
+    console.warn('[Radio] join failed: client not found', clientId);
+    return;
+  }
+  if (!validChannels.includes(radioChannel)) {
+    console.warn('[Radio] join failed: invalid channel', radioChannel,
+      '| valid:', validChannels.join(', '), '| user:', client.username);
+    return;
+  }
+  console.log('[Radio]', client.username, 'joining channel', radioChannel);
 
   // Leave current channel first
   if (client.radioChannel) {
@@ -515,7 +571,12 @@ function handleRadioLeave(clientId: string): void {
 /** Handle PTT key-down — start transmitting */
 function handleRadioTransmitStart(clientId: string): void {
   const client = clients.get(clientId);
-  if (!client || !client.radioChannel) return;
+  if (!client || !client.radioChannel) {
+    console.warn('[Radio] transmit_start failed: client not found or not on channel',
+      clientId, client?.username, 'radioChannel:', client?.radioChannel);
+    return;
+  }
+  console.log('[Radio]', client.username, 'keying up on', client.radioChannel);
 
   const channel = client.radioChannel;
 
@@ -608,12 +669,24 @@ function handleRadioTransmitEnd(clientId: string, data?: any): void {
 /** Relay radio audio chunk to all clients on the same channel (except sender) */
 function relayRadioAudio(senderClientId: string, data: any): void {
   const sender = clients.get(senderClientId);
-  if (!sender || !sender.radioChannel) return;
+  if (!sender) {
+    console.warn('[Radio] audio dropped: sender client not found', senderClientId);
+    return;
+  }
+  if (!sender.radioChannel) {
+    console.warn('[Radio] audio dropped: sender not on any channel', sender.username);
+    return;
+  }
 
   const channel = sender.radioChannel;
 
   // Only the active transmitter can send audio
-  if (activeTransmitters.get(channel) !== senderClientId) return;
+  const activeId = activeTransmitters.get(channel);
+  if (activeId !== senderClientId) {
+    console.warn('[Radio] audio dropped: sender is not active transmitter on', channel,
+      '| sender:', senderClientId, '| active:', activeId || 'NONE');
+    return;
+  }
 
   const enrichedData = {
     ...data,
@@ -629,6 +702,7 @@ function relayRadioAudio(senderClientId: string, data: any): void {
     timestamp: new Date().toISOString(),
   });
 
+  let recipientCount = 0;
   clients.forEach((client, id) => {
     if (
       id !== senderClientId &&
@@ -637,8 +711,15 @@ function relayRadioAudio(senderClientId: string, data: any): void {
       client.ws.readyState === WebSocket.OPEN
     ) {
       client.ws.send(payload);
+      recipientCount++;
     }
   });
+
+  // Log first chunk per transmission for debugging (don't spam every chunk)
+  if (!data._logged) {
+    console.log('[Radio] audio relaying from', sender.username, 'on', channel, '→', recipientCount, 'recipients');
+    data._logged = true;
+  }
 }
 
 /** Clean up radio state when a client disconnects */
@@ -646,4 +727,308 @@ function handleRadioDisconnect(clientId: string): void {
   const client = clients.get(clientId);
   if (!client || !client.radioChannel) return;
   handleRadioLeave(clientId);
+}
+
+// ─── Private Call System (Full-Duplex) ──────────────────────
+// 1:1 voice calls between two users. Both parties transmit and
+// receive simultaneously (full-duplex, like a phone call).
+
+interface PrivateCall {
+  callId: string;
+  callerClientId: string;
+  callerUserId: number;
+  callerName: string;
+  receiverClientId: string;
+  receiverUserId: number;
+  receiverName: string;
+  status: 'ringing' | 'connected' | 'ended';
+  startedAt: number;
+  /** Auto-decline timer */
+  declineTimer: ReturnType<typeof setTimeout> | null;
+}
+
+/** Active calls: callId → PrivateCall */
+const activeCalls: Map<string, PrivateCall> = new Map();
+
+/** Auto-decline timeout (seconds) */
+const CALL_RING_TIMEOUT = 30;
+
+/** Find a connected client by userId */
+function findClientByUserId(userId: number): { clientId: string; client: WSClient } | null {
+  for (const [id, client] of clients.entries()) {
+    if (client.authenticated && client.userId === userId && client.ws.readyState === WebSocket.OPEN) {
+      return { clientId: id, client };
+    }
+  }
+  return null;
+}
+
+/** Initiate a private call to another user */
+function handlePrivateCallRequest(callerClientId: string, targetUserId: number): void {
+  const caller = clients.get(callerClientId);
+  if (!caller) return;
+
+  // Check if caller is already in a call
+  if (caller.privateCallId) {
+    caller.ws.send(JSON.stringify({
+      type: 'private_call_error',
+      data: { error: 'You are already in a call' },
+    }));
+    return;
+  }
+
+  // Find the target user
+  const target = findClientByUserId(targetUserId);
+  if (!target) {
+    caller.ws.send(JSON.stringify({
+      type: 'private_call_error',
+      data: { error: 'User is not online' },
+    }));
+    return;
+  }
+
+  // Check if target is already in a call
+  if (target.client.privateCallId) {
+    caller.ws.send(JSON.stringify({
+      type: 'private_call_error',
+      data: { error: 'User is already in a call' },
+    }));
+    return;
+  }
+
+  const callId = `call-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+
+  // Set up auto-decline timer
+  const declineTimer = setTimeout(() => {
+    const call = activeCalls.get(callId);
+    if (call && call.status === 'ringing') {
+      handlePrivateCallDecline(target.clientId, callId, true);
+    }
+  }, CALL_RING_TIMEOUT * 1000);
+
+  const call: PrivateCall = {
+    callId,
+    callerClientId,
+    callerUserId: caller.userId!,
+    callerName: caller.fullName || caller.username || 'Unknown',
+    receiverClientId: target.clientId,
+    receiverUserId: targetUserId,
+    receiverName: target.client.fullName || target.client.username || 'Unknown',
+    status: 'ringing',
+    startedAt: Date.now(),
+    declineTimer,
+  };
+
+  activeCalls.set(callId, call);
+
+  // Notify caller that the call is ringing
+  caller.ws.send(JSON.stringify({
+    type: 'private_call_ringing',
+    data: {
+      callId,
+      targetUserId,
+      targetName: call.receiverName,
+    },
+  }));
+
+  // Notify receiver of incoming call
+  target.client.ws.send(JSON.stringify({
+    type: 'private_call_incoming',
+    data: {
+      callId,
+      callerUserId: caller.userId,
+      callerName: call.callerName,
+    },
+  }));
+
+  console.log(`[PrivateCall] ${call.callerName} → ${call.receiverName} (${callId})`);
+}
+
+/** Accept an incoming private call */
+function handlePrivateCallAccept(receiverClientId: string, callId: string): void {
+  const call = activeCalls.get(callId);
+  if (!call || call.status !== 'ringing') return;
+  if (call.receiverClientId !== receiverClientId) return;
+
+  const caller = clients.get(call.callerClientId);
+  const receiver = clients.get(receiverClientId);
+  if (!caller || !receiver) return;
+
+  // Clear auto-decline timer
+  if (call.declineTimer) clearTimeout(call.declineTimer);
+  call.declineTimer = null;
+
+  call.status = 'connected';
+  call.startedAt = Date.now();
+
+  // Link both clients
+  caller.privateCallId = callId;
+  caller.privateCallPartner = receiverClientId;
+  receiver.privateCallId = callId;
+  receiver.privateCallPartner = call.callerClientId;
+
+  // Notify both parties
+  const connectedPayload = {
+    type: 'private_call_connected',
+    data: {
+      callId,
+      partnerUserId: 0,
+      partnerName: '',
+    },
+  };
+
+  // Send to caller
+  caller.ws.send(JSON.stringify({
+    ...connectedPayload,
+    data: { callId, partnerUserId: receiver.userId, partnerName: call.receiverName },
+  }));
+
+  // Send to receiver
+  receiver.ws.send(JSON.stringify({
+    ...connectedPayload,
+    data: { callId, partnerUserId: caller.userId, partnerName: call.callerName },
+  }));
+
+  console.log(`[PrivateCall] CONNECTED: ${call.callerName} ↔ ${call.receiverName} (${callId})`);
+}
+
+/** Decline an incoming private call */
+function handlePrivateCallDecline(clientId: string, callId: string, autoDecline = false): void {
+  const call = activeCalls.get(callId);
+  if (!call || call.status !== 'ringing') return;
+
+  // Clear auto-decline timer
+  if (call.declineTimer) clearTimeout(call.declineTimer);
+
+  call.status = 'ended';
+
+  // Notify the caller
+  const caller = clients.get(call.callerClientId);
+  if (caller && caller.ws.readyState === WebSocket.OPEN) {
+    caller.ws.send(JSON.stringify({
+      type: 'private_call_declined',
+      data: {
+        callId,
+        reason: autoDecline ? 'No answer' : 'Call declined',
+      },
+    }));
+  }
+
+  // Notify the receiver too (in case they also need to clean up UI)
+  const receiver = clients.get(call.receiverClientId);
+  if (receiver && receiver.ws.readyState === WebSocket.OPEN) {
+    receiver.ws.send(JSON.stringify({
+      type: 'private_call_declined',
+      data: {
+        callId,
+        reason: autoDecline ? 'No answer' : 'Call declined',
+      },
+    }));
+  }
+
+  activeCalls.delete(callId);
+  console.log(`[PrivateCall] DECLINED: ${callId} (${autoDecline ? 'auto' : 'manual'})`);
+}
+
+/** End an active private call */
+function handlePrivateCallEnd(clientId: string): void {
+  const client = clients.get(clientId);
+  if (!client || !client.privateCallId) return;
+
+  const callId = client.privateCallId;
+  const partnerId = client.privateCallPartner;
+  const call = activeCalls.get(callId);
+
+  // Calculate duration
+  const durationSeconds = call ? Math.round((Date.now() - call.startedAt) / 1000) : 0;
+
+  // Clean up caller
+  client.privateCallId = null;
+  client.privateCallPartner = null;
+
+  // Clean up partner
+  if (partnerId) {
+    const partner = clients.get(partnerId);
+    if (partner) {
+      partner.privateCallId = null;
+      partner.privateCallPartner = null;
+
+      // Notify partner
+      if (partner.ws.readyState === WebSocket.OPEN) {
+        partner.ws.send(JSON.stringify({
+          type: 'private_call_ended',
+          data: {
+            callId,
+            endedBy: client.userId,
+            duration: durationSeconds,
+          },
+        }));
+      }
+    }
+  }
+
+  // Notify the ender too
+  client.ws.send(JSON.stringify({
+    type: 'private_call_ended',
+    data: {
+      callId,
+      endedBy: client.userId,
+      duration: durationSeconds,
+    },
+  }));
+
+  // Remove call from active map
+  if (call) {
+    if (call.declineTimer) clearTimeout(call.declineTimer);
+    activeCalls.delete(callId);
+  }
+
+  console.log(`[PrivateCall] ENDED: ${callId} (${durationSeconds}s)`);
+}
+
+/** Relay audio chunk from one call participant to the other */
+function relayPrivateCallAudio(senderClientId: string, data: any): void {
+  const sender = clients.get(senderClientId);
+  if (!sender || !sender.privateCallPartner) return;
+
+  const partner = clients.get(sender.privateCallPartner);
+  if (!partner || partner.ws.readyState !== WebSocket.OPEN) return;
+
+  partner.ws.send(JSON.stringify({
+    type: 'private_call_audio',
+    data: {
+      ...data,
+      fromUserId: sender.userId,
+    },
+    timestamp: new Date().toISOString(),
+  }));
+}
+
+/** Clean up private call state when a client disconnects */
+function handlePrivateCallDisconnect(clientId: string): void {
+  const client = clients.get(clientId);
+  if (!client) return;
+
+  // If in a call, end it
+  if (client.privateCallId) {
+    handlePrivateCallEnd(clientId);
+  }
+
+  // Also clean up any pending (ringing) calls where this client is involved
+  for (const [callId, call] of activeCalls.entries()) {
+    if (call.callerClientId === clientId || call.receiverClientId === clientId) {
+      if (call.declineTimer) clearTimeout(call.declineTimer);
+      activeCalls.delete(callId);
+
+      // Notify the other party
+      const otherId = call.callerClientId === clientId ? call.receiverClientId : call.callerClientId;
+      const other = clients.get(otherId);
+      if (other && other.ws.readyState === WebSocket.OPEN) {
+        other.ws.send(JSON.stringify({
+          type: 'private_call_ended',
+          data: { callId, endedBy: client.userId, duration: 0, reason: 'Partner disconnected' },
+        }));
+      }
+    }
+  }
 }

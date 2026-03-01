@@ -4,14 +4,14 @@
 
 import {
   Users, Radio, Calendar, Clock, Award, GraduationCap, Package, MapPinned, BarChart3,
-  User, Activity,
+  User, Activity, Video,
 } from 'lucide-react';
 import type React from 'react';
 
 // Main tabs
 export type MainTab = 'roster' | 'duty_board' | 'schedule' | 'time' | 'credentials' | 'training' | 'equipment' | 'deployment' | 'analytics';
 
-export type DetailTab = 'profile' | 'credentials' | 'schedule' | 'time' | 'activity' | 'training' | 'equipment' | 'deployment';
+export type DetailTab = 'profile' | 'credentials' | 'schedule' | 'time' | 'activity' | 'training' | 'equipment' | 'body_cameras' | 'deployment';
 
 export type ModalMode =
   | 'none'
@@ -26,7 +26,10 @@ export type ModalMode =
   | 'edit_equipment'
   | 'new_deployment'
   | 'edit_deployment'
-  | 'edit_time_entry';
+  | 'edit_time_entry'
+  | 'new_body_camera'
+  | 'edit_body_camera'
+  | 'upload_video';
 
 export const MAIN_TABS: { id: MainTab; label: string; icon: React.ElementType }[] = [
   { id: 'roster', label: 'Roster', icon: Users },
@@ -48,6 +51,7 @@ export const DETAIL_TABS: { id: DetailTab; label: string; icon: React.ElementTyp
   { id: 'activity', label: 'Activity', icon: Activity },
   { id: 'training', label: 'Training', icon: GraduationCap },
   { id: 'equipment', label: 'Equipment', icon: Package },
+  { id: 'body_cameras', label: 'Body Cams', icon: Video },
   { id: 'deployment', label: 'Deployment', icon: MapPinned },
 ];
 
@@ -127,6 +131,21 @@ export const EQUIPMENT_CONDITION_COLORS: Record<string, string> = {
   poor: 'text-amber-400',
   damaged: 'text-red-400',
   lost: 'text-red-400',
+};
+
+export const CAMERA_STATUS_COLORS: Record<string, string> = {
+  available: 'bg-green-900/50 text-green-400 border border-green-700/50',
+  assigned: 'bg-blue-900/50 text-blue-400 border border-blue-700/50',
+  maintenance: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
+  retired: 'bg-rmpg-700 text-rmpg-400 border border-rmpg-600',
+  lost: 'bg-red-900/50 text-red-400 border border-red-700/50',
+};
+
+export const VIDEO_CLASSIFICATION_COLORS: Record<string, string> = {
+  routine: 'bg-rmpg-700 text-rmpg-300 border border-rmpg-600',
+  evidence: 'bg-purple-900/50 text-purple-400 border border-purple-700/50',
+  flagged: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
+  restricted: 'bg-red-900/50 text-red-400 border border-red-700/50',
 };
 
 export const CHART_TOOLTIP_STYLE = {

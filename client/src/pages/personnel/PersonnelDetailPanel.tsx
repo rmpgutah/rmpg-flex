@@ -1,12 +1,13 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import {
   X, Zap, Star, Shield, Clock, Award, Calendar, User, Activity, GraduationCap, MapPinned,
-  Pencil, Trash2, LogIn, LogOut, Archive, RotateCcw, Coffee,
+  Pencil, Trash2, LogIn, LogOut, Archive, RotateCcw, Coffee, Printer, ChevronDown,
 } from 'lucide-react';
-import type { Credential, Schedule, TimeEntry, TrainingRecord, Deployment, OfficerEquipment } from '../../types';
+import type { Credential, Schedule, TimeEntry, TrainingRecord, Deployment, OfficerEquipment, BodyCamera, BodyCamVideo } from '../../types';
 import type { OfficerWithStatus } from './utils/personnelMappers';
 import { calcYearsOfService } from './utils/personnelFormatters';
 import { DETAIL_TABS, ROLE_COLORS, type DetailTab } from './utils/personnelConstants';
+import { toDisplayLabel } from '../../utils/formatters';
 import OfficerAvatar from './components/OfficerAvatar';
 import ProfileDetailTab from './detail-tabs/ProfileDetailTab';
 import CredentialsDetailTab from './detail-tabs/CredentialsDetailTab';
@@ -15,6 +16,7 @@ import TimeLogDetailTab from './detail-tabs/TimeLogDetailTab';
 import ActivityDetailTab from './detail-tabs/ActivityDetailTab';
 import TrainingDetailTab from './detail-tabs/TrainingDetailTab';
 import EquipmentDetailTab from './detail-tabs/EquipmentDetailTab';
+import BodyCameraDetailTab from './detail-tabs/BodyCameraDetailTab';
 import DeploymentDetailTab from './detail-tabs/DeploymentDetailTab';
 import PrintRecordButton from '../../components/PrintRecordButton';
 
@@ -25,6 +27,115 @@ interface ActivityEntry {
   entity_type?: string;
   created_at: string;
   user_name?: string;
+}
+
+// ── Personnel Print Menu (dropdown to select report type) ──
+function PersonnelPrintMenu({ officer, credentials, training, equipment, bodyCameras, deployments, timeEntries }: {
+  officer: OfficerWithStatus;
+  credentials: Credential[];
+  training: TrainingRecord[];
+  equipment: OfficerEquipment[];
+  bodyCameras: BodyCamera[];
+  deployments: Deployment[];
+  timeEntries: TimeEntry[];
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const reportOptions = [
+    { key: 'full', label: 'Full Personnel Record' },
+    { key: 'credentials', label: 'Credentials' },
+    { key: 'training', label: 'Training' },
+    { key: 'equipment', label: 'Equipment' },
+    { key: 'time', label: 'Time & Attendance' },
+  ] as const;
+
+  const buildRecordData = (reportType: string) => ({
+    ...officer,
+    report_type: reportType,
+    credentials: credentials.map(c => ({
+      type: c.type,
+      credential_number: c.credential_number,
+      issuing_authority: c.issuing_authority,
+      issued_date: c.issued_date,
+      expiry_date: c.expiry_date,
+      status: c.status,
+    })),
+    training_records: training.map(t => ({
+      course_name: t.course_name,
+      category: t.category,
+      provider: t.provider,
+      completed_date: t.completed_date,
+      expiry_date: t.expiry_date,
+      hours: t.hours,
+      score: t.score,
+      status: t.status,
+    })),
+    equipment_list: equipment.map(eq => ({
+      equipment_type: eq.equipment_type,
+      serial_number: eq.serial_number,
+      make: eq.make,
+      model: eq.model,
+      condition: eq.condition,
+      status: eq.status,
+      issued_date: eq.issued_date,
+    })),
+    body_cameras: bodyCameras.map(cam => ({
+      camera_id: cam.camera_id,
+      make: cam.make,
+      model: cam.model,
+      status: cam.status,
+      condition: cam.condition,
+      assigned_at: cam.assigned_at,
+    })),
+    deployments: deployments.map(d => ({
+      property_name: d.property_name,
+      position: d.position,
+      start_date: d.start_date,
+      end_date: d.end_date,
+      status: d.status,
+      hours_per_week: d.hours_per_week,
+    })),
+    time_entries: timeEntries.map(t => ({
+      clock_in: t.clock_in,
+      clock_out: t.clock_out,
+      total_hours: t.total_hours,
+      status: t.status,
+    })),
+  });
+
+  return (
+    <div className="relative" ref={ref}>
+      <button className="toolbar-btn" onClick={() => setOpen(!open)}>
+        <Printer className="w-3 h-3" /> Print <ChevronDown className="w-2.5 h-2.5" />
+      </button>
+      {open && (
+        <div className="absolute right-0 mt-1 z-50 bg-rmpg-700 border border-rmpg-500 rounded shadow-lg min-w-[200px]">
+          {reportOptions.map((opt) => (
+            <PrintRecordButton
+              key={opt.key}
+              recordType="personnel"
+              recordData={buildRecordData(opt.key)}
+              identifier={`${officer.badge_number || officer.last_name}_${opt.key}`}
+              entityType="personnel"
+              entityId={officer.id}
+              label={opt.label}
+              className="w-full text-left px-3 py-1.5 text-xs hover:bg-rmpg-600 border-none rounded-none"
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 interface Props {
@@ -50,6 +161,15 @@ interface Props {
   onAddEquipment: (officerId: string) => void;
   onEditEquipment: (eq: OfficerEquipment) => void;
   onDeleteEquipment: (eqId: string) => void;
+  bodyCameras: BodyCamera[];
+  bodyCamVideos: BodyCamVideo[];
+  bodyCamerasLoading: boolean;
+  onAddBodyCamera: (officerId: string) => void;
+  onEditBodyCamera: (cam: BodyCamera) => void;
+  onDeleteBodyCamera: (camId: number) => void;
+  onUploadVideo: () => void;
+  onDeleteVideo: (videoId: number) => void;
+  onPlayVideo: (video: BodyCamVideo) => void;
   onAddDeployment: (officerId: string) => void;
   onEditOfficer: () => void;
   onDeleteOfficer: () => void;
@@ -73,6 +193,9 @@ export default function PersonnelDetailPanel({
   onAddSchedule, onDeleteSchedule,
   onAddTraining,
   equipment, equipmentLoading, onAddEquipment, onEditEquipment, onDeleteEquipment,
+  bodyCameras, bodyCamVideos, bodyCamerasLoading,
+  onAddBodyCamera, onEditBodyCamera, onDeleteBodyCamera,
+  onUploadVideo, onDeleteVideo, onPlayVideo,
   onAddDeployment,
   onEditOfficer, onDeleteOfficer,
   onArchiveOfficer, onUnarchiveOfficer, isArchived,
@@ -110,7 +233,7 @@ export default function PersonnelDetailPanel({
                   </span>
                 )}
                 <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-bold uppercase ${ROLE_COLORS[officer.role] || ROLE_COLORS.officer}`}>
-                  {officer.role}
+                  {toDisplayLabel(officer.role)}
                 </span>
                 {officer.badge_number && (
                   <span className="text-xs text-rmpg-300 font-mono flex items-center gap-1">
@@ -176,7 +299,15 @@ export default function PersonnelDetailPanel({
 
           {/* Action buttons — right side */}
           <div className="ml-auto flex items-center gap-1">
-            <PrintRecordButton recordType="personnel" recordData={officer} identifier={officer.badge_number || officer.last_name} entityType="personnel" entityId={officer.id} label="Print" />
+            <PersonnelPrintMenu
+              officer={officer}
+              credentials={officerCreds}
+              training={training.filter(t => t.officer_id === officer.id)}
+              equipment={equipment.filter(e => e.officer_id === officer.id)}
+              bodyCameras={bodyCameras.filter(c => c.officer_id === Number(officer.id))}
+              deployments={deployments.filter(d => d.officer_id === officer.id)}
+              timeEntries={officerTime}
+            />
             {!isArchived && (
               <>
                 <button onClick={onEditOfficer} className="toolbar-btn text-[9px]" title="Edit officer">
@@ -249,7 +380,7 @@ export default function PersonnelDetailPanel({
       </div>
 
       {/* Tab Content */}
-      <div className="flex-1 overflow-auto p-4">
+      <div className="flex-1 overflow-y-auto min-h-0 p-4">
         {activeTab === 'profile' && <ProfileDetailTab officer={officer} credentials={officerCreds} />}
         {activeTab === 'credentials' && (
           <CredentialsDetailTab
@@ -297,6 +428,19 @@ export default function PersonnelDetailPanel({
             onEdit={onEditEquipment}
             onDelete={onDeleteEquipment}
             loading={equipmentLoading}
+          />
+        )}
+        {activeTab === 'body_cameras' && (
+          <BodyCameraDetailTab
+            cameras={bodyCameras.filter(c => c.officer_id === Number(officer.id))}
+            videos={bodyCamVideos.filter(v => v.officer_id === Number(officer.id))}
+            onAddCamera={() => onAddBodyCamera(officer.id)}
+            onEditCamera={onEditBodyCamera}
+            onDeleteCamera={onDeleteBodyCamera}
+            onUploadVideo={onUploadVideo}
+            onDeleteVideo={onDeleteVideo}
+            onPlayVideo={onPlayVideo}
+            loading={bodyCamerasLoading}
           />
         )}
         {activeTab === 'deployment' && (

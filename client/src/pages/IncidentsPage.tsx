@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import {
   Plus,
   Search,
@@ -147,6 +148,8 @@ function SortIcon({ colKey, sortKey, sortAsc }: { colKey: SortKey; sortKey: Sort
 
 export default function IncidentsPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
 
   // ---------- data state ----------
   const [incidents, setIncidents] = useState<Incident[]>([]);
@@ -156,6 +159,7 @@ export default function IncidentsPage() {
   // ---------- UI state ----------
   const [searchQuery, setSearchQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
+  const [uofFilter, setUofFilter] = useState(false);
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [sortKey, setSortKey] = usePersistedState<SortKey>('rmpg_incidents_sort', 'occurred_at');
@@ -192,6 +196,7 @@ export default function IncidentsPage() {
 
   // ---------- modal / dialog state ----------
   const [showFormModal, setShowFormModal] = useState(false);
+  const [formDefaultType, setFormDefaultType] = useState<string>('');
   const [editingIncident, setEditingIncident] = useState<Incident | undefined>(undefined);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Incident | null>(null);
@@ -592,8 +597,10 @@ export default function IncidentsPage() {
   // Filter + sort
   // ============================================================
 
+  const UOF_TYPES = ['use_of_force', 'assault', 'battery'];
   const filtered = incidents
     .filter((inc) => {
+      if (uofFilter && !UOF_TYPES.includes(inc.type)) return false;
       if (!searchQuery) return true;
       const q = searchQuery.toLowerCase();
       return (
@@ -652,16 +659,42 @@ export default function IncidentsPage() {
           {showArchived ? 'Archives' : 'Archives'}
         </button>
         {!showArchived && (
-          <button
-            className="toolbar-btn toolbar-btn-primary"
-            onClick={() => {
-              setEditingIncident(undefined);
-              setShowFormModal(true);
-            }}
-          >
-            <Plus className="w-3.5 h-3.5" />
-            New Incident
-          </button>
+          <>
+            <button
+              onClick={() => setUofFilter(!uofFilter)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors border ${
+                uofFilter
+                  ? 'bg-red-900/40 text-red-400 border-red-700/50 hover:bg-red-900/60'
+                  : 'bg-rmpg-700/50 text-rmpg-400 border-rmpg-600 hover:text-rmpg-200 hover:bg-rmpg-700'
+              }`}
+            >
+              <Shield className="w-3 h-3" />
+              UoF
+            </button>
+            <button
+              className="toolbar-btn"
+              style={{ color: '#f87171', borderColor: '#991b1b' }}
+              onClick={() => {
+                setEditingIncident(undefined);
+                setFormDefaultType('use_of_force');
+                setShowFormModal(true);
+              }}
+            >
+              <Shield className="w-3.5 h-3.5" />
+              New UoF Report
+            </button>
+            <button
+              className="toolbar-btn toolbar-btn-primary"
+              onClick={() => {
+                setEditingIncident(undefined);
+                setFormDefaultType('');
+                setShowFormModal(true);
+              }}
+            >
+              <Plus className="w-3.5 h-3.5" />
+              New Incident
+            </button>
+          </>
         )}
       </PanelTitleBar>
       {showArchived && (
@@ -1436,7 +1469,7 @@ export default function IncidentsPage() {
           <FileAttachments
             entityType="incident"
             entityId={selectedIncident.id}
-            readOnly={!['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status)}
+            readOnly={!isAdmin && !['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status)}
           />
         </CollapsibleSection>
       </div>
@@ -1448,7 +1481,7 @@ export default function IncidentsPage() {
       >
         {!isEditing ? (
           <>
-            {['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status) && (
+            {(isAdmin || ['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status)) && (
               <>
                 <button
                   onClick={() => {
@@ -1464,7 +1497,7 @@ export default function IncidentsPage() {
                 </button>
               </>
             )}
-            {selectedIncident.status === 'draft' && (
+            {(isAdmin || selectedIncident.status === 'draft') && (
               <button
                 onClick={() => setDeleteTarget(selectedIncident)}
                 className="toolbar-btn toolbar-btn-danger"
@@ -1559,12 +1592,14 @@ export default function IncidentsPage() {
         onClose={() => {
           setShowFormModal(false);
           setEditingIncident(undefined);
+          setFormDefaultType('');
         }}
         onSubmit={editingIncident ? handleUpdate : handleCreate}
         isSubmitting={isSubmitting}
         editingIncident={editingIncident}
         dispositionCodes={dispositionCodes}
         clients={clientsList}
+        defaultType={formDefaultType}
       />
 
       {/* Delete Confirmation Dialog */}

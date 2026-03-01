@@ -1,17 +1,22 @@
 {
   "name": "rmpg-flex-client",
-  "version": "2.2.1",
+  "version": "5.3.9",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "cap:ios": "npx cap sync ios",
+    "cap:open:ios": "npx cap open ios",
+    "cap:android": "npx cap sync android",
+    "cap:open:android": "npx cap open android"
   },
   "dependencies": {
     "@capacitor/android": "^8.1.0",
     "@capacitor/app": "^8.0.1",
     "@capacitor/cli": "^8.1.0",
     "@capacitor/core": "^8.1.0",
+    "@capacitor/ios": "^8.1.0",
     "@capacitor/splash-screen": "^8.0.1",
     "@capacitor/status-bar": "^8.0.1",
     "@googlemaps/js-api-loader": "^2.0.2",

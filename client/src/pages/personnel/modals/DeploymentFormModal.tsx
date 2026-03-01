@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { MapPinned } from 'lucide-react';
 import FormModal from '../../../components/FormModal';
+import { useFormDirty } from '../../../hooks/useFormDirty';
 
 export interface DeploymentFormData {
   officer_id: string;
@@ -41,12 +42,16 @@ export default function DeploymentFormModal({
   isOpen, onClose, onSubmit, isSubmitting, officers, properties, initialData, mode = 'create',
 }: Props) {
   const [form, setForm] = useState<DeploymentFormData>(EMPTY);
+  const { isDirty, snapshot } = useFormDirty(form, isOpen);
 
   useEffect(() => {
     if (isOpen && initialData) {
-      setForm({ ...EMPTY, ...initialData });
+      const initial = { ...EMPTY, ...initialData };
+      setForm(initial);
+      snapshot(initial);
     } else if (isOpen) {
       setForm(EMPTY);
+      snapshot(EMPTY);
     }
   }, [isOpen, initialData]);
 
@@ -67,6 +72,7 @@ export default function DeploymentFormModal({
       icon={MapPinned}
       submitLabel={mode === 'edit' ? 'Update' : 'Create Deployment'}
       isSubmitting={isSubmitting}
+      isDirty={isDirty}
     >
       {/* Assignment */}
       <div className="panel-inset p-3 space-y-3">

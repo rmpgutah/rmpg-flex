@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Package } from 'lucide-react';
 import FormModal from '../../../components/FormModal';
+import { useFormDirty } from '../../../hooks/useFormDirty';
 import type { EquipmentType, EquipmentCondition, EquipmentStatus } from '../../../types';
 
 export interface EquipmentFormData {
@@ -81,12 +82,16 @@ export default function EquipmentFormModal({
   isOpen, onClose, onSubmit, isSubmitting, officers, initialData, mode = 'create',
 }: Props) {
   const [form, setForm] = useState<EquipmentFormData>(EMPTY);
+  const { isDirty, snapshot } = useFormDirty(form, isOpen);
 
   useEffect(() => {
     if (isOpen && initialData) {
-      setForm({ ...EMPTY, ...initialData });
+      const initial = { ...EMPTY, ...initialData };
+      setForm(initial);
+      snapshot(initial);
     } else if (isOpen) {
       setForm(EMPTY);
+      snapshot(EMPTY);
     }
   }, [isOpen, initialData]);
 
@@ -107,6 +112,7 @@ export default function EquipmentFormModal({
       icon={Package}
       submitLabel={mode === 'edit' ? 'Update' : 'Issue Equipment'}
       isSubmitting={isSubmitting}
+      isDirty={isDirty}
     >
       {/* Assignment */}
       <div className="panel-inset p-3 space-y-3">

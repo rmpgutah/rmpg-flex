@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { GraduationCap } from 'lucide-react';
 import FormModal from '../../../components/FormModal';
+import { useFormDirty } from '../../../hooks/useFormDirty';
 import type { TrainingCategory } from '../../../types';
 
 export interface TrainingFormData {
@@ -58,12 +59,16 @@ export default function TrainingFormModal({
   isOpen, onClose, onSubmit, isSubmitting, officers, initialData, mode = 'create',
 }: Props) {
   const [form, setForm] = useState<TrainingFormData>(EMPTY);
+  const { isDirty, snapshot } = useFormDirty(form, isOpen);
 
   useEffect(() => {
     if (isOpen && initialData) {
-      setForm({ ...EMPTY, ...initialData });
+      const initial = { ...EMPTY, ...initialData };
+      setForm(initial);
+      snapshot(initial);
     } else if (isOpen) {
       setForm(EMPTY);
+      snapshot(EMPTY);
     }
   }, [isOpen, initialData]);
 
@@ -84,6 +89,7 @@ export default function TrainingFormModal({
       icon={GraduationCap}
       submitLabel={mode === 'edit' ? 'Update' : 'Add Training'}
       isSubmitting={isSubmitting}
+      isDirty={isDirty}
     >
       {/* Officer & Course */}
       <div className="panel-inset p-3 space-y-3">

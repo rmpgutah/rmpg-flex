@@ -33,6 +33,7 @@ const FUEL_GRADE: Record<FuelType, { led: string; desc: string }> = {
 
 interface Props {
   isOpen: boolean;
+  mode?: 'create' | 'edit';
   form: FuelFormState;
   onChange: (form: FuelFormState) => void;
   onSave: () => void;
@@ -40,7 +41,7 @@ interface Props {
   saving: boolean;
 }
 
-export default function FuelLogModal({ isOpen, form, onChange, onSave, onClose, saving }: Props) {
+export default function FuelLogModal({ isOpen, mode = 'create', form, onChange, onSave, onClose, saving }: Props) {
   const titleId = useId();
   if (!isOpen) return null;
 
@@ -62,7 +63,7 @@ export default function FuelLogModal({ isOpen, form, onChange, onSave, onClose, 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} style={{ background: 'rgba(0,0,0,0.6)' }}>
       <div className="panel-beveled w-[520px] max-h-[80vh] flex flex-col" style={{ background: '#1e1e1e' }}>
-        <PanelTitleBar title="LOG FUEL ENTRY" icon={Fuel} id={titleId}>
+        <PanelTitleBar title={mode === 'edit' ? 'EDIT FUEL ENTRY' : 'LOG FUEL ENTRY'} icon={Fuel} id={titleId}>
           <button className="toolbar-btn text-[9px]" onClick={onClose}>X</button>
         </PanelTitleBar>
         <div className="flex-1 overflow-y-auto p-4">
@@ -135,7 +136,7 @@ export default function FuelLogModal({ isOpen, form, onChange, onSave, onClose, 
         <div className="flex items-center justify-end gap-2 px-4 py-2 border-t border-rmpg-700">
           <button className="toolbar-btn" onClick={onClose}>Cancel</button>
           <button className="toolbar-btn toolbar-btn-primary" onClick={onSave} disabled={saving}>
-            {saving ? 'Saving...' : 'Log Fuel'}
+            {saving ? 'Saving...' : mode === 'edit' ? 'Update Fuel' : 'Log Fuel'}
           </button>
         </div>
       </div>

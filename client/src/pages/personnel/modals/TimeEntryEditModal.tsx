@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Clock } from 'lucide-react';
 import FormModal from '../../../components/FormModal';
+import { useFormDirty } from '../../../hooks/useFormDirty';
 import type { TimeEntry } from '../../../types';
 
 export interface TimeEntryEditData {
@@ -32,14 +33,20 @@ export default function TimeEntryEditModal({
 }: Props) {
   const [clockIn, setClockIn] = useState('');
   const [clockOut, setClockOut] = useState('');
+  const form = useMemo(() => ({ clockIn, clockOut }), [clockIn, clockOut]);
+  const { isDirty, snapshot } = useFormDirty(form, isOpen);
 
   useEffect(() => {
     if (isOpen && entry) {
-      setClockIn(toLocalInput(entry.clock_in));
-      setClockOut(toLocalInput(entry.clock_out));
+      const initialIn = toLocalInput(entry.clock_in);
+      const initialOut = toLocalInput(entry.clock_out);
+      setClockIn(initialIn);
+      setClockOut(initialOut);
+      snapshot({ clockIn: initialIn, clockOut: initialOut });
     } else if (isOpen) {
       setClockIn('');
       setClockOut('');
+      snapshot({ clockIn: '', clockOut: '' });
     }
   }, [isOpen, entry]);
 
@@ -75,6 +82,7 @@ export default function TimeEntryEditModal({
       submitLabel="Update Punch"
       isSubmitting={isSubmitting}
       maxWidth="max-w-md"
+      isDirty={isDirty}
     >
       {/* Officer info (read-only) */}
       {entry && (

@@ -54,6 +54,68 @@ export async function reverseGeocodeAddress(lat: number, lng: number): Promise<s
   }
 }
 
+// ─── Detailed Reverse Geocode ─────────────────────────────
+// Returns road name, nearest intersection, and formatted address
+// from Google's Geocoding API address_components.
+
+export interface DetailedGeocodeResult {
+  formatted_address: string;
+  road_name: string | null;
+  nearest_intersection: string | null;
+}
+
+/**
+ * Reverse-geocode GPS coordinates to get detailed road info.
+ * Parses address_components for route (road name) and looks for
+ * intersection data in secondary results.
+ */
+export async function reverseGeocodeDetailed(lat: number, lng: number): Promise<DetailedGeocodeResult | null> {
+  if (!GOOGLE_MAPS_API_KEY) return null;
+
+  try {
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&result_type=street_address|route|intersection&key=${GOOGLE_MAPS_API_KEY}`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    if (data.status !== 'OK' || !data.results?.length) return null;
+
+    const primary = data.results[0];
+    const formatted_address = primary.formatted_address || '';
+
+    // Extract road name from address_components
+    let road_name: string | null = null;
+    for (const comp of (primary.address_components || [])) {
+      if (comp.types?.includes('route')) {
+        road_name = comp.long_name;
+        break;
+      }
+    }
+
+    // Look for intersection in secondary results
+    let nearest_intersection: string | null = null;
+    for (const result of data.results) {
+      if (result.types?.includes('intersection')) {
+        nearest_intersection = result.formatted_address;
+        break;
+      }
+      // Also check address_components for intersection type
+      for (const comp of (result.address_components || [])) {
+        if (comp.types?.includes('intersection')) {
+          nearest_intersection = comp.long_name;
+          break;
+        }
+      }
+      if (nearest_intersection) break;
+    }
+
+    return { formatted_address, road_name, nearest_intersection };
+  } catch (err) {
+    console.error('[geocode] Error in detailed reverse geocode:', err);
+    return null;
+  }
+}
+
 /**
  * If a call has an address but no coordinates, geocode it and update the DB.
  * Runs asynchronously — does not block the response.

@@ -10,6 +10,7 @@ import {
 import type { Deployment, CoverageGap, DeploymentStatus } from '../../../types';
 import type { OfficerWithStatus } from '../utils/personnelMappers';
 import { DEPLOYMENT_STATUS_COLORS } from '../utils/personnelConstants';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 type StatusFilter = 'all' | DeploymentStatus;
 
@@ -176,7 +177,7 @@ export default function DeploymentTab({ deployments, coverageGaps, officers, loa
                     <span className={`inline-block px-1.5 py-0.5 text-[9px] font-bold uppercase ${
                       DEPLOYMENT_STATUS_COLORS[dep.status] || DEPLOYMENT_STATUS_COLORS.active
                     }`}>
-                      {dep.status}
+                      {toDisplayLabel(dep.status)}
                     </span>
                   </td>
                 </tr>

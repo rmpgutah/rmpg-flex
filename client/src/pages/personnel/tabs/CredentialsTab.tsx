@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import type { Credential } from '../../../types';
 import { CREDENTIAL_STATUS_COLORS } from '../utils/personnelConstants';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 interface Props {
   credentials: Credential[];
@@ -145,7 +146,7 @@ export default function CredentialsTab({ credentials, onAddCredential, onEditCre
                     <span className="text-xs text-rmpg-200">{cred.officer_name}</span>
                   </td>
                   <td>
-                    <span className="text-xs text-rmpg-300 font-medium">{cred.type}</span>
+                    <span className="text-xs text-rmpg-300 font-medium">{toDisplayLabel(cred.type)}</span>
                   </td>
                   <td>
                     <span className="text-xs font-mono text-rmpg-400">{cred.credential_number || '-'}</span>

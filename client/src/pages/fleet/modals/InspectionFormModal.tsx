@@ -81,6 +81,7 @@ function computeOverallResult(items: InspectionItem[]): InspectionResult {
 
 interface Props {
   isOpen: boolean;
+  mode?: 'create' | 'edit';
   form: InspectionFormState;
   onChange: (form: InspectionFormState) => void;
   onSave: () => void;
@@ -88,7 +89,7 @@ interface Props {
   saving: boolean;
 }
 
-export default function InspectionFormModal({ isOpen, form, onChange, onSave, onClose, saving }: Props) {
+export default function InspectionFormModal({ isOpen, mode = 'create', form, onChange, onSave, onClose, saving }: Props) {
   const titleId = useId();
   if (!isOpen) return null;
 
@@ -116,7 +117,7 @@ export default function InspectionFormModal({ isOpen, form, onChange, onSave, on
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} style={{ background: 'rgba(0,0,0,0.6)' }}>
       <div className="panel-beveled w-[680px] max-h-[85vh] flex flex-col" style={{ background: '#1e1e1e' }}>
-        <PanelTitleBar title="VEHICLE INSPECTION" icon={ClipboardCheck} id={titleId}>
+        <PanelTitleBar title={mode === 'edit' ? 'EDIT INSPECTION' : 'VEHICLE INSPECTION'} icon={ClipboardCheck} id={titleId}>
           <span className={`px-2 py-0.5 text-[9px] font-bold uppercase border ${resultColor[form.overall_result]}`}>
             {resultLabel[form.overall_result]}
           </span>
@@ -193,7 +194,7 @@ export default function InspectionFormModal({ isOpen, form, onChange, onSave, on
         <div className="flex items-center justify-end gap-2 px-4 py-2 border-t border-rmpg-700">
           <button className="toolbar-btn" onClick={onClose}>Cancel</button>
           <button className="toolbar-btn toolbar-btn-primary" onClick={onSave} disabled={saving}>
-            {saving ? 'Saving...' : 'Submit Inspection'}
+            {saving ? 'Saving...' : mode === 'edit' ? 'Update Inspection' : 'Submit Inspection'}
           </button>
         </div>
       </div>

@@ -1444,6 +1444,150 @@ router.delete('/:id/personnel-notes/:noteId', (req: Request, res: Response) => {
   }
 });
 
+// ─── POST /api/fleet/import/simply-fleet ─ Bulk import SF data ───
+router.post('/import/simply-fleet', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { fillups, services, vehicle_number } = req.body;
+
+    if (!vehicle_number) {
+      res.status(400).json({ error: 'vehicle_number is required to match import data' });
+      return;
+    }
+
+    // Find vehicle by vehicle_number
+    const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE vehicle_number = ?').get(vehicle_number) as any;
+    if (!vehicle) {
+      res.status(404).json({ error: `Vehicle ${vehicle_number} not found. Create it first.` });
+      return;
+    }
+
+    const now = localNow();
+    let fuelInserted = 0;
+    let serviceInserted = 0;
+    let fuelSkipped = 0;
+    let serviceSkipped = 0;
+
+    const insertFuel = db.prepare(`
+      INSERT INTO fleet_fuel_logs (
+        vehicle_id, fuel_date, gallons, total_cost, odometer_reading,
+        fuel_type, station, notes, distance, efficiency, source, created_by, created_at
+      ) VALUES (?, ?, ?, ?, ?, 'regular', ?, ?, ?, ?, 'simply_fleet', ?, ?)
+    `);
+
+    const insertMaintenance = db.prepare(`
+      INSERT INTO fleet_maintenance (
+        vehicle_id, performed_at, type, description, cost,
+        mileage_at_service, vendor, labor_cost, service_tasks, source, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'simply_fleet', ?)
+    `);
+
+    // Check for existing import duplicates by date + odometer
+    const checkFuelDup = db.prepare(
+      `SELECT id FROM fleet_fuel_logs WHERE vehicle_id = ? AND fuel_date = ? AND odometer_reading = ? AND source = 'simply_fleet'`
+    );
+    const checkServiceDup = db.prepare(
+      `SELECT id FROM fleet_maintenance WHERE vehicle_id = ? AND performed_at = ? AND mileage_at_service = ? AND source = 'simply_fleet'`
+    );
+
+    // Map service task to valid maintenance type
+    const mapServiceType = (task: string): string => {
+      const t = (task || '').toLowerCase();
+      if (t.includes('oil change') || t.includes('oil & filter')) return 'oil_change';
+      if (t.includes('tire r')) return 'tire_rotation';
+      if (t.includes('brake')) return 'brake_service';
+      if (t.includes('inspection')) return 'inspection';
+      if (t.includes('replacement') || t.includes('alignment') || t.includes('repair')) return 'repair';
+      return 'other';
+    };
+
+    const txn = db.transaction(() => {
+      // Import fillups
+      if (Array.isArray(fillups)) {
+        for (const f of fillups) {
+          // Deduplicate: same date + odometer
+          const existing = checkFuelDup.get(vehicle.id, f.date, f.odometer);
+          if (existing) { fuelSkipped++; continue; }
+
+          insertFuel.run(
+            vehicle.id,
+            f.date,
+            f.quantity || f.gallons || null,
+            f.total_cost || null,
+            f.odometer || null,
+            f.station || null,
+            f.notes || null,
+            f.distance || null,
+            f.efficiency || null,
+            req.user!.userId,
+            now,
+          );
+          fuelInserted++;
+
+          // Update vehicle mileage if higher
+          if (f.odometer && (!vehicle.current_mileage || f.odometer > vehicle.current_mileage)) {
+            db.prepare('UPDATE fleet_vehicles SET current_mileage = ?, updated_at = ? WHERE id = ?')
+              .run(f.odometer, now, vehicle.id);
+            vehicle.current_mileage = f.odometer;
+          }
+        }
+      }
+
+      // Import services
+      if (Array.isArray(services)) {
+        for (const s of services) {
+          const existing = checkServiceDup.get(vehicle.id, s.date, s.odometer);
+          if (existing) { serviceSkipped++; continue; }
+
+          const taskDesc = s.service_task || s.description || 'Service';
+          insertMaintenance.run(
+            vehicle.id,
+            s.date,
+            mapServiceType(taskDesc),
+            taskDesc,
+            s.total_cost || null,
+            s.odometer || null,
+            s.station || s.vendor || null,
+            s.labor_cost || null,
+            s.service_task ? JSON.stringify([s.service_task]) : null,
+            now,
+          );
+          serviceInserted++;
+
+          if (s.odometer && (!vehicle.current_mileage || s.odometer > vehicle.current_mileage)) {
+            db.prepare('UPDATE fleet_vehicles SET current_mileage = ?, updated_at = ? WHERE id = ?')
+              .run(s.odometer, now, vehicle.id);
+            vehicle.current_mileage = s.odometer;
+          }
+        }
+      }
+    });
+
+    txn();
+
+    // Activity log
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'fleet_import', 'fleet_vehicle', ?, ?, ?)
+    `).run(
+      req.user!.userId, vehicle.id,
+      `Simply Fleet import for ${vehicle_number}: ${fuelInserted} fuel logs, ${serviceInserted} service records (${fuelSkipped + serviceSkipped} duplicates skipped)`,
+      req.ip || 'unknown',
+    );
+
+    res.json({
+      success: true,
+      vehicle_id: vehicle.id,
+      vehicle_number,
+      fuel: { inserted: fuelInserted, skipped: fuelSkipped },
+      services: { inserted: serviceInserted, skipped: serviceSkipped },
+    });
+  } catch (error: any) {
+    console.error('Simply Fleet import error:', error);
+    res.status(500).json({ error: 'Failed to import Simply Fleet data' });
+  }
+});
+
 // ─── Helpers ──────────────────────────────────────────────────────
 
 function safeParseJson(value: string | null | undefined, fallback: any): any {

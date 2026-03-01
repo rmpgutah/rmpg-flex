@@ -362,7 +362,7 @@ export default function IncidentDetailWindow() {
       {/* LE Coordination */}
       {(incident.responding_le_agency || incident.le_case_number) && (
         <div className="bg-surface-base border border-rmpg-600 p-4 mb-6">
-          <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3 border-b border-rmpg-700 pb-2">Law Enforcement Coordination</h3>
+          <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3 border-b border-rmpg-700 pb-2">External Agency Coordination</h3>
           <div className="grid grid-cols-2 gap-4 text-sm">
             {incident.responding_le_agency && (
               <div>

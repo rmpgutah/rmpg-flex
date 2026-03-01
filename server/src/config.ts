@@ -107,16 +107,28 @@ export const config = {
 
   // Password Policy
   password: {
-    minLength: envInt('PASSWORD_MIN_LENGTH', 8),
+    minLength: envInt('PASSWORD_MIN_LENGTH', 12),
     requireUppercase: envBool('PASSWORD_REQUIRE_UPPERCASE', true),
     requireLowercase: envBool('PASSWORD_REQUIRE_LOWERCASE', true),
     requireNumber: envBool('PASSWORD_REQUIRE_NUMBER', true),
-    requireSpecial: envBool('PASSWORD_REQUIRE_SPECIAL', false),
+    requireSpecial: envBool('PASSWORD_REQUIRE_SPECIAL', true),
+    historyCount: envInt('PASSWORD_HISTORY_COUNT', 5),
+    expiryDays: envInt('PASSWORD_EXPIRY_DAYS', 90),
+  },
+
+  // Two-Factor Authentication (TOTP)
+  totp: {
+    encryptionKey: process.env.TOTP_ENCRYPTION_KEY || jwtSecret,
+    issuer: process.env.TOTP_ISSUER || 'RMPG Flex',
+    requiredRoles: (process.env.TOTP_REQUIRED_ROLES || 'admin,manager,supervisor,officer,dispatcher,contract_manager').split(',').map(s => s.trim()).filter(Boolean),
+    backupCodeCount: envInt('TOTP_BACKUP_CODE_COUNT', 10),
   },
 
   // Session
   session: {
     maxPerUser: envInt('SESSION_MAX_PER_USER', 5),
+    enforceIpBinding: envBool('SESSION_ENFORCE_IP_BINDING', true),
+    ipChangeAction: (process.env.SESSION_IP_CHANGE_ACTION || 'warn') as 'invalidate' | 'reauth' | 'warn',
   },
 
   // CORS

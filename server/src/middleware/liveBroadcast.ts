@@ -25,6 +25,11 @@ const PATH_TO_CHANNEL: Record<string, string> = {
   '/api/servemanager': 'admin',
   '/api/notifications': 'dispatch',
   '/api/statutes': 'admin',
+  '/api/cases': 'records',
+  '/api/code-enforcement': 'records',
+  '/api/court': 'records',
+  '/api/dar': 'admin',
+  '/api/offender-registry': 'records',
 };
 
 // Methods that mutate data

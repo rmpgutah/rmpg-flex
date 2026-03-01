@@ -1,6 +1,6 @@
 {
   "name": "rmpg-flex-desktop",
-  "version": "2.2.3",
+  "version": "5.3.9",
   "description": "RMPG Flex CAD/RMS — Desktop Application",
   "author": "Rocky Mountain Protective Group",
   "license": "UNLICENSED",
@@ -22,32 +22,21 @@
     },
     "publish": {
       "provider": "generic",
-      "url": "http://194.113.64.90/updates"
+      "url": "https://rmpgutah.us/updates"
     },
     "files": [
       "main.js",
       "preload.js",
-      "updater.js"
+      "updater.js",
+      "localDb.js",
+      "connectivityMonitor.js",
+      "pinManager.js",
+      "offlineRouter.js",
+      "syncManager.js"
     ],
     "extraResources": [
       {
-        "from": "../server",
-        "to": "server",
-        "filter": [
-          "**/*",
-          "!node_modules/.cache/**",
-          "!dist/**",
-          "!.env",
-          "!data/**",
-          "!downloads/**"
-        ]
-      },
-      {
-        "from": "../client/dist",
-        "to": "client/dist"
-      },
-      {
-        "from": "../client/public/favicon.png",
+        "from": "../client/public/rmpg-seal.png",
         "to": "icon.png"
       }
     ],
@@ -63,7 +52,7 @@
       ],
       "icon": "../client/public/rmpg-seal.icns",
       "darkModeSupport": true,
-      "hardenedRuntime": true,
+      "hardenedRuntime": false,
       "gatekeeperAssess": false
     },
     "dmg": {
@@ -102,6 +91,7 @@
     }
   },
   "dependencies": {
+    "better-sqlite3": "^11.7.0",
     "electron-updater": "^6.8.3"
   },
   "devDependencies": {

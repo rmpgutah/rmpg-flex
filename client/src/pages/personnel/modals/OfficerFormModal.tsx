@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User } from 'lucide-react';
 import FormModal from '../../../components/FormModal';
+import { useFormDirty } from '../../../hooks/useFormDirty';
 import type { UserRole } from '../../../types';
 import AddressAutocomplete, { type ParsedAddress } from '../../../components/AddressAutocomplete';
 
@@ -92,12 +93,16 @@ export default function OfficerFormModal({
   isOpen, onClose, onSubmit, isSubmitting, initialData, mode = 'create',
 }: Props) {
   const [form, setForm] = useState<OfficerFormData>(EMPTY);
+  const { isDirty, snapshot } = useFormDirty(form, isOpen);
 
   useEffect(() => {
     if (isOpen && initialData) {
-      setForm({ ...EMPTY, ...initialData });
+      const initial = { ...EMPTY, ...initialData };
+      setForm(initial);
+      snapshot(initial);
     } else if (isOpen) {
       setForm(EMPTY);
+      snapshot(EMPTY);
     }
   }, [isOpen, initialData]);
 
@@ -119,6 +124,7 @@ export default function OfficerFormModal({
       submitLabel={mode === 'edit' ? 'Update' : 'Create Officer'}
       isSubmitting={isSubmitting}
       maxWidth="max-w-3xl"
+      isDirty={isDirty}
     >
       {/* Account — create only */}
       {mode === 'create' && (

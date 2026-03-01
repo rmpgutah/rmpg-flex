@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Clock, MapPin, Users, AlertTriangle } from 'lucide-react';
 import type { CallForService } from '../types';
 import StatusBadge from './StatusBadge';
 import { formatIncidentType } from '../utils/caseNumbers';
 import WarningTags from './WarningTags';
 import type { WarningTag } from './WarningTags';
+import { getTimerState, isActiveStatus, type TimerSeverity } from '../utils/dispatchTimers';
 
 interface CallCardProps {
   call: CallForService;
@@ -14,61 +15,60 @@ interface CallCardProps {
   warnings?: WarningTag[];
 }
 
-function computeElapsed(createdAt: string) {
-  const created = new Date(createdAt).getTime();
-  const now = Date.now();
-  const diffMs = now - created;
-  const diffMin = Math.floor(diffMs / 60000);
-
-  let elapsed: string;
-  if (diffMin < 1) elapsed = '<1m';
-  else if (diffMin < 60) elapsed = `${diffMin}m`;
-  else {
-    const hours = Math.floor(diffMin / 60);
-    const mins = diffMin % 60;
-    elapsed = `${hours}h ${mins}m`;
-  }
-
-  let color: string;
-  if (diffMin >= 60) color = '#ef4444';
-  else if (diffMin >= 30) color = '#ef4444';
-  else if (diffMin >= 15) color = '#f59e0b';
-  else color = '#6b7280';
-
-  return { elapsed, color, diffMin };
-}
-
 const NON_DROPPABLE_STATUSES = ['cleared', 'closed', 'cancelled', 'archived'];
 
 export default React.memo(function CallCard({ call, isSelected = false, onClick, onUnitDrop, warnings }: CallCardProps) {
   const isEmergency = call.priority === 'P1';
   const [isDragOver, setIsDragOver] = useState(false);
-  const elapsedRef = useRef<HTMLSpanElement>(null);
+  const timerRef = useRef<HTMLSpanElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
+  const labelRef = useRef<HTMLSpanElement>(null);
+  const [isOverdue, setIsOverdue] = useState(false);
   const [shouldEscalate, setShouldEscalate] = useState(false);
 
-  // Use direct DOM updates for elapsed timer to avoid re-renders every 30s
+  // Status-aware timer — updates every second via direct DOM manipulation
   useEffect(() => {
+    const active = isActiveStatus(call.status);
+
     const update = () => {
-      const { elapsed, color, diffMin } = computeElapsed(call.created_at);
-      const el = elapsedRef.current;
-      if (el) {
-        el.textContent = elapsed;
-        el.style.color = color;
-        el.className = diffMin >= 60 ? 'animate-pulse' : '';
+      const state = getTimerState(call);
+
+      // Update timer text
+      if (timerRef.current) {
+        timerRef.current.textContent = `${state.label} ${state.formatted}`;
+        timerRef.current.style.color = state.color;
+        timerRef.current.className = state.isOverdue ? 'animate-pulse font-bold' : '';
       }
 
+      // Update progress bar
+      if (barRef.current) {
+        barRef.current.style.width = `${state.progress * 100}%`;
+        barRef.current.style.background = state.color;
+        barRef.current.style.opacity = state.progress > 0 ? '1' : '0';
+      }
+
+      // Update overdue label
+      if (labelRef.current) {
+        labelRef.current.style.display = state.isOverdue ? 'inline-flex' : 'none';
+      }
+
+      setIsOverdue(state.isOverdue);
+
+      // Legacy escalation logic
+      const diffMin = Math.floor((Date.now() - new Date(call.created_at).getTime()) / 60000);
       const isPending = call.status === 'pending';
-      const shouldEsc = isPending && (
+      setShouldEscalate(isPending && (
         (call.priority === 'P3' && diffMin >= 20) ||
         (call.priority === 'P2' && diffMin >= 10) ||
         (call.priority === 'P4' && diffMin >= 30)
-      );
-      setShouldEscalate(shouldEsc);
+      ));
     };
+
     update();
-    const interval = setInterval(update, 30000);
+    // Update every second for active calls, every 30s for inactive
+    const interval = setInterval(update, active ? 1000 : 30000);
     return () => clearInterval(interval);
-  }, [call.created_at, call.status, call.priority]);
+  }, [call.created_at, call.status, call.priority, call.dispatched_at, call.enroute_at, call.onscene_at]);
 
   const canAcceptDrop = onUnitDrop && !NON_DROPPABLE_STATUSES.includes(call.status);
 
@@ -101,8 +101,8 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
     }
   };
 
-  // Initial values for first render
-  const init = computeElapsed(call.created_at);
+  // Initial timer state for first render
+  const initState = getTimerState(call);
 
   return (
     <div
@@ -119,10 +119,14 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           : 'panel-beveled hover:bg-surface-raised'
         }
         ${isEmergency ? 'animate-emergency-pulse' : ''}
+        ${isOverdue ? 'timer-overdue' : ''}
+        ${call.status === 'on_hold' ? 'call-on-hold' : ''}
       `}
       style={{
-        background: isSelected ? undefined : '#1a1a1a',
-        borderLeftColor: undefined, // Let priority-border handle left
+        background: call.status === 'on_hold'
+          ? 'rgba(180, 130, 0, 0.08)'
+          : isSelected ? undefined : '#1a1a1a',
+        borderLeftColor: call.status === 'on_hold' ? '#f59e0b' : undefined,
         ...(isDragOver ? {
           boxShadow: '0 0 8px rgba(34, 197, 94, 0.5)',
           borderColor: 'rgb(34, 197, 94)',
@@ -130,6 +134,21 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         } : {}),
       }}
     >
+      {/* Timer progress bar (thin line at top) */}
+      {isActiveStatus(call.status) && (
+        <div className="timer-bar-track">
+          <div
+            ref={barRef}
+            className="timer-bar-fill"
+            style={{
+              width: `${initState.progress * 100}%`,
+              background: initState.color,
+              opacity: initState.progress > 0 ? 1 : 0,
+            }}
+          />
+        </div>
+      )}
+
       {/* Header Row */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
@@ -138,7 +157,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           )}
           <span className="text-sm font-bold text-green-400 font-mono">{call.call_number}</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <StatusBadge status={call.priority} type="priority" size="sm" />
           <StatusBadge status={call.status} type="call_status" size="sm" />
           {shouldEscalate && (
@@ -146,6 +165,13 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
               ESCALATE
             </span>
           )}
+          <span
+            ref={labelRef}
+            className="text-[8px] font-bold font-mono text-red-400 bg-red-900/40 border border-red-600/50 px-1 py-0 animate-pulse"
+            style={{ display: initState.isOverdue ? 'inline-flex' : 'none' }}
+          >
+            OVERDUE
+          </span>
         </div>
       </div>
 
@@ -160,11 +186,17 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         <span className="truncate">{call.location}</span>
       </div>
 
-      {/* Footer Row */}
+      {/* Footer Row — status timer + units */}
       <div className="flex items-center justify-between text-xs text-rmpg-400">
         <div className="flex items-center gap-1 font-mono">
           <Clock className="w-3 h-3" />
-          <span ref={elapsedRef} style={{ color: init.color }} className={init.diffMin >= 60 ? 'animate-pulse' : ''}>{init.elapsed}</span>
+          <span
+            ref={timerRef}
+            style={{ color: initState.color }}
+            className={initState.isOverdue ? 'animate-pulse font-bold' : ''}
+          >
+            {initState.label} {initState.formatted}
+          </span>
         </div>
         {call.assigned_units.length > 0 && (
           <div className="flex items-center gap-1">

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Award } from 'lucide-react';
 import FormModal from './FormModal';
+import { useFormDirty } from '../hooks/useFormDirty';
 
 export interface CredentialFormData {
   officer_id: string;
@@ -21,6 +22,16 @@ interface CredentialFormModalProps {
   initialData?: Partial<CredentialFormData> & { id?: string };
   mode?: 'create' | 'edit';
 }
+
+const EMPTY_FORM: CredentialFormData = {
+  officer_id: '',
+  credential_type: '',
+  credential_number: '',
+  issuing_authority: '',
+  issued_date: '',
+  expiry_date: '',
+  notes: '',
+};
 
 const CREDENTIAL_TYPES = [
   'Guard Card',
@@ -56,19 +67,12 @@ export default function CredentialFormModal({
   initialData,
   mode = 'create',
 }: CredentialFormModalProps) {
-  const [form, setForm] = useState<CredentialFormData>({
-    officer_id: '',
-    credential_type: '',
-    credential_number: '',
-    issuing_authority: '',
-    issued_date: '',
-    expiry_date: '',
-    notes: '',
-  });
+  const [form, setForm] = useState<CredentialFormData>(EMPTY_FORM);
+  const { isDirty, snapshot } = useFormDirty(form, isOpen);
 
   useEffect(() => {
     if (isOpen && initialData) {
-      setForm({
+      const initial: CredentialFormData = {
         officer_id: initialData.officer_id || '',
         credential_type: initialData.credential_type || '',
         credential_number: initialData.credential_number || '',
@@ -76,17 +80,12 @@ export default function CredentialFormModal({
         issued_date: initialData.issued_date || '',
         expiry_date: initialData.expiry_date || '',
         notes: initialData.notes || '',
-      });
+      };
+      setForm(initial);
+      snapshot(initial);
     } else if (isOpen && !initialData) {
-      setForm({
-        officer_id: '',
-        credential_type: '',
-        credential_number: '',
-        issuing_authority: '',
-        issued_date: '',
-        expiry_date: '',
-        notes: '',
-      });
+      setForm(EMPTY_FORM);
+      snapshot(EMPTY_FORM);
     }
   }, [isOpen, initialData]);
 
@@ -96,15 +95,7 @@ export default function CredentialFormModal({
   };
 
   const handleClose = () => {
-    setForm({
-      officer_id: '',
-      credential_type: '',
-      credential_number: '',
-      issuing_authority: '',
-      issued_date: '',
-      expiry_date: '',
-      notes: '',
-    });
+    setForm(EMPTY_FORM);
     onClose();
   };
 
@@ -117,6 +108,7 @@ export default function CredentialFormModal({
       icon={Award}
       submitLabel={mode === 'edit' ? 'Update Credential' : 'Add Credential'}
       isSubmitting={isSubmitting}
+      isDirty={isDirty}
     >
       {/* Officer */}
       <div>

@@ -23,13 +23,27 @@ import {
   AlertTriangle,
   FileWarning,
   Navigation2,
+  Briefcase,
+  Package,
+  TrendingUp,
+  Construction,
+  Gavel,
+  ClipboardCheck,
+  UserX,
   Wifi,
   WifiOff,
   X,
   Shield,
   ChevronRight,
+  Terminal,
+  Monitor,
+  Search,
+  ClipboardList,
+  Calendar,
+  ShieldBan,
 } from 'lucide-react';
 import RmpgLogo from '../RmpgLogo';
+import { toDisplayLabel } from '../../utils/formatters';
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -74,6 +88,8 @@ const NAV_GROUPS: NavGroup[] = [
       { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
       { path: '/dispatch', icon: Radio, label: 'Dispatch' },
       { path: '/map', icon: Map, label: 'Map' },
+      { path: '/mdt', icon: Monitor, label: 'MDT' },
+      { path: '/ncic', icon: Terminal, label: 'NCIC' },
     ],
   },
   {
@@ -81,8 +97,21 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { path: '/incidents', icon: FileText, label: 'Incidents' },
       { path: '/records', icon: Database, label: 'Records' },
+      { path: '/field-interviews', icon: ClipboardList, label: 'Field Interviews' },
+      { path: '/criminal-history', icon: Search, label: 'Criminal History' },
+      { path: '/evidence', icon: Package, label: 'Evidence / Property' },
+      { path: '/cases', icon: Briefcase, label: 'Cases' },
+    ],
+  },
+  {
+    label: 'Enforcement',
+    items: [
       { path: '/warrants', icon: AlertTriangle, label: 'Warrants' },
       { path: '/citations', icon: FileWarning, label: 'Citations' },
+      { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders' },
+      { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement' },
+      { path: '/court', icon: Gavel, label: 'Court Tracker' },
+      { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
     ],
   },
   {
@@ -104,6 +133,9 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Analysis',
     items: [
       { path: '/reports', icon: BarChart3, label: 'Reports' },
+      { path: '/shift-plans', icon: Calendar, label: 'Shift Plans' },
+      { path: '/crime-analysis', icon: TrendingUp, label: 'Crime Analysis' },
+      { path: '/dar', icon: ClipboardCheck, label: 'Daily Activity' },
     ],
   },
   {
@@ -114,6 +146,13 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
 ];
+
+// Paths blocked for contract_manager role
+const CONTRACT_MANAGER_BLOCKED_PATHS = new Set([
+  '/admin', '/audit', '/personnel', '/fleet', '/ncic',
+  '/radio', '/patrol', '/shift-plans', '/statute-analytics',
+  '/reports/custom', '/crime-analysis', '/dar',
+]);
 
 // ─── Component ───────────────────────────────────────────────
 
@@ -196,14 +235,14 @@ export default function MobileDrawer({
     <div className="fixed inset-0 z-[9999]">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 mobile-drawer-backdrop"
+        className="absolute inset-0 mobile-drawer-backdrop open"
         onClick={onClose}
       />
 
       {/* Drawer Panel */}
       <div
         ref={drawerRef}
-        className="absolute top-0 left-0 bottom-0 mobile-drawer"
+        className="absolute top-0 left-0 bottom-0 mobile-drawer open"
         style={{ width: 'min(85vw, 320px)' }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
@@ -256,7 +295,7 @@ export default function MobileDrawer({
                 </span>
               )}
               <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 bg-brand-900/20 text-brand-300 border border-brand-800/40">
-                {user?.role}
+                {toDisplayLabel(user?.role || '')}
               </span>
             </div>
           </div>
@@ -273,9 +312,12 @@ export default function MobileDrawer({
         {/* ── Navigation Groups ── */}
         <div className="flex-1 overflow-y-auto py-2" style={{ maxHeight: 'calc(100vh - 200px)' }}>
           {NAV_GROUPS.map((group) => {
-            const visibleItems = group.items.filter(
-              (item) => !item.adminOnly || isAdmin,
-            );
+            const isContractMgr = user?.role === 'contract_manager';
+            const visibleItems = group.items.filter((item) => {
+              if (item.adminOnly && !isAdmin) return false;
+              if (isContractMgr && CONTRACT_MANAGER_BLOCKED_PATHS.has(item.path)) return false;
+              return true;
+            });
             if (visibleItems.length === 0) return null;
 
             return (

@@ -24,7 +24,23 @@ import PatrolPage from './pages/PatrolPage';
 import FleetPage from './pages/fleet';
 import WarrantsPage from './pages/WarrantsPage';
 import CitationsPage from './pages/CitationsPage';
+import FieldInterviewsPage from './pages/FieldInterviewsPage';
+import TrespassOrdersPage from './pages/TrespassOrdersPage';
 import RadioPage from './pages/RadioPage';
+import MdtPage from './pages/MdtPage';
+import ShiftPlansPage from './pages/ShiftPlansPage';
+import StatuteAnalyticsPage from './pages/StatuteAnalyticsPage';
+import CustomReportBuilder from './pages/CustomReportBuilder';
+import CriminalHistoryPage from './pages/CriminalHistoryPage';
+import EvidencePropertyPage from './pages/EvidencePropertyPage';
+import CaseManagementPage from './pages/CaseManagementPage';
+import CrimeAnalysisPage from './pages/CrimeAnalysisPage';
+import CodeEnforcementPage from './pages/CodeEnforcementPage';
+import CourtTrackerPage from './pages/CourtTrackerPage';
+import DailyActivityReportsPage from './pages/DailyActivityReportsPage';
+import OffenderRegistryPage from './pages/OffenderRegistryPage';
+import NcicPage from './pages/NcicPage';
+import BodyCamerasPage from './pages/BodyCamerasPage';
 import IncidentDetailWindow from './pages/detached/IncidentDetailWindow';
 import RecordDetailWindow from './pages/detached/RecordDetailWindow';
 
@@ -97,8 +113,24 @@ function AppRoutes() {
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/patrol" element={<PatrolPage />} />
           <Route path="/fleet" element={<FleetPage />} />
+          <Route path="/body-cameras" element={<BodyCamerasPage />} />
           <Route path="/warrants" element={<WarrantsPage />} />
           <Route path="/citations" element={<CitationsPage />} />
+          <Route path="/field-interviews" element={<FieldInterviewsPage />} />
+          <Route path="/trespass-orders" element={<TrespassOrdersPage />} />
+          <Route path="/mdt" element={<MdtPage />} />
+          <Route path="/shift-plans" element={<ShiftPlansPage />} />
+          <Route path="/statute-analytics" element={<StatuteAnalyticsPage />} />
+          <Route path="/reports/custom" element={<CustomReportBuilder />} />
+          <Route path="/criminal-history" element={<CriminalHistoryPage />} />
+          <Route path="/evidence" element={<EvidencePropertyPage />} />
+          <Route path="/cases" element={<CaseManagementPage />} />
+          <Route path="/crime-analysis" element={<CrimeAnalysisPage />} />
+          <Route path="/code-enforcement" element={<CodeEnforcementPage />} />
+          <Route path="/court" element={<CourtTrackerPage />} />
+          <Route path="/dar" element={<DailyActivityReportsPage />} />
+          <Route path="/offender-registry" element={<OffenderRegistryPage />} />
+          <Route path="/ncic" element={<NcicPage />} />
           <Route path="/audit" element={<AuditLogPage />} />
           <Route path="/admin" element={<AdminPage />} />
         </Route>

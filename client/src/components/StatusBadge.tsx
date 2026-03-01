@@ -35,6 +35,7 @@ const CALL_STATUS_CONFIG: Record<CallStatus, { label: string; classes: string }>
   closed: { label: 'Closed', classes: 'bg-gray-700/50 text-rmpg-400 border border-rmpg-600/50' },
   cancelled: { label: 'Cancelled', classes: 'bg-gray-700/50 text-rmpg-400 border border-rmpg-600/50' },
   archived: { label: 'Archived', classes: 'bg-slate-800/50 text-slate-400 border border-slate-600/50' },
+  on_hold: { label: 'HELD', classes: 'bg-amber-900/50 text-amber-400 border border-amber-600/50 animate-pulse' },
 };
 
 const INCIDENT_STATUS_CONFIG: Record<IncidentStatus, { label: string; classes: string }> = {

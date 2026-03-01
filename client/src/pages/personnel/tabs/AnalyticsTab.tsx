@@ -13,6 +13,7 @@ import {
 } from 'recharts';
 import type { PersonnelAnalytics } from '../../../types';
 import { CHART_TOOLTIP_STYLE } from '../utils/personnelConstants';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 interface Props {
   analytics: PersonnelAnalytics | null;
@@ -152,7 +153,7 @@ export default function AnalyticsTab({ analytics, loading }: Props) {
             {analytics.role_distribution.map((entry) => (
               <div key={entry.role} className="flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: entry.color || BRAND_500 }} />
-                <span className="text-[9px] text-rmpg-400 capitalize">{entry.role}</span>
+                <span className="text-[9px] text-rmpg-400">{toDisplayLabel(entry.role)}</span>
                 <span className="text-[9px] text-rmpg-500 font-mono">({entry.count})</span>
               </div>
             ))}

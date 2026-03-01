@@ -27,7 +27,7 @@ export default function PanelTitleBar({
       {Icon && <Icon className="title-icon" />}
       <span id={id} className={titleClassName}>{title}</span>
       {children && (
-        <div className="ml-auto flex items-center gap-1">
+        <div className="ml-auto flex items-center gap-1 flex-wrap min-w-0">
           {children}
         </div>
       )}

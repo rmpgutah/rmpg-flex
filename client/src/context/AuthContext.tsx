@@ -1,13 +1,21 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { User } from '../types';
 
+interface LoginResult {
+  requires2FA: boolean;
+  success: boolean;
+}
+
 interface AuthContextType {
   user: User | null;
   token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   loginBusy: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<LoginResult>;
+  verify2FA: (code: string) => Promise<void>;
+  pending2FA: boolean;
+  cancel2FA: () => void;
   logout: () => void;
   refreshUser: () => Promise<void>;
   error: string | null;
@@ -19,6 +27,10 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const TOKEN_KEY = 'rmpg_token';
 const REFRESH_TOKEN_KEY = 'rmpg_refresh_token';
 const SESSION_ID_KEY = 'rmpg_session_id';
+const LAST_USERNAME_KEY = 'rmpg_last_username';
+
+// Access window.electron safely (only present in Electron desktop app)
+const electron = typeof window !== 'undefined' ? (window as any).electron : null;
 
 // Refresh access token 60 seconds before it expires
 const REFRESH_BUFFER_MS = 60 * 1000;
@@ -90,7 +102,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setToken(data.token);
           scheduleRefresh(data.token);
         } else {
-          // Refresh failed — force logout
+          // Refresh failed — only force logout if we're online
+          // (when offline in Electron, keep the cached user session alive)
+          if (electron?.getOfflineState) {
+            try {
+              const state = await electron.getOfflineState();
+              if (!state.isOnline) {
+                // Offline — don't force logout, retry later
+                refreshTimerRef.current = setTimeout(() => {
+                  isRefreshingRef.current = false;
+                  const ct = localStorage.getItem(TOKEN_KEY);
+                  if (ct) scheduleRefresh(ct);
+                }, 30000);
+                return;
+              }
+            } catch { /* fall through to logout */ }
+          }
           clearTokens();
           setToken(null);
           setUser(null);
@@ -190,7 +217,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       } catch {
         if (gen !== generationRef.current) return; // stale
-        // API not available - use mock user for development
+
+        // API not available — attempt offline auth via Electron local cache
+        const lastUsername = localStorage.getItem(LAST_USERNAME_KEY);
+        if (electron?.getCachedUser && lastUsername) {
+          try {
+            const cachedUser = await electron.getCachedUser(lastUsername);
+            if (cachedUser) {
+              setUser(cachedUser);
+              return; // loaded from local DB — skip mock
+            }
+          } catch { /* fall through to mock */ }
+        }
+
+        // Fallback mock user for pure-browser development
         setUser({
           id: 'dev-1',
           username: 'dispatcher',
@@ -221,7 +261,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // and would show the full-screen "Initializing…" overlay).
   const [loginBusy, setLoginBusy] = useState(false);
 
-  const login = useCallback(async (username: string, password: string) => {
+  // ── Two-Factor Authentication state ───────────────────
+  const [pending2FA, setPending2FA] = useState(false);
+  const [tempToken, setTempToken] = useState<string | null>(null);
+
+  const cancel2FA = useCallback(() => {
+    setPending2FA(false);
+    setTempToken(null);
+    setError(null);
+  }, []);
+
+  const verify2FA = useCallback(async (code: string) => {
+    if (!tempToken) throw new Error('No pending 2FA session');
+    setLoginBusy(true);
+    setError(null);
+
+    try {
+      const res = await fetch('/api/auth/verify-2fa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tempToken, code }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        localStorage.setItem(TOKEN_KEY, data.token);
+        if (data.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
+        if (data.sessionId) localStorage.setItem(SESSION_ID_KEY, data.sessionId);
+
+        setUser(data.user);
+        setToken(data.token);
+        setPending2FA(false);
+        setTempToken(null);
+        setIsLoading(false);
+        scheduleRefresh(data.token);
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        const message = errData.error || 'Invalid verification code';
+        setError(message);
+        throw new Error(message);
+      }
+    } finally {
+      setLoginBusy(false);
+    }
+  }, [tempToken, scheduleRefresh]);
+
+  const login = useCallback(async (username: string, password: string): Promise<LoginResult> => {
     setLoginBusy(true);
     setError(null);
 
@@ -235,6 +320,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (res.ok) {
         const data = await res.json();
 
+        // ── Two-Factor Authentication required ──────────
+        if (data.requires2FA) {
+          setTempToken(data.tempToken);
+          setPending2FA(true);
+          return { requires2FA: true, success: false };
+        }
+
         localStorage.setItem(TOKEN_KEY, data.token);
         if (data.refreshToken) {
           localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
@@ -243,12 +335,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           localStorage.setItem(SESSION_ID_KEY, data.sessionId);
         }
 
+        // Store username for offline auth lookup
+        localStorage.setItem(LAST_USERNAME_KEY, username);
+
         // Set user BEFORE token so the effect sees user is already
         // populated and skips the redundant /me round-trip.
         setUser(data.user);
         setToken(data.token);
         setIsLoading(false);
         scheduleRefresh(data.token);
+
+        // Trigger offline sync to seed local DB (fire-and-forget)
+        if (electron?.triggerSync) {
+          electron.triggerSync().catch(() => { /* silent — sync will retry */ });
+        }
+
+        return { requires2FA: false, success: true };
       } else {
         const errData = await res.json().catch(() => ({}));
 
@@ -282,6 +384,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         setToken(mockToken);
         setIsLoading(false);
+        return { requires2FA: false, success: true };
       } else {
         const message = err instanceof Error ? err.message : 'Login failed';
         setError(message);
@@ -346,11 +449,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isLoading,
     loginBusy,
     login,
+    verify2FA,
+    pending2FA,
+    cancel2FA,
     logout,
     refreshUser,
     error,
     clearError,
-  }), [user, token, isLoading, loginBusy, login, logout, refreshUser, error, clearError]);
+  }), [user, token, isLoading, loginBusy, login, verify2FA, pending2FA, cancel2FA, logout, refreshUser, error, clearError]);
 
   return (
     <AuthContext.Provider value={contextValue}>

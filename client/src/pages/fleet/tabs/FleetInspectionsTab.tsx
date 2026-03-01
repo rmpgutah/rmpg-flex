@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  ClipboardCheck, Plus, Calendar, CheckCircle, XCircle, AlertTriangle, ChevronDown, ChevronRight, Gauge,
+  ClipboardCheck, Plus, Calendar, CheckCircle, XCircle, AlertTriangle, ChevronDown, ChevronRight, Gauge, Pencil, Trash2,
 } from 'lucide-react';
 import type { FleetInspection, InspectionType, InspectionResult, InspectionItemStatus } from '../../../types';
 import { formatMilitary } from '../utils/fleetFormatters';
@@ -38,9 +38,11 @@ const ITEM_STATUS_ICON: Record<InspectionItemStatus, React.ReactNode> = {
 interface Props {
   inspections: FleetInspection[];
   onNewInspection: () => void;
+  onEditInspection?: (inspection: FleetInspection) => void;
+  onDeleteInspection?: (inspection: FleetInspection) => void;
 }
 
-export default function FleetInspectionsTab({ inspections, onNewInspection }: Props) {
+export default function FleetInspectionsTab({ inspections, onNewInspection, onEditInspection, onDeleteInspection }: Props) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const passCount = inspections.filter(i => i.overall_result === 'pass').length;
@@ -148,6 +150,29 @@ export default function FleetInspectionsTab({ inspections, onNewInspection }: Pr
                       )}
                     </div>
                   </div>
+                  {/* Admin Edit / Delete */}
+                  {(onEditInspection || onDeleteInspection) && (
+                    <div className="flex items-center gap-1 mr-1">
+                      {onEditInspection && (
+                        <button
+                          className="p-1 text-rmpg-500 hover:text-brand-400 hover:bg-rmpg-700 rounded transition-colors"
+                          onClick={(e) => { e.stopPropagation(); onEditInspection(insp); }}
+                          title="Edit inspection"
+                        >
+                          <Pencil className="w-3 h-3" />
+                        </button>
+                      )}
+                      {onDeleteInspection && (
+                        <button
+                          className="p-1 text-rmpg-500 hover:text-red-400 hover:bg-red-900/20 rounded transition-colors"
+                          onClick={(e) => { e.stopPropagation(); onDeleteInspection(insp); }}
+                          title="Delete inspection"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                  )}
                   {isExpanded ? <ChevronDown className="w-3.5 h-3.5 text-rmpg-400" /> : <ChevronRight className="w-3.5 h-3.5 text-rmpg-400" />}
                 </div>
 

@@ -29,6 +29,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { toDisplayLabel } from '../utils/formatters';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useAuth } from '../context/AuthContext';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -598,7 +599,7 @@ export default function CitationsPage() {
                   {c.status.replace('_', ' ')}
                 </span>
                 <span className={`inline-flex items-center px-1.5 py-0 text-[9px] font-bold uppercase border panel-beveled ${TYPE_BADGE[c.type] || ''}`}>
-                  {c.type}
+                  {toDisplayLabel(c.type)}
                 </span>
                 <span className="text-[10px] text-rmpg-500 ml-auto">{formatDate(c.violation_date)}</span>
               </div>
@@ -647,7 +648,7 @@ export default function CitationsPage() {
             {c.status.replace('_', ' ')}
           </span>
           <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-bold uppercase border panel-beveled ${TYPE_BADGE[c.type] || ''}`}>
-            {c.type}
+            {toDisplayLabel(c.type)}
           </span>
           <div className="ml-auto flex items-center gap-2">
             <PrintRecordButton

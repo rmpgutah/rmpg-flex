@@ -1,10 +1,82 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import bcryptjs from 'bcryptjs';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import crypto from 'crypto';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import { fileURLToPath } from 'url';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 
+const execAsync = promisify(exec);
+
+/** Extract video duration using ffprobe. Returns seconds or null if ffmpeg not available. */
+async function extractVideoDuration(filePath: string): Promise<number | null> {
+  try {
+    const { stdout } = await execAsync(
+      `ffprobe -v error -show_entries format=duration -of csv=p=0 "${filePath}"`,
+      { timeout: 30000 }
+    );
+    const seconds = parseFloat(stdout.trim());
+    return isFinite(seconds) ? Math.round(seconds) : null;
+  } catch {
+    return null; // ffprobe not installed or failed
+  }
+}
+
+const __filename_p = fileURLToPath(import.meta.url);
+const __dirname_p = path.dirname(__filename_p);
+const BODYCAM_DIR = process.env.RMPG_UPLOADS_DIR
+  ? path.join(process.env.RMPG_UPLOADS_DIR, 'bodycam')
+  : path.resolve(__dirname_p, '../../uploads/bodycam');
+
+if (!fs.existsSync(BODYCAM_DIR)) {
+  fs.mkdirSync(BODYCAM_DIR, { recursive: true });
+}
+
+const VIDEO_MIME_TYPES = new Set([
+  'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm', 'video/x-matroska',
+]);
+
+const bodycamStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    const now = new Date();
+    const subDir = path.join(BODYCAM_DIR, `${now.getFullYear()}`, String(now.getMonth() + 1).padStart(2, '0'));
+    if (!fs.existsSync(subDir)) fs.mkdirSync(subDir, { recursive: true });
+    cb(null, subDir);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, `${crypto.randomUUID()}${ext}`);
+  },
+});
+
+const bodycamUpload = multer({
+  storage: bodycamStorage,
+  fileFilter: (_req, file, cb) => {
+    if (VIDEO_MIME_TYPES.has(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`File type ${file.mimetype} is not allowed. Accepted: MP4, MOV, AVI, WebM`));
+    }
+  },
+});
+
 const router = Router();
+
+// Promote query-string token to Authorization header BEFORE authenticateToken runs.
+// <video> elements can't set custom headers, so the VideoPlayer passes the JWT as
+// ?token=... on the streaming URL. This middleware promotes it so authenticateToken
+// can validate it normally. Safe for all personnel routes (same JWT either way).
+router.use((req: Request, res: Response, next: NextFunction) => {
+  if (!req.headers['authorization'] && req.query.token) {
+    req.headers['authorization'] = `Bearer ${req.query.token}`;
+  }
+  next();
+});
 
 router.use(authenticateToken);
 
@@ -36,15 +108,19 @@ router.get('/', (req: Request, res: Response) => {
     }
 
     const users = db.prepare(`
-      SELECT id, username, full_name, first_name, last_name, middle_name, email, role,
-        badge_number, phone, status, avatar_url, rank, department, address, city, state, zip,
-        date_of_birth, hire_date, termination_date, shift_preference,
-        dl_number, dl_state, dl_expiry, blood_type, allergies, uniform_size,
-        emergency_contact_name, emergency_contact_phone, emergency_contact_relationship,
-        employee_id, certifications, notes, profile_image,
-        created_at, updated_at
-      FROM users ${whereClause}
-      ORDER BY full_name
+      SELECT u.id, u.username, u.full_name, u.first_name, u.last_name, u.middle_name, u.email, u.role,
+        u.badge_number, u.phone, u.status, u.avatar_url, u.rank, u.department, u.address, u.city, u.state, u.zip,
+        u.date_of_birth, u.hire_date, u.termination_date, u.shift_preference,
+        u.dl_number, u.dl_state, u.dl_expiry, u.blood_type, u.allergies, u.uniform_size,
+        u.emergency_contact_name, u.emergency_contact_phone, u.emergency_contact_relationship,
+        u.employee_id, u.certifications, u.notes, u.profile_image,
+        u.login_count, u.last_login_at,
+        u.created_at, u.updated_at,
+        un.call_sign as unit_call_sign
+      FROM users u
+      LEFT JOIN units un ON un.officer_id = u.id
+      ${whereClause.replace(/\bstatus\b/g, 'u.status').replace(/\brole\b/g, 'u.role').replace(/\barchived_at\b/g, 'u.archived_at')}
+      ORDER BY u.full_name
     `).all(...params);
 
     res.json(users);
@@ -58,7 +134,7 @@ router.get('/', (req: Request, res: Response) => {
 router.get('/:id', (req: Request, res: Response, next) => {
   try {
     // Check for route conflicts with sub-paths handled by mountScheduleRoutes
-    const subPaths = ['schedules', 'time', 'credentials', 'training', 'training-requirements', 'deployments', 'coverage-gaps', 'analytics', 'activity', 'equipment'];
+    const subPaths = ['schedules', 'time', 'credentials', 'training', 'training-requirements', 'deployments', 'coverage-gaps', 'analytics', 'activity', 'equipment', 'body-cameras', 'bodycam-videos'];
     if (subPaths.includes(String(req.params.id))) {
       return next('route');
     }
@@ -149,13 +225,13 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
         date_of_birth, hire_date, termination_date, shift_preference,
         dl_number, dl_state, dl_expiry, blood_type, allergies, uniform_size,
         emergency_contact_name, emergency_contact_phone, emergency_contact_relationship,
-        employee_id, certifications, notes, profile_image, last_password_change)
+        employee_id, certifications, notes, profile_image, last_password_change, must_change_password)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?, ?, ?, ?, ?,
         ?, ?, ?,
-        ?, ?, ?, ?, ?)
+        ?, ?, ?, ?, ?, 1)
     `).run(
       username, passwordHash, full_name, derivedFirst, derivedLast,
       email || null, role, badge_number || null, phone || null,
@@ -225,11 +301,30 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
       }
     }
 
+    // ── Admin password reset (not in updatableFields — needs bcrypt) ──
+    const passwordChanged = !!(req.body.password && typeof req.body.password === 'string' && req.body.password.trim());
+    if (passwordChanged) {
+      const hash = bcryptjs.hashSync(req.body.password.trim(), 10);
+      setClauses.push('password_hash = ?');
+      setValues.push(hash);
+      setClauses.push('last_password_change = ?');
+      setValues.push(localNow());
+      // Force the user to change their password on next login
+      setClauses.push('must_change_password = ?');
+      setValues.push(1);
+    }
+
     if (setClauses.length > 0) {
       setClauses.push("updated_at = ?");
       setValues.push(localNow());
       setValues.push(req.params.id);
       db.prepare(`UPDATE users SET ${setClauses.join(', ')} WHERE id = ?`).run(...setValues);
+    }
+
+    // ── Invalidate sessions on password reset or account suspension ──
+    const statusChanged = bodyKeys.includes('status') && req.body.status !== user.status;
+    if (passwordChanged || (statusChanged && req.body.status !== 'active')) {
+      db.prepare('UPDATE sessions SET is_active = 0 WHERE user_id = ?').run(req.params.id);
     }
 
     const updated = db.prepare(`
@@ -270,6 +365,8 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
         UPDATE users SET status = 'terminated', termination_date = ?, updated_at = ?
         WHERE id = ?
       `).run(localNow(), localNow(), req.params.id);
+      // Invalidate all active sessions for terminated user
+      db.prepare('UPDATE sessions SET is_active = 0 WHERE user_id = ?').run(req.params.id);
       // Free assigned units
       db.prepare('UPDATE units SET officer_id = NULL, status = \'off_duty\' WHERE officer_id = ?').run(req.params.id);
       // Log activity
@@ -337,6 +434,58 @@ router.post('/:id/unarchive', requireRole('admin', 'manager'), (req: Request, re
     res.json(updated);
   } catch (error: any) {
     console.error('Unarchive user error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── BODYCAM VIDEO STREAMING ─────────────────────────
+// Must live on this router (not parentRouter) because app.use('/api/personnel', router)
+// intercepts the path first. The blanket router.use() above handles token promotion
+// and authenticateToken, so no additional auth middleware needed here.
+
+router.get('/bodycam-videos/:videoId/stream', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const video = db.prepare('SELECT * FROM bodycam_videos WHERE id = ?').get(req.params.videoId) as any;
+    if (!video) {
+      res.status(404).json({ error: 'Video not found' });
+      return;
+    }
+
+    const filePath = path.resolve(BODYCAM_DIR, video.file_path);
+    if (!filePath.startsWith(BODYCAM_DIR) || !fs.existsSync(filePath)) {
+      res.status(404).json({ error: 'Video file not found on disk' });
+      return;
+    }
+
+    const stat = fs.statSync(filePath);
+    const fileSize = stat.size;
+    const range = req.headers.range;
+
+    if (range) {
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      const chunkSize = end - start + 1;
+
+      res.writeHead(206, {
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunkSize,
+        'Content-Type': video.mime_type || 'video/mp4',
+      });
+
+      fs.createReadStream(filePath, { start, end }).pipe(res);
+    } else {
+      res.writeHead(200, {
+        'Content-Length': fileSize,
+        'Content-Type': video.mime_type || 'video/mp4',
+      });
+
+      fs.createReadStream(filePath).pipe(res);
+    }
+  } catch (error: any) {
+    console.error('Stream bodycam video error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1544,6 +1693,531 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json({ message: 'Equipment record deleted' });
     } catch (error: any) {
       console.error('Delete equipment error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // ─── BODY CAMERAS ──────────────────────────────────────
+
+  // GET /api/personnel/body-cameras - List all body cameras
+  parentRouter.get('/personnel/body-cameras', authenticateToken, (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const { status } = req.query;
+      let whereClause = 'WHERE 1=1';
+      const params: any[] = [];
+      if (status) { whereClause += ' AND c.status = ?'; params.push(status); }
+
+      const cameras = db.prepare(`
+        SELECT c.*, u.full_name as officer_name
+        FROM body_cameras c
+        LEFT JOIN users u ON c.officer_id = u.id
+        ${whereClause}
+        ORDER BY c.status, c.camera_id
+      `).all(...params);
+
+      res.json(cameras);
+    } catch (error: any) {
+      console.error('Get body cameras error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/personnel/:id/body-cameras - Get cameras for specific officer
+  parentRouter.get('/personnel/:id/body-cameras', authenticateToken, (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const cameras = db.prepare(`
+        SELECT * FROM body_cameras WHERE officer_id = ? ORDER BY status, camera_id
+      `).all(req.params.id);
+      res.json(cameras);
+    } catch (error: any) {
+      console.error('Get officer body cameras error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // POST /api/personnel/body-cameras - Create body camera
+  parentRouter.post('/personnel/body-cameras', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const { officer_id, camera_id, make, model, firmware_version, storage_capacity_gb, status, condition, assigned_at, notes } = req.body;
+
+      if (!camera_id) {
+        res.status(400).json({ error: 'camera_id (serial number) is required' });
+        return;
+      }
+      if (!officer_id) {
+        res.status(400).json({ error: 'officer_id is required' });
+        return;
+      }
+
+      const result = db.prepare(`
+        INSERT INTO body_cameras (officer_id, camera_id, make, model, firmware_version, storage_capacity_gb, status, condition, assigned_at, notes, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        officer_id, camera_id, make || null, model || null,
+        firmware_version || null, storage_capacity_gb || 32,
+        status || 'assigned', condition || 'good',
+        assigned_at || localNow(), notes || null, req.user!.userId
+      );
+
+      const camera = db.prepare(`
+        SELECT c.*, u.full_name as officer_name
+        FROM body_cameras c
+        LEFT JOIN users u ON c.officer_id = u.id
+        WHERE c.id = ?
+      `).get(result.lastInsertRowid);
+
+      res.status(201).json(camera);
+    } catch (error: any) {
+      if (error.message?.includes('UNIQUE constraint')) {
+        res.status(409).json({ error: 'A camera with that serial number already exists' });
+        return;
+      }
+      console.error('Create body camera error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // PUT /api/personnel/body-cameras/:cameraId - Update body camera
+  parentRouter.put('/personnel/body-cameras/:cameraId', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const existing = db.prepare('SELECT * FROM body_cameras WHERE id = ?').get(req.params.cameraId) as any;
+      if (!existing) {
+        res.status(404).json({ error: 'Body camera not found' });
+        return;
+      }
+
+      const fields = ['officer_id', 'camera_id', 'make', 'model', 'firmware_version', 'storage_capacity_gb', 'status', 'condition', 'assigned_at', 'returned_at', 'notes'];
+      const bodyKeys = Object.keys(req.body);
+      const setClauses: string[] = [];
+      const vals: any[] = [];
+      for (const f of fields) {
+        if (bodyKeys.includes(f)) {
+          setClauses.push(`${f} = ?`);
+          const v = req.body[f];
+          vals.push(v === '' ? null : v ?? null);
+        }
+      }
+      if (setClauses.length > 0) {
+        setClauses.push('updated_at = ?');
+        vals.push(localNow());
+        vals.push(req.params.cameraId);
+        db.prepare(`UPDATE body_cameras SET ${setClauses.join(', ')} WHERE id = ?`).run(...vals);
+      }
+
+      const camera = db.prepare(`
+        SELECT c.*, u.full_name as officer_name
+        FROM body_cameras c
+        LEFT JOIN users u ON c.officer_id = u.id
+        WHERE c.id = ?
+      `).get(req.params.cameraId);
+
+      res.json(camera);
+    } catch (error: any) {
+      console.error('Update body camera error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // DELETE /api/personnel/body-cameras/:cameraId - Delete body camera
+  parentRouter.delete('/personnel/body-cameras/:cameraId', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const existing = db.prepare('SELECT * FROM body_cameras WHERE id = ?').get(req.params.cameraId) as any;
+      if (!existing) {
+        res.status(404).json({ error: 'Body camera not found' });
+        return;
+      }
+
+      // Delete associated videos and their files
+      const videos = db.prepare('SELECT * FROM bodycam_videos WHERE camera_id = ?').all(req.params.cameraId) as any[];
+      for (const vid of videos) {
+        const filePath = path.resolve(BODYCAM_DIR, vid.file_path);
+        if (filePath.startsWith(BODYCAM_DIR) && fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      }
+      db.prepare('DELETE FROM bodycam_videos WHERE camera_id = ?').run(req.params.cameraId);
+      db.prepare('DELETE FROM body_cameras WHERE id = ?').run(req.params.cameraId);
+
+      res.json({ message: 'Body camera and associated videos deleted' });
+    } catch (error: any) {
+      console.error('Delete body camera error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // ─── BODY CAMERA VIDEOS ───────────────────────────────
+
+  // GET /api/personnel/bodycam-videos - List all videos
+  parentRouter.get('/personnel/bodycam-videos', authenticateToken, (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const { officer_id, camera_id, classification, case_number } = req.query;
+      let whereClause = 'WHERE 1=1';
+      const params: any[] = [];
+      if (officer_id) { whereClause += ' AND v.officer_id = ?'; params.push(officer_id); }
+      if (camera_id) { whereClause += ' AND v.camera_id = ?'; params.push(camera_id); }
+      if (classification) { whereClause += ' AND v.classification = ?'; params.push(classification); }
+      if (case_number) { whereClause += ' AND v.case_number = ?'; params.push(case_number); }
+
+      const videos = db.prepare(`
+        SELECT v.*, u.full_name as officer_name, c.camera_id as camera_serial
+        FROM bodycam_videos v
+        LEFT JOIN users u ON v.officer_id = u.id
+        LEFT JOIN body_cameras c ON v.camera_id = c.id
+        ${whereClause}
+        ORDER BY v.created_at DESC
+      `).all(...params);
+
+      res.json(videos);
+    } catch (error: any) {
+      console.error('Get bodycam videos error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // ─── BULK OPERATIONS (must be BEFORE /:videoId param routes) ────
+
+  // DELETE /api/personnel/bodycam-videos/bulk - Bulk delete videos
+  parentRouter.delete('/personnel/bodycam-videos/bulk', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const { videoIds } = req.body;
+      if (!Array.isArray(videoIds) || videoIds.length === 0) {
+        res.status(400).json({ error: 'videoIds array required' });
+        return;
+      }
+
+      const results = { deleted: 0, errors: 0 };
+      const deleteTransaction = db.transaction(() => {
+        for (const id of videoIds.slice(0, 100)) {
+          const video = db.prepare('SELECT * FROM bodycam_videos WHERE id = ?').get(id) as any;
+          if (!video) { results.errors++; continue; }
+          // Delete file from disk
+          const filePath = path.resolve(BODYCAM_DIR, video.file_path);
+          if (filePath.startsWith(BODYCAM_DIR) && fs.existsSync(filePath)) {
+            try { fs.unlinkSync(filePath); } catch { results.errors++; }
+          }
+          db.prepare('DELETE FROM bodycam_videos WHERE id = ?').run(id);
+          results.deleted++;
+        }
+      });
+      deleteTransaction();
+      res.json(results);
+    } catch (error: any) {
+      console.error('Bulk delete bodycam videos error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // PUT /api/personnel/bodycam-videos/bulk - Bulk update video metadata
+  parentRouter.put('/personnel/bodycam-videos/bulk', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const { videoIds, classification, retention_status } = req.body;
+      if (!Array.isArray(videoIds) || videoIds.length === 0) {
+        res.status(400).json({ error: 'videoIds array required' });
+        return;
+      }
+
+      const setClauses: string[] = [];
+      const vals: any[] = [];
+      if (classification) { setClauses.push('classification = ?'); vals.push(classification); }
+      if (retention_status) { setClauses.push('retention_status = ?'); vals.push(retention_status); }
+      if (setClauses.length === 0) {
+        res.status(400).json({ error: 'At least one field to update is required (classification, retention_status)' });
+        return;
+      }
+      setClauses.push('updated_at = ?');
+      vals.push(localNow());
+
+      const placeholders = videoIds.slice(0, 100).map(() => '?').join(',');
+      const stmt = db.prepare(`UPDATE bodycam_videos SET ${setClauses.join(', ')} WHERE id IN (${placeholders})`);
+      stmt.run(...vals, ...videoIds.slice(0, 100));
+
+      res.json({ updated: Math.min(videoIds.length, 100) });
+    } catch (error: any) {
+      console.error('Bulk update bodycam videos error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // DELETE /api/personnel/body-cameras/bulk - Bulk delete cameras + associated videos
+  parentRouter.delete('/personnel/body-cameras/bulk', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const { cameraIds } = req.body;
+      if (!Array.isArray(cameraIds) || cameraIds.length === 0) {
+        res.status(400).json({ error: 'cameraIds array required' });
+        return;
+      }
+
+      const results = { deleted: 0, videosDeleted: 0, errors: 0 };
+      const deleteTransaction = db.transaction(() => {
+        for (const camId of cameraIds.slice(0, 50)) {
+          const cam = db.prepare('SELECT * FROM body_cameras WHERE id = ?').get(camId) as any;
+          if (!cam) { results.errors++; continue; }
+
+          // Delete associated video files from disk
+          const videos = db.prepare('SELECT * FROM bodycam_videos WHERE camera_id = ?').all(camId) as any[];
+          for (const vid of videos) {
+            const filePath = path.resolve(BODYCAM_DIR, vid.file_path);
+            if (filePath.startsWith(BODYCAM_DIR) && fs.existsSync(filePath)) {
+              try { fs.unlinkSync(filePath); } catch { /* ok */ }
+            }
+            results.videosDeleted++;
+          }
+          db.prepare('DELETE FROM bodycam_videos WHERE camera_id = ?').run(camId);
+          db.prepare('DELETE FROM body_cameras WHERE id = ?').run(camId);
+          results.deleted++;
+        }
+      });
+      deleteTransaction();
+      res.json(results);
+    } catch (error: any) {
+      console.error('Bulk delete body cameras error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/personnel/:id/bodycam-videos - Get videos for specific officer
+  parentRouter.get('/personnel/:id/bodycam-videos', authenticateToken, (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const videos = db.prepare(`
+        SELECT v.*, c.camera_id as camera_serial
+        FROM bodycam_videos v
+        LEFT JOIN body_cameras c ON v.camera_id = c.id
+        WHERE v.officer_id = ?
+        ORDER BY v.created_at DESC
+      `).all(req.params.id);
+      res.json(videos);
+    } catch (error: any) {
+      console.error('Get officer bodycam videos error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // POST /api/personnel/bodycam-videos - Upload video
+  parentRouter.post('/personnel/bodycam-videos', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
+    // Increase timeout for large video uploads (10 minutes)
+    req.setTimeout(600000);
+    res.setTimeout(600000);
+
+    // Pre-flight: verify upload directory is writable
+    try {
+      if (!fs.existsSync(BODYCAM_DIR)) {
+        fs.mkdirSync(BODYCAM_DIR, { recursive: true });
+      }
+      fs.accessSync(BODYCAM_DIR, fs.constants.W_OK);
+    } catch (dirErr: any) {
+      console.error('Bodycam upload dir not writable:', BODYCAM_DIR, dirErr);
+      res.status(503).json({ error: `Upload storage is unavailable: ${dirErr.message}` });
+      return;
+    }
+
+    try {
+      bodycamUpload.single('video')(req, res, (multerErr: any) => {
+        if (multerErr) {
+          console.error('Multer upload error:', multerErr?.message, multerErr?.code, multerErr?.stack);
+          res.status(400).json({ error: multerErr.message || 'Upload failed' });
+          return;
+        }
+
+        try {
+          const db = getDb();
+          const file = req.file;
+          if (!file) {
+            res.status(400).json({ error: 'No video file provided' });
+            return;
+          }
+
+          const { camera_id, officer_id, title, duration_seconds, recorded_at, case_number, classification, notes } = req.body;
+
+          if (!camera_id || !officer_id || !title) {
+            if (file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
+            res.status(400).json({ error: 'camera_id, officer_id, and title are required' });
+            return;
+          }
+
+          // Verify file size against disk (authoritative) vs multer (reported)
+          const diskStat = fs.statSync(file.path);
+          const verifiedSize = diskStat.size;
+          if (verifiedSize !== file.size) {
+            console.warn(`Bodycam size mismatch: multer=${file.size}, disk=${verifiedSize}. Using disk size.`);
+          }
+
+          const relativePath = path.relative(BODYCAM_DIR, file.path);
+
+          const result = db.prepare(`
+            INSERT INTO bodycam_videos (camera_id, officer_id, title, file_path, file_size, duration_seconds, mime_type, recorded_at, case_number, classification, notes, uploaded_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            camera_id, officer_id, title, relativePath, verifiedSize,
+            duration_seconds || null, file.mimetype,
+            recorded_at || localNow(), case_number || null,
+            classification || 'routine', notes || null, String(req.user!.userId)
+          );
+
+          const videoId = result.lastInsertRowid;
+
+          const video = db.prepare(`
+            SELECT v.*, u.full_name as officer_name, c.camera_id as camera_serial
+            FROM bodycam_videos v
+            LEFT JOIN users u ON v.officer_id = u.id
+            LEFT JOIN body_cameras c ON v.camera_id = c.id
+            WHERE v.id = ?
+          `).get(videoId);
+
+          // Fire-and-forget: extract actual duration with ffprobe and update DB
+          const fullFilePath = path.resolve(BODYCAM_DIR, relativePath);
+          extractVideoDuration(fullFilePath).then((probedDuration) => {
+            if (probedDuration != null) {
+              try {
+                const dbInner = getDb();
+                dbInner.prepare('UPDATE bodycam_videos SET duration_seconds = ?, updated_at = ? WHERE id = ?')
+                  .run(probedDuration, localNow(), videoId);
+              } catch (e: any) {
+                console.warn('ffprobe duration update failed:', e?.message);
+              }
+            }
+          }).catch(() => { /* ffprobe not available — client value used */ });
+
+          res.status(201).json(video);
+        } catch (error: any) {
+          console.error('Upload bodycam video DB error:', error?.message, error?.stack);
+          res.status(500).json({ error: `Upload processing failed: ${error?.message || 'Internal server error'}` });
+        }
+      });
+    } catch (outerErr: any) {
+      console.error('Bodycam upload outer error:', outerErr?.message, outerErr?.stack);
+      if (!res.headersSent) {
+        res.status(500).json({ error: `Upload failed: ${outerErr?.message || 'Internal server error'}` });
+      }
+    }
+  });
+
+  // PUT /api/personnel/bodycam-videos/:videoId - Update video metadata
+  parentRouter.put('/personnel/bodycam-videos/:videoId', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const existing = db.prepare('SELECT * FROM bodycam_videos WHERE id = ?').get(req.params.videoId) as any;
+      if (!existing) {
+        res.status(404).json({ error: 'Video not found' });
+        return;
+      }
+
+      const fields = ['title', 'recorded_at', 'case_number', 'classification', 'retention_status', 'notes', 'duration_seconds'];
+      const bodyKeys = Object.keys(req.body);
+      const setClauses: string[] = [];
+      const vals: any[] = [];
+      for (const f of fields) {
+        if (bodyKeys.includes(f)) {
+          setClauses.push(`${f} = ?`);
+          const v = req.body[f];
+          vals.push(v === '' ? null : v ?? null);
+        }
+      }
+      if (setClauses.length > 0) {
+        setClauses.push('updated_at = ?');
+        vals.push(localNow());
+        vals.push(req.params.videoId);
+        db.prepare(`UPDATE bodycam_videos SET ${setClauses.join(', ')} WHERE id = ?`).run(...vals);
+      }
+
+      const video = db.prepare(`
+        SELECT v.*, u.full_name as officer_name, c.camera_id as camera_serial
+        FROM bodycam_videos v
+        LEFT JOIN users u ON v.officer_id = u.id
+        LEFT JOIN body_cameras c ON v.camera_id = c.id
+        WHERE v.id = ?
+      `).get(req.params.videoId);
+
+      res.json(video);
+    } catch (error: any) {
+      console.error('Update bodycam video error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // DELETE /api/personnel/bodycam-videos/:videoId - Delete video + file
+  parentRouter.delete('/personnel/bodycam-videos/:videoId', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const existing = db.prepare('SELECT * FROM bodycam_videos WHERE id = ?').get(req.params.videoId) as any;
+      if (!existing) {
+        res.status(404).json({ error: 'Video not found' });
+        return;
+      }
+
+      // Delete file from disk
+      const filePath = path.resolve(BODYCAM_DIR, existing.file_path);
+      if (filePath.startsWith(BODYCAM_DIR) && fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+
+      db.prepare('DELETE FROM bodycam_videos WHERE id = ?').run(req.params.videoId);
+      res.json({ message: 'Video deleted' });
+    } catch (error: any) {
+      console.error('Delete bodycam video error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/personnel/bodycam-videos/:videoId/stream - Stream video with Range support
+  // Accept token from query string for <video> elements that can't set Authorization headers
+  parentRouter.get('/personnel/bodycam-videos/:videoId/stream', (req: Request, res: Response, next) => {
+    if (!req.headers['authorization'] && req.query.token) {
+      req.headers['authorization'] = `Bearer ${req.query.token}`;
+    }
+    next();
+  }, authenticateToken, (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const video = db.prepare('SELECT * FROM bodycam_videos WHERE id = ?').get(req.params.videoId) as any;
+      if (!video) {
+        res.status(404).json({ error: 'Video not found' });
+        return;
+      }
+
+      const filePath = path.resolve(BODYCAM_DIR, video.file_path);
+      if (!filePath.startsWith(BODYCAM_DIR) || !fs.existsSync(filePath)) {
+        res.status(404).json({ error: 'Video file not found on disk' });
+        return;
+      }
+
+      const stat = fs.statSync(filePath);
+      const fileSize = stat.size;
+      const range = req.headers.range;
+
+      if (range) {
+        const parts = range.replace(/bytes=/, '').split('-');
+        const start = parseInt(parts[0], 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+        const chunkSize = end - start + 1;
+
+        res.writeHead(206, {
+          'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+          'Accept-Ranges': 'bytes',
+          'Content-Length': chunkSize,
+          'Content-Type': video.mime_type || 'video/mp4',
+        });
+
+        fs.createReadStream(filePath, { start, end }).pipe(res);
+      } else {
+        res.writeHead(200, {
+          'Content-Length': fileSize,
+          'Content-Type': video.mime_type || 'video/mp4',
+        });
+
+        fs.createReadStream(filePath).pipe(res);
+      }
+    } catch (error: any) {
+      console.error('Stream bodycam video error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });

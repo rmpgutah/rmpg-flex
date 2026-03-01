@@ -6,6 +6,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { MapPin } from 'lucide-react';
+import { loadGoogleMaps as loadGoogleMapsShared } from '../utils/googleMapsLoader';
 
 // ── Parsed address components returned by onSelect ───────────
 export interface ParsedAddress {
@@ -64,42 +65,9 @@ function getComponent(
   return match ? (useShort ? match.short_name : match.long_name) : '';
 }
 
-// Direct script-tag loader — shared across app (deduplicates with MapPage)
-let _gmapsLoadPromise: Promise<void> | null = null;
-
-function loadGoogleMaps(apiKey: string): Promise<void> {
-  if (_gmapsLoadPromise) return _gmapsLoadPromise;
-
-  if (typeof google !== 'undefined' && google.maps && google.maps.places) {
-    _gmapsLoadPromise = Promise.resolve();
-    return _gmapsLoadPromise;
-  }
-
-  _gmapsLoadPromise = new Promise<void>((resolve, reject) => {
-    // If MapPage already injected the script, just wait for it
-    const existing = document.querySelector('script[src*="maps.googleapis.com"]');
-    if (existing) {
-      const check = () => {
-        if (typeof google !== 'undefined' && google.maps && google.maps.places) resolve();
-        else setTimeout(check, 100);
-      };
-      check();
-      return;
-    }
-
-    const callbackName = '__rmpg_gmaps_ac_init__';
-    (window as any)[callbackName] = () => { delete (window as any)[callbackName]; resolve(); };
-
-    const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,marker&callback=${callbackName}&v=weekly`;
-    script.async = true;
-    script.defer = true;
-    script.onerror = () => { _gmapsLoadPromise = null; reject(new Error('Failed to load Google Maps')); };
-    document.head.appendChild(script);
-  });
-
-  return _gmapsLoadPromise;
-}
+// Use the shared Google Maps loader — single source of truth with retry + offline resilience.
+// Previously had its own duplicate loader here which caused race conditions and had no timeout.
+const loadGoogleMaps = loadGoogleMapsShared;
 
 // Dark dropdown styles injected once
 const AUTOCOMPLETE_STYLE_ID = 'rmpg-autocomplete-styles';

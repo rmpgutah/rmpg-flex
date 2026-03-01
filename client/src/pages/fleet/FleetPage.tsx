@@ -30,7 +30,7 @@ import type {
 // RMPG Flex — Fleet Vehicle Management Page (Refactored)
 // ============================================================
 
-type ModalMode = 'none' | 'new_vehicle' | 'edit_vehicle' | 'log_maintenance' | 'log_fuel' | 'new_inspection';
+type ModalMode = 'none' | 'new_vehicle' | 'edit_vehicle' | 'log_maintenance' | 'edit_maintenance' | 'log_fuel' | 'edit_fuel' | 'new_inspection' | 'edit_inspection';
 
 const STATUS_COLOR: Record<FleetVehicleStatus, string> = {
   in_service: '#22c55e', maintenance: '#f59e0b',
@@ -104,6 +104,16 @@ export default function FleetPage() {
   const [showArchived, setShowArchived] = useState(false);
   const [deletingVehicleId, setDeletingVehicleId] = useState<string | number | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Editing state — tracks which record is being edited
+  const [editingFuelId, setEditingFuelId] = useState<string | null>(null);
+  const [editingMaintenanceId, setEditingMaintenanceId] = useState<string | null>(null);
+  const [editingInspectionId, setEditingInspectionId] = useState<string | null>(null);
+
+  // Delete confirmation state for sub-records
+  const [deletingFuel, setDeletingFuel] = useState<FleetFuelLog | null>(null);
+  const [deletingMaintenance, setDeletingMaintenance] = useState<FleetMaintenance | null>(null);
+  const [deletingInspection, setDeletingInspection] = useState<FleetInspection | null>(null);
 
   useUnsavedChanges(modal !== 'none');
 
@@ -324,12 +334,18 @@ export default function FleetPage() {
         performed_at: maintForm.performed_at || nowLocalISO(),
         next_due_date: maintForm.next_due_date || null,
       };
-      await apiFetch(`/fleet/${selectedId}/maintenance`, { method: 'POST', body: JSON.stringify(payload) });
-      addToast('Maintenance logged successfully', 'success');
+      if (modal === 'edit_maintenance' && editingMaintenanceId) {
+        await apiFetch(`/fleet/maintenance/${editingMaintenanceId}`, { method: 'PUT', body: JSON.stringify(payload) });
+        addToast('Maintenance updated successfully', 'success');
+      } else {
+        await apiFetch(`/fleet/${selectedId}/maintenance`, { method: 'POST', body: JSON.stringify(payload) });
+        addToast('Maintenance logged successfully', 'success');
+      }
       setModal('none');
+      setEditingMaintenanceId(null);
       fetchDetail(selectedId);
     } catch (err) {
-      addToast(err instanceof Error ? err.message : 'Failed to log maintenance', 'error');
+      addToast(err instanceof Error ? err.message : 'Failed to save maintenance', 'error');
     } finally { setSaving(false); }
   };
 
@@ -348,13 +364,19 @@ export default function FleetPage() {
         station: fuelForm.station.trim() || null,
         notes: fuelForm.notes.trim() || null,
       };
-      await apiFetch(`/fleet/${selectedId}/fuel`, { method: 'POST', body: JSON.stringify(payload) });
-      addToast('Fuel entry logged successfully', 'success');
+      if (modal === 'edit_fuel' && editingFuelId) {
+        await apiFetch(`/fleet/fuel/${editingFuelId}`, { method: 'PUT', body: JSON.stringify(payload) });
+        addToast('Fuel entry updated successfully', 'success');
+      } else {
+        await apiFetch(`/fleet/${selectedId}/fuel`, { method: 'POST', body: JSON.stringify(payload) });
+        addToast('Fuel entry logged successfully', 'success');
+      }
       setModal('none');
+      setEditingFuelId(null);
       fetchFuelLogs(selectedId);
       if (payload.odometer_reading) fetchDetail(selectedId); // refresh mileage
     } catch (err) {
-      addToast(err instanceof Error ? err.message : 'Failed to log fuel', 'error');
+      addToast(err instanceof Error ? err.message : 'Failed to save fuel entry', 'error');
     } finally { setSaving(false); }
   };
 
@@ -372,13 +394,19 @@ export default function FleetPage() {
         items: inspectionForm.items,
         notes: inspectionForm.notes.trim() || null,
       };
-      await apiFetch(`/fleet/${selectedId}/inspections`, { method: 'POST', body: JSON.stringify(payload) });
-      addToast('Inspection submitted successfully', 'success');
+      if (modal === 'edit_inspection' && editingInspectionId) {
+        await apiFetch(`/fleet/inspections/${editingInspectionId}`, { method: 'PUT', body: JSON.stringify(payload) });
+        addToast('Inspection updated successfully', 'success');
+      } else {
+        await apiFetch(`/fleet/${selectedId}/inspections`, { method: 'POST', body: JSON.stringify(payload) });
+        addToast('Inspection submitted successfully', 'success');
+      }
       setModal('none');
+      setEditingInspectionId(null);
       fetchInspections(selectedId);
       if (payload.mileage) fetchDetail(selectedId);
     } catch (err) {
-      addToast(err instanceof Error ? err.message : 'Failed to submit inspection', 'error');
+      addToast(err instanceof Error ? err.message : 'Failed to save inspection', 'error');
     } finally { setSaving(false); }
   };
 
@@ -524,6 +552,92 @@ export default function FleetPage() {
       mileage: detail?.current_mileage ? String(detail.current_mileage) : '',
     });
     setModal('new_inspection');
+  };
+
+  // ── Edit openers (pre-populate form with existing record data) ──
+  const openEditFuel = (log: FleetFuelLog) => {
+    setFuelForm({
+      fuel_date: toDatetimeLocal(log.fuel_date),
+      gallons: String(log.gallons),
+      cost_per_gallon: log.cost_per_gallon != null ? String(log.cost_per_gallon) : '',
+      total_cost: log.total_cost != null ? String(log.total_cost) : '',
+      odometer_reading: log.odometer_reading != null ? String(log.odometer_reading) : '',
+      fuel_type: log.fuel_type,
+      station: log.station || '',
+      notes: log.notes || '',
+    });
+    setEditingFuelId(log.id);
+    setModal('edit_fuel');
+  };
+
+  const openEditMaintenance = (record: FleetMaintenance) => {
+    setMaintForm({
+      type: record.type,
+      description: record.description,
+      mileage_at_service: record.mileage_at_service != null ? String(record.mileage_at_service) : '',
+      cost: record.cost != null ? String(record.cost) : '',
+      vendor: record.vendor || '',
+      performed_by: record.performed_by || '',
+      performed_at: toDatetimeLocal(record.performed_at),
+      next_due_date: record.next_due_date ? toDatetimeLocal(record.next_due_date) : '',
+    });
+    setEditingMaintenanceId(record.id);
+    setModal('edit_maintenance');
+  };
+
+  const openEditInspection = (inspection: FleetInspection) => {
+    setInspectionForm({
+      inspection_type: inspection.inspection_type,
+      inspector_name: inspection.inspector_name,
+      inspection_date: toDatetimeLocal(inspection.inspection_date),
+      mileage: inspection.mileage != null ? String(inspection.mileage) : '',
+      overall_result: inspection.overall_result,
+      items: inspection.items.map(i => ({ ...i })),
+      notes: inspection.notes || '',
+    });
+    setEditingInspectionId(inspection.id);
+    setModal('edit_inspection');
+  };
+
+  // ── Delete handlers ──
+  const handleDeleteFuel = async () => {
+    if (!deletingFuel || selectedId == null) return;
+    setIsDeleting(true);
+    try {
+      await apiFetch(`/fleet/fuel/${deletingFuel.id}`, { method: 'DELETE' });
+      addToast('Fuel log deleted', 'success');
+      setDeletingFuel(null);
+      fetchFuelLogs(selectedId);
+      fetchDetail(selectedId);
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to delete fuel log', 'error');
+    } finally { setIsDeleting(false); }
+  };
+
+  const handleDeleteMaintenance = async () => {
+    if (!deletingMaintenance || selectedId == null) return;
+    setIsDeleting(true);
+    try {
+      await apiFetch(`/fleet/maintenance/${deletingMaintenance.id}`, { method: 'DELETE' });
+      addToast('Maintenance record deleted', 'success');
+      setDeletingMaintenance(null);
+      fetchDetail(selectedId);
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to delete maintenance record', 'error');
+    } finally { setIsDeleting(false); }
+  };
+
+  const handleDeleteInspection = async () => {
+    if (!deletingInspection || selectedId == null) return;
+    setIsDeleting(true);
+    try {
+      await apiFetch(`/fleet/inspections/${deletingInspection.id}`, { method: 'DELETE' });
+      addToast('Inspection deleted', 'success');
+      setDeletingInspection(null);
+      fetchInspections(selectedId);
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to delete inspection', 'error');
+    } finally { setIsDeleting(false); }
   };
 
   // ----------------------------------------------------------
@@ -820,6 +934,12 @@ export default function FleetPage() {
               onLogMaintenance={openLogMaintenance}
               onLogFuel={openLogFuel}
               onNewInspection={openNewInspection}
+              onEditFuel={openEditFuel}
+              onDeleteFuel={(log) => setDeletingFuel(log)}
+              onEditMaintenance={openEditMaintenance}
+              onDeleteMaintenance={(record) => setDeletingMaintenance(record)}
+              onEditInspection={openEditInspection}
+              onDeleteInspection={(insp) => setDeletingInspection(insp)}
               onAssignVehicle={handleAssignVehicle}
               onUnassignVehicle={handleUnassignVehicle}
               onAddPersonnelNote={handleAddPersonnelNote}
@@ -846,27 +966,30 @@ export default function FleetPage() {
         saving={saving}
       />
       <MaintenanceFormModal
-        isOpen={modal === 'log_maintenance'}
+        isOpen={modal === 'log_maintenance' || modal === 'edit_maintenance'}
+        mode={modal === 'edit_maintenance' ? 'edit' : 'create'}
         form={maintForm}
         onChange={setMaintForm}
         onSave={handleSaveMaintenance}
-        onClose={() => setModal('none')}
+        onClose={() => { setModal('none'); setEditingMaintenanceId(null); }}
         saving={saving}
       />
       <FuelLogModal
-        isOpen={modal === 'log_fuel'}
+        isOpen={modal === 'log_fuel' || modal === 'edit_fuel'}
+        mode={modal === 'edit_fuel' ? 'edit' : 'create'}
         form={fuelForm}
         onChange={setFuelForm}
         onSave={handleSaveFuel}
-        onClose={() => setModal('none')}
+        onClose={() => { setModal('none'); setEditingFuelId(null); }}
         saving={saving}
       />
       <InspectionFormModal
-        isOpen={modal === 'new_inspection'}
+        isOpen={modal === 'new_inspection' || modal === 'edit_inspection'}
+        mode={modal === 'edit_inspection' ? 'edit' : 'create'}
         form={inspectionForm}
         onChange={setInspectionForm}
         onSave={handleSaveInspection}
-        onClose={() => setModal('none')}
+        onClose={() => { setModal('none'); setEditingInspectionId(null); }}
         saving={saving}
       />
 
@@ -877,6 +1000,39 @@ export default function FleetPage() {
         onConfirm={handleDeleteVehicle}
         title="Delete Vehicle"
         message="Are you sure you want to permanently delete this vehicle? All maintenance, fuel, and inspection records will also be deleted. This action cannot be undone."
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        isLoading={isDeleting}
+      />
+      {/* Delete Fuel Log Confirmation */}
+      <ConfirmDialog
+        isOpen={deletingFuel !== null}
+        onClose={() => setDeletingFuel(null)}
+        onConfirm={handleDeleteFuel}
+        title="Delete Fuel Log"
+        message={`Delete the fuel log for ${deletingFuel?.gallons?.toFixed(3) || ''} gallons on ${deletingFuel?.fuel_date ? new Date(deletingFuel.fuel_date).toLocaleDateString() : ''}? This cannot be undone.`}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        isLoading={isDeleting}
+      />
+      {/* Delete Maintenance Confirmation */}
+      <ConfirmDialog
+        isOpen={deletingMaintenance !== null}
+        onClose={() => setDeletingMaintenance(null)}
+        onConfirm={handleDeleteMaintenance}
+        title="Delete Maintenance Record"
+        message={`Delete the ${deletingMaintenance?.type?.replace(/_/g, ' ') || ''} record: "${deletingMaintenance?.description || ''}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        isLoading={isDeleting}
+      />
+      {/* Delete Inspection Confirmation */}
+      <ConfirmDialog
+        isOpen={deletingInspection !== null}
+        onClose={() => setDeletingInspection(null)}
+        onConfirm={handleDeleteInspection}
+        title="Delete Inspection"
+        message={`Delete the ${deletingInspection?.inspection_type?.replace(/_/g, ' ') || ''} inspection from ${deletingInspection?.inspection_date ? new Date(deletingInspection.inspection_date).toLocaleDateString() : ''}? This cannot be undone.`}
         confirmLabel="Delete"
         confirmVariant="danger"
         isLoading={isDeleting}

@@ -1280,6 +1280,102 @@ router.post('/evidence/:id/custody', (req: Request, res: Response) => {
   }
 });
 
+// GET /api/records/evidence/stats — Property room aggregate stats
+router.get('/evidence/stats', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const statusCounts = db.prepare(`
+      SELECT status, COUNT(*) as count FROM evidence WHERE archived_at IS NULL GROUP BY status
+    `).all() as any[];
+    const typeCounts = db.prepare(`
+      SELECT evidence_type, COUNT(*) as count FROM evidence
+      WHERE archived_at IS NULL AND evidence_type IS NOT NULL GROUP BY evidence_type
+    `).all() as any[];
+    const locationCounts = db.prepare(`
+      SELECT storage_location, COUNT(*) as count FROM evidence
+      WHERE archived_at IS NULL AND storage_location IS NOT NULL GROUP BY storage_location
+    `).all() as any[];
+    const pendingDisposition = db.prepare(`
+      SELECT COUNT(*) as count FROM evidence WHERE status IN ('received', 'in_storage') AND archived_at IS NULL
+    `).get() as any;
+
+    res.json({
+      data: {
+        by_status: Object.fromEntries(statusCounts.map((r: any) => [r.status, r.count])),
+        by_type: Object.fromEntries(typeCounts.map((r: any) => [r.evidence_type, r.count])),
+        by_location: Object.fromEntries(locationCounts.map((r: any) => [r.storage_location, r.count])),
+        total: statusCounts.reduce((a: number, b: any) => a + b.count, 0),
+        pending_disposition: pendingDisposition?.count || 0,
+      },
+    });
+  } catch (error: any) {
+    console.error('Evidence stats error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/records/evidence/locations — Distinct storage locations from system_config
+router.get('/evidence/locations', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const locations = db.prepare(`
+      SELECT config_key as name, config_value as details
+      FROM system_config WHERE category = 'evidence_location' AND is_active = 1
+      ORDER BY sort_order
+    `).all();
+    res.json({ data: locations });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/records/evidence/:id/chain-action — Enhanced chain-of-custody action
+router.post('/evidence/:id/chain-action', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
+    if (!evidence) return res.status(404).json({ error: 'Evidence not found' });
+
+    const { action, from_location, to_location, notes } = req.body;
+    const validActions = ['check_in', 'check_out', 'transfer', 'lab_submit', 'release', 'dispose'];
+    if (!action || !validActions.includes(action)) return res.status(400).json({ error: 'Valid action required' });
+
+    const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
+    let chain: any[] = [];
+    try { chain = JSON.parse(evidence.chain_of_custody || '[]'); } catch { /* ignore */ }
+
+    chain.push({
+      action,
+      timestamp: localNow(),
+      user_id: req.user!.userId,
+      user_name: user?.full_name || '',
+      from_location: from_location || evidence.storage_location || null,
+      to_location: to_location || null,
+      notes: notes || null,
+    });
+
+    // Update status based on action
+    const statusMap: Record<string, string> = {
+      check_in: 'in_storage', check_out: 'received', transfer: 'in_storage',
+      lab_submit: 'submitted_to_le', release: 'released', dispose: 'disposed',
+    };
+    const newStatus = statusMap[action] || evidence.status;
+    const storageLocation = to_location || evidence.storage_location;
+
+    db.prepare(`UPDATE evidence SET chain_of_custody = ?, status = ?, storage_location = ?, updated_at = ? WHERE id = ?`)
+      .run(JSON.stringify(chain), newStatus, storageLocation, localNow(), evidence.id);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, ?, 'evidence', ?, ?, ?)`).run(
+      req.user!.userId, `evidence_${action}`, evidence.id, JSON.stringify({ action, to_location }), localNow());
+
+    res.json({ data: { id: evidence.id, status: newStatus, chain_of_custody: chain } });
+  } catch (error: any) {
+    console.error('Evidence chain-action error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // PUT /api/records/properties/:id - Update property
 router.put('/properties/:id', (req: Request, res: Response) => {
   try {
@@ -2049,6 +2145,105 @@ router.get('/persons/:id/invoice-summary', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Person invoice summary error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── GET /api/records/ncic-query ─────────────────────────────
+// NCIC/NLETS query simulation — searches local database and returns
+// raw record data for client-side NCIC formatting.
+router.get('/ncic-query', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { type, query: q } = req.query;
+
+    if (!type || !q || (q as string).length < 2) {
+      res.status(400).json({ error: 'type and query (min 2 chars) are required' });
+      return;
+    }
+
+    const searchTerm = `%${q}%`;
+
+    switch (type) {
+      case 'person': {
+        // Search persons by name
+        const persons = db.prepare(`
+          SELECT * FROM persons
+          WHERE first_name LIKE ? OR last_name LIKE ?
+            OR (first_name || ' ' || last_name) LIKE ?
+            OR (last_name || ', ' || first_name) LIKE ?
+          ORDER BY last_name, first_name
+          LIMIT 5
+        `).all(searchTerm, searchTerm, searchTerm, searchTerm) as any[];
+
+        if (persons.length === 0) {
+          res.json({ type: 'person', results: [], query: q });
+          return;
+        }
+
+        // For each person, get criminal history and warrants
+        const results = persons.map(p => {
+          const criminalHistory = db.prepare(`
+            SELECT * FROM criminal_history WHERE person_id = ?
+            ORDER BY offense_date DESC
+          `).all(p.id);
+
+          let warrants: any[] = [];
+          try {
+            warrants = db.prepare(`
+              SELECT * FROM warrants WHERE subject_person_id = ? AND status = 'active'
+              ORDER BY issue_date DESC
+            `).all(p.id);
+          } catch { /* warrants table may not exist */ }
+
+          return { person: p, criminalHistory, warrants };
+        });
+
+        res.json({ type: 'person', results, query: q });
+        break;
+      }
+
+      case 'vehicle': {
+        // Search vehicles by plate, VIN, or make/model
+        const vehicles = db.prepare(`
+          SELECT v.*, p.first_name as owner_first_name, p.last_name as owner_last_name
+          FROM vehicles_records v
+          LEFT JOIN persons p ON v.owner_person_id = p.id
+          WHERE v.plate_number LIKE ? OR v.vin LIKE ?
+            OR v.make LIKE ? OR v.model LIKE ?
+          ORDER BY v.created_at DESC
+          LIMIT 5
+        `).all(searchTerm, searchTerm, searchTerm, searchTerm);
+
+        res.json({ type: 'vehicle', results: vehicles, query: q });
+        break;
+      }
+
+      case 'warrant': {
+        // Search warrants by subject name or warrant number
+        const warrants = db.prepare(`
+          SELECT w.*, p.first_name as subject_first_name, p.last_name as subject_last_name,
+            p.date_of_birth as subject_dob
+          FROM warrants w
+          LEFT JOIN persons p ON w.subject_person_id = p.id
+          WHERE w.status = 'active'
+            AND (w.warrant_number LIKE ?
+              OR p.first_name LIKE ? OR p.last_name LIKE ?
+              OR (p.first_name || ' ' || p.last_name) LIKE ?
+              OR w.charge_description LIKE ?)
+          ORDER BY w.issue_date DESC
+          LIMIT 10
+        `).all(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+
+        res.json({ type: 'warrant', results: warrants, query: q });
+        break;
+      }
+
+      default:
+        res.status(400).json({ error: 'Invalid type. Use: person, vehicle, warrant' });
+    }
+  } catch (error: any) {
+    console.error('NCIC query error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

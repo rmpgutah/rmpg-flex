@@ -33,6 +33,8 @@ export type IncidentType =
   | 'repo_notice' | 'civil_dispute'
   // Admin
   | 'daily_activity' | 'special_event' | 'training_exercise' | 'equipment_issue'
+  // Use of Force
+  | 'use_of_force'
   // Legacy
   | 'suspicious_activity' | 'other';
 
@@ -125,6 +127,8 @@ export const INCIDENT_TYPE_CODES: Record<string, string> = {
   special_event: 'SPE',
   training_exercise: 'TRN',
   equipment_issue: 'EQP',
+  // Use of Force
+  use_of_force: 'UOF',
   // Legacy
   suspicious_activity: 'SUS',
   other: 'OTH',
@@ -140,6 +144,7 @@ export type IncidentCategory =
   | 'Medical/Fire'
   | 'Service'
   | 'Admin'
+  | 'Use of Force'
   | 'Other';
 
 export const INCIDENT_TYPE_CATEGORIES: Record<IncidentCategory, { value: IncidentType; label: string }[]> = {
@@ -236,6 +241,9 @@ export const INCIDENT_TYPE_CATEGORIES: Record<IncidentCategory, { value: Inciden
     { value: 'training_exercise', label: 'Training Exercise' },
     { value: 'equipment_issue', label: 'Equipment Issue' },
   ],
+  'Use of Force': [
+    { value: 'use_of_force', label: 'Use of Force Report' },
+  ],
   'Other': [
     { value: 'suspicious_activity', label: 'Suspicious Activity' },
     { value: 'other', label: 'Other' },
@@ -290,6 +298,7 @@ export const CATEGORY_COLORS: Record<IncidentCategory, string> = {
   'Service': 'bg-purple-900/40 text-purple-300 border-purple-700/50',
   'Admin': 'bg-rmpg-700/40 text-rmpg-200 border-rmpg-500/50',
   'Other': 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50',
+  'Use of Force': 'bg-orange-900/40 text-orange-300 border-orange-700/50',
 };
 
 // PDF report type defaults per incident type

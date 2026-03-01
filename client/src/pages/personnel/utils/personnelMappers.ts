@@ -2,7 +2,7 @@
 // RMPG Flex — Personnel Backend->Frontend Data Mappers
 // ============================================================
 
-import type { User as UserType, Schedule, TimeEntry, Credential, TrainingRecord, Deployment } from '../../../types';
+import type { User as UserType, Schedule, TimeEntry, Credential, TrainingRecord, Deployment, BodyCamera, BodyCamVideo } from '../../../types';
 
 export interface OfficerWithStatus extends UserType {
   status: string;
@@ -49,6 +49,8 @@ export function mapUser(row: any): OfficerWithStatus {
     emergency_contact_relationship: row.emergency_contact_relationship || undefined,
     is_active: isActive,
     last_login: undefined,
+    // OPR: unit call sign from units table (list query) or nested unit object (detail query)
+    unit_call_sign: row.unit_call_sign || row.unit?.call_sign || undefined,
     created_at: row.created_at || '',
     updated_at: row.updated_at || '',
     status: isActive ? 'on_duty' : 'off_duty',
@@ -161,6 +163,50 @@ export function mapTraining(row: any): TrainingRecord {
     notes: row.notes || undefined,
     created_at: row.created_at || '',
     updated_at: row.updated_at || '',
+  };
+}
+
+export function mapBodyCamera(row: any): BodyCamera {
+  return {
+    id: Number(row.id),
+    officer_id: Number(row.officer_id),
+    camera_id: row.camera_id || '',
+    make: row.make || '',
+    model: row.model || '',
+    firmware_version: row.firmware_version || '',
+    storage_capacity_gb: Number(row.storage_capacity_gb) || 32,
+    status: row.status || 'available',
+    condition: row.condition || 'good',
+    assigned_at: row.assigned_at || '',
+    returned_at: row.returned_at || '',
+    notes: row.notes || '',
+    created_by: row.created_by || '',
+    created_at: row.created_at || '',
+    updated_at: row.updated_at || '',
+    officer_name: row.officer_name || undefined,
+  };
+}
+
+export function mapBodyCamVideo(row: any): BodyCamVideo {
+  return {
+    id: Number(row.id),
+    camera_id: Number(row.camera_id),
+    officer_id: Number(row.officer_id),
+    title: row.title || '',
+    file_path: row.file_path || '',
+    file_size: Number(row.file_size) || 0,
+    duration_seconds: row.duration_seconds != null ? Number(row.duration_seconds) : 0,
+    mime_type: row.mime_type || 'video/mp4',
+    recorded_at: row.recorded_at || '',
+    case_number: row.case_number || '',
+    classification: row.classification || 'routine',
+    retention_status: row.retention_status || 'active',
+    notes: row.notes || '',
+    uploaded_by: row.uploaded_by || '',
+    created_at: row.created_at || '',
+    updated_at: row.updated_at || '',
+    officer_name: row.officer_name || undefined,
+    camera_serial: row.camera_serial || undefined,
   };
 }
 

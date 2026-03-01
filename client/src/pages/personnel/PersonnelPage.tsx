@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Users, Search, X, Clock, AlertTriangle, BarChart3, Loader2, Plus, Archive, RotateCcw,
 } from 'lucide-react';
-import type { Schedule, TimeEntry, Credential, TrainingRecord, TrainingRequirement, Deployment, CoverageGap, PersonnelAnalytics, OfficerEquipment } from '../../types';
+import type { Schedule, TimeEntry, Credential, TrainingRecord, TrainingRequirement, Deployment, CoverageGap, PersonnelAnalytics, OfficerEquipment, BodyCamera, BodyCamVideo } from '../../types';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import RmpgLogo from '../../components/RmpgLogo';
 import PrintButton from '../../components/PrintButton';
@@ -16,13 +16,14 @@ import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useToast } from '../../components/ToastProvider';
 import { useIsMobile } from '../../hooks/useIsMobile';
-import { mapUser, mapSchedule, mapTimeEntry, mapCredential, mapTraining, mapDeployment } from './utils/personnelMappers';
+import { mapUser, mapSchedule, mapTimeEntry, mapCredential, mapTraining, mapDeployment, mapBodyCamera, mapBodyCamVideo } from './utils/personnelMappers';
 import type { OfficerWithStatus } from './utils/personnelMappers';
 import { MAIN_TABS, type MainTab, type DetailTab, type ModalMode } from './utils/personnelConstants';
 import { getWeekMonday } from './utils/personnelFormatters';
 import OfficerAvatar from './components/OfficerAvatar';
 import CredentialProgressBar from './components/CredentialProgressBar';
 import { ROLE_COLORS } from './utils/personnelConstants';
+import { toDisplayLabel } from '../../utils/formatters';
 import PersonnelDetailPanel from './PersonnelDetailPanel';
 import PersonnelAnalyticsDashboard from './PersonnelAnalyticsDashboard';
 import DutyBoardTab from './tabs/DutyBoardTab';
@@ -37,6 +38,10 @@ import TrainingFormModal from './modals/TrainingFormModal';
 import type { TrainingFormData } from './modals/TrainingFormModal';
 import EquipmentFormModal from './modals/EquipmentFormModal';
 import type { EquipmentFormData } from './modals/EquipmentFormModal';
+import BodyCameraFormModal from './modals/BodyCameraFormModal';
+import type { BodyCameraFormData } from './modals/BodyCameraFormModal';
+import VideoUploadModal from '../../components/VideoUploadModal';
+import VideoPlayer from '../../components/VideoPlayer';
 import DeploymentFormModal from './modals/DeploymentFormModal';
 import type { DeploymentFormData } from './modals/DeploymentFormModal';
 import OfficerFormModal from './modals/OfficerFormModal';
@@ -94,6 +99,17 @@ export default function PersonnelPage() {
   const [equipment, setEquipment] = useState<OfficerEquipment[]>([]);
   const [equipmentLoading, setEquipmentLoading] = useState(false);
 
+  // Body camera data
+  const [bodyCameras, setBodyCameras] = useState<BodyCamera[]>([]);
+  const [bodyCamVideos, setBodyCamVideos] = useState<BodyCamVideo[]>([]);
+  const [bodyCamerasLoading, setBodyCamerasLoading] = useState(false);
+  const [bodyCameraEditData, setBodyCameraEditData] = useState<(Partial<BodyCameraFormData> & { id?: number }) | undefined>(undefined);
+  const [bodyCameraModalMode, setBodyCameraModalMode] = useState<'create' | 'edit'>('create');
+  const [playingVideo, setPlayingVideo] = useState<BodyCamVideo | null>(null);
+
+  // All properties from the database (for deployment/schedule dropdowns)
+  const [allProperties, setAllProperties] = useState<{ id: string; name: string }[]>([]);
+
   // UI state
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -135,23 +151,26 @@ export default function PersonnelPage() {
       setError(null);
     }
     try {
-      const [usersRes, schedulesRes, timeRes, credentialsRes] = await Promise.allSettled([
+      const [usersRes, schedulesRes, timeRes, credentialsRes, propsRes] = await Promise.allSettled([
         apiFetch<any[]>(`/personnel?archived=${showArchived}`),
         apiFetch<any[]>('/personnel/schedules'),
         apiFetch<any[]>('/personnel/time'),
         apiFetch<any[]>('/personnel/credentials'),
+        apiFetch<any[]>('/records/properties'),
       ]);
 
       const usersRaw = usersRes.status === 'fulfilled' ? usersRes.value : [];
       const schedulesRaw = schedulesRes.status === 'fulfilled' ? schedulesRes.value : [];
       const timeRaw = timeRes.status === 'fulfilled' ? timeRes.value : [];
       const credentialsRaw = credentialsRes.status === 'fulfilled' ? credentialsRes.value : [];
+      const propsRaw = propsRes.status === 'fulfilled' ? propsRes.value : [];
 
       // Guard: ensure all values are arrays
       setOfficers((Array.isArray(usersRaw) ? usersRaw : []).map(mapUser));
       setSchedules((Array.isArray(schedulesRaw) ? schedulesRaw : []).map(mapSchedule));
       setTimeEntries((Array.isArray(timeRaw) ? timeRaw : []).map(mapTimeEntry));
       setCredentials((Array.isArray(credentialsRaw) ? credentialsRaw : []).map(mapCredential));
+      setAllProperties((Array.isArray(propsRaw) ? propsRaw : []).map((p: any) => ({ id: String(p.id), name: p.name })));
 
       // If the primary users call failed, show an error (only on non-silent loads)
       if (!silent && usersRes.status === 'rejected') {
@@ -190,8 +209,13 @@ export default function PersonnelPage() {
       Promise.all([
         apiFetch<any[]>('/personnel/deployments'),
         apiFetch<any[]>('/personnel/coverage-gaps'),
+        apiFetch<any[]>('/records/properties'),
       ])
-        .then(([dRaw, gaps]) => { setDeployments((Array.isArray(dRaw) ? dRaw : []).map(mapDeployment)); setCoverageGaps(Array.isArray(gaps) ? gaps : []); })
+        .then(([dRaw, gaps, propsRaw]) => {
+          setDeployments((Array.isArray(dRaw) ? dRaw : []).map(mapDeployment));
+          setCoverageGaps(Array.isArray(gaps) ? gaps : []);
+          setAllProperties((Array.isArray(propsRaw) ? propsRaw : []).map((p: any) => ({ id: String(p.id), name: p.name })));
+        })
         .catch(() => addToast('Failed to load deployment data', 'error'))
         .finally(() => setDeploymentsLoading(false));
     }
@@ -233,6 +257,19 @@ export default function PersonnelPage() {
         .catch(() => addToast('Failed to load equipment', 'error'))
         .finally(() => setEquipmentLoading(false));
     }
+    if (detailTab === 'body_cameras' && bodyCameras.length === 0 && !bodyCamerasLoading) {
+      setBodyCamerasLoading(true);
+      Promise.all([
+        apiFetch<any[]>('/personnel/body-cameras'),
+        apiFetch<any[]>('/personnel/bodycam-videos'),
+      ])
+        .then(([cams, vids]) => {
+          setBodyCameras((Array.isArray(cams) ? cams : []).map(mapBodyCamera));
+          setBodyCamVideos((Array.isArray(vids) ? vids : []).map(mapBodyCamVideo));
+        })
+        .catch(() => addToast('Failed to load body cameras', 'error'))
+        .finally(() => setBodyCamerasLoading(false));
+    }
     if (detailTab === 'deployment' && deployments.length === 0 && !deploymentsLoading) {
       setDeploymentsLoading(true);
       apiFetch<any[]>('/personnel/deployments')
@@ -270,20 +307,20 @@ export default function PersonnelPage() {
     name: `${o.first_name} ${o.last_name}${o.badge_number ? ` (${o.badge_number})` : ''}`,
   }));
 
-  const propertyOptions: { id: string; name: string }[] = [];
-  const seenPropertyIds = new Set<string>();
-  schedules.forEach(s => {
-    if (s.property_id && s.property_name && !seenPropertyIds.has(s.property_id)) {
-      seenPropertyIds.add(s.property_id);
-      propertyOptions.push({ id: s.property_id, name: s.property_name });
-    }
-  });
-  deployments.forEach(d => {
-    if (d.property_id && d.property_name && !seenPropertyIds.has(d.property_id)) {
-      seenPropertyIds.add(d.property_id);
-      propertyOptions.push({ id: d.property_id, name: d.property_name });
-    }
-  });
+  // Use full properties list from DB when available; fallback to schedule/deployment extraction
+  const propertyOptions: { id: string; name: string }[] = allProperties.length > 0
+    ? allProperties
+    : (() => {
+        const opts: { id: string; name: string }[] = [];
+        const seen = new Set<string>();
+        [...schedules, ...deployments].forEach((s: any) => {
+          if (s.property_id && s.property_name && !seen.has(s.property_id)) {
+            seen.add(s.property_id);
+            opts.push({ id: s.property_id, name: s.property_name });
+          }
+        });
+        return opts;
+      })();
 
   // ----------------------------------------------------------
   // Handlers
@@ -439,6 +476,77 @@ export default function PersonnelPage() {
     setEquipmentEditData(officerId ? { officer_id: officerId } : undefined);
     setEquipmentModalMode('create');
     setModal('new_equipment');
+  };
+
+  // ----------------------------------------------------------
+  // Body Camera Handlers
+  // ----------------------------------------------------------
+
+  const refreshBodyCameras = async () => {
+    const [cams, vids] = await Promise.all([
+      apiFetch<any[]>('/personnel/body-cameras'),
+      apiFetch<any[]>('/personnel/bodycam-videos'),
+    ]);
+    setBodyCameras((Array.isArray(cams) ? cams : []).map(mapBodyCamera));
+    setBodyCamVideos((Array.isArray(vids) ? vids : []).map(mapBodyCamVideo));
+  };
+
+  const handleBodyCameraSubmit = async (data: BodyCameraFormData) => {
+    setIsSubmitting(true);
+    try {
+      const payload = { ...data, storage_capacity_gb: parseInt(data.storage_capacity_gb) || 32 };
+      if (bodyCameraModalMode === 'edit' && bodyCameraEditData?.id) {
+        await apiFetch(`/personnel/body-cameras/${bodyCameraEditData.id}`, { method: 'PUT', body: JSON.stringify(payload) });
+      } else {
+        await apiFetch('/personnel/body-cameras', { method: 'POST', body: JSON.stringify(payload) });
+      }
+      setModal('none');
+      setBodyCameraEditData(undefined);
+      await refreshBodyCameras();
+      addToast('Body camera saved', 'success');
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to save body camera', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleBodyCameraDelete = async (camId: number) => {
+    try {
+      await apiFetch(`/personnel/body-cameras/${camId}`, { method: 'DELETE' });
+      await refreshBodyCameras();
+      addToast('Body camera deleted', 'success');
+    } catch {
+      addToast('Failed to delete body camera', 'error');
+    }
+  };
+
+  const openEditBodyCamera = (cam: BodyCamera) => {
+    setBodyCameraEditData({
+      id: cam.id, officer_id: String(cam.officer_id), camera_id: cam.camera_id,
+      make: cam.make || '', model: cam.model || '', firmware_version: cam.firmware_version || '',
+      storage_capacity_gb: String(cam.storage_capacity_gb || 32),
+      status: cam.status, condition: cam.condition || 'good',
+      assigned_at: cam.assigned_at || '', returned_at: cam.returned_at || '', notes: cam.notes || '',
+    });
+    setBodyCameraModalMode('edit');
+    setModal('edit_body_camera');
+  };
+
+  const openAddBodyCamera = (officerId?: string) => {
+    setBodyCameraEditData(officerId ? { officer_id: officerId } : undefined);
+    setBodyCameraModalMode('create');
+    setModal('new_body_camera');
+  };
+
+  const handleVideoDelete = async (videoId: number) => {
+    try {
+      await apiFetch(`/personnel/bodycam-videos/${videoId}`, { method: 'DELETE' });
+      await refreshBodyCameras();
+      addToast('Video deleted', 'success');
+    } catch {
+      addToast('Failed to delete video', 'error');
+    }
   };
 
   const handleDeploymentSubmit = async (data: DeploymentFormData) => {
@@ -729,7 +837,7 @@ export default function PersonnelPage() {
                       {officer.last_name}, {officer.first_name}
                     </span>
                     <span className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold uppercase ${ROLE_COLORS[officer.role] || ROLE_COLORS.officer}`}>
-                      {officer.role}
+                      {toDisplayLabel(officer.role)}
                     </span>
                     {hasExpired && <span className="led-dot led-red" />}
                     {!hasExpired && hasExpiring && <span className="led-dot led-amber" />}
@@ -793,6 +901,15 @@ export default function PersonnelPage() {
       onAddEquipment={id => openAddEquipment(id)}
       onEditEquipment={openEditEquipment}
       onDeleteEquipment={handleEquipmentDelete}
+      bodyCameras={bodyCameras}
+      bodyCamVideos={bodyCamVideos}
+      bodyCamerasLoading={bodyCamerasLoading}
+      onAddBodyCamera={id => openAddBodyCamera(id)}
+      onEditBodyCamera={openEditBodyCamera}
+      onDeleteBodyCamera={handleBodyCameraDelete}
+      onUploadVideo={() => setModal('upload_video')}
+      onDeleteVideo={handleVideoDelete}
+      onPlayVideo={setPlayingVideo}
       onAddDeployment={id => openAddDeployment(id)}
       onEditOfficer={openEditOfficer}
       onDeleteOfficer={() => setDeleteTarget(selectedOfficer)}
@@ -871,7 +988,7 @@ export default function PersonnelPage() {
       </div>
 
       {/* Tab Navigation */}
-      <div className={`tab-bar ${isMobile ? 'overflow-x-auto' : ''}`}>
+      <div className="tab-bar overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
         {MAIN_TABS.map(tab => {
           const Icon = tab.icon;
           const count = tab.id === 'roster' ? officers.length
@@ -903,7 +1020,7 @@ export default function PersonnelPage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-hidden flex">
+      <div className="flex-1 overflow-y-auto flex">
         {/* Loading state */}
         {loading && (
           <div className="flex items-center justify-center flex-1">
@@ -1040,6 +1157,46 @@ export default function PersonnelPage() {
         officers={officerOptions}
         initialData={equipmentEditData}
         mode={equipmentModalMode}
+      />
+
+      <BodyCameraFormModal
+        isOpen={modal === 'new_body_camera' || modal === 'edit_body_camera'}
+        onClose={() => { setModal('none'); setBodyCameraEditData(undefined); }}
+        onSubmit={handleBodyCameraSubmit}
+        isSubmitting={isSubmitting}
+        officers={officerOptions}
+        initialData={bodyCameraEditData}
+        mode={bodyCameraModalMode}
+      />
+
+      {selectedOfficer && (
+        <VideoUploadModal
+          isOpen={modal === 'upload_video'}
+          onClose={() => setModal('none')}
+          onUploaded={refreshBodyCameras}
+          cameras={bodyCameras.filter(c => c.officer_id === Number(selectedOfficer.id))}
+          officerId={Number(selectedOfficer.id)}
+          apiBase={window.location.origin + '/api'}
+          getAuthHeaders={() => {
+            const token = localStorage.getItem('rmpg_token');
+            const headers: Record<string, string> = {};
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+            return headers;
+          }}
+        />
+      )}
+
+      <VideoPlayer
+        isOpen={!!playingVideo}
+        onClose={() => setPlayingVideo(null)}
+        video={playingVideo}
+        apiBase={window.location.origin + '/api'}
+        getAuthHeaders={() => {
+          const token = localStorage.getItem('rmpg_token');
+          const headers: Record<string, string> = {};
+          if (token) headers['Authorization'] = `Bearer ${token}`;
+          return headers;
+        }}
       />
 
       <DeploymentFormModal

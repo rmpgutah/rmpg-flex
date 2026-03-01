@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Building2 } from 'lucide-react';
 import FormModal from './FormModal';
+import { useFormDirty } from '../hooks/useFormDirty';
 import AddressAutocomplete from './AddressAutocomplete';
 
 export interface ClientFormData {
@@ -130,13 +131,14 @@ export default function ClientFormModal({
   editingClient,
 }: ClientFormModalProps) {
   const [form, setForm] = useState<ClientFormData>(EMPTY_FORM);
+  const { isDirty, snapshot } = useFormDirty(form, isOpen);
   const [activeSection, setActiveSection] = useState<'general' | 'billing' | 'contract' | 'account'>('general');
 
   useEffect(() => {
     if (isOpen) {
       setActiveSection('general');
       if (editingClient) {
-        setForm({
+        const initial: ClientFormData = {
           name: editingClient.name || '',
           client_code: editingClient.client_code || '',
           industry: editingClient.industry || '',
@@ -164,9 +166,12 @@ export default function ClientFormModal({
           priority_client: !!editingClient.priority_client,
           client_since: editingClient.client_since || '',
           notes: editingClient.notes || '',
-        });
+        };
+        setForm(initial);
+        snapshot(initial);
       } else {
         setForm(EMPTY_FORM);
+        snapshot(EMPTY_FORM);
       }
     }
   }, [isOpen, editingClient]);
@@ -191,6 +196,7 @@ export default function ClientFormModal({
       submitLabel={isEdit ? 'Update Client' : 'Create Client'}
       isSubmitting={isSubmitting}
       maxWidth="max-w-3xl"
+      isDirty={isDirty}
     >
       {/* Section Tabs */}
       <div className="flex gap-1 -mt-2 mb-3 border-b border-rmpg-700 pb-2">

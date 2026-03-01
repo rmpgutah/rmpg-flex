@@ -34,7 +34,7 @@ export const DEFAULT_PDF_BRANDING: PdfBranding = {
   report_subheader_text: 'PRIVATE SECURITY',
   primary_color: '#bc1010',
   accent_color: '#d4a017',
-  header_bg_color: '#303030',
+  header_bg_color: '#000000',
 };
 
 /** Fetch branding settings from admin config API (gracefully falls back to defaults) */
@@ -87,9 +87,7 @@ let activeBranding: PdfBranding = { ...DEFAULT_PDF_BRANDING };
 export function setActiveBranding(b: PdfBranding) { activeBranding = b; }
 export function getActiveBranding(): PdfBranding { return activeBranding; }
 
-// Section counter for numbered sections
-let sectionCounter = 0;
-export function resetSectionCounter() { sectionCounter = 0; }
+// Section counter removed — section headers now display clean titles without numbering
 
 // Cached images (loaded once per session)
 let cachedSeal: string | null = null;
@@ -135,17 +133,15 @@ export function addConfidentialWatermark(doc: jsPDF) {
   const pageHeight = doc.internal.pageSize.getHeight();
 
   doc.saveGraphicsState();
-  // @ts-expect-error jsPDF GState
-  doc.setGState(new doc.GState({ opacity: 0.15 }));
+  // @ts-expect-error jsPDF GState — more visible watermark (0.08 opacity)
+  doc.setGState(new doc.GState({ opacity: 0.08 }));
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(...COLOR.WATERMARK);
 
   const cx = pageWidth / 2;
   const cy = pageHeight / 2;
   doc.setFontSize(FONT.SIZE_WATERMARK_LARGE);
-  doc.text('CONFIDENTIAL', cx, cy - 10, { align: 'center', angle: 45 });
-  doc.setFontSize(FONT.SIZE_WATERMARK_SMALL);
-  doc.text('ROCKY MOUNTAIN PROTECTIVE GROUP, LLC.', cx, cy + 12, { align: 'center', angle: 45 });
+  doc.text('CONFIDENTIAL', cx, cy, { align: 'center', angle: 45 });
   doc.restoreGraphicsState();
 
   // Explicitly reset opacity to full after watermark (jsPDF GState safety)
@@ -169,7 +165,7 @@ export function addClassificationBar(doc: jsPDF, priority: string, yStart: numbe
 }
 
 /**
- * Government-style header with embedded agency seal.
+ * Compact header: agency name, combined report type + form info, clean case box.
  */
 export function addReportHeader(
   doc: jsPDF,
@@ -184,9 +180,8 @@ export function addReportHeader(
   const cw = getContentWidth(doc);
   const headerBg = hexToRgb(brand.header_bg_color);
   const primaryRgb = hexToRgb(brand.primary_color);
-  const accentRgb = hexToRgb(brand.accent_color);
   const caseBoxLabel = headerOptions?.caseBoxLabel || 'CASE NUMBER';
-  const useLogo = headerOptions?.useLogo ?? false;
+  const useLogo = headerOptions?.useLogo ?? true;
 
   // Store case number for continuation headers
   activeCaseNumber = caseNumber;
@@ -195,65 +190,64 @@ export function addReportHeader(
   // @ts-expect-error jsPDF GState
   doc.setGState(new doc.GState({ opacity: 1.0 }));
 
+  const accentRgb = hexToRgb(brand.accent_color);
+
   // ── Header background bar ──────────────────────────────
   doc.setFillColor(headerBg[0], headerBg[1], headerBg[2]);
   doc.rect(LAYOUT.PAGE_MARGIN, LAYOUT.HEADER_TOP, cw, LAYOUT.HEADER_HEIGHT, 'F');
 
-  // ── Seal / Logo image (left) ───────────────────────────
-  const sealX = LAYOUT.PAGE_MARGIN + SPACING.MD;
+  // ── Seal / Logo image (left, larger & bolder) ──────────
+  const sealX = LAYOUT.PAGE_MARGIN + SPACING.SM + 1;
   const sealY = LAYOUT.HEADER_TOP + (LAYOUT.HEADER_HEIGHT - LAYOUT.SEAL_SIZE) / 2;
-  let textStartX = LAYOUT.PAGE_MARGIN + SPACING.LG;
+  let textStartX = LAYOUT.PAGE_MARGIN + SPACING.XL;
 
-  // Choose image: RMPG Logo Dark (white backdrop) or seal
   const imageToUse = useLogo && cachedLogoDark ? cachedLogoDark : cachedSeal;
 
   if (imageToUse) {
     try {
       if (useLogo && cachedLogoDark) {
-        // Draw white background circle/rect behind logo to blend with header
         doc.setFillColor(255, 255, 255);
         doc.roundedRect(sealX - 0.5, sealY - 0.5, LAYOUT.SEAL_SIZE + 1, LAYOUT.SEAL_SIZE + 1, 1.5, 1.5, 'F');
       }
       doc.addImage(imageToUse, 'PNG', sealX, sealY, LAYOUT.SEAL_SIZE, LAYOUT.SEAL_SIZE);
-      textStartX = sealX + LAYOUT.SEAL_SIZE + SPACING.SM;
+      textStartX = sealX + LAYOUT.SEAL_SIZE + SPACING.MD;
     } catch {
-      textStartX = LAYOUT.PAGE_MARGIN + SPACING.LG;
+      textStartX = LAYOUT.PAGE_MARGIN + SPACING.XL;
     }
   }
 
-  // ── Agency name ────────────────────────────────────────
+  // ── Line 1: Agency name (bold, larger) ──────────────────
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(FONT.SIZE_HEADER_TITLE);
+  doc.setFontSize(FONT.SIZE_HEADER_TITLE + 1);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
-  doc.text(agencyName || brand.report_header_text, textStartX, LAYOUT.HEADER_TOP + 9);
+  doc.text(agencyName || brand.report_header_text, textStartX, LAYOUT.HEADER_TOP + 10);
 
-  // ── Subheader text ─────────────────────────────────────
+  // ── Line 2: Subheader + report type ─────────────────────
+  doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SUBHEADER);
   doc.setTextColor(accentRgb[0], accentRgb[1], accentRgb[2]);
-  doc.text(brand.report_subheader_text, textStartX, LAYOUT.HEADER_TOP + 14);
+  doc.text(brand.report_subheader_text, textStartX, LAYOUT.HEADER_TOP + 15.5);
 
-  // ── Report type (light color for dark background) ──────
-  doc.setFontSize(FONT.SIZE_REPORT_TYPE);
-  doc.setTextColor(200, 200, 200);
-  doc.text(reportType.toUpperCase(), textStartX, LAYOUT.HEADER_TOP + 20);
-
-  // ── Form number + revision ─────────────────────────────
+  // ── Line 3: Report type + form number + revision ────────
   const formNum = FORM_NUMBERS[activeFormKey] || '';
-  if (formNum) {
-    doc.setFontSize(FONT.SIZE_SMALL_META);
-    doc.setTextColor(150, 150, 150);
-    doc.text(`${formNum}  |  ${FORM_REVISION}`, textStartX, LAYOUT.HEADER_TOP + 24);
-  }
+  const metaParts = [reportType.toUpperCase()];
+  if (formNum) metaParts.push(formNum);
+  metaParts.push(FORM_REVISION);
 
-  // ── Report Date ────────────────────────────────────────
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(FONT.SIZE_REPORT_TYPE);
+  doc.setTextColor(170, 170, 170);
+  doc.text(metaParts.join('  |  '), textStartX, LAYOUT.HEADER_TOP + 20.5);
+
+  // ── Line 4: Report date ─────────────────────────────────
   doc.setFontSize(FONT.SIZE_SMALL_META);
-  doc.setTextColor(150, 150, 150);
+  doc.setTextColor(140, 140, 140);
   doc.text(
     `REPORT DATE: ${new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })}`,
-    textStartX, LAYOUT.HEADER_TOP + 28,
+    textStartX, LAYOUT.HEADER_TOP + 25.5,
   );
 
-  // ── Case number box on right ───────────────────────────
+  // ── Case number box (right) — bold primary color ───────
   const caseBoxH = LAYOUT.HEADER_HEIGHT - 4;
   const caseBoxX = pageWidth - LAYOUT.PAGE_MARGIN - LAYOUT.CASE_BOX_W - SPACING.SM;
   const caseBoxY = LAYOUT.HEADER_TOP + SPACING.SM;
@@ -261,98 +255,86 @@ export function addReportHeader(
   doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
   doc.rect(caseBoxX, caseBoxY, LAYOUT.CASE_BOX_W, caseBoxH, 'F');
 
-  doc.setDrawColor(...COLOR.TEXT_INVERTED);
-  doc.setLineWidth(BORDER.CASE_BOX);
-  doc.rect(caseBoxX + 1.5, caseBoxY + 1.5, LAYOUT.CASE_BOX_W - 3, caseBoxH - 3);
-
+  // Label
   doc.setFontSize(FONT.SIZE_SMALL_META);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(...COLOR.TEXT_INVERTED);
-  doc.text(caseBoxLabel, caseBoxX + LAYOUT.CASE_BOX_W / 2, caseBoxY + 6, { align: 'center' });
+  doc.text(caseBoxLabel, caseBoxX + LAYOUT.CASE_BOX_W / 2, caseBoxY + 7, { align: 'center' });
 
+  // Case number value
   doc.setFontSize(FONT.SIZE_CASE_NUMBER);
   doc.setFont('courier', 'bold');
-  doc.setTextColor(...COLOR.TEXT_INVERTED);
-  doc.text(caseNumber, caseBoxX + LAYOUT.CASE_BOX_W / 2, caseBoxY + 13, { align: 'center' });
+  doc.text(caseNumber, caseBoxX + LAYOUT.CASE_BOX_W / 2, caseBoxY + 15.5, { align: 'center' });
 
-  doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(...COLOR.TEXT_INVERTED);
-  doc.text(
-    new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-    caseBoxX + LAYOUT.CASE_BOX_W / 2, caseBoxY + 18,
-    { align: 'center' },
-  );
-
-  // ── Gold accent line below header ──────────────────────
-  const lineY = LAYOUT.HEADER_TOP + LAYOUT.HEADER_HEIGHT + 0.5;
-  doc.setDrawColor(accentRgb[0], accentRgb[1], accentRgb[2]);
-  doc.setLineWidth(BORDER.ACCENT_HEADER);
-  doc.line(LAYOUT.PAGE_MARGIN, lineY, pageWidth - LAYOUT.PAGE_MARGIN, lineY);
+  // ── Accent strip below header (primary → gold gradient effect) ──
+  const stripY = LAYOUT.HEADER_TOP + LAYOUT.HEADER_HEIGHT;
+  const stripH = LAYOUT.ACCENT_STRIP_H;
+  // Left half: primary color
+  doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+  doc.rect(LAYOUT.PAGE_MARGIN, stripY, cw / 2, stripH, 'F');
+  // Right half: accent color (gold)
+  doc.setFillColor(accentRgb[0], accentRgb[1], accentRgb[2]);
+  doc.rect(LAYOUT.PAGE_MARGIN + cw / 2, stripY, cw / 2, stripH, 'F');
 
   // ── Reset drawing state ────────────────────────────────
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
 
-  const yAfterHeader = LAYOUT.HEADER_TOP + LAYOUT.HEADER_HEIGHT + SPACING.SM;
+  const yAfterHeader = stripY + stripH + SPACING.SM;
   return addClassificationBar(doc, priority, yAfterHeader);
 }
 
 /**
- * Auto-sizing section with numbered header and accent stripe.
+ * Auto-sizing section with clean header bar (no numbering, no accent stripes).
  * Call `closeAutoSection(doc, sectionStartY, contentEndY)` when done.
  */
 export function openAutoSection(doc: jsPDF, title: string, y: number): { contentY: number; sectionY: number } {
   const cw = getContentWidth(doc);
-  const headerBg = hexToRgb(activeBranding.header_bg_color);
-  const accentRgb = hexToRgb(activeBranding.accent_color);
 
   // Ensure full opacity (safety reset after watermark GState)
   // @ts-expect-error jsPDF GState
   doc.setGState(new doc.GState({ opacity: 1.0 }));
 
-  sectionCounter++;
-  const sectionTitle = `SECTION ${sectionCounter} \u2014 ${title.toUpperCase()}`;
+  // Light header bar with dark text + accent left edge
+  const sectionAccent = hexToRgb(activeBranding.primary_color);
 
-  // Section header bar
-  doc.setFillColor(headerBg[0], headerBg[1], headerBg[2]);
-  doc.rect(LAYOUT.PAGE_MARGIN, y, cw, SPACING.SECTION_HEADER_H, 'F');
-
-  // Accent color left stripe (3mm wide)
-  doc.setFillColor(accentRgb[0], accentRgb[1], accentRgb[2]);
-  doc.rect(LAYOUT.PAGE_MARGIN, y, SPACING.MD, SPACING.SECTION_HEADER_H, 'F');
-
-  // Gold accent line along bottom edge of header bar
-  doc.setDrawColor(accentRgb[0], accentRgb[1], accentRgb[2]);
-  doc.setLineWidth(BORDER.ACCENT_FOOTER);
+  // Accent edge (2mm wide left strip in brand color)
+  doc.setFillColor(sectionAccent[0], sectionAccent[1], sectionAccent[2]);
+  doc.rect(LAYOUT.PAGE_MARGIN, y, 2, SPACING.SECTION_HEADER_H, 'F');
+  // Main light header bar
+  doc.setFillColor(...COLOR.BG_SECTION_HDR);
+  doc.rect(LAYOUT.PAGE_MARGIN + 2, y, cw - 2, SPACING.SECTION_HEADER_H, 'F');
+  // Bottom border for definition
+  doc.setDrawColor(...COLOR.BORDER_SECTION);
+  doc.setLineWidth(BORDER.SECTION_OUTER);
   doc.line(LAYOUT.PAGE_MARGIN, y + SPACING.SECTION_HEADER_H, LAYOUT.PAGE_MARGIN + cw, y + SPACING.SECTION_HEADER_H);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-  doc.setTextColor(...COLOR.TEXT_INVERTED);
-  doc.text(sectionTitle, LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + SPACING.MD, y + 6);
-
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  doc.text(title.toUpperCase(), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, y + 5.8);
+
   doc.setFont('helvetica', 'normal');
 
-  return { contentY: y + SPACING.SECTION_HEADER_H + SPACING.SM, sectionY: y };
+  // Content starts after header bar + content padding (not tight against bar)
+  return { contentY: y + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD, sectionY: y };
 }
 
 /**
- * Close an auto-sizing section — draws thick border from sectionY to contentEndY.
+ * Close an auto-sizing section — draws thin border from sectionY to contentEndY.
  */
-export function closeAutoSection(doc: jsPDF, sectionY: number, contentEndY: number, padding = SPACING.MD): number {
+export function closeAutoSection(doc: jsPDF, sectionY: number, contentEndY: number, padding = SPACING.SECTION_BOTTOM_PAD): number {
   const cw = getContentWidth(doc);
-  const headerBg = hexToRgb(activeBranding.header_bg_color);
   const totalHeight = (contentEndY - sectionY) + padding;
 
-  doc.setDrawColor(headerBg[0], headerBg[1], headerBg[2]);
+  // Clean dark border around entire section (header + content)
+  doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(BORDER.SECTION_OUTER);
-  doc.rect(LAYOUT.PAGE_MARGIN, sectionY, cw, Math.max(totalHeight, 10));
+  doc.rect(LAYOUT.PAGE_MARGIN, sectionY, cw, Math.max(totalHeight, 12));
 
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
-  return contentEndY + padding;
+  return contentEndY + padding + SPACING.SECTION_GAP;
 }
 
 /**
@@ -367,44 +349,61 @@ export function addBoxedSection(doc: jsPDF, title: string, y: number, _height: n
 }
 
 /**
- * Box-based grid field (government form style).
- * Draws a bordered rectangle with label at top and value inside.
+ * Modern field with floating label above a bordered value box.
+ * Label sits above the box in lighter gray; box contains only the value.
+ * Auto-expands height for multi-line values (up to 4 lines).
+ * Shows "—" em-dash for empty/null values.
  * Returns Y position for next row.
  */
 export function addFieldPair(doc: jsPDF, label: string, value: string, x: number, y: number, width: number): number {
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
-  const cellH = SPACING.FIELD_ROW_HEIGHT;
+  const labelH = 4;          // Height reserved for floating label above box
+  const baseBoxH = 9;        // Minimum value box height (generous for text)
+  const innerPad = 2;        // Horizontal padding inside box
+  const maxW = width - 2 * innerPad;
+  const lineStep = 4;        // Y-step per extra line of value text
+  const maxLines = 4;        // Cap at 4 lines
 
-  // Box border
-  doc.setDrawColor(...COLOR.BORDER_FIELD);
-  doc.setLineWidth(BORDER.FIELD);
-  doc.rect(x, y - 1, width, cellH);
-
-  // Label area: subtle zebra fill for visual contrast
-  doc.setFillColor(...COLOR.BG_ZEBRA);
-  doc.rect(x + 0.1, y - 0.9, width - 0.2, 3.8, 'F');
-
-  // Label: uppercase, small, gray — inside top of box
+  // Floating label above the box
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_FIELD_LABEL);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
-  doc.text(label.toUpperCase(), x + 1.5, y + 2);
+  doc.text(label.toUpperCase(), x + innerPad, y + 2.5);
 
-  // Value: inside box below label
+  // Determine value text and line count
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
-  doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  if (value) {
-    const maxW = width - 3;
-    let displayVal = value;
-    while (doc.getTextWidth(displayVal) > maxW && displayVal.length > 1) {
-      displayVal = displayVal.slice(0, -1);
-    }
-    doc.text(displayVal, x + 1.5, y + 7);
+
+  const isEmpty = !value || value.trim() === '';
+  const displayText = isEmpty ? '—' : value;
+  const lines: string[] = isEmpty
+    ? [displayText]
+    : doc.splitTextToSize(displayText, maxW).slice(0, maxLines);
+  const extraLines = Math.max(0, lines.length - 1);
+  const boxH = baseBoxH + extraLines * lineStep;
+
+  // Value box with border (positioned below the label)
+  const boxY = y + labelH;
+  doc.setDrawColor(...COLOR.BORDER_FIELD);
+  doc.setLineWidth(BORDER.FIELD);
+  doc.rect(x, boxY, width, boxH);
+
+  // Value text vertically centered in box
+  const valColor = isEmpty ? COLOR.TEXT_TERTIARY : COLOR.TEXT_PRIMARY;
+  doc.setTextColor(valColor[0], valColor[1], valColor[2]);
+
+  const textStartY = boxY + 5.5; // Vertically centered for single-line
+  let lineY = textStartY;
+  for (const line of lines) {
+    doc.text(line, x + innerPad, lineY);
+    lineY += lineStep;
   }
 
-  return y + SPACING.FIELD_ROW_ADVANCE;
+  // Reset text color
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+
+  return y + labelH + boxH + 1.5; // label + box + gap between rows
 }
 
 /**
@@ -434,10 +433,10 @@ export function addCheckboxField(doc: jsPDF, label: string, checked: boolean, x:
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_CHECKBOX_LABEL);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
-  doc.text(label.toUpperCase(), x + boxSize + 1.5, y);
+  doc.text(label, x + boxSize + 1.5, y);
 
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
-  return x + boxSize + 1.5 + doc.getTextWidth(label.toUpperCase()) + 4;
+  return x + boxSize + 1.5 + doc.getTextWidth(label) + 3;
 }
 
 /**
@@ -448,36 +447,39 @@ export function addSignatureBlock(doc: jsPDF, roleLabel: string, x: number, y: n
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
   const boxH = SPACING.SIGNATURE_BOX_H;
-  const headerBg = hexToRgb(activeBranding.header_bg_color);
 
-  doc.setDrawColor(headerBg[0], headerBg[1], headerBg[2]);
+  // Outer border — black to match section style
+  doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(BORDER.SECTION_OUTER);
   doc.rect(x, y, width, boxH);
 
-  // Role label in shaded header bar
+  // Role label in light header bar with dark text
   const roleBarH = SPACING.SIGNATURE_ROLE_H;
-  doc.setFillColor(headerBg[0], headerBg[1], headerBg[2]);
+  doc.setFillColor(...COLOR.BG_SECTION_HDR);
   doc.rect(x, y, width, roleBarH, 'F');
+  doc.setDrawColor(...COLOR.BORDER_SECTION);
+  doc.setLineWidth(BORDER.SECTION_OUTER);
+  doc.line(x, y + roleBarH, x + width, y + roleBarH);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-  doc.setTextColor(...COLOR.TEXT_INVERTED);
-  doc.text(roleLabel.toUpperCase(), x + SPACING.SM, y + 3.5);
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  doc.text(roleLabel.toUpperCase(), x + SPACING.CONTENT_INSET, y + 4.2);
 
-  // Signature line with "X" marker
-  const sigLineY = y + roleBarH + 10;
+  // Signature line with "X" marker (more vertical space)
+  const sigLineY = y + roleBarH + 12;
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
   doc.setLineWidth(BORDER.SIGNATURE_LINE);
-  doc.line(x + SPACING.SM, sigLineY, x + width - SPACING.SM, sigLineY);
+  doc.line(x + SPACING.MD, sigLineY, x + width - SPACING.MD, sigLineY);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SIGNATURE_X);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
-  doc.text('X', x + SPACING.MD, sigLineY - 1);
+  doc.text('X', x + SPACING.CONTENT_INSET, sigLineY - 1.5);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
-  doc.text('SIGNATURE', x + FONT.SIZE_SIGNATURE_X, sigLineY + 3);
+  doc.text('SIGNATURE', x + FONT.SIZE_SIGNATURE_X + 1, sigLineY + 3.5);
 
   // Bottom row: PRINTED NAME | BADGE # | DATE
   const subY = sigLineY + SPACING.SIGNATURE_SUB_GAP;
@@ -492,20 +494,20 @@ export function addSignatureBlock(doc: jsPDF, roleLabel: string, x: number, y: n
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
-  doc.text('PRINTED NAME', x + SPACING.SM, subY + 3);
-  doc.text('BADGE NUMBER', x + colW + SPACING.SM, subY + 3);
-  doc.text('DATE', x + colW * 2 + SPACING.SM, subY + 3);
+  doc.text('PRINTED NAME', x + SPACING.MD, subY + 4);
+  doc.text('BADGE NUMBER', x + colW + SPACING.MD, subY + 4);
+  doc.text('DATE', x + colW * 2 + SPACING.MD, subY + 4);
 
   doc.setDrawColor(...COLOR.BORDER_FIELD);
   doc.setLineWidth(BORDER.FIELD);
-  const lineYSub = subY + 7;
-  doc.line(x + SPACING.SM, lineYSub, x + colW - SPACING.SM, lineYSub);
-  doc.line(x + colW + SPACING.SM, lineYSub, x + colW * 2 - SPACING.SM, lineYSub);
-  doc.line(x + colW * 2 + SPACING.SM, lineYSub, x + width - SPACING.SM, lineYSub);
+  const lineYSub = subY + 8;
+  doc.line(x + SPACING.MD, lineYSub, x + colW - SPACING.MD, lineYSub);
+  doc.line(x + colW + SPACING.MD, lineYSub, x + colW * 2 - SPACING.MD, lineYSub);
+  doc.line(x + colW * 2 + SPACING.MD, lineYSub, x + width - SPACING.MD, lineYSub);
 
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  return y + boxH + SPACING.MD;
+  return y + boxH + SPACING.LG;
 }
 
 /**
@@ -517,7 +519,6 @@ export function addPageFooter(doc: jsPDF, pageNum: number, totalPages: number, f
   const pageHeight = doc.internal.pageSize.getHeight();
   const cw = getContentWidth(doc);
   const headerBg = hexToRgb(brand.header_bg_color);
-  const accentRgb = hexToRgb(brand.accent_color);
   const fKey = formKey || activeFormKey;
   const formNum = FORM_NUMBERS[fKey] || '';
 
@@ -525,53 +526,103 @@ export function addPageFooter(doc: jsPDF, pageNum: number, totalPages: number, f
   // @ts-expect-error jsPDF GState
   doc.setGState(new doc.GState({ opacity: 1.0 }));
 
-  // Gold accent line above footer
-  const accentY = pageHeight - LAYOUT.FOOTER_HEIGHT - SPACING.LG;
-  doc.setDrawColor(accentRgb[0], accentRgb[1], accentRgb[2]);
-  doc.setLineWidth(BORDER.ACCENT_FOOTER);
-  doc.line(LAYOUT.PAGE_MARGIN, accentY, pageWidth - LAYOUT.PAGE_MARGIN, accentY);
+  // Accent strip above footer
+  const accentRgb = hexToRgb(brand.accent_color);
+  const primaryRgb = hexToRgb(brand.primary_color);
+  const footerY = pageHeight - LAYOUT.FOOTER_HEIGHT - SPACING.MD;
+  const accentY = footerY - LAYOUT.ACCENT_STRIP_H;
+
+  doc.setFillColor(accentRgb[0], accentRgb[1], accentRgb[2]);
+  doc.rect(LAYOUT.PAGE_MARGIN, accentY, cw / 2, LAYOUT.ACCENT_STRIP_H, 'F');
+  doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+  doc.rect(LAYOUT.PAGE_MARGIN + cw / 2, accentY, cw / 2, LAYOUT.ACCENT_STRIP_H, 'F');
 
   // Dark footer bar
-  const footerY = pageHeight - LAYOUT.FOOTER_HEIGHT - SPACING.MD;
   doc.setFillColor(headerBg[0], headerBg[1], headerBg[2]);
   doc.rect(LAYOUT.PAGE_MARGIN, footerY, cw, LAYOUT.FOOTER_HEIGHT, 'F');
 
-  // Line 1: Form number | LAW ENFORCEMENT SENSITIVE | Page X of Y
+  // Footer line: Form # | Rev | INTERNAL USE ONLY | Page badge
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_FOOTER_PRIMARY);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
 
-  const line1Y = footerY + 4.5;
+  const lineY = footerY + 7;
   if (formNum) {
-    doc.text(`${formNum}  |  ${FORM_REVISION}`, LAYOUT.PAGE_MARGIN + SPACING.MD, line1Y);
+    doc.text(`${formNum}  |  ${FORM_REVISION}`, LAYOUT.PAGE_MARGIN + SPACING.MD, lineY);
   }
-  doc.text('LAW ENFORCEMENT SENSITIVE', pageWidth / 2, line1Y, { align: 'center' });
-  doc.text(`Page ${pageNum} of ${totalPages}`, pageWidth - LAYOUT.PAGE_MARGIN - SPACING.MD, line1Y, { align: 'right' });
+  doc.text('INTERNAL USE ONLY', pageWidth / 2, lineY, { align: 'center' });
 
-  // Line 2: Agency name | CONFIDENTIAL | Timestamp
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(FONT.SIZE_FOOTER_SECONDARY);
-  doc.setTextColor(190, 190, 190);
-
-  const line2Y = footerY + 9;
-  doc.text(brand.report_header_text, LAYOUT.PAGE_MARGIN + SPACING.MD, line2Y);
-  doc.text('CONFIDENTIAL \u2014 DO NOT DISTRIBUTE', pageWidth / 2, line2Y, { align: 'center' });
-  doc.text(`Generated: ${generationTimestamp}`, pageWidth - LAYOUT.PAGE_MARGIN - SPACING.MD, line2Y, { align: 'right' });
+  // Page number badge (small filled pill)
+  const pageText = `${pageNum} / ${totalPages}`;
+  const badgeX = pageWidth - LAYOUT.PAGE_MARGIN - SPACING.MD - 12;
+  const badgeW = 24;
+  const badgeH = 5;
+  doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+  doc.roundedRect(badgeX, footerY + 2.5, badgeW, badgeH, 1.5, 1.5, 'F');
+  doc.setFontSize(FONT.SIZE_FOOTER_PRIMARY);
+  doc.setTextColor(...COLOR.TEXT_INVERTED);
+  doc.text(pageText, badgeX + badgeW / 2, footerY + 6.2, { align: 'center' });
 }
 
 /**
- * Wrapped text with internal page break checking.
+ * Wrapped text with paragraph detection and internal page break checking.
+ * Double-newlines (\n\n) create paragraph breaks with extra spacing.
+ * Single newlines are treated as hard line breaks within a paragraph.
  */
-export function addWrappedText(doc: jsPDF, text: string, x: number, y: number, maxWidth: number, fontSize = FONT.SIZE_FIELD_VALUE): number {
+export function addWrappedText(doc: jsPDF, text: string, x: number, y: number, maxWidth: number, fontSize: number = FONT.SIZE_FIELD_VALUE): number {
+  if (!text) return y;
   doc.setFontSize(fontSize);
-  const lines: string[] = doc.splitTextToSize(text || '', maxWidth);
-  const lineH = fontSize * 0.4 + 1;
+  const lineH = fontSize * 0.42 + 1.2;
+  const paragraphGap = SPACING.MD; // Extra space between paragraphs
 
-  for (const line of lines) {
-    y = checkPageBreak(doc, y, lineH + SPACING.SM);
-    doc.text(line, x, y);
-    y += lineH;
+  // Split on double-newlines for paragraph breaks
+  const paragraphs = text.split(/\n\n+/);
+
+  for (let p = 0; p < paragraphs.length; p++) {
+    if (p > 0) y += paragraphGap; // Paragraph spacing
+
+    const para = paragraphs[p].trim();
+    if (!para) continue;
+
+    const lines: string[] = doc.splitTextToSize(para, maxWidth);
+    for (const line of lines) {
+      y = checkPageBreak(doc, y, lineH + SPACING.SM);
+      doc.text(line, x, y);
+      y += lineH;
+    }
   }
+
+  return y;
+}
+
+/**
+ * Complete narrative/notes section with auto-sizing, background tint,
+ * paragraph-aware text, and section border.
+ * Replaces the common pattern: openAutoSection → addWrappedText → closeAutoSection.
+ */
+export function addNarrativeSection(
+  doc: jsPDF,
+  title: string,
+  text: string,
+  y: number,
+  priority?: string,
+): number {
+  if (!text) return y;
+  y = checkPageBreak(doc, y, 30, priority);
+  const sec = openAutoSection(doc, title, y);
+  y = sec.contentY;
+
+  // Subtle background tint behind narrative text for visual separation
+  const lx = getLeftX();
+  const ffw = getFullFieldWidth(doc);
+  doc.setFillColor(246, 246, 250);
+  doc.rect(lx - 2, y - 2, ffw + 4, 10, 'F'); // Initial tint (content expands)
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+  y = addWrappedText(doc, text, lx, y, ffw);
+  y += SPACING.SM;
+  y = closeAutoSection(doc, sec.sectionY, y);
   return y;
 }
 
@@ -697,21 +748,23 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
 
     const pageWidth = doc.internal.pageSize.getWidth();
     const cw = getContentWidth(doc);
-    const headerBg = hexToRgb(activeBranding.header_bg_color);
-    const accentRgb = hexToRgb(activeBranding.accent_color);
 
     const contY = 8;
-    doc.setFillColor(headerBg[0], headerBg[1], headerBg[2]);
-    doc.rect(LAYOUT.PAGE_MARGIN, contY, cw, SPACING.SECTION_HEADER_H, 'F');
-
-    // Accent stripe
-    doc.setFillColor(accentRgb[0], accentRgb[1], accentRgb[2]);
-    doc.rect(LAYOUT.PAGE_MARGIN, contY, SPACING.SM, SPACING.SECTION_HEADER_H, 'F');
+    // Continuation bar with accent edge — matches section headers (light bg + dark text)
+    const contAccent = hexToRgb(activeBranding.primary_color);
+    doc.setFillColor(contAccent[0], contAccent[1], contAccent[2]);
+    doc.rect(LAYOUT.PAGE_MARGIN, contY, 2, SPACING.SECTION_HEADER_H, 'F');
+    doc.setFillColor(...COLOR.BG_SECTION_HDR);
+    doc.rect(LAYOUT.PAGE_MARGIN + 2, contY, cw - 2, SPACING.SECTION_HEADER_H, 'F');
+    // Bottom border for definition
+    doc.setDrawColor(...COLOR.BORDER_SECTION);
+    doc.setLineWidth(BORDER.SECTION_OUTER);
+    doc.line(LAYOUT.PAGE_MARGIN, contY + SPACING.SECTION_HEADER_H, LAYOUT.PAGE_MARGIN + cw, contY + SPACING.SECTION_HEADER_H);
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-    doc.setTextColor(...COLOR.TEXT_INVERTED);
-    doc.text(`${activeBranding.report_header_text} \u2014 CONTINUED`, LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + SPACING.SM, contY + 4.5);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    doc.text(`${activeBranding.report_header_text} \u2014 CONTINUED`, LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET, contY + 5.8);
 
     // Form number + case number on right
     const rightParts: string[] = [];
@@ -719,29 +772,25 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
     if (formNum) rightParts.push(formNum);
     if (activeCaseNumber) rightParts.push(activeCaseNumber);
     if (rightParts.length > 0) {
-      doc.text(rightParts.join('  |  '), pageWidth - LAYOUT.PAGE_MARGIN - SPACING.MD, contY + 4.5, { align: 'right' });
+      doc.text(rightParts.join('  |  '), pageWidth - LAYOUT.PAGE_MARGIN - SPACING.CONTENT_INSET, contY + 5.8, { align: 'right' });
     }
-
-    // Gold accent line
-    doc.setDrawColor(accentRgb[0], accentRgb[1], accentRgb[2]);
-    doc.setLineWidth(BORDER.ACCENT_FOOTER);
-    doc.line(LAYOUT.PAGE_MARGIN, contY + SPACING.SECTION_HEADER_H + 0.5, pageWidth - LAYOUT.PAGE_MARGIN, contY + SPACING.SECTION_HEADER_H + 0.5);
 
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.setDrawColor(...COLOR.TEXT_PRIMARY);
 
     if (priority) {
-      return addClassificationBar(doc, priority, contY + SPACING.SECTION_HEADER_H + SPACING.SM);
+      return addClassificationBar(doc, priority, contY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD);
     }
-    return contY + SPACING.SECTION_HEADER_H + SPACING.SM + SPACING.SM;
+    return contY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD;
   }
   return y;
 }
 
 /**
  * Professional table with header row background, full borders, zebra striping,
- * and column header re-draw on page breaks.
+ * auto-wrapping cells with dynamic row heights, and column header re-draw
+ * on page breaks.
  */
 export function addTableWithShading(
   doc: jsPDF,
@@ -753,69 +802,122 @@ export function addTableWithShading(
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
   const cw = getContentWidth(doc);
-  const headerBg = hexToRgb(activeBranding.header_bg_color);
-  const rowH = 5.5;
+  const pageW = doc.internal.pageSize.getWidth();
+  const minRowH = 6;
+  const cellLineH = 3.8;      // Line height within table cells
+  const cellPad = 2;           // Padding inside cells
+  const maxCellLines = 5;     // Cap per cell to prevent runaway heights
+
+  // Pre-compute column widths from position deltas
+  const colWidths: number[] = [];
+  for (let c = 0; c < colPositions.length; c++) {
+    const nextX = c + 1 < colPositions.length ? colPositions[c + 1] - 2 : pageW - LAYOUT.PAGE_MARGIN - 1;
+    colWidths.push(nextX - colPositions[c] - cellPad);
+  }
 
   // Helper to draw header row
   const drawHeaders = (atY: number): number => {
-    const headerRowH = 6;
-    doc.setFillColor(headerBg[0], headerBg[1], headerBg[2]);
-    doc.rect(LAYOUT.PAGE_MARGIN + 1, atY - 3, cw - 2, headerRowH, 'F');
+    const headerRowH = 8;
+    // Light table header with accent left edge + dark text
+    const tblAccent = hexToRgb(activeBranding.primary_color);
+    doc.setFillColor(tblAccent[0], tblAccent[1], tblAccent[2]);
+    doc.rect(LAYOUT.PAGE_MARGIN + 1, atY - 3, 1.5, headerRowH, 'F');
+    doc.setFillColor(...COLOR.BG_TABLE_HDR);
+    doc.rect(LAYOUT.PAGE_MARGIN + 2.5, atY - 3, cw - 3.5, headerRowH, 'F');
+    // Bottom border for definition
+    doc.setDrawColor(...COLOR.BORDER_TABLE);
+    doc.setLineWidth(BORDER.TABLE_ROW * 3);
+    doc.line(LAYOUT.PAGE_MARGIN + 1, atY - 3 + headerRowH, LAYOUT.PAGE_MARGIN + cw, atY - 3 + headerRowH);
     doc.setFontSize(FONT.SIZE_TABLE_HEADER);
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
     for (const h of headers) {
-      doc.text(h.label, h.x, atY);
+      doc.text(h.label, h.x, atY + 0.5);
     }
-    return atY + headerRowH - 1;
+    return atY + headerRowH;
   };
 
   let y = drawHeaders(startY);
   const tableTop = startY - 3;
 
-  // Data rows with alternating shading
+  // Track vertical segment boundaries for column borders
+  const colSegments: { top: number; bottom: number }[] = [{ top: tableTop, bottom: y }];
+  let currentSegTop = y;
+
+  // Data rows with alternating shading and dynamic heights
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(FONT.SIZE_TABLE_BODY);
 
   for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+
+    // Pre-compute wrapped lines for each cell and determine row height
+    const cellLines: string[][] = [];
+    let maxLines = 1;
+    for (let c = 0; c < row.length; c++) {
+      const cellText = row[c] || '';
+      const availW = colWidths[c] || 30;
+      const lines = cellText ? doc.splitTextToSize(cellText, availW).slice(0, maxCellLines) : [''];
+      cellLines.push(lines);
+      if (lines.length > maxLines) maxLines = lines.length;
+    }
+    const rowH = Math.max(minRowH, maxLines * cellLineH + 2);
+
     // Check page break before each row — re-draw headers on new page
     const prevPage = doc.getNumberOfPages();
     y = checkPageBreak(doc, y, rowH + SPACING.SM);
     if (doc.getNumberOfPages() > prevPage) {
+      // Close previous segment and start new one after page break
+      colSegments[colSegments.length - 1].bottom = y - rowH;
       y = drawHeaders(y);
+      currentSegTop = y;
+      colSegments.push({ top: currentSegTop - 1, bottom: y });
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(FONT.SIZE_TABLE_BODY);
     }
 
+    // Zebra shading with dynamic height
     if (i % 2 === 0) {
       doc.setFillColor(...COLOR.BG_ZEBRA);
       doc.rect(LAYOUT.PAGE_MARGIN + 1, y - 3, cw - 2, rowH, 'F');
     }
 
+    // Row separator at bottom of row
     doc.setDrawColor(...COLOR.BORDER_TABLE);
     doc.setLineWidth(BORDER.TABLE_ROW);
     doc.line(LAYOUT.PAGE_MARGIN + 1, y + rowH - 3, LAYOUT.PAGE_MARGIN + cw - 1, y + rowH - 3);
 
-    const row = rows[i];
+    // Render cell text (multi-line)
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    for (let c = 0; c < row.length; c++) {
-      doc.text(row[c] || '', colPositions[c], y);
+    for (let c = 0; c < cellLines.length; c++) {
+      const lines = cellLines[c];
+      let cellY = y;
+      for (const line of lines) {
+        doc.text(line, colPositions[c], cellY);
+        cellY += cellLineH;
+      }
     }
+
     y += rowH;
   }
 
-  // Vertical column borders
+  // Update final segment bottom
+  colSegments[colSegments.length - 1].bottom = y - 1;
+
+  // Vertical column borders (drawn per segment to handle page breaks)
   doc.setDrawColor(...COLOR.BORDER_COLUMN);
   doc.setLineWidth(BORDER.TABLE_COLUMN);
-  const tableBottom = y - 1;
-  for (let c = 1; c < colPositions.length; c++) {
-    const sepX = colPositions[c] - 2;
-    doc.line(sepX, tableTop, sepX, tableBottom);
+  for (const seg of colSegments) {
+    for (let c = 1; c < colPositions.length; c++) {
+      const sepX = colPositions[c] - 2;
+      doc.line(sepX, seg.top, sepX, seg.bottom);
+    }
   }
 
-  // Outer border
+  // Outer border (main page segment only — first segment)
   doc.setDrawColor(...COLOR.BORDER_OUTER);
   doc.setLineWidth(BORDER.TABLE_OUTER);
+  const tableBottom = y - 1;
   doc.rect(LAYOUT.PAGE_MARGIN + 1, tableTop, cw - 2, tableBottom - tableTop + 1);
 
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
@@ -824,7 +926,7 @@ export function addTableWithShading(
 
 /**
  * Three-column grid layout with box-based fields.
- * Fills empty cells in partial rows.
+ * Partial rows only render fields that exist (no empty placeholder boxes).
  */
 export function addThreeColumnFields(
   doc: jsPDF,
@@ -835,18 +937,16 @@ export function addThreeColumnFields(
   const lx = getLeftX();
 
   for (let i = 0; i < fields.length; i += 3) {
+    let maxNextY = y + SPACING.FIELD_ROW_ADVANCE;
     for (let c = 0; c < 3; c++) {
-      const x = lx + c * colW;
       if (i + c < fields.length) {
-        addFieldPair(doc, fields[i + c].label, fields[i + c].value, x, y, colW);
-      } else {
-        // Draw empty cell box for partial rows
-        doc.setDrawColor(...COLOR.BORDER_FIELD);
-        doc.setLineWidth(BORDER.FIELD);
-        doc.rect(x, y - 1, colW, SPACING.FIELD_ROW_HEIGHT);
+        const x = lx + c * colW;
+        const nextY = addFieldPair(doc, fields[i + c].label, fields[i + c].value, x, y, colW);
+        if (nextY > maxNextY) maxNextY = nextY;
       }
+      // No empty placeholder boxes for partial rows
     }
-    y += SPACING.FIELD_ROW_ADVANCE;
+    y = maxNextY;
   }
   return y;
 }
@@ -918,8 +1018,8 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   const rx = getRightColumnX(doc);
   const cw = getContentWidth(doc);
 
-  resetSectionCounter();
-  let y = addReportHeader(doc, data.incident_number, 'General Incident Report', data.priority);
+
+  let y = addReportHeader(doc, data.incident_number, 'General Incident Report', data.priority, undefined, { useLogo: true });
 
   // Classification
   { const sec = openAutoSection(doc, 'Classification', y); y = sec.contentY;
@@ -943,13 +1043,14 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
     y = closeAutoSection(doc, sec.sectionY, y);
   }
 
-  // Date/Time — 4-column
+  // Date/Time — 2×2 layout (less cramped than 4-column)
   { const sec = openAutoSection(doc, 'Date / Time', y); y = sec.contentY;
-    const qw = getQuarterWidth(doc);
-    addFieldPair(doc, 'Occurred Date', data.occurred_date || '', lx, y, qw);
-    addFieldPair(doc, 'Occurred Time', data.occurred_time || '', lx + qw + SPACING.MD, y, qw);
-    addFieldPair(doc, 'End Date', data.end_date || '', lx + (qw + SPACING.MD) * 2, y, qw);
-    y = addFieldPair(doc, 'End Time', data.end_time || '', lx + (qw + SPACING.MD) * 3, y, qw);
+    const hw = getHalfFieldWidth(doc);
+    const rx = getRightColumnX(doc);
+    addFieldPair(doc, 'Occurred Date', data.occurred_date || '', lx, y, hw);
+    y = addFieldPair(doc, 'Occurred Time', data.occurred_time || '', rx, y, hw);
+    addFieldPair(doc, 'End Date', data.end_date || '', lx, y, hw);
+    y = addFieldPair(doc, 'End Time', data.end_time || '', rx, y, hw);
     y = closeAutoSection(doc, sec.sectionY, y);
   }
 
@@ -1070,21 +1171,14 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   // LE Coordination
   if (data.responding_le_agency || data.le_case_number) {
     y = checkPageBreak(doc, y, 20, data.priority);
-    const sec = openAutoSection(doc, 'Law Enforcement Coordination', y); y = sec.contentY;
+    const sec = openAutoSection(doc, 'External Agency Coordination', y); y = sec.contentY;
     addFieldPair(doc, 'Responding Agency', data.responding_le_agency || '', lx, y, hfw);
     y = addFieldPair(doc, 'LE Case #', data.le_case_number || '', rx, y, hfw);
     y = closeAutoSection(doc, sec.sectionY, y);
   }
 
   // Narrative
-  y = checkPageBreak(doc, y, 40, data.priority);
-  { const sec = openAutoSection(doc, 'Narrative', y); y = sec.contentY;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(FONT.SIZE_FIELD_VALUE);
-    y = addWrappedText(doc, data.narrative || '', lx, y, ffw, 9);
-    y += SPACING.MD;
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  y = addNarrativeSection(doc, 'Narrative', data.narrative || '', y, data.priority);
 
   // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {
@@ -1109,8 +1203,8 @@ function generateTrespassWarning(doc: jsPDF, data: IncidentData) {
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
 
-  resetSectionCounter();
-  let y = addReportHeader(doc, data.incident_number, 'Trespass Warning', data.priority);
+
+  let y = addReportHeader(doc, data.incident_number, 'Trespass Warning', data.priority, undefined, { useLogo: true });
 
   // Large WARNING banner
   const primaryRgb = hexToRgb(activeBranding.primary_color);
@@ -1170,13 +1264,7 @@ function generateTrespassWarning(doc: jsPDF, data: IncidentData) {
   }
 
   // Narrative
-  y = checkPageBreak(doc, y, 30, data.priority);
-  { const sec = openAutoSection(doc, 'Officer Notes', y); y = sec.contentY;
-    doc.setFont('helvetica', 'normal');
-    y = addWrappedText(doc, data.narrative || '', lx, y, ffw, 9);
-    y += SPACING.MD;
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  y = addNarrativeSection(doc, 'Officer Notes', data.narrative || '', y, data.priority);
 
   // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {
@@ -1207,8 +1295,8 @@ function generateAccidentReport(doc: jsPDF, data: IncidentData) {
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
 
-  resetSectionCounter();
-  let y = addReportHeader(doc, data.incident_number, 'Vehicle Accident Report', data.priority);
+
+  let y = addReportHeader(doc, data.incident_number, 'Vehicle Accident Report', data.priority, undefined, { useLogo: true });
 
   // Incident Info
   { const sec = openAutoSection(doc, 'Incident Information', y); y = sec.contentY;
@@ -1245,20 +1333,14 @@ function generateAccidentReport(doc: jsPDF, data: IncidentData) {
 
   // Vehicle 1
   { const sec = openAutoSection(doc, 'Vehicle #1', y); y = sec.contentY;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(FONT.SIZE_FIELD_VALUE);
-    y = addWrappedText(doc, data.vehicle_1_info || '', lx, y, ffw, 9);
-    y += SPACING.MD;
+    y = addFieldPair(doc, 'Vehicle Description', data.vehicle_1_info || '', lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y);
   }
 
   // Vehicle 2
   y = checkPageBreak(doc, y, 30, data.priority);
   { const sec = openAutoSection(doc, 'Vehicle #2', y); y = sec.contentY;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(FONT.SIZE_FIELD_VALUE);
-    y = addWrappedText(doc, data.vehicle_2_info || '', lx, y, ffw, 9);
-    y += SPACING.MD;
+    y = addFieldPair(doc, 'Vehicle Description', data.vehicle_2_info || '', lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y);
   }
 
@@ -1283,13 +1365,7 @@ function generateAccidentReport(doc: jsPDF, data: IncidentData) {
   }
 
   // Scene Notes
-  if (data.diagram_notes) {
-    y = checkPageBreak(doc, y, 25, data.priority);
-    const sec = openAutoSection(doc, 'Scene Notes', y); y = sec.contentY;
-    y = addWrappedText(doc, data.diagram_notes, lx, y, ffw, 9);
-    y += SPACING.MD;
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  y = addNarrativeSection(doc, 'Scene Notes', data.diagram_notes || '', y, data.priority);
 
   // Injuries & Damage
   y = checkPageBreak(doc, y, 20, data.priority);
@@ -1300,12 +1376,7 @@ function generateAccidentReport(doc: jsPDF, data: IncidentData) {
   }
 
   // Narrative
-  y = checkPageBreak(doc, y, 40, data.priority);
-  { const sec = openAutoSection(doc, 'Narrative', y); y = sec.contentY;
-    y = addWrappedText(doc, data.narrative || '', lx, y, ffw, 9);
-    y += SPACING.MD;
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  y = addNarrativeSection(doc, 'Narrative', data.narrative || '', y, data.priority);
 
   // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {
@@ -1328,8 +1399,8 @@ function generateMedicalReport(doc: jsPDF, data: IncidentData) {
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
 
-  resetSectionCounter();
-  let y = addReportHeader(doc, data.incident_number, 'Medical Response Report', data.priority);
+
+  let y = addReportHeader(doc, data.incident_number, 'Medical Response Report', data.priority, undefined, { useLogo: true });
 
   // Incident Info
   { const sec = openAutoSection(doc, 'Incident Information', y); y = sec.contentY;
@@ -1364,26 +1435,13 @@ function generateMedicalReport(doc: jsPDF, data: IncidentData) {
   }
 
   // Vitals
-  { const sec = openAutoSection(doc, 'Vitals / Condition', y); y = sec.contentY;
-    y = addWrappedText(doc, data.patient_vitals || '', lx, y, ffw, 9);
-    y += SPACING.MD;
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  y = addNarrativeSection(doc, 'Vitals / Condition', data.patient_vitals || '', y, data.priority);
 
   // Treatment
-  { const sec = openAutoSection(doc, 'Treatment Rendered', y); y = sec.contentY;
-    y = addWrappedText(doc, data.treatment_rendered || '', lx, y, ffw, 9);
-    y += SPACING.MD;
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  y = addNarrativeSection(doc, 'Treatment Rendered', data.treatment_rendered || '', y, data.priority);
 
   // Narrative
-  y = checkPageBreak(doc, y, 40, data.priority);
-  { const sec = openAutoSection(doc, 'Narrative', y); y = sec.contentY;
-    y = addWrappedText(doc, data.narrative || '', lx, y, ffw, 9);
-    y += SPACING.MD;
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  y = addNarrativeSection(doc, 'Narrative', data.narrative || '', y, data.priority);
 
   // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {
@@ -1408,8 +1466,8 @@ function generateUseOfForceReport(doc: jsPDF, data: IncidentData) {
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
 
-  resetSectionCounter();
-  let y = addReportHeader(doc, data.incident_number, 'Use of Force Report', data.priority);
+
+  let y = addReportHeader(doc, data.incident_number, 'Use of Force Report', data.priority, undefined, { useLogo: true });
 
   // MANDATORY header banner
   const primaryRgb = hexToRgb(activeBranding.primary_color);
@@ -1458,19 +1516,10 @@ function generateUseOfForceReport(doc: jsPDF, data: IncidentData) {
   }
 
   // De-Escalation
-  { const sec = openAutoSection(doc, 'De-Escalation Attempts', y); y = sec.contentY;
-    y = addWrappedText(doc, data.de_escalation_attempts || '', lx, y, ffw, 9);
-    y += SPACING.MD;
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  y = addNarrativeSection(doc, 'De-Escalation Attempts', data.de_escalation_attempts || '', y, data.priority);
 
   // Justification
-  y = checkPageBreak(doc, y, 30, data.priority);
-  { const sec = openAutoSection(doc, 'Justification', y); y = sec.contentY;
-    y = addWrappedText(doc, data.force_justification || '', lx, y, ffw, 9);
-    y += SPACING.MD;
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  y = addNarrativeSection(doc, 'Justification', data.force_justification || '', y, data.priority);
 
   // Injuries
   y = checkPageBreak(doc, y, 20, data.priority);
@@ -1481,12 +1530,7 @@ function generateUseOfForceReport(doc: jsPDF, data: IncidentData) {
   }
 
   // Narrative
-  y = checkPageBreak(doc, y, 40, data.priority);
-  { const sec = openAutoSection(doc, 'Narrative', y); y = sec.contentY;
-    y = addWrappedText(doc, data.narrative || '', lx, y, ffw, 9);
-    y += SPACING.MD;
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  y = addNarrativeSection(doc, 'Narrative', data.narrative || '', y, data.priority);
 
   // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {
@@ -1510,8 +1554,8 @@ function generateDailyActivityReport(doc: jsPDF, data: IncidentData) {
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
 
-  resetSectionCounter();
-  let y = addReportHeader(doc, data.incident_number, 'Daily Activity Report', data.priority);
+
+  let y = addReportHeader(doc, data.incident_number, 'Daily Activity Report', data.priority, undefined, { useLogo: true });
 
   // Officer / Shift Info
   { const sec = openAutoSection(doc, 'Officer / Shift Information', y); y = sec.contentY;
@@ -1524,30 +1568,33 @@ function generateDailyActivityReport(doc: jsPDF, data: IncidentData) {
 
   // Activity Log
   { const sec = openAutoSection(doc, 'Activity Log', y); y = sec.contentY;
-    const headerBg = hexToRgb(activeBranding.header_bg_color);
-    doc.setFillColor(headerBg[0], headerBg[1], headerBg[2]);
-    doc.rect(LAYOUT.PAGE_MARGIN + 1, y - 2, cw - 2, 5, 'F');
+    // Light table header row with dark text
+    doc.setFillColor(...COLOR.BG_TABLE_HDR);
+    doc.rect(LAYOUT.PAGE_MARGIN + 1, y - 2, cw - 2, 7, 'F');
+    doc.setDrawColor(...COLOR.BORDER_TABLE);
+    doc.setLineWidth(BORDER.TABLE_ROW * 3);
+    doc.line(LAYOUT.PAGE_MARGIN + 1, y + 5, LAYOUT.PAGE_MARGIN + cw - 1, y + 5);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_TABLE_HEADER);
-    doc.setTextColor(...COLOR.TEXT_INVERTED);
-    doc.text('TIME', lx, y + 1);
-    doc.text('ACTIVITY / LOCATION', LAYOUT.PAGE_MARGIN + 25, y + 1);
-    doc.text('NOTES', LAYOUT.PAGE_MARGIN + 100, y + 1);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    y += 5;
+    doc.text('TIME', lx, y + 2);
+    doc.text('ACTIVITY / LOCATION', LAYOUT.PAGE_MARGIN + 25, y + 2);
+    doc.text('NOTES', LAYOUT.PAGE_MARGIN + 100, y + 2);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    y += 7;
 
     const tableTopY = y;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(FONT.SIZE_TABLE_BODY);
-    for (let i = 0; i < 18; i++) {
+    for (let i = 0; i < 6; i++) {
       if (i % 2 === 0) {
         doc.setFillColor(...COLOR.BG_ZEBRA);
-        doc.rect(LAYOUT.PAGE_MARGIN + 1, y - 1, cw - 2, 6, 'F');
+        doc.rect(LAYOUT.PAGE_MARGIN + 1, y - 1, cw - 2, 7, 'F');
       }
       doc.setDrawColor(...COLOR.BORDER_TABLE);
       doc.setLineWidth(BORDER.TABLE_ROW);
-      doc.line(lx, y + 4, pageWidth - LAYOUT.PAGE_MARGIN - SPACING.MD, y + 4);
-      y += 6;
+      doc.line(lx, y + 5, pageWidth - LAYOUT.PAGE_MARGIN - SPACING.MD, y + 5);
+      y += 7;
     }
 
     doc.setDrawColor(...COLOR.BORDER_COLUMN);
@@ -1561,12 +1608,7 @@ function generateDailyActivityReport(doc: jsPDF, data: IncidentData) {
   }
 
   // Narrative summary
-  y = checkPageBreak(doc, y, 40, data.priority);
-  { const sec = openAutoSection(doc, 'Summary / Notes', y); y = sec.contentY;
-    y = addWrappedText(doc, data.narrative || '', lx, y, ffw, 9);
-    y += SPACING.MD;
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  y = addNarrativeSection(doc, 'Summary / Notes', data.narrative || '', y, data.priority);
 
   // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {
@@ -1590,8 +1632,8 @@ function generateArrestReport(doc: jsPDF, data: IncidentData) {
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
 
-  resetSectionCounter();
-  let y = addReportHeader(doc, data.incident_number, 'Arrest / Detention Report', data.priority);
+
+  let y = addReportHeader(doc, data.incident_number, 'Arrest / Detention Report', data.priority, undefined, { useLogo: true });
 
   // Incident Info
   { const sec = openAutoSection(doc, 'Incident Information', y); y = sec.contentY;
@@ -1680,12 +1722,7 @@ function generateArrestReport(doc: jsPDF, data: IncidentData) {
   }
 
   // Narrative
-  y = checkPageBreak(doc, y, 40, data.priority);
-  { const sec = openAutoSection(doc, 'Narrative', y); y = sec.contentY;
-    y = addWrappedText(doc, data.narrative || '', lx, y, ffw, 9);
-    y += SPACING.MD;
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  y = addNarrativeSection(doc, 'Narrative', data.narrative || '', y, data.priority);
 
   // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {

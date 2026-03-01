@@ -136,6 +136,46 @@ try {
   // Desktop package may not exist
 }
 
+// ─── Update desktop package-lock.json version fields ─────
+const desktopLockPath = path.join(ROOT, 'desktop', 'package-lock.json');
+try {
+  const lock = JSON.parse(fs.readFileSync(desktopLockPath, 'utf-8'));
+  lock.version = newVersion;
+  if (lock.packages && lock.packages['']) {
+    lock.packages[''].version = newVersion;
+  }
+  fs.writeFileSync(desktopLockPath, JSON.stringify(lock, null, 2) + '\n');
+  console.log(`  ${path.relative(ROOT, desktopLockPath)} → v${newVersion}`);
+} catch {
+  // Lock file may not exist
+}
+
+// ─── Update Android build.gradle versionName + versionCode ─
+const gradlePath = path.join(ROOT, 'client', 'android', 'app', 'build.gradle');
+try {
+  let gradle = fs.readFileSync(gradlePath, 'utf-8');
+  // Bump versionName to new version
+  gradle = gradle.replace(/versionName\s+"[\d.]+"/, `versionName "${newVersion}"`);
+  // Increment versionCode by 1
+  gradle = gradle.replace(/versionCode\s+(\d+)/, (_, code) => `versionCode ${parseInt(code) + 1}`);
+  fs.writeFileSync(gradlePath, gradle);
+  console.log(`  ${path.relative(ROOT, gradlePath)} → v${newVersion}`);
+} catch {
+  // Gradle file may not exist
+}
+
+// ─── Update download page fallback version strings ───────
+const downloadHtmlPath = path.join(ROOT, 'server', 'downloads', 'index.html');
+try {
+  let html = fs.readFileSync(downloadHtmlPath, 'utf-8');
+  // Replace all occurrences of old version with new version in the download page
+  html = html.replace(new RegExp(currentVersion.replace(/\./g, '\\.'), 'g'), newVersion);
+  fs.writeFileSync(downloadHtmlPath, html);
+  console.log(`  ${path.relative(ROOT, downloadHtmlPath)} → v${newVersion}`);
+} catch {
+  // Download page may not exist
+}
+
 // ─── Summary ─────────────────────────────────────────────
 console.log(`\n  ✓ Version bumped: ${currentVersion} → ${newVersion} (${bumpType})`);
 console.log(`    Summary: ${summary}`);

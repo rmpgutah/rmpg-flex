@@ -5,7 +5,7 @@
 // Supports automatic updates with client notification.
 // ============================================================
 
-const CACHE_NAME = 'rmpg-flex-v6';
+const CACHE_NAME = 'rmpg-flex-v31';
 const STATIC_ASSETS = [
   '/',
   '/manifest.json',
@@ -48,11 +48,15 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Never cache API calls, WebSocket, or POST requests
+  // Never cache API calls, WebSocket, POST requests, or external map tiles
+  // Map tiles from Google must bypass the SW entirely — cache-first fails
+  // silently on slow/intermittent connections (vehicle WiFi), causing a
+  // black screen since tiles never reach the map renderer.
   if (
     url.pathname.startsWith('/api') ||
     url.pathname.startsWith('/ws') ||
-    event.request.method !== 'GET'
+    event.request.method !== 'GET' ||
+    url.origin !== self.location.origin
   ) {
     return;
   }

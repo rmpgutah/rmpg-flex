@@ -2,9 +2,11 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiFetch } from './useApi';
 
 // ============================================================
-// GPS Tracking Hook
-// Sends the officer's position to the server at a configurable
-// interval (default: 15 seconds). Requires browser Geolocation API.
+// GPS Tracking Hook — 1-Second Breadcrumb Collection
+//
+// Captures every position update from the browser Geolocation API
+// (~1/second with high accuracy), filters out bad data, and
+// batch-sends to the server every BATCH_INTERVAL_MS.
 //
 // MANDATORY MODE: GPS tracking is ALWAYS ON for all logged-in
 // users. Location sharing cannot be disabled. A blocking overlay
@@ -41,16 +43,97 @@ export interface GpsState {
 }
 
 interface UseGpsTrackingOptions {
-  /** Interval in milliseconds between server pings (default: 15000 = 15s) */
-  intervalMs?: number;
+  /** Interval in ms between batch sends to server (default: 5000 = 5s) */
+  batchIntervalMs?: number;
   /** Enable high-accuracy GPS (uses more battery) */
   highAccuracy?: boolean;
+  /** Maximum accuracy in meters — points above this are discarded (default: 100) */
+  maxAccuracyMeters?: number;
+  /** Maximum plausible speed in m/s for jump detection (default: 100 = ~360 km/h) */
+  maxSpeedMs?: number;
 }
 
-const DEFAULT_INTERVAL = 30000;
+// ─── Constants ──────────────────────────────────────────────
+/** How often to batch-send collected points to the server (15 seconds).
+ *  Increased from 5s to reduce bandwidth on mobile WiFi / vehicle networks
+ *  while still providing timely breadcrumb updates. */
+const DEFAULT_BATCH_INTERVAL = 15000;
+/** Reject GPS readings less accurate than this (meters).
+ *  Set to 200 to accept WiFi-based positioning on mobile/vehicle networks
+ *  (typically 80–150m accuracy, occasionally worse in parking structures). */
+const DEFAULT_MAX_ACCURACY = 200;
+/** Reject points that imply movement faster than this (m/s). 100 m/s ≈ 224 mph */
+const DEFAULT_MAX_SPEED = 100;
+
+// ─── GPS Point Queue Item ───────────────────────────────────
+interface QueuedPoint {
+  lat: number;
+  lng: number;
+  accuracy: number | null;
+  heading: number | null;
+  speed: number | null;
+  timestamp: string; // ISO 8601
+}
+
+// ─── Haversine Distance (meters) ────────────────────────────
+/** Calculate distance between two lat/lng points in meters. */
+function haversineMeters(
+  lat1: number, lng1: number,
+  lat2: number, lng2: number,
+): number {
+  const R = 6371000; // Earth radius in meters
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// ─── localStorage GPS Failover Queue ─────────────────────
+const LS_GPS_QUEUE_KEY = 'rmpg_gps_failover_queue';
+const LS_MAX_QUEUED_POINTS = 100;
+
+function loadFailoverQueue(): QueuedPoint[] {
+  try {
+    const raw = localStorage.getItem(LS_GPS_QUEUE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.slice(-LS_MAX_QUEUED_POINTS) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveFailoverQueue(points: QueuedPoint[]): void {
+  try {
+    localStorage.setItem(LS_GPS_QUEUE_KEY, JSON.stringify(points.slice(-LS_MAX_QUEUED_POINTS)));
+  } catch {
+    // localStorage full or unavailable — degrade gracefully
+  }
+}
+
+function clearFailoverQueue(): void {
+  try {
+    localStorage.removeItem(LS_GPS_QUEUE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+/** How long (ms) without a position callback before heartbeat restarts watchPosition */
+const HEARTBEAT_STALE_THRESHOLD = 30000; // 30 seconds
+/** How often to check for stale GPS (ms) */
+const HEARTBEAT_INTERVAL = 15000; // 15 seconds
 
 export function useGpsTracking(options?: UseGpsTrackingOptions) {
-  const { intervalMs = DEFAULT_INTERVAL, highAccuracy = true } = options || {};
+  const {
+    batchIntervalMs = DEFAULT_BATCH_INTERVAL,
+    highAccuracy = true,
+    maxAccuracyMeters = DEFAULT_MAX_ACCURACY,
+    maxSpeedMs = DEFAULT_MAX_SPEED,
+  } = options || {};
 
   // GPS is ALWAYS tracking — mandatory for all users
   const [isTracking, setIsTracking] = useState<boolean>(false);
@@ -67,13 +150,25 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     unitCallSign: null,
     unitId: null,
     permissionDenied: false,
-    permissionPending: true,
+    permissionPending: false,
   });
 
   const watchIdRef = useRef<number | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const latestPositionRef = useRef<{ lat: number; lng: number; accuracy: number | null; heading: number | null; speed: number | null } | null>(null);
+  const batchIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  /** Timestamp of last received position callback — used by heartbeat */
+  const lastCallbackTimeRef = useRef<number>(Date.now());
+
+  // ─── Point queue ──────────────────────────────────────────
+  // Every watchPosition callback pushes here. The batch interval drains it.
+  const queueRef = useRef<QueuedPoint[]>([]);
+  // Track the last accepted point for jump detection
+  const lastAcceptedRef = useRef<{ lat: number; lng: number; time: number } | null>(null);
+  // Keep the latest position for UI display (real-time dot on map)
+  const latestPositionRef = useRef<QueuedPoint | null>(null);
+  // Flag: send first position immediately for real-time icon placement
+  const firstPositionSentRef = useRef(false);
 
   // Fetch the user's assigned unit on mount
   useEffect(() => {
@@ -88,34 +183,86 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       });
   }, []);
 
-  // Send position to server
-  const sendPosition = useCallback(async () => {
-    const pos = latestPositionRef.current;
-    if (!pos) return;
+  // ─── Batch send ───────────────────────────────────────────
+  // Drains the queue and POSTs all collected points to the server.
+  // On failure, persists points to localStorage so they survive page reloads.
+  const sendBatch = useCallback(async () => {
+    // Merge any previously failed points from localStorage
+    const failoverPoints = loadFailoverQueue();
+    const currentPoints = queueRef.current;
+    const allPoints = [...failoverPoints, ...currentPoints];
+    if (allPoints.length === 0) return;
+
+    // Snapshot and clear — if the send fails, persist to localStorage
+    queueRef.current = [];
 
     try {
       await apiFetch('/dispatch/gps', {
         method: 'POST',
-        body: JSON.stringify({
-          latitude: pos.lat,
-          longitude: pos.lng,
-          accuracy: pos.accuracy,
-          heading: pos.heading,
-          speed: pos.speed,
-        }),
+        body: JSON.stringify({ points: allPoints }),
       });
+      // Success — clear the failover queue
+      clearFailoverQueue();
       setState((prev) => ({
         ...prev,
         lastSentAt: new Date().toISOString(),
         error: null,
       }));
     } catch (err) {
+      // Re-enqueue current points in memory, persist all to localStorage
+      queueRef.current = [...currentPoints, ...queueRef.current];
+      saveFailoverQueue(allPoints.slice(-LS_MAX_QUEUED_POINTS));
       setState((prev) => ({
         ...prev,
         error: err instanceof Error ? err.message : 'Failed to send GPS position',
       }));
     }
   }, []);
+
+  // ─── Send single position immediately (for first fix) ────
+  const sendImmediate = useCallback(async (point: QueuedPoint) => {
+    try {
+      await apiFetch('/dispatch/gps', {
+        method: 'POST',
+        body: JSON.stringify({ points: [point] }),
+      });
+      setState((prev) => ({
+        ...prev,
+        lastSentAt: new Date().toISOString(),
+        error: null,
+      }));
+    } catch {
+      // Will be retried in next batch
+      queueRef.current.push(point);
+    }
+  }, []);
+
+  // ─── GPS point filter ────────────────────────────────────
+  // Returns true if the point should be accepted into the queue.
+  const shouldAcceptPoint = useCallback((
+    lat: number, lng: number, accuracy: number | null,
+  ): boolean => {
+    // 1. Accuracy gate — reject low-quality readings
+    if (accuracy !== null && accuracy > maxAccuracyMeters) {
+      return false;
+    }
+
+    // 2. Jump detection — reject teleportation artifacts
+    const last = lastAcceptedRef.current;
+    if (last) {
+      const now = Date.now();
+      const dtSeconds = (now - last.time) / 1000;
+      if (dtSeconds > 0) {
+        const distance = haversineMeters(last.lat, last.lng, lat, lng);
+        const impliedSpeed = distance / dtSeconds; // m/s
+        if (impliedSpeed > maxSpeedMs) {
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }, [maxAccuracyMeters, maxSpeedMs]);
 
   // Start tracking
   const startTracking = useCallback(() => {
@@ -129,18 +276,17 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     }
 
     setState((prev) => ({ ...prev, permissionPending: true, permissionDenied: false }));
+    firstPositionSentRef.current = false;
 
-    // Start watching position
+    // Start watching position — fires on every GPS update (~1/second)
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
         const { latitude, longitude, accuracy, heading, speed } = position.coords;
-        latestPositionRef.current = {
-          lat: latitude,
-          lng: longitude,
-          accuracy,
-          heading,
-          speed,
-        };
+
+        // Update heartbeat timestamp — proves watchPosition is still delivering
+        lastCallbackTimeRef.current = Date.now();
+
+        // Update UI state (always, even if filtered from queue)
         setState((prev) => ({
           ...prev,
           latitude,
@@ -152,6 +298,33 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
           permissionDenied: false,
           permissionPending: false,
         }));
+
+        // Filter — only queue good points
+        if (!shouldAcceptPoint(latitude, longitude, accuracy)) {
+          return;
+        }
+
+        const point: QueuedPoint = {
+          lat: latitude,
+          lng: longitude,
+          accuracy,
+          heading,
+          speed,
+          timestamp: new Date().toISOString(),
+        };
+
+        // Update tracking refs
+        lastAcceptedRef.current = { lat: latitude, lng: longitude, time: Date.now() };
+        latestPositionRef.current = point;
+
+        // Queue for next batch
+        queueRef.current.push(point);
+
+        // Send first position immediately for real-time map icon
+        if (!firstPositionSentRef.current) {
+          firstPositionSentRef.current = true;
+          sendImmediate(point);
+        }
       },
       (err) => {
         let msg = 'GPS error';
@@ -179,7 +352,6 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         if (denied) {
           if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
           retryTimeoutRef.current = setTimeout(() => {
-            // Try once more to see if permission changed
             navigator.geolocation.getCurrentPosition(
               () => {
                 // Permission restored — restart tracking
@@ -200,19 +372,34 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       },
       {
         enableHighAccuracy: highAccuracy,
-        timeout: 10000,
-        maximumAge: 5000,
+        timeout: 20000,      // 20s — generous for WiFi/vehicle networks
+        maximumAge: 5000,    // Accept positions up to 5s old (helps on WiFi gaps)
       }
     );
     watchIdRef.current = watchId;
 
-    // Send position immediately, then on interval
-    sendPosition();
-    const interval = setInterval(sendPosition, intervalMs);
-    intervalRef.current = interval;
+    // Start batch send interval
+    const interval = setInterval(sendBatch, batchIntervalMs);
+    batchIntervalRef.current = interval;
+
+    // Start heartbeat — detects when watchPosition stops delivering callbacks
+    // (common on mobile when OS reclaims resources or GPS hardware sleeps)
+    lastCallbackTimeRef.current = Date.now();
+    if (heartbeatRef.current) clearInterval(heartbeatRef.current);
+    heartbeatRef.current = setInterval(() => {
+      const staleDuration = Date.now() - lastCallbackTimeRef.current;
+      if (staleDuration > HEARTBEAT_STALE_THRESHOLD && watchIdRef.current !== null) {
+        console.warn(`[GPS] No position callback in ${Math.round(staleDuration / 1000)}s — restarting watchPosition`);
+        // Clear the stale watch and restart
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+        stopTracking();
+        startTracking();
+      }
+    }, HEARTBEAT_INTERVAL);
 
     setIsTracking(true);
-  }, [intervalMs, highAccuracy, sendPosition]);
+  }, [batchIntervalMs, highAccuracy, sendBatch, sendImmediate, shouldAcceptPoint]);
 
   // Stop tracking (internal use only — users cannot call this)
   const stopTracking = useCallback(() => {
@@ -220,16 +407,24 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
     }
-    if (intervalRef.current !== null) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
+    if (batchIntervalRef.current !== null) {
+      clearInterval(batchIntervalRef.current);
+      batchIntervalRef.current = null;
     }
     if (retryTimeoutRef.current !== null) {
       clearTimeout(retryTimeoutRef.current);
       retryTimeoutRef.current = null;
     }
+    if (heartbeatRef.current !== null) {
+      clearInterval(heartbeatRef.current);
+      heartbeatRef.current = null;
+    }
+    // Flush any remaining points before stopping
+    if (queueRef.current.length > 0) {
+      sendBatch();
+    }
     setIsTracking(false);
-  }, []);
+  }, [sendBatch]);
 
   // Toggle is now a no-op — GPS is mandatory, but we keep the function
   // for backward compatibility (the button in the toolbar is now just a status indicator)
@@ -250,13 +445,17 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
       }
-      if (intervalRef.current !== null) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
+      if (batchIntervalRef.current !== null) {
+        clearInterval(batchIntervalRef.current);
+        batchIntervalRef.current = null;
       }
       if (retryTimeoutRef.current !== null) {
         clearTimeout(retryTimeoutRef.current);
         retryTimeoutRef.current = null;
+      }
+      if (heartbeatRef.current !== null) {
+        clearInterval(heartbeatRef.current);
+        heartbeatRef.current = null;
       }
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

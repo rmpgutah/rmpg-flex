@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Building2 } from 'lucide-react';
 import FormModal from './FormModal';
+import { useFormDirty } from '../hooks/useFormDirty';
 import type { Property } from '../types';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
 
@@ -73,11 +74,12 @@ export default function PropertyFormModal({
   clients = [],
 }: PropertyFormModalProps) {
   const [form, setForm] = useState<PropertyFormData>(EMPTY_FORM);
+  const { isDirty, snapshot } = useFormDirty(form, isOpen);
 
   useEffect(() => {
     if (isOpen) {
       if (editingProperty) {
-        setForm({
+        const initial: PropertyFormData = {
           name: editingProperty.name || '',
           address: editingProperty.address || '',
           city: editingProperty.city || '',
@@ -95,9 +97,12 @@ export default function PropertyFormModal({
           longitude: editingProperty.longitude != null ? String(editingProperty.longitude) : '',
           is_active: editingProperty.is_active ?? true,
           notes: (editingProperty as any).notes || '',
-        });
+        };
+        setForm(initial);
+        snapshot(initial);
       } else {
         setForm(EMPTY_FORM);
+        snapshot(EMPTY_FORM);
       }
     }
   }, [isOpen, editingProperty]);
@@ -126,6 +131,7 @@ export default function PropertyFormModal({
       submitLabel={editingProperty ? 'Update' : 'Create'}
       isSubmitting={isSubmitting}
       maxWidth="max-w-3xl"
+      isDirty={isDirty}
     >
       {/* Row 1: Name */}
       <div>

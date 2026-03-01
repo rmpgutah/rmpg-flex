@@ -4,8 +4,12 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { migrateIncidentNumbers } from '../utils/caseNumbers';
+import crypto from 'crypto';
 import { localNow } from '../utils/timeUtils';
 import { seedUtahStatutes } from '../seeds/utahStatutes';
+import { DISPATCH_DISTRICTS } from '../seeds/dispatchDistricts';
+import { identifyBeat } from '../utils/geofence';
+import { reverseGeocodeDetailed } from '../utils/geocode';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -688,6 +692,55 @@ function createTables(): void {
     CREATE INDEX IF NOT EXISTS idx_officer_equipment_status ON officer_equipment(status);
     CREATE INDEX IF NOT EXISTS idx_officer_equipment_type ON officer_equipment(equipment_type);
 
+    -- Body cameras — dedicated device tracking
+    CREATE TABLE IF NOT EXISTS body_cameras (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      officer_id INTEGER NOT NULL,
+      camera_id TEXT NOT NULL UNIQUE,
+      make TEXT,
+      model TEXT,
+      firmware_version TEXT,
+      storage_capacity_gb INTEGER DEFAULT 32,
+      status TEXT NOT NULL DEFAULT 'available',
+      condition TEXT NOT NULL DEFAULT 'good',
+      assigned_at TEXT,
+      returned_at TEXT,
+      notes TEXT,
+      created_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (officer_id) REFERENCES users(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_body_cameras_officer ON body_cameras(officer_id);
+    CREATE INDEX IF NOT EXISTS idx_body_cameras_status ON body_cameras(status);
+
+    -- Body camera video footage
+    CREATE TABLE IF NOT EXISTS bodycam_videos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      camera_id INTEGER NOT NULL,
+      officer_id INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      file_size INTEGER NOT NULL DEFAULT 0,
+      duration_seconds INTEGER,
+      mime_type TEXT DEFAULT 'video/mp4',
+      recorded_at TEXT,
+      case_number TEXT,
+      classification TEXT DEFAULT 'routine',
+      retention_status TEXT DEFAULT 'active',
+      notes TEXT,
+      uploaded_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (camera_id) REFERENCES body_cameras(id),
+      FOREIGN KEY (officer_id) REFERENCES users(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_bodycam_videos_camera ON bodycam_videos(camera_id);
+    CREATE INDEX IF NOT EXISTS idx_bodycam_videos_officer ON bodycam_videos(officer_id);
+    CREATE INDEX IF NOT EXISTS idx_bodycam_videos_case ON bodycam_videos(case_number);
+
     -- Radio transmission transcripts — permanent log of PTT voice comms
     CREATE TABLE IF NOT EXISTS radio_transcripts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -705,6 +758,18 @@ function createTables(): void {
     CREATE INDEX IF NOT EXISTS idx_radio_transcripts_channel ON radio_transcripts(channel);
     CREATE INDEX IF NOT EXISTS idx_radio_transcripts_user ON radio_transcripts(user_id);
     CREATE INDEX IF NOT EXISTS idx_radio_transcripts_time ON radio_transcripts(transmitted_at);
+
+    -- ═══ Offline Support ═══════════════════════════════════
+
+    -- Pre-shared secrets for offline PIN generation (one per user)
+    CREATE TABLE IF NOT EXISTS offline_pin_secrets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL UNIQUE,
+      secret TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      rotated_at TEXT,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
   `);
 }
 
@@ -955,6 +1020,37 @@ function migrateSchema(): void {
     console.log('calls_for_service panic source migration skipped or already done:', (err as Error).message);
   }
 
+  // ── calls_for_service — add 'on_hold' to status CHECK constraint ─────
+  // Call hold/resume feature: dispatchers can put calls on hold (amber state).
+  try {
+    const cfsSchema3 = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='calls_for_service'").get() as any;
+    if (cfsSchema3 && cfsSchema3.sql && !cfsSchema3.sql.includes("'on_hold'")) {
+      db.pragma('foreign_keys = OFF');
+      db.exec(`DROP TABLE IF EXISTS calls_for_service_new`);
+      const currentSql = cfsSchema3.sql as string;
+      const newSql = currentSql
+        .replace('calls_for_service', 'calls_for_service_new')
+        .replace(
+          "status IN ('pending','dispatched','enroute','onscene','cleared','closed','cancelled','archived')",
+          "status IN ('pending','dispatched','enroute','onscene','cleared','closed','cancelled','archived','on_hold')"
+        );
+      db.exec(newSql);
+      const cfsCols3 = db.prepare("PRAGMA table_info(calls_for_service)").all() as any[];
+      const cfsColNames3 = cfsCols3.map((c: any) => c.name).join(', ');
+      db.exec(`INSERT INTO calls_for_service_new (${cfsColNames3}) SELECT ${cfsColNames3} FROM calls_for_service`);
+      db.exec(`DROP TABLE calls_for_service`);
+      db.exec(`ALTER TABLE calls_for_service_new RENAME TO calls_for_service`);
+      db.pragma('foreign_keys = ON');
+      console.log("Migrated calls_for_service: status CHECK now includes 'on_hold'");
+    }
+  } catch (err) {
+    db.pragma('foreign_keys = ON');
+    console.log('calls_for_service on_hold status migration skipped or already done:', (err as Error).message);
+  }
+
+  // ── calls_for_service — add previous_status column for hold/resume ──
+  addCol('calls_for_service', 'previous_status', 'TEXT');
+
   // ── INCIDENTS — new detail fields ─────────────────────
   addCol('incidents', 'occurred_date', 'TEXT');
   addCol('incidents', 'occurred_time', 'TEXT');
@@ -1033,6 +1129,47 @@ function migrateSchema(): void {
   addCol('users', 'profile_image', 'TEXT');
   addCol('users', 'last_password_change', 'TEXT');
   addCol('users', 'login_count', 'INTEGER DEFAULT 0');
+  addCol('users', 'last_login_at', 'TEXT');
+  addCol('users', 'must_change_password', 'INTEGER DEFAULT 0');
+
+  // ── USERS — Two-Factor Authentication (TOTP) ──────────
+  addCol('users', 'totp_secret_enc', 'TEXT');              // AES-256-GCM encrypted TOTP secret
+  addCol('users', 'totp_enabled', 'INTEGER DEFAULT 0');    // 0 = disabled, 1 = enabled
+  addCol('users', 'totp_backup_codes', 'TEXT');            // JSON array of bcrypt-hashed one-time codes
+  addCol('users', 'totp_pending_secret', 'TEXT');          // Temp secret during enrollment (before verify)
+
+  // ── USERS — Password history & expiry ─────────────────
+  addCol('users', 'password_history', 'TEXT');             // JSON array of previous bcrypt hashes
+  addCol('users', 'password_changed_at', 'TEXT');          // ISO timestamp of last password change
+
+  // ── NOTIFICATIONS — widen type CHECK for login_alert / security ──
+  try {
+    // SQLite can't ALTER CHECK constraints, so recreate the table
+    const hasLoginAlert = db.prepare(
+      `SELECT sql FROM sqlite_master WHERE type='table' AND name='notifications'`
+    ).get() as { sql: string } | undefined;
+    if (hasLoginAlert?.sql && !hasLoginAlert.sql.includes('login_alert')) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS notifications_v2 (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL,
+          type TEXT NOT NULL,
+          title TEXT NOT NULL,
+          body TEXT,
+          entity_type TEXT,
+          entity_id INTEGER,
+          priority TEXT NOT NULL DEFAULT 'normal' CHECK(priority IN ('normal','high','critical')),
+          is_read INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+          FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+        INSERT INTO notifications_v2 SELECT * FROM notifications;
+        DROP TABLE notifications;
+        ALTER TABLE notifications_v2 RENAME TO notifications;
+      `);
+      console.log('[migrate] Widened notifications type constraint for login_alert/security');
+    }
+  } catch { /* Already migrated or table structure compatible */ }
 
   // ── CLIENTS — new contract fields ─────────────────────
   addCol('clients', 'billing_email', 'TEXT');
@@ -1215,6 +1352,10 @@ function migrateSchema(): void {
   // ── TIME ENTRIES — break tracking fields ──────────────
   addCol('time_entries', 'break_start', 'TEXT');
   addCol('time_entries', 'break_minutes', 'REAL NOT NULL DEFAULT 0');
+
+  // ── PATROL CHECKPOINTS — officer assignment + location text ───
+  addCol('patrol_checkpoints', 'assigned_officer_id', 'INTEGER');
+  addCol('patrol_checkpoints', 'location_description', 'TEXT');
 
   // ── ARCHIVE SUPPORT — add archived_at to all archivable tables ───
   const archiveTables = [
@@ -1485,6 +1626,98 @@ function migrateSchema(): void {
     `);
   } catch { /* table already exists */ }
 
+  // ── Field Interview (FI) Cards ──
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS field_interviews (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fi_number TEXT UNIQUE NOT NULL,
+        person_id INTEGER,
+        subject_first_name TEXT,
+        subject_last_name TEXT,
+        subject_dob TEXT,
+        subject_gender TEXT,
+        subject_race TEXT,
+        subject_height TEXT,
+        subject_weight TEXT,
+        subject_hair TEXT,
+        subject_eye TEXT,
+        subject_clothing TEXT,
+        subject_description TEXT,
+        location TEXT NOT NULL,
+        latitude REAL,
+        longitude REAL,
+        property_id INTEGER,
+        contact_reason TEXT NOT NULL DEFAULT 'other',
+        contact_type TEXT DEFAULT 'field',
+        action_taken TEXT DEFAULT 'none',
+        narrative TEXT,
+        vehicle_plate TEXT,
+        vehicle_description TEXT,
+        vehicle_id INTEGER,
+        associated_call_id TEXT,
+        associated_incident_id TEXT,
+        officer_id INTEGER NOT NULL,
+        officer_name TEXT,
+        status TEXT DEFAULT 'active',
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        archived_at TEXT,
+        FOREIGN KEY (person_id) REFERENCES persons(id),
+        FOREIGN KEY (property_id) REFERENCES properties(id),
+        FOREIGN KEY (officer_id) REFERENCES users(id),
+        FOREIGN KEY (vehicle_id) REFERENCES vehicles_records(id)
+      );
+    `);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_fi_person ON field_interviews(person_id)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_fi_officer ON field_interviews(officer_id)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_fi_property ON field_interviews(property_id)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_fi_created ON field_interviews(created_at)`);
+  } catch { /* table already exists */ }
+
+  // ── Trespass / Exclusion Orders ──
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS trespass_orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_number TEXT UNIQUE NOT NULL,
+        person_id INTEGER,
+        subject_first_name TEXT NOT NULL,
+        subject_last_name TEXT NOT NULL,
+        subject_dob TEXT,
+        subject_description TEXT,
+        property_id INTEGER,
+        property_name TEXT,
+        location TEXT NOT NULL,
+        order_type TEXT DEFAULT 'trespass_warning',
+        status TEXT DEFAULT 'active',
+        reason TEXT,
+        conditions TEXT,
+        duration_days INTEGER,
+        effective_date TEXT DEFAULT (datetime('now','localtime')),
+        expiration_date TEXT,
+        served_at TEXT,
+        served_by INTEGER,
+        originating_call_id TEXT,
+        originating_incident_id TEXT,
+        issued_by INTEGER NOT NULL,
+        issued_by_name TEXT,
+        authorized_by TEXT,
+        notes TEXT,
+        archived_at TEXT,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        updated_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (person_id) REFERENCES persons(id),
+        FOREIGN KEY (property_id) REFERENCES properties(id),
+        FOREIGN KEY (issued_by) REFERENCES users(id),
+        FOREIGN KEY (served_by) REFERENCES users(id)
+      );
+    `);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_to_person ON trespass_orders(person_id)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_to_property ON trespass_orders(property_id)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_to_status ON trespass_orders(status)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_to_created ON trespass_orders(created_at)`);
+  } catch { /* table already exists */ }
+
   // ── FIX CORRUPTED DATA — undo HTML entity encoding of quotes/apostrophes ──
   // The old sanitize middleware was encoding ' → &#x27; and " → &quot; in stored data
   const corruptionTables = ['persons', 'incidents', 'warrants', 'calls_for_service', 'bolos', 'vehicles_records', 'properties', 'clients'];
@@ -1540,6 +1773,242 @@ function migrateSchema(): void {
     console.log('time_entries CHECK migration skipped or already done:', (err as Error).message);
   }
 
+  // ── CASES — investigative case management ──
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS cases (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_number TEXT UNIQUE NOT NULL,
+        title TEXT NOT NULL,
+        case_type TEXT DEFAULT 'general',
+        status TEXT DEFAULT 'open',
+        priority TEXT DEFAULT 'normal',
+        lead_investigator_id INTEGER,
+        assigned_officers TEXT DEFAULT '[]',
+        assigned_at TEXT,
+        solvability_score INTEGER DEFAULT 0,
+        solvability_factors TEXT DEFAULT '{}',
+        linked_incidents TEXT DEFAULT '[]',
+        linked_citations TEXT DEFAULT '[]',
+        linked_evidence TEXT DEFAULT '[]',
+        linked_persons TEXT DEFAULT '[]',
+        linked_field_interviews TEXT DEFAULT '[]',
+        summary TEXT,
+        narrative TEXT,
+        disposition TEXT,
+        disposition_date TEXT,
+        opened_date TEXT DEFAULT (datetime('now','localtime')),
+        due_date TEXT,
+        closed_date TEXT,
+        created_by INTEGER NOT NULL,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        updated_at TEXT DEFAULT (datetime('now','localtime')),
+        archived_at TEXT,
+        FOREIGN KEY (lead_investigator_id) REFERENCES users(id),
+        FOREIGN KEY (created_by) REFERENCES users(id)
+      );
+    `);
+  } catch { /* table already exists */ }
+
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS case_notes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_id INTEGER NOT NULL,
+        author_id INTEGER NOT NULL,
+        author_name TEXT,
+        note_type TEXT DEFAULT 'general',
+        content TEXT NOT NULL,
+        is_pinned INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (case_id) REFERENCES cases(id),
+        FOREIGN KEY (author_id) REFERENCES users(id)
+      );
+    `);
+  } catch { /* table already exists */ }
+
+  // ── CODE VIOLATIONS — municipal code enforcement ──
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS code_violations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        violation_number TEXT UNIQUE NOT NULL,
+        violation_type TEXT NOT NULL,
+        status TEXT DEFAULT 'open',
+        location TEXT NOT NULL,
+        property_id INTEGER,
+        latitude REAL,
+        longitude REAL,
+        person_id INTEGER,
+        violator_name TEXT,
+        violator_contact TEXT,
+        description TEXT NOT NULL,
+        code_section TEXT,
+        severity TEXT DEFAULT 'minor',
+        compliance_deadline TEXT,
+        resolved_date TEXT,
+        resolution_notes TEXT,
+        fine_amount REAL DEFAULT 0,
+        reporting_officer_id INTEGER NOT NULL,
+        reporting_officer_name TEXT,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        updated_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (property_id) REFERENCES properties(id),
+        FOREIGN KEY (person_id) REFERENCES persons(id),
+        FOREIGN KEY (reporting_officer_id) REFERENCES users(id)
+      );
+    `);
+  } catch { /* table already exists */ }
+
+  // ── VEHICLE TOWS — tow tracking and lifecycle ──
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS vehicle_tows (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tow_number TEXT UNIQUE NOT NULL,
+        status TEXT DEFAULT 'ordered',
+        vehicle_plate TEXT,
+        vehicle_state TEXT,
+        vehicle_vin TEXT,
+        vehicle_year TEXT,
+        vehicle_make TEXT,
+        vehicle_model TEXT,
+        vehicle_color TEXT,
+        vehicle_id INTEGER,
+        tow_from TEXT NOT NULL,
+        tow_to TEXT,
+        latitude REAL,
+        longitude REAL,
+        tow_reason TEXT NOT NULL,
+        authorization TEXT,
+        tow_company TEXT,
+        tow_driver TEXT,
+        tow_company_phone TEXT,
+        call_id TEXT,
+        citation_id INTEGER,
+        incident_id INTEGER,
+        ordered_at TEXT DEFAULT (datetime('now','localtime')),
+        dispatched_at TEXT,
+        completed_at TEXT,
+        released_at TEXT,
+        released_to TEXT,
+        tow_fee REAL DEFAULT 0,
+        storage_fee_daily REAL DEFAULT 0,
+        officer_id INTEGER NOT NULL,
+        officer_name TEXT,
+        notes TEXT,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        updated_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (vehicle_id) REFERENCES vehicles_records(id),
+        FOREIGN KEY (officer_id) REFERENCES users(id)
+      );
+    `);
+  } catch { /* table already exists */ }
+
+  // ── COURT EVENTS — court date and legal tracking ──
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS court_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_number TEXT UNIQUE NOT NULL,
+        event_type TEXT NOT NULL,
+        status TEXT DEFAULT 'scheduled',
+        event_date TEXT NOT NULL,
+        event_time TEXT,
+        court_name TEXT,
+        courtroom TEXT,
+        judge_name TEXT,
+        court_case_number TEXT,
+        citation_id INTEGER,
+        incident_id INTEGER,
+        case_id INTEGER,
+        defendant_person_id INTEGER,
+        defendant_name TEXT,
+        prosecutor TEXT,
+        defense_attorney TEXT,
+        officers_required TEXT DEFAULT '[]',
+        outcome TEXT,
+        sentence TEXT,
+        fine_amount REAL,
+        notes TEXT,
+        created_by INTEGER NOT NULL,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        updated_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (citation_id) REFERENCES citations(id),
+        FOREIGN KEY (incident_id) REFERENCES incidents(id),
+        FOREIGN KEY (case_id) REFERENCES cases(id),
+        FOREIGN KEY (defendant_person_id) REFERENCES persons(id),
+        FOREIGN KEY (created_by) REFERENCES users(id)
+      );
+    `);
+  } catch { /* table already exists */ }
+
+  // ── DAILY ACTIVITY REPORTS — structured shift reports ──
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS daily_activity_reports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        dar_number TEXT UNIQUE NOT NULL,
+        status TEXT DEFAULT 'draft',
+        officer_id INTEGER NOT NULL,
+        officer_name TEXT,
+        shift_date TEXT NOT NULL,
+        shift_start TEXT,
+        shift_end TEXT,
+        property_id INTEGER,
+        property_name TEXT,
+        post_assignment TEXT,
+        calls_handled TEXT DEFAULT '[]',
+        incidents_created TEXT DEFAULT '[]',
+        citations_issued TEXT DEFAULT '[]',
+        patrols_completed TEXT DEFAULT '[]',
+        activities_narrative TEXT,
+        notable_events TEXT,
+        equipment_issues TEXT,
+        safety_concerns TEXT,
+        recommendations TEXT,
+        reviewed_by INTEGER,
+        reviewed_by_name TEXT,
+        reviewed_at TEXT,
+        review_notes TEXT,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        updated_at TEXT DEFAULT (datetime('now','localtime')),
+        submitted_at TEXT,
+        FOREIGN KEY (officer_id) REFERENCES users(id),
+        FOREIGN KEY (property_id) REFERENCES properties(id),
+        FOREIGN KEY (reviewed_by) REFERENCES users(id)
+      );
+    `);
+  } catch { /* table already exists */ }
+
+  // ── OFFENDER ALERTS — known offender registry ──
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS offender_alerts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        person_id INTEGER NOT NULL,
+        alert_type TEXT NOT NULL,
+        status TEXT DEFAULT 'active',
+        description TEXT NOT NULL,
+        severity TEXT DEFAULT 'caution',
+        restricted_properties TEXT DEFAULT '[]',
+        restricted_zones TEXT DEFAULT '[]',
+        restriction_radius_ft INTEGER,
+        effective_date TEXT DEFAULT (datetime('now','localtime')),
+        expiration_date TEXT,
+        source_incident_id INTEGER,
+        source_citation_id INTEGER,
+        source_case_id INTEGER,
+        created_by INTEGER NOT NULL,
+        notes TEXT,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        updated_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (person_id) REFERENCES persons(id),
+        FOREIGN KEY (created_by) REFERENCES users(id)
+      );
+    `);
+  } catch { /* table already exists */ }
+
   // ── Migrate existing height text into feet/inches ──
   try {
     const persons = db.prepare("SELECT id, height FROM persons WHERE height IS NOT NULL AND height != '' AND height_feet IS NULL").all() as { id: number; height: string }[];
@@ -1557,7 +2026,223 @@ function migrateSchema(): void {
     }
   } catch { /* ignore parse errors */ }
 
+  // ── gps_breadcrumbs — road name and cross-street columns ──
+  addCol('gps_breadcrumbs', 'road_name', 'TEXT');
+  addCol('gps_breadcrumbs', 'nearest_intersection', 'TEXT');
+
+  // ── Async backfill: geocode past breadcrumbs missing road/cross-street data ──
+  // Runs in the background after startup so it doesn't block the server.
+  // Samples distinct locations (rounded to ~100m grid) to minimize API calls.
+  const breadcrumbsNeedingGeocode = db.prepare(`
+    SELECT COUNT(*) as cnt FROM gps_breadcrumbs
+    WHERE road_name IS NULL AND latitude IS NOT NULL
+  `).get() as any;
+
+  if (breadcrumbsNeedingGeocode?.cnt > 0) {
+    console.log(`[migrate] ${breadcrumbsNeedingGeocode.cnt} breadcrumbs need road/cross-street data — backfilling async...`);
+
+    // Kick off async backfill after a short delay to let the server finish starting
+    setTimeout(() => backfillBreadcrumbRoads(), 10_000);
+  }
+
+  // ── Backfill beat/zone/sector for calls & incidents with GPS but no beat ──
+  try {
+    const callsToBackfill = db.prepare(`
+      SELECT id, latitude, longitude FROM calls_for_service
+      WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+        AND (beat_id IS NULL OR beat_id = '')
+    `).all() as any[];
+
+    if (callsToBackfill.length > 0) {
+      const updateStmt = db.prepare(`
+        UPDATE calls_for_service SET beat_id = ?, zone_id = ?, section_id = ?, zone_beat = ?
+        WHERE id = ?
+      `);
+      let filled = 0;
+      for (const c of callsToBackfill) {
+        try {
+          const beat = identifyBeat(c.latitude, c.longitude);
+          if (beat) {
+            updateStmt.run(
+              beat.beat_id,
+              `${beat.city} ${beat.district_letter}${beat.beat_number}`,
+              beat.district_letter,
+              beat.beat_code,
+              c.id
+            );
+            filled++;
+          }
+        } catch { /* skip individual failures */ }
+      }
+      if (filled > 0) console.log(`[migrate] Backfilled beat/zone for ${filled} calls`);
+    }
+
+    const incidentsToBackfill = db.prepare(`
+      SELECT id, latitude, longitude FROM incidents
+      WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+        AND (beat_id IS NULL OR beat_id = '')
+    `).all() as any[];
+
+    if (incidentsToBackfill.length > 0) {
+      const updateStmt = db.prepare(`
+        UPDATE incidents SET beat_id = ?, zone_id = ?, section_id = ?, zone_beat = ?
+        WHERE id = ?
+      `);
+      let filled = 0;
+      for (const inc of incidentsToBackfill) {
+        try {
+          const beat = identifyBeat(inc.latitude, inc.longitude);
+          if (beat) {
+            updateStmt.run(
+              beat.beat_id,
+              `${beat.city} ${beat.district_letter}${beat.beat_number}`,
+              beat.district_letter,
+              beat.beat_code,
+              inc.id
+            );
+            filled++;
+          }
+        } catch { /* skip */ }
+      }
+      if (filled > 0) console.log(`[migrate] Backfilled beat/zone for ${filled} incidents`);
+    }
+  } catch (err) {
+    console.log('[migrate] Beat/zone backfill skipped:', (err as Error).message);
+  }
+
+  // ── DISPATCH DISTRICTS — 3-Tier lookup table ───────────────
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS dispatch_districts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        section_id TEXT NOT NULL,
+        zone_id TEXT NOT NULL,
+        beat_id TEXT NOT NULL,
+        dispatch_code TEXT NOT NULL UNIQUE,
+        section_name TEXT NOT NULL,
+        zone_name TEXT NOT NULL,
+        beat_name TEXT NOT NULL,
+        beat_descriptor TEXT
+      )
+    `);
+  } catch { /* already exists */ }
+
+  // Seed dispatch_districts if empty
+  try {
+    const districtCount = db.prepare('SELECT COUNT(*) as cnt FROM dispatch_districts').get() as any;
+    if (districtCount?.cnt === 0) {
+      const insertStmt = db.prepare(`
+        INSERT OR IGNORE INTO dispatch_districts (section_id, zone_id, beat_id, dispatch_code, section_name, zone_name, beat_name, beat_descriptor)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const d of DISPATCH_DISTRICTS) {
+        insertStmt.run(d.section_id, d.zone_id, d.beat_id, d.dispatch_code, d.section_name, d.zone_name, d.beat_name, d.beat_descriptor);
+      }
+      console.log(`[migrate] Seeded ${DISPATCH_DISTRICTS.length} dispatch districts from 3-tier data`);
+    }
+  } catch (err) {
+    console.log('[migrate] dispatch_districts seed skipped:', (err as Error).message);
+  }
+
+  // ── FLEET — fuel log enrichment for Simply Fleet imports ──
+  addCol('fleet_fuel_logs', 'distance', 'REAL');
+  addCol('fleet_fuel_logs', 'efficiency', 'REAL');
+  addCol('fleet_fuel_logs', 'source', "TEXT DEFAULT 'manual'");
+
+  // ── FLEET — maintenance labor cost tracking ──────────────
+  addCol('fleet_maintenance', 'labor_cost', 'REAL');
+  addCol('fleet_maintenance', 'service_tasks', 'TEXT');
+  addCol('fleet_maintenance', 'source', "TEXT DEFAULT 'manual'");
+
+  // ── CALLS_FOR_SERVICE — unit mileage tracking ──────────────
+  addCol('calls_for_service', 'starting_mileage', 'REAL');
+  addCol('calls_for_service', 'ending_mileage', 'REAL');
+
+  // ── ONE-TIME DATA CLEANUP: Remove specific breadcrumb entries ──
+  try {
+    db.prepare(`
+      DELETE FROM gps_breadcrumbs
+      WHERE (recorded_at LIKE '2026-02-27 07:14:46%' AND latitude BETWEEN 37.785 AND 37.786)
+         OR (recorded_at LIKE '2026-02-27 17:03:49%' AND latitude BETWEEN 40.723 AND 40.725)
+         OR (recorded_at LIKE '2026-02-27 17:04:32%' AND latitude BETWEEN 40.723 AND 40.725)
+         OR (recorded_at LIKE '2026-02-28 23:04:12%' AND latitude BETWEEN 40.694 AND 40.695)
+    `).run();
+  } catch { /* table may not exist yet — safe to ignore */ }
+
   console.log('Schema migration completed.');
+}
+
+/**
+ * Async backfill: geocode past breadcrumbs that are missing road/cross-street data.
+ * Groups breadcrumbs by approximate location (~100m grid cells) and geocodes
+ * one representative point per cell, then applies the result to all nearby points.
+ * Capped at 200 API calls per run to avoid quota exhaustion.
+ */
+async function backfillBreadcrumbRoads(): Promise<void> {
+  try {
+    // Find distinct approximate locations that need geocoding
+    // Round to ~100m grid (0.001 degrees ≈ 111m)
+    const distinctLocations = db.prepare(`
+      SELECT
+        ROUND(latitude, 3) as lat_r,
+        ROUND(longitude, 3) as lng_r,
+        AVG(latitude) as lat_avg,
+        AVG(longitude) as lng_avg,
+        COUNT(*) as cnt
+      FROM gps_breadcrumbs
+      WHERE road_name IS NULL AND latitude IS NOT NULL
+      GROUP BY ROUND(latitude, 3), ROUND(longitude, 3)
+      ORDER BY cnt DESC
+      LIMIT 200
+    `).all() as any[];
+
+    if (distinctLocations.length === 0) {
+      console.log('[backfill] No breadcrumbs need road data');
+      return;
+    }
+
+    console.log(`[backfill] Geocoding ${distinctLocations.length} distinct locations for ${distinctLocations.reduce((s: number, l: any) => s + l.cnt, 0)} breadcrumbs...`);
+
+    const updateStmt = db.prepare(`
+      UPDATE gps_breadcrumbs
+      SET road_name = ?, nearest_intersection = ?
+      WHERE road_name IS NULL
+        AND ROUND(latitude, 3) = ? AND ROUND(longitude, 3) = ?
+    `);
+
+    let filled = 0;
+    let apiCalls = 0;
+
+    for (const loc of distinctLocations) {
+      try {
+        const geo = await reverseGeocodeDetailed(loc.lat_avg, loc.lng_avg);
+        apiCalls++;
+
+        if (geo && (geo.road_name || geo.nearest_intersection)) {
+          const result = updateStmt.run(
+            geo.road_name, geo.nearest_intersection,
+            loc.lat_r, loc.lng_r
+          );
+          filled += result.changes;
+        }
+
+        // Small delay between API calls to avoid rate limiting (50ms)
+        if (apiCalls % 10 === 0) {
+          await new Promise(r => setTimeout(r, 200));
+        }
+      } catch {
+        // Skip individual failures
+      }
+    }
+
+    if (filled > 0) {
+      console.log(`[backfill] Updated ${filled} breadcrumbs with road/cross-street data (${apiCalls} API calls)`);
+    } else {
+      console.log(`[backfill] No road data found for any locations (${apiCalls} API calls)`);
+    }
+  } catch (err) {
+    console.error('[backfill] Breadcrumb road backfill error:', (err as Error).message);
+  }
 }
 
 function createIndexes(): void {
@@ -1733,6 +2418,51 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_breadcrumbs_unit_time ON gps_breadcrumbs(unit_id, recorded_at);
     CREATE INDEX IF NOT EXISTS idx_breadcrumbs_officer ON gps_breadcrumbs(officer_id);
     CREATE INDEX IF NOT EXISTS idx_breadcrumbs_recorded ON gps_breadcrumbs(recorded_at);
+
+    -- Cases indexes
+    CREATE INDEX IF NOT EXISTS idx_cases_number ON cases(case_number);
+    CREATE INDEX IF NOT EXISTS idx_cases_status ON cases(status);
+    CREATE INDEX IF NOT EXISTS idx_cases_type ON cases(case_type);
+    CREATE INDEX IF NOT EXISTS idx_cases_investigator ON cases(lead_investigator_id);
+    CREATE INDEX IF NOT EXISTS idx_cases_created ON cases(created_at);
+    CREATE INDEX IF NOT EXISTS idx_case_notes_case ON case_notes(case_id);
+    CREATE INDEX IF NOT EXISTS idx_case_notes_author ON case_notes(author_id);
+
+    -- Code violations indexes
+    CREATE INDEX IF NOT EXISTS idx_code_violations_number ON code_violations(violation_number);
+    CREATE INDEX IF NOT EXISTS idx_code_violations_status ON code_violations(status);
+    CREATE INDEX IF NOT EXISTS idx_code_violations_type ON code_violations(violation_type);
+    CREATE INDEX IF NOT EXISTS idx_code_violations_property ON code_violations(property_id);
+    CREATE INDEX IF NOT EXISTS idx_code_violations_officer ON code_violations(reporting_officer_id);
+
+    -- Vehicle tows indexes
+    CREATE INDEX IF NOT EXISTS idx_vehicle_tows_number ON vehicle_tows(tow_number);
+    CREATE INDEX IF NOT EXISTS idx_vehicle_tows_status ON vehicle_tows(status);
+    CREATE INDEX IF NOT EXISTS idx_vehicle_tows_plate ON vehicle_tows(vehicle_plate);
+    CREATE INDEX IF NOT EXISTS idx_vehicle_tows_officer ON vehicle_tows(officer_id);
+    CREATE INDEX IF NOT EXISTS idx_vehicle_tows_created ON vehicle_tows(created_at);
+
+    -- Court events indexes
+    CREATE INDEX IF NOT EXISTS idx_court_events_number ON court_events(event_number);
+    CREATE INDEX IF NOT EXISTS idx_court_events_status ON court_events(status);
+    CREATE INDEX IF NOT EXISTS idx_court_events_date ON court_events(event_date);
+    CREATE INDEX IF NOT EXISTS idx_court_events_type ON court_events(event_type);
+    CREATE INDEX IF NOT EXISTS idx_court_events_citation ON court_events(citation_id);
+    CREATE INDEX IF NOT EXISTS idx_court_events_case ON court_events(case_id);
+    CREATE INDEX IF NOT EXISTS idx_court_events_defendant ON court_events(defendant_person_id);
+
+    -- Daily activity reports indexes
+    CREATE INDEX IF NOT EXISTS idx_dar_number ON daily_activity_reports(dar_number);
+    CREATE INDEX IF NOT EXISTS idx_dar_status ON daily_activity_reports(status);
+    CREATE INDEX IF NOT EXISTS idx_dar_officer ON daily_activity_reports(officer_id);
+    CREATE INDEX IF NOT EXISTS idx_dar_date ON daily_activity_reports(shift_date);
+    CREATE INDEX IF NOT EXISTS idx_dar_property ON daily_activity_reports(property_id);
+
+    -- Offender alerts indexes
+    CREATE INDEX IF NOT EXISTS idx_offender_alerts_person ON offender_alerts(person_id);
+    CREATE INDEX IF NOT EXISTS idx_offender_alerts_type ON offender_alerts(alert_type);
+    CREATE INDEX IF NOT EXISTS idx_offender_alerts_status ON offender_alerts(status);
+    CREATE INDEX IF NOT EXISTS idx_offender_alerts_severity ON offender_alerts(severity);
   `);
 }
 
@@ -1742,12 +2472,20 @@ function seedData(): void {
   // ─── ADMIN USER (only if no users exist) ──────────
   const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number };
   if (userCount.count === 0) {
+    const randomPassword = crypto.randomBytes(16).toString('hex');
     const hash = (pw: string) => bcryptjs.hashSync(pw, 10);
     db.prepare(`
-      INSERT INTO users (username, password_hash, full_name, email, role, badge_number, phone, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
-    `).run('admin', hash('admin123'), 'System Administrator', 'admin@rmpgsecurity.com', 'admin', 'A001', '801-555-0100', now, now);
-    console.log('Admin user created.');
+      INSERT INTO users (username, password_hash, full_name, email, role, badge_number, phone, status, must_change_password, password_changed_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 1, ?, ?, ?)
+    `).run('admin', hash(randomPassword), 'System Administrator', 'admin@rmpgsecurity.com', 'admin', 'A001', '801-555-0100', now, now, now);
+    console.log('');
+    console.log('╔══════════════════════════════════════════════════╗');
+    console.log('║  INITIAL ADMIN CREDENTIALS                      ║');
+    console.log(`║  Username: admin                                 ║`);
+    console.log(`║  Password: ${randomPassword}        ║`);
+    console.log('║  You MUST change this password on first login.   ║');
+    console.log('╚══════════════════════════════════════════════════╝');
+    console.log('');
   }
 
   // ─── SYSTEM CONFIG (always ensure these exist) ────
@@ -1770,7 +2508,7 @@ function seedData(): void {
     const dispositions = [
       ['RPT', 'Report Taken'], ['GOA', 'Gone on Arrival'], ['UTL', 'Unable to Locate'],
       ['FA', 'False Alarm'], ['WAR', 'Warning Issued'], ['TRE', 'Trespass Warning Issued'],
-      ['ARR', 'Arrest / Detained'], ['REF', 'Referred to Law Enforcement'],
+      ['ARR', 'Arrest / Detained'], ['REF', 'Referred to External Agency'],
       ['AMA', 'Against Medical Advice'], ['CAN', 'Cancelled'], ['UNF', 'Unfounded'],
       ['SEC', 'Secured / All Clear'],
       ['ADV', 'Advised / Counseled'], ['CIT', 'Citation Issued'], ['DET', 'Detained'],
@@ -1784,6 +2522,22 @@ function seedData(): void {
     });
   });
   configTx();
+
+  // ─── EVIDENCE STORAGE LOCATIONS ─────────────
+  const evidenceLocations = [
+    ['Main Evidence Locker', 'Primary secured evidence storage room'],
+    ['Temporary Hold Bin', 'Short-term holding for intake processing'],
+    ['Firearms Vault', 'Secured firearms and weapons storage'],
+    ['Narcotics Safe', 'Controlled substance storage'],
+    ['Large Item Storage', 'Oversized evidence and property'],
+    ['Digital Evidence Server', 'Electronic devices and digital media'],
+    ['Cold Case Archive', 'Long-term archived evidence'],
+    ['Lab Submission Outbox', 'Awaiting lab pickup'],
+    ['Release Staging', 'Approved for owner release'],
+  ];
+  evidenceLocations.forEach(([name, desc], i) => {
+    insertConfig.run(name, JSON.stringify({ description: desc }), 'evidence_location', i, now, now);
+  });
 
   console.log('Seed data initialized (admin user + system config).');
 }

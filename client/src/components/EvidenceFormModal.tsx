@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Package } from 'lucide-react';
 import FormModal from './FormModal';
+import { useFormDirty } from '../hooks/useFormDirty';
 import { apiFetch } from '../hooks/useApi';
 import type { Evidence } from '../types';
 import { localToday } from '../utils/dateUtils';
@@ -82,6 +83,7 @@ const EMPTY_FORM: EvidenceFormData = {
 
 export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreated, editingEvidence }: EvidenceFormModalProps) {
   const [form, setForm] = useState<EvidenceFormData>({ ...EMPTY_FORM });
+  const { isDirty, snapshot } = useFormDirty(form, isOpen);
   const [activeTab, setActiveTab] = useState<'basic' | 'details' | 'lab'>('basic');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -92,7 +94,7 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
       setActiveTab('basic');
       setError('');
     } else if (editingEvidence) {
-      setForm({
+      const initial: EvidenceFormData = {
         evidence_type: editingEvidence.type || 'physical',
         category: editingEvidence.category || '',
         description: editingEvidence.description || '',
@@ -113,7 +115,11 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
         disposal_date: editingEvidence.disposal_date || '',
         disposal_authorized_by: editingEvidence.disposal_authorized_by || '',
         notes: editingEvidence.notes || '',
-      });
+      };
+      setForm(initial);
+      snapshot(initial);
+    } else {
+      snapshot(EMPTY_FORM);
     }
   }, [isOpen, editingEvidence]);
 
@@ -197,6 +203,7 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
       submitLabel={editingEvidence ? 'Save Changes' : 'Add Evidence'}
       isSubmitting={isSubmitting}
       maxWidth="max-w-2xl"
+      isDirty={isDirty}
     >
       {error && (
         <div className="px-3 py-2 bg-red-900/30 border border-red-700 text-red-400 text-xs">

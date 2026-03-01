@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   BarChart3,
   Calendar,
   Download,
   Loader2,
   TrendingUp,
+  Database,
+  MapPin,
+  FileText,
 } from 'lucide-react';
 import {
   BarChart,
@@ -24,10 +28,12 @@ import {
   Area,
 } from 'recharts';
 import { apiFetch } from '../hooks/useApi';
+import { useIsMobile } from '../hooks/useIsMobile';
 import PanelTitleBar from '../components/PanelTitleBar';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
 import { localToday, dateToLocalYMD } from '../utils/dateUtils';
+import { generatePatrolTrackingPdf } from '../utils/patrolTrackingPdfGenerator';
 
 // ============================================================
 // Types
@@ -246,6 +252,8 @@ function exportToCSV(
 // ============================================================
 
 export default function ReportsPage() {
+  const isMobile = useIsMobile();
+  const navigate = useNavigate();
   const [dateRange, setDateRange] = useState('last_14_days');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
@@ -344,21 +352,23 @@ export default function ReportsPage() {
   };
 
   return (
-    <div className="p-6 space-y-6 animate-fade-in overflow-auto">
+    <div className={`${isMobile ? 'p-3 space-y-3' : 'p-6 space-y-6'} animate-fade-in overflow-auto`}>
       {/* Portal Header */}
-      <div className="panel-beveled bg-surface-base overflow-hidden">
-        <div className="flex items-center gap-4 px-4 py-2.5 relative">
-          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #6e0a0a, #bc1010 30%, #bc1010 70%, #6e0a0a)' }} />
-          <RmpgLogo height={64} />
-          <div className="flex-1">
-            <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: '#d0d0d0' }}>Reports & Analytics</h1>
-            <p className="text-[9px] tracking-wide" style={{ color: '#484848' }}>Rocky Mountain Protective Group, LLC</p>
+      {!isMobile && (
+        <div className="panel-beveled bg-surface-base overflow-hidden">
+          <div className="flex items-center gap-4 px-4 py-2.5 relative">
+            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #6e0a0a, #bc1010 30%, #bc1010 70%, #6e0a0a)' }} />
+            <RmpgLogo height={64} />
+            <div className="flex-1">
+              <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: '#d0d0d0' }}>Reports & Analytics</h1>
+              <p className="text-[9px] tracking-wide" style={{ color: '#484848' }}>Rocky Mountain Protective Group, LLC</p>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Header */}
-      <PanelTitleBar title="REPORTS & ANALYTICS" icon={BarChart3}>
+      {!isMobile && <PanelTitleBar title="REPORTS & ANALYTICS" icon={BarChart3}>
         <div className="flex items-center gap-2">
           <Calendar className="w-3.5 h-3.5 text-rmpg-300" />
           <select
@@ -399,12 +409,18 @@ export default function ReportsPage() {
         <PrintButton />
         <button
           className="toolbar-btn"
+          onClick={() => navigate('/reports/custom')}
+        >
+          <Database className="w-3.5 h-3.5" /> Custom Builder
+        </button>
+        <button
+          className="toolbar-btn"
           onClick={handleExport}
           disabled={loading || !incidentsData}
         >
           <Download className="w-3.5 h-3.5" /> Export
         </button>
-      </PanelTitleBar>
+      </PanelTitleBar>}
 
       {/* Error Banner */}
       {error && (
@@ -421,7 +437,7 @@ export default function ReportsPage() {
       ) : (
         <>
           {/* Summary Stats */}
-          <div className="grid grid-cols-5 gap-4">
+          <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-5 gap-4'}`}>
             <div className="bg-surface-base panel-beveled p-4 text-center hover:bg-surface-raised transition-all duration-150">
               <p className="text-2xl font-bold text-green-400 font-mono">{stats.totalCalls}</p>
               <p className="text-[10px] text-rmpg-300 uppercase mt-1 font-bold tracking-wide">Total Calls</p>
@@ -445,7 +461,7 @@ export default function ReportsPage() {
           </div>
 
           {/* Charts Grid */}
-          <div className="grid grid-cols-2 gap-6">
+          <div className={`grid ${isMobile ? 'grid-cols-1 gap-3' : 'grid-cols-2 gap-6'}`}>
             {/* Incidents by Type (Pie) */}
             <div className="bg-surface-base panel-beveled p-4 hover:border-rmpg-600 transition-all duration-150">
               <h3 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-4">Incidents by Type</h3>
@@ -574,7 +590,196 @@ export default function ReportsPage() {
               </ResponsiveContainer>
             </div>
           )}
+
+          {/* ── Patrol Tracking Report Generator ── */}
+          <PatrolTrackingCard />
         </>
+      )}
+    </div>
+  );
+}
+
+// ── Patrol Tracking Report Card ──────────────────────────
+function PatrolTrackingCard() {
+  const [mode, setMode] = useState<'hours' | 'range'>('hours');
+  const [hours, setHours] = useState(8);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [unitId, setUnitId] = useState('');
+  const [units, setUnits] = useState<{ id: number; call_sign: string }[]>([]);
+  const [generating, setGenerating] = useState(false);
+  const [includeGeocode, setIncludeGeocode] = useState(true);
+  const [preview, setPreview] = useState<{ totalUnits: number; totalPoints: number; totalMiles: number; totalMinutes: number } | null>(null);
+
+  // Fetch available units
+  useEffect(() => {
+    apiFetch<any[]>('/dispatch/units')
+      .then((res) => {
+        if (Array.isArray(res)) {
+          setUnits(res.map((u: any) => ({ id: u.id, call_sign: u.call_sign || `Unit ${u.id}` })));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleGenerate = async () => {
+    setGenerating(true);
+    setPreview(null);
+    try {
+      const params = new URLSearchParams();
+      if (mode === 'range' && startDate && endDate) {
+        // Use local timezone offset to avoid UTC drift
+        const tzOffset = new Date().getTimezoneOffset();
+        const tzSign = tzOffset <= 0 ? '+' : '-';
+        const tzHrs = String(Math.floor(Math.abs(tzOffset) / 60)).padStart(2, '0');
+        const tzMins = String(Math.abs(tzOffset) % 60).padStart(2, '0');
+        const tz = `${tzSign}${tzHrs}:${tzMins}`;
+        params.set('startDate', `${startDate}T00:00:00${tz}`);
+        params.set('endDate', `${endDate}T23:59:59${tz}`);
+      } else {
+        params.set('hours', String(hours));
+      }
+      if (unitId) params.set('unitId', unitId);
+      if (includeGeocode) params.set('geocode', 'true');
+
+      const data = await apiFetch<any>(`/reports/patrol-tracking?${params}`);
+      if (!data?.trails?.length) {
+        alert('No patrol tracking data found for the selected period.');
+        return;
+      }
+
+      // Show preview stats
+      const totalMiles = data.trails.reduce((s: number, t: any) => s + (t.stats?.total_distance_miles || 0), 0);
+      const totalMinutes = data.trails.reduce((s: number, t: any) => s + (t.stats?.duration_minutes || 0), 0);
+      setPreview({
+        totalUnits: data.total_units,
+        totalPoints: data.total_points,
+        totalMiles: Math.round(totalMiles * 100) / 100,
+        totalMinutes,
+      });
+
+      await generatePatrolTrackingPdf(data);
+    } catch (err: any) {
+      alert(err?.message || 'Failed to generate patrol tracking report');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  return (
+    <div className="bg-surface-base panel-beveled p-4 hover:border-rmpg-600 transition-all duration-150">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <MapPin className="w-4 h-4 text-brand-400" />
+          <h3 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">Patrol Tracking Report</h3>
+          <span className="text-[8px] text-rmpg-600 font-mono">PS-210</span>
+        </div>
+      </div>
+      <p className="text-[10px] text-rmpg-500 mb-3">
+        Generate a detailed GPS breadcrumb report showing patrol routes, speeds, zones, response times, and road locations.
+      </p>
+
+      {/* Row 1: Mode toggle + Unit selector */}
+      <div className="flex items-center gap-3 flex-wrap mb-2">
+        {/* Mode toggle */}
+        <div className="flex items-center gap-1 bg-rmpg-800 rounded p-0.5">
+          <button
+            onClick={() => setMode('hours')}
+            className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase ${mode === 'hours' ? 'bg-brand-500/20 text-brand-400' : 'text-rmpg-500 hover:text-rmpg-300'}`}
+          >
+            Quick
+          </button>
+          <button
+            onClick={() => setMode('range')}
+            className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase ${mode === 'range' ? 'bg-brand-500/20 text-brand-400' : 'text-rmpg-500 hover:text-rmpg-300'}`}
+          >
+            Date Range
+          </button>
+        </div>
+
+        {/* Unit selector */}
+        <div className="flex items-center gap-1.5">
+          <label className="text-[10px] text-rmpg-400 font-bold uppercase">Unit:</label>
+          <select
+            value={unitId}
+            onChange={e => setUnitId(e.target.value)}
+            className="select-dark text-[10px] w-28"
+          >
+            <option value="">All Units</option>
+            {units.map(u => (
+              <option key={u.id} value={u.id}>{u.call_sign}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Row 2: Date controls */}
+      <div className="flex items-center gap-3 flex-wrap">
+        {mode === 'hours' ? (
+          <div className="flex items-center gap-1.5">
+            <label className="text-[10px] text-rmpg-400 font-bold uppercase">Hours:</label>
+            <select
+              value={hours}
+              onChange={e => setHours(parseInt(e.target.value))}
+              className="select-dark text-[10px] w-20"
+            >
+              <option value={4}>4 hrs</option>
+              <option value={8}>8 hrs</option>
+              <option value={12}>12 hrs</option>
+              <option value={24}>24 hrs</option>
+            </select>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center gap-1.5">
+              <label className="text-[10px] text-rmpg-400 font-bold uppercase">Start:</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={e => setStartDate(e.target.value)}
+                className="input-dark text-[10px] w-28 px-1.5 py-0.5"
+              />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <label className="text-[10px] text-rmpg-400 font-bold uppercase">End:</label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={e => setEndDate(e.target.value)}
+                className="input-dark text-[10px] w-28 px-1.5 py-0.5"
+              />
+            </div>
+          </>
+        )}
+
+        <label className="flex items-center gap-1.5 text-[10px] text-rmpg-400 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={includeGeocode}
+            onChange={e => setIncludeGeocode(e.target.checked)}
+            className="w-3 h-3"
+          />
+          Include roads
+        </label>
+
+        <button
+          onClick={handleGenerate}
+          disabled={generating}
+          className="toolbar-btn-primary text-[10px] px-4 py-1.5 flex items-center gap-1.5 ml-auto"
+        >
+          {generating ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
+          {generating ? 'Generating...' : 'Export PDF'}
+        </button>
+      </div>
+
+      {/* Preview stats */}
+      {preview && (
+        <div className="mt-2 flex items-center gap-4 text-[9px] text-rmpg-400 font-mono border-t border-rmpg-800 pt-2">
+          <span>Units: <strong className="text-white">{preview.totalUnits}</strong></span>
+          <span>Points: <strong className="text-white">{preview.totalPoints}</strong></span>
+          <span>Miles: <strong className="text-brand-400">{preview.totalMiles}</strong></span>
+          <span>Duration: <strong className="text-white">{preview.totalMinutes} min</strong></span>
+        </div>
       )}
     </div>
   );

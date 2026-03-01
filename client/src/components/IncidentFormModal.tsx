@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { FileText, Scale } from 'lucide-react';
 import FormModal from './FormModal';
+import { useFormDirty } from '../hooks/useFormDirty';
 import type { Incident, CallPriority } from '../types';
 import { INCIDENT_TYPE_CATEGORIES, type IncidentType } from '../utils/caseNumbers';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
 import StatuteLookup, { type StatuteResult } from './StatuteLookup';
+import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
 
 interface IncidentFormModalProps {
   isOpen: boolean;
@@ -14,6 +16,7 @@ interface IncidentFormModalProps {
   editingIncident?: Incident;
   dispositionCodes?: {code: string; description: string; color?: string}[];
   clients?: { id: string; name: string }[];
+  defaultType?: string;
 }
 
 export interface IncidentFormData {
@@ -79,7 +82,7 @@ export interface IncidentFormData {
 const TRAFFIC_TYPES: string[] = ['traffic_accident', 'hit_and_run', 'dui_dwi', 'parking_violation', 'traffic_hazard', 'abandoned_vehicle'];
 const MEDICAL_TYPES: string[] = ['medical_emergency', 'overdose', 'mental_health_crisis'];
 const TRESPASS_TYPES: string[] = ['trespass'];
-const USE_OF_FORCE_TYPES: string[] = ['assault', 'battery'];
+const USE_OF_FORCE_TYPES: string[] = ['assault', 'battery', 'use_of_force'];
 
 const PRIORITY_OPTIONS: { value: CallPriority; label: string; color: string; desc: string }[] = [
   { value: 'P1', label: 'P1', color: 'border-red-500 text-red-400 bg-red-900/30', desc: 'Emergency' },
@@ -100,9 +103,7 @@ const LIGHTING_OPTIONS = [
 
 const WEAPONS_OPTIONS = ['None', 'Firearm — Handgun', 'Firearm — Rifle', 'Firearm — Shotgun', 'Firearm — Unknown Type', 'Knife / Edged Weapon', 'Blunt Object', 'Vehicle (used as weapon)', 'Hands / Fists / Feet', 'Chemical Spray', 'Taser / Stun Gun', 'Explosive / IED', 'BB / Pellet Gun', 'Bow / Crossbow', 'Replica / Toy Weapon', 'Unknown Weapon', 'Other'];
 const LE_AGENCY_OPTIONS = ['None', 'RMPG Internal', 'Salt Lake City PD', 'West Valley City PD', 'West Jordan PD', 'Sandy City PD', 'South Jordan PD', 'Draper PD', 'Murray PD', 'Midvale PD', 'South Salt Lake PD', 'Herriman PD', 'Riverton PD', 'Salt Lake County Sheriff', 'Utah County Sheriff', 'Davis County Sheriff', 'Utah Highway Patrol (UHP)', 'Park City PD', 'Provo PD', 'Orem PD', 'Ogden PD', 'Layton PD', 'Unified Police Dept (UPD)', 'FBI', 'ATF', 'DEA', 'US Marshals', 'Other — See Notes'];
-const SECTION_OPTIONS = ['', 'SEC-1', 'SEC-2', 'SEC-3', 'SEC-4', 'SEC-5', 'SEC-6', 'SEC-7', 'SEC-8', 'SEC-N', 'SEC-S', 'SEC-E', 'SEC-W'];
-const ZONE_OPTIONS = ['', 'Z-01', 'Z-02', 'Z-03', 'Z-04', 'Z-05', 'Z-06', 'Z-07', 'Z-08', 'Z-09', 'Z-10', 'Z-11', 'Z-12'];
-const BEAT_OPTIONS = ['', 'B-01', 'B-02', 'B-03', 'B-04', 'B-05', 'B-06', 'B-07', 'B-08', 'B-09', 'B-10', 'B-11', 'B-12', 'B-13', 'B-14', 'B-15', 'B-16'];
+// Section/Zone/Beat options now loaded dynamically from 3Tier dispatch districts
 
 // Dynamic section tabs based on incident type
 function getSectionTabs(incidentType: string) {
@@ -193,15 +194,19 @@ export default function IncidentFormModal({
   editingIncident,
   dispositionCodes = [],
   clients = [],
+  defaultType = '',
 }: IncidentFormModalProps) {
   const [formData, setFormData] = useState<IncidentFormData>(EMPTY_FORM);
+  const { isDirty, snapshot } = useFormDirty(formData, isOpen);
   const [activeSection, setActiveSection] = useState<SectionId>('basic');
+  const { sections: sectionOptions, zones: zoneOptions, beats: beatOptions, sectionLabels, zoneLabels, beatLabels } = useDistrictOptions();
+  const { identify: identifyDistrict } = useDistrictIdentify();
 
   useEffect(() => {
     if (isOpen) {
       if (editingIncident) {
         const inc = editingIncident as any;
-        setFormData({
+        const initial: IncidentFormData = {
           incident_type: editingIncident.type,
           priority: editingIncident.priority,
           location_address: editingIncident.location,
@@ -258,13 +263,20 @@ export default function IncidentFormModal({
           longitude: inc.longitude ?? null,
           // Client
           client_id: inc.client_id ? String(inc.client_id) : '',
-        });
+        };
+        setFormData(initial);
+        snapshot(initial);
       } else {
-        setFormData(EMPTY_FORM);
+        const initial: IncidentFormData = {
+          ...EMPTY_FORM,
+          ...(defaultType ? { incident_type: defaultType as IncidentType, priority: 'P1' as CallPriority } : {}),
+        };
+        setFormData(initial);
+        snapshot(initial);
       }
-      setActiveSection('basic');
+      setActiveSection(defaultType && USE_OF_FORCE_TYPES.includes(defaultType) ? 'use_of_force' : 'basic');
     }
-  }, [isOpen, editingIncident]);
+  }, [isOpen, editingIncident, defaultType]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -286,6 +298,7 @@ export default function IncidentFormModal({
       submitLabel={editingIncident ? 'Update Incident' : 'Create Incident'}
       isSubmitting={isSubmitting}
       maxWidth="max-w-4xl"
+      isDirty={isDirty}
     >
       {/* Section Tabs (dynamic based on incident type) */}
       <div className="flex gap-1 -mt-1 mb-2 flex-wrap">
@@ -339,21 +352,21 @@ export default function IncidentFormModal({
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Section ID</label>
               <select className="select-dark mt-1" value={formData.section_id} onChange={(e) => update('section_id', e.target.value)}>
                 <option value="">-- Select --</option>
-                {SECTION_OPTIONS.filter(Boolean).map((s) => <option key={s} value={s}>{s}</option>)}
+                {sectionOptions.map((s) => <option key={s} value={s}>{s} — {sectionLabels.get(s) || s}</option>)}
               </select>
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Zone ID</label>
               <select className="select-dark mt-1" value={formData.zone_id} onChange={(e) => update('zone_id', e.target.value)}>
                 <option value="">-- Select --</option>
-                {ZONE_OPTIONS.filter(Boolean).map((z) => <option key={z} value={z}>{z}</option>)}
+                {zoneOptions.map((z) => <option key={z} value={z}>{z} — {zoneLabels.get(z) || z}</option>)}
               </select>
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Beat ID</label>
               <select className="select-dark mt-1" value={formData.beat_id} onChange={(e) => update('beat_id', e.target.value)}>
                 <option value="">-- Select --</option>
-                {BEAT_OPTIONS.filter(Boolean).map((b) => <option key={b} value={b}>{b}</option>)}
+                {beatOptions.map((b) => <option key={b} value={b}>{b} — {beatLabels.get(b) || b}</option>)}
               </select>
             </div>
           </div>
@@ -388,9 +401,21 @@ export default function IncidentFormModal({
               placeholder="123 Main St, Salt Lake City, UT"
               value={formData.location_address}
               onChange={(val) => update('location_address', val)}
-              onSelect={(addr: ParsedAddress) => {
+              onSelect={async (addr: ParsedAddress) => {
                 update('location_address', addr.formatted);
-                if (addr.latitude != null) setFormData((prev) => ({ ...prev, latitude: addr.latitude, longitude: addr.longitude }));
+                if (addr.latitude != null) {
+                  setFormData((prev) => ({ ...prev, latitude: addr.latitude, longitude: addr.longitude }));
+                  // Auto-fill section/zone/beat from 3Tier district lookup
+                  const district = await identifyDistrict(addr.latitude!, addr.longitude!);
+                  if (district) {
+                    setFormData((prev) => ({
+                      ...prev,
+                      section_id: district.section_id || prev.section_id,
+                      zone_id: district.zone_id || prev.zone_id,
+                      beat_id: district.beat_id || prev.beat_id,
+                    }));
+                  }
+                }
               }}
               required
             />
@@ -772,10 +797,10 @@ export default function IncidentFormModal({
             </div>
           </div>
 
-          {/* Law Enforcement */}
+          {/* Responding Agency */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Responding LE Agency</label>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Responding Agency</label>
               <select
                 className="input-dark mt-1"
                 value={formData.responding_le_agency}

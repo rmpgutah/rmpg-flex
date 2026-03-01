@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useId } from 'react';
-import { X, Loader2 } from 'lucide-react';
+import React, { useEffect, useRef, useId, useState, useCallback } from 'react';
+import { X, Loader2, AlertTriangle } from 'lucide-react';
+import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
 
 interface FormModalProps {
   isOpen: boolean;
@@ -11,6 +12,8 @@ interface FormModalProps {
   isSubmitting?: boolean;
   maxWidth?: string;
   children: React.ReactNode;
+  /** When true, closing the modal triggers a "Discard changes?" confirmation. */
+  isDirty?: boolean;
 }
 
 export default function FormModal({
@@ -23,12 +26,41 @@ export default function FormModal({
   isSubmitting = false,
   maxWidth = 'max-w-2xl',
   children,
+  isDirty = false,
 }: FormModalProps) {
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
 
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  // Browser-level "are you sure?" on page unload / refresh when form has unsaved data
+  useUnsavedChanges(isOpen && isDirty);
+
+  // Guarded close: intercept close attempts when form is dirty
+  const guardedClose = useCallback(() => {
+    if (isDirty) {
+      setShowDiscardConfirm(true);
+    } else {
+      onClose();
+    }
+  }, [isDirty, onClose]);
+
+  const handleConfirmDiscard = useCallback(() => {
+    setShowDiscardConfirm(false);
+    onClose();
+  }, [onClose]);
+
+  const handleCancelDiscard = useCallback(() => {
+    setShowDiscardConfirm(false);
+  }, []);
+
+  // Keep guardedClose ref current for the Escape handler
+  const guardedCloseRef = useRef(guardedClose);
+  guardedCloseRef.current = guardedClose;
+
+  // Reset discard dialog when modal closes
+  useEffect(() => {
+    if (!isOpen) setShowDiscardConfirm(false);
+  }, [isOpen]);
 
   // Focus trap: keep focus within the modal — only run on open/close transitions
   useEffect(() => {
@@ -45,7 +77,7 @@ export default function FormModal({
     });
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { onCloseRef.current(); return; }
+      if (e.key === 'Escape') { guardedCloseRef.current(); return; }
       if (e.key !== 'Tab') return;
       const focusable = dialog.querySelectorAll<HTMLElement>(
         'button:not([disabled]):not([tabindex="-1"]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
@@ -69,20 +101,23 @@ export default function FormModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} ref={dialogRef}>
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={guardedClose} />
       <div className={`relative w-full ${maxWidth} mx-4 shadow-2xl animate-fade-in panel-beveled`} style={{ background: '#1a1a1a' }}>
         <div className="panel-title-bar">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2" style={{ background: '#bc1010' }} />
             {Icon && <Icon className="title-icon" />}
             <span id={titleId}>{title}</span>
+            {isDirty && (
+              <span className="text-[8px] text-amber-400 font-bold uppercase tracking-wider ml-1">UNSAVED</span>
+            )}
           </div>
           <div className="ml-auto flex items-center gap-1">
             {/* Decorative window buttons */}
             <button type="button" className="toolbar-btn" style={{ padding: '1px 4px', fontSize: '9px' }} tabIndex={-1}>_</button>
             <button type="button" className="toolbar-btn" style={{ padding: '1px 4px', fontSize: '9px' }} tabIndex={-1}>□</button>
             <button
-              onClick={onClose}
+              onClick={guardedClose}
               className="toolbar-btn"
               style={{ padding: '1px 4px' }}
               onMouseEnter={(e) => { e.currentTarget.style.background = '#a00e0e'; e.currentTarget.style.color = '#ffffff'; }}
@@ -95,7 +130,7 @@ export default function FormModal({
         <form onSubmit={onSubmit} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
           {children}
           <div className="flex items-center justify-end gap-2 pt-4" style={{ borderTop: '1px solid #303030' }}>
-            <button type="button" onClick={onClose} className="toolbar-btn" disabled={isSubmitting}>
+            <button type="button" onClick={guardedClose} className="toolbar-btn" disabled={isSubmitting}>
               Cancel
             </button>
             <button type="submit" className="toolbar-btn toolbar-btn-primary" disabled={isSubmitting}>
@@ -105,6 +140,45 @@ export default function FormModal({
           </div>
         </form>
       </div>
+
+      {/* ── Discard Confirmation Overlay ──────────────────── */}
+      {showDiscardConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50" onClick={handleCancelDiscard} />
+          <div className="relative w-full max-w-sm mx-4 bg-surface-base border border-rmpg-600 shadow-2xl animate-fade-in">
+            <div
+              className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600"
+              style={{ background: 'linear-gradient(180deg, #202020 0%, #1a1a1a 100%)' }}
+            >
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-400" />
+                <h2 className="text-xs font-bold text-white uppercase tracking-wider">Unsaved Changes</h2>
+              </div>
+            </div>
+            <div className="p-5">
+              <p className="text-sm text-rmpg-200 leading-relaxed">
+                You have unsaved changes. Are you sure you want to close this form? All entered data will be lost.
+              </p>
+              <div className="flex items-center justify-end gap-3 mt-5">
+                <button
+                  type="button"
+                  onClick={handleCancelDiscard}
+                  className="toolbar-btn"
+                >
+                  Keep Editing
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDiscard}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wide border shadow-sm bg-red-700 hover:bg-red-600 border-red-500 text-white transition-colors"
+                >
+                  Discard Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

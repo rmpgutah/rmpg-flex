@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  Car, Wrench, DollarSign, Calendar, Clock, Gauge, Shield, Radio, Settings, Tag, ArrowRight,
+  Car, Wrench, DollarSign, Calendar, Clock, Gauge, Shield, Radio, Settings, Tag, ArrowRight, Pencil, Trash2,
 } from 'lucide-react';
 import type { FleetVehicle, FleetMaintenance, FleetVehicleStatus } from '../../../types';
 import { formatMilitary, daysUntilExpiry, expiryProgress } from '../utils/fleetFormatters';
@@ -52,9 +52,11 @@ const TYPE_BORDER_COLOR: Record<string, string> = {
 interface Props {
   detail: FleetVehicle;
   maintenance: FleetMaintenance[];
+  onEditMaintenance?: (record: FleetMaintenance) => void;
+  onDeleteMaintenance?: (record: FleetMaintenance) => void;
 }
 
-export default function FleetOverviewTab({ detail, maintenance }: Props) {
+export default function FleetOverviewTab({ detail, maintenance, onEditMaintenance, onDeleteMaintenance }: Props) {
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
       {/* Vehicle Stats Row */}
@@ -298,6 +300,29 @@ export default function FleetOverviewTab({ detail, maintenance }: Props) {
                           )}
                           {m.cost != null && (
                             <span className="text-[10px] text-green-400 font-mono font-bold">${m.cost.toFixed(2)}</span>
+                          )}
+                          {/* Admin Edit / Delete */}
+                          {(onEditMaintenance || onDeleteMaintenance) && (
+                            <div className="flex items-center gap-1 ml-1">
+                              {onEditMaintenance && (
+                                <button
+                                  className="p-1 text-rmpg-500 hover:text-brand-400 hover:bg-rmpg-700 rounded transition-colors"
+                                  onClick={() => onEditMaintenance(m)}
+                                  title="Edit maintenance record"
+                                >
+                                  <Pencil className="w-3 h-3" />
+                                </button>
+                              )}
+                              {onDeleteMaintenance && (
+                                <button
+                                  className="p-1 text-rmpg-500 hover:text-red-400 hover:bg-red-900/20 rounded transition-colors"
+                                  onClick={() => onDeleteMaintenance(m)}
+                                  title="Delete maintenance record"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
                           )}
                         </div>
                       </div>

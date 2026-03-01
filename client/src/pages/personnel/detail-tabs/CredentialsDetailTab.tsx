@@ -7,6 +7,7 @@ import { Award, Plus, Edit2, Trash2, Clock, Hash, Building } from 'lucide-react'
 import type { Credential } from '../../../types';
 import { calcDaysUntilExpiry } from '../utils/personnelFormatters';
 import { CREDENTIAL_STATUS_COLORS } from '../utils/personnelConstants';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 interface Props {
   credentials: Credential[];
@@ -93,7 +94,7 @@ export default function CredentialsDetailTab({
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <span className={ledClass(cred.status)} />
-                    <h4 className="text-xs font-semibold text-rmpg-100">{cred.type}</h4>
+                    <h4 className="text-xs font-semibold text-rmpg-100">{toDisplayLabel(cred.type)}</h4>
                     <span className={`text-[9px] px-1.5 py-0.5 font-bold ${CREDENTIAL_STATUS_COLORS[cred.status] || 'bg-rmpg-700 text-rmpg-300'}`}>
                       {statusLabel}
                     </span>

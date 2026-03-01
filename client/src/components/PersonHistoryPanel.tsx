@@ -12,6 +12,7 @@ import {
   FileWarning,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { toDisplayLabel } from '../utils/formatters';
 import StatusBadge from './StatusBadge';
 
 // ── Types ──────────────────────────────────────────
@@ -308,10 +309,10 @@ export default function PersonHistoryPanel({
                         WARRANT_STATUS_CLASSES[w.status] || 'bg-gray-700 text-rmpg-300 border-rmpg-600'
                       }`}
                     >
-                      {w.status}
+                      {toDisplayLabel(w.status)}
                     </span>
                     <span className="px-1 py-0.5 text-[9px] uppercase font-bold bg-rmpg-700/50 text-rmpg-300 border border-rmpg-600/50">
-                      {w.type}
+                      {toDisplayLabel(w.type)}
                     </span>
                     {w.offense_level && (
                       <span
@@ -319,7 +320,7 @@ export default function PersonHistoryPanel({
                           OFFENSE_LEVEL_CLASSES[w.offense_level] || 'bg-gray-700 text-rmpg-300 border-rmpg-600'
                         }`}
                       >
-                        {w.offense_level}
+                        {toDisplayLabel(w.offense_level)}
                       </span>
                     )}
                     <span className="text-rmpg-400 ml-auto text-[10px]">{formatDate(w.date_issued)}</span>
@@ -383,7 +384,7 @@ export default function PersonHistoryPanel({
                       CITATION_TYPE_CLASSES[c.type] || 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50'
                     }`}
                   >
-                    {c.type}
+                    {toDisplayLabel(c.type)}
                   </span>
                   {c.offense_level && (
                     <span
@@ -391,7 +392,7 @@ export default function PersonHistoryPanel({
                         OFFENSE_LEVEL_CLASSES[c.offense_level] || 'bg-gray-700 text-rmpg-300 border-rmpg-600'
                       }`}
                     >
-                      {c.offense_level}
+                      {toDisplayLabel(c.offense_level)}
                     </span>
                   )}
                   {c.fine_amount != null && c.fine_amount > 0 && (

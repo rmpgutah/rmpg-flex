@@ -5,6 +5,7 @@ import {
 import type { Credential, TimeEntry, TrainingRecord } from '../../types';
 import type { OfficerWithStatus } from './utils/personnelMappers';
 import { ROLE_COLORS } from './utils/personnelConstants';
+import { toDisplayLabel } from '../../utils/formatters';
 
 interface Props {
   officers: OfficerWithStatus[];
@@ -155,7 +156,7 @@ export default function PersonnelAnalyticsDashboard({ officers, credentials, tim
                   <span className={cred.status === 'expired' ? 'led-dot led-red' : 'led-dot led-amber'} />
                   <span className="text-rmpg-200">{cred.officer_name}</span>
                   <span className="text-rmpg-400">-</span>
-                  <span className="text-rmpg-300">{cred.type}</span>
+                  <span className="text-rmpg-300">{toDisplayLabel(cred.type)}</span>
                 </div>
                 <span className={`text-[10px] font-mono ${cred.status === 'expired' ? 'text-red-400' : 'text-amber-400'}`}>
                   {cred.expiry_date || 'No expiry'}

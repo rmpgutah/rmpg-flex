@@ -12,6 +12,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { toDisplayLabel } from '../../utils/formatters';
 import type { Client } from '../../types';
 import AdminInvoiceTab from './AdminInvoiceTab';
 import { ClientPersonLinks } from '../../components/ClientPersonLinksSection';
@@ -587,7 +588,7 @@ export default function AdminClientsTab({
                           <td className="font-bold text-white text-xs font-mono">{inc.incident_number}</td>
                           <td className="text-xs text-brand-400">{(inc.incident_type || '').replace(/_/g, ' ')}</td>
                           <td className="text-xs font-mono font-bold text-rmpg-300">{inc.priority}</td>
-                          <td className="text-xs text-rmpg-300">{inc.status}</td>
+                          <td className="text-xs text-rmpg-300">{toDisplayLabel(inc.status)}</td>
                           <td className="text-xs text-rmpg-300 max-w-[150px] truncate">{inc.location_address}</td>
                           <td className="text-[10px] text-rmpg-400">{inc.created_at ? new Date(inc.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '--'}</td>
                         </tr>
@@ -622,7 +623,7 @@ export default function AdminClientsTab({
                           <td className="font-bold text-green-400 text-xs font-mono">{call.call_number}</td>
                           <td className="text-xs text-rmpg-200">{(call.call_type || '').replace(/_/g, ' ')}</td>
                           <td className="text-xs font-mono font-bold text-rmpg-300">{call.priority}</td>
-                          <td className="text-xs text-rmpg-300">{call.status}</td>
+                          <td className="text-xs text-rmpg-300">{toDisplayLabel(call.status)}</td>
                           <td className="text-xs text-rmpg-300 max-w-[150px] truncate">{call.location}</td>
                           <td className="text-[10px] text-rmpg-400">{call.created_at ? new Date(call.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '--'}</td>
                         </tr>

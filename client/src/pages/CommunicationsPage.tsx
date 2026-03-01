@@ -30,6 +30,7 @@ import type {
   ActivityAction,
 } from '../types';
 import StatusBadge from '../components/StatusBadge';
+import { toDisplayLabel } from '../utils/formatters';
 import PanelTitleBar from '../components/PanelTitleBar';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
@@ -1067,7 +1068,7 @@ export default function CommunicationsPage() {
                     <div className="flex items-center gap-2">
                       <StatusBadge status={bolo.priority} type="priority" size="sm" />
                       <span className={`px-2 py-0.5 text-[10px] font-bold uppercase ${bolo.status === 'active' ? 'bg-red-900/50 text-red-400 border border-red-700/50' : 'bg-gray-700 text-rmpg-300'}`}>
-                        {bolo.status}
+                        {toDisplayLabel(bolo.status)}
                       </span>
                     </div>
                   </div>

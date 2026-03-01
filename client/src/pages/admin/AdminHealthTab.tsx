@@ -6,7 +6,7 @@ import {
   ChevronDown, ChevronRight, Zap, Disc, Globe, ArrowDown, ArrowUp, Network,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
-import { formatFileSize, formatDuration } from '../../utils/formatters';
+import { formatFileSize, formatDuration, toDisplayLabel } from '../../utils/formatters';
 
 // ============================================================
 // System Health & Monitoring Tab
@@ -223,7 +223,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
                   )}
                   <span className="text-[11px] font-mono font-bold text-rmpg-100">v{entry.version}</span>
                   <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase border ${versionTypeBadge(entry.type)}`}>
-                    {entry.type}
+                    {toDisplayLabel(entry.type)}
                   </span>
                   <span className="text-[10px] text-rmpg-400 flex-1">{entry.summary}</span>
                   <span className="text-[9px] text-rmpg-500 font-mono">{entry.date}</span>
@@ -233,7 +233,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
                     {entry.changes.map((change, i) => (
                       <div key={i} className="flex items-start gap-2 py-0.5">
                         <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase border shrink-0 mt-0.5 ${changeTypeBadge(change.type)}`}>
-                          {change.type}
+                          {toDisplayLabel(change.type)}
                         </span>
                         <span className="text-[10px] text-rmpg-300">{change.description}</span>
                       </div>

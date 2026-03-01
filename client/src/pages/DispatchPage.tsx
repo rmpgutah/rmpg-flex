@@ -33,10 +33,14 @@ import {
   Edit,
   Search,
   Building2,
+  Terminal,
 } from 'lucide-react';
 import type { CallForService, Unit, CallStatus, CallNote, UnitStatus } from '../types';
 import CallCard from '../components/CallCard';
 import UnitStatusBoard from '../components/UnitStatusBoard';
+import DispositionPrompt from '../components/DispositionPrompt';
+import DispatchMiniMap from '../components/DispatchMiniMap';
+import BoloAlertBanner from '../components/BoloAlertBanner';
 import StatusBadge from '../components/StatusBadge';
 import NewCallModal from '../components/NewCallModal';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -56,6 +60,12 @@ import { useWebSocket } from '../context/WebSocketContext';
 import WarningTags from '../components/WarningTags';
 import type { WarningTag } from '../components/WarningTags';
 import FloatingSaveBar from '../components/FloatingSaveBar';
+import CadCommandLine from '../components/CadCommandLine';
+import NcicQueryPanel from '../components/NcicQueryPanel';
+import UnitRecommendationPanel from '../components/UnitRecommendationPanel';
+import type { CommandAction } from '../utils/cadCommandParser';
+import { getTimerState, isActiveStatus } from '../utils/dispatchTimers';
+import { playTone } from '../utils/dispatchTones';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileCardList from '../components/mobile/MobileCardList';
 import MobileDetailView from '../components/mobile/MobileDetailView';
@@ -216,6 +226,9 @@ export default function DispatchPage() {
   const [linkedIncidents, setLinkedIncidents] = useState<any[]>([]);
   // Warning tags / caution alerts for selected call
   const [callWarnings, setCallWarnings] = useState<WarningTag[]>([]);
+  // NCIC Query Panel
+  const [showNcicPanel, setShowNcicPanel] = useState(false);
+  const [ncicInitialQuery, setNcicInitialQuery] = useState<{ type: 'person' | 'vehicle' | 'warrant'; query: string } | null>(null);
   // Timeline / activity log entries for selected call
   const [activityEntries, setActivityEntries] = useState<any[]>([]);
   // Editing state
@@ -322,8 +335,14 @@ export default function DispatchPage() {
   const [isDeletingCall, setIsDeletingCall] = useState(false);
   // Disposition codes from admin config
   const [dispositionCodes, setDispositionCodes] = useState<{code: string; description: string; color?: string}[]>([]);
+  // Disposition prompt — ID of call awaiting disposition before clear
+  const [dispositionPromptCallId, setDispositionPromptCallId] = useState<string | null>(null);
+  // Mini-map visibility toggle
+  const [showMiniMap, setShowMiniMap] = useState(true);
   // Clients list for client selector
   const [clientsList, setClientsList] = useState<{ id: string; name: string }[]>([]);
+  // Properties list for property selector (non-archived)
+  const [propertiesList, setPropertiesList] = useState<{ id: string; name: string }[]>([]);
 
   // Close template dropdown on outside click
   useEffect(() => {
@@ -408,6 +427,10 @@ export default function DispatchPage() {
     // Fetch clients list for client selector
     apiFetch<any[]>('/admin/clients')
       .then((data) => setClientsList((Array.isArray(data) ? data : []).filter((c: any) => c.status === 'active').map((c: any) => ({ id: String(c.id), name: c.name }))))
+      .catch(() => {});
+    // Fetch properties list (non-archived) for property selector
+    apiFetch<any[]>('/records/properties')
+      .then((data) => setPropertiesList((Array.isArray(data) ? data : []).map((p: any) => ({ id: String(p.id), name: p.name }))))
       .catch(() => {});
   }, [fetchData]);
 
@@ -658,6 +681,11 @@ export default function DispatchPage() {
       (call.caller_name || '').toLowerCase().includes(q)
     );
   }).sort((a, b) => {
+    // Archive tab: sort by call number ascending (001, 002, 003...)
+    if (filterTab === 'archived') {
+      return (a.call_number || '').localeCompare(b.call_number || '', undefined, { numeric: true });
+    }
+    // Active tabs: sort by priority then newest first
     const pOrder: Record<string, number> = { P1: 0, P2: 1, P3: 2, P4: 3 };
     const pDiff = (pOrder[a.priority] ?? 3) - (pOrder[b.priority] ?? 3);
     if (pDiff !== 0) return pDiff;
@@ -729,10 +757,10 @@ export default function DispatchPage() {
         return;
       }
 
-      // C - Clear call
+      // C - Clear call (opens disposition prompt)
       if ((e.key === 'c' || e.key === 'C') && selectedCall && ['dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
         e.preventDefault();
-        handleStatusChange(selectedCall.id, 'cleared');
+        handleClearWithDisposition(selectedCall.id);
         return;
       }
 
@@ -842,6 +870,64 @@ export default function DispatchPage() {
     }
   };
 
+  // Clear with disposition — shows prompt first, then clears
+  const handleClearWithDisposition = (callId: string) => {
+    setDispositionPromptCallId(callId);
+  };
+
+  const handleConfirmClear = async (disposition: string, createIncident?: boolean) => {
+    if (!dispositionPromptCallId) return;
+    try {
+      const result = await apiFetch<any>(`/dispatch/calls/${dispositionPromptCallId}/status`, {
+        method: 'POST',
+        body: JSON.stringify({ status: 'cleared', disposition }),
+      });
+      const updatedCall = mapDbCall(result);
+      setCalls((prev) => prev.map((c) => c.id === dispositionPromptCallId ? updatedCall : c));
+      setSelectedCall((prev) => prev?.id === dispositionPromptCallId ? updatedCall : prev);
+      const unitsRes = await apiFetch<any[]>('/dispatch/units');
+      setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
+
+      // Auto-promote to incident report if checkbox was checked
+      if (createIncident) {
+        try {
+          await apiFetch<any>(`/dispatch/calls/${dispositionPromptCallId}/promote-to-incident`, {
+            method: 'POST',
+          });
+          navigate('/incidents');
+        } catch (err) {
+          console.error('Failed to promote call to incident:', err);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to clear call:', err);
+    }
+    setDispositionPromptCallId(null);
+  };
+
+  // Hold / Resume call
+  const handleHoldCall = async (callId: string) => {
+    try {
+      const result = await apiFetch<any>(`/dispatch/calls/${callId}/hold`, { method: 'POST' });
+      const updatedCall = mapDbCall(result);
+      setCalls((prev) => prev.map((c) => c.id === callId ? updatedCall : c));
+      setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
+    } catch (err) {
+      console.error('Failed to hold call:', err);
+    }
+  };
+
+  const handleResumeCall = async (callId: string) => {
+    try {
+      const result = await apiFetch<any>(`/dispatch/calls/${callId}/resume`, { method: 'POST' });
+      const updatedCall = mapDbCall(result);
+      setCalls((prev) => prev.map((c) => c.id === callId ? updatedCall : c));
+      setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
+    } catch (err) {
+      console.error('Failed to resume call:', err);
+    }
+  };
+
   const handleAddNote = async () => {
     if (!selectedCall || !newNote.trim()) return;
     try {
@@ -886,6 +972,23 @@ export default function DispatchPage() {
       }
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  // ── LE Notification ─────────────────────────────────────────
+  const handleLeNotify = async (callId: string, agency?: string) => {
+    try {
+      const result = await apiFetch<any>(`/dispatch/calls/${callId}/le-notification`, {
+        method: 'POST',
+        body: JSON.stringify({ agency: agency || 'Local PD' }),
+      });
+      const updatedCall = mapDbCall(result);
+      setCalls((prev) => prev.map((c) => c.id === callId ? updatedCall : c));
+      setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
+      addToast('Law enforcement notified', 'success');
+    } catch (err) {
+      console.error('Failed to notify LE:', err);
+      addToast('Failed to notify LE', 'error');
     }
   };
 
@@ -1045,6 +1148,8 @@ export default function DispatchPage() {
       damage_description: selectedCall.damage_description || '',
       action_taken: selectedCall.action_taken || '',
       responding_officer: selectedCall.responding_officer || '',
+      starting_mileage: selectedCall.starting_mileage || '',
+      ending_mileage: selectedCall.ending_mileage || '',
     });
     setIsEditing(true);
   };
@@ -1126,43 +1231,29 @@ export default function DispatchPage() {
     setEditData((prev) => ({ ...prev, [field]: value }));
   }, []);
 
-  // ── Nearest available unit suggestion ──────────────────────
-  const nearestAvailableUnit = React.useMemo(() => {
-    if (!selectedCall || !selectedCall.latitude || !selectedCall.longitude) return null;
-    if (['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status)) return null;
-
-    const availableUnits = units.filter(u =>
-      u.status === 'available' &&
-      u.latitude && u.longitude &&
-      !selectedCall.assigned_units.includes(u.id)
-    );
-
-    if (availableUnits.length === 0) return null;
-
-    // Calculate distance (Haversine approximation)
-    const toRad = (deg: number) => deg * Math.PI / 180;
-    const R = 3959; // Earth radius in miles
-
-    let nearest: Unit | null = null;
-    let nearestDist = Infinity;
-
-    for (const unit of availableUnits) {
-      const dLat = toRad(unit.latitude! - selectedCall.latitude!);
-      const dLon = toRad(unit.longitude! - selectedCall.longitude!);
-      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                Math.cos(toRad(selectedCall.latitude!)) * Math.cos(toRad(unit.latitude!)) *
-                Math.sin(dLon/2) * Math.sin(dLon/2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-      const d = R * c;
-
-      if (d < nearestDist) {
-        nearestDist = d;
-        nearest = unit;
+  // ── Dispatch alarm interval — check overdue calls every 5s ──
+  const alarmPlayedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const check = () => {
+      const activeCalls = calls.filter(c => isActiveStatus(c.status));
+      for (const c of activeCalls) {
+        const state = getTimerState(c);
+        if (state.isOverdue && !alarmPlayedRef.current.has(c.id)) {
+          alarmPlayedRef.current.add(c.id);
+          playTone('alarm');
+          break; // One alarm at a time
+        }
       }
-    }
-
-    return nearest ? { unit: nearest, distance: nearestDist } : null;
-  }, [selectedCall, units]);
+      // Clean up resolved overdue flags
+      const activeIds = new Set(activeCalls.map(c => c.id));
+      for (const id of alarmPlayedRef.current) {
+        if (!activeIds.has(id)) alarmPlayedRef.current.delete(id);
+      }
+    };
+    check();
+    const interval = setInterval(check, 5000);
+    return () => clearInterval(interval);
+  }, [calls]);
 
   // ── Timeline CRUD ─────────────────────────────────────────
   const handleEditTimeline = async (entryId: string) => {
@@ -1208,7 +1299,7 @@ export default function DispatchPage() {
   const tabCounts = {
     all: calls.length,
     pending: calls.filter((c) => c.status === 'pending').length,
-    active: calls.filter((c) => ['dispatched', 'enroute', 'onscene'].includes(c.status)).length,
+    active: calls.filter((c) => ['dispatched', 'enroute', 'onscene', 'on_hold'].includes(c.status)).length,
     cleared: calls.filter((c) => ['cleared', 'closed', 'cancelled'].includes(c.status)).length,
     archived: archivedCalls.length,
   };
@@ -1437,6 +1528,7 @@ export default function DispatchPage() {
           isOpen={showNewCallModal}
           onClose={() => { setShowNewCallModal(false); setTemplateInitialData(undefined); }}
           onSubmit={handleNewCall}
+          properties={propertiesList}
           initialData={templateInitialData}
         />
       </div>
@@ -1451,7 +1543,7 @@ export default function DispatchPage() {
       {/* ============================================================ */}
       {/* LEFT PANEL - Call Queue (40%) */}
       {/* ============================================================ */}
-      <div className="w-[40%] border-r border-rmpg-600 flex flex-col bg-surface-base">
+      <div className="w-[35%] border-r border-rmpg-600 flex flex-col bg-surface-base">
         {/* Header — PanelTitleBar + TabBar */}
         <PanelTitleBar title="DISPATCH QUEUE" icon={Radio}>
           <RmpgLogo height={16} iconOnly />
@@ -1554,9 +1646,9 @@ export default function DispatchPage() {
         />
 
         {/* Dispatch Stats Strip */}
-        <div className="px-3 py-1 border-b border-rmpg-700/50 flex items-center gap-3 text-[9px] font-mono flex-shrink-0 bg-surface-sunken">
+        <div className="px-3 py-1 border-b border-rmpg-700/50 flex items-center gap-2 flex-wrap text-[9px] font-mono flex-shrink-0 bg-surface-sunken">
           {(() => {
-            const activeCalls = calls.filter(c => ['dispatched', 'enroute', 'onscene', 'pending'].includes(c.status));
+            const activeCalls = calls.filter(c => ['dispatched', 'enroute', 'onscene', 'pending', 'on_hold'].includes(c.status));
             const p1Count = activeCalls.filter(c => c.priority === 'P1').length;
             const p2Count = activeCalls.filter(c => c.priority === 'P2').length;
             const pendingCount = calls.filter(c => c.status === 'pending').length;
@@ -1573,7 +1665,7 @@ export default function DispatchPage() {
                 {/* Stacked calls indicator */}
                 {(() => {
                   const stackedLocations = new Map<string, number>();
-                  calls.filter(c => ['pending', 'dispatched', 'enroute', 'onscene'].includes(c.status)).forEach(c => {
+                  calls.filter(c => ['pending', 'dispatched', 'enroute', 'onscene', 'on_hold'].includes(c.status)).forEach(c => {
                     if (c.location) {
                       const loc = c.location.toLowerCase().trim();
                       stackedLocations.set(loc, (stackedLocations.get(loc) || 0) + 1);
@@ -1619,13 +1711,15 @@ export default function DispatchPage() {
       </div>
 
       {/* ============================================================ */}
-      {/* RIGHT PANEL - Split top/bottom */}
+      {/* RIGHT PANEL - Call Detail + Map (top), USB (bottom shorter) */}
       {/* ============================================================ */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* ------------------------------------------------------------ */}
-        {/* TOP RIGHT - Call Detail (50% height) */}
+        {/* TOP - Call Detail (left) + Map (right) — ~65% height */}
         {/* ------------------------------------------------------------ */}
-        <div ref={callDetailRef} className={`h-1/2 border-b border-rmpg-600 flex flex-col overflow-hidden${isEditing ? ' edit-mode-active' : ''}`}>
+        <div className="flex-1 flex border-b border-rmpg-600 min-h-0">
+          {/* Call Detail Panel */}
+          <div ref={callDetailRef} className={`flex-1 flex flex-col overflow-hidden min-w-0${isEditing ? ' edit-mode-active' : ''}`}>
           {selectedCall ? (
             <>
               {/* Detail Header — PanelTitleBar style */}
@@ -1643,8 +1737,38 @@ export default function DispatchPage() {
                     </span>
                   )}
                 </div>
-                  <div className="ml-auto flex items-center gap-1">
-                    <PrintRecordButton recordType="call" recordData={selectedCall} identifier={selectedCall?.call_number} entityType="call" entityId={selectedCall?.id} label="Print" />
+                  <div className="ml-auto flex items-center gap-1 flex-wrap">
+                    <PrintRecordButton
+                      recordType="call"
+                      recordData={{
+                        ...selectedCall,
+                        // Enrich with unit detail table for PDF
+                        assigned_units_detail: (selectedCall?.assigned_units || []).map((uid: string) => {
+                          const u = units.find(unit => unit.id === uid);
+                          return {
+                            call_sign: u?.call_sign || uid,
+                            officer_name: u?.officer_name || '',
+                            badge_number: '',
+                            status: u?.status || '',
+                          };
+                        }),
+                        // Map CallNote -> PDF notes format (text→content, timestamp→created_at)
+                        notes: selectedCall?.notes?.map((n: any) => ({
+                          id: n.id,
+                          author: n.author || 'System',
+                          content: n.text || '',
+                          created_at: n.timestamp || '',
+                        })),
+                        // Build narrative from notes for PDF
+                        narrative: selectedCall?.notes?.map((n: any) =>
+                          `[${n.timestamp ? new Date(n.timestamp).toLocaleString() : ''}] ${n.author || 'System'}: ${n.text || ''}`
+                        ).join('\n') || '',
+                      }}
+                      identifier={selectedCall?.call_number}
+                      entityType="call"
+                      entityId={selectedCall?.id}
+                      label="Print"
+                    />
                     {/* Edit toggle */}
                     {!isEditing && (
                       <button onClick={startEditing} className="toolbar-btn" title="Edit call details">
@@ -1660,6 +1784,17 @@ export default function DispatchPage() {
                           <X style={{ width: 10, height: 10 }} /> Cancel
                         </button>
                       </>
+                    )}
+                    {/* NCIC Terminal button */}
+                    {!isEditing && (
+                      <button
+                        onClick={() => setShowNcicPanel(true)}
+                        className="toolbar-btn"
+                        title="NCIC / NLETS Query Terminal"
+                        style={{ color: '#4ade80' }}
+                      >
+                        <Terminal style={{ width: 10, height: 10 }} /> NCIC
+                      </button>
                     )}
                     {/* Revert status button — go back one step */}
                     {!isEditing && ['dispatched', 'enroute', 'onscene', 'cleared', 'closed'].includes(selectedCall.status) && (
@@ -1690,13 +1825,21 @@ export default function DispatchPage() {
                     )}
                     {!isEditing && ['dispatched', 'enroute', 'onscene'].includes(selectedCall.status) && (
                       <>
-                        <button onClick={() => handleStatusChange(selectedCall.id, 'cleared')} className="toolbar-btn">
+                        <button onClick={() => handleClearWithDisposition(selectedCall.id)} className="toolbar-btn">
                           <CheckCircle style={{ width: 10, height: 10 }} /> Clear
+                        </button>
+                        <button onClick={() => handleHoldCall(selectedCall.id)} className="toolbar-btn" style={{ color: '#f59e0b' }}>
+                          ⏸ Hold
                         </button>
                         <button onClick={() => handleStatusChange(selectedCall.id, 'cancelled')} className="toolbar-btn" style={{ color: '#ef7a7a' }}>
                           <XCircle style={{ width: 10, height: 10 }} /> Cancel
                         </button>
                       </>
+                    )}
+                    {!isEditing && selectedCall.status === 'on_hold' && (
+                      <button onClick={() => handleResumeCall(selectedCall.id)} className="toolbar-btn toolbar-btn-primary" style={{ background: '#f59e0b', color: '#000' }}>
+                        ▶ Resume
+                      </button>
                     )}
                     {!isEditing && selectedCall.status === 'cleared' && (
                       <>
@@ -1714,6 +1857,17 @@ export default function DispatchPage() {
                         {isGenerating ? <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" /> : <FileText style={{ width: 10, height: 10 }} />}
                         Report
                       </button>
+                    )}
+                    {/* LE Notification */}
+                    {!isEditing && !selectedCall.le_notified && selectedCall.status !== 'archived' && (
+                      <button onClick={() => handleLeNotify(selectedCall.id)} className="toolbar-btn" style={{ color: '#f59e0b' }}>
+                        <Radio style={{ width: 10, height: 10 }} /> Notify LE
+                      </button>
+                    )}
+                    {selectedCall.le_notified && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-green-900/50 text-green-400 border border-green-700/50">
+                        <CheckCircle style={{ width: 9, height: 9 }} /> LE NOTIFIED {selectedCall.le_agency ? `(${selectedCall.le_agency})` : ''}
+                      </span>
                     )}
                     {/* Archive — available on any non-archived status */}
                     {!isEditing && selectedCall.status !== 'archived' && (
@@ -1809,14 +1963,25 @@ export default function DispatchPage() {
                             </select>
                           </div>
                         </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">Client:</label>
-                          <select className="select-dark text-xs mt-0.5" value={editData.client_id || ''} onChange={(e) => updateEditField('client_id', e.target.value)}>
-                            <option value="">— No Client —</option>
-                            {clientsList.map((c) => (
-                              <option key={c.id} value={c.id}>{c.name}</option>
-                            ))}
-                          </select>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">Client:</label>
+                            <select className="select-dark text-xs mt-0.5" value={editData.client_id || ''} onChange={(e) => updateEditField('client_id', e.target.value)}>
+                              <option value="">— No Client —</option>
+                              {clientsList.map((c) => (
+                                <option key={c.id} value={c.id}>{c.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">Property:</label>
+                            <select className="select-dark text-xs mt-0.5" value={editData.property_id || ''} onChange={(e) => updateEditField('property_id', e.target.value)}>
+                              <option value="">— No Property —</option>
+                              {propertiesList.map((p) => (
+                                <option key={p.id} value={p.id}>{p.name}</option>
+                              ))}
+                            </select>
+                          </div>
                         </div>
                         <div>
                           <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">Disposition:</label>
@@ -1958,104 +2123,23 @@ export default function DispatchPage() {
                                 style={{
                                   top: '100%',
                                   right: 0,
-                                  minWidth: '180px',
-                                  maxHeight: '220px',
-                                  overflowY: 'auto',
-                                  background: '#252525',
-                                  border: '1px solid #484848',
-                                  borderRadius: 0,
-                                  boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                                  minWidth: '240px',
                                 }}
                               >
-                                {(() => {
-                                  const assignedIds = selectedCall.assigned_units.map(String);
-                                  const unassignedUnits = units.filter(
-                                    (u) => !assignedIds.includes(u.id) && u.status !== 'off_duty'
-                                  );
-                                  if (unassignedUnits.length === 0) {
-                                    return (
-                                      <div className="px-3 py-2">
-                                        <div className="text-xs text-rmpg-400">No units available to assign</div>
-                                        <button
-                                          type="button"
-                                          onClick={() => { setShowAttachUnitDropdown(false); setShowCreateUnitModal(true); }}
-                                          className="flex items-center gap-1 mt-1.5 text-[10px] text-brand-400 hover:text-brand-300 font-bold"
-                                        >
-                                          <Plus style={{ width: 10, height: 10 }} /> Create New Unit
-                                        </button>
-                                      </div>
-                                    );
-                                  }
-                                  const statusColors: Record<string, string> = {
-                                    available: '#22c55e',
-                                    dispatched: '#f59e0b',
-                                    enroute: '#3b82f6',
-                                    onscene: '#a855f7',
-                                    busy: '#ef4444',
-                                  };
-                                  return (
-                                    <>
-                                      {unassignedUnits.map((u) => (
-                                        <button
-                                          key={u.id}
-                                          type="button"
-                                          onClick={() => handleAssignUnit(u.id)}
-                                          className="w-full flex items-center gap-2 px-3 py-1.5 text-left transition-colors"
-                                          style={{ fontSize: '11px', color: '#d4d4d4', background: 'transparent', border: 'none', borderRadius: 0, opacity: u.status === 'available' ? 1 : 0.65 }}
-                                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#383838'; (e.currentTarget as HTMLElement).style.opacity = '1'; }}
-                                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.opacity = u.status === 'available' ? '1' : '0.65'; }}
-                                          title={u.status !== 'available' ? `${u.call_sign} is currently ${u.status.replace('_', ' ')}` : `Assign ${u.call_sign}`}
-                                        >
-                                          <span
-                                            className="flex-shrink-0 rounded-full"
-                                            style={{ width: 6, height: 6, background: statusColors[u.status] || '#555' }}
-                                          />
-                                          <span className="font-bold text-white font-mono" style={{ fontSize: '11px' }}>{u.call_sign}</span>
-                                          <span className="text-rmpg-400 truncate flex-1" style={{ fontSize: '10px' }}>{u.officer_name || 'Unassigned'}</span>
-                                          {u.status !== 'available' && (
-                                            <span className="text-[9px] uppercase font-bold flex-shrink-0" style={{ color: statusColors[u.status] || '#888' }}>
-                                              {u.status === 'onscene' ? 'ON SCN' : u.status.replace('_', ' ').toUpperCase()}
-                                            </span>
-                                          )}
-                                        </button>
-                                      ))}
-                                      <div className="border-t border-rmpg-600">
-                                        <button
-                                          type="button"
-                                          onClick={() => { setShowAttachUnitDropdown(false); setShowCreateUnitModal(true); }}
-                                          className="w-full flex items-center gap-2 px-3 py-1.5 text-left transition-colors"
-                                          style={{ fontSize: '10px', color: '#d97706', background: 'transparent', border: 'none', borderRadius: 0 }}
-                                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#383838'; }}
-                                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-                                        >
-                                          <Plus style={{ width: 10, height: 10 }} />
-                                          <span className="font-bold">Create New Unit</span>
-                                        </button>
-                                      </div>
-                                    </>
-                                  );
-                                })()}
+                                <UnitRecommendationPanel
+                                  units={units.filter(u => u.status !== 'off_duty')}
+                                  callLat={selectedCall.latitude}
+                                  callLng={selectedCall.longitude}
+                                  assignedUnitIds={selectedCall.assigned_units.map(String)}
+                                  onAssign={(unitId) => { handleAssignUnit(unitId); setShowAttachUnitDropdown(false); }}
+                                  onCreateUnit={() => { setShowAttachUnitDropdown(false); setShowCreateUnitModal(true); }}
+                                  onClose={() => setShowAttachUnitDropdown(false)}
+                                />
                               </div>
                             )}
                           </div>
                         )}
                       </div>
-                      {/* Nearest unit suggestion */}
-                      {nearestAvailableUnit && !isEditing && selectedCall.status === 'pending' && (
-                        <div className="mt-1 mb-1.5 flex items-center gap-2 px-2 py-1 text-[10px]" style={{ background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.3)' }}>
-                          <Navigation className="w-3 h-3 text-green-400 flex-shrink-0" />
-                          <span className="text-green-300">
-                            <strong>{nearestAvailableUnit.unit.call_sign}</strong> is nearest
-                            <span className="text-green-400/60 ml-1">({nearestAvailableUnit.distance.toFixed(1)} mi)</span>
-                          </span>
-                          <button
-                            onClick={() => handleAssignUnit(nearestAvailableUnit.unit.id)}
-                            className="ml-auto px-2 py-0.5 text-[9px] font-bold text-green-400 bg-green-900/40 border border-green-700/50 hover:bg-green-800/50 transition-colors"
-                          >
-                            Assign
-                          </button>
-                        </div>
-                      )}
                       {selectedCall.assigned_units.length > 0 ? (
                         <div className="flex flex-wrap gap-1.5 mt-1">
                           {selectedCall.assigned_units.map((unitIdStr) => {
@@ -2078,7 +2162,7 @@ export default function DispatchPage() {
                                 key={unitIdStr}
                                 className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold font-mono"
                                 style={{ background: `${statusColor}15`, color: statusColor, border: `1px solid ${statusColor}50` }}
-                                title={unitObj ? `${displayName} — ${unitObj.officer_name || 'Unassigned'} (${unitObj.status})` : displayName}
+                                title={unitObj ? `${displayName} — ${unitObj.officer_name || 'Unassigned'} (${(unitObj.status || '').replace(/_/g, ' ')})` : displayName}
                               >
                                 <span className="rounded-full flex-shrink-0" style={{ width: 5, height: 5, background: statusColor }} />
                                 {displayName}
@@ -2103,6 +2187,37 @@ export default function DispatchPage() {
                     </div>
                   </div>
                 </div>
+
+                {/* ── MILEAGE (primary unit) ─── */}
+                {(isEditing || selectedCall.starting_mileage || selectedCall.ending_mileage) && selectedCall.assigned_units.length > 0 && (
+                  <div className="border-t border-rmpg-600 pt-3 mb-3">
+                    <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                      <MapPin className="w-3 h-3" /> Primary Unit Mileage
+                    </label>
+                    {isEditing ? (
+                      <div className="grid grid-cols-2 gap-2 mt-1">
+                        <div>
+                          <label className="text-[9px] text-rmpg-400">Starting Mileage <span className="text-red-400">*</span></label>
+                          <input type="number" step="0.1" min="0" className="input-dark text-xs" placeholder="e.g. 45230" value={editData.starting_mileage} onChange={(e) => updateEditField('starting_mileage', e.target.value)} />
+                        </div>
+                        <div>
+                          <label className="text-[9px] text-rmpg-400">Ending Mileage</label>
+                          <input type="number" step="0.1" min="0" className="input-dark text-xs" placeholder="e.g. 45256" value={editData.ending_mileage} onChange={(e) => updateEditField('ending_mileage', e.target.value)} />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap gap-x-6 gap-y-1 mt-1 text-xs">
+                        {selectedCall.starting_mileage && <span className="text-rmpg-200"><span className="text-rmpg-400">Start:</span> {Number(selectedCall.starting_mileage).toLocaleString()} mi</span>}
+                        {selectedCall.ending_mileage && <span className="text-rmpg-200"><span className="text-rmpg-400">End:</span> {Number(selectedCall.ending_mileage).toLocaleString()} mi</span>}
+                        {selectedCall.starting_mileage && selectedCall.ending_mileage && (
+                          <span className="text-blue-400 font-semibold">
+                            Total: {(Number(selectedCall.ending_mileage) - Number(selectedCall.starting_mileage)).toFixed(1)} mi
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* ── EXTENDED DETAILS (edit mode shows all, view mode shows populated) ─── */}
                 {(isEditing || selectedCall.cross_street || selectedCall.location_building || selectedCall.location_floor || selectedCall.location_room || selectedCall.section_id || selectedCall.zone_id || selectedCall.beat_id) && (
@@ -2342,6 +2457,30 @@ export default function DispatchPage() {
                   </div>
                 )}
               </div>
+
+              {/* Disposition Prompt — shown when Clear is clicked */}
+              {dispositionPromptCallId === selectedCall.id && (
+                <div className="px-3">
+                  <DispositionPrompt
+                    callNumber={selectedCall.call_number}
+                    dispositionCodes={dispositionCodes}
+                    onConfirm={handleConfirmClear}
+                    onCancel={() => setDispositionPromptCallId(null)}
+                  />
+                </div>
+              )}
+
+              {/* BOLO Alert Banner — matches active BOLOs */}
+              {selectedCall.subject_description || selectedCall.vehicle_description ? (
+                <div className="px-3">
+                  <BoloAlertBanner
+                    address={selectedCall.location}
+                    subject={selectedCall.subject_description}
+                    vehicle={selectedCall.vehicle_description}
+                  />
+                </div>
+              ) : null}
+
             </>
           ) : (
             <div className="flex-1 flex items-center justify-center text-rmpg-400">
@@ -2352,12 +2491,32 @@ export default function DispatchPage() {
               </div>
             </div>
           )}
+          </div>
+
+          {/* Dispatch Map Panel (right side, always visible) */}
+          <div className="w-[35%] border-l border-rmpg-600 flex flex-col bg-surface-deep overflow-hidden flex-shrink-0">
+            {selectedCall?.latitude && selectedCall?.longitude ? (
+              <DispatchMiniMap
+                call={selectedCall}
+                units={units}
+                fullHeight
+              />
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-rmpg-500">
+                <div className="text-center">
+                  <MapPin className="w-8 h-8 mx-auto mb-2 text-rmpg-600" />
+                  <p className="text-[10px] font-mono">NO LOCATION DATA</p>
+                  <p className="text-[9px] text-rmpg-600 mt-0.5">Select a geolocated call</p>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* ------------------------------------------------------------ */}
-        {/* BOTTOM RIGHT - Unit Status Board (50% height) */}
+        {/* BOTTOM - Unit Status Board (shorter, ~35% height) */}
         {/* ------------------------------------------------------------ */}
-        <div className="h-1/2 flex flex-col overflow-hidden">
+        <div className="h-[35%] flex flex-col overflow-hidden flex-shrink-0">
           <PanelTitleBar title="UNIT STATUS BOARD" icon={Radio}>
             <span className="text-[9px] font-mono" style={{ color: '#22c55e' }}>
               {units.filter((u) => u.status === 'available').length} AVAIL
@@ -2396,6 +2555,7 @@ export default function DispatchPage() {
         isOpen={showNewCallModal}
         onClose={() => { setShowNewCallModal(false); setTemplateInitialData(undefined); }}
         onSubmit={handleNewCall}
+        properties={propertiesList}
         clients={clientsList}
         initialData={templateInitialData}
       />
@@ -2507,18 +2667,84 @@ export default function DispatchPage() {
         isSaving={isSaving}
       />
 
-      {/* Keyboard Shortcuts Bar (status-bar style) */}
-      <div className="absolute bottom-0 left-0 right-0 status-bar" style={{ fontSize: '9px' }}>
-        <div className="status-bar-section"><span style={{ color: '#707070' }}>SHORTCUTS:</span></div>
-        <div className="status-bar-section"><kbd className="px-1 panel-inset bg-surface-sunken">N</kbd> New</div>
-        <div className="status-bar-section"><kbd className="px-1 panel-inset bg-surface-sunken">R</kbd> Refresh</div>
-        <div className="status-bar-section"><kbd className="px-1 panel-inset bg-surface-sunken">J/K</kbd> Nav</div>
-        <div className="status-bar-section"><kbd className="px-1 panel-inset bg-surface-sunken">D</kbd> Dispatch</div>
-        <div className="status-bar-section"><kbd className="px-1 panel-inset bg-surface-sunken">E</kbd> Enroute</div>
-        <div className="status-bar-section"><kbd className="px-1 panel-inset bg-surface-sunken">O</kbd> On Scene</div>
-        <div className="status-bar-section"><kbd className="px-1 panel-inset bg-surface-sunken">C</kbd> Clear</div>
-        <div className="status-bar-section"><kbd className="px-1 panel-inset bg-surface-sunken">1-5</kbd> Filter</div>
+      {/* CAD Command Line (replaces keyboard shortcuts bar) */}
+      <div className="absolute bottom-0 left-0 right-0 z-30">
+        <CadCommandLine
+          context={{
+            units: units.map(u => ({
+              id: String(u.id),
+              call_sign: u.call_sign,
+              status: u.status,
+              current_call_id: u.current_call_id ? String(u.current_call_id) : undefined,
+            })),
+            calls: calls.map(c => ({
+              id: String(c.id),
+              call_number: c.call_number,
+              status: c.status,
+            })),
+          }}
+          onAction={(action: CommandAction) => {
+            switch (action.type) {
+              case 'new_call':
+                setTemplateInitialData({
+                  incident_type: action.incidentType,
+                  location: action.location || '',
+                });
+                setShowNewCallModal(true);
+                break;
+              case 'query_person':
+                setNcicInitialQuery({ type: 'person', query: action.query });
+                setShowNcicPanel(true);
+                break;
+              case 'query_vehicle':
+                setNcicInitialQuery({ type: 'vehicle', query: action.query });
+                setShowNcicPanel(true);
+                break;
+              case 'query_warrant':
+                setNcicInitialQuery({ type: 'warrant', query: action.query });
+                setShowNcicPanel(true);
+                break;
+              case 'assign_unit':
+              case 'set_status':
+              case 'clear_call':
+              case 'dispatch_units':
+              case 'add_note':
+              case 'change_priority':
+              case 'create_bolo':
+                // These are already executed via API in cadCommandParser.
+                // Refresh data to reflect changes.
+                fetchData();
+                break;
+              case 'unit_status_check':
+                // Info-only — output is shown in the command line
+                break;
+              case 'query_bolo':
+                // Navigate to communications page (BOLO section)
+                navigate('/communications');
+                break;
+              case 'new_fi':
+                // Navigate to field interviews page
+                navigate('/field-interviews');
+                break;
+              case 'query_trespass':
+                // Navigate to trespass orders page
+                navigate('/trespass-orders');
+                break;
+              case 'hold_call':
+                // Already executed via API in cadCommandParser. Refresh data.
+                fetchData();
+                break;
+            }
+          }}
+        />
       </div>
+
+      {/* NCIC Query Terminal Panel */}
+      <NcicQueryPanel
+        isOpen={showNcicPanel}
+        onClose={() => { setShowNcicPanel(false); setNcicInitialQuery(null); }}
+        initialQuery={ncicInitialQuery}
+      />
     </div>
   );
 }

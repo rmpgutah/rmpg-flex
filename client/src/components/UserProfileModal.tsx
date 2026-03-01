@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { toDisplayLabel } from '../utils/formatters';
 import {
   X,
   User,
@@ -9,14 +10,19 @@ import {
   Check,
   AlertCircle,
   Shield,
+  ShieldCheck,
+  ShieldOff,
+  Copy,
+  RefreshCw,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../hooks/useApi';
+import TotpCodeInput from './TotpCodeInput';
 
 interface UserProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
-  initialTab?: 'profile' | 'password' | 'sessions';
+  initialTab?: 'profile' | 'password' | 'sessions' | 'security';
 }
 
 export default function UserProfileModal({ isOpen, onClose, initialTab = 'profile' }: UserProfileModalProps) {
@@ -44,6 +50,17 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
   // Sessions
   const [sessions, setSessions] = useState<any[]>([]);
 
+  // 2FA / Security
+  const [totpStatus, setTotpStatus] = useState<{ enabled: boolean; required: boolean } | null>(null);
+  const [setupStep, setSetupStep] = useState<'idle' | 'qr' | 'verify' | 'backups' | 'disabling'>('idle');
+  const [qrDataUrl, setQrDataUrl] = useState('');
+  const [backupCodes, setBackupCodes] = useState<string[]>([]);
+  const [setupCode, setSetupCode] = useState('');
+  const [disablePassword, setDisablePassword] = useState('');
+  const [securityBusy, setSecurityBusy] = useState(false);
+  const [securityMsg, setSecurityMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [copiedBackups, setCopiedBackups] = useState(false);
+
   useEffect(() => {
     if (isOpen && user) {
       setFirstName(user.first_name || '');
@@ -70,17 +87,32 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
         .then(data => setSessions(Array.isArray(data) ? data : []))
         .catch(() => setSessions([]));
     }
+    if (isOpen && activeTab === 'security') {
+      setSecurityMsg(null);
+      setSetupStep('idle');
+      setSetupCode('');
+      setDisablePassword('');
+      setCopiedBackups(false);
+      apiFetch<any>('/auth/totp/status')
+        .then(data => setTotpStatus(data))
+        .catch(() => setTotpStatus(null));
+    }
   }, [isOpen, activeTab]);
 
   if (!isOpen || !user) return null;
 
   const handleProfileSave = async () => {
+    // Validate mandatory fields
+    if (!firstName.trim() || !lastName.trim()) {
+      setProfileMsg({ type: 'error', text: 'First and last name are required.' });
+      return;
+    }
     setProfileSaving(true);
     setProfileMsg(null);
     try {
       await apiFetch('/auth/profile', {
         method: 'PUT',
-        body: JSON.stringify({ first_name: firstName, last_name: lastName, email, phone }),
+        body: JSON.stringify({ first_name: firstName.trim(), last_name: lastName.trim(), email, phone }),
       });
       // Refresh AuthContext user so header/OPR name updates immediately
       await refreshUser();
@@ -120,11 +152,75 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
     } catch { /* silent */ }
   };
 
+  // ── 2FA Handlers ─────────────────────────────────
+  const handleStartSetup = async () => {
+    setSecurityBusy(true);
+    setSecurityMsg(null);
+    try {
+      const data = await apiFetch<any>('/auth/totp/setup', { method: 'POST' });
+      setQrDataUrl(data.qrCodeDataUrl);
+      setBackupCodes(data.backupCodes || []);
+      setSetupStep('qr');
+    } catch (err: any) {
+      setSecurityMsg({ type: 'error', text: err.message || 'Failed to start 2FA setup' });
+    } finally {
+      setSecurityBusy(false);
+    }
+  };
+
+  const handleVerifySetup = async (code: string) => {
+    setSecurityBusy(true);
+    setSecurityMsg(null);
+    try {
+      await apiFetch<any>('/auth/totp/verify-setup', {
+        method: 'POST',
+        body: JSON.stringify({ code }),
+      });
+      setSetupStep('backups');
+      setTotpStatus(prev => prev ? { ...prev, enabled: true } : { enabled: true, required: false });
+      setSecurityMsg({ type: 'success', text: 'Two-factor authentication enabled successfully.' });
+    } catch (err: any) {
+      setSecurityMsg({ type: 'error', text: err.message || 'Invalid verification code' });
+      setSetupCode('');
+    } finally {
+      setSecurityBusy(false);
+    }
+  };
+
+  const handleDisable2FA = async () => {
+    if (!disablePassword) return;
+    setSecurityBusy(true);
+    setSecurityMsg(null);
+    try {
+      await apiFetch<any>('/auth/totp/disable', {
+        method: 'POST',
+        body: JSON.stringify({ password: disablePassword }),
+      });
+      setTotpStatus(prev => prev ? { ...prev, enabled: false } : { enabled: false, required: false });
+      setSetupStep('idle');
+      setDisablePassword('');
+      setSecurityMsg({ type: 'success', text: 'Two-factor authentication has been disabled.' });
+    } catch (err: any) {
+      setSecurityMsg({ type: 'error', text: err.message || 'Failed to disable 2FA' });
+    } finally {
+      setSecurityBusy(false);
+    }
+  };
+
+  const handleCopyBackupCodes = () => {
+    const text = backupCodes.join('\n');
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedBackups(true);
+      setTimeout(() => setCopiedBackups(false), 2000);
+    }).catch(() => {});
+  };
+
   const initials = `${(user.first_name || 'U')[0]}${(user.last_name || '')[0] || ''}`.toUpperCase();
 
   const tabs = [
     { id: 'profile' as const, label: 'Profile', icon: User },
     { id: 'password' as const, label: 'Password', icon: Lock },
+    { id: 'security' as const, label: '2FA', icon: ShieldCheck },
     { id: 'sessions' as const, label: 'Sessions', icon: Shield },
   ];
 
@@ -184,7 +280,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
             </div>
             <div className="text-[10px] font-mono" style={{ color: '#a0a0a0' }}>
               {user.badge_number && <span className="mr-2">{user.badge_number}</span>}
-              <span className="uppercase">{user.role}</span>
+              <span className="uppercase">{toDisplayLabel(user.role)}</span>
             </div>
             <div className="text-[10px]" style={{ color: '#707070' }}>
               {user.email}
@@ -220,21 +316,23 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
             <>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="field-label">First Name</label>
+                  <label className="field-label">First Name <span className="text-red-500">*</span></label>
                   <input
                     type="text"
                     value={firstName}
                     onChange={e => setFirstName(e.target.value)}
                     className="input-dark"
+                    required
                   />
                 </div>
                 <div>
-                  <label className="field-label">Last Name</label>
+                  <label className="field-label">Last Name <span className="text-red-500">*</span></label>
                   <input
                     type="text"
                     value={lastName}
                     onChange={e => setLastName(e.target.value)}
                     className="input-dark"
+                    required
                   />
                 </div>
               </div>
@@ -368,6 +466,202 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   {pwSaving ? 'Changing...' : 'Change Password'}
                 </button>
               </div>
+            </>
+          )}
+
+          {activeTab === 'security' && (
+            <>
+              {/* Status indicator */}
+              <div
+                className="flex items-center gap-3 p-3 mb-3"
+                style={{
+                  background: totpStatus?.enabled ? 'rgba(34, 197, 94, 0.08)' : 'rgba(188, 16, 16, 0.08)',
+                  border: `1px solid ${totpStatus?.enabled ? '#166534' : '#8a0c0c'}`,
+                }}
+              >
+                {totpStatus?.enabled ? (
+                  <ShieldCheck style={{ width: 20, height: 20, color: '#4ade80' }} />
+                ) : (
+                  <ShieldOff style={{ width: 20, height: 20, color: '#ef7a7a' }} />
+                )}
+                <div>
+                  <div className="text-xs font-bold" style={{ color: totpStatus?.enabled ? '#4ade80' : '#ef7a7a' }}>
+                    {totpStatus?.enabled ? 'Two-Factor Authentication Enabled' : 'Two-Factor Authentication Disabled'}
+                  </div>
+                  <div className="text-[9px]" style={{ color: '#707070' }}>
+                    {totpStatus?.enabled
+                      ? 'Your account is protected with authenticator app verification.'
+                      : totpStatus?.required
+                        ? 'Your role requires 2FA. Please enable it immediately.'
+                        : 'Add an extra layer of security to your account.'}
+                  </div>
+                </div>
+              </div>
+
+              {securityMsg && (
+                <div className={`flex items-center gap-2 px-3 py-2 text-xs mb-3 ${securityMsg.type === 'success' ? 'text-green-400 bg-green-900/20 border border-green-800/40' : 'text-red-400 bg-red-900/20 border border-red-800/40'}`}>
+                  {securityMsg.type === 'success' ? <Check style={{ width: 12, height: 12 }} /> : <AlertCircle style={{ width: 12, height: 12 }} />}
+                  {securityMsg.text}
+                </div>
+              )}
+
+              {/* ── Idle: Enable / Disable buttons ──────── */}
+              {setupStep === 'idle' && !totpStatus?.enabled && (
+                <button
+                  onClick={handleStartSetup}
+                  disabled={securityBusy}
+                  className="btn-primary w-full"
+                >
+                  <ShieldCheck style={{ width: 12, height: 12 }} />
+                  {securityBusy ? 'Setting up...' : 'Enable Two-Factor Authentication'}
+                </button>
+              )}
+
+              {setupStep === 'idle' && totpStatus?.enabled && (
+                <button
+                  onClick={() => { setSetupStep('disabling'); setSecurityMsg(null); }}
+                  className="btn-danger w-full"
+                >
+                  <ShieldOff style={{ width: 12, height: 12 }} />
+                  Disable Two-Factor Authentication
+                </button>
+              )}
+
+              {/* ── Step 1: Show QR Code ────────────────── */}
+              {setupStep === 'qr' && (
+                <div className="space-y-3">
+                  <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#a0a0a0' }}>
+                    Step 1: Scan QR Code
+                  </div>
+                  <p className="text-[10px]" style={{ color: '#707070' }}>
+                    Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.)
+                  </p>
+                  <div className="flex justify-center py-2">
+                    {qrDataUrl && (
+                      <img
+                        src={qrDataUrl}
+                        alt="TOTP QR Code"
+                        style={{ width: 200, height: 200, imageRendering: 'pixelated' }}
+                        draggable={false}
+                      />
+                    )}
+                  </div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider mt-3" style={{ color: '#a0a0a0' }}>
+                    Step 2: Enter Verification Code
+                  </div>
+                  <p className="text-[10px]" style={{ color: '#707070' }}>
+                    Enter the 6-digit code from your authenticator app to verify setup.
+                  </p>
+                  <TotpCodeInput
+                    value={setupCode}
+                    onChange={setSetupCode}
+                    onComplete={handleVerifySetup}
+                    disabled={securityBusy}
+                    error={securityMsg?.type === 'error'}
+                  />
+                  {securityBusy && (
+                    <div className="flex items-center justify-center gap-2">
+                      <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span className="text-[10px]" style={{ color: '#a0a0a0' }}>Verifying...</span>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => { setSetupStep('idle'); setSecurityMsg(null); }}
+                    className="text-[10px] uppercase tracking-wide font-bold transition-colors"
+                    style={{ color: '#666' }}
+                    onMouseEnter={e => { e.currentTarget.style.color = '#e0e0e0'; }}
+                    onMouseLeave={e => { e.currentTarget.style.color = '#666'; }}
+                  >
+                    Cancel Setup
+                  </button>
+                </div>
+              )}
+
+              {/* ── Step 3: Show Backup Codes ──────────── */}
+              {setupStep === 'backups' && (
+                <div className="space-y-3">
+                  <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#a0a0a0' }}>
+                    Recovery Codes
+                  </div>
+                  <div
+                    className="p-3"
+                    style={{
+                      background: '#0d0000',
+                      border: '1px solid #8a0c0c',
+                    }}
+                  >
+                    <div className="flex items-center gap-1 mb-2">
+                      <AlertCircle style={{ width: 12, height: 12, color: '#d93030' }} />
+                      <span className="text-[9px] font-bold uppercase" style={{ color: '#d93030' }}>
+                        Save these codes — they will not be shown again
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {backupCodes.map((code, i) => (
+                        <div
+                          key={i}
+                          className="text-center font-mono text-xs py-1"
+                          style={{ background: '#141414', border: '1px solid #282828', color: '#e0e0e0' }}
+                        >
+                          {code}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={handleCopyBackupCodes} className="btn-secondary flex-1">
+                      {copiedBackups ? (
+                        <><Check style={{ width: 12, height: 12 }} /> Copied!</>
+                      ) : (
+                        <><Copy style={{ width: 12, height: 12 }} /> Copy Codes</>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => { setSetupStep('idle'); setSecurityMsg(null); }}
+                      className="btn-primary flex-1"
+                    >
+                      <Check style={{ width: 12, height: 12 }} /> Done
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Disable 2FA: Re-enter password ─────── */}
+              {setupStep === 'disabling' && (
+                <div className="space-y-3">
+                  <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#a0a0a0' }}>
+                    Confirm Disable
+                  </div>
+                  <p className="text-[10px]" style={{ color: '#707070' }}>
+                    Enter your password to confirm disabling two-factor authentication.
+                  </p>
+                  <input
+                    type="password"
+                    value={disablePassword}
+                    onChange={e => setDisablePassword(e.target.value)}
+                    className="input-dark"
+                    placeholder="Current password"
+                    autoFocus
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { setSetupStep('idle'); setSecurityMsg(null); setDisablePassword(''); }}
+                      className="btn-secondary flex-1"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleDisable2FA}
+                      disabled={securityBusy || !disablePassword}
+                      className="btn-danger flex-1"
+                    >
+                      <ShieldOff style={{ width: 12, height: 12 }} />
+                      {securityBusy ? 'Disabling...' : 'Disable 2FA'}
+                    </button>
+                  </div>
+                </div>
+              )}
             </>
           )}
 

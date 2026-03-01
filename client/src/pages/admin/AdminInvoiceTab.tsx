@@ -5,6 +5,7 @@ import {
   CreditCard, Calendar, ChevronRight, Edit, Zap, Eye,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { toDisplayLabel } from '../../utils/formatters';
 import type { Invoice, InvoiceDetail, InvoiceLineItem, Payment, InvoiceStats, Client } from '../../types';
 import DocumentViewer from '../../components/DocumentViewer';
 import { localToday, dateToLocalYMD } from '../../utils/dateUtils';
@@ -420,7 +421,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
             <button onClick={() => { setView('list'); setSelectedInvoice(null); }} className="toolbar-btn"><ArrowLeft className="w-3.5 h-3.5" /></button>
             <span className="font-mono text-brand-400 font-bold text-sm">{inv.invoice_number}</span>
             <span className={`px-1.5 py-0.5 text-[9px] uppercase font-bold border rounded ${STATUS_BADGE[inv.status] || STATUS_BADGE.draft}`}>
-              {inv.status}
+              {toDisplayLabel(inv.status)}
             </span>
           </div>
           <div className="flex gap-1">

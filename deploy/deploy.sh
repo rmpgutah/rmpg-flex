@@ -7,6 +7,7 @@
 #   bash deploy/deploy.sh           — Upload code + deploy
 #   bash deploy/deploy.sh --all     — Upload code + installers + deploy
 #   bash deploy/deploy.sh --setup   — Full VPS setup (first time only)
+#   bash deploy/deploy.sh --ssl     — Install/renew SSL certificates
 # ============================================================
 
 set -e
@@ -22,6 +23,7 @@ PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 UPLOAD_CODE=true
 UPLOAD_DOWNLOADS=false
 FULL_SETUP=false
+SSL_SETUP=false
 
 case "${1:-}" in
   --all)
@@ -32,10 +34,15 @@ case "${1:-}" in
     UPLOAD_CODE=true
     UPLOAD_DOWNLOADS=true
     FULL_SETUP=true
+    SSL_SETUP=true
     ;;
   --downloads)
     UPLOAD_CODE=false
     UPLOAD_DOWNLOADS=true
+    ;;
+  --ssl)
+    UPLOAD_CODE=false
+    SSL_SETUP=true
     ;;
 esac
 
@@ -44,6 +51,7 @@ echo "╔═══════════════════════�
 echo "║        RMPG Flex — Production Deploy            ║"
 echo "╠══════════════════════════════════════════════════╣"
 echo "║  VPS: $VPS_IP                          ║"
+echo "║  Domain: $DOMAIN                       ║"
 echo "║  Dir: $APP_DIR                         ║"
 echo "╚══════════════════════════════════════════════════╝"
 echo ""
@@ -90,6 +98,71 @@ if [ "$FULL_SETUP" = true ]; then
 SETUPEOF
 fi
 
+# ─── SSL Certificate Setup ──────────────────────────────
+if [ "$SSL_SETUP" = true ]; then
+  echo ""
+  echo ">>> [SSL] Setting up Let's Encrypt certificates..."
+  ssh "$VPS_USER@$VPS_IP" bash << 'SSLEOF'
+    set -e
+    DOMAIN="rmpgutah.us"
+    APP_DIR="/opt/rmpg-flex"
+
+    # Install certbot if not present
+    if ! command -v certbot &>/dev/null; then
+      echo ">>> Installing certbot..."
+      apt-get update -qq
+      apt-get install -y certbot
+    fi
+    echo "    certbot: $(certbot --version 2>&1)"
+
+    # Check if certificate already exists
+    if [ -d "/etc/letsencrypt/live/$DOMAIN" ]; then
+      echo ">>> Certificate already exists — attempting renewal..."
+      certbot renew --quiet || true
+    else
+      echo ">>> Obtaining new certificate for $DOMAIN..."
+
+      # Stop the service temporarily so certbot can bind port 80
+      systemctl stop rmpg-flex 2>/dev/null || true
+
+      # Request certificate (standalone verification on port 80)
+      certbot certonly \
+        --standalone \
+        -d "$DOMAIN" \
+        -d "www.$DOMAIN" \
+        --non-interactive \
+        --agree-tos \
+        --email admin@rmpgutah.us
+
+      echo ">>> Certificate obtained successfully"
+    fi
+
+    # Symlink certs to where the RMPG Flex server expects them
+    mkdir -p "$APP_DIR/server/certs"
+    ln -sf "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" "$APP_DIR/server/certs/fullchain.pem"
+    ln -sf "/etc/letsencrypt/live/$DOMAIN/privkey.pem" "$APP_DIR/server/certs/privkey.pem"
+    echo "    Certs symlinked to $APP_DIR/server/certs/"
+
+    # Set up auto-renewal cron (runs daily at 3am, restarts server after renewal)
+    CRON_LINE="0 3 * * * certbot renew --quiet --post-hook 'systemctl restart rmpg-flex'"
+    if ! crontab -l 2>/dev/null | grep -q "certbot renew"; then
+      (crontab -l 2>/dev/null; echo "$CRON_LINE") | crontab -
+      echo "    Auto-renewal cron installed"
+    else
+      echo "    Auto-renewal cron already exists"
+    fi
+
+    # Verify certificates are readable
+    if [ -f "$APP_DIR/server/certs/fullchain.pem" ] && [ -f "$APP_DIR/server/certs/privkey.pem" ]; then
+      echo ""
+      echo "    ✅ SSL certificates ready"
+      openssl x509 -in "$APP_DIR/server/certs/fullchain.pem" -noout -dates 2>/dev/null || true
+    else
+      echo "    ❌ Certificate files not found — SSL may not work"
+    fi
+SSLEOF
+fi
+
 # ─── Ensure remote directory exists ──────────────────────
 ssh "$VPS_USER@$VPS_IP" "mkdir -p $APP_DIR/server/downloads"
 
@@ -131,9 +204,46 @@ ssh "$VPS_USER@$VPS_IP" bash << 'REMOTEEOF'
   APP_DIR="/opt/rmpg-flex"
   DOMAIN="rmpgutah.us"
 
-  # ── Create systemd service if it doesn't exist ──
-  if [ ! -f /etc/systemd/system/rmpg-flex.service ]; then
-    echo ">>> Creating systemd service..."
+  # ── Detect SSL certificates ──
+  HAS_SSL=false
+  if [ -f "$APP_DIR/server/certs/fullchain.pem" ] && [ -f "$APP_DIR/server/certs/privkey.pem" ]; then
+    HAS_SSL=true
+  fi
+
+  # ── Create/update systemd service ──
+  echo ">>> Configuring systemd service..."
+  if [ "$HAS_SSL" = true ]; then
+    # SSL mode: listen on 443, redirect HTTP 80→HTTPS
+    cat > /etc/systemd/system/rmpg-flex.service << 'SVCEOF'
+[Unit]
+Description=RMPG Flex CAD/RMS Server
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/rmpg-flex
+Environment=NODE_ENV=production
+Environment=PORT=443
+Environment=SSL_HTTP_REDIRECT=true
+Environment=SSL_HTTP_REDIRECT_PORT=80
+ExecStart=/usr/bin/npx tsx server/src/index.ts
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=rmpg-flex
+
+# Allow binding to privileged ports (80, 443)
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+    echo "    Service configured for HTTPS (port 443 + HTTP redirect on 80)"
+  else
+    # No SSL: listen on port 80
     cat > /etc/systemd/system/rmpg-flex.service << 'SVCEOF'
 [Unit]
 Description=RMPG Flex CAD/RMS Server
@@ -159,12 +269,10 @@ AmbientCapabilities=CAP_NET_BIND_SERVICE
 [Install]
 WantedBy=multi-user.target
 SVCEOF
-    systemctl daemon-reload
-    systemctl enable rmpg-flex
-    echo "    Service created and enabled"
-  else
-    echo ">>> Systemd service already exists"
+    echo "    Service configured for HTTP (port 80)"
   fi
+  systemctl daemon-reload
+  systemctl enable rmpg-flex
 
   # ── Deploy ──
   echo ">>> Deploying RMPG Flex..."
@@ -183,11 +291,17 @@ SVCEOF
   if [ ! -f server/.env ]; then
     echo ">>> Generating production .env..."
     JWT_SECRET=$(openssl rand -hex 64)
+
+    if [ "$HAS_SSL" = true ]; then
+      PROTOCOL="https"
+    else
+      PROTOCOL="http"
+    fi
+
     cat > server/.env << ENVEOF
 JWT_SECRET=${JWT_SECRET}
 JWT_ACCESS_EXPIRY=15m
 JWT_REFRESH_EXPIRY=7d
-PORT=80
 NODE_ENV=production
 PRIMARY_DOMAIN=${DOMAIN}
 MAX_LOGIN_ATTEMPTS=5
@@ -200,13 +314,22 @@ PASSWORD_REQUIRE_LOWERCASE=true
 PASSWORD_REQUIRE_NUMBER=true
 PASSWORD_REQUIRE_SPECIAL=false
 SESSION_MAX_PER_USER=5
-CORS_ORIGINS=http://${DOMAIN},http://194.113.64.90,http://localhost:5173,http://localhost:3001
-UPDATE_SERVER_URL=http://194.113.64.90
+CORS_ORIGINS=${PROTOCOL}://${DOMAIN},${PROTOCOL}://www.${DOMAIN},http://localhost:5173,http://localhost:3001
+UPDATE_SERVER_URL=${PROTOCOL}://${DOMAIN}
 SERVER_TIMEZONE=America/Denver
 ENVEOF
-    echo "    Generated .env with new JWT_SECRET"
+    echo "    Generated .env (protocol: $PROTOCOL)"
   else
     echo ">>> .env already exists — keeping current config"
+    # Update UPDATE_SERVER_URL and CORS_ORIGINS if SSL was just enabled
+    if [ "$HAS_SSL" = true ]; then
+      if grep -q "http://194.113.64.90" server/.env 2>/dev/null; then
+        echo ">>> Updating .env URLs to HTTPS..."
+        sed -i "s|UPDATE_SERVER_URL=http://194.113.64.90|UPDATE_SERVER_URL=https://${DOMAIN}|g" server/.env
+        sed -i "s|CORS_ORIGINS=http://${DOMAIN},http://194.113.64.90|CORS_ORIGINS=https://${DOMAIN},https://www.${DOMAIN}|g" server/.env
+        echo "    Updated .env URLs to HTTPS"
+      fi
+    fi
   fi
 
   # ── Restart service ──
@@ -219,14 +342,25 @@ ENVEOF
 
   # ── Verify ──
   if systemctl is-active --quiet rmpg-flex; then
-    echo ""
-    echo "╔══════════════════════════════════════════════════╗"
-    echo "║     ✓ DEPLOY SUCCESSFUL                         ║"
-    echo "╠══════════════════════════════════════════════════╣"
-    echo "║  Server:  http://194.113.64.90                  ║"
-    echo "║  Status:  RUNNING                               ║"
-    echo "║  Logs:    journalctl -u rmpg-flex -f            ║"
-    echo "╚══════════════════════════════════════════════════╝"
+    if [ "$HAS_SSL" = true ]; then
+      echo ""
+      echo "╔══════════════════════════════════════════════════╗"
+      echo "║     ✓ DEPLOY SUCCESSFUL (HTTPS)                 ║"
+      echo "╠══════════════════════════════════════════════════╣"
+      echo "║  Server:  https://${DOMAIN}                ║"
+      echo "║  Status:  RUNNING (SSL enabled)                 ║"
+      echo "║  Logs:    journalctl -u rmpg-flex -f            ║"
+      echo "╚══════════════════════════════════════════════════╝"
+    else
+      echo ""
+      echo "╔══════════════════════════════════════════════════╗"
+      echo "║     ✓ DEPLOY SUCCESSFUL                         ║"
+      echo "╠══════════════════════════════════════════════════╣"
+      echo "║  Server:  http://194.113.64.90                  ║"
+      echo "║  Status:  RUNNING                               ║"
+      echo "║  Logs:    journalctl -u rmpg-flex -f            ║"
+      echo "╚══════════════════════════════════════════════════╝"
+    fi
     echo ""
     systemctl status rmpg-flex --no-pager -l | head -15
   else
@@ -244,9 +378,9 @@ REMOTEEOF
 echo ""
 echo ">>> Verifying download endpoints..."
 
-# Quick verification of download API and file serving
+# Quick verification — try HTTPS first, fall back to HTTP
 sleep 2
-DL_INFO=$(curl -sf "http://$VPS_IP/api/downloads/info" 2>/dev/null || echo "")
+DL_INFO=$(curl -sf "https://$DOMAIN/api/downloads/info" 2>/dev/null || curl -sf "http://$VPS_IP/api/downloads/info" 2>/dev/null || echo "")
 
 if [ -n "$DL_INFO" ]; then
   WIN_VER=$(echo "$DL_INFO" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('win',{}).get('version','—'))" 2>/dev/null || echo "—")
@@ -260,6 +394,6 @@ else
 fi
 
 echo ""
-echo ">>> All done! Server is live at http://$VPS_IP"
-echo "    Download page: http://$VPS_IP/download"
+echo ">>> All done! Server is live at https://$DOMAIN"
+echo "    Download page: https://$DOMAIN/download"
 echo ""

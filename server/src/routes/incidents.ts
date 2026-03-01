@@ -4,6 +4,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { generateIncidentNumber } from '../utils/caseNumbers';
 import { sendCsv } from '../utils/csvExport';
 import { localNow } from '../utils/timeUtils';
+import { identifyBeat } from '../utils/geofence';
 
 const router = Router();
 
@@ -302,6 +303,35 @@ router.post('/', (req: Request, res: Response) => {
 
     const { statute_id, statute_citation, citation_fine } = req.body;
 
+    // ── Auto-fill Beat / Zone / Sector from GPS coordinates + 3-Tier lookup ──
+    let autoZoneBeat = zone_beat || null;
+    let autoSectionId = section_id || null;
+    let autoZoneId = zone_id || null;
+    let autoBeatId = beat_id || null;
+    if (latitude && longitude) {
+      try {
+        const beat = identifyBeat(Number(latitude), Number(longitude));
+        if (beat) {
+          if (!autoZoneBeat) autoZoneBeat = beat.beat_code;
+
+          // Look up 3-tier dispatch district for richer naming
+          const district = db.prepare(
+            'SELECT * FROM dispatch_districts WHERE zone_id = ? AND beat_id = ?'
+          ).get(beat.city_code, beat.district_letter) as any;
+
+          if (district) {
+            if (!autoSectionId) autoSectionId = district.section_id;
+            if (!autoZoneId) autoZoneId = district.zone_name;
+            if (!autoBeatId) autoBeatId = `${district.beat_name} — ${district.beat_descriptor}`;
+          } else {
+            if (!autoBeatId) autoBeatId = beat.beat_id;
+            if (!autoZoneId) autoZoneId = `${beat.city} ${beat.district_letter}${beat.beat_number}`;
+            if (!autoSectionId) autoSectionId = beat.district_letter;
+          }
+        }
+      } catch { /* geofence not configured, skip */ }
+    }
+
     const result = db.prepare(`
       INSERT INTO incidents (incident_number, call_id, incident_type, priority, status, location_address,
         property_id, latitude, longitude, narrative, officer_id,
@@ -335,7 +365,7 @@ router.post('/', (req: Request, res: Response) => {
       injuries ?? 'none', injury_description || null, damage_estimate || null, damage_description || null,
       weapons_involved || null,
       alcohol_involved ? 1 : 0, drugs_involved ? 1 : 0, domestic_violence ? 1 : 0,
-      disposition || null, zone_beat || null, section_id || null, zone_id || null, beat_id || null,
+      disposition || null, autoZoneBeat, autoSectionId, autoZoneId, autoBeatId,
       responding_le_agency || null, le_case_number || null,
       statute_id || null, statute_citation || null, citation_fine || null,
       resolvedClientId,

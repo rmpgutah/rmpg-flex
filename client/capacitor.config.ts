@@ -30,6 +30,13 @@ const config: CapacitorConfig = {
     // Allow geolocation in the WebView (critical for GPS tracking)
     appendUserAgent: 'RMPGFlex/Android',
   },
+  ios: {
+    backgroundColor: '#0a0e14',
+    contentInset: 'always',
+    allowsLinkPreview: false,
+    appendUserAgent: 'RMPGFlex/iOS',
+    preferredContentMode: 'mobile',
+  },
 };
 
 export default config;

@@ -1,6 +1,6 @@
 {
   "name": "rmpg-flex-server",
-  "version": "2.2.1",
+  "version": "5.3.9",
   "type": "module",
   "scripts": {
     "dev": "npx tsx watch src/index.ts",
@@ -9,13 +9,17 @@
     "seed": "npx tsx src/seeds/seed.ts"
   },
   "dependencies": {
+    "@types/qrcode": "^1.5.6",
     "bcryptjs": "^2.4.3",
     "better-sqlite3": "^11.7.0",
     "cors": "^2.8.5",
     "dotenv": "^17.3.1",
     "express": "^4.21.1",
     "jsonwebtoken": "^9.0.2",
+    "jspdf": "^4.2.0",
     "multer": "^1.4.5-lts.1",
+    "otpauth": "^9.5.0",
+    "qrcode": "^1.5.4",
     "uuid": "^10.0.0",
     "ws": "^8.18.0"
   },

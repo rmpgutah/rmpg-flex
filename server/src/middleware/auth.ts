@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt, { type SignOptions } from 'jsonwebtoken';
 import config from '../config';
+import { getDb } from '../models/database';
 
 export interface JwtPayload {
   userId: number;
@@ -8,7 +9,7 @@ export interface JwtPayload {
   role: string;
   fullName: string;
   sessionId?: string;
-  type?: 'access' | 'refresh';
+  type?: 'access' | 'refresh' | '2fa_pending';
 }
 
 // Extend Express Request to include user
@@ -32,10 +33,34 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
   try {
     const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
 
-    // Reject refresh tokens used as access tokens
-    if (decoded.type === 'refresh') {
+    // Reject refresh tokens and 2FA-pending tokens used as access tokens
+    if (decoded.type === 'refresh' || decoded.type === '2fa_pending') {
       res.status(403).json({ error: 'Invalid token type' });
       return;
+    }
+
+    // IP-based session validation
+    if (config.session.enforceIpBinding && decoded.sessionId) {
+      try {
+        const db = getDb();
+        const session = db.prepare(
+          'SELECT ip_address FROM sessions WHERE session_id = ? AND is_active = 1'
+        ).get(decoded.sessionId) as { ip_address: string } | undefined;
+
+        if (session && session.ip_address !== req.ip) {
+          const action = config.session.ipChangeAction;
+          if (action === 'invalidate') {
+            db.prepare('UPDATE sessions SET is_active = 0 WHERE session_id = ?')
+              .run(decoded.sessionId);
+            res.status(401).json({ error: 'Session invalidated: IP address changed', code: 'IP_CHANGED' });
+            return;
+          } else if (action === 'reauth') {
+            res.status(401).json({ error: 'Re-authentication required: IP address changed', code: 'IP_CHANGED_REAUTH' });
+            return;
+          }
+          // 'warn' mode: log but allow through
+        }
+      } catch { /* DB not available - allow through */ }
     }
 
     req.user = decoded;
@@ -53,6 +78,12 @@ export function requireRole(...roles: string[]) {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (!req.user) {
       res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
+
+    // Admin role always has full access to every endpoint
+    if (req.user.role === 'admin') {
+      next();
       return;
     }
 
@@ -89,6 +120,15 @@ export function verifyRefreshToken(token: string): JwtPayload {
     throw new Error('Invalid token type');
   }
   return decoded;
+}
+
+/** Short-lived token (5 min) for the 2FA verification step. Cannot access any protected endpoint. */
+export function generate2faPendingToken(payload: Omit<JwtPayload, 'type'>): string {
+  return jwt.sign(
+    { ...payload, type: '2fa_pending' },
+    config.jwt.secret,
+    { expiresIn: '5m' }
+  );
 }
 
 // Backwards compatibility

@@ -46,15 +46,29 @@ export function useIsCapacitor() {
   return isCapacitor;
 }
 
+// ─── Capacitor / iOS platform detection ─────────────────────
+// Mirrors the Android hook above. Checks Capacitor API + user-agent.
+
+export function useIsIOS() {
+  const [isIOS] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const cap = (window as any).Capacitor;
+    if (cap?.isNativePlatform?.() && cap?.getPlatform?.() === 'ios') return true;
+    return /RMPGFlex\/iOS/.test(navigator.userAgent);
+  });
+  return isIOS;
+}
+
 // ─── Combined mobile layout hook ─────────────────────────────
 // Single hook for components that need all mobile context.
 
 export function useMobileLayout(breakpoint = 768) {
   const isMobile = useIsMobile(breakpoint);
   const isAndroid = useIsAndroid();
+  const isIOS = useIsIOS();
   const isCapacitor = useIsCapacitor();
 
-  return { isMobile, isAndroid, isCapacitor };
+  return { isMobile, isAndroid, isIOS, isCapacitor };
 }
 
 export default useIsMobile;

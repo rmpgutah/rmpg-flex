@@ -475,7 +475,7 @@
 
   <div class="container">
     <div class="hero">
-      <div class="version-badge" id="version-badge">v2.2.3</div>
+      <div class="version-badge" id="version-badge">v5.3.9</div>
       <h2>Download RMPG Flex</h2>
       <p>Install RMPG Flex on your computer or phone. The full CAD/RMS dispatch system — available as a desktop app, Android app, or in any web browser.</p>
     </div>
@@ -581,22 +581,29 @@
         </div>
         <div class="step">
           <div class="step-num">2</div>
-          <div class="step-text">Open the downloaded <strong>.dmg</strong> file. Drag <strong>RMPG Flex</strong> into the <strong>Applications</strong> folder.</div>
+          <div class="step-text"><strong>Important — Remove quarantine before opening:</strong> Open <strong>Terminal</strong> (press <strong>Cmd+Space</strong>, type "Terminal") and run:<br /><code>xattr -d com.apple.quarantine ~/Downloads/RMPG\ Flex-5.3.9-arm64.dmg</code><br />This clears the macOS download flag so the installer can open.</div>
         </div>
         <div class="step">
           <div class="step-num">3</div>
-          <div class="step-text"><strong>Important — Remove quarantine flag:</strong> Open <strong>Terminal</strong> (search for it in Spotlight) and run this command:<br /><code>sudo xattr -cr /Applications/RMPG\ Flex.app</code><br />Enter your Mac password when prompted. This clears the macOS quarantine flag.</div>
+          <div class="step-text">Now open the <strong>.dmg</strong> file. Drag <strong>RMPG Flex</strong> into the <strong>Applications</strong> folder.</div>
         </div>
         <div class="step">
           <div class="step-num">4</div>
-          <div class="step-text">Now open <strong>RMPG Flex</strong> from the Applications folder. If macOS still asks, <strong>right-click</strong> the app and select <strong>"Open"</strong>, then click <strong>"Open"</strong> in the dialog.</div>
+          <div class="step-text"><strong>Clear the app quarantine too:</strong> Run this in Terminal:<br /><code>sudo xattr -cr /Applications/RMPG\ Flex.app</code><br />Enter your Mac password when prompted.</div>
         </div>
         <div class="step">
           <div class="step-num">5</div>
-          <div class="step-text">The app will start and connect to the server automatically. Future launches work normally from the Dock or Launchpad.</div>
+          <div class="step-text">Open <strong>RMPG Flex</strong> from the Applications folder. If macOS still warns, <strong>right-click</strong> the app → <strong>"Open"</strong> → click <strong>"Open"</strong> in the dialog.</div>
+        </div>
+        <div class="step">
+          <div class="step-num">6</div>
+          <div class="step-text">The app starts and connects to the server automatically. Future launches work normally from the Dock or Launchpad.</div>
         </div>
         <div class="warning-box">
-          <strong>Getting "damaged and can't be opened"?</strong> This is normal for apps distributed outside the App Store. Open Terminal and run: <code>sudo xattr -cr /Applications/RMPG\ Flex.app</code> — this removes the macOS quarantine flag. After that, the app will open normally.
+          <strong>Getting "damaged and can't be opened" or asked to delete?</strong> This is normal for apps outside the App Store. Run both commands in Terminal:<br />
+          <code>xattr -d com.apple.quarantine ~/Downloads/RMPG\ Flex-5.3.9-arm64.dmg</code><br />
+          <code>sudo xattr -cr /Applications/RMPG\ Flex.app</code><br />
+          The first clears the DMG download flag, the second clears the app flag. After that, it opens normally.
         </div>
       </div>
 
@@ -643,7 +650,7 @@
   </div>
 
   <div class="footer">
-    <span id="footer-version">RMPG Flex v2.2.3</span> &mdash; Rocky Mountain Protective Group, LLC<br />
+    <span id="footer-version">RMPG Flex v5.3.9</span> &mdash; Rocky Mountain Protective Group, LLC<br />
     <a href="/">Open Web App</a>
   </div>
 
@@ -662,7 +669,7 @@
           for (var i = 0; i < 3; i++) { if ((pa[i]||0) !== (pb[i]||0)) return (pb[i]||0) - (pa[i]||0); }
           return 0;
         });
-        var version = versions[0] || '2.2.3';
+        var version = versions[0] || '5.3.9';
         document.getElementById('version-badge').textContent = 'v' + version;
         document.getElementById('footer-version').textContent = 'RMPG Flex v' + version;
 

@@ -1,62 +1,42 @@
 // ============================================================
-// RMPG Flex — Electron Main Process
-// Wraps the Express server + React client into a native app
-// for Windows and macOS.
+// RMPG Flex — Electron Main Process (Thin Client)
+// Loads the RMPG Flex web application from the remote server.
+// All data, authentication, and business logic live on the VPS.
+// The desktop app provides: native window, system tray, and
+// automatic updates via electron-updater.
 // ============================================================
 
-const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net } = require('electron');
 const path = require('path');
-const { fork, spawn } = require('child_process');
-const http = require('http');
 const { AppUpdater } = require('./updater');
+const { initLocalDb, getLocalDb, closeLocalDb, getConfig, setConfig, getQueueDepth, getSyncMeta } = require('./localDb');
+const { ConnectivityMonitor } = require('./connectivityMonitor');
 
 // ─── Configuration ──────────────────────────────────────────
-const SERVER_PORT = 3001;
 const APP_TITLE = 'RMPG Flex — CAD/RMS';
 const DEV_MODE = process.argv.includes('--dev');
-const UPDATE_SERVER_URL = DEV_MODE
-  ? `http://localhost:${SERVER_PORT}`
-  : (process.env.UPDATE_SERVER_URL || 'http://194.113.64.90');
+
+// Remote server URL — the single source of truth for all data.
+// In dev mode, points at the local development server.
+// In production, points at the RMPG Flex VPS.
+const REMOTE_SERVER_URL = DEV_MODE
+  ? 'http://localhost:3001'
+  : (process.env.UPDATE_SERVER_URL || 'https://rmpgutah.us');
 
 let mainWindow = null;
 let splashWindow = null;
 let tray = null;
-let serverProcess = null;
 let isQuitting = false;
 const appUpdater = new AppUpdater();
+let connectivityMonitor = null;
+
+// These modules are loaded lazily after the local DB is initialized
+// (they require localDb to be ready)
+let offlineRouter = null;
+let syncManager = null;
+let pinManager = null;
 
 // ─── Resolve Paths ──────────────────────────────────────────
-function getServerDir() {
-  return DEV_MODE
-    ? path.join(__dirname, '..', 'server')
-    : path.join(process.resourcesPath, 'server');
-}
-
-/**
- * In production, C:\Program Files is read-only on Windows.
- * Store writable data (SQLite DB, uploads) in the user's AppData directory.
- * In dev mode, keep using the project-local server/data and server/uploads.
- */
-function getUserDataDir() {
-  if (DEV_MODE) {
-    return path.join(__dirname, '..', 'server', 'data');
-  }
-  return path.join(app.getPath('userData'), 'data');
-}
-
-function getUserUploadsDir() {
-  if (DEV_MODE) {
-    return path.join(__dirname, '..', 'server', 'uploads');
-  }
-  return path.join(app.getPath('userData'), 'uploads');
-}
-
-function getClientDistDir() {
-  return DEV_MODE
-    ? path.join(__dirname, '..', 'client', 'dist')
-    : path.join(process.resourcesPath, 'client', 'dist');
-}
-
 function getIconPath() {
   return DEV_MODE
     ? path.join(__dirname, '..', 'client', 'public', 'favicon.png')
@@ -153,7 +133,7 @@ function createSplashWindow() {
       <h1>RMPG Flex</h1>
       <p class="subtitle">CAD / RMS Dispatch System</p>
       <div class="spinner"></div>
-      <p class="status" id="status">Starting server...</p>
+      <p class="status">Connecting to server...</p>
     </body>
     </html>
   `)}`;
@@ -168,157 +148,122 @@ function closeSplash() {
   }
 }
 
-// ─── Server Management ─────────────────────────────────────
-function startServer() {
-  return new Promise((resolve, reject) => {
-    const serverDir = getServerDir();
-    const serverEntry = path.join(serverDir, 'src', 'index.ts');
-    const isWin = process.platform === 'win32';
-
-    // Use writable user-data directory (avoids EPERM on C:\Program Files)
-    const dataDir = getUserDataDir();
-    const uploadsDir = getUserUploadsDir();
-    const fs = require('fs');
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
-      console.log('[SERVER] Created data directory:', dataDir);
-    }
-    if (!fs.existsSync(uploadsDir)) {
-      fs.mkdirSync(uploadsDir, { recursive: true });
-      console.log('[SERVER] Created uploads directory:', uploadsDir);
-    }
-
-    // Resolve tsx binary — works in both dev and production
-    const tsxBin = path.join(serverDir, 'node_modules', '.bin', isWin ? 'tsx.cmd' : 'tsx');
-
-    console.log('[SERVER] Starting from:', serverDir);
-    console.log('[SERVER] Entry:', serverEntry);
-    console.log('[SERVER] tsx bin:', tsxBin);
-    console.log('[SERVER] tsx exists:', fs.existsSync(tsxBin));
-    console.log('[SERVER] Entry exists:', fs.existsSync(serverEntry));
-    console.log('[SERVER] Platform:', process.platform, process.arch);
-    console.log('[SERVER] Data dir:', dataDir);
-    console.log('[SERVER] Uploads dir:', uploadsDir);
-
-    // Collect stderr for error reporting
-    let stderrOutput = '';
-
-    // On Windows, spawn with shell: true concatenates args unquoted, so paths
-    // containing spaces (e.g. "C:\Program Files\RMPG Flex\...") break.
-    // Fix: quote the paths explicitly when using shell mode on Windows.
-    const serverEnv = {
-      ...process.env,
-      NODE_ENV: DEV_MODE ? 'development' : 'production',
-      PORT: String(SERVER_PORT),
-      HOST: '0.0.0.0',
-      CORS_ORIGINS: `http://localhost:${SERVER_PORT},http://127.0.0.1:${SERVER_PORT},http://localhost:5173`,
-      RMPG_DATA_DIR: dataDir,
-      RMPG_UPLOADS_DIR: uploadsDir,
-    };
-
-    if (isWin) {
-      // Windows: run cmd.exe /c "tsx.cmd" "serverEntry" with windowsVerbatimArguments
-      // This ensures paths with spaces are preserved correctly
-      serverProcess = spawn('cmd.exe', ['/c', `"${tsxBin}" "${serverEntry}"`], {
-        cwd: serverDir,
-        env: serverEnv,
-        stdio: ['ignore', 'pipe', 'pipe'],
-        shell: false,
-        windowsVerbatimArguments: true,
-      });
-    } else {
-      // macOS / Linux: no quoting issues, spawn directly
-      serverProcess = spawn(tsxBin, [serverEntry], {
-        cwd: serverDir,
-        env: serverEnv,
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
-    }
-
-    let resolved = false;
-
-    serverProcess.stdout.on('data', (data) => {
-      const output = data.toString();
-      console.log('[SERVER]', output.trim());
-      if (!resolved && output.includes('RMPG Flex CAD/RMS Server')) {
-        resolved = true;
-        resolve();
-      }
-    });
-
-    serverProcess.stderr.on('data', (data) => {
-      const output = data.toString().trim();
-      stderrOutput += output + '\n';
-      // dotenv warnings are normal, don't log as errors
-      if (output.includes('[dotenv@') || output.includes('ExperimentalWarning')) {
-        console.log('[SERVER]', output);
-      } else {
-        console.error('[SERVER ERR]', output);
-      }
-    });
-
-    serverProcess.on('error', (err) => {
-      console.error('[SERVER] Failed to spawn:', err);
-      if (!resolved) {
-        resolved = true;
-        reject(new Error(`Failed to start server process: ${err.message}\n\ntsx binary: ${tsxBin}\nServer dir: ${serverDir}`));
-      }
-    });
-
-    serverProcess.on('exit', (code) => {
-      console.log(`[SERVER] Exited with code ${code}`);
-      serverProcess = null;
-      if (!resolved) {
-        resolved = true;
-        // Include stderr in error message for debugging
-        const errDetail = stderrOutput
-          ? `\n\nServer output:\n${stderrOutput.slice(-2000)}`
-          : '';
-        reject(new Error(`Server exited with code ${code}${errDetail}`));
-      }
-    });
-
-    // Fallback: poll for server readiness
+// ─── Server Connectivity Check ──────────────────────────────
+/**
+ * Verify that the remote RMPG Flex server is reachable.
+ * Retries a few times with short delays before giving up.
+ */
+function checkServerConnectivity() {
+  return new Promise((resolve) => {
     let attempts = 0;
-    const maxAttempts = 30;
-    const pollInterval = setInterval(() => {
+    const maxAttempts = 5;
+    const delayMs = 2000;
+
+    function tryConnect() {
       attempts++;
-      http.get(`http://localhost:${SERVER_PORT}/api/health`, (res) => {
-        if (res.statusCode === 200 && !resolved) {
-          clearInterval(pollInterval);
-          resolved = true;
-          resolve();
-        }
-      }).on('error', () => {
-        if (attempts >= maxAttempts && !resolved) {
-          clearInterval(pollInterval);
-          resolved = true;
-          const errDetail = stderrOutput
-            ? `\n\nServer output:\n${stderrOutput.slice(-2000)}`
-            : '';
-          reject(new Error(`Server failed to start within 30 seconds${errDetail}`));
+      console.log(`[APP] Connectivity check attempt ${attempts}/${maxAttempts}: ${REMOTE_SERVER_URL}/api/health`);
+
+      const request = net.request(`${REMOTE_SERVER_URL}/api/health`);
+
+      request.on('response', (response) => {
+        if (response.statusCode === 200) {
+          console.log('[APP] Server is reachable');
+          resolve(true);
+        } else if (attempts < maxAttempts) {
+          setTimeout(tryConnect, delayMs);
+        } else {
+          resolve(false);
         }
       });
-    }, 1000);
+
+      request.on('error', (err) => {
+        console.log(`[APP] Connection attempt ${attempts} failed:`, err.message);
+        if (attempts < maxAttempts) {
+          setTimeout(tryConnect, delayMs);
+        } else {
+          resolve(false);
+        }
+      });
+
+      request.end();
+    }
+
+    tryConnect();
   });
 }
 
-function stopServer() {
-  if (serverProcess) {
-    console.log('[SERVER] Stopping...');
-    if (process.platform === 'win32') {
-      spawn('taskkill', ['/pid', String(serverProcess.pid), '/f', '/t']);
-    } else {
-      serverProcess.kill('SIGTERM');
-      // Force kill after 5 seconds if still running
-      setTimeout(() => {
-        if (serverProcess) {
-          try { serverProcess.kill('SIGKILL'); } catch {}
+// ─── Connection Error Page ──────────────────────────────────
+/**
+ * HTML page shown when the remote server is unreachable.
+ * Includes a retry button that reloads the remote URL.
+ */
+function getOfflineHTML() {
+  return `data:text/html;charset=utf-8,${encodeURIComponent(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          background: #1a1a1a;
+          color: #fff;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          height: 100vh;
+          text-align: center;
+          padding: 40px;
         }
-      }, 5000);
-    }
-    serverProcess = null;
-  }
+        .icon {
+          font-size: 64px;
+          margin-bottom: 24px;
+          opacity: 0.6;
+        }
+        h1 {
+          font-size: 22px;
+          font-weight: 600;
+          margin-bottom: 12px;
+          color: #e0e0e0;
+        }
+        p {
+          font-size: 14px;
+          color: #888;
+          max-width: 400px;
+          line-height: 1.6;
+          margin-bottom: 32px;
+        }
+        button {
+          padding: 12px 32px;
+          font-size: 14px;
+          font-weight: 600;
+          background: #c41e1e;
+          color: #fff;
+          border: none;
+          border-radius: 6px;
+          cursor: pointer;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+        }
+        button:hover { background: #a01818; }
+        .server-url {
+          margin-top: 24px;
+          font-size: 11px;
+          color: #555;
+          font-family: monospace;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="icon">&#128268;</div>
+      <h1>Connection Lost</h1>
+      <p>Unable to connect to the RMPG Flex server. Please check your internet connection and try again.</p>
+      <button onclick="window.location.href='${REMOTE_SERVER_URL}'">Retry Connection</button>
+      <div class="server-url">${REMOTE_SERVER_URL}</div>
+    </body>
+    </html>
+  `)}`;
 }
 
 // ─── Window Creation ────────────────────────────────────────
@@ -342,8 +287,27 @@ function createMainWindow() {
     trafficLightPosition: { x: 12, y: 12 },
   });
 
-  // Load the app
-  mainWindow.loadURL(`http://localhost:${SERVER_PORT}`);
+  // ── Grant geolocation permission automatically ──────────
+  // Electron denies geolocation by default. For RMPG Flex, GPS
+  // tracking is mandatory for all logged-in users — auto-grant it.
+  mainWindow.webContents.session.setPermissionRequestHandler(
+    (_webContents, permission, callback) => {
+      const allowed = ['geolocation', 'notifications', 'media'];
+      callback(allowed.includes(permission));
+    }
+  );
+
+  // Also handle the newer permission-check API (Electron 20+)
+  mainWindow.webContents.session.setPermissionCheckHandler(
+    (_webContents, permission) => {
+      if (permission === 'geolocation') return true;
+      return false;
+    }
+  );
+
+  // Load the remote web application
+  console.log('[APP] Loading:', REMOTE_SERVER_URL);
+  mainWindow.loadURL(REMOTE_SERVER_URL);
 
   // Show window when ready, close splash
   mainWindow.once('ready-to-show', () => {
@@ -352,9 +316,24 @@ function createMainWindow() {
     mainWindow.focus();
   });
 
+  // Handle page load failures (server down, network error)
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    console.error(`[APP] Page load failed: ${errorDescription} (code ${errorCode})`);
+    // Show the offline page with a retry button
+    mainWindow.loadURL(getOfflineHTML());
+  });
+
+  // Extract the server's hostname for link filtering
+  let serverHost;
+  try {
+    serverHost = new URL(REMOTE_SERVER_URL).host;
+  } catch {
+    serverHost = 'rmpgutah.us';
+  }
+
   // Open external links in default browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('http') && !url.includes(`localhost:${SERVER_PORT}`)) {
+    if (url.startsWith('http') && !url.includes(serverHost)) {
       shell.openExternal(url);
       return { action: 'deny' };
     }
@@ -385,6 +364,132 @@ ipcMain.on('window:maximize', () => {
 });
 ipcMain.on('window:close', () => mainWindow?.close());
 ipcMain.handle('app:version', () => app.getVersion());
+
+// ─── Offline Mode IPC Handlers ──────────────────────────────
+
+// Route an API request through the local SQLite database
+ipcMain.handle('offline:api', async (_event, { method, path, body }) => {
+  try {
+    if (!offlineRouter) return { status: 503, error: 'Offline mode not initialized' };
+    return offlineRouter.handle(method, path, body);
+  } catch (err) {
+    console.error('[OFFLINE:API] Error:', err.message);
+    return { status: 500, error: err.message };
+  }
+});
+
+// Get current offline/authorization state
+ipcMain.handle('offline:state', () => {
+  try {
+    const db = getLocalDb();
+    const isOnline = connectivityMonitor ? connectivityMonitor.isOnline : true;
+
+    // Check for active PIN session for the current cached user
+    const cachedUserId = getConfig('current_user_id');
+    const cachedRole = getConfig('current_user_role');
+    let isLocalAuthorized = false;
+    let expiresAt = null;
+
+    // Admin always has local access
+    if (cachedRole === 'admin') {
+      isLocalAuthorized = true;
+    } else if (cachedUserId) {
+      // Check for active PIN session
+      const session = db.prepare(
+        `SELECT expires_at FROM pin_sessions
+         WHERE user_id = ? AND is_active = 1 AND expires_at > ?
+         ORDER BY expires_at DESC LIMIT 1`
+      ).get(cachedUserId, new Date().toISOString());
+      if (session) {
+        isLocalAuthorized = true;
+        expiresAt = session.expires_at;
+      }
+    }
+
+    return {
+      isOnline,
+      isLocalAuthorized,
+      expiresAt,
+      role: cachedRole || null,
+      syncQueueDepth: getQueueDepth(),
+    };
+  } catch (err) {
+    console.error('[OFFLINE:STATE] Error:', err.message);
+    return { isOnline: true, isLocalAuthorized: false, expiresAt: null, role: null, syncQueueDepth: 0 };
+  }
+});
+
+// Employee enters a PIN to unlock 24h local writes
+ipcMain.handle('offline:enter-pin', (_event, { pin }) => {
+  try {
+    if (!pinManager) return { success: false, error: 'PIN system not initialized' };
+    return pinManager.validatePin(pin);
+  } catch (err) {
+    console.error('[OFFLINE:PIN] Error:', err.message);
+    return { success: false, error: err.message };
+  }
+});
+
+// Admin generates a PIN for an employee
+ipcMain.handle('offline:generate-pin', (_event, { userId }) => {
+  try {
+    if (!pinManager) return { error: 'PIN system not initialized' };
+    return pinManager.generatePinForUser(userId);
+  } catch (err) {
+    console.error('[OFFLINE:GENERATE-PIN] Error:', err.message);
+    return { error: err.message };
+  }
+});
+
+// Get sync status
+ipcMain.handle('offline:sync-status', () => {
+  try {
+    const tables = ['users', 'clients', 'properties', 'calls_for_service', 'units', 'incidents', 'persons', 'vehicles_records'];
+    const status = {};
+    for (const t of tables) {
+      status[t] = getSyncMeta(t);
+    }
+    return {
+      tables: status,
+      queueDepth: getQueueDepth(),
+      isSyncing: syncManager ? syncManager.isSyncing : false,
+      lastPush: syncManager ? syncManager.lastPushAt : null,
+    };
+  } catch (err) {
+    console.error('[OFFLINE:SYNC-STATUS] Error:', err.message);
+    return { tables: {}, queueDepth: 0, isSyncing: false, lastPush: null };
+  }
+});
+
+// Force an immediate sync cycle
+ipcMain.handle('offline:trigger-sync', async () => {
+  try {
+    if (syncManager && connectivityMonitor?.isOnline) {
+      await syncManager.pullAll();
+      return { success: true };
+    }
+    return { success: false, error: 'Sync not available (offline or not initialized)' };
+  } catch (err) {
+    console.error('[OFFLINE:TRIGGER-SYNC] Error:', err.message);
+    return { success: false, error: err.message };
+  }
+});
+
+// Get locally cached user for offline authentication
+ipcMain.handle('offline:get-cached-user', (_event, { username }) => {
+  try {
+    const db = getLocalDb();
+    const user = db.prepare(
+      `SELECT id, username, password_hash, first_name, last_name, full_name,
+              email, role, badge_number, phone, status, avatar_url, created_at
+       FROM users WHERE username = ? AND status = 'active'`
+    ).get(username);
+    return user || null;
+  } catch (err) {
+    console.error('[OFFLINE:CACHED-USER] Error:', err.message);
+    return null;
+  }
+});
 
 // ─── Application Menu ───────────────────────────────────────
 function createMenu() {
@@ -522,40 +627,64 @@ app.whenReady().then(async () => {
   console.log('[APP] Starting RMPG Flex...');
   console.log('[APP] Mode:', DEV_MODE ? 'development' : 'production');
   console.log('[APP] Platform:', process.platform, process.arch);
+  console.log('[APP] Server:', REMOTE_SERVER_URL);
 
-  // Show splash screen while server starts
+  // Show splash screen while connecting
   createSplashWindow();
 
   try {
-    // Check if server is already running (dev mode)
-    const serverRunning = await new Promise((resolve) => {
-      http.get(`http://localhost:${SERVER_PORT}/api/health`, (res) => {
-        resolve(res.statusCode === 200);
-      }).on('error', () => resolve(false));
-    });
+    // Initialize local database for offline support
+    initLocalDb();
 
-    if (!serverRunning) {
-      console.log('[APP] Starting embedded server...');
-      await startServer();
-      console.log('[APP] Server started successfully');
-    } else {
-      console.log('[APP] Server already running on port', SERVER_PORT);
+    // Check server connectivity before loading the app
+    const isReachable = await checkServerConnectivity();
+
+    if (!isReachable) {
+      console.warn('[APP] Server unreachable — will show offline page');
     }
 
     createMenu();
     createMainWindow();
     createTray();
 
-    // Initialize auto-updater after everything is ready
-    // In dev mode, checks localhost; in production, checks rmpgutah.us (or UPDATE_SERVER_URL)
-    console.log('[APP] Initializing auto-updater with:', UPDATE_SERVER_URL);
-    appUpdater.init(UPDATE_SERVER_URL);
+    // Initialize auto-updater
+    console.log('[APP] Initializing auto-updater with:', REMOTE_SERVER_URL);
+    appUpdater.init(REMOTE_SERVER_URL);
+
+    // Initialize offline modules (lazy-loaded after local DB is ready)
+    try {
+      offlineRouter = require('./offlineRouter');
+      pinManager = require('./pinManager');
+      pinManager.init(mainWindow);
+      syncManager = require('./syncManager');
+      console.log('[APP] Offline modules loaded');
+    } catch (err) {
+      console.warn('[APP] Offline modules not yet available:', err.message);
+    }
+
+    // Start connectivity monitor
+    connectivityMonitor = new ConnectivityMonitor(REMOTE_SERVER_URL);
+    connectivityMonitor.isOnline = isReachable; // Set initial state from startup check
+    connectivityMonitor.start(mainWindow, (nowOnline) => {
+      console.log(`[APP] Connectivity transition → ${nowOnline ? 'ONLINE' : 'OFFLINE'}`);
+      // When coming back online, trigger push sync
+      if (nowOnline && syncManager && syncManager.pushAll) {
+        syncManager.pushAll().catch(err => {
+          console.error('[APP] Push sync on reconnect failed:', err.message);
+        });
+      }
+    });
+
+    // Start background pull sync if online
+    if (isReachable && syncManager && syncManager.startPullSchedule) {
+      syncManager.startPullSchedule(REMOTE_SERVER_URL, mainWindow);
+    }
   } catch (err) {
     console.error('[APP] Failed to start:', err);
     closeSplash();
     dialog.showErrorBox(
       'RMPG Flex — Startup Error',
-      `Failed to start the server.\n\n${err.message}\n\nMake sure port ${SERVER_PORT} is available and try again.`
+      `Failed to start RMPG Flex.\n\n${err.message}\n\nPlease check your internet connection and try again.`
     );
     app.quit();
   }
@@ -573,7 +702,12 @@ app.on('activate', () => {
 app.on('before-quit', () => {
   isQuitting = true;
   appUpdater.destroy();
-  stopServer();
+
+  // Clean up offline modules
+  if (connectivityMonitor) connectivityMonitor.stop();
+  if (syncManager && syncManager.stopPullSchedule) syncManager.stopPullSchedule();
+  if (pinManager && pinManager.destroy) pinManager.destroy();
+  closeLocalDb();
 });
 
 app.on('window-all-closed', () => {

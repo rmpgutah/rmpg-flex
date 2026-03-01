@@ -16,6 +16,8 @@ import { securityHeaders } from './middleware/securityHeaders';
 import { sanitizeInput } from './middleware/sanitize';
 import { apiRateLimit } from './middleware/rateLimiter';
 import { liveBroadcast } from './middleware/liveBroadcast';
+import { startPatrolMonitor } from './utils/patrolMonitor';
+import { startDailyReportScheduler } from './utils/dailyReportGenerator';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -55,6 +57,15 @@ import adminSystemsRoutes from './routes/adminSystems';
 import shiftPlanRoutes from './routes/shiftPlans';
 import downloadsRoutes, { mountDownloadFileRoute } from './routes/downloads';
 import serveManagerRoutes from './routes/servemanager';
+import microbiltRoutes from './routes/microbilt';
+import fieldInterviewRoutes from './routes/fieldInterviews';
+import trespassOrderRoutes from './routes/trespassOrders';
+import caseRoutes from './routes/cases';
+import codeEnforcementRoutes from './routes/codeEnforcement';
+import courtRoutes from './routes/court';
+import darRoutes from './routes/dar';
+import offenderRegistryRoutes from './routes/offenderRegistry';
+import offlineRoutes from './routes/offline';
 
 const app = express();
 
@@ -79,7 +90,7 @@ app.use(cors({
   credentials: true,
 }));
 app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(sanitizeInput);
 
 // Apply rate limiting to API routes
@@ -148,6 +159,15 @@ app.use('/api/admin', shiftPlanRoutes);
 app.use('/api/downloads', downloadsRoutes);
 app.use('/api/updates', downloadsRoutes);
 app.use('/api/servemanager', serveManagerRoutes);
+app.use('/api/microbilt', microbiltRoutes);
+app.use('/api/field-interviews', fieldInterviewRoutes);
+app.use('/api/trespass-orders', trespassOrderRoutes);
+app.use('/api/cases', caseRoutes);
+app.use('/api/code-enforcement', codeEnforcementRoutes);
+app.use('/api/court', courtRoutes);
+app.use('/api/dar', darRoutes);
+app.use('/api/offender-registry', offenderRegistryRoutes);
+app.use('/api/offline', offlineRoutes);
 
 // Mount download page and file serving routes (outside /api)
 // Also mounts /updates/latest.yml, /updates/latest-mac.yml for electron-updater
@@ -198,6 +218,15 @@ app.get('*', (req, res) => {
         res.status(404).json({ error: 'Not found' });
       }
     });
+  }
+});
+
+// ─── Global Error Handler ────────────────────────────
+// Catches unhandled middleware errors (multer, body-parser, etc.)
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error('Unhandled Express error:', err?.message || err, err?.stack || '');
+  if (!res.headersSent) {
+    res.status(500).json({ error: err?.message || 'Internal server error' });
   }
 });
 
@@ -255,6 +284,11 @@ try {
 
   const displayHost = config.isProduction ? config.primaryDomain : 'localhost';
 
+  // Increase timeouts for large file uploads (body cam video — up to 2 GB)
+  primaryServer.requestTimeout = 600000;   // 10 min
+  primaryServer.headersTimeout = 120000;   // 2 min for headers
+  primaryServer.keepAliveTimeout = 120000; // 2 min keepalive
+
   primaryServer.listen(listenPort, listenHost, () => {
     console.log('');
     console.log('╔══════════════════════════════════════════════════╗');
@@ -288,6 +322,12 @@ try {
     console.log('║    /api/health     - Health Check                ║');
     console.log('╚══════════════════════════════════════════════════╝');
     console.log('');
+
+    // Start patrol monitor for missed scan alerts
+    startPatrolMonitor(5 * 60 * 1000); // Check every 5 minutes
+
+    // Start midnight daily patrol report scheduler
+    startDailyReportScheduler();
   });
 } catch (error) {
   console.error('Failed to start server:', error);

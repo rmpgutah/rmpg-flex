@@ -43,10 +43,6 @@ class AppUpdater {
       useMultipleRangeRequest: false,
     });
 
-    // Allow HTTP for update server (VPS may not have SSL yet)
-    // electron-updater blocks HTTP by default in some versions
-    process.env.ELECTRON_UPDATER_ALLOW_HTTP = 'true';
-
     // ─── Event handlers ───────────────────────────────
     this._setupEventHandlers();
 

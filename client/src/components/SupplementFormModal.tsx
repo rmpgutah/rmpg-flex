@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { FileText } from 'lucide-react';
 import FormModal from './FormModal';
+import { useFormDirty } from '../hooks/useFormDirty';
 import type { SupplementalReportType } from '../types';
 
 export interface SupplementFormData {
@@ -17,6 +18,12 @@ interface SupplementFormModalProps {
   incidentNumber: string;
 }
 
+const EMPTY_FORM: SupplementFormData = {
+  report_type: 'supplemental',
+  subject: '',
+  narrative: '',
+};
+
 const REPORT_TYPES: { value: SupplementalReportType; label: string }[] = [
   { value: 'supplemental', label: 'Supplemental Report' },
   { value: 'follow_up', label: 'Follow-Up Report' },
@@ -32,16 +39,20 @@ export default function SupplementFormModal({
   isSubmitting,
   incidentNumber,
 }: SupplementFormModalProps) {
-  const [reportType, setReportType] = useState<SupplementalReportType>('supplemental');
-  const [subject, setSubject] = useState('');
-  const [narrative, setNarrative] = useState('');
+  const [form, setForm] = useState<SupplementFormData>(EMPTY_FORM);
+  const { isDirty, snapshot } = useFormDirty(form, isOpen);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      setForm(EMPTY_FORM);
+      snapshot(EMPTY_FORM);
+    }
+  }, [isOpen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await onSubmit({ report_type: reportType, subject, narrative });
-    setReportType('supplemental');
-    setSubject('');
-    setNarrative('');
+    await onSubmit(form);
+    setForm(EMPTY_FORM);
   };
 
   return (
@@ -54,14 +65,15 @@ export default function SupplementFormModal({
       submitLabel="Create Supplement"
       isSubmitting={isSubmitting}
       maxWidth="max-w-xl"
+      isDirty={isDirty}
     >
       <div className="space-y-3">
         <div>
           <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-1">Report Type</label>
           <select
             className="select-dark w-full text-[11px]"
-            value={reportType}
-            onChange={(e) => setReportType(e.target.value as SupplementalReportType)}
+            value={form.report_type}
+            onChange={(e) => setForm((prev) => ({ ...prev, report_type: e.target.value as SupplementalReportType }))}
           >
             {REPORT_TYPES.map((t) => (
               <option key={t.value} value={t.value}>{t.label}</option>
@@ -72,8 +84,8 @@ export default function SupplementFormModal({
           <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-1">Subject *</label>
           <input
             className="input-dark w-full text-[11px]"
-            value={subject}
-            onChange={(e) => setSubject(e.target.value)}
+            value={form.subject}
+            onChange={(e) => setForm((prev) => ({ ...prev, subject: e.target.value }))}
             placeholder="Brief subject of this supplement"
             required
           />
@@ -83,8 +95,8 @@ export default function SupplementFormModal({
           <textarea
             className="textarea-dark w-full text-[11px]"
             rows={10}
-            value={narrative}
-            onChange={(e) => setNarrative(e.target.value)}
+            value={form.narrative}
+            onChange={(e) => setForm((prev) => ({ ...prev, narrative: e.target.value }))}
             placeholder="Enter detailed narrative..."
             required
           />

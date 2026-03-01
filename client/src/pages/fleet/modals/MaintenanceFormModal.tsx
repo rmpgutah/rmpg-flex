@@ -29,6 +29,7 @@ const MAINTENANCE_TYPES = [
 
 interface Props {
   isOpen: boolean;
+  mode?: 'create' | 'edit';
   form: MaintenanceFormState;
   onChange: (form: MaintenanceFormState) => void;
   onSave: () => void;
@@ -36,7 +37,7 @@ interface Props {
   saving: boolean;
 }
 
-export default function MaintenanceFormModal({ isOpen, form, onChange, onSave, onClose, saving }: Props) {
+export default function MaintenanceFormModal({ isOpen, mode = 'create', form, onChange, onSave, onClose, saving }: Props) {
   const titleId = useId();
   if (!isOpen) return null;
 
@@ -46,7 +47,7 @@ export default function MaintenanceFormModal({ isOpen, form, onChange, onSave, o
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} style={{ background: 'rgba(0,0,0,0.6)' }}>
       <div className="panel-beveled w-[480px] max-h-[80vh] flex flex-col" style={{ background: '#1e1e1e' }}>
-        <PanelTitleBar title="LOG MAINTENANCE" icon={Wrench} id={titleId}>
+        <PanelTitleBar title={mode === 'edit' ? 'EDIT MAINTENANCE' : 'LOG MAINTENANCE'} icon={Wrench} id={titleId}>
           <button className="toolbar-btn text-[9px]" onClick={onClose}>X</button>
         </PanelTitleBar>
         <div className="flex-1 overflow-y-auto p-4">
@@ -98,7 +99,7 @@ export default function MaintenanceFormModal({ isOpen, form, onChange, onSave, o
         <div className="flex items-center justify-end gap-2 px-4 py-2 border-t border-rmpg-700">
           <button className="toolbar-btn" onClick={onClose}>Cancel</button>
           <button className="toolbar-btn toolbar-btn-primary" onClick={onSave} disabled={saving}>
-            {saving ? 'Saving...' : 'Log Maintenance'}
+            {saving ? 'Saving...' : mode === 'edit' ? 'Update Maintenance' : 'Log Maintenance'}
           </button>
         </div>
       </div>

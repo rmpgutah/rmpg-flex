@@ -4,6 +4,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { Bell, Check, Trash2, Radio, Shield, AlertTriangle, Mail, Clock, MapPin, Filter, ChevronDown, ChevronUp } from 'lucide-react';
 import { useWebSocket } from '../context/WebSocketContext';
@@ -277,6 +278,33 @@ export default function NotificationCenter({ className = '' }: NotificationCente
   }, []);
 
   // ----------------------------------------------------------
+  // Portal positioning — compute dropdown coords from button
+  // ----------------------------------------------------------
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
+
+  useEffect(() => {
+    if (!isOpen || !buttonRef.current) return;
+
+    function updatePos() {
+      const rect = buttonRef.current!.getBoundingClientRect();
+      // Right-align dropdown beneath the bell button
+      const dropdownWidth = 360;
+      let left = rect.right - dropdownWidth;
+      // Ensure it doesn't overflow off the left edge
+      if (left < 4) left = 4;
+      setDropdownPos({ top: rect.bottom + 4, left });
+    }
+
+    updatePos();
+    window.addEventListener('resize', updatePos);
+    window.addEventListener('scroll', updatePos, true);
+    return () => {
+      window.removeEventListener('resize', updatePos);
+      window.removeEventListener('scroll', updatePos, true);
+    };
+  }, [isOpen]);
+
+  // ----------------------------------------------------------
   // Render
   // ----------------------------------------------------------
   return (
@@ -312,14 +340,14 @@ export default function NotificationCenter({ className = '' }: NotificationCente
         )}
       </button>
 
-      {/* Dropdown Panel */}
-      {isOpen && (
+      {/* Dropdown Panel — rendered via portal to escape overflow containers */}
+      {isOpen && createPortal(
         <div
           ref={dropdownRef}
-          className="absolute right-0 z-50 panel-beveled"
+          className="fixed z-50 panel-beveled"
           style={{
-            top: '100%',
-            marginTop: '4px',
+            top: dropdownPos.top,
+            left: dropdownPos.left,
             width: '360px',
             maxHeight: '400px',
             background: '#1a1a1a',
@@ -504,7 +532,8 @@ export default function NotificationCenter({ className = '' }: NotificationCente
               </button>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
