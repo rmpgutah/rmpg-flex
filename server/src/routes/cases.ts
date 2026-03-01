@@ -10,20 +10,10 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
+import { generateCaseNumber } from '../utils/caseNumbers';
 
 const router = Router();
 router.use(authenticateToken);
-
-function nextCaseNumber(): string {
-  const db = getDb();
-  const yr = new Date().getFullYear();
-  const prefix = `CASE-${yr}-`;
-  const last = db.prepare(
-    "SELECT case_number FROM cases WHERE case_number LIKE ? ORDER BY id DESC LIMIT 1"
-  ).get(`${prefix}%`) as { case_number: string } | undefined;
-  const seq = last ? parseInt(last.case_number.replace(prefix, ''), 10) + 1 : 1;
-  return `${prefix}${String(seq).padStart(4, '0')}`;
-}
 
 // ─── GET /stats ──────────────────────────────────────────
 router.get('/stats', (req: Request, res: Response) => {
@@ -116,16 +106,23 @@ router.post('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
-    const { title, case_type = 'general', priority = 'normal', summary, lead_investigator_id } = req.body;
+    const { title, case_type = 'general', priority = 'normal', summary, lead_investigator_id, linked_call_id } = req.body;
     if (!title) return res.status(400).json({ error: 'Title is required' });
 
-    const case_number = nextCaseNumber();
+    const case_number = generateCaseNumber(db, case_type);
     const result = db.prepare(`
       INSERT INTO cases (case_number, title, case_type, status, priority, lead_investigator_id,
-        summary, created_by, created_at, updated_at, opened_date)
-      VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?)
+        summary, linked_calls, created_by, created_at, updated_at, opened_date)
+      VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(case_number, title, case_type, priority, lead_investigator_id || null, summary || null,
+      linked_call_id ? JSON.stringify([linked_call_id]) : '[]',
       req.user!.userId, now, now, localToday());
+
+    // Update the linked call with this case_id for bidirectional linkage
+    if (linked_call_id) {
+      db.prepare('UPDATE calls_for_service SET case_id = ?, case_number = ? WHERE id = ?')
+        .run(result.lastInsertRowid, case_number, linked_call_id);
+    }
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
       VALUES (?, 'create', 'case', ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ case_number, title }), now);
@@ -148,7 +145,7 @@ router.put('/:id', (req: Request, res: Response) => {
     const fields = ['title', 'case_type', 'priority', 'summary', 'narrative', 'disposition',
       'disposition_date', 'due_date', 'lead_investigator_id', 'assigned_officers',
       'solvability_score', 'solvability_factors', 'linked_incidents', 'linked_citations',
-      'linked_evidence', 'linked_persons', 'linked_field_interviews'];
+      'linked_evidence', 'linked_persons', 'linked_field_interviews', 'linked_calls'];
     const updates: string[] = ['updated_at = ?'];
     const params: any[] = [now];
 

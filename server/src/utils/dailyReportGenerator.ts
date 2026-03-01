@@ -883,6 +883,20 @@ export function startDailyReportScheduler(): void {
       } catch (err) {
         console.error('[Daily Report] Generation failed:', err);
       }
+
+      // Auto-archive: purge breadcrumbs older than 24 hours after report is saved
+      try {
+        const db = getDb();
+        const result = db.prepare(
+          `DELETE FROM gps_breadcrumbs WHERE recorded_at < datetime('now', 'localtime', '-1 days')`
+        ).run();
+        if (result.changes > 0) {
+          console.log(`[Daily Report] Auto-archived ${result.changes} breadcrumbs older than 24h`);
+        }
+      } catch (err) {
+        console.error('[Daily Report] Breadcrumb auto-archive failed:', err);
+      }
+
       // Schedule the next one
       midnightTimer = null;
       scheduleNextRun();

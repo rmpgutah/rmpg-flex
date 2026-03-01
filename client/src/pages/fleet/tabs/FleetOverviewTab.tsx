@@ -28,7 +28,9 @@ const STATUS_COLOR: Record<FleetVehicleStatus, string> = {
 
 function getExpiryStatus(dateStr?: string): 'ok' | 'expiring' | 'expired' | 'none' {
   if (!dateStr) return 'none';
-  const exp = new Date(dateStr);
+  // Force local-time parse for date-only strings to avoid UTC timezone shift
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? `${dateStr}T00:00:00` : dateStr;
+  const exp = new Date(normalized);
   const now = new Date();
   if (exp < now) return 'expired';
   const thirtyDays = new Date();

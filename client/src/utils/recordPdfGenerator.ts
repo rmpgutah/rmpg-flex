@@ -29,12 +29,26 @@ import {
   addAttachmentsSection,
   addImageToPage,
 } from './pdfGenerator';
-import type { PdfImage } from './pdfGenerator';
+import type { PdfImage, PdfSignatureData } from './pdfGenerator';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER,
   getContentWidth, getHalfWidth, getFullFieldWidth,
   getLeftX, getRightColumnX, getHalfFieldWidth, getQuarterWidth,
 } from './pdfTokens';
+
+// ── Active Officer Signature (set per-generation, cleared after) ─
+
+let _activeOfficerSig: PdfSignatureData | undefined;
+
+/** Set the officer's digital signature data for the current PDF generation run */
+export function setActiveOfficerSignature(sig: PdfSignatureData | undefined) {
+  _activeOfficerSig = sig;
+}
+
+/** Get the active officer signature (used by addSignatureBlock calls) */
+function getOfficerSig(): PdfSignatureData | undefined {
+  return _activeOfficerSig;
+}
 
 // ── Type Aliases for Record Types ────────────────────────────
 
@@ -74,6 +88,17 @@ export interface CallPdfData {
   section_id?: string;
   zone_id?: string;
   beat_id?: string;
+  dispatch_code?: string;
+  // District names (green columns — shown on PDF header)
+  section_name?: string;
+  zone_name?: string;
+  beat_name?: string;
+  beat_descriptor?: string;
+  // Case linkage
+  case_id?: number;
+  case_number?: string;
+  // Contract ID (for PSO Client Request incidents)
+  contract_id?: string;
   latitude?: number;
   longitude?: number;
   property_name?: string;
@@ -98,6 +123,36 @@ export interface CallPdfData {
   le_notified?: boolean;
   le_agency?: string;
   le_case_number?: string;
+  // Extended operational flags
+  mental_health_crisis?: boolean;
+  juvenile_involved?: boolean;
+  felony_in_progress?: boolean;
+  officer_safety_caution?: boolean;
+  k9_requested?: boolean;
+  ems_requested?: boolean;
+  fire_requested?: boolean;
+  hazmat?: boolean;
+  gang_related?: boolean;
+  evidence_collected?: boolean;
+  body_camera_active?: boolean;
+  photos_taken?: boolean;
+  trespass_issued?: boolean;
+  vehicle_pursuit?: boolean;
+  foot_pursuit?: boolean;
+  // PSO Client Request fields
+  pso_service_type?: string;
+  pso_authorization?: string;
+  pso_requestor_name?: string;
+  pso_requestor_phone?: string;
+  pso_requestor_email?: string;
+  pso_billing_code?: string;
+  // Process Service fields
+  process_service_type?: string;
+  process_served_to?: string;
+  process_served_address?: string;
+  process_attempts?: number;
+  process_served_at?: string;
+  process_service_result?: string;
   // Damage
   damage_estimate?: number;
   damage_description?: string;
@@ -636,6 +691,54 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   setActiveCaseNumber(data.call_number);
   let y = addReportHeader(doc, data.call_number, 'Call for Service Report', prio, undefined, { useLogo: true });
 
+  // ── Dispatch District Info Bar (green columns — below header) ──
+  {
+    const cw = getContentWidth(doc);
+    const barY = y;
+    const hasContract = data.contract_id && data.incident_type === 'pso_client_request';
+    const barH = hasContract ? 18 : 10;
+    doc.setFillColor(20, 25, 30);
+    doc.rect(LAYOUT.PAGE_MARGIN, barY, cw, barH, 'F');
+    // Gold top border
+    doc.setDrawColor(212, 160, 23);
+    doc.setLineWidth(0.3);
+    doc.line(LAYOUT.PAGE_MARGIN, barY, LAYOUT.PAGE_MARGIN + cw, barY);
+
+    const colW = cw / 5;
+    const fields = [
+      { label: 'SECTION', value: data.section_name || '' },
+      { label: 'ZONE', value: data.zone_name || '' },
+      { label: 'BEAT', value: data.beat_name || '' },
+      { label: 'AREA', value: data.beat_descriptor || '' },
+      { label: 'CODE', value: data.dispatch_code || '' },
+    ];
+    fields.forEach((f, i) => {
+      const fx = LAYOUT.PAGE_MARGIN + (i * colW) + 3;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(5.5);
+      doc.setTextColor(140, 140, 140);
+      doc.text(f.label, fx, barY + 3.5);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.setTextColor(212, 160, 23);
+      doc.text(f.value || '—', fx, barY + 7.5);
+    });
+
+    // Contract ID row (only for PSO Client Request incidents)
+    if (hasContract) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(5.5);
+      doc.setTextColor(140, 140, 140);
+      doc.text('CONTRACT ID', LAYOUT.PAGE_MARGIN + 3, barY + 12);
+      doc.setFont('courier', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(255, 255, 255);
+      doc.text(data.contract_id!, LAYOUT.PAGE_MARGIN + 3, barY + 16);
+    }
+
+    y = barY + barH + 2;
+  }
+
   // Classification
   { const sec = openAutoSection(doc, 'Classification', y); y = sec.contentY;
     y = addThreeColumnFields(doc, [
@@ -644,7 +747,9 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       { label: 'Priority', value: data.priority },
       { label: 'Status', value: (data.status || '').toUpperCase() },
       { label: 'Source', value: (data.source || '').replace(/_/g, ' ').toUpperCase() },
+      { label: 'Dispatch Code', value: data.dispatch_code || '' },
       { label: 'Disposition', value: data.disposition || '' },
+      { label: 'Case Number', value: data.case_number || '' },
     ], y);
     y = closeAutoSection(doc, sec.sectionY, y);
   }
@@ -683,10 +788,10 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       { label: 'Building', value: data.location_building || '' },
       { label: 'Floor', value: data.location_floor || '' },
       { label: 'Room', value: data.location_room || '' },
-      { label: 'Zone/Beat', value: data.zone_beat || '' },
-      { label: 'Sector', value: data.section_id || '' },
-      { label: 'Zone', value: data.zone_id || '' },
-      { label: 'Beat', value: data.beat_id || '' },
+      { label: 'Dispatch Code', value: data.dispatch_code || data.zone_beat || '' },
+      { label: 'Section ID', value: data.section_id || '' },
+      { label: 'Zone ID', value: data.zone_id || '' },
+      { label: 'Beat ID', value: data.beat_id || '' },
       { label: 'Latitude', value: data.latitude != null ? String(data.latitude) : '' },
       { label: 'Longitude', value: data.longitude != null ? String(data.longitude) : '' },
     ], y);
@@ -744,17 +849,36 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   }
 
   // Flags
-  y = checkPageBreak(doc, y, 15, prio);
+  y = checkPageBreak(doc, y, 30, prio);
   { const sec = openAutoSection(doc, 'Flags', y); y = sec.contentY;
     let fx = lx;
-    fx = addCheckboxField(doc, 'Injuries Reported', !!data.injuries_reported, fx, y);
+    fx = addCheckboxField(doc, 'Injuries', !!data.injuries_reported, fx, y);
     fx = addCheckboxField(doc, 'Alcohol', !!data.alcohol_involved, fx, y);
     fx = addCheckboxField(doc, 'Drugs', !!data.drugs_involved, fx, y);
-    fx = addCheckboxField(doc, 'Domestic Violence', !!data.domestic_violence, fx, y);
+    fx = addCheckboxField(doc, 'DV', !!data.domestic_violence, fx, y);
+    fx = addCheckboxField(doc, 'Mental Health', !!data.mental_health_crisis, fx, y);
+    addCheckboxField(doc, 'Juvenile', !!data.juvenile_involved, fx, y);
     y += SPACING.LG;
     fx = lx;
-    fx = addCheckboxField(doc, 'Supervisor Notified', !!data.supervisor_notified, fx, y);
-    addCheckboxField(doc, 'LE Notified', !!data.le_notified, fx, y);
+    fx = addCheckboxField(doc, 'Felony IP', !!data.felony_in_progress, fx, y);
+    fx = addCheckboxField(doc, 'Ofc Safety', !!data.officer_safety_caution, fx, y);
+    fx = addCheckboxField(doc, 'Gang', !!data.gang_related, fx, y);
+    fx = addCheckboxField(doc, 'HAZMAT', !!data.hazmat, fx, y);
+    fx = addCheckboxField(doc, 'Veh Pursuit', !!data.vehicle_pursuit, fx, y);
+    addCheckboxField(doc, 'Foot Pursuit', !!data.foot_pursuit, fx, y);
+    y += SPACING.LG;
+    fx = lx;
+    fx = addCheckboxField(doc, 'K9 Req', !!data.k9_requested, fx, y);
+    fx = addCheckboxField(doc, 'EMS Req', !!data.ems_requested, fx, y);
+    fx = addCheckboxField(doc, 'Fire Req', !!data.fire_requested, fx, y);
+    fx = addCheckboxField(doc, 'Evidence', !!data.evidence_collected, fx, y);
+    fx = addCheckboxField(doc, 'BWC Active', !!data.body_camera_active, fx, y);
+    addCheckboxField(doc, 'Photos', !!data.photos_taken, fx, y);
+    y += SPACING.LG;
+    fx = lx;
+    fx = addCheckboxField(doc, 'Supvr Notified', !!data.supervisor_notified, fx, y);
+    fx = addCheckboxField(doc, 'LE Notified', !!data.le_notified, fx, y);
+    addCheckboxField(doc, 'Trespass', !!data.trespass_issued, fx, y);
     y += SPACING.XL;
     y = closeAutoSection(doc, sec.sectionY, y);
   }
@@ -765,6 +889,43 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     const sec = openAutoSection(doc, 'External Agency Coordination', y); y = sec.contentY;
     addFieldPair(doc, 'Agency', data.le_agency || '', lx, y, hfw);
     y = addFieldPair(doc, 'LE Case Number', data.le_case_number || '', rx, y, hfw);
+    y = closeAutoSection(doc, sec.sectionY, y);
+  }
+
+  // PSO Client Request / Process Service Details (only for PSO incidents)
+  if (data.incident_type === 'pso_client_request') {
+    y = checkPageBreak(doc, y, 35, prio);
+    const sec = openAutoSection(doc, 'PSO Client Request Details', y); y = sec.contentY;
+    y = addThreeColumnFields(doc, [
+      { label: 'Service Type', value: (data.pso_service_type || '').replace(/_/g, ' ').toUpperCase() },
+      { label: 'Authorization / PO#', value: data.pso_authorization || '' },
+      { label: 'Billing Code', value: data.pso_billing_code || '' },
+    ], y);
+    addFieldPair(doc, 'Requestor Name', data.pso_requestor_name || '', lx, y, hfw);
+    y = addFieldPair(doc, 'Requestor Phone', data.pso_requestor_phone || '', rx, y, hfw);
+    if (data.pso_requestor_email) {
+      y = addFieldPair(doc, 'Requestor Email', data.pso_requestor_email, lx, y, ffw);
+    }
+
+    // Process Service sub-section
+    if (data.pso_service_type === 'process_service' || data.process_service_type) {
+      y += SPACING.MD;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+      doc.setTextColor(...COLOR.TEXT_SECONDARY);
+      doc.text('PROCESS SERVICE DETAILS', lx, y);
+      y += SPACING.MD;
+      y = addThreeColumnFields(doc, [
+        { label: 'Document Type', value: (data.process_service_type || '').replace(/_/g, ' ').toUpperCase() },
+        { label: 'Serve To', value: data.process_served_to || '' },
+        { label: 'Attempts', value: String(data.process_attempts || 0) },
+      ], y);
+      if (data.process_served_address) {
+        y = addFieldPair(doc, 'Service Address', data.process_served_address, lx, y, ffw);
+      }
+      addFieldPair(doc, 'Served At', data.process_served_at || '', lx, y, hfw);
+      y = addFieldPair(doc, 'Result', (data.process_service_result || '').replace(/_/g, ' ').toUpperCase(), rx, y, hfw);
+    }
     y = closeAutoSection(doc, sec.sectionY, y);
   }
 
@@ -861,7 +1022,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // Signatures (matches GIR style)
   y = checkPageBreak(doc, y, 40, prio);
   { const sec = openAutoSection(doc, 'Signatures', y); y = sec.contentY;
-    addSignatureBlock(doc, 'Reporting Officer', lx, y, hfw);
+    addSignatureBlock(doc, 'Reporting Officer', lx, y, hfw, getOfficerSig());
     y = addSignatureBlock(doc, 'Supervisor Review', rx, y, hfw);
     y = closeAutoSection(doc, sec.sectionY, y);
   }
@@ -1150,7 +1311,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
 
   // ── 17. Signature Block ───────────────────────────────────
   y = checkPageBreak(doc, y, 40, prio);
-  addSignatureBlock(doc, 'Entering Officer', LAYOUT.PAGE_MARGIN, y, hw);
+  addSignatureBlock(doc, 'Entering Officer', LAYOUT.PAGE_MARGIN, y, hw, getOfficerSig());
   addSignatureBlock(doc, 'Supervisor Review', LAYOUT.PAGE_MARGIN + hw + SPACING.LG, y, hw);
 }
 
@@ -1261,7 +1422,7 @@ function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
 
   // Signature Block
   y = checkPageBreak(doc, y, 40);
-  addSignatureBlock(doc, 'Entering Officer', LAYOUT.PAGE_MARGIN, y, cw);
+  addSignatureBlock(doc, 'Entering Officer', LAYOUT.PAGE_MARGIN, y, cw, getOfficerSig());
 }
 
 // ── Warrant ──────────────────────────────────────────────────
@@ -1350,7 +1511,7 @@ function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
   // Signature Block
   y = checkPageBreak(doc, y, 40, statusPrio);
   const hw = getHalfWidth(doc);
-  addSignatureBlock(doc, 'Entering Officer', LAYOUT.PAGE_MARGIN, y, hw);
+  addSignatureBlock(doc, 'Entering Officer', LAYOUT.PAGE_MARGIN, y, hw, getOfficerSig());
   addSignatureBlock(doc, 'Serving Officer', LAYOUT.PAGE_MARGIN + hw + SPACING.LG, y, hw);
 }
 
@@ -1487,7 +1648,7 @@ function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
 
   // Signature Block
   y = checkPageBreak(doc, y, 40);
-  addSignatureBlock(doc, 'Collecting Officer', LAYOUT.PAGE_MARGIN, y, hw);
+  addSignatureBlock(doc, 'Collecting Officer', LAYOUT.PAGE_MARGIN, y, hw, getOfficerSig());
   addSignatureBlock(doc, 'Evidence Custodian', LAYOUT.PAGE_MARGIN + hw + SPACING.LG, y, hw);
 }
 
@@ -1721,7 +1882,7 @@ function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
 
   // Signature Block
   y = checkPageBreak(doc, y, 40);
-  addSignatureBlock(doc, 'Fleet Manager', LAYOUT.PAGE_MARGIN, y, cw);
+  addSignatureBlock(doc, 'Fleet Manager', LAYOUT.PAGE_MARGIN, y, cw, getOfficerSig());
 }
 
 // ── Personnel / Officer Record ───────────────────────────────
@@ -2067,7 +2228,7 @@ function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
   // Signature Block
   y = checkPageBreak(doc, y, 40);
   addSignatureBlock(doc, 'HR / Supervisor', LAYOUT.PAGE_MARGIN, y, hw);
-  addSignatureBlock(doc, 'Officer', LAYOUT.PAGE_MARGIN + hw + SPACING.LG, y, hw);
+  addSignatureBlock(doc, 'Officer', LAYOUT.PAGE_MARGIN + hw + SPACING.LG, y, hw, getOfficerSig());
 }
 
 // ── Property Record ──────────────────────────────────────────
@@ -2130,7 +2291,7 @@ function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
 
   // Signature Block
   y = checkPageBreak(doc, y, 40);
-  addSignatureBlock(doc, 'Officer', LAYOUT.PAGE_MARGIN, y, cw);
+  addSignatureBlock(doc, 'Officer', LAYOUT.PAGE_MARGIN, y, cw, getOfficerSig());
 }
 
 // ── Citation Report ──────────────────────────────────────────
@@ -2233,7 +2394,7 @@ function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
 
   // Dual Signature Block — Officer and Recipient
   y = checkPageBreak(doc, y, 40);
-  addSignatureBlock(doc, 'Issuing Officer', LAYOUT.PAGE_MARGIN, y, hw);
+  addSignatureBlock(doc, 'Issuing Officer', LAYOUT.PAGE_MARGIN, y, hw, getOfficerSig());
   addSignatureBlock(doc, 'Recipient', LAYOUT.PAGE_MARGIN + hw + SPACING.LG, y, hw);
 }
 
@@ -2326,7 +2487,20 @@ export async function downloadRecordPdf<T extends RecordPdfType>(
   setActiveBranding(branding);
   await loadPdfAssets();
 
+  // Extract officer digital signature from enriched data
+  const anyData = data as any;
+  if (anyData._officerSignature) {
+    setActiveOfficerSignature({
+      signatureImage: anyData._officerSignature,
+      printedName: anyData.officer_name || anyData.full_name || anyData.issuing_officer_name || '',
+      badgeNumber: anyData.badge_number || '',
+    });
+  } else {
+    setActiveOfficerSignature(undefined);
+  }
+
   const doc = generateRecordPdf(recordType, data);
+  setActiveOfficerSignature(undefined); // clear after generation
   const id = identifier || 'record';
   const filename = `${id}_${recordType}.pdf`;
   doc.save(filename);
@@ -2341,7 +2515,20 @@ export async function generateRecordPdfBlobUrl<T extends RecordPdfType>(
   setActiveBranding(branding);
   await loadPdfAssets();
 
+  // Extract officer digital signature from enriched data
+  const anyData = data as any;
+  if (anyData._officerSignature) {
+    setActiveOfficerSignature({
+      signatureImage: anyData._officerSignature,
+      printedName: anyData.officer_name || anyData.full_name || anyData.issuing_officer_name || '',
+      badgeNumber: anyData.badge_number || '',
+    });
+  } else {
+    setActiveOfficerSignature(undefined);
+  }
+
   const doc = generateRecordPdf(recordType, data);
+  setActiveOfficerSignature(undefined); // clear after generation
   const blob = doc.output('blob');
   return URL.createObjectURL(blob);
 }

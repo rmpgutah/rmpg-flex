@@ -864,7 +864,7 @@ export default function IncidentsPage() {
       // Graceful degradation — proceed without images
     }
 
-    return {
+    const pdfData = {
       incident_number: selectedIncident!.incident_number,
       incident_type: selectedIncident!.type,
       priority: selectedIncident!.priority,
@@ -912,7 +912,15 @@ export default function IncidentsPage() {
         storage_location: e.storage_location,
       })),
       attachment_images: attachmentImages.length > 0 ? attachmentImages : undefined,
-    };
+    } as any;
+
+    // Fetch officer's digital signature for PDF embedding
+    try {
+      const sigRes = await apiFetch<{ signature: string | null }>('/auth/signature');
+      if (sigRes?.signature) pdfData._officerSignature = sigRes.signature;
+    } catch { /* proceed without signature */ }
+
+    return pdfData;
   };
 
   // Build the detail panel (right side)

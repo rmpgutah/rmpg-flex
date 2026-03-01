@@ -131,22 +131,36 @@ const TYPE_COLORS: Record<string, string> = {
   other: 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50',
 };
 
+/** Military datetime: YYYY-MM-DD HH:MM:SS (24-hour clock) */
 function formatDateTime(dt: string | null): string {
   if (!dt) return '-';
   try {
-    return new Date(dt.replace(' ', 'T')).toLocaleString('en-US', {
-      month: 'short', day: 'numeric', year: 'numeric',
-      hour: '2-digit', minute: '2-digit', hour12: false,
-    });
+    // Force local-time parse for date-only strings
+    const normalized = /^\d{4}-\d{2}-\d{2}$/.test(dt) ? `${dt}T00:00:00` : dt.replace(' ', 'T');
+    const d = new Date(normalized);
+    if (isNaN(d.getTime())) return dt;
+    const yyyy = d.getFullYear();
+    const MM = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    return `${yyyy}-${MM}-${dd} ${hh}:${mm}:${ss}`;
   } catch { return dt; }
 }
 
+/** Military date: YYYY-MM-DD */
 function formatDate(dt: string | null): string {
   if (!dt) return '-';
+  // Date-only strings can be returned directly
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dt)) return dt;
   try {
-    return new Date(dt.replace(' ', 'T')).toLocaleDateString('en-US', {
-      month: 'short', day: 'numeric', year: 'numeric',
-    });
+    const d = new Date(dt.replace(' ', 'T'));
+    if (isNaN(d.getTime())) return dt;
+    const yyyy = d.getFullYear();
+    const MM = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${MM}-${dd}`;
   } catch { return dt; }
 }
 

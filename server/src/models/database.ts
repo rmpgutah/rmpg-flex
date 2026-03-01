@@ -1142,6 +1142,9 @@ function migrateSchema(): void {
   addCol('users', 'password_history', 'TEXT');             // JSON array of previous bcrypt hashes
   addCol('users', 'password_changed_at', 'TEXT');          // ISO timestamp of last password change
 
+  // ── USERS — Digital Signature (PNG base64 data URL) ──
+  addCol('users', 'digital_signature', 'TEXT');            // base64 data:image/png;base64,... stored per officer
+
   // ── NOTIFICATIONS — widen type CHECK for login_alert / security ──
   try {
     // SQLite can't ALTER CHECK constraints, so recreate the table
@@ -2157,6 +2160,123 @@ function migrateSchema(): void {
   // ── CALLS_FOR_SERVICE — unit mileage tracking ──────────────
   addCol('calls_for_service', 'starting_mileage', 'REAL');
   addCol('calls_for_service', 'ending_mileage', 'REAL');
+
+  // ── DISPATCH ↔ CASE bidirectional linkage ──────────────────
+  addCol('calls_for_service', 'case_id', 'INTEGER');
+  addCol('calls_for_service', 'case_number', 'TEXT');
+  addCol('calls_for_service', 'dispatch_code', 'TEXT');
+  addCol('cases', 'linked_calls', "TEXT DEFAULT '[]'");
+
+  // ── Dispatch district name fields on calls (green columns) ──
+  addCol('calls_for_service', 'section_name', 'TEXT');
+  addCol('calls_for_service', 'zone_name', 'TEXT');
+  addCol('calls_for_service', 'beat_name', 'TEXT');
+  addCol('calls_for_service', 'beat_descriptor', 'TEXT');
+
+  // ── Contract ID for PSO Client Request incidents ──
+  addCol('calls_for_service', 'contract_id', 'TEXT');
+  addCol('incidents', 'contract_id', 'TEXT');
+
+  // ── Additional operational flags for calls and incidents ──
+  const flagTables = ['calls_for_service', 'incidents'] as const;
+  for (const tbl of flagTables) {
+    addCol(tbl, 'mental_health_crisis', 'INTEGER DEFAULT 0');
+    addCol(tbl, 'juvenile_involved', 'INTEGER DEFAULT 0');
+    addCol(tbl, 'felony_in_progress', 'INTEGER DEFAULT 0');
+    addCol(tbl, 'officer_safety_caution', 'INTEGER DEFAULT 0');
+    addCol(tbl, 'k9_requested', 'INTEGER DEFAULT 0');
+    addCol(tbl, 'ems_requested', 'INTEGER DEFAULT 0');
+    addCol(tbl, 'fire_requested', 'INTEGER DEFAULT 0');
+    addCol(tbl, 'hazmat', 'INTEGER DEFAULT 0');
+    addCol(tbl, 'gang_related', 'INTEGER DEFAULT 0');
+    addCol(tbl, 'evidence_collected', 'INTEGER DEFAULT 0');
+    addCol(tbl, 'body_camera_active', 'INTEGER DEFAULT 0');
+    addCol(tbl, 'photos_taken', 'INTEGER DEFAULT 0');
+    addCol(tbl, 'trespass_issued', 'INTEGER DEFAULT 0');
+    addCol(tbl, 'vehicle_pursuit', 'INTEGER DEFAULT 0');
+    addCol(tbl, 'foot_pursuit', 'INTEGER DEFAULT 0');
+  }
+
+  // ── PSO / Process Service fields ────────────────────────────
+  for (const tbl of flagTables) {
+    addCol(tbl, 'pso_requestor_name', 'TEXT');
+    addCol(tbl, 'pso_requestor_phone', 'TEXT');
+    addCol(tbl, 'pso_requestor_email', 'TEXT');
+    addCol(tbl, 'pso_service_type', 'TEXT');        // patrol, standing_post, escort, process_service, alarm_response, event_security
+    addCol(tbl, 'pso_billing_code', 'TEXT');
+    addCol(tbl, 'pso_authorization', 'TEXT');        // auth/PO number from client
+  }
+  // Process service specific
+  addCol('calls_for_service', 'process_service_type', 'TEXT'); // subpoena, summons, complaint, eviction, restraining_order, other
+  addCol('calls_for_service', 'process_served_to', 'TEXT');
+  addCol('calls_for_service', 'process_served_address', 'TEXT');
+  addCol('calls_for_service', 'process_attempts', 'INTEGER DEFAULT 0');
+  addCol('calls_for_service', 'process_served_at', 'TEXT');
+  addCol('calls_for_service', 'process_service_result', 'TEXT'); // served, unable_to_serve, refused, substitute_service
+
+  // ── Backfill dispatch district names on existing calls ──────────
+  try {
+    const callsNeedingDistrict = db.prepare(`
+      SELECT c.id, c.section_id, c.zone_id, c.beat_id
+      FROM calls_for_service c
+      WHERE c.dispatch_code IS NULL AND c.section_id IS NOT NULL AND c.section_id != ''
+    `).all() as any[];
+
+    if (callsNeedingDistrict.length > 0) {
+      const updateStmt = db.prepare(`
+        UPDATE calls_for_service
+        SET dispatch_code = ?, section_name = ?, zone_name = ?, beat_name = ?, beat_descriptor = ?
+        WHERE id = ?
+      `);
+
+      for (const call of callsNeedingDistrict) {
+        // Look up the district by section_id — need to find matching zone_id (stored as zone_name in old data)
+        const district = db.prepare(
+          `SELECT * FROM dispatch_districts WHERE section_id = ? LIMIT 1`
+        ).get(call.section_id) as any;
+
+        if (district) {
+          updateStmt.run(
+            district.dispatch_code, district.section_name,
+            district.zone_name, district.beat_name, district.beat_descriptor,
+            call.id,
+          );
+        }
+      }
+      if (callsNeedingDistrict.length > 0) {
+        console.log(`  Backfilled dispatch district data on ${callsNeedingDistrict.length} calls`);
+      }
+    }
+  } catch { /* safe to ignore */ }
+
+  // ── Migrate existing case numbers to YY-######-XX format ──────
+  try {
+    const oldCases = db.prepare(
+      "SELECT id, case_number, case_type FROM cases WHERE case_number LIKE 'CASE-%'"
+    ).all() as { id: number; case_number: string; case_type: string }[];
+
+    for (const c of oldCases) {
+      const match = c.case_number.match(/CASE-(\d{4})-(\d+)/);
+      if (match) {
+        const yy = match[1].slice(-2);
+        const seq = String(parseInt(match[2], 10)).padStart(6, '0');
+        const caseTypeCodes: Record<string, string> = {
+          general: 'GN', criminal: 'CR', traffic: 'TR', medical: 'MD',
+          security: 'SE', disorder: 'DS', service: 'SV', fire: 'FR',
+          admin: 'AD', civil: 'CV', use_of_force: 'UF', property: 'PR',
+          missing_person: 'MP', narcotics: 'NR', fraud: 'FD', juvenile: 'JV',
+          domestic: 'DM', accident: 'AC', death: 'DT', theft: 'TH',
+          assault: 'AS', burglary: 'BG', other: 'OT',
+        };
+        const typeCode = caseTypeCodes[c.case_type] || 'GN';
+        const newNumber = `${yy}-${seq}-${typeCode}`;
+        db.prepare('UPDATE cases SET case_number = ? WHERE id = ?').run(newNumber, c.id);
+      }
+    }
+    if (oldCases.length > 0) {
+      console.log(`  Migrated ${oldCases.length} case numbers to YY-######-XX format`);
+    }
+  } catch { /* safe to ignore */ }
 
   // ── ONE-TIME DATA CLEANUP: Remove specific breadcrumb entries ──
   try {

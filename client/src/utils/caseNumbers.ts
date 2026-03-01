@@ -250,6 +250,38 @@ export const INCIDENT_TYPE_CATEGORIES: Record<IncidentCategory, { value: Inciden
   ],
 };
 
+// ── 2-Letter Case Type Codes (for Case Number format: YY-######-XX) ──
+
+export const CASE_TYPE_CODES: Record<string, string> = {
+  general: 'GN',
+  criminal: 'CR',
+  traffic: 'TR',
+  medical: 'MD',
+  security: 'SE',
+  disorder: 'DS',
+  service: 'SV',
+  fire: 'FR',
+  admin: 'AD',
+  civil: 'CV',
+  use_of_force: 'UF',
+  property: 'PR',
+  missing_person: 'MP',
+  narcotics: 'NR',
+  fraud: 'FD',
+  juvenile: 'JV',
+  domestic: 'DM',
+  accident: 'AC',
+  death: 'DT',
+  theft: 'TH',
+  assault: 'AS',
+  burglary: 'BG',
+  other: 'OT',
+};
+
+export function getCaseTypeCode(caseType: string): string {
+  return CASE_TYPE_CODES[caseType] || 'GN';
+}
+
 // ── Helpers ─────────────────────────────────────────────────
 
 export function getTypeCode(type: string): string {
@@ -309,7 +341,8 @@ export type PdfReportType =
   | 'medical'
   | 'use_of_force'
   | 'daily_activity'
-  | 'arrest';
+  | 'arrest'
+  | 'process_service';
 
 export function getDefaultReportType(incidentType: string): PdfReportType {
   switch (incidentType) {
@@ -328,6 +361,8 @@ export function getDefaultReportType(incidentType: string): PdfReportType {
     case 'assault':
     case 'battery':
       return 'use_of_force';
+    case 'pso_client_request':
+      return 'process_service';
     default:
       return 'incident';
   }
@@ -341,4 +376,5 @@ export const PDF_REPORT_LABELS: Record<PdfReportType, string> = {
   use_of_force: 'Use of Force Report',
   daily_activity: 'Daily Activity Report',
   arrest: 'Arrest/Detention Report',
+  process_service: 'Process Service Report',
 };

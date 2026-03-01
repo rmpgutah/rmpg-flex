@@ -47,6 +47,44 @@ export function getTypeCode(type: string): string {
   return INCIDENT_TYPE_CODES[type] || 'OTH';
 }
 
+// ── 2-Letter Case Type Codes (for Case Number format: YY-######-XX) ──
+
+const CASE_TYPE_CODES: Record<string, string> = {
+  general: 'GN', criminal: 'CR', traffic: 'TR', medical: 'MD',
+  security: 'SE', disorder: 'DS', service: 'SV', fire: 'FR',
+  admin: 'AD', civil: 'CV', use_of_force: 'UF', property: 'PR',
+  missing_person: 'MP', narcotics: 'NR', fraud: 'FD', juvenile: 'JV',
+  domestic: 'DM', accident: 'AC', death: 'DT', theft: 'TH',
+  assault: 'AS', burglary: 'BG', other: 'OT',
+};
+
+export function getCaseTypeCode(caseType: string): string {
+  return CASE_TYPE_CODES[caseType] || 'GN';
+}
+
+// ── Case Number Generation ──────────────────────────────────
+// Format: YY-######-XX  (2-digit year + 6-digit sequence + 2-letter type code)
+
+export function generateCaseNumber(db: Database.Database, caseType: string = 'general'): string {
+  const yy = String(new Date().getFullYear()).slice(-2);
+  const typeCode = getCaseTypeCode(caseType);
+  // Sequence is global per year (not per type)
+  const prefix = `${yy}-`;
+  const lastCase = db.prepare(
+    `SELECT case_number FROM cases WHERE case_number LIKE ? ORDER BY id DESC LIMIT 1`,
+  ).get(`${prefix}%`) as { case_number: string } | undefined;
+
+  let nextNum = 1;
+  if (lastCase) {
+    const match = lastCase.case_number.match(/\d{2}-(\d{6})-[A-Z]{2}/);
+    if (match) {
+      nextNum = parseInt(match[1], 10) + 1;
+    }
+  }
+
+  return `${prefix}${String(nextNum).padStart(6, '0')}-${typeCode}`;
+}
+
 // ── Incident Number Generation ──────────────────────────────
 // Format: RKY26-#####-CODE  (RKY + 2-digit year)
 // Sequence is global per year (not per type)
@@ -73,18 +111,18 @@ export function generateIncidentNumber(db: Database.Database, incidentType: stri
 }
 
 // ── Call Number Generation ──────────────────────────────────
-// Format: CFS26-#####  (CFS + 2-digit year)
+// Format: 26-CFS#####  (2-digit year + CFS prefix)
 
 export function generateCallNumber(db: Database.Database): string {
   const yy = String(new Date().getFullYear()).slice(-2);
-  const prefix = `CFS${yy}-`;
+  const prefix = `${yy}-CFS`;
   const lastCall = db.prepare(
     `SELECT call_number FROM calls_for_service WHERE call_number LIKE ? ORDER BY id DESC LIMIT 1`,
   ).get(`${prefix}%`) as { call_number: string } | undefined;
 
   let nextNum = 1;
   if (lastCall) {
-    const match = lastCall.call_number.match(/CFS\d{2}-(\d{5})/);
+    const match = lastCall.call_number.match(/\d{2}-CFS(\d{5})/);
     if (match) {
       nextNum = parseInt(match[1], 10) + 1;
     }
@@ -128,7 +166,7 @@ export function migrateIncidentNumbers(db: Database.Database): void {
       }
     }
 
-    // Migrate old CFS-YYYY- call numbers to CFS26- format
+    // Migrate old CFS-YYYY- call numbers to YY-CFS##### format
     const oldCalls = db.prepare(
       "SELECT id, call_number FROM calls_for_service WHERE call_number LIKE 'CFS-____-%'",
     ).all() as { id: number; call_number: string }[];
@@ -137,12 +175,25 @@ export function migrateIncidentNumbers(db: Database.Database): void {
       const match = call.call_number.match(/CFS-(\d{4})-(\d{5})/);
       if (match) {
         const yy = match[1].slice(-2);
-        const newNumber = `CFS${yy}-${match[2]}`;
+        const newNumber = `${yy}-CFS${match[2]}`;
         db.prepare('UPDATE calls_for_service SET call_number = ? WHERE id = ?').run(newNumber, call.id);
       }
     }
 
-    const total = oldInc.length + rmpInc.length + oldCalls.length;
+    // Migrate CFS26-##### format to 26-CFS##### format
+    const cfsCalls = db.prepare(
+      "SELECT id, call_number FROM calls_for_service WHERE call_number LIKE 'CFS__-%'",
+    ).all() as { id: number; call_number: string }[];
+
+    for (const call of cfsCalls) {
+      const match = call.call_number.match(/CFS(\d{2})-(\d{5})/);
+      if (match) {
+        const newNumber = `${match[1]}-CFS${match[2]}`;
+        db.prepare('UPDATE calls_for_service SET call_number = ? WHERE id = ?').run(newNumber, call.id);
+      }
+    }
+
+    const total = oldInc.length + rmpInc.length + oldCalls.length + cfsCalls.length;
     if (total > 0) {
       console.log(`  Migrated ${total} numbers to RKY/CFS format`);
     }

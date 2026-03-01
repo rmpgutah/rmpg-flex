@@ -86,10 +86,37 @@ const DEFAULT_FORM_DATA = {
   le_notified: false,
   le_agency: '',
   le_case_number: '',
+  mental_health_crisis: false,
+  juvenile_involved: false,
+  felony_in_progress: false,
+  officer_safety_caution: false,
+  k9_requested: false,
+  ems_requested: false,
+  fire_requested: false,
+  hazmat: false,
+  gang_related: false,
+  evidence_collected: false,
+  body_camera_active: false,
+  photos_taken: false,
+  trespass_issued: false,
+  vehicle_pursuit: false,
+  foot_pursuit: false,
   damage_estimate: '',
   damage_description: '',
   responding_officer: '',
   action_taken: '',
+  contract_id: '',
+  // PSO Client Request fields
+  pso_service_type: '',
+  pso_authorization: '',
+  pso_requestor_name: '',
+  pso_requestor_phone: '',
+  pso_requestor_email: '',
+  pso_billing_code: '',
+  // Process Service fields (sub-type of PSO)
+  process_service_type: '',
+  process_served_to: '',
+  process_served_address: '',
   // Historical entry fields
   is_historical: false,
   historical_date: '',
@@ -265,6 +292,77 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               </select>
             </div>
           </div>
+
+          {/* PSO Client Request fields */}
+          {formData.incident_type === 'pso_client_request' && (
+            <div className="border border-purple-700/40 p-3 space-y-3" style={{ background: '#1a1525' }}>
+              <div className="text-[9px] font-bold text-purple-400 uppercase tracking-wider mb-1">PSO Client Request Details</div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Contract ID</label>
+                  <input type="text" className="input-dark" placeholder="PSO contract #" value={formData.contract_id} onChange={(e) => update('contract_id', e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Service Type</label>
+                  <select className="select-dark" value={formData.pso_service_type || ''} onChange={(e) => update('pso_service_type', e.target.value)}>
+                    <option value="">-- Select --</option>
+                    <option value="patrol">Patrol</option>
+                    <option value="standing_post">Standing Post</option>
+                    <option value="escort">Escort</option>
+                    <option value="process_service">Process Service</option>
+                    <option value="alarm_response">Alarm Response</option>
+                    <option value="event_security">Event Security</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Authorization / PO #</label>
+                  <input type="text" className="input-dark" placeholder="Auth or PO number" value={formData.pso_authorization || ''} onChange={(e) => update('pso_authorization', e.target.value)} />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Requestor Name</label>
+                  <input type="text" className="input-dark" placeholder="Client contact" value={formData.pso_requestor_name || ''} onChange={(e) => update('pso_requestor_name', e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Requestor Phone</label>
+                  <input type="text" className="input-dark" placeholder="(801) 555-0100" value={formData.pso_requestor_phone || ''} onChange={(e) => update('pso_requestor_phone', e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Billing Code</label>
+                  <input type="text" className="input-dark" placeholder="Billing code" value={formData.pso_billing_code || ''} onChange={(e) => update('pso_billing_code', e.target.value)} />
+                </div>
+              </div>
+              {/* Process Service sub-section */}
+              {formData.pso_service_type === 'process_service' && (
+                <div className="border-t border-purple-700/30 pt-3 mt-2">
+                  <div className="text-[9px] font-bold text-amber-400 uppercase tracking-wider mb-2">Process Service Details</div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Document Type</label>
+                      <select className="select-dark" value={formData.process_service_type || ''} onChange={(e) => update('process_service_type', e.target.value)}>
+                        <option value="">-- Select --</option>
+                        <option value="subpoena">Subpoena</option>
+                        <option value="summons">Summons</option>
+                        <option value="complaint">Complaint</option>
+                        <option value="eviction">Eviction Notice</option>
+                        <option value="restraining_order">Restraining Order</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Serve To (Name)</label>
+                      <input type="text" className="input-dark" placeholder="Person to be served" value={formData.process_served_to || ''} onChange={(e) => update('process_served_to', e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Service Address</label>
+                      <input type="text" className="input-dark" placeholder="Address for service" value={formData.process_served_address || ''} onChange={(e) => update('process_served_address', e.target.value)} />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Priority */}
           <div>
@@ -529,6 +627,69 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
                 <input type="checkbox" checked={formData.le_notified as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, le_notified: e.target.checked }))} className="accent-brand-500" />
                 LE Notified
+              </label>
+            </div>
+            {/* Extended Operational Flags */}
+            <div className="flex flex-wrap gap-4 mt-2 pt-2 border-t border-rmpg-700/50">
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+                <input type="checkbox" checked={formData.mental_health_crisis as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, mental_health_crisis: e.target.checked }))} className="accent-amber-500" />
+                Mental Health Crisis
+              </label>
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+                <input type="checkbox" checked={formData.juvenile_involved as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, juvenile_involved: e.target.checked }))} className="accent-amber-500" />
+                Juvenile Involved
+              </label>
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+                <input type="checkbox" checked={formData.felony_in_progress as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, felony_in_progress: e.target.checked }))} className="accent-red-500" />
+                Felony in Progress
+              </label>
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+                <input type="checkbox" checked={formData.officer_safety_caution as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, officer_safety_caution: e.target.checked }))} className="accent-red-500" />
+                Officer Safety Caution
+              </label>
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+                <input type="checkbox" checked={formData.k9_requested as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, k9_requested: e.target.checked }))} className="accent-brand-500" />
+                K9 Requested
+              </label>
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+                <input type="checkbox" checked={formData.ems_requested as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, ems_requested: e.target.checked }))} className="accent-brand-500" />
+                EMS Requested
+              </label>
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+                <input type="checkbox" checked={formData.fire_requested as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, fire_requested: e.target.checked }))} className="accent-brand-500" />
+                Fire Requested
+              </label>
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+                <input type="checkbox" checked={formData.hazmat as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, hazmat: e.target.checked }))} className="accent-red-500" />
+                HAZMAT
+              </label>
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+                <input type="checkbox" checked={formData.gang_related as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, gang_related: e.target.checked }))} className="accent-red-500" />
+                Gang Related
+              </label>
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+                <input type="checkbox" checked={formData.evidence_collected as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, evidence_collected: e.target.checked }))} className="accent-green-500" />
+                Evidence Collected
+              </label>
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+                <input type="checkbox" checked={formData.body_camera_active as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, body_camera_active: e.target.checked }))} className="accent-green-500" />
+                Body Camera Active
+              </label>
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+                <input type="checkbox" checked={formData.photos_taken as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, photos_taken: e.target.checked }))} className="accent-green-500" />
+                Photos Taken
+              </label>
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+                <input type="checkbox" checked={formData.trespass_issued as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, trespass_issued: e.target.checked }))} className="accent-amber-500" />
+                Trespass Issued
+              </label>
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+                <input type="checkbox" checked={formData.vehicle_pursuit as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, vehicle_pursuit: e.target.checked }))} className="accent-red-500" />
+                Vehicle Pursuit
+              </label>
+              <label className="flex items-center gap-1.5 text-xs text-rmpg-300 cursor-pointer">
+                <input type="checkbox" checked={formData.foot_pursuit as boolean} onChange={(e) => setFormData((prev) => ({ ...prev, foot_pursuit: e.target.checked }))} className="accent-red-500" />
+                Foot Pursuit
               </label>
             </div>
           </div>

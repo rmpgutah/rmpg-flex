@@ -113,6 +113,17 @@ router.post('/calls', (req: Request, res: Response) => {
       alcohol_involved, drugs_involved, domestic_violence,
       supervisor_notified, le_notified, le_agency, le_case_number,
       damage_estimate, damage_description, responding_officer, action_taken,
+      contract_id,
+      // Extended operational flags
+      mental_health_crisis, juvenile_involved, felony_in_progress, officer_safety_caution,
+      k9_requested, ems_requested, fire_requested, hazmat,
+      gang_related, evidence_collected, body_camera_active, photos_taken,
+      trespass_issued, vehicle_pursuit, foot_pursuit,
+      // PSO Client Request fields
+      pso_service_type, pso_authorization, pso_requestor_name,
+      pso_requestor_phone, pso_requestor_email, pso_billing_code,
+      // Process Service fields
+      process_service_type, process_served_to, process_served_address,
       client_id: requestClientId,
       // Historical entry fields (optional)
       created_at: customCreatedAt,
@@ -148,6 +159,11 @@ router.post('/calls', (req: Request, res: Response) => {
     let autoSectionId = section_id || null;
     let autoZoneId = zone_id || null;
     let autoBeatId = beat_id || null;
+    let autoDispatchCode: string | null = null;
+    let autoSectionName: string | null = null;
+    let autoZoneName: string | null = null;
+    let autoBeatName: string | null = null;
+    let autoBeatDescriptor: string | null = null;
     if (latitude && longitude) {
       try {
         const beat = identifyBeat(Number(latitude), Number(longitude));
@@ -161,8 +177,13 @@ router.post('/calls', (req: Request, res: Response) => {
 
           if (district) {
             if (!autoSectionId) autoSectionId = district.section_id;
-            if (!autoZoneId) autoZoneId = district.zone_name;
-            if (!autoBeatId) autoBeatId = `${district.beat_name} — ${district.beat_descriptor}`;
+            if (!autoZoneId) autoZoneId = district.zone_id;
+            if (!autoBeatId) autoBeatId = district.beat_id;
+            autoDispatchCode = district.dispatch_code;
+            autoSectionName = district.section_name;
+            autoZoneName = district.zone_name;
+            autoBeatName = district.beat_name;
+            autoBeatDescriptor = district.beat_descriptor;
           } else {
             // Fallback to raw geofence data
             if (!autoBeatId) autoBeatId = beat.beat_id;
@@ -177,17 +198,28 @@ router.post('/calls', (req: Request, res: Response) => {
       INSERT INTO calls_for_service (call_number, incident_type, priority, status, caller_name, caller_phone,
         caller_relationship, caller_address, location_address, property_id, latitude, longitude, description, notes, source, dispatcher_id,
         cross_street, location_building, location_floor, location_room, zone_beat,
-        section_id, zone_id, beat_id,
+        section_id, zone_id, beat_id, dispatch_code,
+        section_name, zone_name, beat_name, beat_descriptor,
         weapons_involved, injuries_reported, num_subjects, num_victims,
         subject_description, vehicle_description, direction_of_travel,
         scene_safety, weather_conditions, lighting_conditions,
         alcohol_involved, drugs_involved, domestic_violence,
         supervisor_notified, le_notified, le_agency, le_case_number,
         damage_estimate, damage_description, responding_officer, action_taken,
-        client_id,
+        mental_health_crisis, juvenile_involved, felony_in_progress, officer_safety_caution,
+        k9_requested, ems_requested, fire_requested, hazmat,
+        gang_related, evidence_collected, body_camera_active, photos_taken,
+        trespass_issued, vehicle_pursuit, foot_pursuit,
+        pso_service_type, pso_authorization, pso_requestor_name,
+        pso_requestor_phone, pso_requestor_email, pso_billing_code,
+        process_service_type, process_served_to, process_served_address,
+        contract_id, client_id,
         created_at, dispatched_at, enroute_at, onscene_at, cleared_at, closed_at, archived_at, disposition)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-              ?,
+              ?, ?, ?, ?, ?, ?, ?,
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+              ?, ?, ?, ?, ?, ?, ?, ?, ?,
+              ?, ?,
               COALESCE(?, ?), ?, ?, ?, ?, ?, ?, ?)
     `).run(
       callNumber, incident_type, normalizedPriority, status, caller_name || null, caller_phone || null,
@@ -195,14 +227,22 @@ router.post('/calls', (req: Request, res: Response) => {
       latitude || null, longitude || null, description || null, notes || null,
       source || 'phone', req.user!.userId,
       cross_street || null, location_building || null, location_floor || null, location_room || null, autoZoneBeat,
-      autoSectionId, autoZoneId, autoBeatId,
+      autoSectionId, autoZoneId, autoBeatId, autoDispatchCode,
+      autoSectionName, autoZoneName, autoBeatName, autoBeatDescriptor,
       weapons_involved || null, injuries_reported ? 1 : 0, num_subjects || null, num_victims || null,
       subject_description || null, vehicle_description || null, direction_of_travel || null,
       scene_safety || null, weather_conditions || null, lighting_conditions || null,
       alcohol_involved ? 1 : 0, drugs_involved ? 1 : 0, domestic_violence ? 1 : 0,
       supervisor_notified ? 1 : 0, le_notified ? 1 : 0, le_agency || null, le_case_number || null,
       damage_estimate || null, damage_description || null, responding_officer || null, action_taken || null,
-      resolvedClientId,
+      mental_health_crisis ? 1 : 0, juvenile_involved ? 1 : 0, felony_in_progress ? 1 : 0, officer_safety_caution ? 1 : 0,
+      k9_requested ? 1 : 0, ems_requested ? 1 : 0, fire_requested ? 1 : 0, hazmat ? 1 : 0,
+      gang_related ? 1 : 0, evidence_collected ? 1 : 0, body_camera_active ? 1 : 0, photos_taken ? 1 : 0,
+      trespass_issued ? 1 : 0, vehicle_pursuit ? 1 : 0, foot_pursuit ? 1 : 0,
+      pso_service_type || null, pso_authorization || null, pso_requestor_name || null,
+      pso_requestor_phone || null, pso_requestor_email || null, pso_billing_code || null,
+      process_service_type || null, process_served_to || null, process_served_address || null,
+      contract_id || null, resolvedClientId,
       // Historical timestamps
       customCreatedAt || null,
       localNow(),
@@ -401,6 +441,16 @@ router.put('/calls/:id', (req: Request, res: Response) => {
       supervisor_notified, le_notified, le_agency, le_case_number,
       damage_estimate, damage_description, action_taken,
       starting_mileage, ending_mileage,
+      // Extended operational flags
+      mental_health_crisis, juvenile_involved, felony_in_progress, officer_safety_caution,
+      k9_requested, ems_requested, fire_requested, hazmat,
+      gang_related, evidence_collected, body_camera_active, photos_taken,
+      trespass_issued, vehicle_pursuit, foot_pursuit,
+      // PSO Client Request fields
+      pso_service_type, pso_authorization, pso_requestor_name,
+      pso_requestor_phone, pso_requestor_email, pso_billing_code,
+      // Process Service fields
+      process_service_type, process_served_to, process_served_address,
       client_id: updateClientId,
     } = req.body;
 
@@ -516,6 +566,33 @@ router.put('/calls/:id', (req: Request, res: Response) => {
     addField('action_taken', action_taken);
     addField('starting_mileage', starting_mileage);
     addField('ending_mileage', ending_mileage);
+    // Extended operational flags
+    addField('mental_health_crisis', mental_health_crisis !== undefined ? (mental_health_crisis ? 1 : 0) : undefined);
+    addField('juvenile_involved', juvenile_involved !== undefined ? (juvenile_involved ? 1 : 0) : undefined);
+    addField('felony_in_progress', felony_in_progress !== undefined ? (felony_in_progress ? 1 : 0) : undefined);
+    addField('officer_safety_caution', officer_safety_caution !== undefined ? (officer_safety_caution ? 1 : 0) : undefined);
+    addField('k9_requested', k9_requested !== undefined ? (k9_requested ? 1 : 0) : undefined);
+    addField('ems_requested', ems_requested !== undefined ? (ems_requested ? 1 : 0) : undefined);
+    addField('fire_requested', fire_requested !== undefined ? (fire_requested ? 1 : 0) : undefined);
+    addField('hazmat', hazmat !== undefined ? (hazmat ? 1 : 0) : undefined);
+    addField('gang_related', gang_related !== undefined ? (gang_related ? 1 : 0) : undefined);
+    addField('evidence_collected', evidence_collected !== undefined ? (evidence_collected ? 1 : 0) : undefined);
+    addField('body_camera_active', body_camera_active !== undefined ? (body_camera_active ? 1 : 0) : undefined);
+    addField('photos_taken', photos_taken !== undefined ? (photos_taken ? 1 : 0) : undefined);
+    addField('trespass_issued', trespass_issued !== undefined ? (trespass_issued ? 1 : 0) : undefined);
+    addField('vehicle_pursuit', vehicle_pursuit !== undefined ? (vehicle_pursuit ? 1 : 0) : undefined);
+    addField('foot_pursuit', foot_pursuit !== undefined ? (foot_pursuit ? 1 : 0) : undefined);
+    // PSO Client Request fields
+    addField('pso_service_type', pso_service_type);
+    addField('pso_authorization', pso_authorization);
+    addField('pso_requestor_name', pso_requestor_name);
+    addField('pso_requestor_phone', pso_requestor_phone);
+    addField('pso_requestor_email', pso_requestor_email);
+    addField('pso_billing_code', pso_billing_code);
+    // Process Service fields
+    addField('process_service_type', process_service_type);
+    addField('process_served_to', process_served_to);
+    addField('process_served_address', process_served_address);
     addField('client_id', resolvedUpdateClientId);
 
     if (updates.length === 0) {

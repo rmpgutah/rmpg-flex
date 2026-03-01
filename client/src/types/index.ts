@@ -47,6 +47,8 @@ export interface User {
   unit_call_sign?: string;
   totp_enabled?: boolean;
   requires_2fa_setup?: boolean;
+  /** PNG base64 data URL of officer's digital signature */
+  digital_signature?: string | null;
   is_active: boolean;
   last_login?: string;
   created_at: string;
@@ -187,6 +189,17 @@ export interface CallForService {
   section_id?: string;
   zone_id?: string;
   beat_id?: string;
+  // Dispatch district data (from geofence auto-fill)
+  dispatch_code?: string;
+  section_name?: string;
+  zone_name?: string;
+  beat_name?: string;
+  beat_descriptor?: string;
+  // Case linkage
+  case_id?: number;
+  case_number?: string;
+  // Contract ID (PSO Client Request)
+  contract_id?: string;
   // Subject/threat info
   weapons_involved?: string;
   injuries_reported?: boolean;
@@ -207,6 +220,36 @@ export interface CallForService {
   le_notified?: boolean;
   le_agency?: string;
   le_case_number?: string;
+  // Additional operational flags
+  mental_health_crisis?: boolean;
+  juvenile_involved?: boolean;
+  felony_in_progress?: boolean;
+  officer_safety_caution?: boolean;
+  k9_requested?: boolean;
+  ems_requested?: boolean;
+  fire_requested?: boolean;
+  hazmat?: boolean;
+  gang_related?: boolean;
+  evidence_collected?: boolean;
+  body_camera_active?: boolean;
+  photos_taken?: boolean;
+  trespass_issued?: boolean;
+  vehicle_pursuit?: boolean;
+  foot_pursuit?: boolean;
+  // PSO Client Request fields
+  pso_requestor_name?: string;
+  pso_requestor_phone?: string;
+  pso_requestor_email?: string;
+  pso_service_type?: string;
+  pso_billing_code?: string;
+  pso_authorization?: string;
+  // Process Service fields
+  process_service_type?: string;
+  process_served_to?: string;
+  process_served_address?: string;
+  process_attempts?: number;
+  process_served_at?: string;
+  process_service_result?: string;
   // Damage
   damage_estimate?: number;
   damage_description?: string;
