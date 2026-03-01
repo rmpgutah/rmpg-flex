@@ -100,6 +100,16 @@ export default function PrintRecordButton({
       }
     }
 
+    // Fetch the current user's digital signature for PDF embedding
+    try {
+      const sigRes = await apiFetch<{ signature: string | null }>('/auth/signature');
+      if (sigRes?.signature) {
+        enriched._officerSignature = sigRes.signature;
+      }
+    } catch {
+      // Signature fetch failed — PDFs will render with empty sig lines
+    }
+
     return enriched;
   }, [entityType, entityId, recordType]);
 

@@ -156,6 +156,11 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
             <AlertTriangle className="w-4 h-4 text-red-500 animate-emergency-blink" />
           )}
           <span className="text-sm font-bold text-green-400 font-mono">{call.call_number}</span>
+          {call.dispatch_code && (
+            <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1 py-0">
+              {call.dispatch_code}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1.5">
           <StatusBadge status={call.priority} type="priority" size="sm" />
@@ -175,9 +180,16 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         </div>
       </div>
 
-      {/* Type */}
-      <div className="text-sm font-medium text-brand-400 mb-1">
-        {formatIncidentType(call.incident_type)}
+      {/* Type + Case Number */}
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-sm font-medium text-brand-400">
+          {formatIncidentType(call.incident_type)}
+        </span>
+        {call.case_number && (
+          <span className="text-[9px] font-mono text-cyan-400 bg-cyan-900/20 border border-cyan-700/30 px-1">
+            {call.case_number}
+          </span>
+        )}
       </div>
 
       {/* Location */}

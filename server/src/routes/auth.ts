@@ -616,6 +616,50 @@ router.put('/profile', authenticateToken, (req: Request, res: Response) => {
   }
 });
 
+// ─── GET /api/auth/signature ───────────────────────────
+// Retrieve the current user's digital signature (PNG base64)
+router.get('/signature', authenticateToken, (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const row = db.prepare('SELECT digital_signature FROM users WHERE id = ?')
+      .get(req.user!.userId) as { digital_signature: string | null } | undefined;
+    res.json({ signature: row?.digital_signature || null });
+  } catch (error: any) {
+    console.error('Get signature error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── PUT /api/auth/signature ──────────────────────────
+// Save or clear the current user's digital signature
+router.put('/signature', authenticateToken, (req: Request, res: Response) => {
+  try {
+    const { signature } = req.body; // base64 data URL or null to clear
+    const db = getDb();
+
+    // Validate: must be a PNG data URL or null
+    if (signature !== null && signature !== undefined) {
+      if (typeof signature !== 'string' || !signature.startsWith('data:image/png;base64,')) {
+        res.status(400).json({ error: 'Signature must be a PNG data URL' });
+        return;
+      }
+      // Limit size (~500KB — a hand-drawn signature should be well under this)
+      if (signature.length > 500_000) {
+        res.status(400).json({ error: 'Signature data too large' });
+        return;
+      }
+    }
+
+    db.prepare('UPDATE users SET digital_signature = ?, updated_at = ? WHERE id = ?')
+      .run(signature || null, localNow(), req.user!.userId);
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Save signature error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ─── GET /api/auth/password-policy ────────────────────
 router.get('/password-policy', (_req: Request, res: Response) => {
   res.json({

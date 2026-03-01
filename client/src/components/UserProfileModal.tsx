@@ -18,6 +18,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../hooks/useApi';
 import TotpCodeInput from './TotpCodeInput';
+import SignaturePad from './SignaturePad';
 
 interface UserProfileModalProps {
   isOpen: boolean;
@@ -50,6 +51,10 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
   // Sessions
   const [sessions, setSessions] = useState<any[]>([]);
 
+  // Digital Signature
+  const [signature, setSignature] = useState<string | null>(null);
+  const [sigLoaded, setSigLoaded] = useState(false);
+
   // 2FA / Security
   const [totpStatus, setTotpStatus] = useState<{ enabled: boolean; required: boolean } | null>(null);
   const [setupStep, setSetupStep] = useState<'idle' | 'qr' | 'verify' | 'backups' | 'disabling'>('idle');
@@ -73,8 +78,31 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
+      setSigLoaded(false);
     }
   }, [isOpen, user, initialTab]);
+
+  // Fetch digital signature on profile tab open
+  useEffect(() => {
+    if (isOpen && activeTab === 'profile' && !sigLoaded) {
+      apiFetch<{ signature: string | null }>('/auth/signature')
+        .then(data => { setSignature(data?.signature || null); setSigLoaded(true); })
+        .catch(() => setSigLoaded(true));
+    }
+  }, [isOpen, activeTab, sigLoaded]);
+
+  const handleSignatureChange = async (dataUrl: string | null) => {
+    setSignature(dataUrl);
+    try {
+      await apiFetch('/auth/signature', {
+        method: 'PUT',
+        body: JSON.stringify({ signature: dataUrl }),
+      });
+    } catch {
+      // Revert on failure
+      setSignature(signature);
+    }
+  };
 
   useEffect(() => {
     if (isOpen && activeTab === 'password') {
@@ -370,6 +398,16 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                     {user.badge_number || '—'}
                   </div>
                 </div>
+              </div>
+
+              {/* Digital Signature */}
+              <div className="mt-3 pt-3 border-t border-rmpg-700">
+                <SignaturePad
+                  value={signature}
+                  onChange={handleSignatureChange}
+                  label="Digital Signature (for PDF reports)"
+                  compact
+                />
               </div>
 
               {profileMsg && (

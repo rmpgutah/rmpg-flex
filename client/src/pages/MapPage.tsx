@@ -745,13 +745,12 @@ export default function MapPage() {
       dismissObserver.observe(document.body, { childList: true, subtree: true });
       setTimeout(() => dismissObserver.disconnect(), 10000);
 
-      // Detect AdvancedMarkerElement support (requires mapId)
-      try {
-        useAdvancedMarkersRef.current = !!(google.maps.marker && google.maps.marker.AdvancedMarkerElement);
-      } catch {
-        useAdvancedMarkersRef.current = false;
-      }
-      devLog('[MapPage] AdvancedMarkerElement:', useAdvancedMarkersRef.current ? 'available' : 'fallback overlay');
+      // AdvancedMarkerElement requires a cloud mapId on the Map constructor.
+      // Without mapId, markers are created but silently never render.
+      // Since we use a raster styled map (no mapId), always use the
+      // OverlayView-based fallback which works reliably on all map types.
+      useAdvancedMarkersRef.current = false;
+      devLog('[MapPage] Using OverlayView markers (no mapId configured)');
       if (!authFailed) setMapLoaded(true);
     }
 

@@ -56,7 +56,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight }: Di
   const navigate = useNavigate();
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
-  const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
+  const markersRef = useRef<any[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -109,7 +109,6 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight }: Di
         disableDefaultUI: true,
         zoomControl: true,
         zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_TOP },
-        mapId: 'rmpg-dispatch-minimap',
         gestureHandling: 'cooperative',
       });
       mapRef.current = map;
@@ -119,20 +118,43 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight }: Di
     }
 
     // Clear old markers
-    markersRef.current.forEach(m => (m.map = null));
+    markersRef.current.forEach(m => {
+      if (typeof m.setMap === 'function') m.setMap(null);
+      else if (typeof m.remove === 'function') m.remove();
+    });
     markersRef.current = [];
 
+    // Helper: create an OverlayView-based marker
+    const createOverlay = (map: google.maps.Map, pos: google.maps.LatLngLiteral, content: HTMLElement, zIndex: number) => {
+      const overlay = new google.maps.OverlayView();
+      let container: HTMLDivElement | null = null;
+      overlay.onAdd = () => {
+        container = document.createElement('div');
+        container.style.position = 'absolute';
+        container.style.zIndex = String(zIndex);
+        container.appendChild(content);
+        overlay.getPanes()?.overlayMouseTarget.appendChild(container);
+      };
+      overlay.draw = () => {
+        if (!container) return;
+        const proj = overlay.getProjection();
+        if (!proj) return;
+        const pt = proj.fromLatLngToDivPixel(new google.maps.LatLng(pos.lat, pos.lng));
+        if (pt) {
+          container.style.left = `${pt.x}px`;
+          container.style.top = `${pt.y}px`;
+          container.style.transform = 'translate(-50%, -100%)';
+        }
+      };
+      overlay.onRemove = () => { container?.parentElement?.removeChild(container); container = null; };
+      overlay.setMap(map);
+      return overlay;
+    };
+
     // Call marker (red pin)
-    if (call?.latitude && call?.longitude) {
-      try {
-        const marker = new google.maps.marker.AdvancedMarkerElement({
-          map: mapRef.current,
-          position: { lat: call.latitude, lng: call.longitude },
-          content: buildCallMarker(call.call_number || 'CALL'),
-          zIndex: 100,
-        });
-        markersRef.current.push(marker);
-      } catch { /* AdvancedMarkerElement not available */ }
+    if (call?.latitude && call?.longitude && mapRef.current) {
+      const m = createOverlay(mapRef.current, { lat: call.latitude, lng: call.longitude }, buildCallMarker(call.call_number || 'CALL'), 100);
+      markersRef.current.push(m);
     }
 
     // Assigned unit markers (blue dots)
@@ -141,15 +163,10 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight }: Di
     );
 
     for (const unit of assignedUnits) {
-      try {
-        const marker = new google.maps.marker.AdvancedMarkerElement({
-          map: mapRef.current,
-          position: { lat: unit.latitude!, lng: unit.longitude! },
-          content: buildUnitMarker(unit.call_sign),
-          zIndex: 50,
-        });
-        markersRef.current.push(marker);
-      } catch { /* ignore */ }
+      if (mapRef.current) {
+        const m = createOverlay(mapRef.current, { lat: unit.latitude!, lng: unit.longitude! }, buildUnitMarker(unit.call_sign), 50);
+        markersRef.current.push(m);
+      }
     }
   }, [loaded, call?.id, call?.latitude, call?.longitude, units]);
 
