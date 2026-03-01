@@ -482,39 +482,27 @@ export default function Layout() {
                     : 'bg-transparent border-transparent hover:bg-rmpg-800 hover:border-rmpg-700'
                 }`}
               >
-                {/* Avatar */}
+                {/* Avatar icon only */}
                 {user?.profile_image ? (
                   <img
                     src={user.profile_image}
                     alt={user.first_name}
-                    className="w-7 h-7 object-cover"
-                    style={{ border: '2px solid #484848', borderRadius: 2 }}
+                    className="w-8 h-8 object-cover"
+                    style={{ border: '2px solid #484848', borderRadius: '50%' }}
                   />
                 ) : (
                   <div
-                    className="w-7 h-7 flex items-center justify-center text-[10px] font-bold"
+                    className="w-8 h-8 flex items-center justify-center text-[11px] font-bold"
                     style={{
                       background: 'linear-gradient(135deg, #8a0c0c, #bc1010)',
                       color: '#fff',
                       border: '2px solid #d93030',
-                      borderRadius: 2,
+                      borderRadius: '50%',
                     }}
                   >
                     {initials}
                   </div>
                 )}
-
-                {/* Name + Badge */}
-                <div className="text-left">
-                  <div className="text-[11px] font-bold text-white leading-tight">
-                    {user?.first_name && user?.last_name
-                      ? `${user.last_name.toUpperCase()}, ${user.first_name}`
-                      : user?.last_name?.toUpperCase() || user?.first_name?.toUpperCase() || '---'}
-                  </div>
-                  <div className="text-[9px] font-mono leading-tight text-rmpg-500">
-                    {user?.badge_number ? `#${user.badge_number}` : toDisplayLabel(user?.role || '---').toUpperCase()}
-                  </div>
-                </div>
 
                 <ChevronDown
                   style={{

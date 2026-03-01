@@ -2144,6 +2144,36 @@ export function mountScheduleRoutes(parentRouter: Router): void {
     }
   });
 
+  // POST /api/personnel/bodycam-videos/reprobe - Re-extract duration & verify file_size for all videos with null duration
+  parentRouter.post('/personnel/bodycam-videos/reprobe', authenticateToken, requireRole('admin'), async (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const videos = db.prepare('SELECT id, file_path, file_size, duration_seconds FROM bodycam_videos WHERE duration_seconds IS NULL OR duration_seconds = 0').all() as any[];
+      let updated = 0;
+      let sizeFixed = 0;
+      for (const vid of videos) {
+        const fullPath = path.resolve(BODYCAM_DIR, vid.file_path);
+        if (!fs.existsSync(fullPath)) continue;
+        // Verify / fix file_size from actual file
+        const stat = fs.statSync(fullPath);
+        if (stat.size !== vid.file_size) {
+          db.prepare('UPDATE bodycam_videos SET file_size = ?, updated_at = ? WHERE id = ?').run(stat.size, localNow(), vid.id);
+          sizeFixed++;
+        }
+        // Extract duration via ffprobe
+        const dur = await extractVideoDuration(fullPath);
+        if (dur != null) {
+          db.prepare('UPDATE bodycam_videos SET duration_seconds = ?, updated_at = ? WHERE id = ?').run(dur, localNow(), vid.id);
+          updated++;
+        }
+      }
+      res.json({ total: videos.length, duration_updated: updated, size_fixed: sizeFixed });
+    } catch (error: any) {
+      console.error('Reprobe bodycam videos error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   // DELETE /api/personnel/bodycam-videos/:videoId - Delete video + file
   parentRouter.delete('/personnel/bodycam-videos/:videoId', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
     try {

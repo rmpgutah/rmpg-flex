@@ -9,13 +9,10 @@ import {
   Palette,
   FileText,
   Save,
-  RefreshCw,
   CheckCircle,
   Loader2,
   Eye,
   Image,
-  Type,
-  Hash,
   Printer,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
@@ -138,45 +135,6 @@ export default function AdminBrandingTab({ LoadingSpinner, error, setError }: Ad
           {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : saved ? <CheckCircle className="w-3 h-3 text-green-400" /> : <Save className="w-3 h-3" />}
           {saving ? 'Saving...' : saved ? 'Saved' : 'Save Changes'}
         </button>
-      </div>
-
-      {/* Agency Identity */}
-      <div className="panel-beveled p-4 space-y-4">
-        <div className="flex items-center gap-2 mb-2">
-          <Type className="w-4 h-4 text-brand-400" />
-          <h3 className="text-xs font-bold text-rmpg-200 uppercase tracking-wider">Agency Identity</h3>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Agency / Report Header</label>
-            <input type="text" className="input-dark text-xs w-full" value={config.report_header_text} onChange={(e) => update('report_header_text', e.target.value)} placeholder="AGENCY NAME" />
-            <p className="text-[9px] text-rmpg-500 mt-0.5">Appears at the top of all generated PDF reports</p>
-          </div>
-          <div>
-            <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Subtitle / Department Type</label>
-            <input type="text" className="input-dark text-xs w-full" value={config.report_subheader_text} onChange={(e) => update('report_subheader_text', e.target.value)} placeholder="PRIVATE SECURITY" />
-            <p className="text-[9px] text-rmpg-500 mt-0.5">Secondary line below the agency name</p>
-          </div>
-        </div>
-
-        <div>
-          <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Report Footer Text</label>
-          <textarea
-            className="input-dark text-xs w-full h-16"
-            value={config.report_footer_text}
-            onChange={(e) => update('report_footer_text', e.target.value)}
-            placeholder="Confidentiality notice or agency disclaimer"
-          />
-        </div>
-
-        <div>
-          <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Form Number Prefix</label>
-          <div className="flex items-center gap-2">
-            <input type="text" className="input-dark text-xs w-24" value={config.form_number_prefix} onChange={(e) => update('form_number_prefix', e.target.value.toUpperCase())} maxLength={5} placeholder="RKY" />
-            <span className="text-[10px] text-rmpg-500 font-mono">{config.form_number_prefix}26-00001-THF</span>
-          </div>
-        </div>
       </div>
 
       {/* Brand Colors */}

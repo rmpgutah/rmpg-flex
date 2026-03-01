@@ -146,15 +146,14 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   function addHeaderFooter(pageNum: number, totalPages: number) {
     // Only draw the top header bar on pages 2+
     if (pageNum > 1) {
-      doc.setFillColor(...headerBgRgb);
+      // Dark gray header bar
+      doc.setFillColor(55, 60, 72);
       doc.rect(0, 0, pageW, 14, 'F');
 
-      // Logo in header (white bg box + dark logo)
+      // Logo in header
       if (logoB64) {
         try {
-          doc.setFillColor(255, 255, 255);
-          doc.roundedRect(margin - 1, 1.5, 13, 11, 1, 1, 'F');
-          doc.addImage(logoB64, 'PNG', margin - 0.5, 2, 12, 10);
+          doc.addImage(logoB64, 'PNG', margin, 2, 12, 10);
         } catch { /* ignore */ }
       }
 
@@ -162,9 +161,11 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(9);
       doc.setFont('helvetica', 'bold');
-      doc.text(branding.report_header_text, textX, 9);
-      doc.setFontSize(7);
+      doc.text(branding.report_header_text, textX, 6);
+      doc.setFontSize(6.5);
       doc.setFont('helvetica', 'normal');
+      doc.text('PROCESS SERVICE DEPARTMENT', textX, 10);
+      doc.setFontSize(7);
       doc.text(`PATROL TRACKING REPORT  |  ${formNum}  |  ${FORM_REVISION}`, pageW - margin, 9, { align: 'right' });
 
       // Accent strip
@@ -187,21 +188,18 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
   }
 
-  // ── Utility: draw a section header bar (light bg + dark text) ──
+  // ── Utility: draw a section header bar (dark gray bg + white text) ──
   function drawSectionHeader(title: string) {
-    doc.setFillColor(...primaryRgb);
-    doc.rect(margin, yPos, 2, 7, 'F');
-    doc.setFillColor(...COLOR.BG_SECTION_HDR);
-    doc.rect(margin + 2, yPos, contentW - 2, 7, 'F');
-    doc.setDrawColor(...COLOR.BORDER_SECTION);
-    doc.setLineWidth(BORDER.SECTION_OUTER);
-    doc.line(margin, yPos + 7, margin + contentW, yPos + 7);
-    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    const barH = 7;
+    doc.setFillColor(55, 60, 72);
+    doc.rect(margin, yPos, contentW, barH, 'F');
+    doc.setTextColor(255, 255, 255);
     doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');
-    doc.text(title.toUpperCase(), margin + SPACING.CONTENT_INSET, yPos + 5);
+    doc.text(title.toUpperCase(), margin + SPACING.CONTENT_INSET, yPos + barH / 2 + 1.2);
     doc.setFont('helvetica', 'normal');
-    yPos += 10;
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    yPos += barH + 3;
   }
 
   // ── Utility: draw table column headers ──────────────
@@ -211,7 +209,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     doc.setDrawColor(...COLOR.BORDER_TABLE);
     doc.setLineWidth(BORDER.TABLE_ROW * 3);
     doc.line(margin, yPos + 5, margin + contentW, yPos + 5);
-    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.setTextColor(255, 255, 255);
     doc.setFontSize(6);
     doc.setFont('helvetica', 'bold');
     let xOff = margin;
@@ -220,6 +218,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
       xOff += col.w;
     }
     doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
     yPos += 6;
   }
 

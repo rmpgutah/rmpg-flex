@@ -4,6 +4,12 @@ import FormModal from './FormModal';
 import { useFormDirty } from '../hooks/useFormDirty';
 import type { Incident, CallPriority } from '../types';
 import { INCIDENT_TYPE_CATEGORIES, type IncidentType } from '../utils/caseNumbers';
+import {
+  WEATHER_OPTIONS,
+  LIGHTING_OPTIONS,
+  WEAPONS_OPTIONS,
+  LE_AGENCY_OPTIONS,
+} from '../utils/callOptions';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
 import StatuteLookup, { type StatuteResult } from './StatuteLookup';
 import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
@@ -91,18 +97,8 @@ const PRIORITY_OPTIONS: { value: CallPriority; label: string; color: string; des
   { value: 'P4', label: 'P4', color: 'border-gray-500 text-rmpg-300 bg-rmpg-700/30', desc: 'Scheduled' },
 ];
 
-const WEATHER_OPTIONS = [
-  '', 'Clear', 'Partly Cloudy', 'Overcast', 'Rain', 'Snow', 'Fog', 'Sleet/Hail',
-  'Windy', 'Extreme Heat', 'Extreme Cold', 'Unknown',
-];
-
-const LIGHTING_OPTIONS = [
-  '', 'Daylight', 'Dusk/Dawn', 'Dark - Street Lit', 'Dark - Not Lit',
-  'Artificial Light', 'Unknown',
-];
-
-const WEAPONS_OPTIONS = ['None', 'Firearm — Handgun', 'Firearm — Rifle', 'Firearm — Shotgun', 'Firearm — Unknown Type', 'Knife / Edged Weapon', 'Blunt Object', 'Vehicle (used as weapon)', 'Hands / Fists / Feet', 'Chemical Spray', 'Taser / Stun Gun', 'Explosive / IED', 'BB / Pellet Gun', 'Bow / Crossbow', 'Replica / Toy Weapon', 'Unknown Weapon', 'Other'];
-const LE_AGENCY_OPTIONS = ['None', 'RMPG Internal', 'Salt Lake City PD', 'West Valley City PD', 'West Jordan PD', 'Sandy City PD', 'South Jordan PD', 'Draper PD', 'Murray PD', 'Midvale PD', 'South Salt Lake PD', 'Herriman PD', 'Riverton PD', 'Salt Lake County Sheriff', 'Utah County Sheriff', 'Davis County Sheriff', 'Utah Highway Patrol (UHP)', 'Park City PD', 'Provo PD', 'Orem PD', 'Ogden PD', 'Layton PD', 'Unified Police Dept (UPD)', 'FBI', 'ATF', 'DEA', 'US Marshals', 'Other — See Notes'];
+// WEATHER_OPTIONS, LIGHTING_OPTIONS, WEAPONS_OPTIONS, LE_AGENCY_OPTIONS
+// now imported from ../utils/callOptions.ts
 // Section/Zone/Beat options now loaded dynamically from 3Tier dispatch districts
 
 // Dynamic section tabs based on incident type

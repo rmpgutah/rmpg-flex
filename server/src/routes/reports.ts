@@ -119,6 +119,28 @@ router.get('/dashboard', (req: Request, res: Response) => {
   }
 });
 
+// GET /api/reports/officer-activity — Per-officer action counts (last 30 days) grouped by role
+router.get('/officer-activity', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT u.id, u.full_name, u.badge_number, u.role,
+        COUNT(al.id) as action_count
+      FROM users u
+      LEFT JOIN activity_log al ON al.user_id = u.id
+        AND al.created_at >= datetime('now', '-30 days')
+      WHERE u.status = 'active'
+        AND u.role IN ('admin', 'supervisor', 'manager', 'officer')
+      GROUP BY u.id
+      ORDER BY u.role, action_count DESC
+    `).all();
+    res.json(rows);
+  } catch (error: any) {
+    console.error('Officer activity error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // GET /api/reports/incidents-summary - Incident summary with grouping
 router.get('/incidents-summary', (req: Request, res: Response) => {
   try {

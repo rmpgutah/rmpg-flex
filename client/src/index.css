@@ -625,6 +625,9 @@
     background: #1a1a1a;
     border-bottom: 2px solid #303030;
     padding: 0 4px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
   }
 
   .tab-bar-item {
@@ -640,6 +643,8 @@
     transition: color 0.1s, background 0.1s;
     position: relative;
     top: 2px;
+    white-space: nowrap;
+    flex-shrink: 0;
   }
 
   .tab-bar-item:hover {

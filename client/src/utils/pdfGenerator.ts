@@ -33,8 +33,8 @@ export const DEFAULT_PDF_BRANDING: PdfBranding = {
   report_header_text: 'RMPG SECURITY SERVICES',
   report_subheader_text: 'PRIVATE SECURITY',
   primary_color: '#bc1010',
-  accent_color: '#d4a017',
-  header_bg_color: '#000000',
+  accent_color: '#8a8e9c',
+  header_bg_color: '#f0f1f4',
 };
 
 /** Fetch branding settings from admin config API (gracefully falls back to defaults) */
@@ -193,7 +193,14 @@ export function addReportHeader(
 
   const accentRgb = hexToRgb(brand.accent_color);
 
-  // ── Header background bar ──────────────────────────────
+  // Detect if header background is light or dark to choose text colors
+  const bgLuminance = (headerBg[0] * 0.299 + headerBg[1] * 0.587 + headerBg[2] * 0.114);
+  const isLightBg = bgLuminance > 140;
+  const headerTextColor: [number, number, number] = isLightBg ? [30, 30, 35] : [255, 255, 255];
+  const headerMetaColor: [number, number, number] = isLightBg ? [100, 100, 110] : [150, 150, 150];
+  const subheaderColor: [number, number, number] = isLightBg ? primaryRgb : [accentRgb[0], accentRgb[1], accentRgb[2]];
+
+  // ── Header background bar (no top outline — clean edge) ─
   doc.setFillColor(headerBg[0], headerBg[1], headerBg[2]);
   doc.rect(LAYOUT.PAGE_MARGIN, LAYOUT.HEADER_TOP, cw, LAYOUT.HEADER_HEIGHT, 'F');
 
@@ -206,10 +213,6 @@ export function addReportHeader(
 
   if (imageToUse) {
     try {
-      if (useLogo && cachedLogoDark) {
-        doc.setFillColor(255, 255, 255);
-        doc.roundedRect(sealX - 0.3, sealY - 0.3, LAYOUT.SEAL_SIZE + 0.6, LAYOUT.SEAL_SIZE + 0.6, 1, 1, 'F');
-      }
       doc.addImage(imageToUse, 'PNG', sealX, sealY, LAYOUT.SEAL_SIZE, LAYOUT.SEAL_SIZE);
       textStartX = sealX + LAYOUT.SEAL_SIZE + SPACING.MD;
     } catch {
@@ -220,13 +223,13 @@ export function addReportHeader(
   // ── Line 1: Agency name ────────────────────────────────
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_HEADER_TITLE);
-  doc.setTextColor(...COLOR.TEXT_INVERTED);
+  doc.setTextColor(headerTextColor[0], headerTextColor[1], headerTextColor[2]);
   doc.text(agencyName || brand.report_header_text, textStartX, LAYOUT.HEADER_TOP + 6.5);
 
-  // ── Line 2: Subheader + report type ────────────────────
+  // ── Line 2: Subheader ──────────────────────────────────
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SUBHEADER);
-  doc.setTextColor(accentRgb[0], accentRgb[1], accentRgb[2]);
+  doc.setTextColor(subheaderColor[0], subheaderColor[1], subheaderColor[2]);
   doc.text(brand.report_subheader_text, textStartX, LAYOUT.HEADER_TOP + 11);
 
   // ── Line 3: Report type | form# | rev | date ──────────
@@ -239,22 +242,32 @@ export function addReportHeader(
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(FONT.SIZE_SMALL_META);
-  doc.setTextColor(150, 150, 150);
+  doc.setTextColor(headerMetaColor[0], headerMetaColor[1], headerMetaColor[2]);
   doc.text(metaParts.join('  |  '), textStartX, LAYOUT.HEADER_TOP + 15);
 
-  // ── Priority badge (inline, below report meta) ─────────
-  const prio = PRIORITY_COLORS[priority?.toLowerCase()];
+  // ── Priority badge (inline, "P4 - Low" format) ─────────
+  const prioKey = priority?.toLowerCase() || '';
+  const prio = PRIORITY_COLORS[prioKey];
   if (prio) {
-    const prioLabel = prio.label.replace('PRIORITY: ', '');
+    // Map priority keys → short labels: P1 - Critical, P2 - Urgent, etc.
+    const prioShortNames: Record<string, string> = {
+      critical: 'P1 - Critical', high: 'P2 - High',
+      medium: 'P3 - Medium', low: 'P4 - Low', routine: 'P5 - Routine',
+    };
+    // Also handle P1/P2/P3/P4 keys directly
+    const pKey = priority?.toUpperCase() || '';
+    const prioLabelText = prioShortNames[prioKey]
+      || (pKey === 'P1' ? 'P1 - Emergency' : pKey === 'P2' ? 'P2 - Urgent'
+        : pKey === 'P3' ? 'P3 - Routine' : pKey === 'P4' ? 'P4 - Low' : prio.label.replace('PRIORITY: ', ''));
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(5);
-    const prioW = doc.getTextWidth(prioLabel) + 4;
+    const prioW = doc.getTextWidth(prioLabelText) + 4;
     const prioX = textStartX;
     const prioY = LAYOUT.HEADER_TOP + 16.5;
     doc.setFillColor(prio.bg[0], prio.bg[1], prio.bg[2]);
     doc.roundedRect(prioX, prioY, prioW, 3, 0.5, 0.5, 'F');
     doc.setTextColor(prio.text[0], prio.text[1], prio.text[2]);
-    doc.text(prioLabel, prioX + prioW / 2, prioY + 2.2, { align: 'center' });
+    doc.text(prioLabelText, prioX + prioW / 2, prioY + 2.2, { align: 'center' });
   }
 
   // ── Case number box (right) ────────────────────────────
@@ -276,12 +289,10 @@ export function addReportHeader(
   doc.setFont('courier', 'bold');
   doc.text(caseNumber, caseBoxX + LAYOUT.CASE_BOX_W / 2, caseBoxY + 12, { align: 'center' });
 
-  // ── Thin accent line below header ──────────────────────
+  // ── Thin accent line below header (primary color only) ─
   const stripY = LAYOUT.HEADER_TOP + LAYOUT.HEADER_HEIGHT;
   doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
-  doc.rect(LAYOUT.PAGE_MARGIN, stripY, cw * 0.4, LAYOUT.ACCENT_STRIP_H, 'F');
-  doc.setFillColor(accentRgb[0], accentRgb[1], accentRgb[2]);
-  doc.rect(LAYOUT.PAGE_MARGIN + cw * 0.4, stripY, cw * 0.6, LAYOUT.ACCENT_STRIP_H, 'F');
+  doc.rect(LAYOUT.PAGE_MARGIN, stripY, cw, LAYOUT.ACCENT_STRIP_H, 'F');
 
   // ── Reset drawing state ────────────────────────────────
   doc.setFont('helvetica', 'normal');
@@ -302,10 +313,10 @@ export function openAutoSection(doc: jsPDF, title: string, y: number): { content
   // @ts-expect-error jsPDF GState
   doc.setGState(new doc.GState({ opacity: 1.0 }));
 
-  // Dark header bar with white text (police report blocky style)
+  // Section header bar (dark slate) with white text, left-justified
   doc.setFillColor(...COLOR.BG_SECTION_HDR);
   doc.rect(LAYOUT.PAGE_MARGIN, y, cw, SPACING.SECTION_HEADER_H, 'F');
-  // Bold border around header
+  // Clean border around header
   doc.setDrawColor(...COLOR.BORDER_SECTION);
   doc.setLineWidth(BORDER.SECTION_OUTER);
   doc.rect(LAYOUT.PAGE_MARGIN, y, cw, SPACING.SECTION_HEADER_H);
@@ -313,7 +324,9 @@ export function openAutoSection(doc: jsPDF, title: string, y: number): { content
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SECTION_TITLE);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
-  doc.text(title.toUpperCase(), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, y + 4.2);
+  // Vertically centered in header bar: baseline ≈ midpoint + half ascent
+  const sectionTextY = y + SPACING.SECTION_HEADER_H / 2 + FONT.SIZE_SECTION_TITLE * 0.14;
+  doc.text(title.toUpperCase(), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, sectionTextY);
 
   doc.setFont('helvetica', 'normal');
 
@@ -359,7 +372,7 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
   const labelH = 3;          // Height reserved for floating label above box
-  const baseBoxH = 7;        // Minimum value box height (tight)
+  const baseBoxH = 7;        // Minimum value box height
   const innerPad = 1.5;      // Horizontal padding inside box
   const maxW = width - 2 * innerPad;
   const lineStep = 3.5;      // Y-step per extra line of value text
@@ -371,7 +384,7 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
   doc.text(label.toUpperCase(), x + innerPad, y + 2);
 
-  // Determine value text and line count — Courier for values (police typewriter style)
+  // Determine value text and line count — Courier for values
   doc.setFont('courier', 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
 
@@ -383,17 +396,18 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   const extraLines = Math.max(0, lines.length - 1);
   const boxH = baseBoxH + extraLines * lineStep;
 
-  // Value box with border (positioned below the label) — blocky grid
+  // Value box with border (positioned below the label)
   const boxY = y + labelH;
   doc.setDrawColor(...COLOR.BORDER_FIELD);
   doc.setLineWidth(BORDER.FIELD);
   doc.rect(x, boxY, width, boxH);
 
-  // Value text vertically centered in box (Courier)
+  // Value text — vertically centered in box
   const valColor = isEmpty ? COLOR.TEXT_TERTIARY : COLOR.TEXT_PRIMARY;
   doc.setTextColor(valColor[0], valColor[1], valColor[2]);
 
-  const textStartY = boxY + 4.5;
+  const textBlockH = lines.length * lineStep;
+  const textStartY = boxY + (boxH - textBlockH) / 2 + lineStep * 0.72;
   let lineY = textStartY;
   for (const line of lines) {
     doc.text(line, x + innerPad, lineY);
@@ -439,6 +453,149 @@ export function addCheckboxField(doc: jsPDF, label: string, checked: boolean, x:
   return x + boxSize + 1.5 + doc.getTextWidth(label) + 3;
 }
 
+/**
+ * Render flags/warnings as individually spaced colored pill badges.
+ * Each flag gets its own rounded rectangle with inverted text.
+ * Wraps across rows when the line exceeds available width.
+ * Returns final Y position.
+ */
+export function addFlagBadges(
+  doc: jsPDF,
+  flags: string[],
+  x: number,
+  y: number,
+  maxWidth: number,
+  priority?: string,
+): number {
+  if (!flags || flags.length === 0) return y;
+
+  // @ts-expect-error jsPDF GState — ensure full opacity
+  doc.setGState(new doc.GState({ opacity: 1.0 }));
+
+  const pillH = 5;          // Badge pill height
+  const pillPadX = 3;       // Horizontal padding inside pill
+  const pillGapX = 2;       // Gap between pills horizontally
+  const pillGapY = 1.5;     // Gap between rows vertically
+  const fontSize = 6;
+  const cornerR = 1.2;      // Rounded corner radius
+
+  // Flag → color mapping (red for danger, amber for warnings, gray for info)
+  const flagColors: Record<string, [number, number, number]> = {
+    'ARMED & DANGEROUS': [180, 20, 20],
+    'VIOLENT': [180, 20, 20],
+    'FLIGHT RISK': [180, 20, 20],
+    'WARRANT': [180, 20, 20],
+    'SEX OFFENDER': [180, 20, 20],
+    'GANG MEMBER': [180, 20, 20],
+    'BOLO': [200, 80, 10],
+    'CAUTION': [200, 80, 10],
+    'SUICIDAL': [200, 80, 10],
+    'MENTAL HEALTH': [200, 80, 10],
+    'DRUG USER': [200, 80, 10],
+    'OFFICER SAFETY': [200, 80, 10],
+    'RESTRICTED': [120, 80, 160],
+  };
+  const defaultColor: [number, number, number] = [70, 75, 88]; // Slate for unrecognized
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(fontSize);
+
+  let curX = x;
+  let curY = y;
+
+  for (const flag of flags) {
+    const text = flag.toUpperCase();
+    const tw = doc.getTextWidth(text);
+    const pillW = tw + pillPadX * 2;
+
+    // Wrap to next row if needed
+    if (curX + pillW > x + maxWidth && curX > x) {
+      curX = x;
+      curY += pillH + pillGapY;
+      curY = checkPageBreak(doc, curY, pillH + pillGapY, priority);
+    }
+
+    // Pick color based on flag content (partial match)
+    const upperFlag = text;
+    let bg = defaultColor;
+    for (const [key, color] of Object.entries(flagColors)) {
+      if (upperFlag.includes(key)) { bg = color; break; }
+    }
+
+    // Draw pill background
+    doc.setFillColor(bg[0], bg[1], bg[2]);
+    doc.roundedRect(curX, curY, pillW, pillH, cornerR, cornerR, 'F');
+
+    // Draw text (white on colored bg)
+    doc.setTextColor(255, 255, 255);
+    const textY = curY + pillH / 2 + fontSize * 0.14;
+    doc.text(text, curX + pillPadX, textY);
+
+    curX += pillW + pillGapX;
+  }
+
+  // Reset
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  doc.setFont('helvetica', 'normal');
+  return curY + pillH + 1.5;
+}
+
+/**
+ * Render a "Caution / Officer Safety" block with warning styling.
+ * Uses an amber/red tinted background box for high visibility.
+ */
+export function addCautionBlock(
+  doc: jsPDF,
+  cautionText: string,
+  x: number,
+  y: number,
+  width: number,
+): number {
+  if (!cautionText || !cautionText.trim()) return y;
+
+  // @ts-expect-error jsPDF GState — ensure full opacity
+  doc.setGState(new doc.GState({ opacity: 1.0 }));
+
+  const innerPad = 2;
+  const maxW = width - innerPad * 2;
+  doc.setFont('courier', 'normal');
+  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+  const lines = doc.splitTextToSize(cautionText, maxW).slice(0, 6);
+  const lineH = 3.5;
+  const boxH = Math.max(8, lines.length * lineH + 4);
+
+  // Amber warning background
+  doc.setFillColor(255, 248, 230);
+  doc.rect(x, y, width, boxH, 'F');
+  // Orange left accent bar
+  doc.setFillColor(200, 80, 10);
+  doc.rect(x, y, 2, boxH, 'F');
+  // Border
+  doc.setDrawColor(200, 160, 80);
+  doc.setLineWidth(0.3);
+  doc.rect(x, y, width, boxH);
+
+  // Label
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+  doc.setTextColor(180, 60, 0);
+  doc.text('⚠ CAUTION / OFFICER SAFETY', x + innerPad + 2, y + 3);
+
+  // Text content
+  doc.setFont('courier', 'normal');
+  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+  doc.setTextColor(80, 40, 0);
+  let textY = y + 6;
+  for (const line of lines) {
+    doc.text(line, x + innerPad + 2, textY);
+    textY += lineH;
+  }
+
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+  return y + boxH + 1.5;
+}
+
 // ── Active Officer Signature (set per-generation, cleared after) ─
 
 let _activeOfficerSig: PdfSignatureData | undefined;
@@ -465,20 +622,25 @@ export interface PdfSignatureData {
 }
 
 /**
- * Government-style signature block with shaded role header,
- * signature line with X marker, and grid sub-fields.
+ * Full-page-width signature block with role header, signature line,
+ * and sub-fields (Printed Name | Badge # | Date) below.
+ * Always renders at full content width (margin to margin).
  * Optionally embeds a digital signature image and pre-fills name/badge/date.
  */
 export function addSignatureBlock(
   doc: jsPDF,
   roleLabel: string,
-  x: number,
+  _x: number,
   y: number,
-  width: number,
+  _width: number,
   sigData?: PdfSignatureData,
 ): number {
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
+
+  // Always use full page width (margin to margin)
+  const x = LAYOUT.PAGE_MARGIN;
+  const width = getContentWidth(doc);
   const boxH = SPACING.SIGNATURE_BOX_H;
 
   // Outer border — black to match section style
@@ -496,7 +658,8 @@ export function addSignatureBlock(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_FIELD_LABEL);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
-  doc.text(roleLabel.toUpperCase(), x + SPACING.CONTENT_INSET, y + 3.8);
+  const roleTextY = y + roleBarH / 2 + FONT.SIZE_FIELD_LABEL * 0.14;
+  doc.text(roleLabel.toUpperCase(), x + SPACING.CONTENT_INSET, roleTextY);
 
   // Signature area
   const sigLineY = y + roleBarH + 10;
@@ -504,13 +667,13 @@ export function addSignatureBlock(
   // Embed digital signature image if provided
   if (sigData?.signatureImage) {
     try {
-      const imgW = width - SPACING.MD * 2 - 10;
+      const imgW = Math.min(width * 0.4, 80);
       const imgH = 10;
       doc.addImage(sigData.signatureImage, 'PNG', x + SPACING.MD + 5, y + roleBarH + 1, imgW, imgH);
     } catch { /* signature image unavailable — fall back to empty line */ }
   }
 
-  // Signature line
+  // Signature line — full width
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
   doc.setLineWidth(BORDER.SIGNATURE_LINE);
   doc.line(x + SPACING.MD, sigLineY, x + width - SPACING.MD, sigLineY);
@@ -553,7 +716,10 @@ export function addSignatureBlock(
     const valY = subY + 7.5;
     if (sigData.printedName) doc.text(sigData.printedName, x + SPACING.MD, valY);
     if (sigData.badgeNumber) doc.text(sigData.badgeNumber, x + colW + SPACING.MD, valY);
-    const dateStr = sigData.date || new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const defaultDate = `${pad(now.getMonth() + 1)}/${pad(now.getDate())}/${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    const dateStr = sigData.date || defaultDate;
     doc.text(dateStr, x + colW * 2 + SPACING.MD, valY);
   } else {
     // Empty lines for manual signing
@@ -567,7 +733,28 @@ export function addSignatureBlock(
 
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  return y + boxH + SPACING.LG;
+  return y + boxH + SPACING.SM;
+}
+
+/**
+ * Stacked dual signature layout — two full-width signature blocks,
+ * one on top of the other. Each spans the full page width.
+ * Use this to replace side-by-side dual signatures.
+ */
+export function addStackedSignatures(
+  doc: jsPDF,
+  role1: string,
+  role2: string,
+  y: number,
+  sig1?: PdfSignatureData,
+  sig2?: PdfSignatureData,
+  priority?: string,
+): number {
+  const cw = getContentWidth(doc);
+  y = checkPageBreak(doc, y, SPACING.SIGNATURE_BOX_H * 2 + SPACING.SM * 2, priority);
+  y = addSignatureBlock(doc, role1, LAYOUT.PAGE_MARGIN, y, cw, sig1);
+  y = addSignatureBlock(doc, role2, LAYOUT.PAGE_MARGIN, y, cw, sig2);
+  return y;
 }
 
 /**
@@ -587,12 +774,10 @@ export function addPageFooter(doc: jsPDF, pageNum: number, totalPages: number, f
   const accentRgb = hexToRgb(brand.accent_color);
   const primaryRgb = hexToRgb(brand.primary_color);
 
-  // Accent bar at footer top (matches header accent strip)
+  // Accent bar at footer top (thin primary color line)
   const barY = pageHeight - LAYOUT.FOOTER_HEIGHT - SPACING.SM;
   doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
-  doc.rect(LAYOUT.PAGE_MARGIN, barY, cw * 0.4, 0.6, 'F');
-  doc.setFillColor(accentRgb[0], accentRgb[1], accentRgb[2]);
-  doc.rect(LAYOUT.PAGE_MARGIN + cw * 0.4, barY, cw * 0.6, 0.6, 'F');
+  doc.rect(LAYOUT.PAGE_MARGIN, barY, cw, 0.4, 'F');
 
   const textY = barY + 4;
 
@@ -800,37 +985,37 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
     const cw = getContentWidth(doc);
 
     const contY = 8;
-    // Continuation bar with accent edge — matches section headers (light bg + dark text)
-    const contAccent = hexToRgb(activeBranding.primary_color);
-    doc.setFillColor(contAccent[0], contAccent[1], contAccent[2]);
-    doc.rect(LAYOUT.PAGE_MARGIN, contY, 2, SPACING.SECTION_HEADER_H, 'F');
+    const contH = SPACING.SECTION_HEADER_H + 1; // Slightly taller for continuation
+    // Dark gray continuation bar (full width, no accent edge)
     doc.setFillColor(...COLOR.BG_SECTION_HDR);
-    doc.rect(LAYOUT.PAGE_MARGIN + 2, contY, cw - 2, SPACING.SECTION_HEADER_H, 'F');
+    doc.rect(LAYOUT.PAGE_MARGIN, contY, cw, contH, 'F');
     // Bottom border for definition
     doc.setDrawColor(...COLOR.BORDER_SECTION);
     doc.setLineWidth(BORDER.SECTION_OUTER);
-    doc.line(LAYOUT.PAGE_MARGIN, contY + SPACING.SECTION_HEADER_H, LAYOUT.PAGE_MARGIN + cw, contY + SPACING.SECTION_HEADER_H);
+    doc.line(LAYOUT.PAGE_MARGIN, contY + contH, LAYOUT.PAGE_MARGIN + cw, contY + contH);
 
+    // Text vertically centered in continuation header
+    const contTextY = contY + contH / 2 + FONT.SIZE_FIELD_LABEL * 0.14;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
     doc.setTextColor(...COLOR.TEXT_INVERTED);
-    doc.text(`${activeBranding.report_header_text} \u2014 CONTINUED`, LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET, contY + 5.8);
+    doc.text(`${activeBranding.report_header_text} \u2014 CONTINUED`, LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, contTextY);
 
-    // Form number + case number on right
+    // Form number + case number on right (also vertically centered)
     const rightParts: string[] = [];
     const formNum = FORM_NUMBERS[activeFormKey] || '';
     if (formNum) rightParts.push(formNum);
     if (activeCaseNumber) rightParts.push(activeCaseNumber);
     if (rightParts.length > 0) {
-      doc.text(rightParts.join('  |  '), pageWidth - LAYOUT.PAGE_MARGIN - SPACING.CONTENT_INSET, contY + 5.8, { align: 'right' });
+      doc.text(rightParts.join('  |  '), pageWidth - LAYOUT.PAGE_MARGIN - SPACING.CONTENT_INSET, contTextY, { align: 'right' });
     }
 
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.setDrawColor(...COLOR.TEXT_PRIMARY);
 
-    // No priority bar on continuation pages — just start content below continuation header
-    return contY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD;
+    // Content starts below continuation header
+    return contY + contH + SPACING.SECTION_CONTENT_PAD;
   }
   return y;
 }

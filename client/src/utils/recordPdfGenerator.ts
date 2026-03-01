@@ -14,6 +14,9 @@ import {
   addFieldPair,
   addCheckboxField,
   addSignatureBlock,
+  addStackedSignatures,
+  addFlagBadges,
+  addCautionBlock,
   addTableWithShading,
   addThreeColumnFields,
   addWrappedText,
@@ -812,11 +815,12 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // Incident Details
   y = checkPageBreak(doc, y, 35, prio);
   { const sec = openAutoSection(doc, 'Incident Details', y); y = sec.contentY;
+    y += SPACING.MD;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
     doc.text('DESCRIPTION', lx, y);
-    y += 3;
+    y += 3.5;
     doc.setFont('helvetica', 'normal');
     y = addWrappedText(doc, data.description || '', lx, y, ffw);
     y += SPACING.MD;
@@ -848,38 +852,50 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y);
   }
 
-  // Flags
+  // Flags — evenly distributed grid (6 columns × 4 rows)
   y = checkPageBreak(doc, y, 30, prio);
   { const sec = openAutoSection(doc, 'Flags', y); y = sec.contentY;
-    let fx = lx;
-    fx = addCheckboxField(doc, 'Injuries', !!data.injuries_reported, fx, y);
-    fx = addCheckboxField(doc, 'Alcohol', !!data.alcohol_involved, fx, y);
-    fx = addCheckboxField(doc, 'Drugs', !!data.drugs_involved, fx, y);
-    fx = addCheckboxField(doc, 'DV', !!data.domestic_violence, fx, y);
-    fx = addCheckboxField(doc, 'Mental Health', !!data.mental_health_crisis, fx, y);
-    addCheckboxField(doc, 'Juvenile', !!data.juvenile_involved, fx, y);
-    y += SPACING.LG;
-    fx = lx;
-    fx = addCheckboxField(doc, 'Felony IP', !!data.felony_in_progress, fx, y);
-    fx = addCheckboxField(doc, 'Ofc Safety', !!data.officer_safety_caution, fx, y);
-    fx = addCheckboxField(doc, 'Gang', !!data.gang_related, fx, y);
-    fx = addCheckboxField(doc, 'HAZMAT', !!data.hazmat, fx, y);
-    fx = addCheckboxField(doc, 'Veh Pursuit', !!data.vehicle_pursuit, fx, y);
-    addCheckboxField(doc, 'Foot Pursuit', !!data.foot_pursuit, fx, y);
-    y += SPACING.LG;
-    fx = lx;
-    fx = addCheckboxField(doc, 'K9 Req', !!data.k9_requested, fx, y);
-    fx = addCheckboxField(doc, 'EMS Req', !!data.ems_requested, fx, y);
-    fx = addCheckboxField(doc, 'Fire Req', !!data.fire_requested, fx, y);
-    fx = addCheckboxField(doc, 'Evidence', !!data.evidence_collected, fx, y);
-    fx = addCheckboxField(doc, 'BWC Active', !!data.body_camera_active, fx, y);
-    addCheckboxField(doc, 'Photos', !!data.photos_taken, fx, y);
-    y += SPACING.LG;
-    fx = lx;
-    fx = addCheckboxField(doc, 'Supvr Notified', !!data.supervisor_notified, fx, y);
-    fx = addCheckboxField(doc, 'LE Notified', !!data.le_notified, fx, y);
-    addCheckboxField(doc, 'Trespass', !!data.trespass_issued, fx, y);
-    y += SPACING.XL;
+    const cols = 6;
+    const colW = ffw / cols;
+    const rowH = 4.5;
+    const flagGrid: { label: string; checked: boolean }[][] = [
+      [
+        { label: 'Injuries', checked: !!data.injuries_reported },
+        { label: 'Alcohol', checked: !!data.alcohol_involved },
+        { label: 'Drugs', checked: !!data.drugs_involved },
+        { label: 'DV', checked: !!data.domestic_violence },
+        { label: 'Mental Health', checked: !!data.mental_health_crisis },
+        { label: 'Juvenile', checked: !!data.juvenile_involved },
+      ],
+      [
+        { label: 'Felony IP', checked: !!data.felony_in_progress },
+        { label: 'Ofc Safety', checked: !!data.officer_safety_caution },
+        { label: 'Gang', checked: !!data.gang_related },
+        { label: 'HAZMAT', checked: !!data.hazmat },
+        { label: 'Veh Pursuit', checked: !!data.vehicle_pursuit },
+        { label: 'Foot Pursuit', checked: !!data.foot_pursuit },
+      ],
+      [
+        { label: 'K9 Req', checked: !!data.k9_requested },
+        { label: 'EMS Req', checked: !!data.ems_requested },
+        { label: 'Fire Req', checked: !!data.fire_requested },
+        { label: 'Evidence', checked: !!data.evidence_collected },
+        { label: 'BWC Active', checked: !!data.body_camera_active },
+        { label: 'Photos', checked: !!data.photos_taken },
+      ],
+      [
+        { label: 'Supvr Notified', checked: !!data.supervisor_notified },
+        { label: 'LE Notified', checked: !!data.le_notified },
+        { label: 'Trespass', checked: !!data.trespass_issued },
+      ],
+    ];
+    for (const row of flagGrid) {
+      for (let c = 0; c < row.length; c++) {
+        addCheckboxField(doc, row[c].label, row[c].checked, lx + c * colW, y);
+      }
+      y += rowH;
+    }
+    y += SPACING.SM;
     y = closeAutoSection(doc, sec.sectionY, y);
   }
 
@@ -944,11 +960,12 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     addFieldPair(doc, 'Responding Officer', data.responding_officer || '', lx, y, hfw);
     y = addFieldPair(doc, 'Disposition', data.disposition || '', rx, y, hfw);
     if (data.action_taken) {
+      y += SPACING.LG;
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
       doc.text('ACTION TAKEN', lx, y);
-      y += 3;
+      y += 3.5;
       doc.setFont('helvetica', 'normal');
       y = addWrappedText(doc, data.action_taken, lx, y, ffw);
       y += SPACING.MD;
@@ -1019,13 +1036,8 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = addAttachmentsSection(doc, data.attachment_images, y);
   }
 
-  // Signatures (matches GIR style)
-  y = checkPageBreak(doc, y, 40, prio);
-  { const sec = openAutoSection(doc, 'Signatures', y); y = sec.contentY;
-    addSignatureBlock(doc, 'Reporting Officer', lx, y, hfw, getOfficerSig());
-    y = addSignatureBlock(doc, 'Supervisor Review', rx, y, hfw);
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  // Signatures — full-width stacked (one on top of the other)
+  y = addStackedSignatures(doc, 'Reporting Officer', 'Supervisor Review', y, getOfficerSig(), undefined, prio);
 }
 
 // ── Person Record ────────────────────────────────────────────
@@ -1151,24 +1163,38 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   }
 
   // ── 8. Flags & Warnings ───────────────────────────────────
-  y = checkPageBreak(doc, y, 25, prio);
+  y = checkPageBreak(doc, y, 30, prio);
   { const sec = openAutoSection(doc, 'Flags & Warnings', y); y = sec.contentY;
+    // Status checkboxes — spaced across the row
     let fx2 = lx;
     fx2 = addCheckboxField(doc, 'Sex Offender', !!data.is_sex_offender, fx2, y);
     fx2 = addCheckboxField(doc, 'Veteran', !!data.is_veteran, fx2, y);
     addCheckboxField(doc, 'Active BOLO', !!data.bolo_active, fx2, y);
-    y += SPACING.XL;
+    y += SPACING.XL + 1;
+
+    // Two-column fields
     addFieldPair(doc, 'Gang Affiliation', data.gang_affiliation || '', lx, y, hfw);
     y = addFieldPair(doc, 'Probation/Parole', `${data.probation_parole || ''}${data.probation_parole_officer ? ` (Officer: ${data.probation_parole_officer})` : ''}`.trim(), rx, y, hfw);
     if (data.known_associates) {
       y = addFieldPair(doc, 'Known Associates', data.known_associates, lx, y, ffw);
     }
+
+    // Active Flags — colored pill badges instead of plain text
     if (data.flags && data.flags.length > 0) {
-      y = addFieldPair(doc, 'Active Flags', data.flags.join(', '), lx, y, ffw);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+      doc.setTextColor(...COLOR.TEXT_SECONDARY);
+      doc.text('ACTIVE FLAGS', lx + 1.5, y + 2);
+      y += 4;
+      y = addFlagBadges(doc, data.flags, lx, y, ffw, prio);
+      y += 1;
     }
+
+    // Caution block — amber warning styling for officer safety
     if (data.caution_flags) {
-      y = addFieldPair(doc, 'Caution / Officer Safety', data.caution_flags, lx, y, ffw);
+      y = addCautionBlock(doc, data.caution_flags, lx, y, ffw);
     }
+
     y = closeAutoSection(doc, sec.sectionY, y);
   }
 
@@ -1309,10 +1335,8 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     y = addAttachmentsSection(doc, data.attachment_images, y, 'Attachments / Evidence Photos', prio);
   }
 
-  // ── 17. Signature Block ───────────────────────────────────
-  y = checkPageBreak(doc, y, 40, prio);
-  addSignatureBlock(doc, 'Entering Officer', LAYOUT.PAGE_MARGIN, y, hw, getOfficerSig());
-  addSignatureBlock(doc, 'Supervisor Review', LAYOUT.PAGE_MARGIN + hw + SPACING.LG, y, hw);
+  // ── 17. Signature Block — full-width stacked ──────────────
+  y = addStackedSignatures(doc, 'Entering Officer', 'Supervisor Review', y, getOfficerSig(), undefined, prio);
 }
 
 // ── Vehicle Record ───────────────────────────────────────────
@@ -1420,9 +1444,9 @@ function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
     y = addAttachmentsSection(doc, data.attachment_images, y);
   }
 
-  // Signature Block
+  // Signature Block — full-width
   y = checkPageBreak(doc, y, 40);
-  addSignatureBlock(doc, 'Entering Officer', LAYOUT.PAGE_MARGIN, y, cw, getOfficerSig());
+  y = addSignatureBlock(doc, 'Entering Officer', LAYOUT.PAGE_MARGIN, y, cw, getOfficerSig());
 }
 
 // ── Warrant ──────────────────────────────────────────────────
@@ -1508,11 +1532,8 @@ function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
   // Notes
   y = addNarrativeSection(doc, 'Notes', data.notes || '', y, statusPrio);
 
-  // Signature Block
-  y = checkPageBreak(doc, y, 40, statusPrio);
-  const hw = getHalfWidth(doc);
-  addSignatureBlock(doc, 'Entering Officer', LAYOUT.PAGE_MARGIN, y, hw, getOfficerSig());
-  addSignatureBlock(doc, 'Serving Officer', LAYOUT.PAGE_MARGIN + hw + SPACING.LG, y, hw);
+  // Signature Block — full-width stacked
+  y = addStackedSignatures(doc, 'Entering Officer', 'Serving Officer', y, getOfficerSig(), undefined, statusPrio);
 }
 
 // ── Evidence / Property Custody Report ───────────────────────
@@ -1646,10 +1667,8 @@ function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
     y = addAttachmentsSection(doc, data.attachment_images, y);
   }
 
-  // Signature Block
-  y = checkPageBreak(doc, y, 40);
-  addSignatureBlock(doc, 'Collecting Officer', LAYOUT.PAGE_MARGIN, y, hw, getOfficerSig());
-  addSignatureBlock(doc, 'Evidence Custodian', LAYOUT.PAGE_MARGIN + hw + SPACING.LG, y, hw);
+  // Signature Block — full-width stacked
+  y = addStackedSignatures(doc, 'Collecting Officer', 'Evidence Custodian', y, getOfficerSig());
 }
 
 // ── Fleet Vehicle Status Report ──────────────────────────────
@@ -1880,9 +1899,9 @@ function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
   // Notes
   y = addNarrativeSection(doc, 'Notes', data.notes || '', y);
 
-  // Signature Block
+  // Signature Block — full-width
   y = checkPageBreak(doc, y, 40);
-  addSignatureBlock(doc, 'Fleet Manager', LAYOUT.PAGE_MARGIN, y, cw, getOfficerSig());
+  y = addSignatureBlock(doc, 'Fleet Manager', LAYOUT.PAGE_MARGIN, y, cw, getOfficerSig());
 }
 
 // ── Personnel / Officer Record ───────────────────────────────
@@ -2225,10 +2244,8 @@ function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
     y = addAttachmentsSection(doc, data.attachment_images, y);
   }
 
-  // Signature Block
-  y = checkPageBreak(doc, y, 40);
-  addSignatureBlock(doc, 'HR / Supervisor', LAYOUT.PAGE_MARGIN, y, hw);
-  addSignatureBlock(doc, 'Officer', LAYOUT.PAGE_MARGIN + hw + SPACING.LG, y, hw, getOfficerSig());
+  // Signature Block — full-width stacked
+  y = addStackedSignatures(doc, 'HR / Supervisor', 'Officer', y, undefined, getOfficerSig());
 }
 
 // ── Property Record ──────────────────────────────────────────
@@ -2289,9 +2306,9 @@ function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     y = addAttachmentsSection(doc, data.attachment_images, y);
   }
 
-  // Signature Block
+  // Signature Block — full-width
   y = checkPageBreak(doc, y, 40);
-  addSignatureBlock(doc, 'Officer', LAYOUT.PAGE_MARGIN, y, cw, getOfficerSig());
+  y = addSignatureBlock(doc, 'Officer', LAYOUT.PAGE_MARGIN, y, cw, getOfficerSig());
 }
 
 // ── Citation Report ──────────────────────────────────────────
@@ -2392,10 +2409,8 @@ function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
   // Notes
   y = addNarrativeSection(doc, 'Notes', data.notes || '', y, prio);
 
-  // Dual Signature Block — Officer and Recipient
-  y = checkPageBreak(doc, y, 40);
-  addSignatureBlock(doc, 'Issuing Officer', LAYOUT.PAGE_MARGIN, y, hw, getOfficerSig());
-  addSignatureBlock(doc, 'Recipient', LAYOUT.PAGE_MARGIN + hw + SPACING.LG, y, hw);
+  // Dual Signature Block — full-width stacked
+  y = addStackedSignatures(doc, 'Issuing Officer', 'Recipient', y, getOfficerSig(), undefined, prio);
 }
 
 // ── Public API ───────────────────────────────────────────────
@@ -2487,17 +2502,17 @@ export async function downloadRecordPdf<T extends RecordPdfType>(
   setActiveBranding(branding);
   await loadPdfAssets();
 
-  // Extract officer digital signature from enriched data
+  // Extract officer info for signature auto-fill (always populate name/badge/date)
   const anyData = data as any;
-  if (anyData._officerSignature) {
-    setActiveOfficerSignature({
-      signatureImage: anyData._officerSignature,
-      printedName: anyData.officer_name || anyData.full_name || anyData.issuing_officer_name || '',
-      badgeNumber: anyData.badge_number || '',
-    });
-  } else {
-    setActiveOfficerSignature(undefined);
-  }
+  const officerName = anyData.officer_name || anyData.reporting_officer || anyData.full_name || anyData.issuing_officer_name || anyData.entered_by || '';
+  const badgeNum = anyData.badge_number || anyData.officer_badge || '';
+  const today = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+  setActiveOfficerSignature({
+    signatureImage: anyData._officerSignature || null,
+    printedName: officerName,
+    badgeNumber: badgeNum,
+    date: today,
+  });
 
   const doc = generateRecordPdf(recordType, data);
   setActiveOfficerSignature(undefined); // clear after generation
@@ -2515,17 +2530,17 @@ export async function generateRecordPdfBlobUrl<T extends RecordPdfType>(
   setActiveBranding(branding);
   await loadPdfAssets();
 
-  // Extract officer digital signature from enriched data
+  // Extract officer info for signature auto-fill (always populate name/badge/date)
   const anyData = data as any;
-  if (anyData._officerSignature) {
-    setActiveOfficerSignature({
-      signatureImage: anyData._officerSignature,
-      printedName: anyData.officer_name || anyData.full_name || anyData.issuing_officer_name || '',
-      badgeNumber: anyData.badge_number || '',
-    });
-  } else {
-    setActiveOfficerSignature(undefined);
-  }
+  const officerName = anyData.officer_name || anyData.reporting_officer || anyData.full_name || anyData.issuing_officer_name || anyData.entered_by || '';
+  const badgeNum = anyData.badge_number || anyData.officer_badge || '';
+  const today = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+  setActiveOfficerSignature({
+    signatureImage: anyData._officerSignature || null,
+    printedName: officerName,
+    badgeNumber: badgeNum,
+    date: today,
+  });
 
   const doc = generateRecordPdf(recordType, data);
   setActiveOfficerSignature(undefined); // clear after generation

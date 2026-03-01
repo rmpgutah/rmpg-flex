@@ -18,17 +18,17 @@ export const COLOR = {
   TEXT_INVERTED:   [255, 255, 255]  as const,  // White on dark backgrounds
   TEXT_MUTED:      [140, 140, 140]  as const,  // Form number, report date
 
-  // Borders — thicker, more structured for blocky look
-  BORDER_FIELD:    [120, 120, 120]  as const,  // Field box borders (darker)
-  BORDER_TABLE:    [150, 150, 155]  as const,  // Row separator lines
-  BORDER_COLUMN:   [140, 140, 145]  as const,  // Vertical column separators
-  BORDER_OUTER:    [40, 40, 40]     as const,  // Table outer border (near-black)
-  BORDER_SECTION:  [30, 30, 30]     as const,  // Section outline (bold)
+  // Borders — clean, professional lines
+  BORDER_FIELD:    [160, 160, 165]  as const,  // Field box borders
+  BORDER_TABLE:    [180, 180, 185]  as const,  // Row separator lines
+  BORDER_COLUMN:   [170, 170, 175]  as const,  // Vertical column separators
+  BORDER_OUTER:    [80, 80, 85]     as const,  // Table outer border
+  BORDER_SECTION:  [100, 100, 105]  as const,  // Section outline
 
-  // Backgrounds
-  BG_ZEBRA:        [235, 235, 240]  as const,  // Even-row table shading
-  BG_SECTION_HDR:  [25, 25, 30]     as const,  // Section header bar (DARK — police style)
-  BG_TABLE_HDR:    [50, 50, 60]     as const,  // Table column header (dark)
+  // Backgrounds — lighter, modern government-form style
+  BG_ZEBRA:        [242, 242, 246]  as const,  // Even-row table shading
+  BG_SECTION_HDR:  [55, 60, 72]     as const,  // Section header bar (dark slate, not black)
+  BG_TABLE_HDR:    [70, 75, 88]     as const,  // Table column header (slate)
 
   // Financial
   AMOUNT_CREDIT:   [0, 120, 60]     as const,
@@ -70,56 +70,56 @@ export const FONT = {
 // ── Border / Line Width Tokens ───────────────────────────────
 
 export const BORDER = {
-  SECTION_OUTER:    0.8,   // Bold border around sections (blocky)
-  FIELD:            0.3,   // Field box borders (visible grid)
-  TABLE_OUTER:      0.8,   // Outer border of tables (bold)
+  SECTION_OUTER:    0.5,   // Border around sections (clean)
+  FIELD:            0.25,  // Field box borders (subtle grid)
+  TABLE_OUTER:      0.5,   // Outer border of tables
   TABLE_ROW:        0.15,  // Row separators (subtle)
   TABLE_COLUMN:     0.15,  // Column separators (subtle)
-  CHECKBOX:         0.35,  // Checkbox square border
-  CHECK_MARK:       0.7,   // Check mark stroke
-  SIGNATURE_LINE:   0.5,   // Signature line
+  CHECKBOX:         0.3,   // Checkbox square border
+  CHECK_MARK:       0.6,   // Check mark stroke
+  SIGNATURE_LINE:   0.4,   // Signature line
   ACCENT_HEADER:    0.8,   // Accent line below header
-  ACCENT_FOOTER:    0.5,   // Accent line above footer
-  CASE_BOX:         1.2,   // White border inside case number box
-  BANNER:           1.0,   // Bold banner borders
+  ACCENT_FOOTER:    0.4,   // Accent line above footer
+  CASE_BOX:         1.0,   // White border inside case number box
+  BANNER:           0.8,   // Banner borders
   DIAGRAM_GRID:     0.1,   // Accident diagram grid lines
 } as const;
 
 // ── Spacing Tokens (tighter throughout) ──────────────────────
 
 export const SPACING = {
-  XS:                 0.3,   // 0.3mm — micro padding (tighter)
-  SM:                 1,     // 1mm — small gap (tighter)
-  MD:                 2,     // 2mm — base unit (tighter)
-  LG:                 3.5,   // 3.5mm — line height (tighter)
-  XL:                 4,     // 4mm — generous gap (tighter)
+  XS:                 0.2,   // Micro padding
+  SM:                 0.8,   // Small gap
+  MD:                 1.5,   // Base unit
+  LG:                 3,     // Line height
+  XL:                 3.5,   // Generous gap
 
-  CONTENT_INSET:      2,     // Left/right padding inside sections (tighter)
-  SECTION_HEADER_H:   5.5,   // Section header bar height (tighter)
-  SECTION_GAP:        1.5,   // Gap between sections (tighter)
-  SECTION_CONTENT_PAD: 1.5,  // Gap from header bar to first content (tighter)
-  SECTION_BOTTOM_PAD:  2,    // Padding inside section before bottom border (tighter)
+  CONTENT_INSET:      1.5,   // Left/right padding inside sections
+  SECTION_HEADER_H:   5,     // Section header bar height
+  SECTION_GAP:        1,     // Gap between sections
+  SECTION_CONTENT_PAD: 1,    // Gap from header bar to first content
+  SECTION_BOTTOM_PAD:  1.5,  // Padding inside section before bottom border
 
-  FIELD_ROW_HEIGHT:   9,     // Height of field box (tighter)
-  FIELD_ROW_ADVANCE:  9.5,   // Y-advance after field row (tighter)
+  FIELD_ROW_HEIGHT:   8,     // Height of field box
+  FIELD_ROW_ADVANCE:  8.5,   // Y-advance after field row
 
-  SIGNATURE_BOX_H:    30,    // Signature block total height (tighter)
-  SIGNATURE_ROLE_H:   5,     // Role label header bar height (tighter)
-  SIGNATURE_SUB_GAP:  5.5,   // Gap between sig line and sub-fields (tighter)
+  SIGNATURE_BOX_H:    28,    // Signature block total height
+  SIGNATURE_ROLE_H:   4.5,   // Role label header bar height
+  SIGNATURE_SUB_GAP:  5,     // Gap between sig line and sub-fields
 } as const;
 
 // ── Layout Tokens ────────────────────────────────────────────
 
 export const LAYOUT = {
   PAGE_MARGIN:       10,     // Tighter margins for max content area
-  HEADER_HEIGHT:     20,     // More compact header bar
-  FOOTER_HEIGHT:     6,      // Slimmer footer
-  HEADER_TOP:        5,      // Y-start of header bar (closer to top)
-  CLASSIF_BAR_H:     5,      // Classification bar height (compact)
-  SEAL_SIZE:         14,     // Compact logo
-  ACCENT_STRIP_H:    1,     // Thinner accent strip below header
+  HEADER_HEIGHT:     19,     // Compact header bar
+  FOOTER_HEIGHT:     5.5,    // Slim footer
+  HEADER_TOP:        5,      // Y-start of header bar
+  CLASSIF_BAR_H:     4.5,    // Classification bar height
+  SEAL_SIZE:         13,     // Compact logo
+  ACCENT_STRIP_H:    0.8,   // Thin accent strip below header
   CASE_BOX_W:        42,     // Case number box width
-  LINE_HEIGHT:       3.5,    // Base line height for wrapped text (tighter)
+  LINE_HEIGHT:       3.2,    // Base line height for wrapped text
   DIAGRAM_GRID_STEP: 10,     // Grid spacing in accident diagram
 } as const;
 

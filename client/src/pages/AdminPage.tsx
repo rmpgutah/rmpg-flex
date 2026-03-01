@@ -222,11 +222,15 @@ export default function AdminPage() {
   // Ref to suppress LiveSync refresh while a client inline edit is pending save
   const clientEditPendingRef = useRef(false);
 
-  // Restore active tab from localStorage (default: 'users')
+  // Restore active tab from URL ?tab= param or localStorage (default: 'users')
+  const VALID_TABS = ['users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'sessions', 'training', 'radio', 'offline', 'security', 'branding'];
   const [activeTab, setActiveTabState] = useState<TabId>(() => {
     try {
+      // URL ?tab= param takes priority (used by Help → Training link)
+      const urlTab = new URLSearchParams(window.location.search).get('tab');
+      if (urlTab && VALID_TABS.includes(urlTab)) return urlTab as TabId;
       const saved = localStorage.getItem(LS_ADMIN_TAB);
-      if (saved && ['users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'sessions', 'training', 'radio', 'offline', 'security', 'branding'].includes(saved)) return saved as TabId;
+      if (saved && VALID_TABS.includes(saved)) return saved as TabId;
     } catch { /* ignore */ }
     return 'users';
   });
@@ -486,13 +490,24 @@ export default function AdminPage() {
     setClientSubmitting(true);
     try {
       const body: Record<string, unknown> = {
+        // General
         name: data.name,
+        client_code: data.client_code || undefined,
+        industry: data.industry || undefined,
+        website: data.website || undefined,
+        address: data.address || undefined,
+        notes: data.notes || undefined,
+        // Contact & Billing
         contact_name: data.contact_name || undefined,
         contact_email: data.contact_email || undefined,
         contact_phone: data.contact_phone || undefined,
-        address: data.address || undefined,
         billing_email: data.billing_email || undefined,
         billing_address: data.billing_address || undefined,
+        tax_id: data.tax_id || undefined,
+        payment_method: data.payment_method || undefined,
+        billing_cycle: data.billing_cycle || undefined,
+        billing_day: data.billing_day ? parseInt(data.billing_day, 10) : undefined,
+        // Contract
         contract_start: data.contract_start || undefined,
         contract_end: data.contract_end || undefined,
         contract_type: data.contract_type || undefined,
@@ -500,7 +515,12 @@ export default function AdminPage() {
         payment_terms: data.payment_terms || undefined,
         auto_renew: data.auto_renew || false,
         sla_response_minutes: data.sla_response_minutes ? parseInt(data.sla_response_minutes, 10) : undefined,
-        notes: data.notes || undefined,
+        discount_percent: data.discount_percent ? parseFloat(data.discount_percent) : undefined,
+        late_fee_percent: data.late_fee_percent ? parseFloat(data.late_fee_percent) : undefined,
+        // Account Details
+        account_manager: data.account_manager || undefined,
+        priority_client: data.priority_client || false,
+        client_since: data.client_since || undefined,
       };
 
       if (editingClient) {

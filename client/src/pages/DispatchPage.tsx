@@ -51,6 +51,7 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import { usePersistedTab } from '../hooks/usePersistedState';
 import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
 import { formatIncidentType, INCIDENT_TYPE_CATEGORIES } from '../utils/caseNumbers';
+import { toDisplayLabel } from '../utils/formatters';
 import ConfirmDialog from '../components/ConfirmDialog';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
@@ -201,6 +202,31 @@ function formatElapsed(dateStr: string): string {
   const min = Math.floor(diff / 60000);
   if (min < 60) return `${min}m`;
   return `${Math.floor(min / 60)}h ${min % 60}m`;
+}
+
+/**
+ * Format activity log details to be human-readable.
+ * Converts "Updated call 26-CFS00002: incident_type, priority, caller_name, ..."
+ * → "Updated call 26-CFS00002: Incident Type, Priority, Caller Name, ..."
+ * Also summarizes long field lists.
+ */
+function formatActivityDetails(details: string): string {
+  if (!details) return '--';
+  // Match pattern: "Updated call XX: field1, field2, ..."
+  const match = details.match(/^(Updated call \S+):\s*(.+)$/);
+  if (match) {
+    const prefix = match[1];
+    const fieldList = match[2].split(',').map(f => f.trim()).filter(Boolean);
+    // Convert each snake_case field to readable label
+    const readable = fieldList.map(f => toDisplayLabel(f));
+    // Summarize if too many fields
+    if (readable.length > 6) {
+      return `${prefix}: updated ${readable.length} fields — ${readable.slice(0, 4).join(', ')}, and ${readable.length - 4} more`;
+    }
+    return `${prefix}: ${readable.join(', ')}`;
+  }
+  // For other patterns, just clean up any snake_case words
+  return details.replace(/\b[a-z]+(?:_[a-z]+)+\b/g, (word) => toDisplayLabel(word));
 }
 
 export default function DispatchPage() {
@@ -2382,7 +2408,7 @@ export default function DispatchPage() {
                             </div>
                           ) : (
                             <>
-                              <span className="text-rmpg-200 flex-1">{entry.details || entry.description || '--'}</span>
+                              <span className="text-rmpg-200 flex-1">{formatActivityDetails(entry.details || entry.description || '')}</span>
                               <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity">
                                 <button onClick={() => { setEditingTimelineId(String(entry.id)); setEditTimelineText(entry.details || entry.description || ''); }} className="p-0.5 hover:text-brand-400 text-rmpg-500" title="Edit">
                                   <Edit3 style={{ width: 9, height: 9 }} />
@@ -2444,8 +2470,8 @@ export default function DispatchPage() {
                           onClick={() => navigate(`/incidents/${inc.id}`)}
                         >
                           <span className="font-mono text-green-400 text-xs font-bold">{inc.incident_number}</span>
-                          <span className="text-xs text-rmpg-200 truncate">{inc.type || inc.incident_type || '--'}</span>
-                          <span className="text-xs text-rmpg-400">{inc.status || '--'}</span>
+                          <span className="text-xs text-rmpg-200 truncate">{formatIncidentType(inc.type || inc.incident_type || '--')}</span>
+                          <span className="text-xs text-rmpg-400 uppercase font-semibold">{inc.status || '--'}</span>
                           {inc.officer_name && (
                             <span className="text-xs text-rmpg-300 ml-auto flex items-center gap-1">
                               <User className="w-3 h-3" /> {inc.officer_name}

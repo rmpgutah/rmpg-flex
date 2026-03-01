@@ -2,6 +2,14 @@ import React, { useState, useEffect, useRef, useId } from 'react';
 import { X, Phone, AlertTriangle, Clock, History, Loader2 } from 'lucide-react';
 import type { CallForService, CallPriority, CallSource } from '../types';
 import { INCIDENT_TYPE_CATEGORIES, type IncidentType } from '../utils/caseNumbers';
+import {
+  WEATHER_OPTIONS,
+  LIGHTING_OPTIONS,
+  WEAPONS_OPTIONS,
+  LE_AGENCY_OPTIONS,
+  SCENE_SAFETY_OPTIONS,
+  DIRECTION_OPTIONS,
+} from '../utils/callOptions';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
 import PremiseHistory from './PremiseHistory';
 import SafetyScreening from './SafetyScreening';
@@ -553,11 +561,17 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
             </div>
             <div>
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Weapons</label>
-              <input type="text" className="input-dark" placeholder="None, knife, firearm..." value={formData.weapons_involved} onChange={(e) => update('weapons_involved', e.target.value)} />
+              <select className="select-dark" value={formData.weapons_involved || ''} onChange={(e) => update('weapons_involved', e.target.value)}>
+                <option value="">— Select —</option>
+                {WEAPONS_OPTIONS.map((w) => <option key={w} value={w}>{w}</option>)}
+              </select>
             </div>
             <div>
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Direction of Travel</label>
-              <input type="text" className="input-dark" placeholder="NB on State St" value={formData.direction_of_travel} onChange={(e) => update('direction_of_travel', e.target.value)} />
+              <select className="select-dark" value={formData.direction_of_travel || ''} onChange={(e) => update('direction_of_travel', e.target.value)}>
+                <option value="">— Select —</option>
+                {DIRECTION_OPTIONS.filter(Boolean).map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
             </div>
           </div>
 
@@ -576,15 +590,24 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           <div className="grid grid-cols-3 gap-4">
             <div>
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Scene Safety</label>
-              <input type="text" className="input-dark" placeholder="Secure, hazardous..." value={formData.scene_safety} onChange={(e) => update('scene_safety', e.target.value)} />
+              <select className="select-dark" value={formData.scene_safety || ''} onChange={(e) => update('scene_safety', e.target.value)}>
+                <option value="">— Select —</option>
+                {SCENE_SAFETY_OPTIONS.filter(Boolean).map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
             </div>
             <div>
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Weather</label>
-              <input type="text" className="input-dark" placeholder="Clear, rain, snow..." value={formData.weather_conditions} onChange={(e) => update('weather_conditions', e.target.value)} />
+              <select className="select-dark" value={formData.weather_conditions || ''} onChange={(e) => update('weather_conditions', e.target.value)}>
+                <option value="">— Select —</option>
+                {WEATHER_OPTIONS.filter(Boolean).map((w) => <option key={w} value={w}>{w}</option>)}
+              </select>
             </div>
             <div>
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Lighting</label>
-              <input type="text" className="input-dark" placeholder="Daylight, dark, lit..." value={formData.lighting_conditions} onChange={(e) => update('lighting_conditions', e.target.value)} />
+              <select className="select-dark" value={formData.lighting_conditions || ''} onChange={(e) => update('lighting_conditions', e.target.value)}>
+                <option value="">— Select —</option>
+                {LIGHTING_OPTIONS.filter(Boolean).map((l) => <option key={l} value={l}>{l}</option>)}
+              </select>
             </div>
           </div>
 
@@ -699,7 +722,10 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">LE Agency</label>
-                <input type="text" className="input-dark" placeholder="SLC PD, UHP..." value={formData.le_agency} onChange={(e) => update('le_agency', e.target.value)} />
+                <select className="select-dark" value={formData.le_agency || ''} onChange={(e) => update('le_agency', e.target.value)}>
+                  <option value="">— Select Agency —</option>
+                  {LE_AGENCY_OPTIONS.map((a) => <option key={a} value={a}>{a}</option>)}
+                </select>
               </div>
               <div>
                 <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">LE Case Number</label>

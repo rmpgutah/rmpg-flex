@@ -2086,17 +2086,6 @@ export default function AdminSystemTab({
             </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-3">
-                    <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1">Report Text</div>
-                    <div>
-                      <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Report Header Text</label>
-                      <input type="text" className="input-dark text-xs w-full" value={brandingConfig.report_header_text} onChange={(e) => updateBranding('report_header_text', e.target.value)} placeholder="Agency name for report headers" />
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Report Subheader Text</label>
-                      <input type="text" className="input-dark text-xs w-full" value={brandingConfig.report_subheader_text} onChange={(e) => updateBranding('report_subheader_text', e.target.value)} placeholder="Subtitle or department type" />
-                    </div>
-                  </div>
-                  <div className="space-y-3">
                     <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1">Brand Colors</div>
                     <div className="grid grid-cols-3 gap-3">
                       <div>

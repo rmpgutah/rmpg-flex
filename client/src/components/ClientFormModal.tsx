@@ -114,13 +114,15 @@ const PAYMENT_METHODS = [
 ];
 
 const BILLING_CYCLES = [
-  '', 'monthly', 'quarterly', 'annually',
+  '', 'weekly', 'bi-weekly', 'semi-monthly', 'monthly', 'quarterly', 'annually',
 ];
 
 const INDUSTRIES = [
   '', 'Commercial Real Estate', 'Residential / HOA', 'Healthcare / Medical',
   'Retail', 'Hospitality', 'Construction', 'Education', 'Government',
-  'Industrial / Manufacturing', 'Technology', 'Financial Services', 'Other',
+  'Industrial / Manufacturing', 'Technology', 'Financial Services',
+  'Private Investigations', 'Security Services', 'Law Office / Paralegal',
+  'Process Service', 'Other',
 ];
 
 export default function ClientFormModal({

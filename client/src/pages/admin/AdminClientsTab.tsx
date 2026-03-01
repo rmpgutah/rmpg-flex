@@ -493,6 +493,18 @@ export default function AdminClientsTab({
                       </select>
                     </div>
                     <div>
+                      <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Billing Cycle</label>
+                      <select className="select-dark text-xs w-full" value={clientEdit.billing_cycle || ''} onChange={(e) => setClientField('billing_cycle', e.target.value)}>
+                        <option value="">-- Select --</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="bi-weekly">Bi-Weekly</option>
+                        <option value="semi-monthly">Semi-Monthly</option>
+                        <option value="monthly">Monthly</option>
+                        <option value="quarterly">Quarterly</option>
+                        <option value="annually">Annually</option>
+                      </select>
+                    </div>
+                    <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Contract Value ($)</label>
                       <input type="number" min="0" step="0.01" className="input-dark text-xs w-full" value={clientEdit.contract_value || ''} onChange={(e) => setClientField('contract_value', e.target.value)} placeholder="0.00" />
                     </div>

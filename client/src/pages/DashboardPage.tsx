@@ -18,7 +18,7 @@ import {
   TrendingUp,
   Gavel,
 } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Cell } from 'recharts';
 import type { DashboardStats, ActivityLogEntry, BOLO } from '../types';
 import StatsCard from '../components/StatsCard';
 import ActivityFeed from '../components/ActivityFeed';
@@ -186,6 +186,7 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [expiringCredentials, setExpiringCredentials] = useState<any[]>([]);
   const [activeWarrants, setActiveWarrants] = useState(0);
+  const [officerActivity, setOfficerActivity] = useState<{ id: number; full_name: string; badge_number: string; role: string; action_count: number }[]>([]);
   const navigate = useNavigate();
   const isMobile = useIsMobile();
 
@@ -236,14 +237,25 @@ export default function DashboardPage() {
     }
   }, []);
 
+  // Fetch officer activity comparison
+  const fetchOfficerActivity = useCallback(async () => {
+    try {
+      const data = await apiFetch<any[]>('/reports/officer-activity');
+      setOfficerActivity(data || []);
+    } catch {
+      setOfficerActivity([]);
+    }
+  }, []);
+
   useEffect(() => {
     fetchDashboardData();
     fetchCredentials();
+    fetchOfficerActivity();
 
     // Refresh every 60 seconds (LiveSync handles real-time updates)
-    const interval = setInterval(() => { fetchDashboardData({ silent: true }); fetchCredentials(); }, 60_000);
+    const interval = setInterval(() => { fetchDashboardData({ silent: true }); fetchCredentials(); fetchOfficerActivity(); }, 60_000);
     return () => clearInterval(interval);
-  }, [fetchDashboardData, fetchCredentials]);
+  }, [fetchDashboardData, fetchCredentials, fetchOfficerActivity]);
 
   // Live sync — auto-refresh dashboard when ANY module changes (silent to avoid unmounting UI)
   const silentRefreshDashboard = useCallback(() => fetchDashboardData({ silent: true }), [fetchDashboardData]);
@@ -653,6 +665,84 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      {/* Officer Activity Comparison */}
+      {officerActivity.length > 0 && (() => {
+        const ROLE_COLORS: Record<string, string> = {
+          admin: '#ef4444',
+          supervisor: '#f59e0b',
+          manager: '#3b82f6',
+          officer: '#22c55e',
+        };
+        const ROLE_ORDER = ['admin', 'supervisor', 'manager', 'officer'];
+        const ROLE_LABELS: Record<string, string> = {
+          admin: 'Admin',
+          supervisor: 'Supervisor',
+          manager: 'Manager',
+          officer: 'Officer',
+        };
+        // Sort: by role order, then by action_count desc within role
+        const sorted = [...officerActivity].sort((a, b) => {
+          const ra = ROLE_ORDER.indexOf(a.role);
+          const rb = ROLE_ORDER.indexOf(b.role);
+          if (ra !== rb) return ra - rb;
+          return b.action_count - a.action_count;
+        });
+        const chartRows = sorted.map(o => ({
+          name: o.full_name?.split(' ').map(w => w[0]?.toUpperCase() + w.slice(1).toLowerCase()).join(' ') || 'Unknown',
+          badge: o.badge_number || '',
+          actions: o.action_count,
+          role: o.role,
+          fill: ROLE_COLORS[o.role] || '#6b7280',
+        }));
+
+        return (
+          <div className="panel-beveled bg-surface-base">
+            <PanelTitleBar title="OFFICER ACTIVITY COMPARISON — LAST 30 DAYS" icon={Users} />
+            <div className="p-3">
+              {/* Role Legend */}
+              <div className="flex items-center gap-4 mb-3">
+                {ROLE_ORDER.map(role => (
+                  <div key={role} className="flex items-center gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: ROLE_COLORS[role] }} />
+                    <span className="text-[10px] text-rmpg-300 font-semibold uppercase tracking-wide">{ROLE_LABELS[role]}</span>
+                  </div>
+                ))}
+              </div>
+              <ResponsiveContainer width="100%" height={Math.max(180, chartRows.length * 32)}>
+                <BarChart data={chartRows} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" horizontal={false} />
+                  <XAxis type="number" tick={{ fill: '#9ca3af', fontSize: 10 }} allowDecimals={false} />
+                  <YAxis
+                    type="category"
+                    dataKey="name"
+                    width={140}
+                    tick={{ fill: '#d1d5db', fontSize: 10 }}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: 'var(--surface-base)',
+                      border: '1px solid #383838',
+                      borderRadius: '0px',
+                      color: '#e0e0e0',
+                      fontSize: '11px',
+                    }}
+                    formatter={(value: number, _name: string, props: any) => [
+                      `${value} actions`,
+                      `${ROLE_LABELS[props.payload.role] || props.payload.role} — Badge #${props.payload.badge || '—'}`,
+                    ]}
+                  />
+                  <Bar dataKey="actions" radius={[0, 3, 3, 0]}>
+                    {chartRows.map((entry, idx) => (
+                      <Cell key={idx} fill={entry.fill} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

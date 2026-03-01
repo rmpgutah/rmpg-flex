@@ -472,7 +472,7 @@ export default function MenuBar({
         label: 'Training & Docs',
         icon: GraduationCap,
         items: [
-          { type: 'action', label: 'Policies & Training Docs', icon: BookOpen, action: () => navigate('/training-docs') },
+          { type: 'action', label: 'Policies & Training Docs', icon: BookOpen, action: () => window.open('/admin?tab=training', '_blank') },
           { type: 'action', label: 'Field Operations Guide', icon: Clipboard, action: () => { setShow10Codes(true); } },
         ],
       },
