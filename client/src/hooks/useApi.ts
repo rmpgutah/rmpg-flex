@@ -314,4 +314,30 @@ export async function apiDeleteAttachment(fileId: string): Promise<void> {
   await apiFetch(`/uploads/${fileId}`, { method: 'DELETE' });
 }
 
+// ─── Company Documents ───────────────────────────────────
+export async function apiFetchCompanyDocuments(category?: string): Promise<any[]> {
+  const qs = category && category !== 'all' ? `?category=${category}` : '';
+  return apiFetch<any[]>(`/company-documents${qs}`);
+}
+
+export async function apiCreateCompanyDocument(data: Record<string, any>): Promise<any> {
+  return apiFetch('/company-documents', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function apiUpdateCompanyDocument(id: number, data: Record<string, any>): Promise<any> {
+  return apiFetch(`/company-documents/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function apiDeleteCompanyDocument(id: number): Promise<void> {
+  await apiFetch(`/company-documents/${id}`, { method: 'DELETE' });
+}
+
 export default useApi;

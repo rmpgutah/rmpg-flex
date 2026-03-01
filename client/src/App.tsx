@@ -41,6 +41,7 @@ import DailyActivityReportsPage from './pages/DailyActivityReportsPage';
 import OffenderRegistryPage from './pages/OffenderRegistryPage';
 import NcicPage from './pages/NcicPage';
 import BodyCamerasPage from './pages/BodyCamerasPage';
+import TrainingDocsPage from './pages/TrainingDocsPage';
 import IncidentDetailWindow from './pages/detached/IncidentDetailWindow';
 import RecordDetailWindow from './pages/detached/RecordDetailWindow';
 
@@ -132,6 +133,7 @@ function AppRoutes() {
           <Route path="/offender-registry" element={<OffenderRegistryPage />} />
           <Route path="/ncic" element={<NcicPage />} />
           <Route path="/audit" element={<AuditLogPage />} />
+          <Route path="/training-docs" element={<TrainingDocsPage />} />
           <Route path="/admin" element={<AdminPage />} />
         </Route>
 

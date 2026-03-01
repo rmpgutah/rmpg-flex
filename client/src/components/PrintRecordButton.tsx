@@ -4,14 +4,16 @@
 // Also supports in-app PDF preview via DocumentViewer modal
 // Uses jsPDF generators from recordPdfGenerator.ts
 // Auto-fetches entity attachment images when entityType/entityId provided
+// Includes "Sign & Export" flow for in-app digital signing
 // ============================================================
 
 import React, { useCallback, useState, useEffect } from 'react';
-import { Printer, Eye } from 'lucide-react';
+import { Printer, Eye, PenLine } from 'lucide-react';
 import { downloadRecordPdf, generateRecordPdfBlobUrl, type RecordPdfType } from '../utils/recordPdfGenerator';
 import { fetchEntityImages, fetchImageFromUrl } from '../utils/pdfImageHelpers';
 import { apiFetch } from '../hooks/useApi';
 import DocumentViewer from './DocumentViewer';
+import SignaturePad from './SignaturePad';
 
 interface PrintRecordButtonProps {
   /** Record type to generate PDF for */
@@ -48,6 +50,9 @@ export default function PrintRecordButton({
   const [viewerOpen, setViewerOpen] = useState(false);
   const [pdfBlobUrl, setPdfBlobUrl] = useState('');
   const [loading, setLoading] = useState(false);
+  const [signModalOpen, setSignModalOpen] = useState(false);
+  const [savedSignature, setSavedSignature] = useState<string | null>(null);
+  const [signatureChecked, setSignatureChecked] = useState(false);
 
   // Clean up blob URL on unmount
   useEffect(() => {
@@ -56,8 +61,17 @@ export default function PrintRecordButton({
     };
   }, [pdfBlobUrl]);
 
+  // Pre-fetch user's saved signature on mount
+  useEffect(() => {
+    if (!signatureChecked) {
+      apiFetch<{ signature: string | null }>('/auth/signature')
+        .then(data => { setSavedSignature(data?.signature || null); setSignatureChecked(true); })
+        .catch(() => setSignatureChecked(true));
+    }
+  }, [signatureChecked]);
+
   /** Merge attachment images and system history into recordData before PDF generation */
-  const enrichWithImages = useCallback(async (data: any): Promise<any> => {
+  const enrichWithImages = useCallback(async (data: any, signatureOverride?: string | null): Promise<any> => {
     const enriched = { ...data };
 
     // Fetch entity attachment images
@@ -100,14 +114,18 @@ export default function PrintRecordButton({
       }
     }
 
-    // Fetch the current user's digital signature for PDF embedding
-    try {
-      const sigRes = await apiFetch<{ signature: string | null }>('/auth/signature');
-      if (sigRes?.signature) {
-        enriched._officerSignature = sigRes.signature;
+    // Use override signature (from sign modal) or fetch saved one
+    if (signatureOverride) {
+      enriched._officerSignature = signatureOverride;
+    } else {
+      try {
+        const sigRes = await apiFetch<{ signature: string | null }>('/auth/signature');
+        if (sigRes?.signature) {
+          enriched._officerSignature = sigRes.signature;
+        }
+      } catch {
+        // Signature fetch failed — PDFs will render with empty sig lines
       }
-    } catch {
-      // Signature fetch failed — PDFs will render with empty sig lines
     }
 
     return enriched;
@@ -143,6 +161,52 @@ export default function PrintRecordButton({
     }
   }, [recordType, recordData, pdfBlobUrl, enrichWithImages]);
 
+  /** Sign & Export: if user has no saved signature, show the sign pad; otherwise generate with saved sig */
+  const handleSignAndExport = useCallback(async () => {
+    if (!recordData) return;
+    if (savedSignature) {
+      // Already have a signature — generate immediately
+      try {
+        setLoading(true);
+        const enrichedData = await enrichWithImages(recordData, savedSignature);
+        await downloadRecordPdf(recordType, enrichedData, identifier);
+      } catch (err) {
+        console.error('[PrintRecordButton] Signed PDF generation failed:', err);
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      // No saved signature — open the sign pad modal
+      setSignModalOpen(true);
+    }
+  }, [recordData, savedSignature, enrichWithImages, recordType, identifier]);
+
+  /** Called when user signs in the quick-sign modal */
+  const handleQuickSign = useCallback(async (dataUrl: string | null) => {
+    setSignModalOpen(false);
+    if (!dataUrl || !recordData) return;
+
+    // Save signature to user profile for future use
+    try {
+      await apiFetch('/auth/signature', {
+        method: 'PUT',
+        body: JSON.stringify({ signature: dataUrl }),
+      });
+      setSavedSignature(dataUrl);
+    } catch { /* continue even if save fails */ }
+
+    // Generate the PDF with the fresh signature
+    try {
+      setLoading(true);
+      const enrichedData = await enrichWithImages(recordData, dataUrl);
+      await downloadRecordPdf(recordType, enrichedData, identifier);
+    } catch (err) {
+      console.error('[PrintRecordButton] Signed PDF generation failed:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [recordData, enrichWithImages, recordType, identifier]);
+
   const handleCloseViewer = useCallback(() => {
     setViewerOpen(false);
     if (pdfBlobUrl) {
@@ -176,6 +240,16 @@ export default function PrintRecordButton({
         <Printer style={{ width: 12, height: 12 }} />
         {!iconOnly && <span>{loading ? 'Loading…' : label}</span>}
       </button>
+      <button
+        type="button"
+        className={`toolbar-btn toolbar-btn-primary ${className}`}
+        onClick={handleSignAndExport}
+        title="Sign and download PDF report"
+        disabled={loading}
+      >
+        <PenLine style={{ width: 12, height: 12 }} />
+        {!iconOnly && <span>{loading ? 'Signing…' : 'Sign & Export'}</span>}
+      </button>
       <DocumentViewer
         isOpen={viewerOpen}
         onClose={handleCloseViewer}
@@ -183,6 +257,33 @@ export default function PrintRecordButton({
         title={`${recordTypeLabel} Record`}
         type="pdf"
       />
+
+      {/* Quick-sign modal */}
+      {signModalOpen && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-surface-base border border-rmpg-600 shadow-2xl p-6 max-w-lg w-full mx-4">
+            <h3 className="text-sm font-bold text-rmpg-100 mb-1">Sign Document</h3>
+            <p className="text-[10px] text-rmpg-400 mb-4">
+              Draw your signature below. It will be embedded in the PDF and saved to your profile for future reports.
+            </p>
+            <SignaturePad
+              value={null}
+              onChange={handleQuickSign}
+              label="Your Signature"
+              width={440}
+              height={140}
+              compact={false}
+            />
+            <button
+              type="button"
+              onClick={() => setSignModalOpen(false)}
+              className="mt-3 text-xs text-rmpg-400 hover:text-rmpg-200 transition-colors"
+            >
+              Cancel — export without signature
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 }

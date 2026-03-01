@@ -13,6 +13,7 @@ import {
   FlaskConical,
   Warehouse,
   DollarSign,
+  X,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { usePersistedTab } from '../hooks/usePersistedState';
@@ -20,18 +21,19 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import ConfirmDialog from '../components/ConfirmDialog';
 import PanelTitleBar from '../components/PanelTitleBar';
+import SplitPanel from '../components/SplitPanel';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
+import PrintRecordButton from '../components/PrintRecordButton';
 import ExportButton from '../components/ExportButton';
 import LinkRecordModal from '../components/LinkRecordModal';
 import type { Person, Vehicle, Property, RecordEntityType } from '../types';
 
-// Tab components
-import PersonsTab, { mapDbPerson } from './records/PersonsTab';
-import VehiclesTab, { mapDbVehicle } from './records/VehiclesTab';
-import { mapDbProperty } from './records/PropertiesTab';
-import PropertiesTab from './records/PropertiesTab';
-import EvidenceTab from './records/EvidenceTab';
+// Tab hooks + components
+import { usePersonsTab, PersonsTabList, PersonsTabDetail, mapDbPerson } from './records/PersonsTab';
+import { useVehiclesTab, VehiclesTabList, VehiclesTabDetail, mapDbVehicle } from './records/VehiclesTab';
+import { usePropertiesTab, PropertiesTabList, PropertiesTabDetail, mapDbProperty } from './records/PropertiesTab';
+import { useEvidenceTab, EvidenceTabList, EvidenceTabDetail } from './records/EvidenceTab';
 
 // ============================================================
 // Constants
@@ -72,7 +74,7 @@ export default function RecordsPage() {
   const [linkSource, setLinkSource] = useState<{ type: RecordEntityType; id: string } | null>(null);
   const [linkRefreshKey, setLinkRefreshKey] = useState(0);
 
-  // "New" record triggers — increment to open new-record modal in child tab
+  // "New" record triggers
   const [newPersonTrigger, setNewPersonTrigger] = useState(0);
   const [newVehicleTrigger, setNewVehicleTrigger] = useState(0);
   const [newPropertyTrigger, setNewPropertyTrigger] = useState(0);
@@ -150,10 +152,7 @@ export default function RecordsPage() {
     fetchClients();
   }, [fetchPersons, fetchVehicles, fetchProperties, fetchEvidence]);
 
-  // Live sync — auto-refresh when any other device modifies records (silent to avoid unmounting UI)
-  const refreshAll = useCallback(() => {
-    fetchPersons(); fetchVehicles(); fetchProperties(); fetchEvidence();
-  }, [fetchPersons, fetchVehicles, fetchProperties, fetchEvidence]);
+  // Live sync
   const silentRefreshAll = useCallback(() => {
     fetchPersons({ silent: true }); fetchVehicles({ silent: true }); fetchProperties({ silent: true }); fetchEvidence({ silent: true });
   }, [fetchPersons, fetchVehicles, fetchProperties, fetchEvidence]);
@@ -226,6 +225,42 @@ export default function RecordsPage() {
     }
   };
 
+  // ════════════════════════════════════════════════════
+  // ALL FOUR HOOKS — called unconditionally (React rules)
+  // ════════════════════════════════════════════════════
+
+  const personsState = usePersonsTab({
+    searchQuery, setSearchQuery, showArchived, setError,
+    persons, setPersons, loadingPersons, setLoadingPersons,
+    deleteTarget, setDeleteTarget, linkRefreshKey,
+    openLinkModal, handleArchiveRecord, handleUnarchiveRecord,
+    fetchPersons, openNewTrigger: newPersonTrigger,
+  });
+
+  const vehiclesState = useVehiclesTab({
+    searchQuery, setSearchQuery, showArchived, setError,
+    vehicles, setVehicles, loadingVehicles, setLoadingVehicles,
+    setDeleteTarget, linkRefreshKey,
+    openLinkModal, handleArchiveRecord, handleUnarchiveRecord,
+    fetchVehicles, openNewTrigger: newVehicleTrigger,
+  });
+
+  const propertiesState = usePropertiesTab({
+    searchQuery, setSearchQuery, showArchived, setError,
+    properties, setProperties, loadingProperties, setLoadingProperties,
+    setDeleteTarget, linkRefreshKey,
+    openLinkModal, handleArchiveRecord, handleUnarchiveRecord,
+    fetchProperties, clients, openNewTrigger: newPropertyTrigger,
+  });
+
+  const evidenceState = useEvidenceTab({
+    searchQuery, setSearchQuery, showArchived, setError,
+    evidence, setEvidence, loadingEvidence, setLoadingEvidence,
+    setDeleteTarget, linkRefreshKey,
+    openLinkModal, handleArchiveRecord, handleUnarchiveRecord,
+    fetchEvidence, openNewTrigger: newEvidenceTrigger,
+  });
+
   // ── Derived ──────────────────────────────────────────
 
   const isLoading = loadingPersons || loadingVehicles || loadingProperties || loadingEvidence;
@@ -242,12 +277,68 @@ export default function RecordsPage() {
   const evidenceLabSubmitted = evidence.filter(e => e.lab_submitted).length;
   const evidenceTotalValue = evidence.reduce((sum: number, e: any) => sum + (Number(e.estimated_value) || 0), 0);
 
-  // ── Render ───────────────────────────────────────────
+  // Determine if any selection exists for the right panel
+  const hasSelection =
+    (activeTab === 'persons' && personsState.selectedPerson !== null) ||
+    (activeTab === 'vehicles' && vehiclesState.selectedVehicle !== null) ||
+    (activeTab === 'properties' && propertiesState.selectedProperty !== null) ||
+    (activeTab === 'evidence' && evidenceState.selectedEvidence !== null);
 
-  return (
-    <div className="flex flex-col h-full animate-fade-in">
-      {/* Header */}
-      <PanelTitleBar title={showArchived ? 'RECORDS MANAGEMENT — ARCHIVES' : 'RECORDS MANAGEMENT'} icon={showArchived ? Archive : Database}>
+  // Selected record label for right PanelTitleBar
+  const selectedLabel = (() => {
+    if (activeTab === 'persons' && personsState.selectedPerson) {
+      const p = personsState.selectedPerson;
+      return `${p.last_name}, ${p.first_name}${p.middle_name ? ` ${p.middle_name[0]}.` : ''}`;
+    }
+    if (activeTab === 'vehicles' && vehiclesState.selectedVehicle) {
+      return vehiclesState.selectedVehicle.license_plate;
+    }
+    if (activeTab === 'properties' && propertiesState.selectedProperty) {
+      return propertiesState.selectedProperty.name;
+    }
+    if (activeTab === 'evidence' && evidenceState.selectedEvidence) {
+      return evidenceState.selectedEvidence.evidence_number;
+    }
+    return 'DETAIL';
+  })();
+
+  // Close the active selection (for right PanelTitleBar close button)
+  const closeSelection = () => {
+    if (activeTab === 'persons') personsState.setSelectedPerson(null);
+    else if (activeTab === 'vehicles') vehiclesState.setSelectedVehicle(null);
+    else if (activeTab === 'properties') propertiesState.setSelectedProperty(null);
+    else if (activeTab === 'evidence') evidenceState.setSelectedEvidence(null);
+  };
+
+  // Get PrintRecordButton data for the selected record
+  const selectedRecordForPrint = (() => {
+    if (activeTab === 'persons' && personsState.selectedPerson) {
+      const p = personsState.selectedPerson;
+      return { recordType: 'person' as const, recordData: p, identifier: p.id, entityType: 'person' as const, entityId: p.id };
+    }
+    if (activeTab === 'vehicles' && vehiclesState.selectedVehicle) {
+      const v = vehiclesState.selectedVehicle;
+      return { recordType: 'vehicle' as const, recordData: v, identifier: v.license_plate, entityType: 'vehicle' as const, entityId: v.id };
+    }
+    if (activeTab === 'properties' && propertiesState.selectedProperty) {
+      const p = propertiesState.selectedProperty;
+      return { recordType: 'property' as const, recordData: p, identifier: p.name, entityType: 'property' as const, entityId: p.id };
+    }
+    if (activeTab === 'evidence' && evidenceState.selectedEvidence) {
+      const e = evidenceState.selectedEvidence;
+      return { recordType: 'evidence' as const, recordData: e, identifier: e.evidence_number, entityType: 'evidence' as const, entityId: e.id };
+    }
+    return null;
+  })();
+
+  // ════════════════════════════════════════════════════
+  // LEFT PANEL — PanelTitleBar + Tabs + Stats + List
+  // ════════════════════════════════════════════════════
+
+  const leftPanel = (
+    <div className="h-full flex flex-col">
+      {/* Panel Title Bar — RECORDS MANAGEMENT */}
+      <PanelTitleBar title={showArchived ? 'RECORDS MGMT — ARCHIVES' : 'RECORDS MANAGEMENT'} icon={showArchived ? Archive : Database}>
         <RmpgLogo height={16} iconOnly />
         <span className="toolbar-separator" />
         <PrintButton />
@@ -296,225 +387,189 @@ export default function RecordsPage() {
         )}
       </PanelTitleBar>
 
-      {/* Stats Bar */}
-      <div className={`${isMobile ? 'px-3 overflow-x-auto' : 'px-6'} py-2 border-b border-rmpg-600 flex items-center gap-6 text-[10px] font-mono uppercase tracking-wider`}>
-        <div className="flex items-center gap-1.5">
-          <UserCircle className="w-3 h-3 text-brand-400" />
-          <span className="text-rmpg-300">Persons:</span>
+      {/* Tab Row */}
+      <div className={`${isMobile ? 'px-2' : 'px-3'} py-1.5 border-b border-rmpg-600 flex items-center gap-1 ${isMobile ? 'overflow-x-auto' : ''}`}>
+        {tabs.map((tab) => {
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`
+                flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-medium transition-colors whitespace-nowrap
+                ${activeTab === tab.id
+                  ? 'bg-rmpg-700 text-white border border-rmpg-600 border-b-rmpg-700'
+                  : 'text-rmpg-400 hover:text-white hover:bg-rmpg-700/50'
+                }
+              `}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              {tab.label}
+              <span className="text-[9px] text-rmpg-500">({tab.count})</span>
+            </button>
+          );
+        })}
+        {/* Archive Toggle */}
+        <button
+          onClick={() => setShowArchived(!showArchived)}
+          className={`ml-auto flex items-center gap-1 px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors border whitespace-nowrap ${
+            showArchived
+              ? 'bg-amber-900/40 text-amber-400 border-amber-700/50 hover:bg-amber-900/60'
+              : 'bg-rmpg-700/50 text-rmpg-500 border-rmpg-600 hover:text-rmpg-300 hover:bg-rmpg-700'
+          }`}
+        >
+          <Archive className="w-2.5 h-2.5" />
+          {showArchived ? 'Archives' : 'Archive'}
+        </button>
+      </div>
+
+      {/* Compact Stats Strip */}
+      <div className={`${isMobile ? 'px-2 overflow-x-auto' : 'px-3'} py-1.5 border-b border-rmpg-600 flex items-center gap-4 text-[9px] font-mono uppercase tracking-wider`}>
+        <div className="flex items-center gap-1">
+          <UserCircle className="w-2.5 h-2.5 text-brand-400" />
+          <span className="text-rmpg-400">P:</span>
           <span className="text-white font-bold">{persons.length}</span>
         </div>
-        <div className="flex items-center gap-1.5">
-          <Car className="w-3 h-3 text-blue-400" />
-          <span className="text-rmpg-300">Vehicles:</span>
+        <div className="flex items-center gap-1">
+          <Car className="w-2.5 h-2.5 text-blue-400" />
+          <span className="text-rmpg-400">V:</span>
           <span className="text-white font-bold">{vehicles.length}</span>
         </div>
-        <div className="flex items-center gap-1.5">
-          <Building2 className="w-3 h-3 text-green-400" />
-          <span className="text-rmpg-300">Properties:</span>
+        <div className="flex items-center gap-1">
+          <Building2 className="w-2.5 h-2.5 text-green-400" />
+          <span className="text-rmpg-400">Pr:</span>
           <span className="text-white font-bold">{properties.length}</span>
         </div>
-        <div className="flex items-center gap-1.5">
-          <Package className="w-3 h-3 text-purple-400" />
-          <span className="text-rmpg-300">Evidence:</span>
+        <div className="flex items-center gap-1">
+          <Package className="w-2.5 h-2.5 text-purple-400" />
+          <span className="text-rmpg-400">Ev:</span>
           <span className="text-white font-bold">{evidence.length}</span>
         </div>
-        <div className="flex items-center gap-1.5">
-          <Shield className="w-3 h-3 text-red-400" />
-          <span className="text-rmpg-300">Stolen Veh:</span>
+        <div className="flex items-center gap-1">
+          <Shield className="w-2.5 h-2.5 text-red-400" />
+          <span className="text-rmpg-400">Stl:</span>
           <span className="text-red-400 font-bold">{vehicles.filter(v => v.stolen_status && v.stolen_status !== 'None' && v.stolen_status !== 'Recovered').length}</span>
         </div>
         {activeTab === 'evidence' && (
           <>
-            <div className="w-px h-3 bg-rmpg-600" />
-            <div className="flex items-center gap-1.5">
-              <Warehouse className="w-3 h-3 text-cyan-400" />
-              <span className="text-rmpg-300">In Storage:</span>
+            <div className="w-px h-2.5 bg-rmpg-600" />
+            <div className="flex items-center gap-1">
+              <Warehouse className="w-2.5 h-2.5 text-cyan-400" />
               <span className="text-cyan-400 font-bold">{evidenceInStorage}</span>
             </div>
-            <div className="flex items-center gap-1.5">
-              <FlaskConical className="w-3 h-3 text-purple-400" />
-              <span className="text-rmpg-300">Lab:</span>
+            <div className="flex items-center gap-1">
+              <FlaskConical className="w-2.5 h-2.5 text-purple-400" />
               <span className="text-purple-400 font-bold">{evidenceLabSubmitted}</span>
             </div>
             {evidenceTotalValue > 0 && (
-              <div className="flex items-center gap-1.5">
-                <DollarSign className="w-3 h-3 text-green-400" />
-                <span className="text-rmpg-300">Value:</span>
+              <div className="flex items-center gap-1">
+                <DollarSign className="w-2.5 h-2.5 text-green-400" />
                 <span className="text-green-400 font-bold">${evidenceTotalValue.toLocaleString()}</span>
               </div>
             )}
           </>
         )}
         {persons.some(p => p.flags.length > 0) && (
-          <div className="flex items-center gap-1.5 ml-auto">
-            <AlertTriangle className="w-3 h-3 text-amber-400" />
-            <span className="text-amber-400 font-bold">{persons.filter(p => p.flags.length > 0).length} flagged</span>
+          <div className="flex items-center gap-1 ml-auto">
+            <AlertTriangle className="w-2.5 h-2.5 text-amber-400" />
+            <span className="text-amber-400 font-bold">{persons.filter(p => p.flags.length > 0).length}</span>
           </div>
         )}
       </div>
 
-      <div className={`${isMobile ? 'px-3' : 'px-6'} py-3 border-b border-rmpg-600`}>
-        {/* Error banner */}
-        {error && (
-          <div className="mb-3 px-3 py-2 bg-red-900/40 border border-red-700/50 text-red-300 text-xs">
-            {error}
-            <button onClick={() => setError(null)} className="ml-2 underline text-red-400 hover:text-red-300">dismiss</button>
-          </div>
-        )}
-
-        {/* Tabs */}
-        <div className={`flex gap-1 items-center ${isMobile ? 'overflow-x-auto -mx-3 px-3 pb-1' : ''}`}>
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => { setActiveTab(tab.id); }}
-                className={`
-                  flex items-center gap-2 px-4 py-2 text-xs font-medium transition-colors whitespace-nowrap
-                  ${activeTab === tab.id
-                    ? 'bg-rmpg-700 text-white border border-rmpg-600 border-b-rmpg-700'
-                    : 'text-rmpg-300 hover:text-white hover:bg-rmpg-700/50'
-                  }
-                `}
-              >
-                <Icon className="w-4 h-4" />
-                {tab.label}
-                <span className="text-[10px] text-rmpg-400">({tab.count})</span>
-              </button>
-            );
-          })}
-
-          {/* Archive Toggle */}
-          <div className={isMobile ? '' : 'ml-auto'}>
-            <button
-              onClick={() => setShowArchived(!showArchived)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors border whitespace-nowrap ${
-                showArchived
-                  ? 'bg-amber-900/40 text-amber-400 border-amber-700/50 hover:bg-amber-900/60'
-                  : 'bg-rmpg-700/50 text-rmpg-400 border-rmpg-600 hover:text-rmpg-200 hover:bg-rmpg-700'
-              }`}
-            >
-              <Archive className="w-3 h-3" />
-              {showArchived ? 'Viewing Archives' : 'Show Archives'}
-            </button>
-          </div>
+      {/* Error banner */}
+      {error && (
+        <div className="px-3 py-2 bg-red-900/40 border-b border-red-700/50 text-red-300 text-xs flex items-center">
+          {error}
+          <button onClick={() => setError(null)} className="ml-2 underline text-red-400 hover:text-red-300">dismiss</button>
         </div>
-      </div>
+      )}
 
-      {/* Content */}
-      <div className="flex-1 overflow-hidden flex flex-col">
-        {/* Archive Banner */}
-        {showArchived && (
-          <div className="px-4 py-2 bg-amber-900/20 border-b border-amber-700/40 flex items-center gap-2">
-            <Archive className="w-3.5 h-3.5 text-amber-400" />
-            <span className="text-xs text-amber-400 font-bold uppercase tracking-wider">Archives Mode</span>
-            <span className="text-xs text-amber-400/70">Showing archived records (read-only)</span>
-            <button
-              onClick={() => setShowArchived(false)}
-              className="ml-auto text-[10px] text-amber-400 hover:text-amber-300 underline"
-            >
-              Exit Archives
-            </button>
+      {/* Archive Banner */}
+      {showArchived && (
+        <div className="px-3 py-1.5 bg-amber-900/20 border-b border-amber-700/40 flex items-center gap-2">
+          <Archive className="w-3 h-3 text-amber-400" />
+          <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">Archives Mode</span>
+          <span className="text-[10px] text-amber-400/70">Read-only</span>
+          <button onClick={() => setShowArchived(false)} className="ml-auto text-[9px] text-amber-400 hover:text-amber-300 underline">
+            Exit
+          </button>
+        </div>
+      )}
+
+      {/* Active TabList Content */}
+      <div className="flex-1 overflow-hidden">
+        {isLoading && (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" />
+            <span className="ml-2 text-sm text-rmpg-300">Loading records...</span>
           </div>
         )}
-
-        <div className="flex-1 overflow-hidden flex">
-          {/* Loading spinner */}
-          {isLoading && (
-            <div className="flex items-center justify-center py-16 flex-1">
-              <Loader2 className="w-6 h-6 text-brand-400 animate-spin" />
-              <span className="ml-2 text-sm text-rmpg-300">Loading records...</span>
-            </div>
-          )}
-
-          {/* ===== PERSONS TAB ===== */}
-          {activeTab === 'persons' && !loadingPersons && (
-            <PersonsTab
-              searchQuery={searchQuery}
-              setSearchQuery={setSearchQuery}
-              showArchived={showArchived}
-              setError={setError}
-              persons={persons}
-              setPersons={setPersons}
-              loadingPersons={loadingPersons}
-              setLoadingPersons={setLoadingPersons}
-              deleteTarget={deleteTarget}
-              setDeleteTarget={setDeleteTarget}
-              linkRefreshKey={linkRefreshKey}
-              openLinkModal={openLinkModal}
-              handleArchiveRecord={handleArchiveRecord}
-              handleUnarchiveRecord={handleUnarchiveRecord}
-              fetchPersons={fetchPersons}
-              openNewTrigger={newPersonTrigger}
-            />
-          )}
-
-          {/* ===== VEHICLES TAB ===== */}
-          {activeTab === 'vehicles' && !loadingVehicles && (
-            <VehiclesTab
-              searchQuery={searchQuery}
-              setSearchQuery={setSearchQuery}
-              showArchived={showArchived}
-              setError={setError}
-              vehicles={vehicles}
-              setVehicles={setVehicles}
-              loadingVehicles={loadingVehicles}
-              setLoadingVehicles={setLoadingVehicles}
-              setDeleteTarget={setDeleteTarget}
-              linkRefreshKey={linkRefreshKey}
-              openLinkModal={openLinkModal}
-              handleArchiveRecord={handleArchiveRecord}
-              handleUnarchiveRecord={handleUnarchiveRecord}
-              fetchVehicles={fetchVehicles}
-              openNewTrigger={newVehicleTrigger}
-            />
-          )}
-
-          {/* ===== PROPERTIES TAB ===== */}
-          {activeTab === 'properties' && !loadingProperties && (
-            <PropertiesTab
-              searchQuery={searchQuery}
-              setSearchQuery={setSearchQuery}
-              showArchived={showArchived}
-              setError={setError}
-              properties={properties}
-              setProperties={setProperties}
-              loadingProperties={loadingProperties}
-              setLoadingProperties={setLoadingProperties}
-              setDeleteTarget={setDeleteTarget}
-              linkRefreshKey={linkRefreshKey}
-              openLinkModal={openLinkModal}
-              handleArchiveRecord={handleArchiveRecord}
-              handleUnarchiveRecord={handleUnarchiveRecord}
-              fetchProperties={fetchProperties}
-              clients={clients}
-              openNewTrigger={newPropertyTrigger}
-            />
-          )}
-
-          {/* ===== EVIDENCE TAB ===== */}
-          {activeTab === 'evidence' && !loadingEvidence && (
-            <EvidenceTab
-              searchQuery={searchQuery}
-              setSearchQuery={setSearchQuery}
-              showArchived={showArchived}
-              setError={setError}
-              evidence={evidence}
-              setEvidence={setEvidence}
-              loadingEvidence={loadingEvidence}
-              setLoadingEvidence={setLoadingEvidence}
-              setDeleteTarget={setDeleteTarget}
-              linkRefreshKey={linkRefreshKey}
-              openLinkModal={openLinkModal}
-              handleArchiveRecord={handleArchiveRecord}
-              handleUnarchiveRecord={handleUnarchiveRecord}
-              fetchEvidence={fetchEvidence}
-              openNewTrigger={newEvidenceTrigger}
-            />
-          )}
-        </div>
+        {activeTab === 'persons' && !loadingPersons && <PersonsTabList state={personsState} />}
+        {activeTab === 'vehicles' && !loadingVehicles && <VehiclesTabList state={vehiclesState} />}
+        {activeTab === 'properties' && !loadingProperties && <PropertiesTabList state={propertiesState} />}
+        {activeTab === 'evidence' && !loadingEvidence && <EvidenceTabList state={evidenceState} />}
       </div>
+    </div>
+  );
+
+  // ════════════════════════════════════════════════════
+  // RIGHT PANEL — PanelTitleBar + Detail
+  // ════════════════════════════════════════════════════
+
+  const rightPanel = (
+    <div className="h-full flex flex-col">
+      {/* Panel Title Bar — Selected Record */}
+      <PanelTitleBar
+        title={selectedLabel}
+        icon={
+          activeTab === 'persons' ? UserCircle :
+          activeTab === 'vehicles' ? Car :
+          activeTab === 'properties' ? Building2 :
+          Package
+        }
+      >
+        {selectedRecordForPrint && (
+          <PrintRecordButton
+            recordType={selectedRecordForPrint.recordType}
+            recordData={selectedRecordForPrint.recordData}
+            identifier={selectedRecordForPrint.identifier}
+            entityType={selectedRecordForPrint.entityType}
+            entityId={selectedRecordForPrint.entityId}
+            iconOnly
+            title="Print record"
+          />
+        )}
+        <button onClick={closeSelection} className="toolbar-btn" title="Close detail">
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </PanelTitleBar>
+
+      {/* Active TabDetail Content */}
+      <div className="flex-1 overflow-hidden">
+        {activeTab === 'persons' && <PersonsTabDetail state={personsState} />}
+        {activeTab === 'vehicles' && <VehiclesTabDetail state={vehiclesState} />}
+        {activeTab === 'properties' && <PropertiesTabDetail state={propertiesState} />}
+        {activeTab === 'evidence' && <EvidenceTabDetail state={evidenceState} />}
+      </div>
+    </div>
+  );
+
+  // ════════════════════════════════════════════════════
+  // RENDER — SplitPanel
+  // ════════════════════════════════════════════════════
+
+  return (
+    <div className="flex flex-col h-full animate-fade-in">
+      <SplitPanel
+        left={leftPanel}
+        right={rightPanel}
+        initialRatio={0.4}
+        persistKey="records-split"
+        rightVisible={hasSelection}
+        leftLabel="Records"
+        rightLabel="Detail"
+      />
 
       {/* Link Record Modal */}
       {linkSource && (

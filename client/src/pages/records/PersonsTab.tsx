@@ -1,10 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Search,
   UserCircle,
   Shield,
   MapPin,
-  Loader2,
   Trash2,
   Pencil,
   FileText,
@@ -17,7 +16,6 @@ import {
   EyeOff,
   Briefcase,
   CreditCard,
-  Calendar,
   Archive,
   RotateCcw,
 } from 'lucide-react';
@@ -25,13 +23,12 @@ import { apiFetch } from '../../hooks/useApi';
 import { openRecordWindow } from '../../utils/windowManager';
 import PersonFormModal from '../../components/PersonFormModal';
 import FileAttachments from '../../components/FileAttachments';
-import StatusBadge from '../../components/StatusBadge';
-import PersonHistoryPanel from '../../components/PersonHistoryPanel';
-import PrintRecordButton from '../../components/PrintRecordButton';
 import AlertBanner from '../../components/AlertBanner';
 import LinkedRecordsSection from '../../components/LinkedRecordsSection';
 import CriminalHistorySection from '../../components/CriminalHistorySection';
 import { PersonClientLinks } from '../../components/ClientPersonLinksSection';
+import PersonHistoryPanel from '../../components/PersonHistoryPanel';
+import CollapsibleSection from '../../components/CollapsibleSection';
 import type { Person, RecordAlert, RecordEntityType } from '../../types';
 import type { PersonFormData } from '../../components/PersonFormModal';
 
@@ -129,6 +126,20 @@ const FLAG_COLORS: Record<string, string> = {
   'Pre-Trial Supervision': 'bg-orange-900/50 text-orange-400 border-orange-700/50',
 };
 
+// ── Helpers ──────────────────────────────────────
+
+function renderInfoRow(label: string, value?: string | null, icon?: React.ElementType) {
+  if (!value) return null;
+  const Icon = icon;
+  return (
+    <div className="flex items-start gap-2 text-xs">
+      {Icon && <Icon className="w-3 h-3 text-rmpg-400 mt-0.5 flex-shrink-0" />}
+      <span className="text-rmpg-400 min-w-[80px]">{label}:</span>
+      <span className="text-rmpg-200">{value}</span>
+    </div>
+  );
+}
+
 // ── Props ──────────────────────────────────────────
 
 export interface PersonsTabProps {
@@ -151,28 +162,64 @@ export interface PersonsTabProps {
   openNewTrigger?: number;
 }
 
-// ── Component ──────────────────────────────────────
+// ── Hook Return ────────────────────────────────────
 
-export default function PersonsTab({
-  searchQuery,
-  setSearchQuery,
-  showArchived,
-  setError,
-  persons,
-  loadingPersons,
-  deleteTarget,
-  setDeleteTarget,
-  linkRefreshKey,
-  openLinkModal,
-  handleArchiveRecord,
-  handleUnarchiveRecord,
-  fetchPersons,
-  openNewTrigger,
-}: PersonsTabProps) {
+export interface PersonsTabState {
+  // Selection
+  selectedPerson: Person | null;
+  setSelectedPerson: React.Dispatch<React.SetStateAction<Person | null>>;
+  // Modal
+  personModalOpen: boolean;
+  editingPerson: Person | undefined;
+  personSubmitting: boolean;
+  openNewPerson: () => void;
+  openEditPerson: (p: Person) => void;
+  handlePersonSubmit: (data: PersonFormData) => Promise<void>;
+  closeModal: () => void;
+  // Alerts
+  personAlerts: RecordAlert[];
+  // SSN
+  ssnRevealed: boolean;
+  setSSNRevealed: React.Dispatch<React.SetStateAction<boolean>>;
+  // Filtering
+  filteredPersons: Person[];
+  // Archive wrappers
+  handleArchive: (type: 'persons' | 'vehicles' | 'properties' | 'evidence', id: string) => Promise<void>;
+  handleUnarchive: (type: 'persons' | 'vehicles' | 'properties' | 'evidence', id: string) => Promise<void>;
+  // Pass-through from props
+  searchQuery: string;
+  setSearchQuery: (q: string) => void;
+  showArchived: boolean;
+  setDeleteTarget: PersonsTabProps['setDeleteTarget'];
+  linkRefreshKey: number;
+  openLinkModal: (type: RecordEntityType, id: string) => void;
+}
+
+// ════════════════════════════════════════════════════
+// HOOK — usePersonsTab
+// ════════════════════════════════════════════════════
+
+export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
+  const {
+    searchQuery, setSearchQuery, showArchived, setError,
+    persons, setDeleteTarget, linkRefreshKey,
+    openLinkModal, handleArchiveRecord, handleUnarchiveRecord,
+    fetchPersons, openNewTrigger,
+  } = props;
+
   // Modal state
   const [personModalOpen, setPersonModalOpen] = useState(false);
   const [editingPerson, setEditingPerson] = useState<Person | undefined>(undefined);
   const [personSubmitting, setPersonSubmitting] = useState(false);
+
+  // Selection
+  const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
+
+  // Alerts for selected person
+  const [personAlerts, setPersonAlerts] = useState<RecordAlert[]>([]);
+
+  // SSN reveal state
+  const [ssnRevealed, setSSNRevealed] = useState(false);
 
   // Open "New Person" modal when trigger changes from parent
   useEffect(() => {
@@ -182,24 +229,14 @@ export default function PersonsTab({
     }
   }, [openNewTrigger]);
 
-  // Selected record for detail panel
-  const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
-  const personDetailRef = useRef<HTMLDivElement>(null);
-
-  // Alerts for selected person
-  const [personAlerts, setPersonAlerts] = useState<RecordAlert[]>([]);
-
-  // SSN reveal state
-  const [ssnRevealed, setSSNRevealed] = useState(false);
-
-  // Clear selection if the person was removed from the list (e.g. deleted/archived)
+  // Clear selection if the person was removed from the list
   useEffect(() => {
     if (selectedPerson && !persons.find(p => p.id === selectedPerson.id)) {
       setSelectedPerson(null);
     }
   }, [persons, selectedPerson]);
 
-  // Build person alerts when a person is selected
+  // Build person alerts when selection changes
   useEffect(() => {
     if (!selectedPerson) { setPersonAlerts([]); return; }
     const alerts: RecordAlert[] = [];
@@ -228,15 +265,9 @@ export default function PersonsTab({
     setPersonSubmitting(true);
     try {
       if (editingPerson) {
-        await apiFetch(`/records/persons/${editingPerson.id}`, {
-          method: 'PUT',
-          body: JSON.stringify(data),
-        });
+        await apiFetch(`/records/persons/${editingPerson.id}`, { method: 'PUT', body: JSON.stringify(data) });
       } else {
-        await apiFetch('/records/persons', {
-          method: 'POST',
-          body: JSON.stringify(data),
-        });
+        await apiFetch('/records/persons', { method: 'POST', body: JSON.stringify(data) });
       }
       setPersonModalOpen(false);
       setEditingPerson(undefined);
@@ -248,15 +279,9 @@ export default function PersonsTab({
     }
   };
 
-  const openEditPerson = (person: Person) => {
-    setEditingPerson(person);
-    setPersonModalOpen(true);
-  };
-
-  const openNewPerson = () => {
-    setEditingPerson(undefined);
-    setPersonModalOpen(true);
-  };
+  const openEditPerson = (person: Person) => { setEditingPerson(person); setPersonModalOpen(true); };
+  const openNewPerson = () => { setEditingPerson(undefined); setPersonModalOpen(true); };
+  const closeModal = () => { setPersonModalOpen(false); setEditingPerson(undefined); };
 
   // Wrap archive/unarchive to also clear selection
   const handleArchive = async (type: 'persons' | 'vehicles' | 'properties' | 'evidence', id: string) => {
@@ -281,445 +306,437 @@ export default function PersonsTab({
     );
   });
 
-  // ── Helpers ──────────────────────────────────────
-
-  const renderInfoRow = (label: string, value?: string | null, icon?: React.ElementType) => {
-    if (!value) return null;
-    const Icon = icon;
-    return (
-      <div className="flex items-start gap-2 text-xs">
-        {Icon && <Icon className="w-3 h-3 text-rmpg-400 mt-0.5 flex-shrink-0" />}
-        <span className="text-rmpg-400 min-w-[80px]">{label}:</span>
-        <span className="text-rmpg-200">{value}</span>
-      </div>
-    );
+  return {
+    selectedPerson, setSelectedPerson,
+    personModalOpen, editingPerson, personSubmitting,
+    openNewPerson, openEditPerson, handlePersonSubmit, closeModal,
+    personAlerts, ssnRevealed, setSSNRevealed,
+    filteredPersons, handleArchive, handleUnarchive,
+    searchQuery, setSearchQuery, showArchived,
+    setDeleteTarget, linkRefreshKey, openLinkModal,
   };
+}
 
-  // ── Render ───────────────────────────────────────
+// ════════════════════════════════════════════════════
+// LIST — PersonsTabList (left panel content)
+// ════════════════════════════════════════════════════
 
-  if (loadingPersons) return null;
+export function PersonsTabList({ state }: { state: PersonsTabState }) {
+  const {
+    filteredPersons, selectedPerson, setSelectedPerson, setSSNRevealed,
+    searchQuery, setSearchQuery, showArchived,
+    openEditPerson, setDeleteTarget, handleArchive, handleUnarchive,
+    personModalOpen, editingPerson, personSubmitting, handlePersonSubmit, closeModal,
+  } = state;
 
   return (
-    <>
-      {/* Left: Person List */}
-      <div className={`${selectedPerson ? 'w-[40%]' : 'w-full'} border-r border-rmpg-600 flex flex-col overflow-hidden transition-all`}>
-        {/* Search */}
-        <div className="p-3 border-b border-rmpg-600">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
-            <input
-              type="text"
-              className="input-dark pl-9 w-full text-[11px]"
-              placeholder="Search persons by name, address, flags..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            {searchQuery && (
-              <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white">
-                <X className="w-3 h-3" />
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Person List */}
-        <div className="flex-1 overflow-auto">
-          {filteredPersons.length === 0 && (
-            <div className="text-center py-12">
-              <UserCircle className="w-8 h-8 text-rmpg-500 mx-auto mb-2" />
-              <p className="text-sm text-rmpg-400">{searchQuery ? 'No persons match your search.' : 'No person records found.'}</p>
-            </div>
+    <div className="h-full flex flex-col">
+      {/* Search */}
+      <div className="p-3 border-b border-rmpg-600">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
+          <input
+            type="text"
+            className="input-dark pl-9 w-full text-[11px]"
+            placeholder="Search persons by name, address, flags..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          {searchQuery && (
+            <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white">
+              <X className="w-3 h-3" />
+            </button>
           )}
-          {filteredPersons.map((person) => (
-            <div
-              key={person.id}
-              onClick={() => { setSelectedPerson(selectedPerson?.id === person.id ? null : person); setSSNRevealed(false); }}
-              className={`
-                px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-colors
-                ${selectedPerson?.id === person.id
-                  ? 'bg-brand-900/20 border-l-2 border-l-brand-500'
-                  : 'hover:bg-rmpg-700/30 border-l-2 border-l-transparent'
-                }
-              `}
-            >
-              <div className="flex items-center gap-3">
-                <div className="flex-shrink-0 w-9 h-9 rounded-full bg-rmpg-700 border border-rmpg-600 flex items-center justify-center text-xs font-bold text-rmpg-300">
-                  {person.first_name[0]}{person.last_name[0]}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-white truncate">
-                      {person.last_name}, {person.first_name}
-                      {person.middle_name ? ` ${person.middle_name[0]}.` : ''}
-                    </span>
-                    {person.alias_nickname && (
-                      <span className="text-[10px] text-amber-400 italic">aka "{person.alias_nickname}"</span>
-                    )}
-                    {person.is_sex_offender && (
-                      <span className="px-1 py-0.5 text-[8px] font-bold bg-red-900/60 text-red-400 border border-red-700/50">RSO</span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-3 mt-0.5 text-[10px] text-rmpg-400">
-                    {person.date_of_birth && <span>DOB: {person.date_of_birth}</span>}
-                    {person.gender && <span>{person.gender}</span>}
-                    {person.race && <span>{person.race}</span>}
-                    {person.phone && (
-                      <span className="flex items-center gap-0.5">
-                        <Phone className="w-2.5 h-2.5" />{person.phone}
-                      </span>
-                    )}
-                  </div>
-                  {(person.address || person.city) && (
-                    <div className="flex items-center gap-1 mt-0.5 text-[9px] text-rmpg-500 truncate">
-                      <MapPin className="w-2.5 h-2.5 flex-shrink-0" />
-                      {[person.address, person.city, person.state].filter(Boolean).join(', ')}
-                    </div>
-                  )}
-                </div>
-                <div className="flex flex-col items-end gap-1">
-                  {person.flags.length > 0 && (
-                    <div className="flex gap-1">
-                      {person.flags.slice(0, 2).map((flag) => (
-                        <span key={flag} className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-semibold border ${FLAG_COLORS[flag] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
-                          {flag}
-                        </span>
-                      ))}
-                      {person.flags.length > 2 && (
-                        <span className="text-[9px] text-rmpg-400">+{person.flags.length - 2}</span>
-                      )}
-                    </div>
-                  )}
-                  <div className="flex items-center gap-1">
-                    {!showArchived && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); openEditPerson(person); }}
-                        className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors"
-                        title="Edit"
-                      >
-                        <Pencil className="w-3 h-3" />
-                      </button>
-                    )}
-                    <button
-                      onClick={(e) => { e.stopPropagation(); openRecordWindow('person', person.id); }}
-                      className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors"
-                      title="Open in Window"
-                    >
-                      <ExternalLink className="w-3 h-3" />
-                    </button>
-                    {!showArchived && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setDeleteTarget({ type: 'person', id: person.id, label: `${person.first_name} ${person.last_name}` }); }}
-                        className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-red-400 transition-colors"
-                        title="Delete"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    )}
-                    {!showArchived && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleArchive('persons', person.id); }}
-                        className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-amber-400 transition-colors"
-                        title="Archive"
-                      >
-                        <Archive className="w-3 h-3" />
-                      </button>
-                    )}
-                    {showArchived && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleUnarchive('persons', person.id); }}
-                        className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-green-400 transition-colors"
-                        title="Unarchive"
-                      >
-                        <RotateCcw className="w-3 h-3" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
         </div>
       </div>
 
-      {/* Right: Person Detail Panel */}
-      {selectedPerson && (
-        <div ref={personDetailRef} className="w-[60%] flex flex-col overflow-hidden">
-          {/* Header */}
-          <div className="p-4 border-b border-rmpg-600 bg-surface-sunken">
-            <AlertBanner alerts={personAlerts} />
-            <div className="flex items-start justify-between">
-              <div>
-                <h2 className="text-lg font-bold text-white">
-                  {selectedPerson.last_name}, {selectedPerson.first_name}
-                  {selectedPerson.middle_name ? ` ${selectedPerson.middle_name}` : ''}
-                </h2>
-                <div className="flex items-center gap-3 mt-1 text-xs text-rmpg-300">
-                  {selectedPerson.date_of_birth && <span>DOB: {selectedPerson.date_of_birth}</span>}
-                  {selectedPerson.gender && <span>{selectedPerson.gender}</span>}
-                  {selectedPerson.race && <span>{selectedPerson.race}</span>}
-                </div>
-              </div>
-              <PrintRecordButton recordType="person" recordData={selectedPerson} identifier={selectedPerson?.id} entityType="person" entityId={selectedPerson?.id} iconOnly title="Print person record" />
-              <button onClick={() => setSelectedPerson(null)} className="p-1 hover:bg-rmpg-700 text-rmpg-400 hover:text-white transition-colors">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Special Flags */}
-            <div className="flex gap-2 mt-3">
-              {selectedPerson.flags.map((flag) => (
-                <span key={flag} className={`inline-flex items-center px-2 py-0.5 text-[10px] font-semibold border ${FLAG_COLORS[flag] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
-                  {flag}
-                </span>
-              ))}
-              {selectedPerson.is_sex_offender && <span className="px-2 py-0.5 text-[10px] font-bold bg-red-900/50 text-red-400 border border-red-700/50">SEX OFFENDER</span>}
-              {selectedPerson.is_veteran && <span className="px-2 py-0.5 text-[10px] font-bold bg-brand-900/50 text-brand-400 border border-brand-700/50">VETERAN</span>}
-              {selectedPerson.gang_affiliation && <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-900/50 text-amber-400 border border-amber-700/50">GANG: {selectedPerson.gang_affiliation}</span>}
-              {selectedPerson.probation_parole && selectedPerson.probation_parole !== 'None' && <span className="px-2 py-0.5 text-[10px] font-bold bg-orange-900/50 text-orange-400 border border-orange-700/50">{selectedPerson.probation_parole.toUpperCase()}</span>}
-            </div>
+      {/* Person List */}
+      <div className="flex-1 overflow-auto">
+        {filteredPersons.length === 0 && (
+          <div className="text-center py-12">
+            <UserCircle className="w-8 h-8 text-rmpg-500 mx-auto mb-2" />
+            <p className="text-sm text-rmpg-400">{searchQuery ? 'No persons match your search.' : 'No person records found.'}</p>
           </div>
-
-          {/* Detail Content */}
-          <div className="flex-1 overflow-auto p-4 space-y-3">
-            {/* ══ ROW 1: Two-Column Info Grid ══ */}
-            <div className="grid grid-cols-2 gap-3">
-              {/* LEFT: Physical Description */}
-              <div className="panel-beveled p-3 bg-surface-base">
-                <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3 flex items-center gap-1.5">
-                  <Eye className="w-3 h-3" /> Physical Description
-                </h3>
-                <div className="grid grid-cols-3 gap-1.5 text-xs">
-                  {(selectedPerson.height_feet != null || selectedPerson.height) && <div><span className="text-rmpg-400">Height:</span> <span className="text-rmpg-200">{selectedPerson.height_feet != null ? `${selectedPerson.height_feet}'${String(selectedPerson.height_inches ?? 0).padStart(2, '0')}"` : selectedPerson.height}</span></div>}
-                  {selectedPerson.weight && <div><span className="text-rmpg-400">Weight:</span> <span className="text-rmpg-200">{selectedPerson.weight}</span></div>}
-                  {selectedPerson.build && <div><span className="text-rmpg-400">Build:</span> <span className="text-rmpg-200">{selectedPerson.build}</span></div>}
-                  {selectedPerson.complexion && <div><span className="text-rmpg-400">Complexion:</span> <span className="text-rmpg-200">{selectedPerson.complexion}</span></div>}
-                  {selectedPerson.hair_color && <div><span className="text-rmpg-400">Hair:</span> <span className="text-rmpg-200">{selectedPerson.hair_color}</span></div>}
-                  {selectedPerson.hair_length && <div><span className="text-rmpg-400">Length:</span> <span className="text-rmpg-200">{selectedPerson.hair_length}</span></div>}
-                  {selectedPerson.hair_style && <div><span className="text-rmpg-400">Style:</span> <span className="text-rmpg-200">{selectedPerson.hair_style}</span></div>}
-                  {selectedPerson.eye_color && <div><span className="text-rmpg-400">Eyes:</span> <span className="text-rmpg-200">{selectedPerson.eye_color}</span></div>}
-                  {selectedPerson.facial_hair && <div><span className="text-rmpg-400">Facial Hair:</span> <span className="text-rmpg-200">{selectedPerson.facial_hair}</span></div>}
-                  {selectedPerson.glasses && <div><span className="text-rmpg-400">Glasses:</span> <span className="text-rmpg-200">{selectedPerson.glasses}</span></div>}
-                  {selectedPerson.shoe_size && <div><span className="text-rmpg-400">Shoe:</span> <span className="text-rmpg-200">{selectedPerson.shoe_size}</span></div>}
-                  {selectedPerson.language && <div><span className="text-rmpg-400">Language:</span> <span className="text-rmpg-200">{selectedPerson.language}</span></div>}
-                </div>
-                {selectedPerson.scars_marks_tattoos && (
-                  <div className="mt-2"><span className="text-[10px] text-amber-400 uppercase font-semibold">Scars/Marks/Tattoos:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedPerson.scars_marks_tattoos}</span></div>
-                )}
-                {selectedPerson.clothing_description && (
-                  <div className="mt-1"><span className="text-[10px] text-rmpg-400 uppercase font-semibold">Clothing:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedPerson.clothing_description}</span></div>
-                )}
-                {selectedPerson.alias_nickname && (
-                  <div className="mt-1"><span className="text-[10px] text-rmpg-400 uppercase font-semibold">Alias:</span> <span className="text-xs text-amber-400 ml-1">{selectedPerson.alias_nickname}</span></div>
-                )}
+        )}
+        {filteredPersons.map((person) => (
+          <div
+            key={person.id}
+            onClick={() => { setSelectedPerson(selectedPerson?.id === person.id ? null : person); setSSNRevealed(false); }}
+            className={`
+              px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-colors
+              ${selectedPerson?.id === person.id
+                ? 'bg-brand-900/20 border-l-2 border-l-brand-500'
+                : 'hover:bg-rmpg-700/30 border-l-2 border-l-transparent'
+              }
+            `}
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex-shrink-0 w-9 h-9 rounded-full bg-rmpg-700 border border-rmpg-600 flex items-center justify-center text-xs font-bold text-rmpg-300">
+                {person.first_name[0]}{person.last_name[0]}
               </div>
-
-              {/* RIGHT: Contact & Address */}
-              <div className="panel-beveled p-3 bg-surface-base">
-                <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3 flex items-center gap-1.5">
-                  <Phone className="w-3 h-3" /> Contact & Address
-                </h3>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {renderInfoRow('Phone', selectedPerson.phone, Phone)}
-                  {renderInfoRow('Phone 2', selectedPerson.phone_secondary, Phone)}
-                  {renderInfoRow('Email', selectedPerson.email, Mail)}
-                  {renderInfoRow('Address', [selectedPerson.address, selectedPerson.city, selectedPerson.state, selectedPerson.zip].filter(Boolean).join(', '), MapPin)}
-                  {renderInfoRow('Employer', selectedPerson.employer, Briefcase)}
-                  {renderInfoRow('Occupation', selectedPerson.occupation)}
-                  {renderInfoRow('Social Media', selectedPerson.social_media)}
-                  {renderInfoRow('Place of Birth', selectedPerson.place_of_birth)}
-                  {renderInfoRow('Citizenship', selectedPerson.citizenship)}
-                  {renderInfoRow('Marital Status', selectedPerson.marital_status)}
-                  {renderInfoRow('Blood Type', selectedPerson.blood_type)}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-white truncate">
+                    {person.last_name}, {person.first_name}
+                    {person.middle_name ? ` ${person.middle_name[0]}.` : ''}
+                  </span>
+                  {person.alias_nickname && (
+                    <span className="text-[10px] text-amber-400 italic">aka "{person.alias_nickname}"</span>
+                  )}
+                  {person.is_sex_offender && (
+                    <span className="px-1 py-0.5 text-[8px] font-bold bg-red-900/60 text-red-400 border border-red-700/50">RSO</span>
+                  )}
                 </div>
-              </div>
-            </div>
-
-            {/* ══ ROW 2: ID + Legal side-by-side ══ */}
-            <div className="grid grid-cols-2 gap-3">
-              {/* LEFT: Identification & ID Image */}
-              <div className="panel-beveled p-3 bg-surface-base">
-                <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3 flex items-center gap-1.5">
-                  <CreditCard className="w-3 h-3" /> Identification
-                </h3>
-                {(selectedPerson.dl_number || selectedPerson.id_number || selectedPerson.ssn_last4 || selectedPerson.ssn_full || selectedPerson.id_image_url) ? (
-                  <div className="flex gap-3">
-                    {/* ID Image */}
-                    {selectedPerson.id_image_url ? (
-                      <div className="flex-shrink-0">
-                        <div className="w-24 h-32 border border-rmpg-500 bg-rmpg-900 overflow-hidden cursor-pointer group relative"
-                          onClick={() => window.open(selectedPerson.id_image_url!, '_blank')}
-                          title="Click to enlarge"
-                        >
-                          <img src={selectedPerson.id_image_url} alt="ID" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                            <Eye className="w-4 h-4 text-white" />
-                          </div>
-                        </div>
-                        {selectedPerson.id_type && (
-                          <span className="inline-block mt-1 px-1.5 py-0.5 text-[8px] font-bold uppercase bg-blue-900/40 text-blue-400 border border-blue-700/40 text-center w-full">
-                            {selectedPerson.id_type.replace(/_/g, ' ')}
-                          </span>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="flex-shrink-0 w-24 h-32 border border-dashed border-rmpg-600 bg-rmpg-900/50 flex flex-col items-center justify-center text-rmpg-600">
-                        <CreditCard className="w-6 h-6 mb-1" />
-                        <span className="text-[8px]">No Image</span>
-                      </div>
-                    )}
-                    <div className="flex-1 space-y-1.5">
-                      {selectedPerson.dl_number && (
-                        <div className="grid grid-cols-2 gap-1.5 text-xs">
-                          <div><span className="text-rmpg-400">DL:</span> <span className="text-rmpg-200 font-mono">{selectedPerson.dl_number}</span></div>
-                          {selectedPerson.dl_state && <div><span className="text-rmpg-400">State:</span> <span className="text-rmpg-200">{selectedPerson.dl_state}</span></div>}
-                          {selectedPerson.dl_class && <div><span className="text-rmpg-400">Class:</span> <span className="text-rmpg-200">{selectedPerson.dl_class}</span></div>}
-                          {selectedPerson.dl_expiry && <div><span className="text-rmpg-400">Expiry:</span> <span className="text-rmpg-200">{selectedPerson.dl_expiry}</span></div>}
-                        </div>
-                      )}
-                      {selectedPerson.id_number && (
-                        <div className="grid grid-cols-2 gap-1.5 text-xs">
-                          <div>
-                            <span className="text-rmpg-400">{selectedPerson.id_type ? selectedPerson.id_type.replace(/_/g, ' ').toUpperCase() : 'ID'}:</span>{' '}
-                            <span className="text-rmpg-200 font-mono">{selectedPerson.id_number}</span>
-                          </div>
-                          {selectedPerson.id_state && <div><span className="text-rmpg-400">State:</span> <span className="text-rmpg-200">{selectedPerson.id_state}</span></div>}
-                          {selectedPerson.id_expiry && <div><span className="text-rmpg-400">Expiry:</span> <span className="text-rmpg-200">{selectedPerson.id_expiry}</span></div>}
-                        </div>
-                      )}
-                      {/* SSN Section */}
-                      {(selectedPerson.ssn_last4 || selectedPerson.ssn_full) && (
-                        <div className="border-t border-rmpg-700 pt-1.5 mt-1">
-                          {selectedPerson.ssn_last4 && !selectedPerson.ssn_full && (
-                            <div className="text-xs"><span className="text-rmpg-400">SSN:</span> <span className="text-rmpg-200 font-mono">XXX-XX-{selectedPerson.ssn_last4}</span></div>
-                          )}
-                          {selectedPerson.ssn_full && (
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-red-400 font-semibold">Full SSN:</span>
-                              <span className="text-xs text-rmpg-200 font-mono tracking-wider">
-                                {ssnRevealed ? selectedPerson.ssn_full : '***-**-' + (selectedPerson.ssn_last4 || selectedPerson.ssn_full.replace(/\D/g, '').slice(-4))}
-                              </span>
-                              <button
-                                onClick={() => setSSNRevealed(!ssnRevealed)}
-                                className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase border transition-colors"
-                                style={ssnRevealed
-                                  ? { color: '#f87171', background: 'rgba(220,38,38,0.15)', borderColor: 'rgba(220,38,38,0.4)' }
-                                  : { color: '#9ca3af', background: 'rgba(107,114,128,0.15)', borderColor: 'rgba(107,114,128,0.3)' }
-                                }
-                                title={ssnRevealed ? 'Hide SSN' : 'Reveal SSN'}
-                              >
-                                {ssnRevealed ? <><EyeOff className="w-3 h-3" /> Hide</> : <><Eye className="w-3 h-3" /> Reveal</>}
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
+                <div className="flex items-center gap-3 mt-0.5 text-[10px] text-rmpg-400">
+                  {person.date_of_birth && <span>DOB: {person.date_of_birth}</span>}
+                  {person.gender && <span>{person.gender}</span>}
+                  {person.race && <span>{person.race}</span>}
+                  {person.phone && (
+                    <span className="flex items-center gap-0.5">
+                      <Phone className="w-2.5 h-2.5" />{person.phone}
+                    </span>
+                  )}
+                </div>
+                {(person.address || person.city) && (
+                  <div className="flex items-center gap-1 mt-0.5 text-[9px] text-rmpg-500 truncate">
+                    <MapPin className="w-2.5 h-2.5 flex-shrink-0" />
+                    {[person.address, person.city, person.state].filter(Boolean).join(', ')}
                   </div>
-                ) : (
-                  <p className="text-[11px] text-rmpg-500">No identification on file</p>
                 )}
               </div>
-
-              {/* RIGHT: Legal, Emergency, Caution stacked */}
-              <div className="space-y-3">
-                {/* Legal & Associations */}
-                {(selectedPerson.probation_parole || selectedPerson.known_associates) && (
-                  <div className="panel-beveled p-3 bg-surface-base">
-                    <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
-                      <Shield className="w-3 h-3" /> Legal & Associations
-                    </h3>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      {renderInfoRow('Probation/Parole', selectedPerson.probation_parole)}
-                      {renderInfoRow('P.O. / Officer', selectedPerson.probation_parole_officer)}
-                    </div>
-                    {selectedPerson.known_associates && (
-                      <div className="mt-1.5"><span className="text-[10px] text-rmpg-400 uppercase font-semibold">Known Associates:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedPerson.known_associates}</span></div>
+              <div className="flex flex-col items-end gap-1">
+                {person.flags.length > 0 && (
+                  <div className="flex gap-1">
+                    {person.flags.slice(0, 2).map((flag) => (
+                      <span key={flag} className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-semibold border ${FLAG_COLORS[flag] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
+                        {flag}
+                      </span>
+                    ))}
+                    {person.flags.length > 2 && (
+                      <span className="text-[9px] text-rmpg-400">+{person.flags.length - 2}</span>
                     )}
                   </div>
                 )}
-
-                {/* Emergency Contact */}
-                {selectedPerson.emergency_contact_name && (
-                  <div className="panel-beveled p-3 border-l-2 border-l-red-600 bg-surface-base">
-                    <h3 className="text-[10px] text-red-400 uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
-                      <AlertTriangle className="w-3 h-3" /> Emergency Contact
-                    </h3>
-                    <div className="grid grid-cols-3 gap-1.5">
-                      {renderInfoRow('Name', selectedPerson.emergency_contact_name)}
-                      {renderInfoRow('Phone', selectedPerson.emergency_contact_phone, Phone)}
-                      {renderInfoRow('Relationship', selectedPerson.emergency_contact_relationship)}
-                    </div>
-                  </div>
-                )}
-
-                {/* Caution / Officer Safety */}
-                {selectedPerson.caution_flags && (
-                  <div className="panel-beveled p-3 border-l-2 border-l-amber-600 bg-surface-base">
-                    <h3 className="text-[10px] text-amber-400 uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
-                      <AlertTriangle className="w-3 h-3" /> Officer Safety / Caution
-                    </h3>
-                    <p className="text-xs text-amber-300/80 leading-relaxed">{selectedPerson.caution_flags}</p>
-                  </div>
-                )}
-
-                {/* Notes */}
-                {selectedPerson.notes && (
-                  <div className="panel-beveled p-3 bg-surface-base">
-                    <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-2">Notes</h3>
-                    <p className="text-xs text-rmpg-200 leading-relaxed">{selectedPerson.notes}</p>
-                  </div>
-                )}
+                <div className="flex items-center gap-1">
+                  {!showArchived && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); openEditPerson(person); }}
+                      className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors"
+                      title="Edit"
+                    >
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                  )}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); openRecordWindow('person', person.id); }}
+                    className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors"
+                    title="Open in Window"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                  </button>
+                  {!showArchived && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setDeleteTarget({ type: 'person', id: person.id, label: `${person.first_name} ${person.last_name}` }); }}
+                      className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-red-400 transition-colors"
+                      title="Delete"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  )}
+                  {!showArchived && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleArchive('persons', person.id); }}
+                      className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-amber-400 transition-colors"
+                      title="Archive"
+                    >
+                      <Archive className="w-3 h-3" />
+                    </button>
+                  )}
+                  {showArchived && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleUnarchive('persons', person.id); }}
+                      className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-green-400 transition-colors"
+                      title="Unarchive"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
-
-            {/* ══ ROW 3: Criminal History & System History side-by-side ══ */}
-            <div className="grid grid-cols-2 gap-3">
-              {/* LEFT: Criminal History (new) */}
-              <CriminalHistorySection
-                personId={selectedPerson.id}
-                personName={`${selectedPerson.first_name} ${selectedPerson.last_name}`}
-              />
-
-              {/* RIGHT: System History — warrants, citations, incidents, calls, BOLOs */}
-              <PersonHistoryPanel
-                personId={selectedPerson.id}
-                personName={`${selectedPerson.first_name} ${selectedPerson.last_name}`}
-              />
-            </div>
-
-            {/* ══ ROW 4: Linked Clients + Linked Records side-by-side ══ */}
-            <div className="grid grid-cols-2 gap-3">
-              {/* LEFT: Linked Clients */}
-              <PersonClientLinks
-                personId={selectedPerson.id}
-                personName={`${selectedPerson.first_name} ${selectedPerson.last_name}`}
-              />
-
-              {/* RIGHT: Linked Records */}
-              <LinkedRecordsSection
-                key={`person-links-${selectedPerson.id}-${linkRefreshKey}`}
-                entityType="person"
-                entityId={selectedPerson.id}
-                onOpenLinkModal={() => openLinkModal('person', selectedPerson.id)}
-              />
-            </div>
-
-            {/* ══ ROW 5: File Attachments (full width) ══ */}
-            <div className="panel-beveled p-3 bg-surface-base">
-              <FileAttachments entityType="person" entityId={selectedPerson.id} />
-            </div>
           </div>
-        </div>
-      )}
+        ))}
+      </div>
 
-      {/* Person Form Modal */}
+      {/* Person Form Modal (portals to body) */}
       <PersonFormModal
         isOpen={personModalOpen}
-        onClose={() => { setPersonModalOpen(false); setEditingPerson(undefined); }}
+        onClose={closeModal}
         onSubmit={handlePersonSubmit}
         isSubmitting={personSubmitting}
         editingPerson={editingPerson}
       />
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════
+// DETAIL — PersonsTabDetail (right panel content)
+// ════════════════════════════════════════════════════
+
+export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
+  const {
+    selectedPerson, personAlerts, ssnRevealed, setSSNRevealed,
+    linkRefreshKey, openLinkModal,
+  } = state;
+
+  if (!selectedPerson) return null;
+
+  return (
+    <div className="h-full flex flex-col overflow-hidden">
+      {/* Alert Banner + Flags (below PanelTitleBar, which RecordsPage provides) */}
+      <div className="px-4 pt-3 pb-2 border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
+        <AlertBanner alerts={personAlerts} />
+        {/* Special Flags */}
+        {(selectedPerson.flags.length > 0 || selectedPerson.is_sex_offender || selectedPerson.is_veteran || selectedPerson.gang_affiliation || (selectedPerson.probation_parole && selectedPerson.probation_parole !== 'None')) && (
+          <div className="flex flex-wrap gap-2 mt-1">
+            {selectedPerson.flags.map((flag) => (
+              <span key={flag} className={`inline-flex items-center px-2 py-0.5 text-[10px] font-semibold border ${FLAG_COLORS[flag] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
+                {flag}
+              </span>
+            ))}
+            {selectedPerson.is_sex_offender && <span className="px-2 py-0.5 text-[10px] font-bold bg-red-900/50 text-red-400 border border-red-700/50">SEX OFFENDER</span>}
+            {selectedPerson.is_veteran && <span className="px-2 py-0.5 text-[10px] font-bold bg-brand-900/50 text-brand-400 border border-brand-700/50">VETERAN</span>}
+            {selectedPerson.gang_affiliation && <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-900/50 text-amber-400 border border-amber-700/50">GANG: {selectedPerson.gang_affiliation}</span>}
+            {selectedPerson.probation_parole && selectedPerson.probation_parole !== 'None' && <span className="px-2 py-0.5 text-[10px] font-bold bg-orange-900/50 text-orange-400 border border-orange-700/50">{selectedPerson.probation_parole.toUpperCase()}</span>}
+          </div>
+        )}
+        {/* Compact person ID line */}
+        <div className="flex items-center gap-3 mt-1 text-[10px] text-rmpg-400">
+          {selectedPerson.date_of_birth && <span>DOB: {selectedPerson.date_of_birth}</span>}
+          {selectedPerson.gender && <span>{selectedPerson.gender}</span>}
+          {selectedPerson.race && <span>{selectedPerson.race}</span>}
+        </div>
+      </div>
+
+      {/* Scrollable Detail Sections */}
+      <div className="flex-1 overflow-auto p-2 space-y-1">
+
+        {/* ── Physical Description ─────────────────── */}
+        <CollapsibleSection title="Physical Description" icon={Eye} defaultOpen>
+          <div className="grid grid-cols-3 gap-1.5 text-xs">
+            {(selectedPerson.height_feet != null || selectedPerson.height) && <div><span className="text-rmpg-400">Height:</span> <span className="text-rmpg-200">{selectedPerson.height_feet != null ? `${selectedPerson.height_feet}'${String(selectedPerson.height_inches ?? 0).padStart(2, '0')}"` : selectedPerson.height}</span></div>}
+            {selectedPerson.weight && <div><span className="text-rmpg-400">Weight:</span> <span className="text-rmpg-200">{selectedPerson.weight}</span></div>}
+            {selectedPerson.build && <div><span className="text-rmpg-400">Build:</span> <span className="text-rmpg-200">{selectedPerson.build}</span></div>}
+            {selectedPerson.complexion && <div><span className="text-rmpg-400">Complexion:</span> <span className="text-rmpg-200">{selectedPerson.complexion}</span></div>}
+            {selectedPerson.hair_color && <div><span className="text-rmpg-400">Hair:</span> <span className="text-rmpg-200">{selectedPerson.hair_color}</span></div>}
+            {selectedPerson.hair_length && <div><span className="text-rmpg-400">Length:</span> <span className="text-rmpg-200">{selectedPerson.hair_length}</span></div>}
+            {selectedPerson.hair_style && <div><span className="text-rmpg-400">Style:</span> <span className="text-rmpg-200">{selectedPerson.hair_style}</span></div>}
+            {selectedPerson.eye_color && <div><span className="text-rmpg-400">Eyes:</span> <span className="text-rmpg-200">{selectedPerson.eye_color}</span></div>}
+            {selectedPerson.facial_hair && <div><span className="text-rmpg-400">Facial Hair:</span> <span className="text-rmpg-200">{selectedPerson.facial_hair}</span></div>}
+            {selectedPerson.glasses && <div><span className="text-rmpg-400">Glasses:</span> <span className="text-rmpg-200">{selectedPerson.glasses}</span></div>}
+            {selectedPerson.shoe_size && <div><span className="text-rmpg-400">Shoe:</span> <span className="text-rmpg-200">{selectedPerson.shoe_size}</span></div>}
+            {selectedPerson.language && <div><span className="text-rmpg-400">Language:</span> <span className="text-rmpg-200">{selectedPerson.language}</span></div>}
+          </div>
+          {selectedPerson.scars_marks_tattoos && (
+            <div className="mt-2"><span className="text-[10px] text-amber-400 uppercase font-semibold">Scars/Marks/Tattoos:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedPerson.scars_marks_tattoos}</span></div>
+          )}
+          {selectedPerson.clothing_description && (
+            <div className="mt-1"><span className="text-[10px] text-rmpg-400 uppercase font-semibold">Clothing:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedPerson.clothing_description}</span></div>
+          )}
+          {selectedPerson.alias_nickname && (
+            <div className="mt-1"><span className="text-[10px] text-rmpg-400 uppercase font-semibold">Alias:</span> <span className="text-xs text-amber-400 ml-1">{selectedPerson.alias_nickname}</span></div>
+          )}
+        </CollapsibleSection>
+
+        {/* ── Contact & Address ────────────────────── */}
+        <CollapsibleSection title="Contact & Address" icon={Phone} defaultOpen>
+          <div className="grid grid-cols-2 gap-1.5">
+            {renderInfoRow('Phone', selectedPerson.phone, Phone)}
+            {renderInfoRow('Phone 2', selectedPerson.phone_secondary, Phone)}
+            {renderInfoRow('Email', selectedPerson.email, Mail)}
+            {renderInfoRow('Address', [selectedPerson.address, selectedPerson.city, selectedPerson.state, selectedPerson.zip].filter(Boolean).join(', '), MapPin)}
+            {renderInfoRow('Employer', selectedPerson.employer, Briefcase)}
+            {renderInfoRow('Occupation', selectedPerson.occupation)}
+            {renderInfoRow('Social Media', selectedPerson.social_media)}
+            {renderInfoRow('Place of Birth', selectedPerson.place_of_birth)}
+            {renderInfoRow('Citizenship', selectedPerson.citizenship)}
+            {renderInfoRow('Marital Status', selectedPerson.marital_status)}
+            {renderInfoRow('Blood Type', selectedPerson.blood_type)}
+          </div>
+        </CollapsibleSection>
+
+        {/* ── Identification ──────────────────────── */}
+        <CollapsibleSection title="Identification" icon={CreditCard} defaultOpen>
+          {(selectedPerson.dl_number || selectedPerson.id_number || selectedPerson.ssn_last4 || selectedPerson.ssn_full || selectedPerson.id_image_url) ? (
+            <div className="flex gap-3">
+              {/* ID Image */}
+              {selectedPerson.id_image_url ? (
+                <div className="flex-shrink-0">
+                  <div className="w-24 h-32 border border-rmpg-500 bg-rmpg-900 overflow-hidden cursor-pointer group relative"
+                    onClick={() => window.open(selectedPerson.id_image_url!, '_blank')}
+                    title="Click to enlarge"
+                  >
+                    <img src={selectedPerson.id_image_url} alt="ID" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <Eye className="w-4 h-4 text-white" />
+                    </div>
+                  </div>
+                  {selectedPerson.id_type && (
+                    <span className="inline-block mt-1 px-1.5 py-0.5 text-[8px] font-bold uppercase bg-blue-900/40 text-blue-400 border border-blue-700/40 text-center w-full">
+                      {selectedPerson.id_type.replace(/_/g, ' ')}
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <div className="flex-shrink-0 w-24 h-32 border border-dashed border-rmpg-600 bg-rmpg-900/50 flex flex-col items-center justify-center text-rmpg-600">
+                  <CreditCard className="w-6 h-6 mb-1" />
+                  <span className="text-[8px]">No Image</span>
+                </div>
+              )}
+              <div className="flex-1 space-y-1.5">
+                {selectedPerson.dl_number && (
+                  <div className="grid grid-cols-2 gap-1.5 text-xs">
+                    <div><span className="text-rmpg-400">DL:</span> <span className="text-rmpg-200 font-mono">{selectedPerson.dl_number}</span></div>
+                    {selectedPerson.dl_state && <div><span className="text-rmpg-400">State:</span> <span className="text-rmpg-200">{selectedPerson.dl_state}</span></div>}
+                    {selectedPerson.dl_class && <div><span className="text-rmpg-400">Class:</span> <span className="text-rmpg-200">{selectedPerson.dl_class}</span></div>}
+                    {selectedPerson.dl_expiry && <div><span className="text-rmpg-400">Expiry:</span> <span className="text-rmpg-200">{selectedPerson.dl_expiry}</span></div>}
+                  </div>
+                )}
+                {selectedPerson.id_number && (
+                  <div className="grid grid-cols-2 gap-1.5 text-xs">
+                    <div>
+                      <span className="text-rmpg-400">{selectedPerson.id_type ? selectedPerson.id_type.replace(/_/g, ' ').toUpperCase() : 'ID'}:</span>{' '}
+                      <span className="text-rmpg-200 font-mono">{selectedPerson.id_number}</span>
+                    </div>
+                    {selectedPerson.id_state && <div><span className="text-rmpg-400">State:</span> <span className="text-rmpg-200">{selectedPerson.id_state}</span></div>}
+                    {selectedPerson.id_expiry && <div><span className="text-rmpg-400">Expiry:</span> <span className="text-rmpg-200">{selectedPerson.id_expiry}</span></div>}
+                  </div>
+                )}
+                {/* SSN Section */}
+                {(selectedPerson.ssn_last4 || selectedPerson.ssn_full) && (
+                  <div className="border-t border-rmpg-700 pt-1.5 mt-1">
+                    {selectedPerson.ssn_last4 && !selectedPerson.ssn_full && (
+                      <div className="text-xs"><span className="text-rmpg-400">SSN:</span> <span className="text-rmpg-200 font-mono">XXX-XX-{selectedPerson.ssn_last4}</span></div>
+                    )}
+                    {selectedPerson.ssn_full && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-red-400 font-semibold">Full SSN:</span>
+                        <span className="text-xs text-rmpg-200 font-mono tracking-wider">
+                          {ssnRevealed ? selectedPerson.ssn_full : '***-**-' + (selectedPerson.ssn_last4 || selectedPerson.ssn_full.replace(/\D/g, '').slice(-4))}
+                        </span>
+                        <button
+                          onClick={() => setSSNRevealed(!ssnRevealed)}
+                          className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase border transition-colors"
+                          style={ssnRevealed
+                            ? { color: '#f87171', background: 'rgba(220,38,38,0.15)', borderColor: 'rgba(220,38,38,0.4)' }
+                            : { color: '#9ca3af', background: 'rgba(107,114,128,0.15)', borderColor: 'rgba(107,114,128,0.3)' }
+                          }
+                          title={ssnRevealed ? 'Hide SSN' : 'Reveal SSN'}
+                        >
+                          {ssnRevealed ? <><EyeOff className="w-3 h-3" /> Hide</> : <><Eye className="w-3 h-3" /> Reveal</>}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <p className="text-[11px] text-rmpg-500">No identification on file</p>
+          )}
+        </CollapsibleSection>
+
+        {/* ── Legal & Associations (conditional) ──── */}
+        {(selectedPerson.probation_parole || selectedPerson.known_associates) && (
+          <CollapsibleSection title="Legal & Associations" icon={Shield}>
+            <div className="grid grid-cols-2 gap-1.5">
+              {renderInfoRow('Probation/Parole', selectedPerson.probation_parole)}
+              {renderInfoRow('P.O. / Officer', selectedPerson.probation_parole_officer)}
+            </div>
+            {selectedPerson.known_associates && (
+              <div className="mt-1.5"><span className="text-[10px] text-rmpg-400 uppercase font-semibold">Known Associates:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedPerson.known_associates}</span></div>
+            )}
+          </CollapsibleSection>
+        )}
+
+        {/* ── Emergency Contact (conditional) ─────── */}
+        {selectedPerson.emergency_contact_name && (
+          <CollapsibleSection title="Emergency Contact" icon={AlertTriangle}>
+            <div className="grid grid-cols-3 gap-1.5">
+              {renderInfoRow('Name', selectedPerson.emergency_contact_name)}
+              {renderInfoRow('Phone', selectedPerson.emergency_contact_phone, Phone)}
+              {renderInfoRow('Relationship', selectedPerson.emergency_contact_relationship)}
+            </div>
+          </CollapsibleSection>
+        )}
+
+        {/* ── Officer Safety / Caution (conditional)  */}
+        {selectedPerson.caution_flags && (
+          <CollapsibleSection title="Officer Safety / Caution" icon={AlertTriangle}>
+            <p className="text-xs text-amber-300/80 leading-relaxed">{selectedPerson.caution_flags}</p>
+          </CollapsibleSection>
+        )}
+
+        {/* ── Notes (conditional) ──────────────────── */}
+        {selectedPerson.notes && (
+          <CollapsibleSection title="Notes" icon={FileText} defaultOpen={false}>
+            <p className="text-xs text-rmpg-200 leading-relaxed">{selectedPerson.notes}</p>
+          </CollapsibleSection>
+        )}
+
+        {/* ── Criminal History (standalone component) ─ */}
+        <CriminalHistorySection
+          personId={selectedPerson.id}
+          personName={`${selectedPerson.first_name} ${selectedPerson.last_name}`}
+        />
+
+        {/* ── System History (standalone component) ─── */}
+        <PersonHistoryPanel
+          personId={selectedPerson.id}
+          personName={`${selectedPerson.first_name} ${selectedPerson.last_name}`}
+        />
+
+        {/* ── Client Links (standalone component) ──── */}
+        <PersonClientLinks
+          personId={selectedPerson.id}
+          personName={`${selectedPerson.first_name} ${selectedPerson.last_name}`}
+        />
+
+        {/* ── Linked Records (standalone component) ── */}
+        <LinkedRecordsSection
+          key={`person-links-${selectedPerson.id}-${linkRefreshKey}`}
+          entityType="person"
+          entityId={selectedPerson.id}
+          onOpenLinkModal={() => openLinkModal('person', selectedPerson.id)}
+        />
+
+        {/* ── File Attachments ─────────────────────── */}
+        <div className="panel-beveled p-3 bg-surface-base">
+          <FileAttachments entityType="person" entityId={selectedPerson.id} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════
+// Legacy default export (backward compat during transition)
+// ════════════════════════════════════════════════════
+
+export default function PersonsTab(props: PersonsTabProps) {
+  const state = usePersonsTab(props);
+  if (props.loadingPersons) return null;
+  return (
+    <>
+      <div className={`${state.selectedPerson ? 'w-[40%]' : 'w-full'} border-r border-rmpg-600 flex flex-col overflow-hidden transition-all`}>
+        <PersonsTabList state={state} />
+      </div>
+      {state.selectedPerson && (
+        <div className="w-[60%] flex flex-col overflow-hidden">
+          <PersonsTabDetail state={state} />
+        </div>
+      )}
     </>
   );
 }

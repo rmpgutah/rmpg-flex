@@ -569,7 +569,7 @@ export default function MapPage() {
 
   useEffect(() => {
     fetchAllData();
-    const interval = setInterval(() => { fetchAllData({ silent: true }); }, 60000);
+    const interval = setInterval(() => { fetchAllData({ silent: true }); }, 30000);
     return () => clearInterval(interval);
   }, [fetchAllData]);
 
@@ -598,20 +598,22 @@ export default function MapPage() {
       }
     });
 
-    const unsubscribeCall = subscribe('call_update', (data: any) => {
-      if (data && data.call) {
+    // Server broadcasts 'dispatch_update' type for call events
+    const unsubscribeCall = subscribe('dispatch_update', (msg: any) => {
+      const evtData = msg.data || msg;
+      if (evtData && evtData.call) {
         setCalls((prev) => {
-          const index = prev.findIndex((c) => c.id === data.call.id);
+          const index = prev.findIndex((c) => c.id === evtData.call.id);
           if (index >= 0) {
             const updated = [...prev];
-            updated[index] = { ...updated[index], ...data.call };
-            if (data.call.status === 'closed' || data.call.status === 'completed') {
-              return updated.filter((c) => c.id !== data.call.id);
+            updated[index] = { ...updated[index], ...evtData.call };
+            if (evtData.call.status === 'closed' || evtData.call.status === 'completed') {
+              return updated.filter((c) => c.id !== evtData.call.id);
             }
             return updated;
           }
-          if (data.call.status !== 'closed' && data.call.status !== 'completed') {
-            return [...prev, data.call];
+          if (evtData.call.status !== 'closed' && evtData.call.status !== 'completed') {
+            return [...prev, evtData.call];
           }
           return prev;
         });

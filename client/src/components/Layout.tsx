@@ -289,7 +289,7 @@ export default function Layout() {
 
   // Update on WebSocket dispatch events
   useEffect(() => {
-    const unsub1 = subscribe('call_update', () => fetchHeaderStats());
+    const unsub1 = subscribe('dispatch_update', () => fetchHeaderStats());
     const unsub2 = subscribe('bolo_alert', () => fetchHeaderStats());
     return () => { unsub1(); unsub2(); };
   }, [subscribe, fetchHeaderStats]);

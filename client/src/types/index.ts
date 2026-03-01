@@ -1826,3 +1826,28 @@ export interface OffenderAlert {
   created_at: string;
   updated_at: string;
 }
+
+// --- Company Documents (Policies, SOPs, Training Manuals) ---
+
+export type CompanyDocCategory = 'general' | 'policy' | 'procedure' | 'sop' | 'training_manual' | 'form' | 'reference';
+
+export interface CompanyDocument {
+  id: number;
+  title: string;
+  description?: string;
+  category: CompanyDocCategory;
+  file_id?: string;
+  content_type: 'file' | 'link';
+  external_url?: string;
+  is_required_reading: number;
+  published: number;
+  sort_order: number;
+  created_by: number;
+  updated_by?: number;
+  creator_name?: string;
+  created_at: string;
+  updated_at: string;
+  file_name?: string;
+  file_size?: number;
+  mime_type?: string;
+}

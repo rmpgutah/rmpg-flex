@@ -40,12 +40,12 @@ const ALLOWED_TYPES = new Set([
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'text/plain', 'text/csv',
   // Video
-  'video/mp4', 'video/quicktime', 'video/x-msvideo',
+  'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm', 'video/x-matroska',
   // Audio
   'audio/mpeg', 'audio/wav', 'audio/ogg',
 ]);
 
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
 
 // Configure multer storage
 const storage = multer.diskStorage({

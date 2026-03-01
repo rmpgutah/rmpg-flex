@@ -132,6 +132,17 @@ export default function IncidentDetailWindow() {
         <ReportTypeSelector
           incidentType={incident.incident_type}
           onSelect={handlePdfExport}
+          onSignAndExport={async (reportType, signature) => {
+            if (!incident) return;
+            let attachmentImages: any[] = [];
+            try { attachmentImages = await fetchEntityImages('incident', incident.id); } catch {}
+            await downloadPdfReport(reportType, {
+              ...incident,
+              location: incident.location_address || '',
+              attachment_images: attachmentImages.length > 0 ? attachmentImages : undefined,
+              _officerSignature: signature,
+            });
+          }}
         />
       }
     >

@@ -66,6 +66,7 @@ import courtRoutes from './routes/court';
 import darRoutes from './routes/dar';
 import offenderRegistryRoutes from './routes/offenderRegistry';
 import offlineRoutes from './routes/offline';
+import companyDocumentsRoutes from './routes/companyDocuments';
 
 const app = express();
 
@@ -168,6 +169,7 @@ app.use('/api/court', courtRoutes);
 app.use('/api/dar', darRoutes);
 app.use('/api/offender-registry', offenderRegistryRoutes);
 app.use('/api/offline', offlineRoutes);
+app.use('/api/company-documents', companyDocumentsRoutes);
 
 // Mount download page and file serving routes (outside /api)
 // Also mounts /updates/latest.yml, /updates/latest-mac.yml for electron-updater

@@ -1,4 +1,5 @@
 import { getDb } from '../models/database';
+import { broadcastDispatchUpdate } from './websocket';
 
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
 
@@ -119,6 +120,7 @@ export async function reverseGeocodeDetailed(lat: number, lng: number): Promise<
 /**
  * If a call has an address but no coordinates, geocode it and update the DB.
  * Runs asynchronously — does not block the response.
+ * After successful geocoding, broadcasts the updated call so the map updates in real-time.
  */
 export function geocodeCallIfNeeded(callId: number, address: string, lat: any, lng: any): void {
   if (lat || lng || !address.trim()) return;
@@ -130,6 +132,12 @@ export function geocodeCallIfNeeded(callId: number, address: string, lat: any, l
       db.prepare('UPDATE calls_for_service SET latitude = ?, longitude = ? WHERE id = ?')
         .run(result.latitude, result.longitude, callId);
       console.log(`[geocode] Geocoded call ${callId}: ${result.latitude}, ${result.longitude}`);
+
+      // Broadcast updated call so map markers appear in real-time
+      const updatedCall = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(callId);
+      if (updatedCall) {
+        broadcastDispatchUpdate({ action: 'call_updated', call: updatedCall });
+      }
     } catch (err) {
       console.error('[geocode] Failed to update call coordinates:', err);
     }

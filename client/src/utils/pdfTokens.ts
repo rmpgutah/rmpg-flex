@@ -88,38 +88,38 @@ export const BORDER = {
 // ── Spacing Tokens (tighter throughout) ──────────────────────
 
 export const SPACING = {
-  XS:                 0.5,   // 0.5mm — micro padding
-  SM:                 1.5,   // 1.5mm — small gap
-  MD:                 2.5,   // 2.5mm — base unit
-  LG:                 4,     // 4mm — line height
-  XL:                 5,     // 5mm — generous gap
+  XS:                 0.3,   // 0.3mm — micro padding (tighter)
+  SM:                 1,     // 1mm — small gap (tighter)
+  MD:                 2,     // 2mm — base unit (tighter)
+  LG:                 3.5,   // 3.5mm — line height (tighter)
+  XL:                 4,     // 4mm — generous gap (tighter)
 
-  CONTENT_INSET:      2.5,   // Left/right padding inside sections
-  SECTION_HEADER_H:   6,     // Section header bar height (tight)
-  SECTION_GAP:        2,     // Gap between sections (tight)
-  SECTION_CONTENT_PAD: 2,    // Gap from header bar to first content
-  SECTION_BOTTOM_PAD:  2.5,  // Padding inside section before bottom border
+  CONTENT_INSET:      2,     // Left/right padding inside sections (tighter)
+  SECTION_HEADER_H:   5.5,   // Section header bar height (tighter)
+  SECTION_GAP:        1.5,   // Gap between sections (tighter)
+  SECTION_CONTENT_PAD: 1.5,  // Gap from header bar to first content (tighter)
+  SECTION_BOTTOM_PAD:  2,    // Padding inside section before bottom border (tighter)
 
-  FIELD_ROW_HEIGHT:   10,    // Height of field box (compact)
-  FIELD_ROW_ADVANCE:  11,    // Y-advance after field row
+  FIELD_ROW_HEIGHT:   9,     // Height of field box (tighter)
+  FIELD_ROW_ADVANCE:  9.5,   // Y-advance after field row (tighter)
 
-  SIGNATURE_BOX_H:    34,    // Signature block total height
-  SIGNATURE_ROLE_H:   5.5,   // Role label header bar height
-  SIGNATURE_SUB_GAP:  6,     // Gap between sig line and sub-fields
+  SIGNATURE_BOX_H:    30,    // Signature block total height (tighter)
+  SIGNATURE_ROLE_H:   5,     // Role label header bar height (tighter)
+  SIGNATURE_SUB_GAP:  5.5,   // Gap between sig line and sub-fields (tighter)
 } as const;
 
 // ── Layout Tokens ────────────────────────────────────────────
 
 export const LAYOUT = {
-  PAGE_MARGIN:       12,     // Tighter margins for max content area
-  HEADER_HEIGHT:     24,     // Compact header bar
-  FOOTER_HEIGHT:     7,      // Slim footer
-  HEADER_TOP:        6,      // Y-start of header bar (closer to top)
-  CLASSIF_BAR_H:     6,      // Classification bar height (kept for compat)
-  SEAL_SIZE:         16,     // Smaller logo
-  ACCENT_STRIP_H:    1.5,   // Thin accent strip below header
-  CASE_BOX_W:        44,     // Case number box width
-  LINE_HEIGHT:       4,      // Base line height for wrapped text (tight)
+  PAGE_MARGIN:       10,     // Tighter margins for max content area
+  HEADER_HEIGHT:     20,     // More compact header bar
+  FOOTER_HEIGHT:     6,      // Slimmer footer
+  HEADER_TOP:        5,      // Y-start of header bar (closer to top)
+  CLASSIF_BAR_H:     5,      // Classification bar height (compact)
+  SEAL_SIZE:         14,     // Compact logo
+  ACCENT_STRIP_H:    1,     // Thinner accent strip below header
+  CASE_BOX_W:        42,     // Case number box width
+  LINE_HEIGHT:       3.5,    // Base line height for wrapped text (tighter)
   DIAGRAM_GRID_STEP: 10,     // Grid spacing in accident diagram
 } as const;
 

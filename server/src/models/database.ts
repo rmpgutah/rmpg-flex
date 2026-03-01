@@ -770,6 +770,29 @@ function createTables(): void {
       rotated_at TEXT,
       FOREIGN KEY (user_id) REFERENCES users(id)
     );
+
+    -- ═══ Company Documents (Policies, SOPs, Training Manuals) ═════
+    CREATE TABLE IF NOT EXISTS company_documents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      description TEXT,
+      category TEXT NOT NULL DEFAULT 'general'
+        CHECK(category IN ('general','policy','procedure','sop','training_manual','form','reference')),
+      file_id TEXT,
+      content_type TEXT NOT NULL DEFAULT 'file'
+        CHECK(content_type IN ('file','link')),
+      external_url TEXT,
+      is_required_reading INTEGER NOT NULL DEFAULT 0,
+      published INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_by INTEGER REFERENCES users(id),
+      updated_by INTEGER REFERENCES users(id),
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_company_docs_category ON company_documents(category);
+    CREATE INDEX IF NOT EXISTS idx_company_docs_published ON company_documents(published);
   `);
 }
 

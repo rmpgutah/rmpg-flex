@@ -165,14 +165,14 @@ export function addClassificationBar(doc: jsPDF, priority: string, yStart: numbe
 }
 
 /**
- * Compact header: agency name, report type, case box. No priority bar.
- * Priority is now shown in the Classification section fields instead.
+ * Compact header: agency name, report type, case box, priority badge.
+ * Priority is displayed as a small badge inside the header (no separate bar).
  */
 export function addReportHeader(
   doc: jsPDF,
   caseNumber: string,
   reportType: string,
-  _priority: string,
+  priority: string,
   agencyName?: string,
   headerOptions?: { caseBoxLabel?: string; useLogo?: boolean },
 ): number {
@@ -221,13 +221,13 @@ export function addReportHeader(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_HEADER_TITLE);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
-  doc.text(agencyName || brand.report_header_text, textStartX, LAYOUT.HEADER_TOP + 8);
+  doc.text(agencyName || brand.report_header_text, textStartX, LAYOUT.HEADER_TOP + 6.5);
 
-  // ── Line 2: Subheader ──────────────────────────────────
+  // ── Line 2: Subheader + report type ────────────────────
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SUBHEADER);
   doc.setTextColor(accentRgb[0], accentRgb[1], accentRgb[2]);
-  doc.text(brand.report_subheader_text, textStartX, LAYOUT.HEADER_TOP + 13);
+  doc.text(brand.report_subheader_text, textStartX, LAYOUT.HEADER_TOP + 11);
 
   // ── Line 3: Report type | form# | rev | date ──────────
   const formNum = FORM_NUMBERS[activeFormKey] || '';
@@ -240,12 +240,27 @@ export function addReportHeader(
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(FONT.SIZE_SMALL_META);
   doc.setTextColor(150, 150, 150);
-  doc.text(metaParts.join('  |  '), textStartX, LAYOUT.HEADER_TOP + 17.5);
+  doc.text(metaParts.join('  |  '), textStartX, LAYOUT.HEADER_TOP + 15);
+
+  // ── Priority badge (inline, below report meta) ─────────
+  const prio = PRIORITY_COLORS[priority?.toLowerCase()];
+  if (prio) {
+    const prioLabel = prio.label.replace('PRIORITY: ', '');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(5);
+    const prioW = doc.getTextWidth(prioLabel) + 4;
+    const prioX = textStartX;
+    const prioY = LAYOUT.HEADER_TOP + 16.5;
+    doc.setFillColor(prio.bg[0], prio.bg[1], prio.bg[2]);
+    doc.roundedRect(prioX, prioY, prioW, 3, 0.5, 0.5, 'F');
+    doc.setTextColor(prio.text[0], prio.text[1], prio.text[2]);
+    doc.text(prioLabel, prioX + prioW / 2, prioY + 2.2, { align: 'center' });
+  }
 
   // ── Case number box (right) ────────────────────────────
-  const caseBoxH = LAYOUT.HEADER_HEIGHT - 3;
+  const caseBoxH = LAYOUT.HEADER_HEIGHT - 2;
   const caseBoxX = pageWidth - LAYOUT.PAGE_MARGIN - LAYOUT.CASE_BOX_W - SPACING.SM;
-  const caseBoxY = LAYOUT.HEADER_TOP + 1.5;
+  const caseBoxY = LAYOUT.HEADER_TOP + 1;
 
   doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
   doc.rect(caseBoxX, caseBoxY, LAYOUT.CASE_BOX_W, caseBoxH, 'F');
@@ -254,12 +269,12 @@ export function addReportHeader(
   doc.setFontSize(FONT.SIZE_SMALL_META);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(...COLOR.TEXT_INVERTED);
-  doc.text(caseBoxLabel, caseBoxX + LAYOUT.CASE_BOX_W / 2, caseBoxY + 6, { align: 'center' });
+  doc.text(caseBoxLabel, caseBoxX + LAYOUT.CASE_BOX_W / 2, caseBoxY + 5, { align: 'center' });
 
   // Case number value
   doc.setFontSize(FONT.SIZE_CASE_NUMBER);
   doc.setFont('courier', 'bold');
-  doc.text(caseNumber, caseBoxX + LAYOUT.CASE_BOX_W / 2, caseBoxY + 13.5, { align: 'center' });
+  doc.text(caseNumber, caseBoxX + LAYOUT.CASE_BOX_W / 2, caseBoxY + 12, { align: 'center' });
 
   // ── Thin accent line below header ──────────────────────
   const stripY = LAYOUT.HEADER_TOP + LAYOUT.HEADER_HEIGHT;
@@ -273,7 +288,6 @@ export function addReportHeader(
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
 
-  // No priority bar — priority goes in the Classification section now
   return stripY + LAYOUT.ACCENT_STRIP_H + SPACING.SM;
 }
 
@@ -299,7 +313,7 @@ export function openAutoSection(doc: jsPDF, title: string, y: number): { content
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SECTION_TITLE);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
-  doc.text(title.toUpperCase(), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, y + 5);
+  doc.text(title.toUpperCase(), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, y + 4.2);
 
   doc.setFont('helvetica', 'normal');
 
@@ -557,7 +571,7 @@ export function addSignatureBlock(
 }
 
 /**
- * Slim single-line footer: form info left, confidential center, page right.
+ * Compact single-line footer: accent bar + form info left, confidential center, page right.
  */
 export function addPageFooter(doc: jsPDF, pageNum: number, totalPages: number, formKey?: string) {
   const brand = activeBranding;
@@ -570,14 +584,17 @@ export function addPageFooter(doc: jsPDF, pageNum: number, totalPages: number, f
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
 
-  const footerY = pageHeight - LAYOUT.FOOTER_HEIGHT - SPACING.SM;
+  const accentRgb = hexToRgb(brand.accent_color);
+  const primaryRgb = hexToRgb(brand.primary_color);
 
-  // Thin top rule
-  doc.setDrawColor(...COLOR.BORDER_SECTION);
-  doc.setLineWidth(BORDER.SECTION_OUTER);
-  doc.line(LAYOUT.PAGE_MARGIN, footerY, LAYOUT.PAGE_MARGIN + cw, footerY);
+  // Accent bar at footer top (matches header accent strip)
+  const barY = pageHeight - LAYOUT.FOOTER_HEIGHT - SPACING.SM;
+  doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
+  doc.rect(LAYOUT.PAGE_MARGIN, barY, cw * 0.4, 0.6, 'F');
+  doc.setFillColor(accentRgb[0], accentRgb[1], accentRgb[2]);
+  doc.rect(LAYOUT.PAGE_MARGIN + cw * 0.4, barY, cw * 0.6, 0.6, 'F');
 
-  const textY = footerY + 4.5;
+  const textY = barY + 4;
 
   // Left: Form # | Rev
   doc.setFont('courier', 'normal');
@@ -594,15 +611,6 @@ export function addPageFooter(doc: jsPDF, pageNum: number, totalPages: number, f
   // Right: Page X of Y
   doc.setFont('courier', 'normal');
   doc.text(`Page ${pageNum} of ${totalPages}`, pageWidth - LAYOUT.PAGE_MARGIN, textY, { align: 'right' });
-
-  // Accent line at very bottom
-  const accentRgb = hexToRgb(brand.accent_color);
-  const primaryRgb = hexToRgb(brand.primary_color);
-  const lineBottomY = pageHeight - 3;
-  doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
-  doc.rect(LAYOUT.PAGE_MARGIN, lineBottomY, cw * 0.4, 0.8, 'F');
-  doc.setFillColor(accentRgb[0], accentRgb[1], accentRgb[2]);
-  doc.rect(LAYOUT.PAGE_MARGIN + cw * 0.4, lineBottomY, cw * 0.6, 0.8, 'F');
 }
 
 /**

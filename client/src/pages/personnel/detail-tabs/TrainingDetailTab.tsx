@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import type { TrainingRecord } from '../../../types';
 import { TRAINING_CATEGORY_COLORS } from '../utils/personnelConstants';
+import FileAttachments from '../../../components/FileAttachments';
 
 interface Props {
   training: TrainingRecord[];
@@ -194,6 +195,11 @@ export default function TrainingDetailTab({ training, loading, onAddTraining, of
                     <p className="text-[11px] text-rmpg-200 font-mono">{formatDate(record.expiry_date)}</p>
                   </div>
                 )}
+              </div>
+
+              {/* Attachments (certificates, completion docs, etc.) */}
+              <div className="mt-2 pt-2 border-t border-rmpg-800">
+                <FileAttachments entityType="training" entityId={record.id} compact />
               </div>
             </div>
           ))}

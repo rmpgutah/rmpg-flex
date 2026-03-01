@@ -955,6 +955,11 @@ export default function IncidentsPage() {
                 console.error('[IncidentsPage] PDF preview failed:', err);
               }
             }}
+            onSignAndExport={async (reportType, signature) => {
+              const pdfData = await buildIncidentPdfData();
+              pdfData._officerSignature = signature;
+              await downloadPdfReport(reportType, pdfData);
+            }}
           />
         <button
           onClick={() => {
