@@ -1,5 +1,34 @@
 import { useState, useCallback } from 'react';
 
+// ─── Offline Error Classes ───────────────────────────────────
+// Thrown when an offline write is attempted without PIN authorization.
+// UI components catch this to trigger the PIN entry modal.
+export class OfflineUnauthorizedError extends Error {
+  constructor(message = 'Offline write requires PIN authorization') {
+    super(message);
+    this.name = 'OfflineUnauthorizedError';
+  }
+}
+
+// ─── Offline-capable endpoint detection ──────────────────────
+const OFFLINE_GET_PREFIXES = [
+  '/api/dispatch/calls', '/api/dispatch/units', '/api/incidents',
+  '/api/records/persons', '/api/records/vehicles', '/api/auth/me',
+  '/api/personnel/time',
+];
+const OFFLINE_WRITE_PREFIXES = [
+  '/api/dispatch/calls', '/api/dispatch/units/', '/api/dispatch/gps',
+  '/api/incidents', '/api/personnel/time',
+];
+
+function isOfflineCapable(method: string, path: string): boolean {
+  const prefixes = method === 'GET' ? OFFLINE_GET_PREFIXES : OFFLINE_WRITE_PREFIXES;
+  return prefixes.some(p => path.startsWith(p));
+}
+
+// Access window.electron safely (only present in Electron desktop app)
+const electron = typeof window !== 'undefined' ? (window as any).electron : null;
+
 interface UseApiOptions {
   baseUrl?: string;
 }
@@ -140,13 +169,20 @@ async function tryRefreshToken(): Promise<string | null> {
       }
 
       // Refresh failed — clear tokens and redirect to login
+      // (but NOT if we're offline in Electron — stay on current page)
+      if (electron?.getOfflineState) {
+        try {
+          const state = await electron.getOfflineState();
+          if (!state.isOnline) return null; // Don't redirect when offline
+        } catch { /* fall through */ }
+      }
       localStorage.removeItem('rmpg_token');
       localStorage.removeItem('rmpg_refresh_token');
       localStorage.removeItem('rmpg_session_id');
       window.location.href = '/login';
       return null;
     } catch {
-      // Network error during refresh — can't recover
+      // Network error during refresh — can't recover online, but offline mode may work
       return null;
     } finally {
       _refreshPromise = null;
@@ -158,10 +194,43 @@ async function tryRefreshToken(): Promise<string | null> {
 
 // Standalone fetch helper for one-off requests.
 // Automatically retries once with a refreshed token on 401.
+// When running in Electron and offline, routes through local SQLite via IPC.
 export async function apiFetch<T>(
   endpoint: string,
   options?: RequestInit
 ): Promise<T> {
+  const url = endpoint.startsWith('/api') ? endpoint : `/api${endpoint}`;
+  const method = options?.method || 'GET';
+
+  // ─── Offline interception (Electron desktop only) ──────
+  if (electron?.localApi && electron?.getOfflineState) {
+    try {
+      const offlineState = await electron.getOfflineState();
+
+      if (!offlineState.isOnline && isOfflineCapable(method, url)) {
+        // Write operations require PIN authorization (admin always authorized)
+        if (method !== 'GET' && !offlineState.isLocalAuthorized) {
+          throw new OfflineUnauthorizedError();
+        }
+
+        // Route through local SQLite via IPC
+        const body = options?.body ? JSON.parse(options.body as string) : undefined;
+        const result = await electron.localApi(method, url, body);
+
+        if (result.status >= 400) {
+          throw new Error(result.error || `Offline request failed: ${result.status}`);
+        }
+
+        return result.data as T;
+      }
+    } catch (err) {
+      // Re-throw OfflineUnauthorizedError (for PIN modal trigger)
+      if (err instanceof OfflineUnauthorizedError) throw err;
+      // For other errors during offline check, fall through to normal fetch
+    }
+  }
+
+  // ─── Normal online fetch path ──────────────────────────
   const token = localStorage.getItem('rmpg_token');
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -172,7 +241,6 @@ export async function apiFetch<T>(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const url = endpoint.startsWith('/api') ? endpoint : `/api${endpoint}`;
   const res = await fetch(url, { ...options, headers });
 
   // On 401, attempt a transparent token refresh and retry once

@@ -117,7 +117,8 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
 
     const db = getDb();
     const user = db.prepare(`
-      SELECT id, username, password_hash, full_name, email, role, badge_number, phone, status, avatar_url
+      SELECT id, username, password_hash, first_name, last_name, full_name, email, role,
+             badge_number, phone, status, avatar_url, must_change_password
       FROM users WHERE username = ?
     `).get(username) as any;
 
@@ -190,12 +191,16 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
       user: {
         id: user.id,
         username: user.username,
-        fullName: user.full_name,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        full_name: user.full_name,
         email: user.email,
         role: user.role,
-        badgeNumber: user.badge_number,
+        badge_number: user.badge_number,
         phone: user.phone,
-        avatarUrl: user.avatar_url,
+        avatar_url: user.avatar_url,
+        status: user.status,
+        must_change_password: !!user.must_change_password,
       },
     });
   } catch (error: any) {
@@ -315,7 +320,8 @@ router.get('/me', authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = db.prepare(`
-      SELECT id, username, full_name, email, role, badge_number, phone, status, avatar_url, created_at
+      SELECT id, username, first_name, last_name, full_name, email, role,
+             badge_number, phone, status, avatar_url, created_at, must_change_password
       FROM users WHERE id = ?
     `).get(req.user!.userId) as any;
 
@@ -324,17 +330,21 @@ router.get('/me', authenticateToken, (req: Request, res: Response) => {
       return;
     }
 
+    // Return snake_case keys to match the client User interface
     res.json({
       id: user.id,
       username: user.username,
-      fullName: user.full_name,
+      first_name: user.first_name,
+      last_name: user.last_name,
+      full_name: user.full_name,
       email: user.email,
       role: user.role,
-      badgeNumber: user.badge_number,
+      badge_number: user.badge_number,
       phone: user.phone,
       status: user.status,
-      avatarUrl: user.avatar_url,
-      createdAt: user.created_at,
+      avatar_url: user.avatar_url,
+      created_at: user.created_at,
+      must_change_password: !!user.must_change_password,
     });
   } catch (error: any) {
     console.error('Get user error:', error);
@@ -423,7 +433,7 @@ router.post('/change-password', authenticateToken, (req: Request, res: Response)
     }
 
     const newHash = bcryptjs.hashSync(newPassword, 10);
-    db.prepare("UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?")
+    db.prepare("UPDATE users SET password_hash = ?, must_change_password = 0, updated_at = ? WHERE id = ?")
       .run(newHash, localNow(), user.id);
 
     // Log the password change
@@ -463,8 +473,15 @@ router.put('/profile', authenticateToken, (req: Request, res: Response) => {
     if (email !== undefined) { updates.push('email = ?'); values.push(email); }
     if (phone !== undefined) { updates.push('phone = ?'); values.push(phone); }
     if (first_name !== undefined && last_name !== undefined) {
+      // Server-side enforcement: names must not be empty once provided
+      const fn = String(first_name).trim();
+      const ln = String(last_name).trim();
+      if (!fn || !ln) {
+        res.status(400).json({ error: 'First and last name are required and cannot be empty.' });
+        return;
+      }
       updates.push('first_name = ?', 'last_name = ?', 'full_name = ?');
-      values.push(first_name, last_name, `${first_name} ${last_name}`);
+      values.push(fn, ln, `${fn} ${ln}`);
     }
 
     if (updates.length === 0) {

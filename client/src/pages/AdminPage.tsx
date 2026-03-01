@@ -14,6 +14,12 @@ import {
   Network,
   Zap,
   Link2,
+  Shield,
+  GraduationCap,
+  Radio,
+  WifiOff,
+  Camera,
+  Receipt,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -36,6 +42,13 @@ import AdminRetentionTab from './admin/AdminRetentionTab';
 import AdminDepartmentsTab from './admin/AdminDepartmentsTab';
 import AdminNotifRulesTab from './admin/AdminNotifRulesTab';
 import AdminServeManagerTab from './admin/AdminServeManagerTab';
+import AdminSessionsTab from './admin/AdminSessionsTab';
+import AdminTrainingTab from './admin/AdminTrainingTab';
+import AdminRadioTab from './admin/AdminRadioTab';
+import AdminOfflineTab from './admin/AdminOfflineTab';
+import AdminUtahMvrTab from './admin/AdminUtahMvrTab';
+import AdminBodyCameraTab from './admin/AdminBodyCameraTab';
+import AdminInvoiceTab from './admin/AdminInvoiceTab';
 
 // ============================================================
 // Shared sub-components (module-level to avoid remounting)
@@ -112,7 +125,7 @@ interface AuditRow {
 // Mappers
 // ============================================================
 
-function mapPersonnelToUser(row: PersonnelRow): User & { last_login_display?: string } {
+function mapPersonnelToUser(row: PersonnelRow): User & { last_login_display?: string; raw_status?: string } {
   // Use server-provided first_name/last_name if available, otherwise derive from full_name
   const first_name = row.first_name || (row.full_name || '').trim().split(/\s+/)[0] || '';
   const last_name = row.last_name || (row.full_name || '').trim().split(/\s+/).slice(1).join(' ') || '';
@@ -125,6 +138,7 @@ function mapPersonnelToUser(row: PersonnelRow): User & { last_login_display?: st
     last_name,
     full_name: full_name || `${first_name} ${last_name}`.trim(),
     is_active: status === 'active',
+    raw_status: status, // Preserve for admin UI (active/inactive/terminated)
   };
 }
 
@@ -192,7 +206,7 @@ function mapAuditRow(row: AuditRow): AuditEntry {
 // Constants
 // ============================================================
 
-type TabId = 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager';
+type TabId = 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'sessions' | 'training' | 'radio' | 'offline' | 'utah_mvr' | 'body_cameras' | 'invoices';
 
 const LS_ADMIN_TAB = 'rmpg_admin_tab';
 
@@ -208,7 +222,7 @@ export default function AdminPage() {
   const [activeTab, setActiveTabState] = useState<TabId>(() => {
     try {
       const saved = localStorage.getItem(LS_ADMIN_TAB);
-      if (saved && ['users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager'].includes(saved)) return saved as TabId;
+      if (saved && ['users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'sessions', 'training', 'radio', 'offline', 'utah_mvr', 'body_cameras', 'invoices'].includes(saved)) return saved as TabId;
     } catch { /* ignore */ }
     return 'users';
   });
@@ -387,6 +401,9 @@ export default function AdminPage() {
         if (data.password) {
           body.password = data.password;
         }
+        if (data.status) {
+          body.status = data.status;
+        }
         const updated = await apiFetch(`/personnel/${editingUser.id}`, {
           method: 'PUT',
           body: JSON.stringify(body),
@@ -442,6 +459,18 @@ export default function AdminPage() {
       setError(err instanceof Error ? err.message : 'Failed to terminate user');
     } finally {
       setUserDeleteLoading(false);
+    }
+  };
+
+  const handleStatusChange = async (userId: string, newStatus: string) => {
+    try {
+      await apiFetch(`/personnel/${userId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: newStatus }),
+      });
+      await fetchUsers({ silent: true });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update user status');
     }
   };
 
@@ -545,17 +574,61 @@ export default function AdminPage() {
   // Render helpers
   // ============================================================
 
-  const tabs: { id: TabId; label: string; icon: React.ElementType }[] = [
-    { id: 'users', label: 'Users', icon: Users },
-    { id: 'clients', label: 'Clients', icon: Building2 },
-    { id: 'departments', label: 'Departments', icon: Network },
-    { id: 'system', label: 'System Config', icon: Cog },
-    { id: 'announcements', label: 'Announcements', icon: Megaphone },
-    { id: 'notif_rules', label: 'Alert Rules', icon: Zap },
-    { id: 'retention', label: 'Data Retention', icon: Archive },
-    { id: 'health', label: 'System Health', icon: Activity },
-    { id: 'servemanager', label: 'ServeManager', icon: Link2 },
-    { id: 'audit', label: 'Audit Log', icon: ScrollText },
+  // ── Grouped tab categories for sidebar ──
+  const TAB_CATEGORIES: { label: string; icon: React.ElementType; tabs: { id: TabId; label: string; icon: React.ElementType }[] }[] = [
+    {
+      label: 'People & Access',
+      icon: Users,
+      tabs: [
+        { id: 'users', label: 'Users', icon: Users },
+        { id: 'clients', label: 'Clients', icon: Building2 },
+        { id: 'departments', label: 'Departments', icon: Network },
+        { id: 'sessions', label: 'Sessions', icon: Shield },
+      ],
+    },
+    {
+      label: 'System',
+      icon: Cog,
+      tabs: [
+        { id: 'system', label: 'System Config', icon: Cog },
+        { id: 'health', label: 'System Health', icon: Activity },
+        { id: 'retention', label: 'Data Retention', icon: Archive },
+        { id: 'offline', label: 'Offline Mode', icon: WifiOff },
+      ],
+    },
+    {
+      label: 'Communications',
+      icon: Megaphone,
+      tabs: [
+        { id: 'announcements', label: 'Announcements', icon: Megaphone },
+        { id: 'notif_rules', label: 'Alert Rules', icon: Zap },
+        { id: 'radio', label: 'Radio Config', icon: Radio },
+      ],
+    },
+    {
+      label: 'Operations',
+      icon: Camera,
+      tabs: [
+        { id: 'body_cameras', label: 'Body Cameras', icon: Camera },
+        { id: 'invoices', label: 'Invoices', icon: Receipt },
+        { id: 'utah_mvr', label: 'Records Search', icon: Building2 },
+      ],
+    },
+    {
+      label: 'Integrations',
+      icon: Link2,
+      tabs: [
+        { id: 'servemanager', label: 'ServeManager', icon: Link2 },
+        { id: 'training', label: 'Training', icon: GraduationCap },
+      ],
+    },
+    {
+      label: 'Compliance',
+      icon: ScrollText,
+      tabs: [
+        { id: 'audit', label: 'Audit Log', icon: ScrollText },
+      ],
+    },
   ];
 
 
@@ -579,36 +652,65 @@ export default function AdminPage() {
 
       {/* Header */}
       <PanelTitleBar title="ADMINISTRATION" icon={Settings}><PrintButton /></PanelTitleBar>
-      <div className="px-6 py-3 border-b border-rmpg-600">
-        {/* Tabs */}
-        <div className="flex gap-1">
-          {tabs.map((tab) => {
+
+      {/* Error banner */}
+      <ErrorBanner error={error} setError={setError} />
+
+      {/* Sidebar + Content */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* ── Sidebar ── */}
+        <div className="w-[200px] border-r border-rmpg-600 overflow-y-auto flex-shrink-0 bg-surface-base hidden md:block">
+          {TAB_CATEGORIES.map((cat) => (
+            <div key={cat.label} className="py-1.5">
+              <div className="px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider text-rmpg-500 font-mono flex items-center gap-1.5">
+                <cat.icon className="w-3 h-3" />
+                {cat.label}
+              </div>
+              {cat.tabs.map((tab) => {
+                const Icon = tab.icon;
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`w-full flex items-center gap-2 px-3 py-2 text-xs text-left transition-colors ${
+                      isActive
+                        ? 'bg-brand-900/30 text-white border-l-2 border-brand-500'
+                        : 'text-rmpg-300 hover:text-white hover:bg-rmpg-700/40 border-l-2 border-transparent'
+                    }`}
+                  >
+                    <Icon className="w-3.5 h-3.5 flex-shrink-0" />
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+
+        {/* ── Mobile tab bar (horizontal scroll, shown on small screens) ── */}
+        <div className="md:hidden px-3 py-2 border-b border-rmpg-600 overflow-x-auto flex gap-1 flex-shrink-0">
+          {TAB_CATEGORIES.flatMap(cat => cat.tabs).map((tab) => {
             const Icon = tab.icon;
             return (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`
-                  flex items-center gap-2 px-4 py-2 text-xs font-medium transition-colors
-                  ${activeTab === tab.id
-                    ? 'bg-gray-700 text-white border border-rmpg-600 border-b-gray-700'
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-medium whitespace-nowrap transition-colors flex-shrink-0 ${
+                  activeTab === tab.id
+                    ? 'bg-gray-700 text-white border border-rmpg-600'
                     : 'text-rmpg-300 hover:text-white hover:bg-rmpg-700/50'
-                  }
-                `}
+                }`}
               >
-                <Icon className="w-4 h-4" />
+                <Icon className="w-3 h-3" />
                 {tab.label}
               </button>
             );
           })}
         </div>
-      </div>
 
-      {/* Error banner */}
-      <ErrorBanner error={error} setError={setError} />
-
-      {/* Content */}
-      <div className="flex-1 overflow-auto">
+        {/* ── Content ── */}
+        <div className="flex-1 overflow-auto">
         {activeTab === 'users' && (
           <AdminUsersTab
             users={users}
@@ -622,6 +724,7 @@ export default function AdminPage() {
             openAddUser={openAddUser}
             openEditUser={openEditUser}
             openDeleteUser={openDeleteUser}
+            onStatusChange={handleStatusChange}
             LoadingSpinner={LoadingSpinner}
           />
         )}
@@ -705,6 +808,80 @@ export default function AdminPage() {
           />
         )}
 
+        {activeTab === 'sessions' && (
+          <AdminSessionsTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
+        {activeTab === 'training' && (
+          <AdminTrainingTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
+        {activeTab === 'radio' && (
+          <AdminRadioTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
+        {activeTab === 'offline' && (
+          <AdminOfflineTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
+        {activeTab === 'body_cameras' && (
+          <AdminBodyCameraTab
+            users={users}
+          />
+        )}
+
+        {activeTab === 'invoices' && (
+          <div className="space-y-3">
+            <div className="text-xs text-[#888] mb-2">Select a client to manage invoices:</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+              {clients.filter(c => c.status === 'active').map(c => (
+                <button
+                  key={c.id}
+                  onClick={() => {
+                    setSelectedClient(c);
+                    setActiveTab('invoices' as TabId);
+                  }}
+                  className="panel-beveled bg-surface-base p-3 text-left hover:bg-[#1a1a1a] transition-colors"
+                >
+                  <div className="text-xs font-bold text-[#ccc]">{c.name}</div>
+                  <div className="text-[10px] text-[#666]">{c.contact_name || 'No contact'}</div>
+                </button>
+              ))}
+            </div>
+            {selectedClient && (
+              <AdminInvoiceTab
+                clientId={String(selectedClient.id)}
+                clientName={selectedClient.name}
+                client={selectedClient}
+              />
+            )}
+          </div>
+        )}
+
+        {activeTab === 'utah_mvr' && (
+          <AdminUtahMvrTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
         {activeTab === 'audit' && (
           <AdminAuditTab
             auditLog={auditLog}
@@ -712,7 +889,8 @@ export default function AdminPage() {
             LoadingSpinner={LoadingSpinner}
           />
         )}
-      </div>
+        </div>{/* end Content */}
+      </div>{/* end Sidebar + Content flex wrapper */}
 
       {/* ===================== Modals ===================== */}
 
@@ -724,7 +902,7 @@ export default function AdminPage() {
         }}
         onSubmit={handleUserSubmit}
         isSubmitting={userSubmitting}
-        editingUser={editingUser}
+        editingUser={editingUser ? { ...editingUser, status: (editingUser as any).raw_status || (editingUser.is_active ? 'active' : 'inactive') } : null}
       />
 
       <ClientFormModal

@@ -5,6 +5,25 @@
 // compatibility with legacy timezone-naive strings.
 // ============================================================
 
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+/**
+ * Returns today's date as "YYYY-MM-DD" in the browser's local timezone.
+ * Avoids the `.toISOString().split('T')[0]` pattern which uses UTC and
+ * produces incorrect dates near midnight in non-UTC timezones.
+ */
+export function localToday(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+/**
+ * Convert a Date to "YYYY-MM-DD" in local timezone (not UTC).
+ */
+export function dateToLocalYMD(d: Date): string {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
 /**
  * Parse a server timestamp string into a Date object.
  *
@@ -57,6 +76,14 @@ export function formatDateTime(dateStr: string | null | undefined): string {
     minute: '2-digit',
     hour12: false,
   });
+}
+
+/**
+ * Format a server timestamp for display as date only (e.g., "Feb 26, 2026").
+ */
+export function formatDate(dateStr: string | null | undefined): string {
+  const d = parseTimestamp(dateStr);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 /**

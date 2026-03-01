@@ -16,6 +16,10 @@ import { securityHeaders } from './middleware/securityHeaders';
 import { sanitizeInput } from './middleware/sanitize';
 import { apiRateLimit } from './middleware/rateLimiter';
 import { liveBroadcast } from './middleware/liveBroadcast';
+import { mockInterceptor } from './middleware/mockInterceptor';
+import { startPatrolMonitor } from './utils/patrolMonitor';
+import { startMaintenanceMonitor } from './utils/maintenanceMonitor';
+import { startDispatchTimer } from './utils/dispatchTimer';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -55,6 +59,22 @@ import adminSystemsRoutes from './routes/adminSystems';
 import shiftPlanRoutes from './routes/shiftPlans';
 import downloadsRoutes, { mountDownloadFileRoute } from './routes/downloads';
 import serveManagerRoutes from './routes/servemanager';
+import fieldInterviewRoutes from './routes/fieldInterviews';
+import trespassOrderRoutes from './routes/trespassOrders';
+import caseRoutes from './routes/cases';
+import codeEnforcementRoutes from './routes/codeEnforcement';
+import courtRoutes from './routes/court';
+import darRoutes from './routes/dar';
+import offenderRegistryRoutes from './routes/offenderRegistry';
+import offlineRoutes from './routes/offline';
+import alarmRoutes from './routes/alarms';
+import visitorRoutes from './routes/visitors';
+import useOfForceRoutes from './routes/useOfForce';
+import internalAffairsRoutes from './routes/internalAffairs';
+import bodyCameraRoutes from './routes/bodyCameras';
+import vehiclePursuitRoutes from './routes/vehiclePursuits';
+import utahMvrRoutes from './routes/utahMvr';
+import nhtsaRoutes from './routes/nhtsa';
 
 const app = express();
 
@@ -124,6 +144,11 @@ app.get('/api/presence', (_req, res) => {
 // so every connected device sees changes in real-time
 app.use(liveBroadcast);
 
+// ─── Contract Manager Mock Interceptor ────────────────
+// Must be BEFORE API routes — intercepts requests from
+// contract_manager role users and returns mock data
+app.use(mockInterceptor);
+
 // ─── API Routes ───────────────────────────────────────
 app.use('/api/auth', authRoutes);
 app.use('/api/dispatch', dispatchRoutes);
@@ -148,6 +173,22 @@ app.use('/api/admin', shiftPlanRoutes);
 app.use('/api/downloads', downloadsRoutes);
 app.use('/api/updates', downloadsRoutes);
 app.use('/api/servemanager', serveManagerRoutes);
+app.use('/api/field-interviews', fieldInterviewRoutes);
+app.use('/api/trespass-orders', trespassOrderRoutes);
+app.use('/api/cases', caseRoutes);
+app.use('/api/code-enforcement', codeEnforcementRoutes);
+app.use('/api/court', courtRoutes);
+app.use('/api/dar', darRoutes);
+app.use('/api/offender-registry', offenderRegistryRoutes);
+app.use('/api/offline', offlineRoutes);
+app.use('/api/alarms', alarmRoutes);
+app.use('/api/visitors', visitorRoutes);
+app.use('/api/use-of-force', useOfForceRoutes);
+app.use('/api/internal-affairs', internalAffairsRoutes);
+app.use('/api/body-cameras', bodyCameraRoutes);
+app.use('/api/vehicle-pursuits', vehiclePursuitRoutes);
+app.use('/api/utah-mvr', utahMvrRoutes);
+app.use('/api/mvr', nhtsaRoutes);
 
 // Mount download page and file serving routes (outside /api)
 // Also mounts /updates/latest.yml, /updates/latest-mac.yml for electron-updater
@@ -198,6 +239,20 @@ app.get('*', (req, res) => {
         res.status(404).json({ error: 'Not found' });
       }
     });
+  }
+});
+
+// ─── Global Error Handler ─────────────────────────────
+// Catches malformed JSON from express.json() middleware and other unhandled errors
+app.use((err: any, req: any, res: any, _next: any) => {
+  if (err.type === 'entity.parse.failed') {
+    console.warn(`[JSON Parse] Malformed body rejected — ${req.method} ${req.path} from ${req.ip}`);
+    res.status(400).json({ error: 'Malformed JSON in request body' });
+    return;
+  }
+  console.error(`[Unhandled Error] ${req.method} ${req.path} —`, err.message || err);
+  if (!res.headersSent) {
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -288,6 +343,15 @@ try {
     console.log('║    /api/health     - Health Check                ║');
     console.log('╚══════════════════════════════════════════════════╝');
     console.log('');
+
+    // Start patrol monitor for missed scan alerts
+    startPatrolMonitor(5 * 60 * 1000); // Check every 5 minutes
+
+    // Start maintenance monitor for auto-expiry and housekeeping
+    startMaintenanceMonitor(15 * 60 * 1000); // Check every 15 minutes
+
+    // Start dispatch response timer for overdue call alerts
+    startDispatchTimer(60 * 1000); // Check every 60 seconds
   });
 } catch (error) {
   console.error('Failed to start server:', error);

@@ -15,6 +15,7 @@ import { apiFetch } from '../../hooks/useApi';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useToast } from '../../components/ToastProvider';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { mapUser, mapSchedule, mapTimeEntry, mapCredential, mapTraining, mapDeployment } from './utils/personnelMappers';
 import type { OfficerWithStatus } from './utils/personnelMappers';
 import { MAIN_TABS, type MainTab, type DetailTab, type ModalMode } from './utils/personnelConstants';
@@ -22,6 +23,7 @@ import { getWeekMonday } from './utils/personnelFormatters';
 import OfficerAvatar from './components/OfficerAvatar';
 import CredentialProgressBar from './components/CredentialProgressBar';
 import { ROLE_COLORS } from './utils/personnelConstants';
+import { formatLabel } from '../../utils/formatters';
 import PersonnelDetailPanel from './PersonnelDetailPanel';
 import PersonnelAnalyticsDashboard from './PersonnelAnalyticsDashboard';
 import DutyBoardTab from './tabs/DutyBoardTab';
@@ -32,6 +34,7 @@ import TrainingTab from './tabs/TrainingTab';
 import EquipmentTab from './tabs/EquipmentTab';
 import DeploymentTab from './tabs/DeploymentTab';
 import AnalyticsTab from './tabs/AnalyticsTab';
+import OvertimeTab from './tabs/OvertimeTab';
 import TrainingFormModal from './modals/TrainingFormModal';
 import type { TrainingFormData } from './modals/TrainingFormModal';
 import EquipmentFormModal from './modals/EquipmentFormModal';
@@ -61,12 +64,13 @@ interface ActivityEntry {
 
 export default function PersonnelPage() {
   const { addToast } = useToast();
+  const isMobile = useIsMobile();
 
   // Tab state
   const [activeTab, setActiveTab] = usePersistedTab(
     'rmpg_personnel_tab',
     'roster' as MainTab,
-    ['roster', 'duty_board', 'schedule', 'time', 'credentials', 'training', 'equipment', 'deployment', 'analytics'] as const,
+    ['roster', 'duty_board', 'schedule', 'time', 'overtime', 'credentials', 'training', 'equipment', 'deployment', 'analytics'] as const,
   );
   const [detailTab, setDetailTab] = useState<DetailTab>('profile');
   const [searchQuery, setSearchQuery] = useState('');
@@ -261,6 +265,7 @@ export default function PersonnelPage() {
   const clockedInCount = timeEntries.filter(t => t.status === 'clocked_in').length;
   const expiringCreds = credentials.filter(c => c.status === 'expiring_soon' || c.status === 'expired').length;
   const totalHoursThisPeriod = timeEntries.reduce((s, t) => s + (t.total_hours || 0), 0);
+  const otEntryCount = timeEntries.filter(t => (t.total_hours || 0) > 8).length;
 
   // Officer / property dropdown options
   const officerOptions = officers.map(o => ({
@@ -727,7 +732,7 @@ export default function PersonnelPage() {
                       {officer.last_name}, {officer.first_name}
                     </span>
                     <span className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold uppercase ${ROLE_COLORS[officer.role] || ROLE_COLORS.officer}`}>
-                      {officer.role}
+                      {formatLabel(officer.role)}
                     </span>
                     {hasExpired && <span className="led-dot led-red" />}
                     {!hasExpired && hasExpiring && <span className="led-dot led-amber" />}
@@ -834,7 +839,7 @@ export default function PersonnelPage() {
       </PanelTitleBar>
 
       {/* Stats Bar — compact stat cards */}
-      <div className="panel-inset px-4 py-1.5 border-b border-rmpg-600 flex items-center gap-3">
+      <div className={`panel-inset ${isMobile ? 'px-3 overflow-x-auto' : 'px-4'} py-1.5 border-b border-rmpg-600 flex items-center gap-3`}>
         <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono">
           <span className="led-dot led-green" />
           <span className="text-rmpg-400 uppercase tracking-wider">Active</span>
@@ -869,15 +874,16 @@ export default function PersonnelPage() {
       </div>
 
       {/* Tab Navigation */}
-      <div className="tab-bar">
+      <div className={`tab-bar ${isMobile ? 'overflow-x-auto' : ''}`}>
         {MAIN_TABS.map(tab => {
           const Icon = tab.icon;
           const count = tab.id === 'roster' ? officers.length
             : tab.id === 'duty_board' ? onDutyCount
             : tab.id === 'time' ? clockedInCount
+            : tab.id === 'overtime' && otEntryCount > 0 ? otEntryCount
             : tab.id === 'credentials' && expiringCreds > 0 ? expiringCreds
             : undefined;
-          const alert = tab.id === 'credentials' && expiringCreds > 0;
+          const alert = (tab.id === 'credentials' && expiringCreds > 0) || (tab.id === 'overtime' && otEntryCount > 0);
           const isActive = activeTab === tab.id;
           return (
             <button
@@ -915,7 +921,7 @@ export default function PersonnelPage() {
             <div className="text-center">
               <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto mb-2" />
               <p className="text-sm text-rmpg-300">{error}</p>
-              <button onClick={fetchCoreData} className="toolbar-btn mt-3">Retry</button>
+              <button onClick={() => fetchCoreData()} className="toolbar-btn mt-3">Retry</button>
             </div>
           </div>
         )}
@@ -955,6 +961,10 @@ export default function PersonnelPage() {
 
         {!loading && !error && activeTab === 'time' && (
           <TimeAttendanceTab timeEntries={timeEntries} officers={officers} onEditTimeEntry={openEditTimeEntry} onDeleteTimeEntry={handleDeleteTimeEntry} />
+        )}
+
+        {!loading && !error && activeTab === 'overtime' && (
+          <OvertimeTab />
         )}
 
         {!loading && !error && activeTab === 'credentials' && (

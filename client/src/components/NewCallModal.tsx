@@ -3,6 +3,10 @@ import { X, Phone, AlertTriangle, Clock, History, Loader2 } from 'lucide-react';
 import type { CallForService, CallPriority, CallSource } from '../types';
 import { INCIDENT_TYPE_CATEGORIES, type IncidentType } from '../utils/caseNumbers';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
+import PremiseHistory from './PremiseHistory';
+import SafetyScreening from './SafetyScreening';
+import DuplicateCallWarning from './DuplicateCallWarning';
+import BoloAlertBanner from './BoloAlertBanner';
 
 interface NewCallModalProps {
   isOpen: boolean;
@@ -329,6 +333,16 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
             </div>
           </div>
 
+          {/* Officer Safety Auto-Screening */}
+          <SafetyScreening callerName={formData.caller_name} subjectDescription={formData.subject_description} />
+
+          {/* BOLO Alert — auto-checks vehicle/subject descriptions */}
+          <BoloAlertBanner
+            address={formData.location}
+            subject={formData.subject_description}
+            vehicle={formData.vehicle_description}
+          />
+
           {/* Location */}
           <div>
             <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Location / Address</label>
@@ -343,6 +357,10 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               }}
               required
             />
+            {/* Premise History — auto-checks when address has 3+ chars */}
+            <PremiseHistory address={formData.location} compact />
+            {/* Duplicate Call Warning — flags active calls at same address */}
+            <DuplicateCallWarning address={formData.location} />
           </div>
 
           {/* Property */}

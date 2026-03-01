@@ -8,9 +8,12 @@ import {
   XCircle,
   Loader2,
   Settings,
+  Ban,
+  UserCheck,
 } from 'lucide-react';
 import type { User, UserRole } from '../../types';
 import type { UserFormData } from '../../components/UserFormModal';
+import { formatLabel } from '../../utils/formatters';
 
 // ============================================================
 // Shared types
@@ -30,6 +33,15 @@ const ROLE_COLORS: Record<UserRole, string> = {
   supervisor: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
   officer: 'bg-brand-900/50 text-brand-400 border-brand-700/50',
   dispatcher: 'bg-green-900/50 text-green-400 border-green-700/50',
+  contract_manager: 'bg-cyan-900/50 text-cyan-400 border-cyan-700/50',
+};
+
+type UserStatus = 'active' | 'inactive' | 'terminated';
+
+const STATUS_CONFIG: Record<UserStatus, { label: string; color: string; icon: typeof CheckCircle }> = {
+  active:     { label: 'Active',     color: 'text-green-400',  icon: CheckCircle },
+  inactive:   { label: 'Suspended',  color: 'text-yellow-400', icon: Ban },
+  terminated: { label: 'Terminated', color: 'text-red-400',    icon: XCircle },
 };
 
 // ============================================================
@@ -52,6 +64,7 @@ interface AdminUsersTabProps {
   openAddUser: () => void;
   openEditUser: (user: User & { last_login_display?: string }) => void;
   openDeleteUser: (user: User & { last_login_display?: string }) => void;
+  onStatusChange?: (userId: string, newStatus: string) => void;
 
   // Loading spinner component
   LoadingSpinner: React.FC;
@@ -71,6 +84,7 @@ export default function AdminUsersTab({
   openAddUser,
   openEditUser,
   openDeleteUser,
+  onStatusChange,
   LoadingSpinner,
 }: AdminUsersTabProps) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -132,7 +146,7 @@ export default function AdminUsersTab({
                           {user.first_name} {user.last_name}
                         </span>
                         <span className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-semibold uppercase border ${ROLE_COLORS[user.role]}`}>
-                          {user.role}
+                          {formatLabel(user.role)}
                         </span>
                       </div>
                       <div className="flex items-center gap-3 mt-0.5 text-[10px] text-rmpg-400">
@@ -142,12 +156,17 @@ export default function AdminUsersTab({
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-1">
-                      <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-semibold ${
-                        user.is_active ? 'text-green-400' : 'text-rmpg-500'
-                      }`}>
-                        {user.is_active ? <CheckCircle className="w-2.5 h-2.5" /> : <XCircle className="w-2.5 h-2.5" />}
-                        {user.is_active ? 'Active' : 'Inactive'}
-                      </span>
+                      {(() => {
+                        const rawStatus = ((user as any).raw_status || (user.is_active ? 'active' : 'inactive')) as UserStatus;
+                        const cfg = STATUS_CONFIG[rawStatus] || STATUS_CONFIG.active;
+                        const Icon = cfg.icon;
+                        return (
+                          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-semibold ${cfg.color}`}>
+                            <Icon className="w-2.5 h-2.5" />
+                            {cfg.label}
+                          </span>
+                        );
+                      })()}
                       <button
                         onClick={(e) => { e.stopPropagation(); openEditUser(user); }}
                         className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400 transition-colors"
@@ -187,7 +206,7 @@ export default function AdminUsersTab({
                   <div className="flex items-center gap-3 mt-0.5 text-xs text-rmpg-300">
                     <span className="font-mono">@{selectedUser.username}</span>
                     <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-semibold uppercase border ${ROLE_COLORS[selectedUser.role]}`}>
-                      {selectedUser.role}
+                      {formatLabel(selectedUser.role)}
                     </span>
                     {selectedUser.rank && <span className="text-rmpg-400">{selectedUser.rank}</span>}
                     {selectedUser.badge_number && <span className="font-mono text-rmpg-400">Badge #{selectedUser.badge_number}</span>}
@@ -201,6 +220,32 @@ export default function AdminUsersTab({
                 >
                   <Edit className="w-3.5 h-3.5" /> Edit
                 </button>
+                {/* Suspend / Reactivate quick-actions */}
+                {(() => {
+                  const rawStatus = ((selectedUser as any).raw_status || (selectedUser.is_active ? 'active' : 'inactive')) as UserStatus;
+                  if (rawStatus === 'active' && onStatusChange) {
+                    return (
+                      <button
+                        onClick={() => { if (window.confirm(`Suspend ${selectedUser.first_name} ${selectedUser.last_name}? Their sessions will be terminated.`)) onStatusChange(selectedUser.id, 'inactive'); }}
+                        className="toolbar-btn text-yellow-400 hover:text-yellow-300 hover:bg-yellow-900/30"
+                        title="Suspend user"
+                      >
+                        <Ban className="w-3.5 h-3.5" /> Suspend
+                      </button>
+                    );
+                  } else if (rawStatus === 'inactive' && onStatusChange) {
+                    return (
+                      <button
+                        onClick={() => { if (window.confirm(`Reactivate ${selectedUser.first_name} ${selectedUser.last_name}?`)) onStatusChange(selectedUser.id, 'active'); }}
+                        className="toolbar-btn text-green-400 hover:text-green-300 hover:bg-green-900/30"
+                        title="Reactivate user"
+                      >
+                        <UserCheck className="w-3.5 h-3.5" /> Reactivate
+                      </button>
+                    );
+                  }
+                  return null;
+                })()}
                 <button
                   onClick={() => openDeleteUser(selectedUser)}
                   className="toolbar-btn text-red-400 hover:text-red-300 hover:bg-red-900/30"
@@ -252,7 +297,11 @@ export default function AdminUsersTab({
                     <div><span className="text-rmpg-400">Employee ID:</span> <span className="text-rmpg-200 font-mono ml-1">{selectedUser.employee_id || '--'}</span></div>
                     <div><span className="text-rmpg-400">Hire Date:</span> <span className="text-rmpg-200 ml-1">{selectedUser.hire_date || '--'}</span></div>
                     <div><span className="text-rmpg-400">Termination:</span> <span className="text-rmpg-200 ml-1">{selectedUser.termination_date || '--'}</span></div>
-                    <div><span className="text-rmpg-400">Status:</span> <span className={`ml-1 font-bold ${selectedUser.is_active ? 'text-green-400' : 'text-red-400'}`}>{selectedUser.is_active ? 'Active' : 'Inactive'}</span></div>
+                    <div><span className="text-rmpg-400">Status:</span> {(() => {
+                      const rawStatus = ((selectedUser as any).raw_status || (selectedUser.is_active ? 'active' : 'inactive')) as UserStatus;
+                      const cfg = STATUS_CONFIG[rawStatus] || STATUS_CONFIG.active;
+                      return <span className={`ml-1 font-bold ${cfg.color}`}>{cfg.label}</span>;
+                    })()}</div>
                     <div><span className="text-rmpg-400">Shift:</span> <span className="text-rmpg-200 ml-1">{selectedUser.shift_preference || '--'}</span></div>
                   </div>
                 </div>

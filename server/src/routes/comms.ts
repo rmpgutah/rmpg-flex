@@ -258,6 +258,73 @@ router.get('/bolos/active', (req: Request, res: Response) => {
   }
 });
 
+// GET /api/comms/bolos/check - Check active BOLOs for matching descriptions
+router.get('/bolos/check', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { address, subject, vehicle } = req.query;
+
+    // Need at least one search term
+    if (!address && !subject && !vehicle) {
+      res.json({ matches: [], count: 0 });
+      return;
+    }
+
+    // Build dynamic WHERE clause to match against BOLO descriptions
+    const conditions: string[] = ["b.status = 'active'"];
+    const params: any[] = [];
+
+    // Extract keywords (3+ chars) from each field and match against BOLO fields
+    const extractKeywords = (text: string) =>
+      text.toUpperCase().split(/[\s,;]+/).filter(w => w.length >= 3);
+
+    const matchClauses: string[] = [];
+
+    if (subject && typeof subject === 'string' && subject.length >= 3) {
+      const keywords = extractKeywords(subject);
+      for (const kw of keywords.slice(0, 5)) {
+        matchClauses.push('(UPPER(b.subject_description) LIKE ? OR UPPER(b.description) LIKE ?)');
+        params.push(`%${kw}%`, `%${kw}%`);
+      }
+    }
+
+    if (vehicle && typeof vehicle === 'string' && vehicle.length >= 3) {
+      const keywords = extractKeywords(vehicle);
+      for (const kw of keywords.slice(0, 5)) {
+        matchClauses.push('(UPPER(b.vehicle_description) LIKE ? OR UPPER(b.description) LIKE ?)');
+        params.push(`%${kw}%`, `%${kw}%`);
+      }
+    }
+
+    if (address && typeof address === 'string' && address.length >= 3) {
+      matchClauses.push('UPPER(b.description) LIKE ?');
+      params.push(`%${(address as string).toUpperCase()}%`);
+    }
+
+    if (matchClauses.length === 0) {
+      res.json({ matches: [], count: 0 });
+      return;
+    }
+
+    conditions.push(`(${matchClauses.join(' OR ')})`);
+
+    const matches = db.prepare(`
+      SELECT b.id, b.bolo_number, b.type, b.title, b.description,
+             b.subject_description, b.vehicle_description, b.priority,
+             b.created_at, b.expires_at
+      FROM bolos b
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY b.priority ASC, b.created_at DESC
+      LIMIT 10
+    `).all(...params) as any[];
+
+    res.json({ matches, count: matches.length });
+  } catch (error: any) {
+    console.error('BOLO check error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // GET /api/comms/bolos/:id - Get single BOLO
 router.get('/bolos/:id', (req: Request, res: Response) => {
   try {
@@ -505,6 +572,95 @@ router.get('/activity-feed', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get activity feed error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── RADIO TRANSCRIPTS ─────────────────────────────────
+
+// GET /api/comms/radio/transcripts - List radio transcripts with pagination + filtering
+router.get('/radio/transcripts', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { channel, user_id, search, limit, offset, from, to } = req.query;
+
+    let whereClause = 'WHERE 1=1';
+    const params: any[] = [];
+
+    if (channel) {
+      whereClause += ' AND rt.channel = ?';
+      params.push(channel);
+    }
+    if (user_id) {
+      whereClause += ' AND rt.user_id = ?';
+      params.push(user_id);
+    }
+    if (search) {
+      whereClause += ' AND rt.transcript LIKE ?';
+      params.push(`%${search}%`);
+    }
+    if (from) {
+      whereClause += ' AND rt.transmitted_at >= ?';
+      params.push(from);
+    }
+    if (to) {
+      whereClause += ' AND rt.transmitted_at <= ?';
+      params.push(to);
+    }
+
+    const limitNum = Math.min(500, Math.max(1, parseInt(limit as string, 10) || 100));
+    const offsetNum = Math.max(0, parseInt(offset as string, 10) || 0);
+
+    const countRow = db.prepare(`SELECT COUNT(*) as total FROM radio_transcripts rt ${whereClause}`).get(...params) as any;
+    const transcripts = db.prepare(`
+      SELECT rt.*, u.full_name as user_full_name
+      FROM radio_transcripts rt
+      LEFT JOIN users u ON rt.user_id = u.id
+      ${whereClause}
+      ORDER BY rt.transmitted_at DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, limitNum, offsetNum);
+
+    res.json({ data: transcripts, total: countRow.total, limit: limitNum, offset: offsetNum });
+  } catch (error: any) {
+    console.error('Get radio transcripts error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── RADIO CHANNELS (public — any authenticated user) ──────
+
+// GET /api/comms/radio-channels — active radio channels for the UI
+router.get('/radio-channels', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(
+      "SELECT config_key, config_value, sort_order FROM system_config WHERE category = 'radio_channel' AND is_active = 1 ORDER BY sort_order ASC"
+    ).all() as { config_key: string; config_value: string; sort_order: number }[];
+
+    if (rows.length > 0) {
+      const channels = rows.map((r) => {
+        try {
+          const meta = JSON.parse(r.config_value);
+          return { id: r.config_key, label: meta.label || r.config_key.toUpperCase(), freq: meta.freq || '0.000', sort_order: r.sort_order };
+        } catch {
+          return { id: r.config_key, label: r.config_key.toUpperCase(), freq: '0.000', sort_order: r.sort_order };
+        }
+      });
+      res.json(channels);
+    } else {
+      // Return hardcoded defaults if none configured yet
+      res.json([
+        { id: 'dispatch', label: 'DISPATCH', freq: '155.010', sort_order: 0 },
+        { id: 'tac-1',    label: 'TAC-1',    freq: '155.475', sort_order: 1 },
+        { id: 'tac-2',    label: 'TAC-2',    freq: '155.730', sort_order: 2 },
+        { id: 'tac-3',    label: 'TAC-3',    freq: '156.090', sort_order: 3 },
+        { id: 'patrol',   label: 'PATROL',   freq: '156.240', sort_order: 4 },
+        { id: 'admin',    label: 'ADMIN',    freq: '158.985', sort_order: 5 },
+      ]);
+    }
+  } catch (error: any) {
+    console.error('Get radio channels error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

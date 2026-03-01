@@ -16,7 +16,6 @@ import {
   addWrappedText,
   addTableWithShading,
   checkPageBreak,
-  resetSectionCounter,
   setGenerationTimestamp,
   fetchPdfBranding,
   setActiveBranding,
@@ -104,7 +103,6 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
   addConfidentialWatermark(doc);
 
   // ── Header with seal (same as all reports) ───────────
-  resetSectionCounter();
   let y = addReportHeader(doc, data.invoice_number, 'Invoice', 'routine');
 
   // ── Invoice Information Section (auto-sizing) ─────────

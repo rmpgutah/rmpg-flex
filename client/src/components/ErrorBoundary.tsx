@@ -14,13 +14,14 @@ interface Props {
 interface State {
   hasError: boolean;
   error: Error | null;
+  componentStack: string | null;
   showDetails: boolean;
 }
 
 export default class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
-    this.state = { hasError: false, error: null, showDetails: false };
+    this.state = { hasError: false, error: null, componentStack: null, showDetails: false };
   }
 
   static getDerivedStateFromError(error: Error): Partial<State> {
@@ -29,6 +30,25 @@ export default class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error('[ErrorBoundary] Uncaught error:', error, info.componentStack);
+    // Save component stack for display in error UI
+    this.setState({ componentStack: info.componentStack || null });
+    // Report to server for diagnostics (fire-and-forget, best-effort)
+    try {
+      const token = localStorage.getItem('rmpg_token');
+      if (token) {
+        fetch('/api/admin/health/client-error', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            message: error.message,
+            stack: error.stack,
+            componentStack: info.componentStack,
+            url: window.location.href,
+            timestamp: new Date().toISOString(),
+          }),
+        }).catch(() => {});
+      }
+    } catch { /* silent */ }
   }
 
   handleReload = () => {
@@ -95,10 +115,25 @@ export default class ErrorBoundary extends Component<Props, State> {
                 <DetailIcon className="w-3 h-3" />
                 Error Details
               </button>
-              {showDetails && error?.stack && (
-                <pre className="mt-2 p-3 bg-black/40 border border-rmpg-700 text-[10px] text-rmpg-400 font-mono overflow-auto max-h-[200px] whitespace-pre-wrap">
-                  {error.stack}
-                </pre>
+              {showDetails && (
+                <div className="mt-2 space-y-2">
+                  {this.state.componentStack && (
+                    <div>
+                      <div className="text-[9px] text-red-400 font-bold uppercase tracking-wider mb-1">Component Stack</div>
+                      <pre className="p-3 bg-black/40 border border-red-900/40 text-[10px] text-red-300 font-mono overflow-auto max-h-[150px] whitespace-pre-wrap">
+                        {this.state.componentStack}
+                      </pre>
+                    </div>
+                  )}
+                  {error?.stack && (
+                    <div>
+                      <div className="text-[9px] text-rmpg-500 font-bold uppercase tracking-wider mb-1">Stack Trace</div>
+                      <pre className="p-3 bg-black/40 border border-rmpg-700 text-[10px] text-rmpg-400 font-mono overflow-auto max-h-[150px] whitespace-pre-wrap">
+                        {error.stack}
+                      </pre>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           </div>

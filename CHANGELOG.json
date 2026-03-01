@@ -1,6 +1,74 @@
 {
-  "version": "2.2.1",
+  "version": "4.2.5",
   "changelog": [
+    {
+      "version": "4.2.5",
+      "date": "2026-02-26",
+      "type": "minor",
+      "summary": "Thin client, HTTPS encryption, GPS breadcrumb trails, version unification",
+      "changes": [
+        {
+          "type": "feature",
+          "description": "Desktop app converted to thin client — loads from remote VPS instead of local server"
+        },
+        {
+          "type": "security",
+          "description": "Full HTTPS/SSL encryption for all connections and auto-updates"
+        },
+        {
+          "type": "feature",
+          "description": "GPS breadcrumb trails at 1-second intervals with accuracy filtering and jump detection"
+        },
+        {
+          "type": "fix",
+          "description": "Server-side trail smoothing eliminates starburst artifacts from WiFi triangulation"
+        },
+        {
+          "type": "enhancement",
+          "description": "Mandatory operator name input with persistent OPR display"
+        },
+        {
+          "type": "enhancement",
+          "description": "Unified version propagation across all system components"
+        }
+      ]
+    },
+    {
+      "version": "4.2.5",
+      "date": "2026-02-26",
+      "type": "minor",
+      "summary": "Radio system overhaul, PDF readability, Motorola tones, two-way PTT audio",
+      "changes": [
+        {
+          "type": "feature",
+          "description": "Two-way PTT radio with real-time audio streaming via WebSocket"
+        },
+        {
+          "type": "feature",
+          "description": "Motorola APX-authentic radio tones (MDC-1200 FSK, 1050Hz talk-permit, bandpass filtering)"
+        },
+        {
+          "type": "feature",
+          "description": "500ms PTT release delay (hang time) to prevent syllable clipping"
+        },
+        {
+          "type": "feature",
+          "description": "PDF readability overhaul with professional print formatting"
+        },
+        {
+          "type": "fix",
+          "description": "Audio pipeline race condition — transmit_start now sent before recorder starts"
+        },
+        {
+          "type": "fix",
+          "description": "StreamPlayer rewritten with AudioContext + decodeAudioData for reliable cross-browser playback"
+        },
+        {
+          "type": "enhancement",
+          "description": "Comprehensive server-side radio debug logging for audio relay diagnostics"
+        }
+      ]
+    },
     {
       "version": "2.2.1",
       "date": "2026-02-20",

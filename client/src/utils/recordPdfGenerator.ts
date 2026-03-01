@@ -17,12 +17,12 @@ import {
   addTableWithShading,
   addThreeColumnFields,
   addWrappedText,
+  addNarrativeSection,
   addPageFooter,
   checkPageBreak,
   setGenerationTimestamp,
   fetchPdfBranding,
   setActiveBranding,
-  resetSectionCounter,
   loadPdfAssets,
   setActiveFormKey,
   setActiveCaseNumber,
@@ -33,7 +33,7 @@ import type { PdfImage } from './pdfGenerator';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER,
   getContentWidth, getHalfWidth, getFullFieldWidth,
-  getLeftX, getRightColumnX, getHalfFieldWidth,
+  getLeftX, getRightColumnX, getHalfFieldWidth, getQuarterWidth,
 } from './pdfTokens';
 
 // ── Type Aliases for Record Types ────────────────────────────
@@ -111,8 +111,13 @@ export interface CallPdfData {
   cleared_at?: string;
   closed_at?: string;
   created_by?: string;
-  // Notes
+  // Notes / Narrative
   notes?: { id: string; author: string; content: string; created_at: string }[];
+  narrative?: string;
+  // OPR identifier
+  dispatcher_name?: string;
+  // Assigned units detail (from API: call_sign, officer_name, badge_number)
+  assigned_units_detail?: { call_sign: string; officer_name?: string; badge_number?: string; status?: string }[];
   attachment_images?: PdfImage[];
 }
 
@@ -470,7 +475,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   const ffw = getFullFieldWidth(doc);
   const prio = callPriorityLabel(data.priority);
 
-  resetSectionCounter();
+
   setActiveCaseNumber(data.call_number);
   let y = addReportHeader(doc, data.call_number, 'Call for Service Report', prio, undefined, { useLogo: true });
 
@@ -483,6 +488,20 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       { label: 'Status', value: (data.status || '').toUpperCase() },
       { label: 'Source', value: (data.source || '').replace(/_/g, ' ').toUpperCase() },
       { label: 'Disposition', value: data.disposition || '' },
+    ], y);
+    y = closeAutoSection(doc, sec.sectionY, y);
+  }
+
+  // Date / Time — 3-column grid (6 timestamps in 2 rows of 3)
+  y = checkPageBreak(doc, y, 30, prio);
+  { const sec = openAutoSection(doc, 'Date / Time', y); y = sec.contentY;
+    y = addThreeColumnFields(doc, [
+      { label: 'Created', value: fmtTimestamp(data.created_at || '') },
+      { label: 'Dispatched', value: fmtTimestamp(data.dispatched_at || '') },
+      { label: 'Enroute', value: fmtTimestamp(data.enroute_at || '') },
+      { label: 'On Scene', value: fmtTimestamp(data.onscene_at || '') },
+      { label: 'Cleared', value: fmtTimestamp(data.cleared_at || '') },
+      { label: 'Closed', value: fmtTimestamp(data.closed_at || '') },
     ], y);
     y = closeAutoSection(doc, sec.sectionY, y);
   }
@@ -605,33 +624,34 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y);
   }
 
-  // Assigned Units
-  if (data.assigned_units && data.assigned_units.length > 0) {
-    y = checkPageBreak(doc, y, 15, prio);
-    const sec = openAutoSection(doc, 'Assigned Units', y); y = sec.contentY;
-    y = addFieldPair(doc, 'Units', data.assigned_units.join(', '), lx, y, ffw);
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
-
-  // Call Timeline
-  y = checkPageBreak(doc, y, 30, prio);
-  { const sec = openAutoSection(doc, 'Call Timeline', y); y = sec.contentY;
-    const timelineRows: string[][] = [];
-    if (data.created_at) timelineRows.push(['CREATED', fmtTimestamp(data.created_at)]);
-    if (data.dispatched_at) timelineRows.push(['DISPATCHED', fmtTimestamp(data.dispatched_at)]);
-    if (data.enroute_at) timelineRows.push(['ENROUTE', fmtTimestamp(data.enroute_at)]);
-    if (data.onscene_at) timelineRows.push(['ON SCENE', fmtTimestamp(data.onscene_at)]);
-    if (data.cleared_at) timelineRows.push(['CLEARED', fmtTimestamp(data.cleared_at)]);
-    if (data.closed_at) timelineRows.push(['CLOSED', fmtTimestamp(data.closed_at)]);
-
-    if (timelineRows.length > 0) {
-      y = addTableWithShading(
-        doc,
-        [{ label: 'STATUS', x: LAYOUT.PAGE_MARGIN + 5 }, { label: 'DATE / TIME', x: LAYOUT.PAGE_MARGIN + 55 }],
-        timelineRows,
-        y,
-        [LAYOUT.PAGE_MARGIN + 5, LAYOUT.PAGE_MARGIN + 55],
-      );
+  // Assigned Units Table (matches GIR Persons Involved style)
+  y = checkPageBreak(doc, y, 25, prio);
+  { const sec = openAutoSection(doc, 'Assigned Units', y); y = sec.contentY;
+    const unitDetail = data.assigned_units_detail;
+    if (unitDetail && unitDetail.length > 0) {
+      const colPositions = [lx, LAYOUT.PAGE_MARGIN + 35, LAYOUT.PAGE_MARGIN + 80, LAYOUT.PAGE_MARGIN + 120];
+      const tableHeaders = [
+        { label: 'CALL SIGN', x: colPositions[0] },
+        { label: 'OFFICER', x: colPositions[1] },
+        { label: 'BADGE #', x: colPositions[2] },
+        { label: 'STATUS', x: colPositions[3] },
+      ];
+      const tableRows = unitDetail.map(u => [
+        u.call_sign || '',
+        u.officer_name || '',
+        u.badge_number || '',
+        (u.status || '').toUpperCase(),
+      ]);
+      y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
+    } else if (data.assigned_units && data.assigned_units.length > 0) {
+      // Fallback: simple comma-separated list when detail not available
+      y = addFieldPair(doc, 'Units', data.assigned_units.join(', '), lx, y, ffw);
+    } else {
+      doc.setFontSize(FONT.SIZE_TABLE_BODY);
+      doc.setTextColor(...COLOR.TEXT_TERTIARY);
+      doc.text('No units assigned', lx, y);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      y += SPACING.XL;
     }
     y = closeAutoSection(doc, sec.sectionY, y);
   }
@@ -659,15 +679,21 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y);
   }
 
+  // Narrative (matches GIR style — full-width wrapped text block)
+  y = addNarrativeSection(doc, 'Narrative', data.narrative || '', y, prio);
+
   // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {
     y = addAttachmentsSection(doc, data.attachment_images, y);
   }
 
-  // Signature Block
+  // Signatures (matches GIR style)
   y = checkPageBreak(doc, y, 40, prio);
-  addSignatureBlock(doc, 'Reporting Officer', LAYOUT.PAGE_MARGIN, y, hfw);
-  addSignatureBlock(doc, 'Supervisor', rx - SPACING.CONTENT_INSET, y, hfw);
+  { const sec = openAutoSection(doc, 'Signatures', y); y = sec.contentY;
+    addSignatureBlock(doc, 'Reporting Officer', lx, y, hfw);
+    y = addSignatureBlock(doc, 'Supervisor Review', rx, y, hfw);
+    y = closeAutoSection(doc, sec.sectionY, y);
+  }
 }
 
 // ── Person Record ────────────────────────────────────────────
@@ -679,7 +705,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   const ffw = getFullFieldWidth(doc);
   const cw = getContentWidth(doc);
 
-  resetSectionCounter();
+
   const personName = `${data.last_name}, ${data.first_name}`.toUpperCase();
   setActiveCaseNumber(personName);
   let y = addReportHeader(doc, personName, 'Individual Record', 'routine', undefined, { caseBoxLabel: 'INDIVIDUAL RECORD', useLogo: true });
@@ -711,33 +737,32 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y);
   }
 
-  // Physical Description
-  y = checkPageBreak(doc, y, 35);
+  // Physical Description — split into two visual groups with breathing room
+  y = checkPageBreak(doc, y, 40);
   { const sec = openAutoSection(doc, 'Physical Description', y); y = sec.contentY;
+    // Group 1: Body
     y = addThreeColumnFields(doc, [
       { label: 'Height', value: data.height || '' },
       { label: 'Weight', value: data.weight || '' },
       { label: 'Build', value: data.build || '' },
       { label: 'Complexion', value: data.complexion || '' },
+      { label: 'Blood Type', value: data.blood_type || '' },
+      { label: 'Shoe Size', value: data.shoe_size || '' },
+    ], y);
+    y += SPACING.SM; // Visual gap between groups
+    // Group 2: Face & Hair
+    y = addThreeColumnFields(doc, [
       { label: 'Hair Color', value: data.hair_color || '' },
       { label: 'Hair Length', value: data.hair_length || '' },
       { label: 'Hair Style', value: data.hair_style || '' },
       { label: 'Eye Color', value: data.eye_color || '' },
       { label: 'Facial Hair', value: data.facial_hair || '' },
       { label: 'Glasses', value: data.glasses || '' },
-      { label: 'Blood Type', value: data.blood_type || '' },
-      { label: 'Shoe Size', value: data.shoe_size || '' },
     ], y);
     y = closeAutoSection(doc, sec.sectionY, y);
   }
 
-  if (data.scars_marks_tattoos) {
-    y = checkPageBreak(doc, y, 15);
-    const sec = openAutoSection(doc, 'Scars / Marks / Tattoos', y); y = sec.contentY;
-    y = addWrappedText(doc, data.scars_marks_tattoos, lx, y, ffw);
-    y += SPACING.MD;
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  y = addNarrativeSection(doc, 'Scars / Marks / Tattoos', data.scars_marks_tattoos || '', y);
 
   // Contact Information
   y = checkPageBreak(doc, y, 25);
@@ -817,13 +842,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   }
 
   // Notes
-  if (data.notes) {
-    y = checkPageBreak(doc, y, 18);
-    const sec = openAutoSection(doc, 'Notes', y); y = sec.contentY;
-    y = addWrappedText(doc, data.notes, lx, y, ffw);
-    y += SPACING.MD;
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  y = addNarrativeSection(doc, 'Notes', data.notes || '', y);
 
   // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {
@@ -844,7 +863,7 @@ function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
   const ffw = getFullFieldWidth(doc);
   const cw = getContentWidth(doc);
 
-  resetSectionCounter();
+
   setActiveCaseNumber(data.license_plate || 'N/A');
   let y = addReportHeader(doc, data.license_plate || 'N/A', 'Vehicle Record', data.stolen_status === 'stolen' ? 'critical' : 'routine', undefined, { useLogo: true });
 
@@ -914,26 +933,17 @@ function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
       { label: 'Tow Status', value: data.tow_status || '' },
       { label: 'Tow Company', value: data.tow_company || '' },
       { label: 'Tow Date', value: fmtDate(data.tow_date) },
-      { label: 'Lien Holder', value: data.lien_holder || '' },
     ], y);
+    // Lien Holder as full-width field (avoids orphaned single field in 3-col grid)
+    y = addFieldPair(doc, 'Lien Holder', data.lien_holder || '', lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y);
   }
 
   // Distinguishing Features
-  if (data.distinguishing_features) {
-    y = checkPageBreak(doc, y, 15);
-    const sec = openAutoSection(doc, 'Distinguishing Features', y); y = sec.contentY;
-    y = addWrappedText(doc, data.distinguishing_features, lx, y, ffw);
-    y += SPACING.MD; y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  y = addNarrativeSection(doc, 'Distinguishing Features', data.distinguishing_features || '', y);
 
   // Damage
-  if (data.damage_description) {
-    y = checkPageBreak(doc, y, 15);
-    const sec = openAutoSection(doc, 'Damage Description', y); y = sec.contentY;
-    y = addWrappedText(doc, data.damage_description, lx, y, ffw);
-    y += SPACING.MD; y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  y = addNarrativeSection(doc, 'Damage Description', data.damage_description || '', y);
 
   // Flags
   if (data.flags && data.flags.length > 0) {
@@ -942,12 +952,7 @@ function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
   }
 
   // Notes
-  if (data.notes) {
-    y = checkPageBreak(doc, y, 15);
-    const sec = openAutoSection(doc, 'Notes', y); y = sec.contentY;
-    y = addWrappedText(doc, data.notes, lx, y, ffw);
-    y += SPACING.MD; y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  y = addNarrativeSection(doc, 'Notes', data.notes || '', y);
 
   // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {
@@ -969,7 +974,7 @@ function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
   const cw = getContentWidth(doc);
 
   const statusPrio = data.status === 'active' ? 'critical' : data.status === 'served' ? 'low' : 'medium';
-  resetSectionCounter();
+
   setActiveCaseNumber(data.warrant_number);
   let y = addReportHeader(doc, data.warrant_number, 'Warrant', statusPrio, undefined, { useLogo: true });
 
@@ -1040,12 +1045,7 @@ function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
   }
 
   // Notes
-  if (data.notes) {
-    y = checkPageBreak(doc, y, 15, statusPrio);
-    const sec = openAutoSection(doc, 'Notes', y); y = sec.contentY;
-    y = addWrappedText(doc, data.notes, lx, y, ffw);
-    y += SPACING.MD; y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  y = addNarrativeSection(doc, 'Notes', data.notes || '', y, statusPrio);
 
   // Signature Block
   y = checkPageBreak(doc, y, 40, statusPrio);
@@ -1064,7 +1064,7 @@ function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
   const cw = getContentWidth(doc);
   const hw = getHalfWidth(doc);
 
-  resetSectionCounter();
+
   setActiveCaseNumber(data.evidence_number);
   let y = addReportHeader(doc, data.evidence_number, 'Evidence / Property Custody Report', 'medium', undefined, { useLogo: true });
 
@@ -1105,8 +1105,8 @@ function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
     y = closeAutoSection(doc, sec.sectionY, y);
   }
 
-  // Collection Information
-  y = checkPageBreak(doc, y, 20);
+  // Collection Information — standardized 3-col + 2-col layout
+  y = checkPageBreak(doc, y, 25);
   { const sec = openAutoSection(doc, 'Collection Information', y); y = sec.contentY;
     y = addThreeColumnFields(doc, [
       { label: 'Collected By', value: data.collected_by || '' },
@@ -1114,8 +1114,7 @@ function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
       { label: 'Packaging Type', value: data.packaging_type || '' },
     ], y);
     addFieldPair(doc, 'Location Found', data.location_found || '', lx, y, hfw);
-    addCheckboxField(doc, 'Photo Taken', !!data.photo_taken, rx, y);
-    y += SPACING.FIELD_ROW_ADVANCE;
+    y = addFieldPair(doc, 'Photo Taken', data.photo_taken ? 'Yes' : 'No', rx, y, hfw);
     y = closeAutoSection(doc, sec.sectionY, y);
   }
 
@@ -1179,12 +1178,7 @@ function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
   }
 
   // Notes
-  if (data.notes) {
-    y = checkPageBreak(doc, y, 15);
-    const sec = openAutoSection(doc, 'Notes', y); y = sec.contentY;
-    y = addWrappedText(doc, data.notes, lx, y, ffw);
-    y += SPACING.MD; y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  y = addNarrativeSection(doc, 'Notes', data.notes || '', y);
 
   // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {
@@ -1202,10 +1196,12 @@ function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
 function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
   const lx = getLeftX();
   const ffw = getFullFieldWidth(doc);
+  const hfw = getHalfFieldWidth(doc);
+  const rx = getRightColumnX(doc);
   const cw = getContentWidth(doc);
 
   const statusPrio = data.status === 'in_service' ? 'low' : data.status === 'maintenance' ? 'medium' : data.status === 'out_of_service' ? 'high' : 'routine';
-  resetSectionCounter();
+
   setActiveCaseNumber(data.vehicle_number);
   let y = addReportHeader(doc, data.vehicle_number, 'Fleet Vehicle Status Report', statusPrio, undefined, { useLogo: true });
 
@@ -1225,13 +1221,11 @@ function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y);
   }
 
-  // Assignment
+  // Assignment — 2-column (only 2 fields)
   y = checkPageBreak(doc, y, 15);
   { const sec = openAutoSection(doc, 'Assignment', y); y = sec.contentY;
-    y = addThreeColumnFields(doc, [
-      { label: 'Assigned Unit', value: data.assigned_unit_call_sign || 'Unassigned' },
-      { label: 'Current Mileage', value: data.current_mileage ? data.current_mileage.toLocaleString() : '' },
-    ], y);
+    addFieldPair(doc, 'Assigned Unit', data.assigned_unit_call_sign || 'Unassigned', lx, y, hfw);
+    y = addFieldPair(doc, 'Current Mileage', data.current_mileage ? data.current_mileage.toLocaleString() : '', rx, y, hfw);
     y = closeAutoSection(doc, sec.sectionY, y);
   }
 
@@ -1256,12 +1250,7 @@ function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
   }
 
   // Notes
-  if (data.notes) {
-    y = checkPageBreak(doc, y, 15);
-    const sec = openAutoSection(doc, 'Notes', y); y = sec.contentY;
-    y = addWrappedText(doc, data.notes, lx, y, ffw);
-    y += SPACING.MD; y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  y = addNarrativeSection(doc, 'Notes', data.notes || '', y);
 
   // Signature Block
   y = checkPageBreak(doc, y, 40);
@@ -1278,7 +1267,7 @@ function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
   const cw = getContentWidth(doc);
   const hw = getHalfWidth(doc);
 
-  resetSectionCounter();
+
   setActiveCaseNumber(data.badge_number || data.employee_id || 'N/A');
   let y = addReportHeader(doc, data.badge_number || data.employee_id || 'N/A', 'Personnel Record', 'routine', undefined, { useLogo: true });
 
@@ -1320,15 +1309,13 @@ function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y);
   }
 
-  // Employment
+  // Employment — 2×2 layout (4 fields → 2 rows of 2)
   y = checkPageBreak(doc, y, 20);
   { const sec = openAutoSection(doc, 'Employment', y); y = sec.contentY;
-    y = addThreeColumnFields(doc, [
-      { label: 'Hire Date', value: fmtDate(data.hire_date) },
-      { label: 'Termination Date', value: fmtDate(data.termination_date) },
-      { label: 'Shift Preference', value: data.shift_preference || '' },
-      { label: 'Uniform Size', value: data.uniform_size || '' },
-    ], y);
+    addFieldPair(doc, 'Hire Date', fmtDate(data.hire_date), lx, y, hfw);
+    y = addFieldPair(doc, 'Termination Date', fmtDate(data.termination_date), rx, y, hfw);
+    addFieldPair(doc, 'Shift Preference', data.shift_preference || '', lx, y, hfw);
+    y = addFieldPair(doc, 'Uniform Size', data.uniform_size || '', rx, y, hfw);
     y = closeAutoSection(doc, sec.sectionY, y);
   }
 
@@ -1355,20 +1342,10 @@ function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
   }
 
   // Certifications
-  if (data.certifications) {
-    y = checkPageBreak(doc, y, 15);
-    const sec = openAutoSection(doc, 'Certifications', y); y = sec.contentY;
-    y = addWrappedText(doc, data.certifications, lx, y, ffw);
-    y += SPACING.MD; y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  y = addNarrativeSection(doc, 'Certifications', data.certifications || '', y);
 
   // Notes
-  if (data.notes) {
-    y = checkPageBreak(doc, y, 15);
-    const sec = openAutoSection(doc, 'Notes', y); y = sec.contentY;
-    y = addWrappedText(doc, data.notes, lx, y, ffw);
-    y += SPACING.MD; y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  y = addNarrativeSection(doc, 'Notes', data.notes || '', y);
 
   // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {
@@ -1390,7 +1367,7 @@ function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
   const ffw = getFullFieldWidth(doc);
   const cw = getContentWidth(doc);
 
-  resetSectionCounter();
+
   setActiveCaseNumber(data.name || 'N/A');
   let y = addReportHeader(doc, data.name || 'N/A', 'Property Record', 'routine', undefined, { useLogo: true });
 
@@ -1426,28 +1403,13 @@ function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
   }
 
   // Access Instructions
-  if (data.access_instructions) {
-    y = checkPageBreak(doc, y, 15);
-    const sec = openAutoSection(doc, 'Access Instructions', y); y = sec.contentY;
-    y = addWrappedText(doc, data.access_instructions, lx, y, ffw);
-    y += SPACING.MD; y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  y = addNarrativeSection(doc, 'Access Instructions', data.access_instructions || '', y);
 
   // Post Orders
-  if (data.post_orders) {
-    y = checkPageBreak(doc, y, 18);
-    const sec = openAutoSection(doc, 'Post Orders', y); y = sec.contentY;
-    y = addWrappedText(doc, data.post_orders, lx, y, ffw);
-    y += SPACING.MD; y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  y = addNarrativeSection(doc, 'Post Orders', data.post_orders || '', y);
 
   // Hazard Notes
-  if (data.hazard_notes) {
-    y = checkPageBreak(doc, y, 15);
-    const sec = openAutoSection(doc, 'Hazard Notes', y); y = sec.contentY;
-    y = addWrappedText(doc, data.hazard_notes, lx, y, ffw);
-    y += SPACING.MD; y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  y = addNarrativeSection(doc, 'Hazard Notes', data.hazard_notes || '', y);
 
   // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {
@@ -1479,7 +1441,7 @@ function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
   const prio = typePrioMap[data.type] || 'routine';
 
   // Header (uses the standard report header + classification bar)
-  resetSectionCounter();
+
   setActiveCaseNumber(data.citation_number);
   let y = addReportHeader(doc, data.citation_number, 'Citation / Summons', prio, undefined, { useLogo: true });
 
@@ -1555,12 +1517,7 @@ function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
   }
 
   // Notes
-  if (data.notes) {
-    y = checkPageBreak(doc, y, 15);
-    const sec = openAutoSection(doc, 'Notes', y); y = sec.contentY;
-    y = addWrappedText(doc, data.notes, lx, y, ffw);
-    y += SPACING.MD; y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  y = addNarrativeSection(doc, 'Notes', data.notes || '', y, prio);
 
   // Dual Signature Block — Officer and Recipient
   y = checkPageBreak(doc, y, 40);

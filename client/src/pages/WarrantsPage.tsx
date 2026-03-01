@@ -28,6 +28,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import StatusBadge from '../components/StatusBadge';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
+import { useIsMobile } from '../hooks/useIsMobile';
 import StatuteLookup, { OffenseLevelBadge } from '../components/StatuteLookup';
 import type { StatuteResult } from '../components/StatuteLookup';
 
@@ -159,6 +160,7 @@ function formatCurrency(amount: number | null): string {
 // ============================================================
 
 export default function WarrantsPage() {
+  const isMobile = useIsMobile();
   const warrantFormTitleId = useId();
   const serveTitleId = useId();
   // Data
@@ -429,9 +431,9 @@ export default function WarrantsPage() {
   const activeCount = warrants.filter((w) => w.status === 'active').length;
 
   return (
-    <div className="absolute inset-0 flex overflow-hidden bg-surface-deep">
+    <div className={`absolute inset-0 ${isMobile ? 'flex flex-col' : 'flex'} overflow-hidden bg-surface-deep`}>
       {/* ── LEFT: Warrant List ── */}
-      <div className="w-[55%] flex flex-col border-r border-rmpg-600">
+      <div className={`${isMobile ? (selectedWarrant ? 'hidden' : 'flex-1') : 'w-[55%]'} flex flex-col ${!isMobile ? 'border-r border-rmpg-600' : ''}`}>
         <PanelTitleBar title="WARRANTS" icon={AlertTriangle}>
           <RmpgLogo height={16} iconOnly />
           <span className="toolbar-separator" />
@@ -580,8 +582,13 @@ export default function WarrantsPage() {
       </div>
 
       {/* ── RIGHT: Warrant Detail ── */}
-      <div ref={warrantDetailRef} className="flex-1 flex flex-col overflow-hidden">
+      <div ref={warrantDetailRef} className={`${isMobile ? (selectedWarrant ? 'flex-1' : 'hidden') : 'flex-1'} flex flex-col overflow-hidden`}>
         <PanelTitleBar title="WARRANT DETAIL" icon={Gavel}>
+          {isMobile && selectedWarrant && (
+            <button onClick={() => setSelectedWarrant(null)} className="toolbar-btn text-[9px]">
+              ← Back
+            </button>
+          )}
           <PrintRecordButton recordType="warrant" recordData={selectedWarrant} identifier={selectedWarrant?.warrant_number} entityType="warrant" entityId={selectedWarrant?.id} label="Print" />
           {selectedWarrant && !selectedWarrant.archived_at && (
             <>
@@ -823,7 +830,7 @@ export default function WarrantsPage() {
       {/* ── FORM MODAL ── */}
       {formOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-labelledby={warrantFormTitleId}>
-          <div className="panel-beveled w-[550px] max-h-[85vh] overflow-auto bg-surface-base">
+          <div className={`panel-beveled ${isMobile ? 'w-full h-full' : 'w-[550px] max-h-[85vh]'} overflow-auto bg-surface-base`}>
             <div className="flex items-center justify-between p-4 border-b border-rmpg-600">
               <h2 id={warrantFormTitleId} className="text-sm font-bold text-white">{editingWarrant ? 'Edit Warrant' : 'New Warrant'}</h2>
               <button onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
@@ -979,7 +986,7 @@ export default function WarrantsPage() {
       {/* ── SERVE MODAL ── */}
       {serveModalOpen && selectedWarrant && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-labelledby={serveTitleId}>
-          <div className="panel-beveled w-[400px] bg-surface-base">
+          <div className={`panel-beveled ${isMobile ? 'w-full mx-4' : 'w-[400px]'} bg-surface-base`}>
             <div className="flex items-center justify-between p-4 border-b border-rmpg-600">
               <h2 id={serveTitleId} className="text-sm font-bold text-white">Serve Warrant</h2>
               <button onClick={() => setServeModalOpen(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
@@ -1008,6 +1015,13 @@ export default function WarrantsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── MOBILE FAB ── */}
+      {isMobile && !selectedWarrant && !showArchived && !formOpen && (
+        <button onClick={openNewForm} className="mobile-fab" aria-label="New Warrant">
+          <Plus className="w-6 h-6" />
+        </button>
       )}
 
       {/* ── DELETE CONFIRM ── */}

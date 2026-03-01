@@ -81,6 +81,237 @@ router.get('/', (req: Request, res: Response) => {
   }
 });
 
+// ─── GET /api/fleet/maintenance-alerts ─ Fleet-wide maintenance monitor ────
+router.get('/maintenance-alerts', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = new Date();
+    const nowISO = now.toISOString();
+
+    // Vehicles with service due (overdue or upcoming)
+    const vehicles = db.prepare(`
+      SELECT
+        v.id, v.vehicle_number, v.make, v.model, v.year, v.status,
+        v.current_mileage, v.last_service_date, v.next_service_due,
+        v.insurance_expiry, v.registration_expiry,
+        v.assigned_unit_id,
+        u.call_sign as assigned_unit
+      FROM fleet_vehicles v
+      LEFT JOIN units u ON v.assigned_unit_id = u.id
+      WHERE v.archived_at IS NULL
+      ORDER BY v.vehicle_number
+    `).all() as any[];
+
+    // Recent maintenance records with next_due_date
+    const maintenanceAlerts = db.prepare(`
+      SELECT
+        m.id, m.vehicle_id, m.type, m.description,
+        m.mileage_at_service, m.performed_at, m.next_due_date, m.next_due_mileage,
+        v.vehicle_number, v.current_mileage
+      FROM fleet_maintenance m
+      JOIN fleet_vehicles v ON m.vehicle_id = v.id
+      WHERE m.archived_at IS NULL
+        AND m.next_due_date IS NOT NULL
+      ORDER BY m.next_due_date ASC
+    `).all() as any[];
+
+    const alerts: any[] = [];
+    const DAY_MS = 86_400_000;
+
+    // ── Vehicle-level alerts ──
+    for (const v of vehicles) {
+      const vLabel = `${v.vehicle_number}${v.make ? ` ${v.make}` : ''}${v.model ? ` ${v.model}` : ''}`;
+
+      // Service due alerts
+      if (v.next_service_due) {
+        const due = new Date(v.next_service_due);
+        const daysUntil = Math.ceil((due.getTime() - now.getTime()) / DAY_MS);
+
+        if (daysUntil < 0) {
+          alerts.push({
+            id: `svc-${v.id}`,
+            vehicle_id: v.id,
+            vehicle_number: v.vehicle_number,
+            vehicle_label: vLabel,
+            assigned_unit: v.assigned_unit || null,
+            category: 'service',
+            severity: 'critical',
+            title: 'Service Overdue',
+            message: `${Math.abs(daysUntil)} day${Math.abs(daysUntil) !== 1 ? 's' : ''} overdue`,
+            due_date: v.next_service_due,
+            days_until: daysUntil,
+          });
+        } else if (daysUntil <= 7) {
+          alerts.push({
+            id: `svc-${v.id}`,
+            vehicle_id: v.id,
+            vehicle_number: v.vehicle_number,
+            vehicle_label: vLabel,
+            assigned_unit: v.assigned_unit || null,
+            category: 'service',
+            severity: 'urgent',
+            title: 'Service Due Soon',
+            message: daysUntil === 0 ? 'Due today' : `Due in ${daysUntil} day${daysUntil !== 1 ? 's' : ''}`,
+            due_date: v.next_service_due,
+            days_until: daysUntil,
+          });
+        } else if (daysUntil <= 30) {
+          alerts.push({
+            id: `svc-${v.id}`,
+            vehicle_id: v.id,
+            vehicle_number: v.vehicle_number,
+            vehicle_label: vLabel,
+            assigned_unit: v.assigned_unit || null,
+            category: 'service',
+            severity: 'warning',
+            title: 'Service Upcoming',
+            message: `Due in ${daysUntil} days`,
+            due_date: v.next_service_due,
+            days_until: daysUntil,
+          });
+        }
+      }
+
+      // Registration expiry alerts
+      if (v.registration_expiry) {
+        const exp = new Date(v.registration_expiry);
+        const daysUntil = Math.ceil((exp.getTime() - now.getTime()) / DAY_MS);
+
+        if (daysUntil < 0) {
+          alerts.push({
+            id: `reg-${v.id}`, vehicle_id: v.id, vehicle_number: v.vehicle_number,
+            vehicle_label: vLabel, assigned_unit: v.assigned_unit || null,
+            category: 'registration', severity: 'critical',
+            title: 'Registration Expired',
+            message: `Expired ${Math.abs(daysUntil)} day${Math.abs(daysUntil) !== 1 ? 's' : ''} ago`,
+            due_date: v.registration_expiry, days_until: daysUntil,
+          });
+        } else if (daysUntil <= 30) {
+          alerts.push({
+            id: `reg-${v.id}`, vehicle_id: v.id, vehicle_number: v.vehicle_number,
+            vehicle_label: vLabel, assigned_unit: v.assigned_unit || null,
+            category: 'registration', severity: daysUntil <= 7 ? 'urgent' : 'warning',
+            title: 'Registration Expiring',
+            message: daysUntil === 0 ? 'Expires today' : `Expires in ${daysUntil} days`,
+            due_date: v.registration_expiry, days_until: daysUntil,
+          });
+        }
+      }
+
+      // Insurance expiry alerts
+      if (v.insurance_expiry) {
+        const exp = new Date(v.insurance_expiry);
+        const daysUntil = Math.ceil((exp.getTime() - now.getTime()) / DAY_MS);
+
+        if (daysUntil < 0) {
+          alerts.push({
+            id: `ins-${v.id}`, vehicle_id: v.id, vehicle_number: v.vehicle_number,
+            vehicle_label: vLabel, assigned_unit: v.assigned_unit || null,
+            category: 'insurance', severity: 'critical',
+            title: 'Insurance Expired',
+            message: `Expired ${Math.abs(daysUntil)} day${Math.abs(daysUntil) !== 1 ? 's' : ''} ago — VEHICLE MAY NOT BE OPERATED`,
+            due_date: v.insurance_expiry, days_until: daysUntil,
+          });
+        } else if (daysUntil <= 30) {
+          alerts.push({
+            id: `ins-${v.id}`, vehicle_id: v.id, vehicle_number: v.vehicle_number,
+            vehicle_label: vLabel, assigned_unit: v.assigned_unit || null,
+            category: 'insurance', severity: daysUntil <= 7 ? 'urgent' : 'warning',
+            title: 'Insurance Expiring',
+            message: daysUntil === 0 ? 'Expires today' : `Expires in ${daysUntil} days`,
+            due_date: v.insurance_expiry, days_until: daysUntil,
+          });
+        }
+      }
+    }
+
+    // ── Maintenance-record-level alerts (next_due_date per service type) ──
+    for (const m of maintenanceAlerts) {
+      const due = new Date(m.next_due_date);
+      const daysUntil = Math.ceil((due.getTime() - now.getTime()) / DAY_MS);
+      const typeLabel = (m.type || 'maintenance').replace(/_/g, ' ');
+
+      // Only add if not already covered by vehicle-level service alert
+      // and if within alertable range
+      if (daysUntil <= 14) {
+        alerts.push({
+          id: `maint-${m.id}`,
+          vehicle_id: m.vehicle_id,
+          vehicle_number: m.vehicle_number,
+          vehicle_label: m.vehicle_number,
+          assigned_unit: null,
+          category: 'maintenance_item',
+          severity: daysUntil < 0 ? 'critical' : daysUntil <= 3 ? 'urgent' : 'warning',
+          title: `${typeLabel.charAt(0).toUpperCase() + typeLabel.slice(1)} Due`,
+          message: daysUntil < 0
+            ? `${Math.abs(daysUntil)} days overdue`
+            : daysUntil === 0 ? 'Due today'
+            : `Due in ${daysUntil} days`,
+          due_date: m.next_due_date,
+          days_until: daysUntil,
+          maintenance_type: m.type,
+        });
+      }
+
+      // Mileage-based alert
+      if (m.next_due_mileage && m.current_mileage) {
+        const milesRemaining = m.next_due_mileage - m.current_mileage;
+        if (milesRemaining <= 500) {
+          alerts.push({
+            id: `mileage-${m.id}`,
+            vehicle_id: m.vehicle_id,
+            vehicle_number: m.vehicle_number,
+            vehicle_label: m.vehicle_number,
+            assigned_unit: null,
+            category: 'mileage',
+            severity: milesRemaining <= 0 ? 'critical' : 'warning',
+            title: `${typeLabel.charAt(0).toUpperCase() + typeLabel.slice(1)} — Mileage`,
+            message: milesRemaining <= 0
+              ? `${Math.abs(milesRemaining).toLocaleString()} miles past due`
+              : `${milesRemaining.toLocaleString()} miles remaining`,
+            due_mileage: m.next_due_mileage,
+            current_mileage: m.current_mileage,
+            miles_remaining: milesRemaining,
+            maintenance_type: m.type,
+          });
+        }
+      }
+    }
+
+    // Sort: critical first, then urgent, then warning; within same severity, nearest due first
+    const severityOrder: Record<string, number> = { critical: 0, urgent: 1, warning: 2 };
+    alerts.sort((a, b) => {
+      const sev = (severityOrder[a.severity] ?? 3) - (severityOrder[b.severity] ?? 3);
+      if (sev !== 0) return sev;
+      return (a.days_until ?? 999) - (b.days_until ?? 999);
+    });
+
+    // Summary counts
+    const critical = alerts.filter(a => a.severity === 'critical').length;
+    const urgent = alerts.filter(a => a.severity === 'urgent').length;
+    const warning = alerts.filter(a => a.severity === 'warning').length;
+
+    const byCategory: Record<string, number> = {};
+    for (const a of alerts) {
+      byCategory[a.category] = (byCategory[a.category] || 0) + 1;
+    }
+
+    res.json({
+      summary: {
+        total_alerts: alerts.length,
+        critical, urgent, warning,
+        by_category: byCategory,
+        fleet_size: vehicles.length,
+        vehicles_needing_attention: new Set(alerts.map(a => a.vehicle_id)).size,
+      },
+      alerts,
+    });
+  } catch (error: any) {
+    console.error('Get maintenance alerts error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ─── GET /api/fleet/analytics ─ Fleet-wide aggregate analytics ────
 router.get('/analytics', (req: Request, res: Response) => {
   try {
@@ -207,6 +438,45 @@ router.get('/analytics', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error fetching fleet analytics:', error);
     res.status(500).json({ error: 'Failed to fetch fleet analytics' });
+  }
+});
+
+// ─── GET /api/fleet/mileage-logs ─ Mileage history ─────────────────
+router.get('/mileage-logs', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { vehicle_id, officer_id, start_date, end_date, page = '1', per_page = '50' } = req.query;
+
+    let where = 'WHERE 1=1';
+    const params: any[] = [];
+
+    if (vehicle_id) { where += ' AND m.vehicle_id = ?'; params.push(vehicle_id); }
+    if (officer_id) { where += ' AND m.officer_id = ?'; params.push(officer_id); }
+    if (start_date) { where += ' AND m.shift_date >= ?'; params.push(start_date); }
+    if (end_date) { where += ' AND m.shift_date <= ?'; params.push(end_date); }
+
+    const pageNum = parseInt(page as string, 10) || 1;
+    const perPage = parseInt(per_page as string, 10) || 50;
+    const offset = (pageNum - 1) * perPage;
+
+    const total = (db.prepare(`SELECT COUNT(*) as count FROM fleet_mileage_logs m ${where}`).get(...params) as any).count;
+
+    const logs = db.prepare(`
+      SELECT m.*, u.full_name as officer_name, u.badge_number,
+             fv.vehicle_number, fv.make, fv.model, fv.year,
+             (CASE WHEN m.mileage_end IS NOT NULL THEN m.mileage_end - m.mileage_start ELSE NULL END) as miles_driven
+      FROM fleet_mileage_logs m
+      LEFT JOIN users u ON m.officer_id = u.id
+      LEFT JOIN fleet_vehicles fv ON m.vehicle_id = fv.id
+      ${where}
+      ORDER BY m.shift_date DESC, m.created_at DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, perPage, offset);
+
+    res.json({ logs, total, page: pageNum, per_page: perPage });
+  } catch (error: any) {
+    console.error('Mileage logs error:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1441,6 +1711,53 @@ router.delete('/:id/personnel-notes/:noteId', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error deleting personnel note:', error);
     res.status(500).json({ error: 'Failed to delete personnel note' });
+  }
+});
+
+// ─── GET /api/fleet/:id/mileage-summary ─ Vehicle mileage stats ───
+router.get('/:id/mileage-summary', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const vehicleId = req.params.id;
+
+    const vehicle = db.prepare('SELECT id, vehicle_number, current_mileage, make, model, year FROM fleet_vehicles WHERE id = ?').get(vehicleId) as any;
+    if (!vehicle) { res.status(404).json({ error: 'Vehicle not found' }); return; }
+
+    // Total miles logged
+    const totalMiles = (db.prepare(`
+      SELECT COALESCE(SUM(mileage_end - mileage_start), 0) as total
+      FROM fleet_mileage_logs WHERE vehicle_id = ? AND mileage_end IS NOT NULL
+    `).get(vehicleId) as any).total;
+
+    // Last 30 days
+    const last30 = (db.prepare(`
+      SELECT COALESCE(SUM(mileage_end - mileage_start), 0) as total,
+             COUNT(*) as shifts
+      FROM fleet_mileage_logs
+      WHERE vehicle_id = ? AND mileage_end IS NOT NULL
+        AND shift_date >= date('now','localtime','-30 days')
+    `).get(vehicleId) as any);
+
+    // Recent logs
+    const recentLogs = db.prepare(`
+      SELECT m.*, u.full_name as officer_name,
+             (m.mileage_end - m.mileage_start) as miles_driven
+      FROM fleet_mileage_logs m
+      LEFT JOIN users u ON m.officer_id = u.id
+      WHERE m.vehicle_id = ? AND m.mileage_end IS NOT NULL
+      ORDER BY m.shift_date DESC LIMIT 10
+    `).all(vehicleId);
+
+    res.json({
+      vehicle,
+      total_miles_logged: totalMiles,
+      last_30_days: { miles: last30.total, shifts: last30.shifts },
+      avg_miles_per_shift: last30.shifts > 0 ? Math.round(last30.total / last30.shifts) : 0,
+      recent_logs: recentLogs,
+    });
+  } catch (error: any) {
+    console.error('Mileage summary error:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

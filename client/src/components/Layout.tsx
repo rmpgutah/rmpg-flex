@@ -18,17 +18,40 @@ import {
   Car,
   AlertTriangle,
   FileWarning,
+  ClipboardList,
+  ShieldBan,
+  Monitor,
   User,
   Lock,
   ChevronDown,
   Shield,
   Menu,
   X,
+  Calendar,
+  Briefcase,
+  Package,
+  TrendingUp,
+  Landmark,
+  Construction,
+  Truck,
+  ClipboardCheck,
+  UserX,
+  Gavel,
+  Bell,
+  DoorOpen,
+  Siren,
+  ClipboardMinus,
+  Scale,
+  Crosshair,
+  Camera,
+  Navigation,
+  DollarSign,
+  Terminal,
 } from 'lucide-react';
 import { Navigation2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useWebSocket } from '../context/WebSocketContext';
-import { apiFetch } from '../hooks/useApi';
+import { apiFetch, OfflineUnauthorizedError } from '../hooks/useApi';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { usePresence } from '../hooks/usePresence';
 import RmpgLogo from './RmpgLogo';
@@ -39,6 +62,14 @@ import NotificationCenter from './NotificationCenter';
 import PanicButton from './PanicButton';
 import UserProfileModal from './UserProfileModal';
 import UpdateBanner from './UpdateBanner';
+import OfflineStatusBar from './OfflineStatusBar';
+import PinEntryModal from './PinEntryModal';
+import ForcePasswordChangeModal from './ForcePasswordChangeModal';
+import MobileHeader from './mobile/MobileHeader';
+import MobileDrawer from './mobile/MobileDrawer';
+import { useIsMobile } from '../hooks/useIsMobile';
+import { useDesktopNotifications } from '../hooks/useDesktopNotifications';
+import { formatLabel } from '../utils/formatters';
 // LocationGate removed — GPS tracking runs silently per employment agreement
 
 const PAGE_TITLES: Record<string, string> = {
@@ -49,10 +80,35 @@ const PAGE_TITLES: Record<string, string> = {
   '/records': 'Records',
   '/personnel': 'Personnel',
   '/communications': 'Communications',
+  '/radio': 'Radio',
   '/patrol': 'Patrol',
   '/fleet': 'Fleet',
   '/warrants': 'Warrants',
   '/citations': 'Citations',
+  '/field-interviews': 'Field Interviews',
+  '/trespass-orders': 'Trespass Orders',
+  '/mdt': 'MDT',
+  '/ncic': 'NCIC Terminal',
+  '/shift-plans': 'Shift Plans',
+  '/statute-analytics': 'Statute Analytics',
+  '/reports/custom': 'Report Builder',
+  '/criminal-history': 'Criminal History',
+  '/evidence': 'Evidence / Property',
+  '/cases': 'Case Management',
+  '/crime-analysis': 'Crime Analysis',
+  '/code-enforcement': 'Code Enforcement',
+  '/court': 'Court Tracker',
+  '/dar': 'Daily Activity Reports',
+  '/offender-registry': 'Offender Registry',
+  '/briefing': 'Briefing Board',
+  '/hot-sheet': 'Hot Sheet',
+  '/alarms': 'Alarm Management',
+  '/visitors': 'Visitor Log',
+  '/use-of-force': 'Use of Force',
+  '/internal-affairs': 'Internal Affairs',
+  '/body-cameras': 'Body Cameras',
+  '/vehicle-pursuits': 'Vehicle Pursuits',
+  '/invoices': 'Invoices',
   '/reports': 'Reports',
   '/audit': 'Audit Log',
   '/admin': 'Admin',
@@ -70,27 +126,75 @@ interface NavItem {
 }
 
 const TOOLBAR_NAV: NavItem[] = [
+  // ── Operations (top-level buttons) ──
   { path: '/', icon: LayoutDashboard, label: 'Dashboard', group: 'ops' },
   { path: '/dispatch', icon: Radio, label: 'Dispatch', group: 'ops' },
   { path: '/map', icon: Map, label: 'Map', group: 'ops' },
+  { path: '/mdt', icon: Monitor, label: 'MDT', group: 'ops' },
+  { path: '/ncic', icon: Terminal, label: 'NCIC', group: 'ops' },
+
+  // ── Records dropdown (core record-keeping) ──
   { path: '/records', icon: Database, label: 'Records', group: 'records', children: [
     { path: '/incidents', icon: FileText, label: 'Incidents' },
     { path: '/records', icon: Database, label: 'Records' },
+    { path: '/field-interviews', icon: ClipboardList, label: 'Field Interviews' },
+    { path: '/criminal-history', icon: Search, label: 'Criminal History' },
+    { path: '/evidence', icon: Package, label: 'Evidence / Property' },
+    { path: '/cases', icon: Briefcase, label: 'Case Management' },
+    { path: '/alarms', icon: Bell, label: 'Alarm Permits' },
+    { path: '/visitors', icon: DoorOpen, label: 'Visitor Log' },
+  ]},
+
+  // ── Enforcement dropdown (legal/enforcement actions) ──
+  { path: '/warrants', icon: Gavel, label: 'Enforcement', group: 'records', children: [
     { path: '/warrants', icon: AlertTriangle, label: 'Warrants' },
     { path: '/citations', icon: FileWarning, label: 'Citations' },
+    { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders' },
+    { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement' },
+    { path: '/court', icon: Gavel, label: 'Court Tracker' },
+    { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
+    { path: '/vehicle-pursuits', icon: Navigation, label: 'Vehicle Pursuits' },
   ]},
+
+  // ── Personnel dropdown ──
   { path: '/personnel', icon: Users, label: 'Personnel', group: 'records', children: [
     { path: '/personnel', icon: Users, label: 'Personnel' },
     { path: '/fleet', icon: Car, label: 'Fleet' },
+    { path: '/use-of-force', icon: Crosshair, label: 'Use of Force' },
+    { path: '/internal-affairs', icon: Scale, label: 'Internal Affairs', adminOnly: true },
+    { path: '/body-cameras', icon: Camera, label: 'Body Cameras' },
   ]},
+
+  // ── Communications dropdown ──
   { path: '/communications', icon: MessageSquare, label: 'Comms', group: 'comms', children: [
     { path: '/communications', icon: MessageSquare, label: 'Comms' },
+    { path: '/radio', icon: Radio, label: 'Radio' },
     { path: '/patrol', icon: QrCode, label: 'Patrol' },
   ]},
-  { path: '/reports', icon: BarChart3, label: 'Reports', group: 'analysis' },
+
+  // ── Reports / Analysis dropdown ──
+  { path: '/reports', icon: BarChart3, label: 'Reports', group: 'analysis', children: [
+    { path: '/reports', icon: BarChart3, label: 'Reports' },
+    { path: '/shift-plans', icon: Calendar, label: 'Shift Plans' },
+    { path: '/statute-analytics', icon: BarChart3, label: 'Statute Analytics' },
+    { path: '/reports/custom', icon: Database, label: 'Report Builder' },
+    { path: '/crime-analysis', icon: TrendingUp, label: 'Crime Analysis' },
+    { path: '/dar', icon: ClipboardCheck, label: 'Daily Activity' },
+    { path: '/briefing', icon: ClipboardMinus, label: 'Briefing Board' },
+    { path: '/hot-sheet', icon: Siren, label: 'Hot Sheet' },
+    { path: '/invoices', icon: DollarSign, label: 'Invoices' },
+  ]},
+
+  // ── System (admin-only) ──
   { path: '/audit', icon: ScrollText, label: 'Audit', group: 'system', adminOnly: true },
   { path: '/admin', icon: Settings, label: 'Admin', group: 'system', adminOnly: true },
 ];
+
+// ── Allowed paths for contract_manager role (read-only portal) ──
+const CONTRACT_MANAGER_PATHS = new Set([
+  '/', '/dispatch', '/map', '/records', '/incidents', '/warrants',
+  '/citations', '/evidence', '/cases', '/reports',
+]);
 
 export default function Layout() {
   const { user, logout, refreshUser } = useAuth();
@@ -100,8 +204,73 @@ export default function Layout() {
 
   const gps = useGpsTracking();
   const presence = usePresence();
+  useDesktopNotifications(); // Browser notifications for dispatch events
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
+  const isContractManager = user?.role === 'contract_manager';
   const pageTitle = PAGE_TITLES[location.pathname] || 'Dashboard';
+
+  // ── Offline PIN Modal (global catch for OfflineUnauthorizedError) ──
+  const [offlinePinModalOpen, setOfflinePinModalOpen] = useState(false);
+
+  useEffect(() => {
+    // Listen for unhandled OfflineUnauthorizedError rejections
+    const handler = (event: PromiseRejectionEvent) => {
+      if (event.reason instanceof OfflineUnauthorizedError) {
+        event.preventDefault(); // suppress console error
+        setOfflinePinModalOpen(true);
+      }
+    };
+    window.addEventListener('unhandledrejection', handler);
+    return () => window.removeEventListener('unhandledrejection', handler);
+  }, []);
+
+  // ── Mandatory Name Setup ──────────────────────────────────
+  // If user has no first_name or last_name, force a one-time setup prompt.
+  // The prompt cannot be dismissed until both fields are filled.
+  // A ref prevents race conditions where React re-renders re-open the modal.
+  const [nameSetupOpen, setNameSetupOpen] = useState(false);
+  const [setupFirstName, setSetupFirstName] = useState('');
+  const [setupLastName, setSetupLastName] = useState('');
+  const [setupSaving, setSetupSaving] = useState(false);
+  const [setupError, setSetupError] = useState('');
+  const nameSetupDone = useRef(false);
+
+  useEffect(() => {
+    if (!user || nameSetupDone.current) return;
+    if (!user.first_name?.trim() || !user.last_name?.trim()) {
+      setNameSetupOpen(true);
+      setSetupFirstName(user.first_name || '');
+      setSetupLastName(user.last_name || '');
+    } else {
+      setNameSetupOpen(false);
+    }
+  }, [user]);
+
+  const handleNameSetupSave = async () => {
+    const fn = setupFirstName.trim();
+    const ln = setupLastName.trim();
+    if (!fn || !ln) {
+      setSetupError('Both first and last name are required.');
+      return;
+    }
+    setSetupSaving(true);
+    setSetupError('');
+    try {
+      await apiFetch('/auth/profile', {
+        method: 'PUT',
+        body: JSON.stringify({ first_name: fn, last_name: ln }),
+      });
+      // Mark as done BEFORE refreshUser to prevent the useEffect from re-opening
+      nameSetupDone.current = true;
+      setNameSetupOpen(false);
+      // Fire-and-forget — don't await so the modal closes immediately
+      refreshUser();
+    } catch (err: any) {
+      setSetupError(err.message || 'Failed to save. Try again.');
+    } finally {
+      setSetupSaving(false);
+    }
+  };
 
   // Live header stats
   const [activeCallCount, setActiveCallCount] = useState(0);
@@ -110,6 +279,7 @@ export default function Layout() {
   // Toolbar nav dropdowns
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const dropdownTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dropdownSwitchedByHoverRef = useRef(false);
 
   // Close dropdown on route change
   useEffect(() => { setOpenDropdown(null); }, [location.pathname]);
@@ -125,9 +295,9 @@ export default function Layout() {
     return () => document.removeEventListener('mousedown', handler);
   }, [openDropdown]);
 
-  // Mobile menu
+  // Mobile menu & responsive detection
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+  const isMobile = useIsMobile();
 
   // Close mobile menu on route change
   useEffect(() => { setMobileMenuOpen(false); }, [location.pathname]);
@@ -203,255 +373,265 @@ export default function Layout() {
       {/* Auto-Update Banner (Electron only) */}
       {isElectron && <UpdateBanner />}
 
+      {/* Offline Status Bar (Electron only — shows when offline or syncing) */}
+      {isElectron && <OfflineStatusBar />}
+
       {/* GPS tracking runs silently — no blocking gate */}
 
       {/* ============================================================ */}
-      {/* Brand Bar — Logo Left | PANIC Center-Right | Profile Right */}
+      {/* MANDATORY NAME SETUP — blocks UI until first/last name set   */}
       {/* ============================================================ */}
-      <div
-        className="flex items-center justify-between relative"
-        style={{
-          height: '52px',
-          paddingLeft: isMacElectron ? '78px' : '12px',
-          paddingRight: '12px',
-          background: 'linear-gradient(180deg, #252525 0%, #1a1a1a 100%)',
-          borderBottom: '1px solid #303030',
-          flexShrink: 0,
-          WebkitAppRegion: isElectron ? 'drag' : undefined,
-        } as React.CSSProperties}
-      >
-        {/* Crimson accent at very top */}
-        <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #6e0a0a, #bc1010, #6e0a0a)', zIndex: 1 }} />
-
-        {/* Left — Mobile Hamburger + Logo */}
-        <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          {/* Mobile hamburger */}
-          <button
-            className="md:hidden flex items-center justify-center w-8 h-8"
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            style={{ color: '#c8c8c8' }}
+      {nameSetupOpen && (
+        <div
+          className="fixed inset-0 flex items-center justify-center"
+          style={{ background: 'rgba(0,0,0,0.85)', zIndex: 99999, WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+        >
+          <div
+            className="w-full max-w-sm mx-4 p-6 space-y-4"
+            style={{
+              background: '#1a1a1a',
+              border: '1px solid #303030',
+              borderTop: '3px solid #bc1010',
+              WebkitAppRegion: 'no-drag',
+            } as React.CSSProperties}
           >
-            {mobileMenuOpen ? <X style={{ width: 20, height: 20 }} /> : <Menu style={{ width: 20, height: 20 }} />}
-          </button>
+            <div className="text-center space-y-1">
+              <div className="text-lg font-bold text-white">Operator Identification Required</div>
+              <div className="text-xs text-gray-400">
+                Enter your name to continue. This will appear in the OPR system and all reports.
+              </div>
+            </div>
 
-          <div onClick={() => navigate('/')} className="cursor-pointer" title="Rocky Mountain Protective Group — Dashboard">
-            <RmpgLogo height={44} />
-          </div>
-          {/* Page title */}
-          <div className="hidden md:flex items-center gap-1.5">
-            <div className="w-px h-6" style={{ background: '#383838' }} />
-            <span className="text-[11px] font-mono font-bold tracking-wider text-rmpg-500">
-              {pageTitle.toUpperCase()}
-            </span>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="field-label">First Name <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  value={setupFirstName}
+                  onChange={e => setSetupFirstName(e.target.value)}
+                  className="input-dark"
+                  placeholder="First"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="field-label">Last Name <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  value={setupLastName}
+                  onChange={e => setSetupLastName(e.target.value)}
+                  className="input-dark"
+                  placeholder="Last"
+                />
+              </div>
+            </div>
+
+            {setupError && (
+              <div className="text-xs text-red-400 bg-red-900/20 border border-red-800/40 px-3 py-2">
+                {setupError}
+              </div>
+            )}
+
+            <button
+              onClick={handleNameSetupSave}
+              disabled={setupSaving || !setupFirstName.trim() || !setupLastName.trim()}
+              className="btn-primary w-full justify-center"
+            >
+              {setupSaving ? 'Saving...' : 'Continue'}
+            </button>
           </div>
         </div>
+      )}
 
-        {/* Right — PANIC + Profile */}
-        <div className="flex items-center gap-2 md:gap-3" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          {/* PANIC Button */}
-          <PanicButton latitude={gps.latitude} longitude={gps.longitude} />
+      {/* ============================================================ */}
+      {/* MOBILE: Compact 48px header + polished slide-in drawer       */}
+      {/* ============================================================ */}
+      {isMobile && (
+        <>
+          <MobileHeader
+            pageTitle={pageTitle}
+            onMenuOpen={() => setMobileMenuOpen(true)}
+            user={user}
+            onProfileTap={() => openProfileModal('profile')}
+            gpsLatitude={gps.latitude}
+            gpsLongitude={gps.longitude}
+          />
+          <MobileDrawer
+            isOpen={mobileMenuOpen}
+            onClose={() => setMobileMenuOpen(false)}
+            user={user}
+            isAdmin={isAdmin}
+            isConnected={isConnected}
+            gpsTracking={gps.isTracking}
+            gpsAccuracy={gps.accuracy}
+            onlineCount={presence.count}
+            onLogout={logout}
+          />
+        </>
+      )}
 
-          {/* Vertical separator */}
-          <div className="w-px h-7" style={{ background: '#383838' }} />
+      {/* ============================================================ */}
+      {/* DESKTOP: Brand Bar — Logo Left | PANIC Center-Right | Profile */}
+      {/* ============================================================ */}
+      {!isMobile && (
+        <div
+          className="flex items-center justify-between relative"
+          style={{
+            height: '52px',
+            paddingLeft: isMacElectron ? '78px' : '12px',
+            paddingRight: '12px',
+            background: 'linear-gradient(180deg, #252525 0%, #1a1a1a 100%)',
+            borderBottom: '1px solid #303030',
+            flexShrink: 0,
+            WebkitAppRegion: isElectron ? 'drag' : undefined,
+          } as React.CSSProperties}
+        >
+          {/* Crimson accent at very top */}
+          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #6e0a0a, #bc1010, #6e0a0a)', zIndex: 1 }} />
 
-          {/* Profile Menu */}
-          <div className="relative" ref={profileDropdownRef}>
-            <button
-              onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
-              className={`flex items-center gap-2 px-2 py-1 transition-all duration-100 border ${
-                profileDropdownOpen
-                  ? 'bg-rmpg-700 border-rmpg-600'
-                  : 'bg-transparent border-transparent hover:bg-rmpg-800 hover:border-rmpg-700'
-              }`}
-            >
-              {/* Avatar */}
-              {user?.profile_image ? (
-                <img
-                  src={user.profile_image}
-                  alt={user.first_name}
-                  className="w-7 h-7 object-cover"
-                  style={{ border: '2px solid #484848', borderRadius: 2 }}
-                />
-              ) : (
-                <div
-                  className="w-7 h-7 flex items-center justify-center text-[10px] font-bold"
-                  style={{
-                    background: 'linear-gradient(135deg, #8a0c0c, #bc1010)',
-                    color: '#fff',
-                    border: '2px solid #d93030',
-                    borderRadius: 2,
-                  }}
-                >
-                  {initials}
-                </div>
-              )}
+          {/* Left — Logo */}
+          <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+            <div onClick={() => navigate('/')} className="cursor-pointer" title="Rocky Mountain Protective Group — Dashboard">
+              <RmpgLogo height={44} />
+            </div>
+            {/* Page title */}
+            <div className="flex items-center gap-1.5">
+              <div className="w-px h-6" style={{ background: '#383838' }} />
+              <span className="text-[11px] font-mono font-bold tracking-wider text-rmpg-500">
+                {pageTitle.toUpperCase()}
+              </span>
+            </div>
 
-              {/* Name + Badge */}
-              <div className="hidden sm:block text-left">
-                <div className="text-[11px] font-bold text-white leading-tight">
-                  {user?.last_name?.toUpperCase() || '---'}
-                </div>
-                <div className="text-[9px] font-mono leading-tight text-rmpg-500">
-                  {user?.badge_number || user?.role?.toUpperCase() || '---'}
-                </div>
-              </div>
-
-              <ChevronDown
-                style={{
-                  width: 10,
-                  height: 10,
-                  color: '#707070',
-                  transform: profileDropdownOpen ? 'rotate(180deg)' : undefined,
-                  transition: 'transform 0.15s',
-                }}
-              />
-            </button>
-
-            {/* Profile Dropdown */}
-            {profileDropdownOpen && (
-              <div
-                className="menu-dropdown absolute right-0 top-full mt-0.5"
-                style={{ minWidth: 200, zIndex: 9995 }}
-              >
-                {/* User info header */}
-                <div className="px-3 py-2 border-b border-rmpg-700">
-                  <div className="text-xs font-bold text-white">
-                    {user?.first_name} {user?.last_name}
-                  </div>
-                  <div className="text-[9px] font-mono text-rmpg-500">
-                    {user?.email}
-                  </div>
-                  <div className="flex items-center gap-2 mt-1">
-                    {user?.badge_number && (
-                      <span className="text-[9px] font-mono px-1.5 py-0.5 bg-surface-overlay text-rmpg-400 border border-rmpg-800">
-                        {user.badge_number}
-                      </span>
-                    )}
-                    <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 bg-brand-900/20 text-brand-300 border border-brand-800/40">
-                      {user?.role}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Menu items */}
-                <button onClick={() => openProfileModal('profile')} className="menu-item w-full">
-                  <span className="menu-item-icon"><User style={{ width: 12, height: 12 }} /></span>
-                  <span className="menu-item-label">Edit Profile</span>
-                </button>
-                <button onClick={() => openProfileModal('password')} className="menu-item w-full">
-                  <span className="menu-item-icon"><Lock style={{ width: 12, height: 12 }} /></span>
-                  <span className="menu-item-label">Change Password</span>
-                </button>
-                <button onClick={() => openProfileModal('sessions')} className="menu-item w-full">
-                  <span className="menu-item-icon"><Shield style={{ width: 12, height: 12 }} /></span>
-                  <span className="menu-item-label">Active Sessions</span>
-                </button>
-                {isAdmin && (
-                  <button onClick={() => { setProfileDropdownOpen(false); navigate('/admin'); }} className="menu-item w-full">
-                    <span className="menu-item-icon"><Settings style={{ width: 12, height: 12 }} /></span>
-                    <span className="menu-item-label">System Settings</span>
-                  </button>
-                )}
-
-                <div className="menu-separator" />
-
-                <button onClick={() => { setProfileDropdownOpen(false); logout(); }} className="menu-item w-full">
-                  <span className="menu-item-icon"><LogOut style={{ width: 12, height: 12, color: '#d93030' }} /></span>
-                  <span className="menu-item-label" style={{ color: '#d93030' }}>Sign Out</span>
-                </button>
+            {/* Contract Manager Banner */}
+            {isContractManager && (
+              <div className="flex items-center gap-2 ml-4 px-3 py-0.5 border border-amber-700/50 bg-amber-900/20 rounded">
+                <span className="text-[9px] font-mono font-bold tracking-wider text-amber-400 uppercase">
+                  Contract Manager — ICU Investigations
+                </span>
+                <span className="text-[8px] font-mono text-amber-600 uppercase">
+                  Demo Data
+                </span>
               </div>
             )}
           </div>
-        </div>
-      </div>
 
-      {/* ============================================================ */}
-      {/* MOBILE NAVIGATION DRAWER (slides in from left) */}
-      {/* ============================================================ */}
-      {mobileMenuOpen && (
-        <div className="md:hidden fixed inset-0 z-[9999]">
-          {/* Backdrop */}
-          <div className="absolute inset-0 bg-black/60" onClick={() => setMobileMenuOpen(false)} />
-          {/* Drawer */}
-          <div
-            className="absolute top-0 left-0 bottom-0 w-72 overflow-y-auto animate-slide-in-right"
-            style={{ background: '#1a1a1a', borderRight: '1px solid #383838' }}
-          >
-            {/* Drawer header */}
-            <div className="flex items-center gap-3 p-4 border-b border-rmpg-700">
-              <RmpgLogo height={32} iconOnly />
-              <div>
-                <div className="text-xs font-bold text-white">RMPG FLEX</div>
-                <div className="text-[9px] font-mono text-rmpg-500">
-                  {user?.first_name} {user?.last_name} — {user?.role?.toUpperCase()}
-                </div>
-              </div>
-            </div>
+          {/* Right — PANIC + Profile */}
+          <div className="flex items-center gap-3" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+            {/* PANIC Button */}
+            <PanicButton latitude={gps.latitude} longitude={gps.longitude} />
 
-            {/* Nav items */}
-            <div className="py-2">
-              {TOOLBAR_NAV.filter(item => !item.adminOnly || isAdmin).map((item) => {
-                const Icon = item.icon;
-                const hasChildren = item.children && item.children.length > 0;
+            {/* Vertical separator */}
+            <div className="w-px h-7" style={{ background: '#383838' }} />
 
-                if (hasChildren) {
-                  return (
-                    <div key={item.label}>
-                      <div className="px-4 py-1.5 text-[9px] font-bold uppercase tracking-wider text-rmpg-500 mt-2">
-                        {item.label}
-                      </div>
-                      {item.children!.filter(c => !c.adminOnly || isAdmin).map((child) => {
-                        const ChildIcon = child.icon;
-                        const childActive = location.pathname.startsWith(child.path);
-                        return (
-                          <button
-                            key={child.path}
-                            onClick={() => { navigate(child.path); setMobileMenuOpen(false); }}
-                            className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors"
-                            style={{
-                              background: childActive ? 'rgba(188, 16, 16, 0.15)' : 'transparent',
-                              color: childActive ? '#fff' : '#c8c8c8',
-                              borderLeft: childActive ? '3px solid #bc1010' : '3px solid transparent',
-                            }}
-                          >
-                            <ChildIcon style={{ width: 18, height: 18 }} className={childActive ? 'text-brand-400' : 'text-rmpg-500'} />
-                            <span className="text-sm font-medium">{child.label}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  );
-                }
-
-                const isActive = item.path === '/' ? location.pathname === '/' : location.pathname.startsWith(item.path);
-                return (
-                  <button
-                    key={item.path}
-                    onClick={() => { navigate(item.path); setMobileMenuOpen(false); }}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors"
+            {/* Profile Menu */}
+            <div className="relative" ref={profileDropdownRef}>
+              <button
+                onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
+                className={`flex items-center gap-2 px-2 py-1 transition-all duration-100 border ${
+                  profileDropdownOpen
+                    ? 'bg-rmpg-700 border-rmpg-600'
+                    : 'bg-transparent border-transparent hover:bg-rmpg-800 hover:border-rmpg-700'
+                }`}
+              >
+                {/* Avatar */}
+                {user?.profile_image ? (
+                  <img
+                    src={user.profile_image}
+                    alt={user.first_name}
+                    className="w-7 h-7 object-cover"
+                    style={{ border: '2px solid #484848', borderRadius: 2 }}
+                  />
+                ) : (
+                  <div
+                    className="w-7 h-7 flex items-center justify-center text-[10px] font-bold"
                     style={{
-                      background: isActive ? 'rgba(188, 16, 16, 0.15)' : 'transparent',
-                      color: isActive ? '#fff' : '#c8c8c8',
-                      borderLeft: isActive ? '3px solid #bc1010' : '3px solid transparent',
+                      background: 'linear-gradient(135deg, #8a0c0c, #bc1010)',
+                      color: '#fff',
+                      border: '2px solid #d93030',
+                      borderRadius: 2,
                     }}
                   >
-                    <Icon style={{ width: 18, height: 18 }} className={isActive ? 'text-brand-400' : 'text-rmpg-500'} />
-                    <span className="text-sm font-medium">{item.label}</span>
-                  </button>
-                );
-              })}
-            </div>
+                    {initials}
+                  </div>
+                )}
 
-            {/* Drawer footer — Sign Out */}
-            <div className="border-t border-rmpg-700 p-3 mt-2">
-              <button
-                onClick={() => { setMobileMenuOpen(false); logout(); }}
-                className="w-full flex items-center gap-3 px-3 py-3 text-left"
-                style={{ color: '#d93030' }}
-              >
-                <LogOut style={{ width: 18, height: 18 }} />
-                <span className="text-sm font-bold">Sign Out</span>
+                {/* Name + Badge */}
+                <div className="text-left">
+                  <div className="text-[11px] font-bold text-white leading-tight">
+                    {user?.first_name && user?.last_name
+                      ? `${user.last_name.toUpperCase()}, ${user.first_name}`
+                      : user?.last_name?.toUpperCase() || user?.first_name?.toUpperCase() || '---'}
+                  </div>
+                  <div className="text-[9px] font-mono leading-tight text-rmpg-500">
+                    {user?.badge_number ? `#${user.badge_number}` : formatLabel(user?.role)?.toUpperCase() || '---'}
+                  </div>
+                </div>
+
+                <ChevronDown
+                  style={{
+                    width: 10,
+                    height: 10,
+                    color: '#707070',
+                    transform: profileDropdownOpen ? 'rotate(180deg)' : undefined,
+                    transition: 'transform 0.15s',
+                  }}
+                />
               </button>
+
+              {/* Profile Dropdown */}
+              {profileDropdownOpen && (
+                <div
+                  className="menu-dropdown absolute right-0 top-full mt-0.5"
+                  style={{ minWidth: 200, zIndex: 9995 }}
+                >
+                  {/* User info header */}
+                  <div className="px-3 py-2 border-b border-rmpg-700">
+                    <div className="text-xs font-bold text-white">
+                      {user?.first_name} {user?.last_name}
+                    </div>
+                    <div className="text-[9px] font-mono text-rmpg-500">
+                      {user?.email}
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      {user?.badge_number && (
+                        <span className="text-[9px] font-mono px-1.5 py-0.5 bg-surface-overlay text-rmpg-400 border border-rmpg-800">
+                          {user.badge_number}
+                        </span>
+                      )}
+                      <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 bg-brand-900/20 text-brand-300 border border-brand-800/40">
+                        {formatLabel(user?.role)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Menu items */}
+                  <button onClick={() => openProfileModal('profile')} className="menu-item w-full">
+                    <span className="menu-item-icon"><User style={{ width: 12, height: 12 }} /></span>
+                    <span className="menu-item-label">Edit Profile</span>
+                  </button>
+                  <button onClick={() => openProfileModal('password')} className="menu-item w-full">
+                    <span className="menu-item-icon"><Lock style={{ width: 12, height: 12 }} /></span>
+                    <span className="menu-item-label">Change Password</span>
+                  </button>
+                  <button onClick={() => openProfileModal('sessions')} className="menu-item w-full">
+                    <span className="menu-item-icon"><Shield style={{ width: 12, height: 12 }} /></span>
+                    <span className="menu-item-label">Active Sessions</span>
+                  </button>
+                  {isAdmin && (
+                    <button onClick={() => { setProfileDropdownOpen(false); navigate('/admin'); }} className="menu-item w-full">
+                      <span className="menu-item-icon"><Settings style={{ width: 12, height: 12 }} /></span>
+                      <span className="menu-item-label">System Settings</span>
+                    </button>
+                  )}
+
+                  <div className="menu-separator" />
+
+                  <button onClick={() => { setProfileDropdownOpen(false); logout(); }} className="menu-item w-full">
+                    <span className="menu-item-icon"><LogOut style={{ width: 12, height: 12, color: '#d93030' }} /></span>
+                    <span className="menu-item-label" style={{ color: '#d93030' }}>Sign Out</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -479,10 +659,10 @@ export default function Layout() {
           onRefreshData={fetchHeaderStats}
         />
 
-        {/* Right side — Operator info */}
+        {/* Right side — Operator info (persists name + badge from user profile) */}
         <div className="flex items-center gap-2 text-[10px] font-mono text-rmpg-400">
           <span>
-            OPR: {user?.badge_number || '---'} {user?.last_name?.toUpperCase() || '---'} | {user?.role?.toUpperCase() || '---'}
+            OPR: {user?.badge_number ? `#${user.badge_number}` : '---'} {user?.last_name?.toUpperCase() || '---'}, {user?.first_name || '---'} | {formatLabel(user?.role)?.toUpperCase() || '---'}
           </span>
         </div>
       </div>
@@ -500,8 +680,18 @@ export default function Layout() {
         }}
       >
         {/* Left — Nav toolbar buttons (with dropdown groups) */}
-        <div className="flex items-center gap-0">
-          {TOOLBAR_NAV.filter(item => !item.adminOnly || isAdmin).map((item, idx, filtered) => {
+        <div className="flex items-center gap-0 flex-shrink-0">
+          {TOOLBAR_NAV
+            .filter(item => !item.adminOnly || isAdmin)
+            .filter(item => {
+              // Contract managers see limited nav
+              if (!isContractManager) return true;
+              if (item.children) {
+                return item.children.some(c => CONTRACT_MANAGER_PATHS.has(c.path));
+              }
+              return CONTRACT_MANAGER_PATHS.has(item.path);
+            })
+            .map((item, idx, filtered) => {
             const Icon = item.icon;
             const prevGroup = idx > 0 ? filtered[idx - 1].group : item.group;
             const showSep = idx > 0 && item.group !== prevGroup;
@@ -521,10 +711,17 @@ export default function Layout() {
                   {showSep && <div className="toolbar-separator" />}
                   <div className="relative" data-nav-dropdown>
                     <button
-                      onClick={() => setOpenDropdown(isOpen ? null : item.label)}
+                      onClick={() => {
+                        if (dropdownSwitchedByHoverRef.current) {
+                          dropdownSwitchedByHoverRef.current = false;
+                          return;
+                        }
+                        setOpenDropdown(prev => prev === item.label ? null : item.label);
+                      }}
                       onMouseEnter={() => {
                         if (openDropdown && openDropdown !== item.label) {
                           if (dropdownTimeoutRef.current) clearTimeout(dropdownTimeoutRef.current);
+                          dropdownSwitchedByHoverRef.current = true;
                           setOpenDropdown(item.label);
                         }
                       }}
@@ -545,7 +742,7 @@ export default function Layout() {
                           marginTop: 1,
                         }}
                       >
-                        {item.children!.filter(c => !c.adminOnly || isAdmin).map((child) => {
+                        {item.children!.filter(c => !c.adminOnly || isAdmin).filter(c => !isContractManager || CONTRACT_MANAGER_PATHS.has(c.path)).map((child) => {
                           const ChildIcon = child.icon;
                           const childActive = location.pathname.startsWith(child.path);
                           return (
@@ -587,8 +784,8 @@ export default function Layout() {
           })}
         </div>
 
-        {/* Middle — Status indicators */}
-        <div className="flex items-center gap-2">
+        {/* Middle — Status indicators (scrollable on narrow screens) */}
+        <div className="flex items-center gap-1 lg:gap-2 flex-1 min-w-0 overflow-x-auto mx-2" style={{ scrollbarWidth: 'none' }}>
           {/* Active Calls */}
           <button
             onClick={() => navigate('/dispatch')}
@@ -688,17 +885,19 @@ export default function Layout() {
         </ErrorBoundary>
       </main>
 
-      {/* Status Bar Footer */}
-      <StatusBar
-        isConnected={isConnected}
-        user={user}
-        activeCallCount={activeCallCount}
-        activeBOLOs={activeBOLOs}
-        gpsTracking={gps.isTracking}
-        gpsUnitCallSign={gps.unitCallSign}
-        gpsAccuracy={gps.accuracy}
-        gpsLastSent={gps.lastSentAt}
-      />
+      {/* Status Bar Footer — Desktop only (mobile status is in the drawer) */}
+      {!isMobile && (
+        <StatusBar
+          isConnected={isConnected}
+          user={user}
+          activeCallCount={activeCallCount}
+          activeBOLOs={activeBOLOs}
+          gpsTracking={gps.isTracking}
+          gpsUnitCallSign={gps.unitCallSign}
+          gpsAccuracy={gps.accuracy}
+          gpsLastSent={gps.lastSentAt}
+        />
+      )}
 
       {/* Profile Modal */}
       <UserProfileModal
@@ -706,6 +905,15 @@ export default function Layout() {
         onClose={() => setProfileModalOpen(false)}
         initialTab={profileModalTab}
       />
+
+      {/* Offline PIN Entry Modal — triggered globally when an offline write needs authorization */}
+      <PinEntryModal
+        isOpen={offlinePinModalOpen}
+        onClose={() => setOfflinePinModalOpen(false)}
+      />
+
+      {/* Force Password Change Modal — blocks UI until password changed */}
+      <ForcePasswordChangeModal />
     </div>
   );
 }

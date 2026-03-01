@@ -3,6 +3,7 @@ import { getDb } from '../models/database';
 import { authenticateToken } from '../middleware/auth';
 import { sendCsv } from '../utils/csvExport';
 import { localNow, localToday } from '../utils/timeUtils';
+import { queryRegistration, queryDriverRecord, isConfigured as isMvrConfigured, UtahMvrError } from '../utils/utahMvrClient';
 
 const router = Router();
 
@@ -71,14 +72,23 @@ router.get('/persons/search', (req: Request, res: Response) => {
     const searchTerm = `%${q}%`;
 
     const persons = db.prepare(`
-      SELECT * FROM persons
-      WHERE first_name LIKE ? OR last_name LIKE ? OR phone LIKE ? OR email LIKE ?
-        OR address LIKE ? OR (first_name || ' ' || last_name) LIKE ?
-      ORDER BY last_name, first_name
+      SELECT p.*,
+        (SELECT COUNT(*) FROM warrants w WHERE w.subject_person_id = p.id AND w.status IN ('active','outstanding') AND (w.archived_at IS NULL)) as active_warrants,
+        (SELECT COUNT(*) FROM trespass_orders t WHERE t.person_id = p.id AND t.status = 'active' AND (t.expiration_date IS NULL OR t.expiration_date > datetime('now','localtime'))) as active_trespass_orders
+      FROM persons p
+      WHERE p.first_name LIKE ? OR p.last_name LIKE ? OR p.phone LIKE ? OR p.email LIKE ?
+        OR p.address LIKE ? OR (p.first_name || ' ' || p.last_name) LIKE ?
+      ORDER BY p.last_name, p.first_name
       LIMIT 50
     `).all(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
 
-    res.json(persons);
+    // Flag persons with alerts for dispatcher quick-reference
+    const enriched = persons.map((p: any) => ({
+      ...p,
+      has_safety_alerts: (p.active_warrants > 0 || p.active_trespass_orders > 0 || (p.flags && p.flags !== '[]')),
+    }));
+
+    res.json(enriched);
   } catch (error: any) {
     console.error('Search persons error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -149,9 +159,120 @@ router.get('/persons/:id', (req: Request, res: Response) => {
       `).all(person.id);
     } catch { /* table might not exist yet */ }
 
-    res.json({ ...person, vehicles, linked_clients });
+    // ─── Safety Alerts: warrants, BOLOs, trespass orders ──────
+    const safety_alerts: any = { has_alerts: false, warrants: [], bolos: [], trespass_orders: [] };
+    try {
+      // Active warrants for this person
+      safety_alerts.warrants = db.prepare(`
+        SELECT id, warrant_number, type, status, charge_description, issuing_court, bail_amount
+        FROM warrants
+        WHERE subject_person_id = ? AND status IN ('active', 'outstanding')
+          AND (archived_at IS NULL)
+      `).all(person.id);
+
+      // Active BOLOs matching this person's name
+      const firstName = (person.first_name || '').toLowerCase();
+      const lastName = (person.last_name || '').toLowerCase();
+      if (firstName.length >= 2 && lastName.length >= 2) {
+        safety_alerts.bolos = db.prepare(`
+          SELECT id, bolo_number, subject_description, priority, description, status
+          FROM bolos
+          WHERE status = 'active'
+            AND LOWER(subject_description) LIKE ? AND LOWER(subject_description) LIKE ?
+        `).all(`%${firstName}%`, `%${lastName}%`);
+      }
+
+      // Active trespass orders where this person is the subject
+      safety_alerts.trespass_orders = db.prepare(`
+        SELECT id, order_number, order_type, status, location, expiration_date
+        FROM trespass_orders
+        WHERE person_id = ? AND status = 'active'
+          AND (expiration_date IS NULL OR expiration_date > datetime('now','localtime'))
+      `).all(person.id);
+
+      safety_alerts.has_alerts =
+        safety_alerts.warrants.length > 0 ||
+        safety_alerts.bolos.length > 0 ||
+        safety_alerts.trespass_orders.length > 0;
+    } catch (alertErr: any) {
+      // Non-fatal — safety alerts are best-effort
+      console.error('Person safety alerts error:', alertErr.message);
+    }
+
+    res.json({ ...person, vehicles, linked_clients, safety_alerts });
   } catch (error: any) {
     console.error('Get person error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/records/persons/:id/safety-check - Quick safety alert check for dispatch
+router.get('/persons/:id/safety-check', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const person = db.prepare('SELECT id, first_name, last_name, dob, flags FROM persons WHERE id = ?').get(req.params.id) as any;
+    if (!person) { res.status(404).json({ error: 'Person not found' }); return; }
+
+    // Active warrants
+    const warrants = db.prepare(`
+      SELECT id, warrant_number, type, charge_description, bail_amount, issuing_court
+      FROM warrants
+      WHERE subject_person_id = ? AND status IN ('active', 'outstanding')
+        AND (archived_at IS NULL)
+    `).all(person.id);
+
+    // Active trespass orders
+    const trespass = db.prepare(`
+      SELECT id, order_number, order_type, location, property_id, expiration_date
+      FROM trespass_orders
+      WHERE person_id = ? AND status = 'active'
+        AND (expiration_date IS NULL OR expiration_date > datetime('now','localtime'))
+    `).all(person.id);
+
+    // Known flags (parsed from JSON flags field)
+    let flags: string[] = [];
+    try { flags = JSON.parse(person.flags || '[]'); } catch { }
+
+    // Prior incidents count (last 12 months)
+    const priorIncidents = (db.prepare(`
+      SELECT COUNT(*) as count FROM incident_persons ip
+      JOIN incidents i ON ip.incident_id = i.id
+      WHERE ip.person_id = ? AND ip.role IN ('suspect','arrested')
+        AND i.created_at >= datetime('now','localtime','-12 months')
+    `).get(person.id) as any).count;
+
+    // Caution indicators
+    const cautions: string[] = [];
+    if (warrants.length > 0) cautions.push(`ACTIVE WARRANT(S): ${warrants.length}`);
+    if (trespass.length > 0) cautions.push(`TRESPASS ORDER(S): ${trespass.length}`);
+    if (flags.includes('violent')) cautions.push('VIOLENT HISTORY');
+    if (flags.includes('armed')) cautions.push('KNOWN ARMED');
+    if (flags.includes('mental_health')) cautions.push('MENTAL HEALTH FLAG');
+    if (flags.includes('sex_offender')) cautions.push('SEX OFFENDER');
+    if (flags.includes('gang_affiliated')) cautions.push('GANG AFFILIATED');
+    if (priorIncidents >= 3) cautions.push(`${priorIncidents} INCIDENTS (12mo)`);
+
+    res.json({
+      person_id: person.id,
+      name: `${person.last_name}, ${person.first_name}`,
+      dob: person.dob,
+      alert_level: warrants.length > 0 ? 'critical' : (cautions.length > 0 ? 'warning' : 'clear'),
+      cautions,
+      warrants,
+      trespass_orders: trespass,
+      flags,
+      prior_incidents_12mo: priorIncidents,
+    });
+
+    // Log the safety check
+    try {
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'safety_check', 'person', ?, ?, ?)
+      `).run(req.user!.userId, person.id, `Safety check: ${person.last_name}, ${person.first_name}${cautions.length ? ` — ${cautions.join(', ')}` : ''}`, req.ip || 'unknown');
+    } catch { /* non-fatal */ }
+  } catch (error: any) {
+    console.error('Safety check error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1053,6 +1174,67 @@ router.get('/vehicles/:id/incidents', (req: Request, res: Response) => {
   }
 });
 
+// POST /api/records/vehicles/:id/mvr-check — Query Utah MVR for this vehicle's plate
+router.post('/vehicles/:id/mvr-check', async (req: Request, res: Response) => {
+  try {
+    if (!isMvrConfigured()) {
+      res.status(400).json({ error: 'Utah MVR credentials not configured' });
+      return;
+    }
+    const db = getDb();
+    const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
+    if (!vehicle) { res.status(404).json({ error: 'Vehicle not found' }); return; }
+    if (!vehicle.plate_number) { res.status(400).json({ error: 'Vehicle has no plate number' }); return; }
+
+    const result = await queryRegistration(vehicle.plate_number, vehicle.state || 'UT');
+    const now = localNow();
+
+    db.prepare('UPDATE vehicles_records SET utah_mvr_queried_at = ?, utah_mvr_data = ? WHERE id = ?')
+      .run(now, JSON.stringify(result.data || null), vehicle.id);
+
+    res.json({ success: true, data: result.data, queried_at: now });
+  } catch (error: any) {
+    if (error instanceof UtahMvrError) {
+      res.status(error.status).json({ error: error.message });
+      return;
+    }
+    console.error('Vehicle MVR check error:', error);
+    res.status(500).json({ error: 'MVR query failed' });
+  }
+});
+
+// POST /api/records/persons/:id/mvr-check — Query Utah MVR for this person's DL
+router.post('/persons/:id/mvr-check', async (req: Request, res: Response) => {
+  try {
+    if (!isMvrConfigured()) {
+      res.status(400).json({ error: 'Utah MVR credentials not configured' });
+      return;
+    }
+    const db = getDb();
+    const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id) as any;
+    if (!person) { res.status(404).json({ error: 'Person not found' }); return; }
+
+    const dlNumber = person.dl_number || person.drivers_license;
+    if (!dlNumber) { res.status(400).json({ error: 'Person has no driver license number on record' }); return; }
+
+    const result = await queryDriverRecord(dlNumber);
+    const now = localNow();
+    const dlStatus = result.data?.dl_status || null;
+
+    db.prepare('UPDATE persons SET utah_mvr_queried_at = ?, utah_mvr_dl_status = ? WHERE id = ?')
+      .run(now, dlStatus, person.id);
+
+    res.json({ success: true, data: result.data, dl_status: dlStatus, queried_at: now });
+  } catch (error: any) {
+    if (error instanceof UtahMvrError) {
+      res.status(error.status).json({ error: error.message });
+      return;
+    }
+    console.error('Person MVR check error:', error);
+    res.status(500).json({ error: 'MVR query failed' });
+  }
+});
+
 // GET /api/records/evidence - List all evidence with incident info
 router.get('/evidence', (req: Request, res: Response) => {
   try {
@@ -1276,6 +1458,102 @@ router.post('/evidence/:id/custody', (req: Request, res: Response) => {
     res.status(201).json(updated);
   } catch (error: any) {
     console.error('Add custody entry error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/records/evidence/stats — Property room aggregate stats
+router.get('/evidence/stats', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const statusCounts = db.prepare(`
+      SELECT status, COUNT(*) as count FROM evidence WHERE archived_at IS NULL GROUP BY status
+    `).all() as any[];
+    const typeCounts = db.prepare(`
+      SELECT evidence_type, COUNT(*) as count FROM evidence
+      WHERE archived_at IS NULL AND evidence_type IS NOT NULL GROUP BY evidence_type
+    `).all() as any[];
+    const locationCounts = db.prepare(`
+      SELECT storage_location, COUNT(*) as count FROM evidence
+      WHERE archived_at IS NULL AND storage_location IS NOT NULL GROUP BY storage_location
+    `).all() as any[];
+    const pendingDisposition = db.prepare(`
+      SELECT COUNT(*) as count FROM evidence WHERE status IN ('received', 'in_storage') AND archived_at IS NULL
+    `).get() as any;
+
+    res.json({
+      data: {
+        by_status: Object.fromEntries(statusCounts.map((r: any) => [r.status, r.count])),
+        by_type: Object.fromEntries(typeCounts.map((r: any) => [r.evidence_type, r.count])),
+        by_location: Object.fromEntries(locationCounts.map((r: any) => [r.storage_location, r.count])),
+        total: statusCounts.reduce((a: number, b: any) => a + b.count, 0),
+        pending_disposition: pendingDisposition?.count || 0,
+      },
+    });
+  } catch (error: any) {
+    console.error('Evidence stats error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/records/evidence/locations — Distinct storage locations from system_config
+router.get('/evidence/locations', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const locations = db.prepare(`
+      SELECT config_key as name, config_value as details
+      FROM system_config WHERE category = 'evidence_location' AND is_active = 1
+      ORDER BY sort_order
+    `).all();
+    res.json({ data: locations });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/records/evidence/:id/chain-action — Enhanced chain-of-custody action
+router.post('/evidence/:id/chain-action', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
+    if (!evidence) return res.status(404).json({ error: 'Evidence not found' });
+
+    const { action, from_location, to_location, notes } = req.body;
+    const validActions = ['check_in', 'check_out', 'transfer', 'lab_submit', 'release', 'dispose'];
+    if (!action || !validActions.includes(action)) return res.status(400).json({ error: 'Valid action required' });
+
+    const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
+    let chain: any[] = [];
+    try { chain = JSON.parse(evidence.chain_of_custody || '[]'); } catch { /* ignore */ }
+
+    chain.push({
+      action,
+      timestamp: localNow(),
+      user_id: req.user!.userId,
+      user_name: user?.full_name || '',
+      from_location: from_location || evidence.storage_location || null,
+      to_location: to_location || null,
+      notes: notes || null,
+    });
+
+    // Update status based on action
+    const statusMap: Record<string, string> = {
+      check_in: 'in_storage', check_out: 'received', transfer: 'in_storage',
+      lab_submit: 'submitted_to_le', release: 'released', dispose: 'disposed',
+    };
+    const newStatus = statusMap[action] || evidence.status;
+    const storageLocation = to_location || evidence.storage_location;
+
+    db.prepare(`UPDATE evidence SET chain_of_custody = ?, status = ?, storage_location = ?, updated_at = ? WHERE id = ?`)
+      .run(JSON.stringify(chain), newStatus, storageLocation, localNow(), evidence.id);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+      VALUES (?, ?, 'evidence', ?, ?, ?)`).run(
+      req.user!.userId, `evidence_${action}`, evidence.id, JSON.stringify({ action, to_location }), localNow());
+
+    res.json({ data: { id: evidence.id, status: newStatus, chain_of_custody: chain } });
+  } catch (error: any) {
+    console.error('Evidence chain-action error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -2052,5 +2330,430 @@ router.get('/persons/:id/invoice-summary', (req: Request, res: Response) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// ─── GET /api/records/ncic-query ─────────────────────────────
+// NCIC/NLETS query simulation — searches local database and returns
+// raw record data for client-side NCIC formatting.
+router.get('/ncic-query', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { type, query: q } = req.query;
+
+    if (!type || !q || (q as string).length < 2) {
+      res.status(400).json({ error: 'type and query (min 2 chars) are required' });
+      return;
+    }
+
+    const searchTerm = `%${q}%`;
+
+    switch (type) {
+      case 'person': {
+        // Search persons by name
+        const persons = db.prepare(`
+          SELECT * FROM persons
+          WHERE first_name LIKE ? OR last_name LIKE ?
+            OR (first_name || ' ' || last_name) LIKE ?
+            OR (last_name || ', ' || first_name) LIKE ?
+          ORDER BY last_name, first_name
+          LIMIT 5
+        `).all(searchTerm, searchTerm, searchTerm, searchTerm) as any[];
+
+        if (persons.length === 0) {
+          res.json({ type: 'person', results: [], query: q });
+          return;
+        }
+
+        // For each person, get criminal history and warrants
+        const results = persons.map(p => {
+          const criminalHistory = db.prepare(`
+            SELECT * FROM criminal_history WHERE person_id = ?
+            ORDER BY offense_date DESC
+          `).all(p.id);
+
+          let warrants: any[] = [];
+          try {
+            warrants = db.prepare(`
+              SELECT * FROM warrants WHERE subject_person_id = ? AND status = 'active'
+              ORDER BY issue_date DESC
+            `).all(p.id);
+          } catch { /* warrants table may not exist */ }
+
+          return { person: p, criminalHistory, warrants };
+        });
+
+        res.json({ type: 'person', results, query: q });
+        break;
+      }
+
+      case 'vehicle': {
+        // Search vehicles by plate, VIN, or make/model
+        const vehicles = db.prepare(`
+          SELECT v.*, p.first_name as owner_first_name, p.last_name as owner_last_name
+          FROM vehicles_records v
+          LEFT JOIN persons p ON v.owner_person_id = p.id
+          WHERE v.plate_number LIKE ? OR v.vin LIKE ?
+            OR v.make LIKE ? OR v.model LIKE ?
+          ORDER BY v.created_at DESC
+          LIMIT 5
+        `).all(searchTerm, searchTerm, searchTerm, searchTerm);
+
+        res.json({ type: 'vehicle', results: vehicles, query: q });
+        break;
+      }
+
+      case 'warrant': {
+        // Search warrants by subject name or warrant number
+        const warrants = db.prepare(`
+          SELECT w.*, p.first_name as subject_first_name, p.last_name as subject_last_name,
+            p.date_of_birth as subject_dob
+          FROM warrants w
+          LEFT JOIN persons p ON w.subject_person_id = p.id
+          WHERE w.status = 'active'
+            AND (w.warrant_number LIKE ?
+              OR p.first_name LIKE ? OR p.last_name LIKE ?
+              OR (p.first_name || ' ' || p.last_name) LIKE ?
+              OR w.charge_description LIKE ?)
+          ORDER BY w.issue_date DESC
+          LIMIT 10
+        `).all(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+
+        res.json({ type: 'warrant', results: warrants, query: q });
+        break;
+      }
+
+      default:
+        res.status(400).json({ error: 'Invalid type. Use: person, vehicle, warrant' });
+    }
+  } catch (error: any) {
+    console.error('NCIC query error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── PREMISE HISTORY (Location Intelligence) ─────────
+// Pull up any address → see ALL prior activity at that location
+
+router.get('/premise-history', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { address, property_id, limit: lim = '100' } = req.query;
+    const limitNum = Math.min(parseInt(lim as string, 10) || 100, 500);
+
+    if (!address && !property_id) {
+      return res.status(400).json({ error: 'address or property_id is required' });
+    }
+
+    // Build address matching — fuzzy LIKE on normalized address
+    const addrSearch = address
+      ? `%${(address as string).replace(/[,.\-#]/g, '').replace(/\s+/g, '%').toLowerCase()}%`
+      : null;
+
+    // Also resolve property_id if address matches a known property
+    let propIds: number[] = [];
+    if (property_id) {
+      propIds = [parseInt(property_id as string, 10)];
+    } else if (addrSearch) {
+      const props = db.prepare(`
+        SELECT id FROM properties
+        WHERE LOWER(REPLACE(REPLACE(REPLACE(address, ',', ''), '.', ''), '-', '')) LIKE ?
+      `).all(addrSearch) as { id: number }[];
+      propIds = props.map(p => p.id);
+    }
+
+    const timeline: any[] = [];
+
+    // 1. Calls for Service
+    const callWhere = addrSearch
+      ? `WHERE (LOWER(REPLACE(REPLACE(REPLACE(location_address, ',', ''), '.', ''), '-', '')) LIKE ?${propIds.length ? ` OR property_id IN (${propIds.join(',')})` : ''})`
+      : `WHERE property_id IN (${propIds.join(',')})`;
+    const callParams = addrSearch ? [addrSearch] : [];
+
+    const calls = db.prepare(`
+      SELECT id, call_number, incident_type, priority, status, location_address,
+        created_at, cleared_at, disposition, weapons_involved, domestic_violence,
+        injuries_reported, description, source
+      FROM calls_for_service ${callWhere}
+      ORDER BY created_at DESC LIMIT ?
+    `).all(...callParams, limitNum) as any[];
+
+    calls.forEach(c => timeline.push({
+      source: 'call', date: c.created_at, id: c.id,
+      number: c.call_number, type: c.incident_type, priority: c.priority,
+      status: c.status, address: c.location_address, description: c.description,
+      flags: {
+        weapons: !!c.weapons_involved, dv: !!c.domestic_violence,
+        injuries: !!c.injuries_reported,
+      },
+    }));
+
+    // 2. Incidents
+    const incWhere = addrSearch
+      ? `WHERE (LOWER(REPLACE(REPLACE(REPLACE(i.location_address, ',', ''), '.', ''), '-', '')) LIKE ?${propIds.length ? ` OR i.property_id IN (${propIds.join(',')})` : ''})`
+      : `WHERE i.property_id IN (${propIds.join(',')})`;
+    const incParams = addrSearch ? [addrSearch] : [];
+
+    const incidents = db.prepare(`
+      SELECT i.id, i.incident_number, i.incident_type, i.priority, i.status,
+        i.location_address, i.created_at, i.disposition, i.weapons_involved,
+        i.domestic_violence, i.injuries, i.narrative,
+        u.full_name as officer_name
+      FROM incidents i
+      LEFT JOIN users u ON i.officer_id = u.id
+      ${incWhere}
+      ORDER BY i.created_at DESC LIMIT ?
+    `).all(...incParams, limitNum) as any[];
+
+    incidents.forEach(i => timeline.push({
+      source: 'incident', date: i.created_at, id: i.id,
+      number: i.incident_number, type: i.incident_type, priority: i.priority,
+      status: i.status, address: i.location_address, officer: i.officer_name,
+      flags: {
+        weapons: !!i.weapons_involved, dv: !!i.domestic_violence,
+        injuries: i.injuries && i.injuries !== 'none',
+      },
+    }));
+
+    // 3. Field Interviews
+    const fiWhere = addrSearch
+      ? `WHERE (LOWER(REPLACE(REPLACE(REPLACE(fi.location, ',', ''), '.', ''), '-', '')) LIKE ?${propIds.length ? ` OR fi.property_id IN (${propIds.join(',')})` : ''})`
+      : `WHERE fi.property_id IN (${propIds.join(',')})`;
+    const fiParams = addrSearch ? [addrSearch] : [];
+
+    const fis = db.prepare(`
+      SELECT fi.id, fi.fi_number, fi.subject_first_name, fi.subject_last_name,
+        fi.contact_reason, fi.location, fi.created_at, fi.officer_name
+      FROM field_interviews fi
+      ${fiWhere}
+      ORDER BY fi.created_at DESC LIMIT ?
+    `).all(...fiParams, limitNum) as any[];
+
+    fis.forEach(f => timeline.push({
+      source: 'field_interview', date: f.created_at, id: f.id,
+      number: f.fi_number, type: f.contact_reason,
+      subject: `${f.subject_first_name || ''} ${f.subject_last_name || ''}`.trim(),
+      address: f.location, officer: f.officer_name,
+    }));
+
+    // 4. Trespass Orders
+    const toWhere = addrSearch
+      ? `WHERE (LOWER(REPLACE(REPLACE(REPLACE(t.location, ',', ''), '.', ''), '-', '')) LIKE ?${propIds.length ? ` OR t.property_id IN (${propIds.join(',')})` : ''})`
+      : `WHERE t.property_id IN (${propIds.join(',')})`;
+    const toParams = addrSearch ? [addrSearch] : [];
+
+    const trespass = db.prepare(`
+      SELECT t.id, t.order_number, t.subject_first_name, t.subject_last_name,
+        t.status, t.reason, t.location, t.effective_date, t.expiration_date,
+        t.created_at
+      FROM trespass_orders t
+      ${toWhere}
+      ORDER BY t.created_at DESC LIMIT ?
+    `).all(...toParams, limitNum) as any[];
+
+    trespass.forEach(t => timeline.push({
+      source: 'trespass_order', date: t.created_at, id: t.id,
+      number: t.order_number, status: t.status, reason: t.reason,
+      subject: `${t.subject_first_name || ''} ${t.subject_last_name || ''}`.trim(),
+      address: t.location,
+      effective_date: t.effective_date, expiration_date: t.expiration_date,
+    }));
+
+    // 5. Citations at this location
+    const citWhere = addrSearch
+      ? `WHERE LOWER(REPLACE(REPLACE(REPLACE(c.location, ',', ''), '.', ''), '-', '')) LIKE ?`
+      : `WHERE 0`; // citations don't have property_id, skip if no address
+    const citParams = addrSearch ? [addrSearch] : [];
+
+    if (addrSearch) {
+      const citations = db.prepare(`
+        SELECT c.id, c.citation_number, c.type, c.status, c.violation_description,
+          c.location, c.violation_date, c.person_name
+        FROM citations c
+        ${citWhere}
+        ORDER BY c.violation_date DESC LIMIT ?
+      `).all(...citParams, limitNum) as any[];
+
+      citations.forEach(c => timeline.push({
+        source: 'citation', date: c.violation_date || c.created_at, id: c.id,
+        number: c.citation_number, type: c.type, status: c.status,
+        description: c.violation_description, subject: c.person_name,
+        address: c.location,
+      }));
+    }
+
+    // Sort timeline by date descending
+    timeline.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    // Threat summary
+    const threatSummary = {
+      total_events: timeline.length,
+      calls: calls.length,
+      incidents: incidents.length,
+      field_interviews: fis.length,
+      trespass_orders: trespass.length,
+      weapons_flags: timeline.filter(t => t.flags?.weapons).length,
+      dv_flags: timeline.filter(t => t.flags?.dv).length,
+      injury_events: timeline.filter(t => t.flags?.injuries).length,
+      active_trespass: trespass.filter(t => t.status === 'active').length,
+    };
+
+    // Known property info
+    let property = null;
+    if (propIds.length > 0) {
+      property = db.prepare(`
+        SELECT p.*, c.name as client_name
+        FROM properties p
+        LEFT JOIN clients c ON p.client_id = c.id
+        WHERE p.id = ?
+      `).get(propIds[0]) as any;
+    }
+
+    res.json({ property, threat_summary: threatSummary, timeline: timeline.slice(0, limitNum) });
+  } catch (error: any) {
+    console.error('Premise history error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+
+// ─── MASTER NAME INDEX / INVOLVEMENTS ─────────────────
+// Click a person → see EVERYTHING across all modules
+
+router.get('/persons/:id/involvements', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const personId = parseInt(req.params.id, 10);
+
+    // Get person record
+    const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(personId) as any;
+    if (!person) return res.status(404).json({ error: 'Person not found' });
+
+    // 1. Incidents (via junction table)
+    const incidents = db.prepare(`
+      SELECT i.id, i.incident_number, i.incident_type, i.priority, i.status,
+        i.location_address, i.created_at, i.disposition, ip.role as involvement_role,
+        u.full_name as officer_name
+      FROM incident_persons ip
+      JOIN incidents i ON ip.incident_id = i.id
+      LEFT JOIN users u ON i.officer_id = u.id
+      WHERE ip.person_id = ?
+      ORDER BY i.created_at DESC
+    `).all(personId) as any[];
+
+    // 2. Calls for Service (as caller or subject)
+    const nameSearch = `%${person.last_name}%`;
+    const calls = db.prepare(`
+      SELECT id, call_number, incident_type, priority, status, location_address,
+        created_at, caller_name, subject_description, disposition
+      FROM calls_for_service
+      WHERE caller_name LIKE ? OR subject_description LIKE ?
+      ORDER BY created_at DESC LIMIT 50
+    `).all(nameSearch, nameSearch) as any[];
+
+    // 3. Citations
+    const citations = db.prepare(`
+      SELECT id, citation_number, type, status, violation_description,
+        violation_date, location, fine_amount
+      FROM citations
+      WHERE person_id = ?
+      ORDER BY violation_date DESC
+    `).all(personId) as any[];
+
+    // 4. Field Interviews
+    const fieldInterviews = db.prepare(`
+      SELECT id, fi_number, contact_reason, contact_type, location,
+        created_at, officer_name, narrative
+      FROM field_interviews
+      WHERE person_id = ?
+      ORDER BY created_at DESC
+    `).all(personId) as any[];
+
+    // 5. Warrants
+    const warrants = db.prepare(`
+      SELECT id, warrant_number, type, status, charge_description,
+        offense_level, bail_amount, issuing_court, created_at, expires_at
+      FROM warrants
+      WHERE subject_person_id = ?
+      ORDER BY created_at DESC
+    `).all(personId) as any[];
+
+    // 6. BOLOs (match on name)
+    const bolos = db.prepare(`
+      SELECT id, bolo_number, type, title, description, status, priority,
+        subject_description, vehicle_description, created_at, expires_at
+      FROM bolos
+      WHERE status = 'active'
+        AND (subject_description LIKE ? OR description LIKE ?)
+      ORDER BY created_at DESC
+    `).all(nameSearch, nameSearch) as any[];
+
+    // 7. Trespass Orders
+    const trespassOrders = db.prepare(`
+      SELECT id, order_number, status, reason, location, property_name,
+        effective_date, expiration_date, created_at
+      FROM trespass_orders
+      WHERE person_id = ?
+      ORDER BY created_at DESC
+    `).all(personId) as any[];
+
+    // 8. Vehicles owned
+    const vehicles = db.prepare(`
+      SELECT id, plate_number, state, year, make, model, color, vin,
+        stolen_status, tow_status
+      FROM vehicles_records
+      WHERE owner_person_id = ?
+      ORDER BY year DESC
+    `).all(personId) as any[];
+
+    // 9. Criminal History
+    const criminalHistory = db.prepare(`
+      SELECT id, record_type, offense, offense_level, statute, case_number,
+        agency, offense_date, disposition, sentence
+      FROM criminal_history
+      WHERE person_id = ?
+      ORDER BY offense_date DESC
+    `).all(personId) as any[];
+
+    // 10. Offender Alerts
+    const offenderAlerts = db.prepare(`
+      SELECT id, alert_type, status, description, severity,
+        effective_date, expiration_date
+      FROM offender_alerts
+      WHERE person_id = ? AND status = 'active'
+      ORDER BY severity DESC
+    `).all(personId) as any[];
+
+    // Summary counts
+    const summary = {
+      total_involvements: incidents.length + calls.length + citations.length +
+        fieldInterviews.length + warrants.length + trespassOrders.length,
+      active_warrants: warrants.filter(w => w.status === 'active').length,
+      active_bolos: bolos.length,
+      active_trespass: trespassOrders.filter(t => t.status === 'active').length,
+      active_alerts: offenderAlerts.length,
+      caution_flags: person.caution_flags || null,
+      is_sex_offender: !!person.is_sex_offender,
+      gang_affiliation: person.gang_affiliation || null,
+    };
+
+    res.json({
+      person,
+      summary,
+      incidents,
+      calls,
+      citations,
+      field_interviews: fieldInterviews,
+      warrants,
+      bolos,
+      trespass_orders: trespassOrders,
+      vehicles,
+      criminal_history: criminalHistory,
+      offender_alerts: offenderAlerts,
+    });
+  } catch (error: any) {
+    console.error('Involvements error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 
 export default router;

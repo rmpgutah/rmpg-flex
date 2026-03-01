@@ -73,8 +73,10 @@ router.get('/calls', (req: Request, res: Response) => {
       LEFT JOIN clients cl ON COALESCE(c.client_id, p.client_id) = cl.id
       ${whereClause}
       ORDER BY
-        CASE c.priority WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 END,
-        c.created_at DESC
+        ${archived === 'true'
+          ? 'c.call_number DESC'
+          : "CASE c.priority WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 END, c.created_at DESC"
+        }
       LIMIT ? OFFSET ?
     `).all(...params, limitNum, offset);
 
@@ -178,22 +180,145 @@ router.post('/calls', (req: Request, res: Response) => {
       customDisposition || null,
     );
 
-    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(result.lastInsertRowid) as any;
+    let call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(result.lastInsertRowid) as any;
+
+    // ─── Trespass Order Auto-Check ──────────────────────────────
+    // Query active trespass orders matching this call's property or address.
+    // If matches found: annotate the call, add a caution note, and escalate
+    // priority from P3/P4 → P2 so responding officers are forewarned.
+    let trespassMatches: any[] = [];
+    try {
+      let tWhere = `WHERE t.status = 'active' AND (t.expiration_date IS NULL OR t.expiration_date > datetime('now','localtime'))`;
+      const tParams: any[] = [];
+
+      if (property_id) {
+        tWhere += ' AND t.property_id = ?';
+        tParams.push(property_id);
+      } else if (location_address) {
+        // Fuzzy match on first meaningful part of the address
+        const addrKey = location_address.split(',')[0].trim();
+        if (addrKey.length > 3) {
+          tWhere += ' AND t.location LIKE ?';
+          tParams.push(`%${addrKey}%`);
+        }
+      }
+
+      if (tParams.length > 0) {
+        trespassMatches = db.prepare(`
+          SELECT t.id, t.order_number, t.subject_first_name, t.subject_last_name,
+            t.subject_description, t.order_type, t.reason, t.location
+          FROM trespass_orders t
+          ${tWhere}
+          ORDER BY t.created_at DESC
+        `).all(...tParams) as any[];
+      }
+
+      if (trespassMatches.length > 0) {
+        // Auto-add caution note with trespass subject info
+        const subjects = trespassMatches.map(t =>
+          `${t.subject_first_name} ${t.subject_last_name} (${t.order_number} — ${t.order_type})`
+        ).join('; ');
+        const cautionNote = `⚠ ACTIVE TRESPASS ORDER(S): ${subjects}`;
+
+        // Append to existing notes or set as new note
+        const existingNotes = call.notes || '';
+        const updatedNotes = existingNotes ? `${existingNotes}\n${cautionNote}` : cautionNote;
+        db.prepare('UPDATE calls_for_service SET notes = ? WHERE id = ?').run(updatedNotes, call.id);
+
+        // Auto-escalate priority: P3 → P2, P4 → P2 (P1/P2 already high enough)
+        if (call.priority === 'P3' || call.priority === 'P4') {
+          db.prepare('UPDATE calls_for_service SET priority = ? WHERE id = ?').run('P2', call.id);
+        }
+
+        // Re-fetch updated call
+        call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id) as any;
+      }
+    } catch (tErr: any) {
+      console.error('Trespass order check error (non-fatal):', tErr.message);
+    }
+
+    // ─── BOLO Cross-Reference ─────────────────────────────────
+    // Check if the call's description or subject/vehicle info matches any active BOLOs.
+    // Uses keyword extraction for fuzzy matching: pulls significant words (4+ chars)
+    // from the call and checks them against BOLO descriptions.
+    let boloMatches: any[] = [];
+    try {
+      const callText = [
+        description, subject_description, vehicle_description,
+        direction_of_travel, notes,
+      ].filter(Boolean).join(' ').toLowerCase();
+
+      if (callText.length > 10) {
+        // Extract significant keywords (4+ chars, no common words)
+        const stopWords = new Set(['with','from','into','that','this','been','have','were','will','they','their','about','which','when','there','what','some','them','than','each','make','like','over','such','more','very','call','area','near']);
+        const keywords = [...new Set(
+          callText.replace(/[^a-z0-9\s]/g, '').split(/\s+/)
+            .filter(w => w.length >= 4 && !stopWords.has(w))
+        )];
+
+        if (keywords.length > 0) {
+          const activeBolos = db.prepare(`
+            SELECT id, bolo_number, type, title, subject_description, vehicle_description, priority
+            FROM bolos WHERE status = 'active' AND (expires_at IS NULL OR expires_at > datetime('now','localtime'))
+          `).all() as any[];
+
+          for (const bolo of activeBolos) {
+            const boloText = [bolo.subject_description, bolo.vehicle_description, bolo.title]
+              .filter(Boolean).join(' ').toLowerCase();
+            // Count how many call keywords appear in this BOLO
+            const hits = keywords.filter(kw => boloText.includes(kw));
+            if (hits.length >= 2) {
+              boloMatches.push({ ...bolo, matched_keywords: hits });
+            }
+          }
+        }
+      }
+
+      if (boloMatches.length > 0) {
+        const boloNote = `🚨 POSSIBLE BOLO MATCH: ${boloMatches.map(b => `${b.bolo_number} — ${b.title}`).join('; ')}`;
+        const existingNotes = call.notes || '';
+        const updatedNotes = existingNotes ? `${existingNotes}\n${boloNote}` : boloNote;
+        db.prepare('UPDATE calls_for_service SET notes = ? WHERE id = ?').run(updatedNotes, call.id);
+        call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id) as any;
+      }
+    } catch (bErr: any) {
+      console.error('BOLO cross-reference error (non-fatal):', bErr.message);
+    }
 
     // Log activity
     const isHistorical = !!customCreatedAt;
+    const alertFlags = [
+      trespassMatches.length > 0 ? `TRESPASS: ${trespassMatches.length}` : '',
+      boloMatches.length > 0 ? `BOLO: ${boloMatches.length}` : '',
+    ].filter(Boolean).join(', ');
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'call_created', 'call', ?, ?, ?)
-    `).run(req.user!.userId, call.id, `${isHistorical ? 'Historical entry: ' : 'Created '}${callNumber}: ${incident_type}`, req.ip || 'unknown');
+    `).run(req.user!.userId, call.id, `${isHistorical ? 'Historical entry: ' : 'Created '}${callNumber}: ${incident_type}${alertFlags ? ` [${alertFlags}]` : ''}`, req.ip || 'unknown');
 
     // If no coordinates were provided, geocode the address asynchronously
     geocodeCallIfNeeded(call.id, location_address, latitude, longitude);
 
-    // Broadcast to dispatch channel
-    broadcastDispatchUpdate({ action: 'call_created', call });
+    // Broadcast to dispatch channel — include trespass and BOLO warnings
+    // so all connected dispatchers see the alerts, not just the call creator
+    const alerts: any = {};
+    if (trespassMatches.length > 0) {
+      alerts.trespass_alert = { count: trespassMatches.length, orders: trespassMatches };
+    }
+    if (boloMatches.length > 0) {
+      alerts.bolo_alert = { count: boloMatches.length, bolos: boloMatches };
+    }
 
-    res.status(201).json(call);
+    broadcastDispatchUpdate({
+      action: 'call_created',
+      call,
+      ...alerts,
+    });
+
+    res.status(201).json({
+      ...call,
+      ...alerts,
+    });
   } catch (error: any) {
     console.error('Create call error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -249,6 +374,36 @@ router.get('/calls/export', (req: Request, res: Response) => {
     ], rows);
   } catch (error: any) {
     console.error('Export calls error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/dispatch/calls/check-duplicate - Check for active calls at same/similar address
+router.get('/calls/check-duplicate', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { address } = req.query;
+    if (!address || typeof address !== 'string' || address.length < 3) {
+      res.json({ duplicates: [], count: 0 });
+      return;
+    }
+
+    // Normalize: uppercase, strip extra spaces, trim
+    const normalized = (address as string).toUpperCase().replace(/\s+/g, ' ').trim();
+
+    // Find active calls (not cleared/closed/cancelled/archived) at the same address
+    const duplicates = db.prepare(`
+      SELECT id, call_number, incident_type, priority, status, location_address, created_at
+      FROM calls_for_service
+      WHERE status NOT IN ('cleared','closed','cancelled','archived')
+        AND UPPER(REPLACE(location_address, '  ', ' ')) LIKE ?
+      ORDER BY created_at DESC
+      LIMIT 5
+    `).all(`%${normalized}%`) as any[];
+
+    res.json({ duplicates, count: duplicates.length });
+  } catch (error: any) {
+    console.error('Duplicate check error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -634,9 +789,15 @@ router.post('/calls/:id/status', (req: Request, res: Response) => {
       return;
     }
 
-    const validStatuses = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived'];
+    const validStatuses = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived', 'on_hold'];
     if (!validStatuses.includes(status)) {
       res.status(400).json({ error: 'Invalid status', valid: validStatuses });
+      return;
+    }
+
+    // Require disposition when clearing a call (unless already set)
+    if (status === 'cleared' && !disposition && !call.disposition) {
+      res.status(400).json({ error: 'Disposition code is required when clearing a call' });
       return;
     }
 
@@ -779,6 +940,164 @@ router.post('/calls/:id/revert-status', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Revert status error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/dispatch/calls/:id/hold - Put call on hold (saves previous status)
+router.post('/calls/:id/hold', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) {
+      res.status(404).json({ error: 'Call not found' });
+      return;
+    }
+
+    if (call.status === 'on_hold') {
+      res.status(400).json({ error: 'Call is already on hold' });
+      return;
+    }
+
+    // Only active statuses can be held (not cleared/closed/cancelled/archived)
+    const holdable = ['pending', 'dispatched', 'enroute', 'onscene'];
+    if (!holdable.includes(call.status)) {
+      res.status(400).json({ error: `Cannot hold a call with status "${call.status}"` });
+      return;
+    }
+
+    db.prepare(`
+      UPDATE calls_for_service SET status = 'on_hold', previous_status = ? WHERE id = ?
+    `).run(call.status, call.id);
+
+    // Log activity
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'call_held', 'call', ?, ?, ?)
+    `).run(req.user!.userId, call.id, `${call.call_number} put on hold from ${call.status}`, req.ip || 'unknown');
+
+    const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
+    broadcastDispatchUpdate({ action: 'call_status_changed', call: updated, status: 'on_hold' });
+
+    res.json(updated);
+  } catch (error: any) {
+    console.error('Hold call error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/dispatch/calls/:id/resume - Resume a held call (restores previous status)
+router.post('/calls/:id/resume', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) {
+      res.status(404).json({ error: 'Call not found' });
+      return;
+    }
+
+    if (call.status !== 'on_hold') {
+      res.status(400).json({ error: 'Call is not on hold' });
+      return;
+    }
+
+    const restoreStatus = call.previous_status || 'pending';
+
+    db.prepare(`
+      UPDATE calls_for_service SET status = ?, previous_status = NULL WHERE id = ?
+    `).run(restoreStatus, call.id);
+
+    // Log activity
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'call_resumed', 'call', ?, ?, ?)
+    `).run(req.user!.userId, call.id, `${call.call_number} resumed to ${restoreStatus}`, req.ip || 'unknown');
+
+    const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
+    broadcastDispatchUpdate({ action: 'call_status_changed', call: updated, status: restoreStatus });
+
+    res.json(updated);
+  } catch (error: any) {
+    console.error('Resume call error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/dispatch/calls/:id/promote-to-incident - Create incident from call
+router.post('/calls/:id/promote-to-incident', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+
+    // Generate incident number
+    const { generateIncidentNumber } = require('../utils/caseNumbers');
+    const incidentNumber = generateIncidentNumber(db, call.incident_type || 'general');
+
+    const result = db.prepare(`
+      INSERT INTO incidents (incident_number, call_id, incident_type, priority, status,
+        location_address, property_id, latitude, longitude, narrative, officer_id,
+        zone_beat, section_id, zone_id, beat_id, domestic_violence, weapons_involved,
+        injuries, created_by)
+      VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      incidentNumber,
+      call.id,
+      call.incident_type || 'general',
+      call.priority || 'P3',
+      call.location_address || null,
+      call.property_id || null,
+      call.latitude || null,
+      call.longitude || null,
+      call.description || null,
+      req.user!.userId,
+      call.zone_beat || null,
+      call.section_id || null,
+      call.zone_id || null,
+      call.beat_id || null,
+      call.domestic_violence || 0,
+      call.weapons_involved || 0,
+      call.injuries_reported || 0,
+      req.user!.userId
+    );
+
+    const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(result.lastInsertRowid);
+    res.status(201).json(incident);
+  } catch (error: any) {
+    console.error('Promote to incident error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/dispatch/calls/:id/le-notification - Notify law enforcement agency
+router.post('/calls/:id/le-notification', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+
+    const { agency, case_number, notes } = req.body;
+    const now = localNow();
+
+    db.prepare(`
+      UPDATE calls_for_service
+      SET le_notified = 1, le_agency = ?, le_case_number = ?, le_notified_at = ?, le_notified_by = ?,
+          updated_at = ?
+      WHERE id = ?
+    `).run(
+      agency || 'Local PD',
+      case_number || null,
+      now,
+      req.user!.userId,
+      now,
+      req.params.id
+    );
+
+    const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id);
+    broadcastDispatchUpdate();
+    res.json(updated);
+  } catch (error: any) {
+    console.error('LE notification error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -928,6 +1247,14 @@ router.delete('/units/:id', requireRole('admin', 'manager'), (req: Request, res:
       return;
     }
 
+    // Clean up dependent records before deleting unit
+    // 1. GPS breadcrumbs — historical tracking data, safe to delete with unit
+    db.prepare('DELETE FROM gps_breadcrumbs WHERE unit_id = ?').run(req.params.id);
+    // 2. Patrol checkpoints — nullify unit reference (keep checkpoint data)
+    db.prepare('UPDATE patrol_checkpoints SET assigned_unit_id = NULL WHERE assigned_unit_id = ?').run(req.params.id);
+    // 3. Fleet vehicle assignments — nullify unit reference
+    try { db.prepare('UPDATE fleet_vehicle_assignments SET unit_id = NULL WHERE unit_id = ?').run(req.params.id); } catch { /* table may not exist */ }
+
     db.prepare('DELETE FROM units WHERE id = ?').run(req.params.id);
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
@@ -938,7 +1265,11 @@ router.delete('/units/:id', requireRole('admin', 'manager'), (req: Request, res:
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete unit error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    if (error.code === 'SQLITE_CONSTRAINT_FOREIGNKEY') {
+      res.status(400).json({ error: 'Cannot delete unit — it has dependent records. Try deactivating it instead.' });
+    } else {
+      res.status(500).json({ error: 'Internal server error' });
+    }
   }
 });
 
@@ -1007,15 +1338,57 @@ router.put('/units/:id/status', (req: Request, res: Response) => {
   }
 });
 
-// POST /api/dispatch/gps - Lightweight GPS position ping from officer
-// Updates the unit assigned to the current user (no status change, no activity log for performance)
+// POST /api/dispatch/gps - Batch GPS position update from officer
+// Accepts either a single point or an array of points collected at ~1-second intervals.
+// Updates the unit's live position (latest point only), bulk-inserts all breadcrumbs,
+// and broadcasts the latest position via WebSocket.
+//
+// Body formats:
+//   Single (legacy):  { latitude, longitude, accuracy, heading, speed }
+//   Batch (v4.3+):    { points: [{ lat, lng, accuracy, heading, speed, timestamp }] }
 router.post('/gps', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { latitude, longitude, accuracy, heading, speed } = req.body;
 
-    if (latitude == null || longitude == null) {
-      res.status(400).json({ error: 'latitude and longitude are required' });
+    // ── Normalize input: single point or batch ──
+    interface GpsPoint {
+      lat: number;
+      lng: number;
+      accuracy: number | null;
+      heading: number | null;
+      speed: number | null;
+      timestamp: string | null;
+    }
+
+    let points: GpsPoint[];
+
+    if (Array.isArray(req.body.points)) {
+      // Batch format: { points: [...] }
+      points = req.body.points.slice(0, 60); // Cap at 60 points per request
+    } else if (req.body.latitude != null && req.body.longitude != null) {
+      // Legacy single-point format
+      points = [{
+        lat: req.body.latitude,
+        lng: req.body.longitude,
+        accuracy: req.body.accuracy ?? null,
+        heading: req.body.heading ?? null,
+        speed: req.body.speed ?? null,
+        timestamp: null,
+      }];
+    } else {
+      res.status(400).json({ error: 'latitude/longitude or points[] required' });
+      return;
+    }
+
+    // Validate: at least one point with valid coordinates
+    const validPoints = points.filter(
+      (p) => p.lat != null && p.lng != null &&
+        p.lat >= -90 && p.lat <= 90 &&
+        p.lng >= -180 && p.lng <= 180
+    );
+
+    if (validPoints.length === 0) {
+      res.status(400).json({ error: 'No valid GPS points provided' });
       return;
     }
 
@@ -1032,12 +1405,15 @@ router.post('/gps', (req: Request, res: Response) => {
       return;
     }
 
+    // ── Use the LATEST point for live unit position and broadcast ──
+    const latest = validPoints[validPoints.length - 1];
+
     db.prepare(`
       UPDATE units SET latitude = ?, longitude = ?
       WHERE id = ?
-    `).run(latitude, longitude, unit.id);
+    `).run(latest.lat, latest.lng, unit.id);
 
-    // Broadcast position update to all connected clients
+    // Fetch full unit info for broadcast
     const updated = db.prepare(`
       SELECT u.*, usr.full_name as officer_name, usr.badge_number,
         c.call_number, c.incident_type as current_call_type, c.location_address as current_call_location
@@ -1047,22 +1423,34 @@ router.post('/gps', (req: Request, res: Response) => {
       WHERE u.id = ?
     `).get(unit.id) as any;
 
-    // Record breadcrumb with full snapshot of unit state at this moment
-    db.prepare(`
+    // ── Bulk-insert all breadcrumb points in a single transaction ──
+    const insertStmt = db.prepare(`
       INSERT INTO gps_breadcrumbs (unit_id, officer_id, latitude, longitude, accuracy, heading, speed,
-        unit_status, call_sign, officer_name, badge_number, current_call_id, current_call_number, current_call_type)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      unit.id, req.user!.userId, latitude, longitude,
-      accuracy ?? null, heading ?? null, speed ?? null,
-      updated?.status ?? unit.status, updated?.call_sign ?? unit.call_sign,
-      updated?.officer_name ?? null, updated?.badge_number ?? null,
-      updated?.current_call_id ?? null, updated?.call_number ?? null, updated?.current_call_type ?? null,
-    );
+        unit_status, call_sign, officer_name, badge_number, current_call_id, current_call_number, current_call_type,
+        recorded_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+        COALESCE(?, datetime('now','localtime')))
+    `);
 
+    const insertMany = db.transaction((pts: GpsPoint[]) => {
+      for (const pt of pts) {
+        insertStmt.run(
+          unit.id, req.user!.userId, pt.lat, pt.lng,
+          pt.accuracy, pt.heading, pt.speed,
+          updated?.status ?? unit.status, updated?.call_sign ?? unit.call_sign,
+          updated?.officer_name ?? null, updated?.badge_number ?? null,
+          updated?.current_call_id ?? null, updated?.call_number ?? null, updated?.current_call_type ?? null,
+          pt.timestamp ?? null,
+        );
+      }
+    });
+
+    insertMany(validPoints);
+
+    // Broadcast ONLY the latest position (not every batch point)
     broadcastUnitUpdate({ action: 'unit_position_update', unit: updated });
 
-    res.json({ ok: true, unit_id: unit.id, call_sign: unit.call_sign });
+    res.json({ ok: true, unit_id: unit.id, call_sign: unit.call_sign, inserted: validPoints.length });
   } catch (error: any) {
     console.error('GPS update error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -1086,25 +1474,63 @@ router.get('/gps/my-unit', (req: Request, res: Response) => {
 });
 
 // GET /api/dispatch/gps/trail/:unitId - Get GPS breadcrumb trail for a unit
+// Also applies the same starburst-prevention filters as /trails.
 router.get('/gps/trail/:unitId', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const unitId = parseInt(req.params.unitId);
     const hours = parseInt(req.query.hours as string) || 8;
 
-    const cutoff = new Date(Date.now() - hours * 3600000).toISOString();
-
-    const trail = db.prepare(`
+    const rows = db.prepare(`
       SELECT latitude, longitude, accuracy, heading, speed,
         unit_status, call_sign, officer_name, badge_number,
         current_call_id, current_call_number, current_call_type,
         recorded_at
       FROM gps_breadcrumbs
-      WHERE unit_id = ? AND recorded_at >= ?
+      WHERE unit_id = ? AND recorded_at >= datetime('now', 'localtime', '-' || ? || ' hours')
       ORDER BY recorded_at ASC
-    `).all(unitId, cutoff);
+    `).all(unitId, hours) as any[];
 
-    res.json(trail);
+    // ── Filter: accuracy gate + jump detection + stationary collapse ──
+    const haversineM = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+      const R = 6_371_000;
+      const toRad = (d: number) => (d * Math.PI) / 180;
+      const dLat = toRad(lat2 - lat1);
+      const dLng = toRad(lng2 - lng1);
+      const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    };
+
+    const MAX_ACCURACY = 150;
+    const MAX_SPEED    = 80;
+    const MIN_DISTANCE = 3;
+    const filtered: any[] = [];
+
+    for (const row of rows) {
+      if (row.accuracy != null && row.accuracy > MAX_ACCURACY) continue;
+
+      if (filtered.length === 0) {
+        filtered.push(row);
+        continue;
+      }
+
+      const prev = filtered[filtered.length - 1];
+      const dist = haversineM(prev.latitude, prev.longitude, row.latitude, row.longitude);
+
+      if (dist < MIN_DISTANCE) continue;
+
+      const dtSec = Math.max(
+        (new Date(row.recorded_at).getTime() - new Date(prev.recorded_at).getTime()) / 1000,
+        0.5
+      );
+      if (dist / dtSec > MAX_SPEED) continue;
+
+      filtered.push(row);
+    }
+
+    res.json(filtered);
   } catch (error: any) {
     console.error('GPS trail error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -1112,25 +1538,48 @@ router.get('/gps/trail/:unitId', (req: Request, res: Response) => {
 });
 
 // GET /api/dispatch/gps/trails - Get breadcrumb trails for all active units
+// Applies server-side filtering to eliminate starburst artifacts caused by
+// WiFi-triangulation jumps stored in the database (pre-v4.3 data).
 router.get('/gps/trails', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const hours = parseInt(req.query.hours as string) || 8;
-    const cutoff = new Date(Date.now() - hours * 3600000).toISOString();
 
-    // Get trails grouped by unit with full snapshot data
+    // Haversine distance in meters between two lat/lng pairs
+    const haversineM = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+      const R = 6_371_000;
+      const toRad = (d: number) => (d * Math.PI) / 180;
+      const dLat = toRad(lat2 - lat1);
+      const dLng = toRad(lng2 - lng1);
+      const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    };
+
+    // Use SQLite's datetime() for the cutoff so the format matches
+    // recorded_at's DEFAULT (datetime('now','localtime') → "YYYY-MM-DD HH:MM:SS").
     const rows = db.prepare(`
       SELECT b.unit_id, b.call_sign, b.latitude, b.longitude, b.accuracy,
         b.heading, b.speed, b.unit_status, b.officer_name, b.badge_number,
         b.current_call_number, b.current_call_type, b.recorded_at
       FROM gps_breadcrumbs b
       JOIN units u ON b.unit_id = u.id
-      WHERE b.recorded_at >= ?
+      WHERE b.recorded_at >= datetime('now', 'localtime', '-' || ? || ' hours')
       ORDER BY b.unit_id, b.recorded_at ASC
-    `).all(cutoff) as any[];
+    `).all(hours) as any[];
 
-    // Group by unit
+    // ── Group by unit, then filter each trail to remove starburst artifacts ──
+    // Two filters applied per-unit:
+    //   1. Accuracy gate: skip points with accuracy > 150 m (WiFi triangulation)
+    //   2. Jump detection: skip points implying > 80 m/s (~180 mph) from last accepted point
+    //      This catches WiFi "teleportation" back to a router's estimated position.
+    const MAX_ACCURACY = 150;   // meters — reject coarse WiFi fixes
+    const MAX_SPEED    = 80;    // m/s (~180 mph) — reject impossible jumps
+    const MIN_DISTANCE = 3;     // meters — collapse stationary duplicates
+
     const trails: Record<number, { unit_id: number; call_sign: string; officer_name: string; badge_number: string; points: any[] }> = {};
+
     for (const row of rows) {
       if (!trails[row.unit_id]) {
         trails[row.unit_id] = {
@@ -1141,7 +1590,11 @@ router.get('/gps/trails', (req: Request, res: Response) => {
           points: [],
         };
       }
-      trails[row.unit_id].points.push({
+
+      // ── Accuracy gate ──
+      if (row.accuracy != null && row.accuracy > MAX_ACCURACY) continue;
+
+      const pt = {
         lat: row.latitude,
         lng: row.longitude,
         accuracy: row.accuracy,
@@ -1151,7 +1604,29 @@ router.get('/gps/trails', (req: Request, res: Response) => {
         call_number: row.current_call_number,
         call_type: row.current_call_type,
         time: row.recorded_at,
-      });
+      };
+
+      const trailPts = trails[row.unit_id].points;
+
+      if (trailPts.length === 0) {
+        trailPts.push(pt);
+        continue;
+      }
+
+      const prev = trailPts[trailPts.length - 1];
+      const dist = haversineM(prev.lat, prev.lng, pt.lat, pt.lng);
+
+      // ── Collapse stationary duplicates ──
+      if (dist < MIN_DISTANCE) continue;
+
+      // ── Jump detection: check implied speed between consecutive accepted points ──
+      const prevTime = new Date(prev.time).getTime();
+      const curTime  = new Date(pt.time).getTime();
+      const dtSec    = Math.max((curTime - prevTime) / 1000, 0.5); // floor at 0.5s to avoid /0
+
+      if (dist / dtSec > MAX_SPEED) continue; // impossible jump — skip
+
+      trailPts.push(pt);
     }
 
     res.json(Object.values(trails));
@@ -1166,10 +1641,12 @@ router.delete('/gps/breadcrumbs/cleanup', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const days = parseInt(req.query.days as string) || 7;
-    const cutoff = new Date(Date.now() - days * 86400000).toISOString();
 
-    const result = db.prepare('DELETE FROM gps_breadcrumbs WHERE recorded_at < ?').run(cutoff);
-    res.json({ deleted: result.changes, cutoff });
+    // Use SQLite datetime() to match the stored format (datetime('now','localtime'))
+    const result = db.prepare(
+      `DELETE FROM gps_breadcrumbs WHERE recorded_at < datetime('now', 'localtime', '-' || ? || ' days')`
+    ).run(days);
+    res.json({ deleted: result.changes });
   } catch (error: any) {
     console.error('Breadcrumb cleanup error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -1181,9 +1658,8 @@ router.get('/heatmap', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const days = parseInt(req.query.days as string) || 30;
-    const cutoff = new Date(Date.now() - days * 86400000).toISOString();
 
-    // Aggregate calls by rounded lat/lng grid (~200m cells)
+    // Use SQLite datetime() for consistent format comparison
     const points = db.prepare(`
       SELECT
         ROUND(latitude, 3) as latitude,
@@ -1192,11 +1668,11 @@ router.get('/heatmap', (req: Request, res: Response) => {
       FROM calls_for_service
       WHERE latitude IS NOT NULL
         AND longitude IS NOT NULL
-        AND created_at >= ?
+        AND created_at >= datetime('now', 'localtime', '-' || ? || ' days')
       GROUP BY ROUND(latitude, 3), ROUND(longitude, 3)
       ORDER BY count DESC
       LIMIT 200
-    `).all(cutoff);
+    `).all(days);
 
     res.json(points);
   } catch (error: any) {
@@ -1884,6 +2360,296 @@ router.post('/panic', authenticateToken, async (req: Request, res: Response) => 
     });
   } catch (error: any) {
     console.error('Panic alert error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── GET /api/dispatch/premise-history ───────────────────────
+// Premise history lookup — returns prior calls at or near a given address.
+// Used by the command line (PR command) and NewCallModal for officer safety alerts.
+router.get('/premise-history', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { address } = req.query;
+
+    if (!address || (address as string).length < 3) {
+      res.status(400).json({ error: 'Address must be at least 3 characters' });
+      return;
+    }
+
+    const searchTerm = `%${address}%`;
+
+    // Find prior calls at this address (fuzzy match on location_address)
+    const calls = db.prepare(`
+      SELECT c.id, c.call_number, c.incident_type, c.priority, c.status, c.disposition,
+        c.location_address, c.created_at, c.cleared_at,
+        c.weapons_involved, c.domestic_violence, c.injuries_reported,
+        c.alcohol_involved, c.drugs_involved, c.description
+      FROM calls_for_service c
+      WHERE c.location_address LIKE ?
+      ORDER BY c.created_at DESC
+      LIMIT 20
+    `).all(searchTerm) as any[];
+
+    // Determine if there are hazardous warnings
+    const warningTypes: string[] = [];
+    for (const call of calls) {
+      if (call.weapons_involved && !warningTypes.includes('ARMED'))
+        warningTypes.push('ARMED');
+      if (call.domestic_violence && !warningTypes.includes('DV'))
+        warningTypes.push('DV');
+      if (call.injuries_reported && !warningTypes.includes('INJURIES'))
+        warningTypes.push('INJURIES');
+      if (call.alcohol_involved && !warningTypes.includes('ALCOHOL'))
+        warningTypes.push('ALCOHOL');
+      if (call.drugs_involved && !warningTypes.includes('DRUGS'))
+        warningTypes.push('DRUGS');
+    }
+
+    // Check for high-risk incident types in history
+    const highRiskTypes = ['shooting', 'shots_fired', 'armed', 'barricade', 'hostage', 'hazmat', 'officer_assist'];
+    for (const call of calls) {
+      const itype = (call.incident_type || '').toLowerCase();
+      if (highRiskTypes.some(t => itype.includes(t)) && !warningTypes.includes('HIGH_RISK_HISTORY'))
+        warningTypes.push('HIGH_RISK_HISTORY');
+    }
+
+    // Also check property hazard notes if we can match a property
+    let propertyHazard: string | null = null;
+    try {
+      const prop = db.prepare(`
+        SELECT hazard_notes FROM properties WHERE address LIKE ? AND hazard_notes IS NOT NULL LIMIT 1
+      `).get(searchTerm) as any;
+      if (prop?.hazard_notes) {
+        propertyHazard = prop.hazard_notes;
+        if (!warningTypes.includes('PROPERTY_HAZARD')) warningTypes.push('PROPERTY_HAZARD');
+      }
+    } catch { /* properties table may not have hazard_notes */ }
+
+    res.json({
+      calls,
+      total: calls.length,
+      hasWarnings: warningTypes.length > 0,
+      warningTypes,
+      propertyHazard,
+    });
+  } catch (error: any) {
+    console.error('Premise history error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── GET /api/dispatch/safety-screen ─────────────────────────
+// Officer Safety Auto-Screening — searches persons and warrants
+// by name to detect active warrants, caution flags, criminal history.
+// Used by NewCallModal for real-time safety alerts during call creation.
+router.get('/safety-screen', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { name } = req.query;
+
+    if (!name || typeof name !== 'string' || name.trim().length < 2) {
+      return res.json({ persons: [], directWarrantHits: [], hasWarnings: false });
+    }
+
+    const searchName = name.trim();
+
+    // Split into possible first/last name parts
+    const parts = searchName.split(/[\s,]+/).filter(Boolean);
+
+    // ── Search persons table ──
+    let personRows: any[] = [];
+    if (parts.length >= 2) {
+      // Try both orderings: "first last" and "last, first"
+      personRows = db.prepare(`
+        SELECT * FROM persons
+        WHERE (first_name LIKE ? AND last_name LIKE ?)
+           OR (first_name LIKE ? AND last_name LIKE ?)
+           OR (first_name || ' ' || last_name LIKE ?)
+        LIMIT 10
+      `).all(
+        `%${parts[0]}%`, `%${parts[1]}%`,
+        `%${parts[1]}%`, `%${parts[0]}%`,
+        `%${searchName}%`
+      );
+    } else {
+      personRows = db.prepare(`
+        SELECT * FROM persons
+        WHERE first_name LIKE ? OR last_name LIKE ?
+        LIMIT 10
+      `).all(`%${parts[0]}%`, `%${parts[0]}%`);
+    }
+
+    // Enrich each person with warrants and criminal history
+    const persons = personRows.map((person: any) => {
+      const warrants = db.prepare(`
+        SELECT * FROM warrants
+        WHERE status = 'active'
+          AND subject_first_name LIKE ? AND subject_last_name LIKE ?
+      `).all(`%${person.first_name}%`, `%${person.last_name}%`);
+
+      const criminalHistory = db.prepare(`
+        SELECT * FROM criminal_history WHERE person_id = ? ORDER BY charge_date DESC LIMIT 10
+      `).all(person.id);
+
+      return { person, warrants, criminalHistory };
+    });
+
+    // ── Search warrants directly by subject name ──
+    let directWarrantHits: any[] = [];
+    if (parts.length >= 2) {
+      directWarrantHits = db.prepare(`
+        SELECT * FROM warrants
+        WHERE status = 'active'
+          AND ((subject_first_name LIKE ? AND subject_last_name LIKE ?)
+            OR (subject_first_name LIKE ? AND subject_last_name LIKE ?))
+        LIMIT 10
+      `).all(
+        `%${parts[0]}%`, `%${parts[1]}%`,
+        `%${parts[1]}%`, `%${parts[0]}%`
+      );
+    } else {
+      directWarrantHits = db.prepare(`
+        SELECT * FROM warrants
+        WHERE status = 'active'
+          AND (subject_first_name LIKE ? OR subject_last_name LIKE ?)
+        LIMIT 10
+      `).all(`%${parts[0]}%`, `%${parts[0]}%`);
+    }
+
+    // Deduplicate warrant hits (already found via person enrichment)
+    const personWarrantIds = new Set(
+      persons.flatMap(p => p.warrants.map((w: any) => w.id))
+    );
+    const uniqueDirectWarrants = directWarrantHits.filter(
+      (w: any) => !personWarrantIds.has(w.id)
+    );
+
+    // Determine if any warnings exist
+    const hasWarnings =
+      persons.some(p =>
+        p.warrants.length > 0 ||
+        p.person.caution_flags ||
+        p.person.is_sex_offender ||
+        p.person.has_criminal_history
+      ) ||
+      uniqueDirectWarrants.length > 0;
+
+    res.json({
+      persons,
+      directWarrantHits: uniqueDirectWarrants,
+      hasWarnings,
+    });
+  } catch (error: any) {
+    console.error('Safety screen error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/dispatch/disposition-stats - Disposition code analytics
+router.get('/disposition-stats', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { start_date, end_date, property_id } = req.query;
+
+    let dateFilter = `AND DATE(c.created_at) >= DATE('now','localtime','-30 days')`;
+    const params: any[] = [];
+    if (start_date && end_date) {
+      dateFilter = `AND DATE(c.created_at) BETWEEN ? AND ?`;
+      params.push(start_date, end_date);
+    }
+    let propFilter = '';
+    if (property_id) {
+      propFilter = ` AND c.property_id = ?`;
+      params.push(property_id);
+    }
+
+    // Disposition code breakdown
+    const byDisposition = db.prepare(`
+      SELECT c.disposition, COUNT(*) as count,
+        ROUND(AVG((julianday(c.cleared_at) - julianday(c.created_at)) * 24 * 60), 1) as avg_response_min,
+        ROUND(AVG(CASE WHEN c.closed_at IS NOT NULL THEN (julianday(c.closed_at) - julianday(c.cleared_at)) * 24 * 60 ELSE NULL END), 1) as avg_clear_to_close_min
+      FROM calls_for_service c
+      WHERE c.disposition IS NOT NULL AND c.disposition != ''
+        ${dateFilter} ${propFilter}
+      GROUP BY c.disposition ORDER BY count DESC
+    `).all(...params);
+
+    // Top incident types by disposition
+    const byType = db.prepare(`
+      SELECT c.incident_type, c.disposition, COUNT(*) as count
+      FROM calls_for_service c
+      WHERE c.disposition IS NOT NULL AND c.disposition != ''
+        ${dateFilter} ${propFilter}
+      GROUP BY c.incident_type, c.disposition
+      ORDER BY count DESC LIMIT 50
+    `).all(...params);
+
+    // Calls awaiting close (cleared but not yet closed)
+    const pendingClose = db.prepare(`
+      SELECT COUNT(*) as count,
+        MIN(c.cleared_at) as oldest_cleared_at,
+        ROUND(AVG((julianday('now','localtime') - julianday(c.cleared_at)) * 24 * 60), 1) as avg_minutes_waiting
+      FROM calls_for_service c
+      WHERE c.status = 'cleared' AND c.archived_at IS NULL
+    `).get() as any;
+
+    // Calls without disposition that were closed/archived
+    const missingDisposition = db.prepare(`
+      SELECT COUNT(*) as count
+      FROM calls_for_service c
+      WHERE c.status IN ('closed', 'archived')
+        AND (c.disposition IS NULL OR c.disposition = '')
+        ${dateFilter}
+    `).all(...params);
+
+    // Auto-close configuration
+    let autoCloseMinutes = 30;
+    try {
+      const cfg = db.prepare(`SELECT config_value FROM system_config WHERE config_key = 'auto_close_minutes' AND is_active = 1`).get() as any;
+      if (cfg) autoCloseMinutes = parseInt(cfg.config_value, 10) || 30;
+    } catch { /* default */ }
+
+    res.json({
+      period: start_date && end_date ? { start: start_date, end: end_date } : 'last_30_days',
+      auto_close_minutes: autoCloseMinutes,
+      by_disposition: byDisposition,
+      by_incident_type: byType,
+      pending_close: pendingClose,
+      missing_disposition: (missingDisposition as any[])[0]?.count || 0,
+    });
+  } catch (error: any) {
+    console.error('Disposition stats error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/dispatch/auto-close-config - Update auto-close timeout (admin only)
+router.put('/auto-close-config', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { minutes } = req.body;
+    if (!minutes || minutes < 5 || minutes > 1440) {
+      res.status(400).json({ error: 'minutes must be between 5 and 1440 (24hr)' });
+      return;
+    }
+
+    // Upsert into system_config (config_key has no UNIQUE, so check-then-insert)
+    const existing = db.prepare(`SELECT id FROM system_config WHERE config_key = 'auto_close_minutes'`).get() as any;
+    if (existing) {
+      db.prepare(`UPDATE system_config SET config_value = ?, is_active = 1, updated_at = datetime('now') WHERE id = ?`).run(String(minutes), existing.id);
+    } else {
+      db.prepare(`INSERT INTO system_config (config_key, config_value, category, sort_order, is_active) VALUES ('auto_close_minutes', ?, 'dispatch', 0, 1)`).run(String(minutes));
+    }
+
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'config_update', 'system', 0, ?, ?)
+    `).run(req.user!.userId, `Auto-close timeout updated to ${minutes} minutes`, req.ip || 'unknown');
+
+    res.json({ auto_close_minutes: minutes, message: `Cleared calls will auto-close after ${minutes} minutes` });
+  } catch (error: any) {
+    console.error('Auto-close config error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -528,4 +528,229 @@ router.get('/clients/:id/billing', (req: Request, res: Response) => {
   }
 });
 
+// ─── SESSIONS (admin-only: view all, revoke any) ─────────
+
+router.get('/sessions', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const sessions = db.prepare(`
+      SELECT s.id, s.user_id, s.session_id, s.ip_address, s.user_agent,
+        s.is_active, s.created_at, s.last_used_at, s.expires_at,
+        u.username, u.full_name, u.role
+      FROM sessions s
+      LEFT JOIN users u ON s.user_id = u.id
+      ORDER BY s.last_used_at DESC
+      LIMIT 200
+    `).all();
+    res.json(sessions);
+  } catch (error: any) {
+    console.error('Admin get sessions error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.delete('/sessions/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare('UPDATE sessions SET is_active = 0 WHERE id = ?').run(req.params.id);
+    res.json({ message: 'Session revoked' });
+  } catch (error: any) {
+    console.error('Admin revoke session error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── RADIO CHANNELS (admin CRUD) ──────────────────────────
+
+// GET /api/admin/radio-channels — all channels (including inactive)
+router.get('/radio-channels', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(
+      "SELECT config_key, config_value, sort_order, is_active, created_at, updated_at FROM system_config WHERE category = 'radio_channel' ORDER BY sort_order ASC"
+    ).all() as { config_key: string; config_value: string; sort_order: number; is_active: number; created_at: string; updated_at: string }[];
+
+    const channels = rows.map((r) => {
+      let meta: any = {};
+      try { meta = JSON.parse(r.config_value); } catch { /* */ }
+      return {
+        id: r.config_key,
+        label: meta.label || r.config_key.toUpperCase(),
+        freq: meta.freq || '0.000',
+        sort_order: r.sort_order,
+        is_active: !!r.is_active,
+        created_at: r.created_at,
+        updated_at: r.updated_at,
+      };
+    });
+
+    res.json(channels);
+  } catch (error: any) {
+    console.error('Admin get radio channels error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/admin/radio-channels — create a new radio channel
+router.post('/radio-channels', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { id, label, freq } = req.body;
+
+    if (!id || !label) {
+      res.status(400).json({ error: 'id and label are required' });
+      return;
+    }
+
+    // Check for duplicate
+    const existing = db.prepare(
+      "SELECT config_key FROM system_config WHERE category = 'radio_channel' AND config_key = ?"
+    ).get(id);
+    if (existing) {
+      res.status(409).json({ error: 'A radio channel with that ID already exists' });
+      return;
+    }
+
+    // Get next sort_order
+    const maxRow = db.prepare(
+      "SELECT MAX(sort_order) as mx FROM system_config WHERE category = 'radio_channel'"
+    ).get() as any;
+    const sortOrder = (maxRow?.mx ?? -1) + 1;
+
+    const now = localNow();
+    const value = JSON.stringify({ label, freq: freq || '0.000' });
+
+    db.prepare(
+      "INSERT INTO system_config (config_key, config_value, category, sort_order, is_active, created_at, updated_at) VALUES (?, ?, 'radio_channel', ?, 1, ?, ?)"
+    ).run(id, value, sortOrder, now, now);
+
+    db.prepare(
+      "INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'radio_channel_created', 'radio_channel', 0, ?, ?)"
+    ).run(req.user!.userId, `Created radio channel: ${label} (${id})`, req.ip || 'unknown');
+
+    res.status(201).json({ id, label, freq: freq || '0.000', sort_order: sortOrder, is_active: true });
+  } catch (error: any) {
+    console.error('Admin create radio channel error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/admin/radio-channels/:key — update a radio channel
+router.put('/radio-channels/:key', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const key = req.params.key;
+    const existing = db.prepare(
+      "SELECT config_key, config_value FROM system_config WHERE category = 'radio_channel' AND config_key = ?"
+    ).get(key) as any;
+
+    if (!existing) {
+      res.status(404).json({ error: 'Radio channel not found' });
+      return;
+    }
+
+    const { label, freq, is_active, sort_order } = req.body;
+    let meta: any = {};
+    try { meta = JSON.parse(existing.config_value); } catch { /* */ }
+
+    if (label !== undefined) meta.label = label;
+    if (freq !== undefined) meta.freq = freq;
+
+    const now = localNow();
+
+    const sets: string[] = ['config_value = ?', 'updated_at = ?'];
+    const vals: any[] = [JSON.stringify(meta), now];
+
+    if (is_active !== undefined) {
+      sets.push('is_active = ?');
+      vals.push(is_active ? 1 : 0);
+    }
+    if (sort_order !== undefined) {
+      sets.push('sort_order = ?');
+      vals.push(sort_order);
+    }
+
+    vals.push(key);
+    db.prepare(
+      `UPDATE system_config SET ${sets.join(', ')} WHERE category = 'radio_channel' AND config_key = ?`
+    ).run(...vals);
+
+    db.prepare(
+      "INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'radio_channel_updated', 'radio_channel', 0, ?, ?)"
+    ).run(req.user!.userId, `Updated radio channel: ${key}`, req.ip || 'unknown');
+
+    res.json({ id: key, label: meta.label, freq: meta.freq, is_active: is_active !== undefined ? !!is_active : true, sort_order });
+  } catch (error: any) {
+    console.error('Admin update radio channel error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/admin/radio-channels/:key — remove a radio channel
+router.delete('/radio-channels/:key', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const key = req.params.key;
+    const existing = db.prepare(
+      "SELECT config_key FROM system_config WHERE category = 'radio_channel' AND config_key = ?"
+    ).get(key);
+
+    if (!existing) {
+      res.status(404).json({ error: 'Radio channel not found' });
+      return;
+    }
+
+    db.prepare("DELETE FROM system_config WHERE category = 'radio_channel' AND config_key = ?").run(key);
+
+    db.prepare(
+      "INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'radio_channel_deleted', 'radio_channel', 0, ?, ?)"
+    ).run(req.user!.userId, `Deleted radio channel: ${key}`, req.ip || 'unknown');
+
+    res.json({ message: 'Radio channel deleted' });
+  } catch (error: any) {
+    console.error('Admin delete radio channel error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/admin/radio-channels/seed — seed default channels if none exist
+router.post('/radio-channels/seed', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const count = db.prepare(
+      "SELECT COUNT(*) as cnt FROM system_config WHERE category = 'radio_channel'"
+    ).get() as any;
+
+    if (count.cnt > 0) {
+      res.json({ message: 'Radio channels already configured', seeded: false });
+      return;
+    }
+
+    const defaults = [
+      { id: 'dispatch', label: 'DISPATCH', freq: '155.010' },
+      { id: 'tac-1',    label: 'TAC-1',    freq: '155.475' },
+      { id: 'tac-2',    label: 'TAC-2',    freq: '155.730' },
+      { id: 'tac-3',    label: 'TAC-3',    freq: '156.090' },
+      { id: 'patrol',   label: 'PATROL',   freq: '156.240' },
+      { id: 'admin',    label: 'ADMIN',    freq: '158.985' },
+    ];
+
+    const now = localNow();
+    const stmt = db.prepare(
+      "INSERT INTO system_config (config_key, config_value, category, sort_order, is_active, created_at, updated_at) VALUES (?, ?, 'radio_channel', ?, 1, ?, ?)"
+    );
+
+    db.transaction(() => {
+      defaults.forEach((ch, i) => {
+        stmt.run(ch.id, JSON.stringify({ label: ch.label, freq: ch.freq }), i, now, now);
+      });
+    })();
+
+    res.json({ message: 'Seeded default radio channels', seeded: true, count: defaults.length });
+  } catch (error: any) {
+    console.error('Admin seed radio channels error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

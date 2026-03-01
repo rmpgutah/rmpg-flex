@@ -7,6 +7,7 @@ import type { Credential, Schedule, TimeEntry, TrainingRecord, Deployment, Offic
 import type { OfficerWithStatus } from './utils/personnelMappers';
 import { calcYearsOfService } from './utils/personnelFormatters';
 import { DETAIL_TABS, ROLE_COLORS, type DetailTab } from './utils/personnelConstants';
+import { formatLabel } from '../../utils/formatters';
 import OfficerAvatar from './components/OfficerAvatar';
 import ProfileDetailTab from './detail-tabs/ProfileDetailTab';
 import CredentialsDetailTab from './detail-tabs/CredentialsDetailTab';
@@ -110,7 +111,7 @@ export default function PersonnelDetailPanel({
                   </span>
                 )}
                 <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-bold uppercase ${ROLE_COLORS[officer.role] || ROLE_COLORS.officer}`}>
-                  {officer.role}
+                  {formatLabel(officer.role)}
                 </span>
                 {officer.badge_number && (
                   <span className="text-xs text-rmpg-300 font-mono flex items-center gap-1">

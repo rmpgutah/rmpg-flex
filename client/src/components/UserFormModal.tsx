@@ -10,6 +10,7 @@ export interface UserFormData {
   password: string;
   full_name: string;
   role: UserRole;
+  status: string;
   // Personal
   first_name: string;
   last_name: string;
@@ -61,6 +62,7 @@ interface UserFormModalProps {
     middle_name?: string;
     email: string;
     role: UserRole;
+    status?: string;
     badge_number?: string;
     phone?: string;
     department?: string;
@@ -97,13 +99,19 @@ const ROLES: { value: UserRole; label: string }[] = [
   { value: 'dispatcher', label: 'Dispatcher' },
 ];
 
+const STATUSES: { value: string; label: string; color: string }[] = [
+  { value: 'active', label: 'Active', color: 'text-green-400' },
+  { value: 'inactive', label: 'Suspended', color: 'text-yellow-400' },
+  { value: 'terminated', label: 'Terminated', color: 'text-red-400' },
+];
+
 const RANKS = ['', 'Officer', 'Corporal', 'Sergeant', 'Lieutenant', 'Captain', 'Major', 'Chief'];
 const SHIFTS = ['', 'day', 'swing', 'night', 'rotating'];
 const BLOOD_TYPES = ['', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 const UNIFORM_SIZES = ['', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL'];
 
 const EMPTY_FORM: UserFormData = {
-  username: '', password: '', full_name: '', role: 'officer',
+  username: '', password: '', full_name: '', role: 'officer', status: 'active',
   first_name: '', last_name: '', middle_name: '', date_of_birth: '',
   email: '', phone: '', address: '', city: '', state: '', zip: '',
   badge_number: '', department: '', rank: '', employee_id: '',
@@ -146,6 +154,7 @@ export default function UserFormModal({
           password: '',
           full_name: `${editingUser.first_name} ${editingUser.last_name}`.trim(),
           role: editingUser.role,
+          status: editingUser.status || 'active',
           first_name: editingUser.first_name || '',
           last_name: editingUser.last_name || '',
           middle_name: editingUser.middle_name || '',
@@ -270,7 +279,7 @@ export default function UserFormModal({
               <input type="text" value={form.middle_name} onChange={e => set('middle_name', e.target.value)} className={inputCls} />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className={`grid ${isEdit ? 'grid-cols-3' : 'grid-cols-2'} gap-4`}>
             <div>
               <label className={labelCls}>Date of Birth</label>
               <input type="date" value={form.date_of_birth} onChange={e => set('date_of_birth', e.target.value)} className={inputCls} />
@@ -280,6 +289,14 @@ export default function UserFormModal({
                 <label className={labelCls}>Role</label>
                 <select value={form.role} onChange={e => set('role', e.target.value)} className={inputCls}>
                   {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                </select>
+              </div>
+            )}
+            {isEdit && (
+              <div>
+                <label className={labelCls}>Account Status</label>
+                <select value={form.status} onChange={e => set('status', e.target.value)} className={inputCls}>
+                  {STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                 </select>
               </div>
             )}

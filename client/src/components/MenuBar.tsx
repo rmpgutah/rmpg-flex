@@ -5,6 +5,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { printWithLightMaps } from '../utils/googleMapsLoader';
 import {
   Radio,
   FileText,
@@ -264,8 +265,8 @@ export default function MenuBar({
         ],
       },
       { type: 'separator' },
-      { type: 'action', label: 'Export Current View...', icon: Download, shortcut: 'Ctrl+E', action: () => window.print() },
-      { type: 'action', label: 'Print Current View...', icon: Printer, shortcut: 'Ctrl+P', action: () => window.print() },
+      { type: 'action', label: 'Export Current View...', icon: Download, shortcut: 'Ctrl+E', action: () => printWithLightMaps() },
+      { type: 'action', label: 'Print Current View...', icon: Printer, shortcut: 'Ctrl+P', action: () => printWithLightMaps() },
       { type: 'separator' },
       { type: 'action', label: 'Refresh Data', icon: RefreshCw, shortcut: 'F5', action: onRefreshData },
       { type: 'separator' },

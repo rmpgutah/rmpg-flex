@@ -14,6 +14,7 @@ interface IncidentFormModalProps {
   editingIncident?: Incident;
   dispositionCodes?: {code: string; description: string; color?: string}[];
   clients?: { id: string; name: string }[];
+  defaultType?: string;
 }
 
 export interface IncidentFormData {
@@ -79,7 +80,7 @@ export interface IncidentFormData {
 const TRAFFIC_TYPES: string[] = ['traffic_accident', 'hit_and_run', 'dui_dwi', 'parking_violation', 'traffic_hazard', 'abandoned_vehicle'];
 const MEDICAL_TYPES: string[] = ['medical_emergency', 'overdose', 'mental_health_crisis'];
 const TRESPASS_TYPES: string[] = ['trespass'];
-const USE_OF_FORCE_TYPES: string[] = ['assault', 'battery'];
+const USE_OF_FORCE_TYPES: string[] = ['assault', 'battery', 'use_of_force'];
 
 const PRIORITY_OPTIONS: { value: CallPriority; label: string; color: string; desc: string }[] = [
   { value: 'P1', label: 'P1', color: 'border-red-500 text-red-400 bg-red-900/30', desc: 'Emergency' },
@@ -193,6 +194,7 @@ export default function IncidentFormModal({
   editingIncident,
   dispositionCodes = [],
   clients = [],
+  defaultType = '',
 }: IncidentFormModalProps) {
   const [formData, setFormData] = useState<IncidentFormData>(EMPTY_FORM);
   const [activeSection, setActiveSection] = useState<SectionId>('basic');
@@ -260,11 +262,14 @@ export default function IncidentFormModal({
           client_id: inc.client_id ? String(inc.client_id) : '',
         });
       } else {
-        setFormData(EMPTY_FORM);
+        setFormData({
+          ...EMPTY_FORM,
+          ...(defaultType ? { incident_type: defaultType as IncidentType, priority: 'P1' as CallPriority } : {}),
+        });
       }
-      setActiveSection('basic');
+      setActiveSection(defaultType && USE_OF_FORCE_TYPES.includes(defaultType) ? 'use_of_force' : 'basic');
     }
-  }, [isOpen, editingIncident]);
+  }, [isOpen, editingIncident, defaultType]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

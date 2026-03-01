@@ -7,6 +7,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   loginBusy: boolean;
+  isContractManager: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
@@ -19,6 +20,10 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const TOKEN_KEY = 'rmpg_token';
 const REFRESH_TOKEN_KEY = 'rmpg_refresh_token';
 const SESSION_ID_KEY = 'rmpg_session_id';
+const LAST_USERNAME_KEY = 'rmpg_last_username';
+
+// Access window.electron safely (only present in Electron desktop app)
+const electron = typeof window !== 'undefined' ? (window as any).electron : null;
 
 // Refresh access token 60 seconds before it expires
 const REFRESH_BUFFER_MS = 60 * 1000;
@@ -90,7 +95,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setToken(data.token);
           scheduleRefresh(data.token);
         } else {
-          // Refresh failed — force logout
+          // Refresh failed — only force logout if we're online
+          // (when offline in Electron, keep the cached user session alive)
+          if (electron?.getOfflineState) {
+            try {
+              const state = await electron.getOfflineState();
+              if (!state.isOnline) {
+                // Offline — don't force logout, retry later
+                refreshTimerRef.current = setTimeout(() => {
+                  isRefreshingRef.current = false;
+                  const ct = localStorage.getItem(TOKEN_KEY);
+                  if (ct) scheduleRefresh(ct);
+                }, 30000);
+                return;
+              }
+            } catch { /* fall through to logout */ }
+          }
           clearTokens();
           setToken(null);
           setUser(null);
@@ -190,7 +210,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       } catch {
         if (gen !== generationRef.current) return; // stale
-        // API not available - use mock user for development
+
+        // API not available — attempt offline auth via Electron local cache
+        const lastUsername = localStorage.getItem(LAST_USERNAME_KEY);
+        if (electron?.getCachedUser && lastUsername) {
+          try {
+            const cachedUser = await electron.getCachedUser(lastUsername);
+            if (cachedUser) {
+              setUser(cachedUser);
+              return; // loaded from local DB — skip mock
+            }
+          } catch { /* fall through to mock */ }
+        }
+
+        // Fallback mock user for pure-browser development
         setUser({
           id: 'dev-1',
           username: 'dispatcher',
@@ -243,12 +276,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           localStorage.setItem(SESSION_ID_KEY, data.sessionId);
         }
 
+        // Store username for offline auth lookup
+        localStorage.setItem(LAST_USERNAME_KEY, username);
+
         // Set user BEFORE token so the effect sees user is already
         // populated and skips the redundant /me round-trip.
         setUser(data.user);
         setToken(data.token);
         setIsLoading(false);
         scheduleRefresh(data.token);
+
+        // Trigger offline sync to seed local DB (fire-and-forget)
+        if (electron?.triggerSync) {
+          electron.triggerSync().catch(() => { /* silent — sync will retry */ });
+        }
       } else {
         const errData = await res.json().catch(() => ({}));
 
@@ -345,6 +386,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isAuthenticated: !!user,
     isLoading,
     loginBusy,
+    isContractManager: user?.role === 'contract_manager',
     login,
     logout,
     refreshUser,

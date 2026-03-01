@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../hooks/useApi';
+import { formatLabel } from '../utils/formatters';
 
 interface UserProfileModalProps {
   isOpen: boolean;
@@ -75,12 +76,17 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
   if (!isOpen || !user) return null;
 
   const handleProfileSave = async () => {
+    // Validate mandatory fields
+    if (!firstName.trim() || !lastName.trim()) {
+      setProfileMsg({ type: 'error', text: 'First and last name are required.' });
+      return;
+    }
     setProfileSaving(true);
     setProfileMsg(null);
     try {
       await apiFetch('/auth/profile', {
         method: 'PUT',
-        body: JSON.stringify({ first_name: firstName, last_name: lastName, email, phone }),
+        body: JSON.stringify({ first_name: firstName.trim(), last_name: lastName.trim(), email, phone }),
       });
       // Refresh AuthContext user so header/OPR name updates immediately
       await refreshUser();
@@ -184,7 +190,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
             </div>
             <div className="text-[10px] font-mono" style={{ color: '#a0a0a0' }}>
               {user.badge_number && <span className="mr-2">{user.badge_number}</span>}
-              <span className="uppercase">{user.role}</span>
+              <span className="uppercase">{formatLabel(user.role)}</span>
             </div>
             <div className="text-[10px]" style={{ color: '#707070' }}>
               {user.email}
@@ -220,21 +226,23 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
             <>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="field-label">First Name</label>
+                  <label className="field-label">First Name <span className="text-red-500">*</span></label>
                   <input
                     type="text"
                     value={firstName}
                     onChange={e => setFirstName(e.target.value)}
                     className="input-dark"
+                    required
                   />
                 </div>
                 <div>
-                  <label className="field-label">Last Name</label>
+                  <label className="field-label">Last Name <span className="text-red-500">*</span></label>
                   <input
                     type="text"
                     value={lastName}
                     onChange={e => setLastName(e.target.value)}
                     className="input-dark"
+                    required
                   />
                 </div>
               </div>

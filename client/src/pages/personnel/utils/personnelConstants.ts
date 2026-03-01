@@ -4,12 +4,12 @@
 
 import {
   Users, Radio, Calendar, Clock, Award, GraduationCap, Package, MapPinned, BarChart3,
-  User, Activity,
+  User, Activity, TrendingUp,
 } from 'lucide-react';
 import type React from 'react';
 
 // Main tabs
-export type MainTab = 'roster' | 'duty_board' | 'schedule' | 'time' | 'credentials' | 'training' | 'equipment' | 'deployment' | 'analytics';
+export type MainTab = 'roster' | 'duty_board' | 'schedule' | 'time' | 'overtime' | 'credentials' | 'training' | 'equipment' | 'deployment' | 'analytics';
 
 export type DetailTab = 'profile' | 'credentials' | 'schedule' | 'time' | 'activity' | 'training' | 'equipment' | 'deployment';
 
@@ -33,6 +33,7 @@ export const MAIN_TABS: { id: MainTab; label: string; icon: React.ElementType }[
   { id: 'duty_board', label: 'Duty Board', icon: Radio },
   { id: 'schedule', label: 'Schedule', icon: Calendar },
   { id: 'time', label: 'Time', icon: Clock },
+  { id: 'overtime', label: 'Overtime', icon: TrendingUp },
   { id: 'credentials', label: 'Credentials', icon: Award },
   { id: 'training', label: 'Training', icon: GraduationCap },
   { id: 'equipment', label: 'Equipment', icon: Package },
@@ -64,6 +65,7 @@ export const ROLE_COLORS: Record<string, string> = {
   supervisor: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
   officer: 'bg-brand-900/50 text-brand-400 border border-brand-700/50',
   dispatcher: 'bg-blue-900/50 text-blue-400 border border-blue-700/50',
+  contract_manager: 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50',
 };
 
 export const ACTION_COLORS: Record<string, string> = {

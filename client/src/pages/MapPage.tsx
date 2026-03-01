@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { loadGoogleMaps, DARK_MAP_STYLE, registerMapInstance, unregisterMapInstance, updateMapStyles } from '../utils/googleMapsLoader';
 import { devLog, devWarn } from '../utils/devLog';
 import {
   Layers,
@@ -44,9 +45,12 @@ import { useWebSocket } from '../context/WebSocketContext';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { formatIncidentType } from '../utils/caseNumbers';
 import { escapeHtml } from '../utils/sanitize';
+import { localToday, dateToLocalYMD } from '../utils/dateUtils';
 import { useGeoJsonLayers, GEO_LAYER_CONFIGS } from '../hooks/useGeoJsonLayers';
 import { useEventPlanning, PLAN_COLORS, PLAN_TYPE_LABELS, type PlanItemType } from '../hooks/useEventPlanning';
 import { useShiftPlanning, SHIFT_TYPES, type ShiftType } from '../hooks/useShiftPlanning';
+import { useIsMobile } from '../hooks/useIsMobile';
+import MobileBottomSheet from '../components/mobile/MobileBottomSheet';
 
 // ============================================================
 // Types
@@ -127,36 +131,7 @@ const MAP_STYLE_LABELS: Record<MapStyleId, string> = {
   arcgis: 'ArcGIS Web Map',
 };
 
-// ============================================================
-// Google Maps Dark Mode Style (Night Mode)
-// ============================================================
-
-const DARK_MAP_STYLE: google.maps.MapTypeStyle[] = [
-  { elementType: 'geometry', stylers: [{ color: '#0a0a0a' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#000000' }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: '#555555' }] },
-  { featureType: 'administrative', elementType: 'geometry', stylers: [{ visibility: 'off' }] },
-  { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#707070' }] },
-  { featureType: 'administrative.province', elementType: 'geometry.stroke', stylers: [{ color: '#2a2a2a' }] },
-  { featureType: 'administrative.land_parcel', stylers: [{ visibility: 'off' }] },
-  { featureType: 'administrative.neighborhood', stylers: [{ visibility: 'off' }] },
-  { featureType: 'landscape', elementType: 'geometry', stylers: [{ color: '#0e0e0e' }] },
-  { featureType: 'landscape.man_made', elementType: 'geometry', stylers: [{ color: '#111111' }] },
-  { featureType: 'landscape.natural', elementType: 'geometry', stylers: [{ color: '#0c0c0c' }] },
-  { featureType: 'poi', stylers: [{ visibility: 'off' }] },
-  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#0d120d' }, { visibility: 'simplified' }] },
-  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#1a1a1a' }] },
-  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#141414' }] },
-  { featureType: 'road', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
-  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#262626' }] },
-  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#1e1e1e' }] },
-  { featureType: 'road.highway', elementType: 'labels.text.fill', stylers: [{ color: '#606060' }] },
-  { featureType: 'road.arterial', elementType: 'geometry', stylers: [{ color: '#202020' }] },
-  { featureType: 'road.local', elementType: 'labels', stylers: [{ visibility: 'off' }] },
-  { featureType: 'transit', stylers: [{ visibility: 'off' }] },
-  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#050505' }] },
-  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#333333' }] },
-];
+// DARK_MAP_STYLE is now imported from googleMapsLoader.ts (single source of truth)
 
 // ============================================================
 // Incident Category Icons (condensed text-based symbols for map markers)
@@ -212,84 +187,85 @@ function getIncidentCategory(type: string): { symbol: string; category: string }
 function buildUnitMarkerContent(callSign: string, status: UnitStatus): HTMLElement {
   const color = UNIT_STATUS_COLORS[status];
   const label = UNIT_STATUS_LABELS[status];
-  const isActive = status !== 'available' && status !== 'off_duty';
 
-  const el = document.createElement('div');
-  el.style.cssText = 'position:relative;display:flex;flex-direction:column;align-items:center;cursor:pointer;';
-  el.innerHTML = `
-    <div style="
-      width:36px;height:42px;position:relative;
-      background:linear-gradient(180deg,${color}dd,${color}77);
-      clip-path:polygon(50% 0%,100% 12%,100% 68%,50% 100%,0% 68%,0% 12%);
-      display:flex;align-items:center;justify-content:center;
-      filter:drop-shadow(0 2px 4px rgba(0,0,0,0.7));
-      ${isActive ? `box-shadow:0 0 10px ${color}60;` : ''}
-    ">
-      <div style="
-        width:32px;height:38px;
-        background:linear-gradient(180deg,#1a1a1add,#111111ee);
-        clip-path:polygon(50% 2%,98% 13%,98% 67%,50% 98%,2% 67%,2% 13%);
-        display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
-      ">
-        <span style="color:${color};font-size:9px;font-weight:900;font-family:'Courier New',monospace;letter-spacing:-0.5px;line-height:1;text-shadow:0 0 4px ${color}40;">${callSign}</span>
-        <span style="color:${color}99;font-size:6px;font-weight:700;font-family:'Courier New',monospace;letter-spacing:1px;">${label}</span>
-      </div>
-    </div>
-    ${isActive ? `<div style="position:absolute;top:-2px;right:-2px;width:6px;height:6px;border-radius:50%;background:${color};box-shadow:0 0 6px ${color};animation:pulse-led 1.5s infinite;"></div>` : ''}
-  `;
-  return el;
+  const wrapper = document.createElement('div');
+  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;';
+
+  const tag = document.createElement('div');
+  tag.style.cssText =
+    `background:${color};color:#fff;font-size:9px;font-weight:900;` +
+    "padding:2px 5px;border:1px solid rgba(255,255,255,0.8);white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;" +
+    'display:flex;align-items:center;gap:3px;';
+
+  const csSpan = document.createElement('span');
+  csSpan.textContent = callSign;
+  const stSpan = document.createElement('span');
+  stSpan.style.cssText = 'font-size:6px;opacity:0.8;letter-spacing:0.5px;';
+  stSpan.textContent = label;
+  tag.appendChild(csSpan);
+  tag.appendChild(stSpan);
+
+  const caret = document.createElement('div');
+  caret.style.cssText =
+    `width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid ${color};`;
+
+  wrapper.appendChild(tag);
+  wrapper.appendChild(caret);
+  return wrapper;
 }
 
-function buildIncidentMarkerContent(priority: string, incidentType: string): HTMLElement {
+function buildIncidentMarkerContent(priority: string, incidentType: string, callNumber?: string): HTMLElement {
   const color = PRIORITY_COLORS[priority] || '#6b7280';
-  const isPriority1 = priority === 'P1';
-  const { symbol, category } = getIncidentCategory(incidentType);
+  const { category } = getIncidentCategory(incidentType);
 
-  const el = document.createElement('div');
-  el.style.cssText = 'position:relative;display:flex;flex-direction:column;align-items:center;cursor:pointer;';
-  el.innerHTML = `
-    <div style="
-      width:28px;height:28px;border-radius:6px;
-      background:linear-gradient(180deg,#1e1e1eee,#141414ee);
-      border:2px solid ${color};
-      display:flex;align-items:center;justify-content:center;
-      position:relative;overflow:hidden;
-      filter:drop-shadow(0 2px 3px rgba(0,0,0,0.5));
-      ${isPriority1 ? 'animation:pulse-incident 1.5s ease-in-out infinite;' : ''}
-    ">
-      <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,${color},transparent);"></div>
-      <span style="font-size:14px;line-height:1;margin-top:1px;">${symbol}</span>
-    </div>
-    <div style="
-      position:absolute;bottom:-7px;
-      background:${color};color:#fff;font-size:6px;font-weight:900;
-      padding:0 3px;border-radius:2px;font-family:'Courier New',monospace;
-      line-height:10px;letter-spacing:0.3px;white-space:nowrap;
-    ">${priority} ${category}</div>
-  `;
-  return el;
+  const wrapper = document.createElement('div');
+  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;';
+
+  const tag = document.createElement('div');
+  tag.style.cssText =
+    `background:${color};color:#fff;font-size:9px;font-weight:900;` +
+    "padding:2px 5px;border:1px solid #fff;white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;" +
+    'display:flex;align-items:center;gap:3px;';
+
+  if (callNumber) {
+    const numSpan = document.createElement('span');
+    numSpan.textContent = callNumber;
+    tag.appendChild(numSpan);
+  }
+
+  const catSpan = document.createElement('span');
+  catSpan.style.cssText = 'font-size:7px;opacity:0.85;letter-spacing:0.3px;';
+  catSpan.textContent = category;
+  tag.appendChild(catSpan);
+
+  const caret = document.createElement('div');
+  caret.style.cssText =
+    `width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid ${color};`;
+
+  wrapper.appendChild(tag);
+  wrapper.appendChild(caret);
+  return wrapper;
 }
 
 function buildPropertyMarkerContent(name: string): HTMLElement {
-  const shortName = name.length > 8 ? name.substring(0, 7) + '\u2026' : name;
-  const el = document.createElement('div');
-  el.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;';
-  el.innerHTML = `
-    <div style="
-      display:flex;align-items:center;justify-content:center;
-      width:22px;height:22px;border-radius:4px;
-      background:linear-gradient(180deg,#0f172aee,#0a1020ee);border:1.5px solid #3b82f680;
-      filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4));
-    ">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="4" y="2" width="16" height="20" rx="2" ry="2"/>
-        <path d="M9 22v-4h6v4"/>
-        <path d="M8 6h.01M16 6h.01M12 6h.01M12 10h.01M12 14h.01M16 10h.01M16 14h.01M8 10h.01M8 14h.01"/>
-      </svg>
-    </div>
-    <div style="font-size:6px;color:#60a5fa;font-weight:700;font-family:'Courier New',monospace;margin-top:1px;text-shadow:0 1px 2px rgba(0,0,0,0.8);white-space:nowrap;">${shortName}</div>
-  `;
-  return el;
+  const shortName = name.length > 12 ? name.substring(0, 11) + '\u2026' : name;
+
+  const wrapper = document.createElement('div');
+  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;';
+
+  const tag = document.createElement('div');
+  tag.style.cssText =
+    "background:#1e3a5f;color:#93c5fd;font-size:8px;font-weight:900;" +
+    "padding:2px 5px;border:1px solid #3b82f6;white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;border-radius:2px;";
+  tag.textContent = shortName;
+
+  const caret = document.createElement('div');
+  caret.style.cssText =
+    'width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid #1e3a5f;';
+
+  wrapper.appendChild(tag);
+  wrapper.appendChild(caret);
+  return wrapper;
 }
 
 // ============================================================
@@ -427,71 +403,7 @@ function getOverlayMarkerClass() {
 // CSS Keyframes (injected once)
 // ============================================================
 
-// ============================================================
-// Google Maps Script Loader (direct script tag — bypasses js-api-loader issues)
-// ============================================================
-
-let _gmapsLoadPromise: Promise<void> | null = null;
-
-function loadGoogleMaps(apiKey: string): Promise<void> {
-  if (_gmapsLoadPromise) return _gmapsLoadPromise;
-
-  // If google.maps already exists (HMR / page revisit), resolve immediately
-  if (typeof google !== 'undefined' && google.maps && google.maps.Map) {
-    _gmapsLoadPromise = Promise.resolve();
-    return _gmapsLoadPromise;
-  }
-
-  _gmapsLoadPromise = new Promise<void>((resolve, reject) => {
-    // Remove any stale/failed script tags so we always get a fresh load.
-    // A leftover <script> from a previous failed attempt (e.g. server was
-    // down) would never fire its callback, causing an infinite polling loop.
-    const existing = document.querySelector('script[src*="maps.googleapis.com"]');
-    if (existing) {
-      // If Google Maps already fully loaded despite the stale tag, resolve now
-      if (typeof google !== 'undefined' && google.maps && google.maps.Map) {
-        resolve();
-        return;
-      }
-      // Otherwise remove the dead script so we can inject a fresh one
-      existing.remove();
-      // Also clean up any lingering callback
-      delete (window as any).__rmpg_gmaps_init__;
-    }
-
-    // Create and inject the script tag
-    const callbackName = '__rmpg_gmaps_init__';
-    (window as any)[callbackName] = () => {
-      delete (window as any)[callbackName];
-      resolve();
-    };
-
-    const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,marker&callback=${callbackName}&v=weekly`;
-    script.async = true;
-    script.defer = true;
-    script.onerror = () => {
-      _gmapsLoadPromise = null; // Allow retry
-      script.remove(); // Clean up the failed tag
-      delete (window as any)[callbackName];
-      reject(new Error('Failed to load Google Maps script'));
-    };
-    document.head.appendChild(script);
-
-    // Safety timeout — if the callback never fires within 15 seconds,
-    // treat it as a failure so the user sees the error overlay + Retry.
-    setTimeout(() => {
-      if (typeof google === 'undefined' || !google.maps || !google.maps.Map) {
-        _gmapsLoadPromise = null;
-        script.remove();
-        delete (window as any)[callbackName];
-        reject(new Error('Google Maps script load timed out'));
-      }
-    }, 15000);
-  });
-
-  return _gmapsLoadPromise;
-}
+// Google Maps Script Loader — imported from shared utility (utils/googleMapsLoader.ts)
 
 const STYLE_ID = 'rmpg-map-keyframes';
 function injectKeyframes() {
@@ -515,6 +427,8 @@ function injectKeyframes() {
 // ============================================================
 
 export default function MapPage() {
+  const isMobile = useIsMobile();
+  const [mobileLayersOpen, setMobileLayersOpen] = useState(false);
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<any[]>([]); // AdvancedMarkerElement or OverlayView
@@ -568,7 +482,7 @@ export default function MapPage() {
   const shiftPlanning = useShiftPlanning();
   const [showShiftPanel, setShowShiftPanel] = useState(false);
   const [newShiftPlanName, setNewShiftPlanName] = useState('');
-  const [newShiftPlanDate, setNewShiftPlanDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [newShiftPlanDate, setNewShiftPlanDate] = useState(() => localToday());
   const [newShiftPlanType, setNewShiftPlanType] = useState<ShiftType>('day');
   const [assignOfficerIds, setAssignOfficerIds] = useState<string[]>([]);
   const [assignUnitIds, setAssignUnitIds] = useState<string[]>([]);
@@ -777,9 +691,14 @@ export default function MapPage() {
         zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_TOP },
         styles: DARK_MAP_STYLE,
         backgroundColor: '#0a0a0a',
+        // NOTE: mapId intentionally omitted — when set, Google Cloud-based
+        // styling overrides our local DARK_MAP_STYLE array completely.
+        // OverlayView markers work without mapId; AdvancedMarkerElement does not.
+        gestureHandling: 'greedy',
       });
 
       mapInstanceRef.current = map;
+      registerMapInstance(map);
       infoWindowRef.current = new google.maps.InfoWindow();
 
       // Hide Google's dismissible "can't load correctly" dialog instantly.
@@ -817,7 +736,13 @@ export default function MapPage() {
       dismissObserver.observe(document.body, { childList: true, subtree: true });
       setTimeout(() => dismissObserver.disconnect(), 10000);
 
-      useAdvancedMarkersRef.current = false;
+      // Detect AdvancedMarkerElement support (requires mapId)
+      try {
+        useAdvancedMarkersRef.current = !!(google.maps.marker && google.maps.marker.AdvancedMarkerElement);
+      } catch {
+        useAdvancedMarkersRef.current = false;
+      }
+      devLog('[MapPage] AdvancedMarkerElement:', useAdvancedMarkersRef.current ? 'available' : 'fallback overlay');
       if (!authFailed) setMapLoaded(true);
     }
 
@@ -849,6 +774,7 @@ export default function MapPage() {
 
     return () => {
       cancelled = true; // Stop any pending retries
+      if (mapInstanceRef.current) unregisterMapInstance(mapInstanceRef.current);
       markersRef.current.forEach((m) => {
         if (m && typeof m.remove === 'function') m.remove();
         else if (m) m.map = null;
@@ -874,15 +800,19 @@ export default function MapPage() {
     } else if (mapStyle === 'dark') {
       map.setMapTypeId('roadmap');
       map.setOptions({ styles: DARK_MAP_STYLE });
+      updateMapStyles(map, DARK_MAP_STYLE);
     } else if (mapStyle === 'satellite') {
       map.setMapTypeId('satellite');
       map.setOptions({ styles: [] });
+      updateMapStyles(map, []);
     } else if (mapStyle === 'hybrid') {
       map.setMapTypeId('hybrid');
       map.setOptions({ styles: [] });
+      updateMapStyles(map, []);
     } else if (mapStyle === 'streets') {
       map.setMapTypeId('roadmap');
       map.setOptions({ styles: [] });
+      updateMapStyles(map, []);
     }
   }, [mapStyle, mapLoaded]);
 
@@ -967,6 +897,7 @@ export default function MapPage() {
                   ` : `<div style="font-size:9px;color:#4b5563;margin-top:4px;">${escapeHtml(location)}</div>`}
                 </div>
               `);
+              infoWindowRef.current?.setPosition({ lat: unit.latitude!, lng: unit.longitude! });
               infoWindowRef.current?.open(map);
             },
           });
@@ -980,7 +911,7 @@ export default function MapPage() {
     if (layers.incidents) {
       calls.forEach((call) => {
         if (call.latitude != null && call.longitude != null) {
-          const content = buildIncidentMarkerContent(call.priority, call.incident_type);
+          const content = buildIncidentMarkerContent(call.priority, call.incident_type, call.call_number);
           const pColor = PRIORITY_COLORS[call.priority] || '#6b7280';
 
           const marker = createMarker({
@@ -1021,6 +952,7 @@ export default function MapPage() {
                   ${unitsHtml}
                 </div>
               `);
+              infoWindowRef.current?.setPosition({ lat: call.latitude!, lng: call.longitude! });
               infoWindowRef.current?.open(map);
             },
           });
@@ -1050,6 +982,7 @@ export default function MapPage() {
                   ${prop.client_name ? `<div style="font-size:9px;margin-top:6px;color:#9ca3af;font-weight:600;">Client: ${escapeHtml(prop.client_name)}</div>` : ''}
                 </div>
               `);
+              infoWindowRef.current?.setPosition({ lat: prop.latitude!, lng: prop.longitude! });
               infoWindowRef.current?.open(map);
             },
           });
@@ -1219,8 +1152,9 @@ export default function MapPage() {
           for (let i = 0; i < trail.points.length - 1; i++) {
             const p1 = trail.points[i];
             const p2 = trail.points[i + 1];
-            const age = (trail.points.length - i) / trail.points.length;
-            const opacity = 0.3 + age * 0.5;
+            // Freshness: 0 for oldest segment, 1 for newest — newer = brighter
+            const freshness = (i + 1) / trail.points.length;
+            const opacity = 0.2 + freshness * 0.6;
 
             const seg = new google.maps.Polyline({
               path: [{ lat: p1.lat, lng: p1.lng }, { lat: p2.lat, lng: p2.lng }],
@@ -1251,19 +1185,19 @@ export default function MapPage() {
             dot.addListener('click', () => {
               const time = new Date(pt.time).toLocaleString();
               const html = `
-                <div style="font-family:monospace;font-size:11px;color:#111;min-width:200px;line-height:1.6">
-                  <div style="font-weight:bold;font-size:13px;margin-bottom:4px;color:#c41e1e">
+                <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:200px;line-height:1.6;background:#0a0e14;padding:10px 12px;border-radius:6px;border:1px solid #1e2a3a">
+                  <div style="font-weight:bold;font-size:13px;margin-bottom:4px;color:#ff4444">
                     ${trail.call_sign} — ${trail.officer_name || 'Unknown'}
                   </div>
-                  <div style="color:#666;font-size:10px;margin-bottom:6px">${trail.badge_number || ''}</div>
+                  <div style="color:#8899aa;font-size:10px;margin-bottom:6px">${trail.badge_number || ''}</div>
                   <table style="width:100%;font-size:11px;border-collapse:collapse">
-                    <tr><td style="color:#888;padding:1px 6px 1px 0">Time</td><td style="font-weight:bold">${time}</td></tr>
-                    <tr><td style="color:#888;padding:1px 6px 1px 0">Status</td><td style="font-weight:bold">${STATUS_LABELS[pt.status] || pt.status}</td></tr>
-                    <tr><td style="color:#888;padding:1px 6px 1px 0">Speed</td><td>${formatSpeed(pt.speed)}</td></tr>
-                    <tr><td style="color:#888;padding:1px 6px 1px 0">Heading</td><td>${formatHeading(pt.heading)}</td></tr>
-                    <tr><td style="color:#888;padding:1px 6px 1px 0">Accuracy</td><td>${pt.accuracy != null ? `±${Math.round(pt.accuracy)}m` : '—'}</td></tr>
-                    <tr><td style="color:#888;padding:1px 6px 1px 0">Position</td><td style="font-size:10px">${pt.lat.toFixed(6)}, ${pt.lng.toFixed(6)}</td></tr>
-                    ${pt.call_number ? `<tr><td style="color:#888;padding:1px 6px 1px 0">Call</td><td style="font-weight:bold">${pt.call_number} — ${pt.call_type || ''}</td></tr>` : ''}
+                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Time</td><td style="font-weight:bold;color:#fff">${time}</td></tr>
+                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Status</td><td style="font-weight:bold;color:#4fc3f7">${STATUS_LABELS[pt.status] || pt.status}</td></tr>
+                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Speed</td><td style="color:#e0e0e0">${formatSpeed(pt.speed)}</td></tr>
+                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Heading</td><td style="color:#e0e0e0">${formatHeading(pt.heading)}</td></tr>
+                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Accuracy</td><td style="color:#e0e0e0">${pt.accuracy != null ? `±${Math.round(pt.accuracy)}m` : '—'}</td></tr>
+                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Position</td><td style="font-size:10px;color:#e0e0e0">${pt.lat.toFixed(6)}, ${pt.lng.toFixed(6)}</td></tr>
+                    ${pt.call_number ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Call</td><td style="font-weight:bold;color:#4fc3f7">${pt.call_number} — ${pt.call_type || ''}</td></tr>` : ''}
                   </table>
                 </div>
               `;
@@ -1480,9 +1414,9 @@ export default function MapPage() {
           </div>
         )}
 
-        {/* ── Layer Controls Panel - Top Left ── */}
-        <div className="absolute top-4 left-4 z-[1000]">
-          <div className="bg-surface-deep/95 border border-rmpg-600 backdrop-blur-sm shadow-2xl" style={{ minWidth: 180, borderRadius: 4 }}>
+        {/* ── Layer Controls Panel - Top Left (Desktop only) ── */}
+        {!isMobile && <div className="absolute top-4 left-4 z-[1000]">
+          <div className="bg-surface-deep/95 border border-rmpg-600 backdrop-blur-sm shadow-2xl" style={{ width: 'clamp(160px, 14vw, 200px)', borderRadius: 4 }}>
             <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700">
               <Layers className="w-3.5 h-3.5 text-brand-400" />
               <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-widest flex-1">Layers</span>
@@ -2013,7 +1947,7 @@ export default function MapPage() {
                           onClick={() => {
                             const tomorrow = new Date();
                             tomorrow.setDate(tomorrow.getDate() + 1);
-                            shiftPlanning.duplicatePlan(shiftPlanning.activePlanId!, tomorrow.toISOString().split('T')[0]);
+                            shiftPlanning.duplicatePlan(shiftPlanning.activePlanId!, dateToLocalYMD(tomorrow));
                           }}
                           className="flex items-center gap-1 px-1.5 py-0.5 text-[8px] text-rmpg-400 hover:text-rmpg-200 border border-rmpg-700 rounded hover:bg-rmpg-700/30 transition-colors"
                           title="Duplicate for next day"
@@ -2214,74 +2148,74 @@ export default function MapPage() {
               )}
             </div>
           </div>
-        </div>
+        </div>}
 
-        {/* ── Status Legend - Bottom Left ── */}
-        <div className="absolute bottom-4 left-4 z-[1000]">
-          <div className="bg-surface-deep/95 border border-rmpg-600 p-3 backdrop-blur-sm shadow-xl" style={{ borderRadius: 4 }}>
-            <span className="text-[9px] font-bold text-rmpg-400 uppercase tracking-widest">Unit Status Legend</span>
-            <div className="grid grid-cols-3 gap-x-4 gap-y-1.5 mt-2">
+        {/* ── Status Legend - Bottom Left (desktop only, wraps on narrow) ── */}
+        {!isMobile && <div className="absolute bottom-2 left-2 z-[1000] max-w-[calc(100vw-16rem)]">
+          <div className="bg-surface-deep/95 border border-rmpg-600 px-2 py-1.5 backdrop-blur-sm shadow-xl" style={{ borderRadius: 4 }}>
+            <span className="text-[8px] font-bold text-rmpg-400 uppercase tracking-widest">Legend</span>
+            <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
               {(Object.entries(UNIT_STATUS_COLORS) as [UnitStatus, string][])
                 .filter(([k]) => k !== 'off_duty')
                 .map(([status, color]) => (
-                  <div key={status} className="flex items-center gap-1.5">
-                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color, boxShadow: `0 0 6px ${color}80` }} />
-                    <span className="text-[9px] text-rmpg-300 capitalize font-mono">{UNIT_STATUS_LABELS[status as UnitStatus]}</span>
+                  <div key={status} className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color, boxShadow: `0 0 4px ${color}80` }} />
+                    <span className="text-[8px] text-rmpg-300 font-mono">{UNIT_STATUS_LABELS[status as UnitStatus]}</span>
                   </div>
                 ))}
             </div>
           </div>
-        </div>
+        </div>}
 
-        {/* ── Stats Bar - Top Center ── */}
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000]">
-          <div className="bg-surface-deep/95 border border-rmpg-600 px-5 py-2.5 backdrop-blur-sm shadow-xl" style={{ borderRadius: 4 }}>
-            <div className="flex items-center gap-5 text-[10px] font-mono">
-              <div className="flex items-center gap-2">
-                <Siren className="w-3.5 h-3.5 text-red-400" />
-                <span className="text-rmpg-400">ACTIVE</span>
-                <span className="text-white font-bold text-sm">{callsWithCoords.length}</span>
-              </div>
-              <div className="w-px h-5 bg-rmpg-600" />
-              <div className="flex items-center gap-2">
-                <Shield className="w-3.5 h-3.5 text-green-400" />
-                <span className="text-rmpg-400">UNITS</span>
-                <span className="text-white font-bold text-sm">{unitsWithCoords.length}</span>
-              </div>
-              <div className="w-px h-5 bg-rmpg-600" />
+        {/* ── Stats Bar - Top Center (responsive: wraps on narrow screens) ── */}
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-[1000] max-w-[calc(100vw-2rem)]">
+          <div className="bg-surface-deep/95 border border-rmpg-600 px-3 py-1.5 backdrop-blur-sm shadow-xl" style={{ borderRadius: 4 }}>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-mono justify-center">
               <div className="flex items-center gap-1.5">
+                <Siren className="w-3 h-3 text-red-400 shrink-0" />
+                <span className="text-rmpg-400">ACTIVE</span>
+                <span className="text-white font-bold">{callsWithCoords.length}</span>
+              </div>
+              <div className="w-px h-4 bg-rmpg-600 hidden sm:block" />
+              <div className="flex items-center gap-1.5">
+                <Shield className="w-3 h-3 text-green-400 shrink-0" />
+                <span className="text-rmpg-400">UNITS</span>
+                <span className="text-white font-bold">{unitsWithCoords.length}</span>
+              </div>
+              <div className="w-px h-4 bg-rmpg-600 hidden sm:block" />
+              <div className="flex items-center gap-1">
                 <span className="text-green-400 text-[9px]">AVL</span>
                 <span className="text-green-400 font-bold">{unitsByStatus['available'] || 0}</span>
               </div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1">
                 <span className="text-amber-400 text-[9px]">DSP</span>
                 <span className="text-amber-400 font-bold">{unitsByStatus['dispatched'] || 0}</span>
               </div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1">
                 <span className="text-blue-400 text-[9px]">ENR</span>
                 <span className="text-blue-400 font-bold">{unitsByStatus['enroute'] || 0}</span>
               </div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1">
                 <span className="text-purple-400 text-[9px]">ONS</span>
                 <span className="text-purple-400 font-bold">{unitsByStatus['onscene'] || 0}</span>
               </div>
               {calls.length > 0 && (
                 <>
-                  <div className="w-px h-5 bg-rmpg-600" />
+                  <div className="w-px h-4 bg-rmpg-600 hidden sm:block" />
                   {callsByPriority['P1'] ? (
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1">
                       <span className="text-red-400 text-[9px]">P1</span>
                       <span className="text-red-400 font-bold">{callsByPriority['P1']}</span>
                     </div>
                   ) : null}
                   {callsByPriority['P2'] ? (
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1">
                       <span className="text-amber-400 text-[9px]">P2</span>
                       <span className="text-amber-400 font-bold">{callsByPriority['P2']}</span>
                     </div>
                   ) : null}
                   {callsByPriority['P3'] ? (
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1">
                       <span className="text-blue-400 text-[9px]">P3</span>
                       <span className="text-blue-400 font-bold">{callsByPriority['P3']}</span>
                     </div>
@@ -2289,30 +2223,24 @@ export default function MapPage() {
                 </>
               )}
               {isConnected && (
-                <>
-                  <div className="w-px h-5 bg-rmpg-600" />
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                    <span className="text-green-400 font-bold">LIVE</span>
-                  </div>
-                </>
+                <div className="flex items-center gap-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                  <span className="text-green-400 font-bold text-[9px]">LIVE</span>
+                </div>
               )}
               {showTrackingLines && trackingLinesRef.current.length > 0 && (
-                <>
-                  <div className="w-px h-5 bg-rmpg-600" />
-                  <div className="flex items-center gap-1.5">
-                    <Navigation2 className="w-3 h-3 text-cyan-400" />
-                    <span className="text-cyan-400 text-[9px]">LINKS</span>
-                    <span className="text-cyan-400 font-bold">{trackingLinesRef.current.length}</span>
-                  </div>
-                </>
+                <div className="flex items-center gap-1">
+                  <Navigation2 className="w-2.5 h-2.5 text-cyan-400" />
+                  <span className="text-cyan-400 text-[9px]">LINKS</span>
+                  <span className="text-cyan-400 font-bold">{trackingLinesRef.current.length}</span>
+                </div>
               )}
             </div>
           </div>
         </div>
 
         {/* ── Bottom Right Buttons (Recenter + GPS Locate) ── */}
-        <div className="absolute bottom-4 right-4 z-[1000] flex flex-col gap-2" style={{ marginRight: sidebarOpen ? 280 : 36 }}>
+        <div className="absolute bottom-4 right-4 z-[1000] flex flex-col gap-2" style={{ marginRight: sidebarOpen ? 'clamp(200px, 20vw, 280px)' : 36 }}>
           {/* Center on my GPS position */}
           {gps.isTracking && gps.latitude != null && gps.longitude != null && (
             <button
@@ -2344,11 +2272,11 @@ export default function MapPage() {
         </div>
       </div>
 
-      {/* ── Right Sidebar - Unit/Call List ── */}
-      <div
+      {/* ── Right Sidebar - Unit/Call List (Desktop only, responsive width) ── */}
+      {!isMobile && <div
         className="flex flex-col border-l border-rmpg-600 transition-all"
         style={{
-          width: sidebarOpen ? 300 : 36,
+          width: sidebarOpen ? 'clamp(220px, 20vw, 300px)' : 36,
           background: '#0a0a0a',
           flexShrink: 0,
         }}
@@ -2510,7 +2438,91 @@ export default function MapPage() {
             </div>
           </>
         )}
-      </div>
+      </div>}
+
+      {/* ── Mobile: Floating layer button + bottom sheet ── */}
+      {isMobile && (
+        <>
+          <button
+            className="mobile-fab"
+            style={{ bottom: 'calc(80px + env(safe-area-inset-bottom))', right: 16 }}
+            onClick={() => setMobileLayersOpen(!mobileLayersOpen)}
+            aria-label="Toggle layers"
+          >
+            <Layers style={{ width: 22, height: 22 }} />
+          </button>
+
+          <MobileBottomSheet
+            open={mobileLayersOpen}
+            onClose={() => setMobileLayersOpen(false)}
+            initialSnap="half"
+            collapsedHeight={0}
+            header={
+              <div className="flex items-center gap-2">
+                <Layers className="w-4 h-4 text-brand-400" />
+                <span className="text-xs font-bold text-rmpg-200 uppercase tracking-wider">Map Layers</span>
+              </div>
+            }
+          >
+            <div className="p-3 space-y-2">
+              {[
+                { key: 'units' as const, icon: Shield, label: 'Units', color: '#22c55e' },
+                { key: 'incidents' as const, icon: AlertTriangle, label: 'Active Calls', color: '#ef4444' },
+                { key: 'properties' as const, icon: Building2, label: 'Properties', color: '#3b82f6' },
+              ].map(({ key, icon: Icon, label, color }) => (
+                <button
+                  key={key}
+                  onClick={() => toggleLayer(key)}
+                  className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
+                  style={{
+                    background: layers[key] ? 'rgba(34,197,94,0.08)' : '#1a1a1a',
+                    border: '1px solid #2a2a2a',
+                    minHeight: 44,
+                  }}
+                >
+                  {layers[key] ? <Eye className="w-4 h-4 text-green-400" /> : <EyeOff className="w-4 h-4 text-rmpg-500" />}
+                  <Icon style={{ width: 16, height: 16, color: layers[key] ? color : '#6b7280' }} />
+                  <span className="text-sm text-rmpg-200 flex-1">{label}</span>
+                </button>
+              ))}
+
+              <button
+                onClick={() => setShowHeatmap(!showHeatmap)}
+                className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
+                style={{
+                  background: showHeatmap ? 'rgba(239,68,68,0.08)' : '#1a1a1a',
+                  border: '1px solid #2a2a2a',
+                  minHeight: 44,
+                }}
+              >
+                {showHeatmap ? <Eye className="w-4 h-4 text-red-400" /> : <EyeOff className="w-4 h-4 text-rmpg-500" />}
+                <Thermometer style={{ width: 16, height: 16 }} className="text-red-400" />
+                <span className="text-sm text-rmpg-200 flex-1">Heat Map</span>
+              </button>
+
+              {/* GPS Center button */}
+              <button
+                onClick={() => {
+                  const map = mapInstanceRef.current;
+                  if (map && gps.latitude && gps.longitude) {
+                    map.panTo({ lat: gps.latitude, lng: gps.longitude });
+                    map.setZoom(16);
+                  }
+                }}
+                className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
+                style={{
+                  background: '#1a1a1a',
+                  border: '1px solid #2a2a2a',
+                  minHeight: 44,
+                }}
+              >
+                <Navigation2 style={{ width: 16, height: 16 }} className="text-green-400" />
+                <span className="text-sm text-rmpg-200 flex-1">Center on My Location</span>
+              </button>
+            </div>
+          </MobileBottomSheet>
+        </>
+      )}
     </div>
   );
 }

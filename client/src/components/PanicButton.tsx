@@ -4,6 +4,7 @@ import { useWebSocket } from '../context/WebSocketContext';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../hooks/useApi';
 import { usePanicAudio } from '../hooks/usePanicAudio';
+import { formatLabel } from '../utils/formatters';
 
 // ─── Motorola MCC7500 Alert Tone 2 ──────────────────────────────
 // Standard public-safety dispatch console emergency warble.
@@ -319,7 +320,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
                 </div>
                 <div className="text-xs font-mono" style={{ color: '#a0a0a0' }}>
                   {incomingAlert.badge_number && `Badge: ${incomingAlert.badge_number} | `}
-                  {incomingAlert.role?.toUpperCase()}
+                  {formatLabel(incomingAlert.role)?.toUpperCase()}
                   {incomingAlert.unit_call_sign && ` | Unit: ${incomingAlert.unit_call_sign}`}
                 </div>
               </div>

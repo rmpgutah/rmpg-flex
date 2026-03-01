@@ -49,6 +49,8 @@ export function mapUser(row: any): OfficerWithStatus {
     emergency_contact_relationship: row.emergency_contact_relationship || undefined,
     is_active: isActive,
     last_login: undefined,
+    // OPR: unit call sign from units table (list query) or nested unit object (detail query)
+    unit_call_sign: row.unit_call_sign || row.unit?.call_sign || undefined,
     created_at: row.created_at || '',
     updated_at: row.updated_at || '',
     status: isActive ? 'on_duty' : 'off_duty',
@@ -66,7 +68,8 @@ export function mapSchedule(row: any): Schedule {
     if (endTime <= startTime) {
       const nextDay = new Date(shiftDate);
       nextDay.setDate(nextDay.getDate() + 1);
-      const nextDateStr = nextDay.toISOString().split('T')[0];
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const nextDateStr = `${nextDay.getFullYear()}-${pad(nextDay.getMonth() + 1)}-${pad(nextDay.getDate())}`;
       shiftEnd = `${nextDateStr}T${endTime}`;
     } else {
       shiftEnd = `${shiftDate}T${endTime}`;

@@ -10,6 +10,13 @@ const { fork, spawn } = require('child_process');
 const http = require('http');
 const { AppUpdater } = require('./updater');
 
+// Offline infrastructure modules
+const localDb = require('./localDb');
+const connectivityMonitor = require('./connectivityMonitor');
+const pinManager = require('./pinManager');
+const offlineRouter = require('./offlineRouter');
+const syncManager = require('./syncManager');
+
 // ─── Configuration ──────────────────────────────────────────
 const SERVER_PORT = 3001;
 const APP_TITLE = 'RMPG Flex — CAD/RMS';
@@ -386,6 +393,97 @@ ipcMain.on('window:maximize', () => {
 ipcMain.on('window:close', () => mainWindow?.close());
 ipcMain.handle('app:version', () => app.getVersion());
 
+// ─── Offline IPC Handlers ────────────────────────────────────
+
+// Route API requests through local DB when offline
+ipcMain.handle('offline:api', async (_event, method, path, body) => {
+  return offlineRouter.route(method, path, body);
+});
+
+// Get offline state (online/offline, authorized, expiry)
+ipcMain.handle('offline:state', async (_event, userId) => {
+  const isOnline = connectivityMonitor.getState();
+  let isLocalAuthorized = false;
+  let sessionInfo = null;
+  try {
+    if (userId) {
+      isLocalAuthorized = pinManager.isAuthorized(userId);
+      sessionInfo = pinManager.getSessionInfo(userId);
+    }
+  } catch { /* DB not ready */ }
+
+  let syncQueueDepth = 0;
+  try {
+    const stats = syncManager.getSyncStatus();
+    syncQueueDepth = stats.queue ? stats.queue.pending : 0;
+  } catch { /* ok */ }
+
+  return { isOnline, isLocalAuthorized, sessionInfo, syncQueueDepth };
+});
+
+// Enter PIN (employee offline authorization)
+ipcMain.handle('offline:enter-pin', async (_event, userId, pin) => {
+  return pinManager.validatePin(userId, pin);
+});
+
+// Generate PIN (admin generates for employee)
+ipcMain.handle('offline:generate-pin', async (_event, userId) => {
+  return pinManager.generatePinForUser(userId);
+});
+
+// Get sync status
+ipcMain.handle('offline:sync-status', async () => {
+  return syncManager.getSyncStatus();
+});
+
+// Trigger immediate sync
+ipcMain.handle('offline:trigger-sync', async () => {
+  syncManager.triggerPush();
+  return { triggered: true };
+});
+
+// Get local DB stats
+ipcMain.handle('offline:local-stats', async () => {
+  return localDb.getLocalStats();
+});
+
+// Get active PIN sessions (admin view)
+ipcMain.handle('offline:active-sessions', async () => {
+  return pinManager.getActiveSessions();
+});
+
+// Set auth token for sync engine
+ipcMain.handle('offline:set-token', async (_event, token) => {
+  syncManager.setToken(token);
+  return { ok: true };
+});
+
+// Get cached user for offline auth
+ipcMain.handle('offline:get-cached-user', async (_event, username) => {
+  try {
+    const db = localDb.getDb();
+    const user = db.prepare('SELECT id, username, full_name, email, role, badge_number, status, password_hash FROM users WHERE username = ?').get(username);
+    return user || null;
+  } catch { return null; }
+});
+
+// Cache last user ID for offline recovery
+ipcMain.handle('offline:cache-user', async (_event, userId) => {
+  try {
+    const db = localDb.getDb();
+    db.prepare("INSERT OR REPLACE INTO local_config (key, value) VALUES ('last_user_id', ?)").run(String(userId));
+    return { ok: true };
+  } catch { return { ok: false }; }
+});
+
+// Get list of users (for admin PIN generation dropdown)
+ipcMain.handle('offline:get-users', async () => {
+  try {
+    const db = localDb.getDb();
+    return db.prepare("SELECT id, username, full_name, role, status FROM users WHERE status = 'active' ORDER BY full_name").all();
+  } catch { return []; }
+});
+
 // ─── Application Menu ───────────────────────────────────────
 function createMenu() {
   const isMac = process.platform === 'darwin';
@@ -546,6 +644,30 @@ app.whenReady().then(async () => {
     createMainWindow();
     createTray();
 
+    // ── Initialize Offline Infrastructure ────────────────────
+    try {
+      const db = localDb.init();
+      offlineRouter.init(db);
+      pinManager.init(db);
+      syncManager.init(localDb);
+
+      // Start connectivity monitor (triggers push sync on reconnect)
+      connectivityMonitor.start(() => {
+        console.log('[APP] Connectivity restored — triggering push sync');
+        syncManager.triggerPush();
+        syncManager.startPullSync();
+      });
+
+      // Start pull sync if online
+      if (connectivityMonitor.getState()) {
+        syncManager.startPullSync();
+      }
+
+      console.log('[APP] Offline infrastructure initialized');
+    } catch (offlineErr) {
+      console.error('[APP] Offline infrastructure error (non-fatal):', offlineErr.message);
+    }
+
     // Initialize auto-updater after everything is ready
     // In dev mode, checks localhost; in production, checks rmpgutah.us (or UPDATE_SERVER_URL)
     console.log('[APP] Initializing auto-updater with:', UPDATE_SERVER_URL);
@@ -572,6 +694,15 @@ app.on('activate', () => {
 
 app.on('before-quit', () => {
   isQuitting = true;
+  // Shutdown offline infrastructure
+  try {
+    connectivityMonitor.stop();
+    syncManager.stopPullSync();
+    pinManager.stop();
+    localDb.close();
+  } catch (err) {
+    console.error('[APP] Offline shutdown error:', err.message);
+  }
   appUpdater.destroy();
   stopServer();
 });

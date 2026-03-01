@@ -36,15 +36,18 @@ router.get('/', (req: Request, res: Response) => {
     }
 
     const users = db.prepare(`
-      SELECT id, username, full_name, first_name, last_name, middle_name, email, role,
-        badge_number, phone, status, avatar_url, rank, department, address, city, state, zip,
-        date_of_birth, hire_date, termination_date, shift_preference,
-        dl_number, dl_state, dl_expiry, blood_type, allergies, uniform_size,
-        emergency_contact_name, emergency_contact_phone, emergency_contact_relationship,
-        employee_id, certifications, notes, profile_image,
-        created_at, updated_at
-      FROM users ${whereClause}
-      ORDER BY full_name
+      SELECT u.id, u.username, u.full_name, u.first_name, u.last_name, u.middle_name, u.email, u.role,
+        u.badge_number, u.phone, u.status, u.avatar_url, u.rank, u.department, u.address, u.city, u.state, u.zip,
+        u.date_of_birth, u.hire_date, u.termination_date, u.shift_preference,
+        u.dl_number, u.dl_state, u.dl_expiry, u.blood_type, u.allergies, u.uniform_size,
+        u.emergency_contact_name, u.emergency_contact_phone, u.emergency_contact_relationship,
+        u.employee_id, u.certifications, u.notes, u.profile_image,
+        u.created_at, u.updated_at,
+        un.call_sign as unit_call_sign
+      FROM users u
+      LEFT JOIN units un ON un.officer_id = u.id
+      ${whereClause.replace(/\bstatus\b/g, 'u.status').replace(/\brole\b/g, 'u.role').replace(/\barchived_at\b/g, 'u.archived_at')}
+      ORDER BY u.full_name
     `).all(...params);
 
     res.json(users);
@@ -149,13 +152,13 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
         date_of_birth, hire_date, termination_date, shift_preference,
         dl_number, dl_state, dl_expiry, blood_type, allergies, uniform_size,
         emergency_contact_name, emergency_contact_phone, emergency_contact_relationship,
-        employee_id, certifications, notes, profile_image, last_password_change)
+        employee_id, certifications, notes, profile_image, last_password_change, must_change_password)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?, ?, ?, ?, ?,
         ?, ?, ?,
-        ?, ?, ?, ?, ?)
+        ?, ?, ?, ?, ?, 1)
     `).run(
       username, passwordHash, full_name, derivedFirst, derivedLast,
       email || null, role, badge_number || null, phone || null,
@@ -225,11 +228,30 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
       }
     }
 
+    // ── Admin password reset (not in updatableFields — needs bcrypt) ──
+    const passwordChanged = !!(req.body.password && typeof req.body.password === 'string' && req.body.password.trim());
+    if (passwordChanged) {
+      const hash = bcryptjs.hashSync(req.body.password.trim(), 10);
+      setClauses.push('password_hash = ?');
+      setValues.push(hash);
+      setClauses.push('last_password_change = ?');
+      setValues.push(localNow());
+      // Force the user to change their password on next login
+      setClauses.push('must_change_password = ?');
+      setValues.push(1);
+    }
+
     if (setClauses.length > 0) {
       setClauses.push("updated_at = ?");
       setValues.push(localNow());
       setValues.push(req.params.id);
       db.prepare(`UPDATE users SET ${setClauses.join(', ')} WHERE id = ?`).run(...setValues);
+    }
+
+    // ── Invalidate sessions on password reset or account suspension ──
+    const statusChanged = bodyKeys.includes('status') && req.body.status !== user.status;
+    if (passwordChanged || (statusChanged && req.body.status !== 'active')) {
+      db.prepare('UPDATE sessions SET is_active = 0 WHERE user_id = ?').run(req.params.id);
     }
 
     const updated = db.prepare(`
@@ -270,6 +292,8 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
         UPDATE users SET status = 'terminated', termination_date = ?, updated_at = ?
         WHERE id = ?
       `).run(localNow(), localNow(), req.params.id);
+      // Invalidate all active sessions for terminated user
+      db.prepare('UPDATE sessions SET is_active = 0 WHERE user_id = ?').run(req.params.id);
       // Free assigned units
       db.prepare('UPDATE units SET officer_id = NULL, status = \'off_duty\' WHERE officer_id = ?').run(req.params.id);
       // Log activity
@@ -401,6 +425,47 @@ export function mountScheduleRoutes(parentRouter: Router): void {
     }
   });
 
+  // GET /api/personnel/schedules/conflicts — Pre-check for scheduling conflicts
+  // Useful for the UI to validate before creating a shift.
+  // Query params: officer_id, shift_date, start_time, end_time, exclude_id (optional)
+  parentRouter.get('/personnel/schedules/conflicts', authenticateToken, (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const { officer_id, shift_date, start_time, end_time, exclude_id } = req.query;
+
+      if (!officer_id || !shift_date || !start_time || !end_time) {
+        res.status(400).json({ error: 'officer_id, shift_date, start_time, and end_time are required' });
+        return;
+      }
+
+      let sql = `
+        SELECT s.id, s.start_time, s.end_time, s.status,
+               u.full_name as officer_name, p.name as property_name
+        FROM schedules s
+        LEFT JOIN users u ON s.officer_id = u.id
+        LEFT JOIN properties p ON s.property_id = p.id
+        WHERE s.officer_id = ?
+          AND s.shift_date = ?
+          AND s.status IN ('scheduled', 'active')
+          AND (s.archived_at IS NULL)
+          AND s.start_time < ?
+          AND s.end_time > ?
+      `;
+      const params: any[] = [officer_id, shift_date, end_time, start_time];
+
+      if (exclude_id) {
+        sql += ' AND s.id != ?';
+        params.push(exclude_id);
+      }
+
+      const conflicts = db.prepare(sql).all(...params);
+      res.json({ conflicts, has_conflicts: conflicts.length > 0 });
+    } catch (error: any) {
+      console.error('Schedule conflicts check error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   // POST /api/personnel/schedules
   parentRouter.post('/personnel/schedules', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
     try {
@@ -409,6 +474,35 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       if (!officer_id || !shift_date || !start_time || !end_time) {
         res.status(400).json({ error: 'officer_id, shift_date, start_time, and end_time are required' });
+        return;
+      }
+
+      // ─── Shift Overlap Detection ──────────────────────────────
+      // Check if this officer already has a scheduled/active shift that
+      // overlaps with the requested time window on the same date.
+      // Time comparison: two shifts overlap when start_a < end_b AND start_b < end_a.
+      const overlaps = db.prepare(`
+        SELECT s.id, s.start_time, s.end_time, s.status,
+               p.name as property_name
+        FROM schedules s
+        LEFT JOIN properties p ON s.property_id = p.id
+        WHERE s.officer_id = ?
+          AND s.shift_date = ?
+          AND s.status IN ('scheduled', 'active')
+          AND (s.archived_at IS NULL)
+          AND s.start_time < ?
+          AND s.end_time > ?
+      `).all(officer_id, shift_date, end_time, start_time) as any[];
+
+      if (overlaps.length > 0) {
+        const conflicts = overlaps.map(o =>
+          `${o.start_time}–${o.end_time}${o.property_name ? ` (${o.property_name})` : ''}`
+        ).join(', ');
+        res.status(409).json({
+          error: 'Schedule conflict detected',
+          message: `This officer already has overlapping shift(s) on ${shift_date}: ${conflicts}`,
+          conflicts: overlaps,
+        });
         return;
       }
 
@@ -436,7 +530,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
   parentRouter.post('/personnel/time/clock-in', authenticateToken, (req: Request, res: Response) => {
     try {
       const db = getDb();
-      const { officer_id, latitude, longitude, schedule_id } = req.body;
+      const { officer_id, latitude, longitude, schedule_id, vehicle_id, mileage_start, property_id, notes } = req.body;
 
       // Allow supervisors/admins/dispatchers to clock in other officers; officers can only clock themselves
       const targetId = officer_id || req.user!.userId;
@@ -459,24 +553,40 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const now = localNow();
 
       const result = db.prepare(`
-        INSERT INTO time_entries (officer_id, schedule_id, clock_in, clock_in_latitude, clock_in_longitude)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(targetId, schedule_id || null, now, latitude || null, longitude || null);
+        INSERT INTO time_entries (officer_id, schedule_id, clock_in, clock_in_latitude, clock_in_longitude, vehicle_id, mileage_start, property_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(targetId, schedule_id || null, now, latitude || null, longitude || null, vehicle_id || null, mileage_start || null, property_id || null);
 
       // Update schedule status if linked
       if (schedule_id) {
         db.prepare("UPDATE schedules SET status = 'active' WHERE id = ?").run(schedule_id);
       }
 
+      // Create fleet mileage log if vehicle was assigned
+      if (vehicle_id && mileage_start) {
+        const shiftDate = now.includes('T') ? now.split('T')[0] : now.split(' ')[0];
+        const propName = property_id
+          ? (db.prepare('SELECT name FROM properties WHERE id = ?').get(property_id) as any)?.name
+          : null;
+        db.prepare(`
+          INSERT INTO fleet_mileage_logs (vehicle_id, officer_id, time_entry_id, shift_date, mileage_start, property_id, property_name)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(vehicle_id, targetId, result.lastInsertRowid, shiftDate, mileage_start, property_id || null, propName);
+      }
+
       const officerName = (db.prepare('SELECT full_name FROM users WHERE id = ?').get(targetId) as any)?.full_name || targetId;
       db.prepare(`
         INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
         VALUES (?, 'clock_in', 'time_entry', ?, ?, ?)
-      `).run(req.user!.userId, result.lastInsertRowid, isSelf ? 'Clocked in' : `Clocked in ${officerName}`, req.ip || 'unknown');
+      `).run(req.user!.userId, result.lastInsertRowid, isSelf ? `Clocked in${vehicle_id ? ` w/ vehicle #${vehicle_id}` : ''}` : `Clocked in ${officerName}`, req.ip || 'unknown');
 
       const entry = db.prepare(`
-        SELECT t.*, u.full_name as officer_name, u.badge_number
-        FROM time_entries t LEFT JOIN users u ON t.officer_id = u.id WHERE t.id = ?
+        SELECT t.*, u.full_name as officer_name, u.badge_number,
+               fv.vehicle_number, fv.make as vehicle_make, fv.model as vehicle_model
+        FROM time_entries t
+        LEFT JOIN users u ON t.officer_id = u.id
+        LEFT JOIN fleet_vehicles fv ON t.vehicle_id = fv.id
+        WHERE t.id = ?
       `).get(result.lastInsertRowid);
       res.status(201).json(entry);
     } catch (error: any) {
@@ -489,7 +599,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
   parentRouter.post('/personnel/time/clock-out', authenticateToken, (req: Request, res: Response) => {
     try {
       const db = getDb();
-      const { officer_id } = req.body;
+      const { officer_id, mileage_end, notes } = req.body;
 
       // Allow supervisors/admins/dispatchers to clock out other officers
       const targetId = officer_id || req.user!.userId;
@@ -525,25 +635,169 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const totalHours = Math.max(0, Math.round((rawHours - breakMins / 60) * 10000) / 10000);
 
       db.prepare(`
-        UPDATE time_entries SET clock_out = ?, total_hours = ?, break_minutes = ?, break_start = NULL, status = 'completed' WHERE id = ?
-      `).run(now, totalHours, breakMins, activeEntry.id);
+        UPDATE time_entries SET clock_out = ?, total_hours = ?, break_minutes = ?, mileage_end = ?, break_start = NULL, status = 'completed' WHERE id = ?
+      `).run(now, totalHours, breakMins, mileage_end || null, activeEntry.id);
+
+      // ─── Fleet mileage: close out the mileage log ────────────
+      let mileageInfo: any = null;
+      if (mileage_end && activeEntry.vehicle_id) {
+        try {
+          // Update the mileage log for this shift
+          const mileageLog = db.prepare(`
+            SELECT id, mileage_start FROM fleet_mileage_logs
+            WHERE time_entry_id = ? AND mileage_end IS NULL
+          `).get(activeEntry.id) as any;
+
+          if (mileageLog) {
+            db.prepare('UPDATE fleet_mileage_logs SET mileage_end = ? WHERE id = ?')
+              .run(mileage_end, mileageLog.id);
+            const milesDriven = mileage_end - mileageLog.mileage_start;
+
+            // Update vehicle's current mileage (only if higher than current)
+            db.prepare(`
+              UPDATE fleet_vehicles SET current_mileage = ?, updated_at = datetime('now','localtime')
+              WHERE id = ? AND (current_mileage IS NULL OR current_mileage < ?)
+            `).run(mileage_end, activeEntry.vehicle_id, mileage_end);
+
+            mileageInfo = {
+              vehicle_id: activeEntry.vehicle_id,
+              mileage_start: mileageLog.mileage_start,
+              mileage_end,
+              miles_driven: milesDriven,
+            };
+            console.log(`[Mileage] Vehicle #${activeEntry.vehicle_id}: ${mileageLog.mileage_start} → ${mileage_end} (${milesDriven} mi)`);
+          }
+        } catch (mErr: any) {
+          console.error('Mileage log error (non-fatal):', mErr.message);
+        }
+      }
 
       // Update schedule status if linked
       if (activeEntry.schedule_id) {
         db.prepare("UPDATE schedules SET status = 'completed' WHERE id = ?").run(activeEntry.schedule_id);
       }
 
-      const officerName = (db.prepare('SELECT full_name FROM users WHERE id = ?').get(targetId) as any)?.full_name || targetId;
+      const officerRow = db.prepare('SELECT full_name, badge_number FROM users WHERE id = ?').get(targetId) as any;
+      const officerName = officerRow?.full_name || targetId;
       db.prepare(`
         INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
         VALUES (?, 'clock_out', 'time_entry', ?, ?, ?)
-      `).run(req.user!.userId, activeEntry.id, isSelf ? `Clocked out. Total: ${totalHours}h` : `Clocked out ${officerName}. Total: ${totalHours}h`, req.ip || 'unknown');
+      `).run(req.user!.userId, activeEntry.id, isSelf ? `Clocked out. Total: ${totalHours}h${mileageInfo ? ` | ${mileageInfo.miles_driven}mi driven` : ''}` : `Clocked out ${officerName}. Total: ${totalHours}h`, req.ip || 'unknown');
+
+      // ─── Auto-generate Draft DAR ──────────────────────────────
+      // When an officer clocks out, auto-create a DAR pre-populated with
+      // calls handled, incidents created, and patrols completed during shift.
+      let autoDar: any = null;
+      try {
+        const shiftStart = activeEntry.clock_in;
+        const shiftEnd = now;
+        // Extract YYYY-MM-DD from either "YYYY-MM-DD HH:MM:SS" or ISO "YYYY-MM-DDTHH:MM:SS±TZ"
+        const shiftDate = shiftStart.includes('T')
+          ? shiftStart.split('T')[0]
+          : shiftStart.split(' ')[0];
+
+        // Gather calls where this officer was dispatcher or responding
+        const callsHandled = db.prepare(`
+          SELECT id, call_number, incident_type, priority, status, location_address
+          FROM calls_for_service
+          WHERE (dispatcher_id = ? OR responding_officer LIKE ?)
+            AND created_at >= ? AND created_at <= ?
+            AND archived_at IS NULL
+          ORDER BY created_at ASC
+        `).all(targetId, `%${officerName}%`, shiftStart, shiftEnd) as any[];
+
+        // Gather incidents created by this officer
+        const incidentsCreated = db.prepare(`
+          SELECT id, incident_number, incident_type, status
+          FROM incidents
+          WHERE officer_id = ?
+            AND created_at >= ? AND created_at <= ?
+          ORDER BY created_at ASC
+        `).all(targetId, shiftStart, shiftEnd) as any[];
+
+        // Gather patrol scans
+        const patrols = db.prepare(`
+          SELECT id, checkpoint_id, scanned_at
+          FROM patrol_scans
+          WHERE officer_id = ?
+            AND scanned_at >= ? AND scanned_at <= ?
+          ORDER BY scanned_at ASC
+        `).all(targetId, shiftStart, shiftEnd) as any[];
+
+        // Generate DAR number: DAR-YYYYMMDD-NNNN
+        const lastDar = db.prepare(`SELECT dar_number FROM daily_activity_reports ORDER BY id DESC LIMIT 1`).get() as any;
+        let nextDarNum = 1;
+        if (lastDar?.dar_number) {
+          const match = lastDar.dar_number.match(/-(\d{4})$/);
+          if (match) nextDarNum = parseInt(match[1], 10) + 1;
+        }
+        const darNumber = `DAR-${shiftDate.replace(/-/g, '')}-${String(nextDarNum).padStart(4, '0')}`;
+
+        // Build narrative summary
+        const narrativeParts: string[] = [];
+        if (callsHandled.length > 0) {
+          narrativeParts.push(`Handled ${callsHandled.length} call(s) for service.`);
+        }
+        if (incidentsCreated.length > 0) {
+          narrativeParts.push(`Created ${incidentsCreated.length} incident report(s).`);
+        }
+        if (patrols.length > 0) {
+          narrativeParts.push(`Completed ${patrols.length} patrol checkpoint scan(s).`);
+        }
+        if (narrativeParts.length === 0) {
+          narrativeParts.push('Routine shift — no notable activity to report.');
+        }
+
+        // Property from schedule or time entry
+        const propertyId = activeEntry.property_id || (activeEntry.schedule_id
+          ? (db.prepare('SELECT property_id FROM schedules WHERE id = ?').get(activeEntry.schedule_id) as any)?.property_id
+          : null);
+        const propertyName = propertyId
+          ? (db.prepare('SELECT name FROM properties WHERE id = ?').get(propertyId) as any)?.name
+          : null;
+
+        const darResult = db.prepare(`
+          INSERT OR IGNORE INTO daily_activity_reports (
+            dar_number, status, officer_id, officer_name, shift_date,
+            shift_start, shift_end, property_id, property_name,
+            calls_handled, incidents_created, patrols_completed,
+            activities_narrative
+          ) VALUES (?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          darNumber, targetId, officerName, shiftDate,
+          shiftStart, shiftEnd, propertyId, propertyName,
+          JSON.stringify(callsHandled.map(c => c.call_number)),
+          JSON.stringify(incidentsCreated.map(i => i.incident_number)),
+          JSON.stringify(patrols.map(p => p.checkpoint_id)),
+          narrativeParts.join(' '),
+        );
+
+        if (darResult.changes > 0) {
+          autoDar = {
+            dar_id: darResult.lastInsertRowid,
+            dar_number: darNumber,
+            shift_date: shiftDate,
+            calls_handled: callsHandled.length,
+            incidents_created: incidentsCreated.length,
+            patrols_completed: patrols.length,
+            narrative: narrativeParts.join(' '),
+          };
+          console.log(`[Auto-DAR] Generated ${darNumber} for ${officerName} (${callsHandled.length} calls, ${incidentsCreated.length} incidents, ${patrols.length} patrols)`);
+        }
+      } catch (darErr: any) {
+        // Non-fatal — DAR generation is best-effort
+        console.error('Auto-DAR generation error (non-fatal):', darErr.message);
+      }
 
       const entry = db.prepare(`
-        SELECT t.*, u.full_name as officer_name, u.badge_number
-        FROM time_entries t LEFT JOIN users u ON t.officer_id = u.id WHERE t.id = ?
+        SELECT t.*, u.full_name as officer_name, u.badge_number,
+               fv.vehicle_number, fv.make as vehicle_make, fv.model as vehicle_model
+        FROM time_entries t
+        LEFT JOIN users u ON t.officer_id = u.id
+        LEFT JOIN fleet_vehicles fv ON t.vehicle_id = fv.id
+        WHERE t.id = ?
       `).get(activeEntry.id);
-      res.json(entry);
+      res.json({ ...entry as any, auto_dar: autoDar, mileage: mileageInfo });
     } catch (error: any) {
       console.error('Clock out error:', error);
       res.status(500).json({ error: 'Internal server error' });
@@ -957,6 +1211,43 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       if (!existing) {
         res.status(404).json({ error: 'Schedule not found' });
         return;
+      }
+
+      // ─── Shift Overlap Detection on Update ────────────────────
+      // If time or date fields are being changed, check for overlaps
+      // with the FINAL values (merge existing + update body).
+      const finalOfficerId = req.body.officer_id ?? existing.officer_id;
+      const finalDate = req.body.shift_date ?? existing.shift_date;
+      const finalStart = req.body.start_time ?? existing.start_time;
+      const finalEnd = req.body.end_time ?? existing.end_time;
+      const finalStatus = req.body.status ?? existing.status;
+
+      if (['scheduled', 'active'].includes(finalStatus)) {
+        const overlaps = db.prepare(`
+          SELECT s.id, s.start_time, s.end_time, s.status,
+                 p.name as property_name
+          FROM schedules s
+          LEFT JOIN properties p ON s.property_id = p.id
+          WHERE s.officer_id = ?
+            AND s.shift_date = ?
+            AND s.status IN ('scheduled', 'active')
+            AND (s.archived_at IS NULL)
+            AND s.id != ?
+            AND s.start_time < ?
+            AND s.end_time > ?
+        `).all(finalOfficerId, finalDate, req.params.id, finalEnd, finalStart) as any[];
+
+        if (overlaps.length > 0) {
+          const conflicts = overlaps.map((o: any) =>
+            `${o.start_time}–${o.end_time}${o.property_name ? ` (${o.property_name})` : ''}`
+          ).join(', ');
+          res.status(409).json({
+            error: 'Schedule conflict detected',
+            message: `This update would create overlapping shift(s) on ${finalDate}: ${conflicts}`,
+            conflicts: overlaps,
+          });
+          return;
+        }
       }
 
       const schedFields = ['officer_id', 'property_id', 'shift_date', 'start_time', 'end_time', 'status', 'notes'];
@@ -1713,6 +2004,293 @@ export function mountScheduleRoutes(parentRouter: Router): void {
     } catch (error: any) {
       console.error('Get personnel analytics error:', error);
       res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // ─── OVERTIME TRACKING ──────────────────────────────────
+
+  // GET /api/personnel/overtime — Real-time overtime tracking dashboard
+  // Returns per-officer weekly breakdown, daily details, approaching-OT warnings,
+  // and live shift projections for currently clocked-in officers.
+  parentRouter.get('/personnel/overtime', authenticateToken, (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const { weeks = '2' } = req.query;
+      const numWeeks = Math.min(Math.max(parseInt(weeks as string, 10) || 2, 1), 12);
+
+      const DAILY_THRESHOLD = 8;    // hours per day before OT kicks in
+      const WEEKLY_THRESHOLD = 40;  // hours per week before OT kicks in
+      const APPROACHING_DAILY = 6;  // warn when approaching daily OT
+      const APPROACHING_WEEKLY = 32; // warn when approaching weekly OT
+
+      // Current week boundaries (Monday through Sunday, Mountain Time)
+      const now = new Date();
+      const dayOfWeek = now.getDay(); // 0=Sun, 1=Mon, ...
+      const diffToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+      const currentMonday = new Date(now);
+      currentMonday.setDate(now.getDate() - diffToMonday);
+      currentMonday.setHours(0, 0, 0, 0);
+      const weekStart = currentMonday.toISOString().split('T')[0];
+
+      // Go back N weeks
+      const lookbackMonday = new Date(currentMonday);
+      lookbackMonday.setDate(lookbackMonday.getDate() - (numWeeks - 1) * 7);
+      const lookbackStart = lookbackMonday.toISOString().split('T')[0];
+
+      // ── Per-officer weekly breakdown ──
+      const weeklyRows = db.prepare(`
+        SELECT
+          t.officer_id,
+          u.full_name as officer_name,
+          u.badge_number,
+          u.department,
+          -- Compute ISO week start (Monday)
+          date(t.clock_in, 'weekday 0', '-6 days') as week_start,
+          COUNT(*) as shift_count,
+          SUM(t.total_hours) as total_hours,
+          SUM(CASE WHEN t.total_hours > ? THEN t.total_hours - ? ELSE 0 END) as daily_overtime,
+          SUM(CASE WHEN t.total_hours <= ? THEN t.total_hours ELSE ? END) as regular_hours,
+          MAX(t.total_hours) as longest_shift,
+          SUM(t.break_minutes) as total_break_minutes
+        FROM time_entries t
+        LEFT JOIN users u ON t.officer_id = u.id
+        WHERE t.status = 'completed'
+          AND DATE(t.clock_in) >= ?
+        GROUP BY t.officer_id, week_start
+        ORDER BY week_start DESC, total_hours DESC
+      `).all(DAILY_THRESHOLD, DAILY_THRESHOLD, DAILY_THRESHOLD, DAILY_THRESHOLD, lookbackStart) as any[];
+
+      // ── Current week daily breakdown per officer ──
+      const dailyRows = db.prepare(`
+        SELECT
+          t.officer_id,
+          u.full_name as officer_name,
+          DATE(t.clock_in) as work_date,
+          SUM(t.total_hours) as total_hours,
+          SUM(t.break_minutes) as break_minutes,
+          COUNT(*) as entries
+        FROM time_entries t
+        LEFT JOIN users u ON t.officer_id = u.id
+        WHERE t.status = 'completed'
+          AND DATE(t.clock_in) >= ?
+        GROUP BY t.officer_id, DATE(t.clock_in)
+        ORDER BY t.officer_id, work_date
+      `).all(weekStart) as any[];
+
+      // ── Currently clocked-in officers with projected hours ──
+      const activeEntries = db.prepare(`
+        SELECT
+          t.id, t.officer_id, t.clock_in, t.break_minutes, t.status,
+          u.full_name as officer_name, u.badge_number
+        FROM time_entries t
+        LEFT JOIN users u ON t.officer_id = u.id
+        WHERE t.status IN ('active', 'on_break')
+      `).all() as any[];
+
+      // Calculate projected hours for active entries
+      const activeProjections = activeEntries.map((entry: any) => {
+        const clockIn = new Date(entry.clock_in);
+        const elapsed = (now.getTime() - clockIn.getTime()) / (1000 * 60 * 60); // hours
+        const breakHours = (entry.break_minutes || 0) / 60;
+        const currentHours = Math.max(0, elapsed - breakHours);
+        const isOvertime = currentHours > DAILY_THRESHOLD;
+        const overtimeHours = isOvertime ? currentHours - DAILY_THRESHOLD : 0;
+        const projectedEndHours = currentHours; // current snapshot
+
+        return {
+          entry_id: entry.id,
+          officer_id: entry.officer_id,
+          officer_name: entry.officer_name,
+          badge_number: entry.badge_number,
+          clock_in: entry.clock_in,
+          current_hours: Math.round(currentHours * 100) / 100,
+          break_minutes: entry.break_minutes || 0,
+          is_overtime: isOvertime,
+          overtime_hours: Math.round(overtimeHours * 100) / 100,
+          status: entry.status,
+        };
+      });
+
+      // ── Weekly totals for current week (for approaching-OT detection) ──
+      const currentWeekTotals = db.prepare(`
+        SELECT
+          t.officer_id,
+          u.full_name as officer_name,
+          u.badge_number,
+          SUM(t.total_hours) as completed_hours
+        FROM time_entries t
+        LEFT JOIN users u ON t.officer_id = u.id
+        WHERE t.status = 'completed'
+          AND DATE(t.clock_in) >= ?
+        GROUP BY t.officer_id
+      `).all(weekStart) as any[];
+
+      // Merge with active projections for full weekly picture
+      const weeklyTotalsMap = new Map<number, { officer_name: string; badge_number: string; completed: number; active: number }>();
+      for (const row of currentWeekTotals) {
+        weeklyTotalsMap.set(row.officer_id, {
+          officer_name: row.officer_name,
+          badge_number: row.badge_number || '',
+          completed: row.completed_hours || 0,
+          active: 0,
+        });
+      }
+      for (const proj of activeProjections) {
+        const existing = weeklyTotalsMap.get(proj.officer_id);
+        if (existing) {
+          existing.active = proj.current_hours;
+        } else {
+          weeklyTotalsMap.set(proj.officer_id, {
+            officer_name: proj.officer_name,
+            badge_number: proj.badge_number || '',
+            completed: 0,
+            active: proj.current_hours,
+          });
+        }
+      }
+
+      // Build approaching-OT alerts
+      const alerts: any[] = [];
+      for (const [officerId, data] of weeklyTotalsMap) {
+        const totalWeekly = data.completed + data.active;
+        const isWeeklyOT = totalWeekly > WEEKLY_THRESHOLD;
+        const approachingWeekly = !isWeeklyOT && totalWeekly >= APPROACHING_WEEKLY;
+
+        if (isWeeklyOT) {
+          alerts.push({
+            officer_id: officerId,
+            officer_name: data.officer_name,
+            badge_number: data.badge_number,
+            type: 'weekly_overtime',
+            severity: 'critical',
+            message: `${Math.round((totalWeekly - WEEKLY_THRESHOLD) * 100) / 100}h over weekly ${WEEKLY_THRESHOLD}h threshold`,
+            weekly_hours: Math.round(totalWeekly * 100) / 100,
+            threshold: WEEKLY_THRESHOLD,
+          });
+        } else if (approachingWeekly) {
+          alerts.push({
+            officer_id: officerId,
+            officer_name: data.officer_name,
+            badge_number: data.badge_number,
+            type: 'approaching_weekly',
+            severity: 'warning',
+            message: `${Math.round(totalWeekly * 100) / 100}h of ${WEEKLY_THRESHOLD}h weekly — ${Math.round((WEEKLY_THRESHOLD - totalWeekly) * 100) / 100}h remaining`,
+            weekly_hours: Math.round(totalWeekly * 100) / 100,
+            threshold: WEEKLY_THRESHOLD,
+          });
+        }
+      }
+
+      // Check daily OT for active shifts
+      for (const proj of activeProjections) {
+        if (proj.current_hours > DAILY_THRESHOLD) {
+          alerts.push({
+            officer_id: proj.officer_id,
+            officer_name: proj.officer_name,
+            badge_number: proj.badge_number,
+            type: 'daily_overtime',
+            severity: 'critical',
+            message: `Current shift at ${proj.current_hours.toFixed(1)}h — ${proj.overtime_hours.toFixed(1)}h overtime`,
+            daily_hours: proj.current_hours,
+            threshold: DAILY_THRESHOLD,
+          });
+        } else if (proj.current_hours >= APPROACHING_DAILY) {
+          alerts.push({
+            officer_id: proj.officer_id,
+            officer_name: proj.officer_name,
+            badge_number: proj.badge_number,
+            type: 'approaching_daily',
+            severity: 'warning',
+            message: `Current shift at ${proj.current_hours.toFixed(1)}h — ${(DAILY_THRESHOLD - proj.current_hours).toFixed(1)}h until daily OT`,
+            daily_hours: proj.current_hours,
+            threshold: DAILY_THRESHOLD,
+          });
+        }
+      }
+
+      // Sort alerts: critical first, then warning
+      alerts.sort((a, b) => (a.severity === 'critical' ? -1 : 1) - (b.severity === 'critical' ? -1 : 1));
+
+      // ── Summary stats ──
+      const currentWeekOT = weeklyRows
+        .filter(r => r.week_start === weekStart)
+        .reduce((sum: number, r: any) => sum + (r.daily_overtime || 0), 0);
+      const officersInOT = new Set(alerts.filter(a => a.type === 'weekly_overtime' || a.type === 'daily_overtime').map(a => a.officer_id)).size;
+      const officersApproachingOT = new Set(alerts.filter(a => a.type === 'approaching_weekly' || a.type === 'approaching_daily').map(a => a.officer_id)).size;
+
+      // All-time (last 30 days) total OT
+      const thirtyDayOT = (db.prepare(`
+        SELECT SUM(CASE WHEN total_hours > ? THEN total_hours - ? ELSE 0 END) as ot
+        FROM time_entries
+        WHERE status = 'completed' AND clock_in >= date('now', '-30 days')
+      `).get(DAILY_THRESHOLD, DAILY_THRESHOLD) as any)?.ot || 0;
+
+      res.json({
+        summary: {
+          current_week_overtime: Math.round(currentWeekOT * 100) / 100,
+          thirty_day_overtime: Math.round(thirtyDayOT * 100) / 100,
+          officers_in_overtime: officersInOT,
+          officers_approaching: officersApproachingOT,
+          active_shifts: activeProjections.length,
+          daily_threshold: DAILY_THRESHOLD,
+          weekly_threshold: WEEKLY_THRESHOLD,
+        },
+        alerts,
+        active_shifts: activeProjections,
+        weekly_breakdown: weeklyRows.map((r: any) => ({
+          officer_id: r.officer_id,
+          officer_name: r.officer_name,
+          badge_number: r.badge_number,
+          department: r.department,
+          week_start: r.week_start,
+          shift_count: r.shift_count,
+          total_hours: Math.round((r.total_hours || 0) * 100) / 100,
+          regular_hours: Math.round((r.regular_hours || 0) * 100) / 100,
+          overtime_hours: Math.round((r.daily_overtime || 0) * 100) / 100,
+          longest_shift: Math.round((r.longest_shift || 0) * 100) / 100,
+          total_break_minutes: r.total_break_minutes || 0,
+        })),
+        daily_breakdown: dailyRows.map((r: any) => ({
+          officer_id: r.officer_id,
+          officer_name: r.officer_name,
+          work_date: r.work_date,
+          total_hours: Math.round((r.total_hours || 0) * 100) / 100,
+          break_minutes: r.break_minutes || 0,
+          entries: r.entries,
+          is_overtime: (r.total_hours || 0) > DAILY_THRESHOLD,
+        })),
+        thresholds: {
+          daily: DAILY_THRESHOLD,
+          weekly: WEEKLY_THRESHOLD,
+          approaching_daily: APPROACHING_DAILY,
+          approaching_weekly: APPROACHING_WEEKLY,
+        },
+      });
+    } catch (error: any) {
+      console.error('Get overtime tracking error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────
+  // GET /api/credentials — All credentials (for Dashboard expiry widget)
+  // Returns all active credentials with officer names, used by
+  // the Dashboard to show expiring credential warnings.
+  // ─────────────────────────────────────────────────────────
+  parentRouter.get('/credentials', authenticateToken, (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const rows = db.prepare(`
+        SELECT c.*, u.full_name as officer_name, u.badge_number
+        FROM credentials c
+        LEFT JOIN users u ON c.officer_id = u.id
+        WHERE c.archived_at IS NULL
+        ORDER BY c.expiry_date ASC
+      `).all();
+      res.json(rows);
+    } catch (error: any) {
+      console.error('Get all credentials error:', error);
+      res.status(500).json({ error: 'Failed to fetch credentials' });
     }
   });
 }
