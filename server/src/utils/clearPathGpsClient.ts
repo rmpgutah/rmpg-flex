@@ -93,7 +93,7 @@ export function deleteConfigValue(key: string): void {
 // API client
 // ============================================================
 
-const BASE_URL = 'https://api.clearpathgps.com';
+const BASE_URL = 'https://api.clearpathgps.com/v1.0';
 
 interface AuthTokens {
   token: string;
@@ -109,11 +109,14 @@ let cachedAuth: AuthTokens | null = null;
 async function authenticate(): Promise<AuthTokens> {
   const email = getDecryptedValue(CONFIG_KEYS.email);
   const password = getDecryptedValue(CONFIG_KEYS.password);
-  const accountId = getDecryptedValue(CONFIG_KEYS.accountId);
+  const accountIdRaw = getDecryptedValue(CONFIG_KEYS.accountId);
 
-  if (!email || !password || !accountId) {
+  if (!email || !password || !accountIdRaw) {
     throw new Error('ClearPathGPS credentials not configured');
   }
+
+  // API expects accountId as a number — strip any non-numeric prefix (e.g. "cp160817" → 160817)
+  const numericId = parseInt(accountIdRaw.replace(/\D/g, ''), 10) || 0;
 
   const resp = await fetch(`${BASE_URL}/auth/token`, {
     method: 'POST',
@@ -121,7 +124,7 @@ async function authenticate(): Promise<AuthTokens> {
     body: JSON.stringify({
       emailId: email,
       password,
-      accountId,
+      accountId: numericId,
       appName: 'RMPG Flex',
     }),
     signal: AbortSignal.timeout(15_000),
@@ -148,14 +151,15 @@ async function authenticate(): Promise<AuthTokens> {
 async function refreshAuthToken(): Promise<AuthTokens> {
   if (!cachedAuth) throw new Error('No cached auth to refresh');
 
-  const accountId = getDecryptedValue(CONFIG_KEYS.accountId);
-  if (!accountId) throw new Error('ClearPathGPS account ID not configured');
+  const accountIdRaw = getDecryptedValue(CONFIG_KEYS.accountId);
+  if (!accountIdRaw) throw new Error('ClearPathGPS account ID not configured');
+  const numericId = parseInt(accountIdRaw.replace(/\D/g, ''), 10) || 0;
 
   const resp = await fetch(`${BASE_URL}/auth/refresh`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      accountId,
+      accountId: numericId,
       refreshTokenString: cachedAuth.refreshToken,
       userId: cachedAuth.userId,
       userIdCp: cachedAuth.userIdCp,
