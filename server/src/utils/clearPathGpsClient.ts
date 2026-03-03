@@ -105,26 +105,15 @@ interface AuthTokens {
 
 let cachedAuth: AuthTokens | null = null;
 
-/** Authenticate with email/password/accountId and get JWT tokens. */
-async function authenticate(): Promise<AuthTokens> {
-  const email = getDecryptedValue(CONFIG_KEYS.email);
-  const password = getDecryptedValue(CONFIG_KEYS.password);
-  const accountIdRaw = getDecryptedValue(CONFIG_KEYS.accountId);
-
-  if (!email || !password || !accountIdRaw) {
-    throw new Error('ClearPathGPS credentials not configured');
-  }
-
-  // API expects accountId as a number — strip any non-numeric prefix (e.g. "cp160817" → 160817)
-  const numericId = parseInt(accountIdRaw.replace(/\D/g, ''), 10) || 0;
-
+/** Try to authenticate with a given accountId value. */
+async function tryAuth(email: string, password: string, accountId: number | string): Promise<any> {
   const resp = await fetch(`${BASE_URL}/auth/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       emailId: email,
       password,
-      accountId: numericId,
+      accountId,
       appName: 'RMPG Flex',
     }),
     signal: AbortSignal.timeout(15_000),
@@ -135,16 +124,44 @@ async function authenticate(): Promise<AuthTokens> {
     throw new Error(`ClearPathGPS auth failed (${resp.status}): ${text}`);
   }
 
-  const data = await resp.json();
-  cachedAuth = {
-    token: data.token,
-    refreshToken: data.refreshToken,
-    userId: data.userId,
-    userIdCp: data.userIdCp,
-    // Assume 1-hour expiry with 5-minute buffer
-    expiresAt: Date.now() + 55 * 60 * 1000,
-  };
-  return cachedAuth;
+  return resp.json();
+}
+
+/** Authenticate with email/password/accountId and get JWT tokens.
+ *  Tries multiple accountId formats: numeric, string, and 0 (default). */
+async function authenticate(): Promise<AuthTokens> {
+  const email = getDecryptedValue(CONFIG_KEYS.email);
+  const password = getDecryptedValue(CONFIG_KEYS.password);
+  const accountIdRaw = getDecryptedValue(CONFIG_KEYS.accountId);
+
+  if (!email || !password || !accountIdRaw) {
+    throw new Error('ClearPathGPS credentials not configured');
+  }
+
+  // Try different accountId formats — the API is inconsistent about type
+  const numericId = parseInt(accountIdRaw.replace(/\D/g, ''), 10) || 0;
+  const attempts: (number | string)[] = [numericId, accountIdRaw, 0];
+  // Deduplicate
+  const unique = [...new Set(attempts.map(String))].map(v => /^\d+$/.test(v) ? Number(v) : v);
+
+  let lastError = '';
+  for (const id of unique) {
+    try {
+      const data = await tryAuth(email, password, id);
+      cachedAuth = {
+        token: data.token,
+        refreshToken: data.refreshToken,
+        userId: data.userId,
+        userIdCp: data.userIdCp,
+        expiresAt: Date.now() + 55 * 60 * 1000,
+      };
+      return cachedAuth;
+    } catch (err: any) {
+      lastError = err.message || 'Auth failed';
+    }
+  }
+
+  throw new Error(lastError);
 }
 
 /** Refresh an existing JWT. */
