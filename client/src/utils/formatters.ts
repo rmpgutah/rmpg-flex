@@ -209,3 +209,17 @@ export function formatDistance(meters: number): string {
   if (miles < 10) return `${miles.toFixed(1)} mi`;
   return `${Math.round(miles)} mi`;
 }
+
+/**
+ * Convert a snake_case or raw label into "Title Case" display text.
+ * e.g. "contract_manager" → "Contract Manager"
+ *      "on_scene"         → "On Scene"
+ *      "dispatcher"       → "Dispatcher"
+ */
+export function formatLabel(value: string | null | undefined): string {
+  if (!value) return '';
+  return value
+    .split('_')
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ');
+}

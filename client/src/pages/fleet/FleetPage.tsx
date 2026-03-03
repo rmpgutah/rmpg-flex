@@ -20,6 +20,7 @@ import MaintenanceFormModal, { type MaintenanceFormState, EMPTY_MAINT_FORM } fro
 import FuelLogModal, { type FuelFormState, EMPTY_FUEL_FORM } from './modals/FuelLogModal';
 import InspectionFormModal, { type InspectionFormState, EMPTY_INSPECTION_FORM } from './modals/InspectionFormModal';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import MaintenanceMonitor from './components/MaintenanceMonitor';
 import type {
   FleetVehicle, FleetMaintenance, FleetVehicleStatus,
   FleetFuelLog, FleetFuelSummary, FleetInspection, FleetAssignment, FleetAnalytics,
@@ -903,19 +904,23 @@ export default function FleetPage() {
         {/* ---- RIGHT PANEL ---- */}
         <div className="flex-1 flex flex-col overflow-hidden" style={{ background: '#1e1e1e' }}>
           {selectedId == null || !detail ? (
-            // Fleet-wide analytics when no vehicle selected
-            fleetAnalytics ? (
-              <FleetAnalyticsTab analytics={fleetAnalytics} loading={fleetAnalyticsLoading} />
-            ) : (
-              <div className="flex-1 flex items-center justify-center">
-                <div className="text-center">
-                  <img src="/rmpg flex.png" alt="RMPG" className="w-20 h-20 mx-auto mb-4 opacity-15" draggable={false} />
-                  <Car className="w-10 h-10 text-rmpg-600 mx-auto mb-2" />
-                  <p className="text-xs text-rmpg-500">Select a vehicle to view details</p>
-                  <p className="text-[10px] text-rmpg-600 mt-1">{vehicles.length} vehicles in fleet</p>
+            // Fleet-wide: Maintenance Monitor + Analytics when no vehicle selected
+            <div className="flex-1 overflow-y-auto">
+              <MaintenanceMonitor onSelectVehicle={(id) => { setSelectedId(id); fetchDetail(id); }} />
+              {fleetAnalytics ? (
+                <div className="px-3 pb-3">
+                  <FleetAnalyticsTab analytics={fleetAnalytics} loading={fleetAnalyticsLoading} />
                 </div>
-              </div>
-            )
+              ) : (
+                <div className="flex items-center justify-center py-8">
+                  <div className="text-center">
+                    <Car className="w-8 h-8 text-rmpg-600 mx-auto mb-2" />
+                    <p className="text-xs text-rmpg-500">Select a vehicle to view details</p>
+                    <p className="text-[10px] text-rmpg-600 mt-1">{vehicles.length} vehicles in fleet</p>
+                  </div>
+                </div>
+              )}
+            </div>
           ) : (
             <FleetDetailPanel
               detail={detail}

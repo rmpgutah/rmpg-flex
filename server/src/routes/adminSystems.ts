@@ -117,6 +117,61 @@ router.use((_req, _res, next) => {
 });
 
 // ============================================================
+// 0. USER & TRAINING LOOKUPS (used by AdminTrainingTab, ShiftPlans)
+// ============================================================
+
+// GET /users — List all users (for admin panels that need user dropdowns)
+router.get('/users', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT id, username, full_name, badge_number, role, status, email, phone,
+             hire_date, department, created_at, updated_at
+      FROM users
+      ORDER BY full_name ASC
+    `).all();
+    res.json(rows);
+  } catch (err: any) {
+    console.error('GET /admin/users error:', err);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+// GET /training — List all training records (for compliance dashboard)
+router.get('/training', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT tr.*, u.full_name as officer_name, u.badge_number,
+             tr.officer_id as user_id
+      FROM training_records tr
+      LEFT JOIN users u ON tr.officer_id = u.id
+      ORDER BY tr.created_at DESC
+    `).all();
+    res.json(rows);
+  } catch (err: any) {
+    console.error('GET /admin/training error:', err);
+    res.status(500).json({ error: 'Failed to fetch training records' });
+  }
+});
+
+// ============================================================
+// 0. CLIENT ERROR REPORTING
+// ============================================================
+
+// POST /health/client-error — Logs client-side React errors to server log
+router.post('/health/client-error', authenticateToken, (req: Request, res: Response) => {
+  const { message, componentStack, url, timestamp } = req.body || {};
+  const user = (req as any).user;
+  console.error(
+    `[CLIENT ERROR] user=${user?.username || '?'} url=${url || '?'} time=${timestamp || '?'}`,
+    `\n  message: ${message || 'unknown'}`,
+    componentStack ? `\n  components: ${componentStack.trim().split('\n').slice(0, 5).join(' > ')}` : '',
+  );
+  res.json({ received: true });
+});
+
+// ============================================================
 // 1. SYSTEM HEALTH & METRICS
 // ============================================================
 
