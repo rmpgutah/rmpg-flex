@@ -18,6 +18,7 @@ import {
   isEnabled,
   testConnection,
   getDevices,
+  discoverAccounts,
 } from '../utils/clearPathGpsClient';
 import {
   startClearPathGpsPoller,
@@ -118,6 +119,18 @@ router.post('/test-connection', requireRole('admin', 'manager'), async (_req: Re
     res.json(result);
   } catch (error: any) {
     res.json({ success: false, deviceCount: 0, error: error.message || 'Connection test failed' });
+  }
+});
+
+// ============================================================
+// POST /api/clearpathgps/discover-accounts — find available accounts
+// ============================================================
+router.post('/discover-accounts', requireRole('admin'), async (_req: Request, res: Response) => {
+  try {
+    const accounts = await discoverAccounts();
+    res.json({ accounts });
+  } catch (error: any) {
+    res.json({ accounts: [], error: error.message || 'Account discovery failed' });
   }
 });
 

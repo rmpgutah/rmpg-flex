@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Navigation, Key, Eye, EyeOff, Loader2, CheckCircle2, XCircle,
   Trash2, Zap, AlertTriangle, ToggleLeft, ToggleRight, Link2, Unlink,
-  Radio, Clock, Truck,
+  Radio, Clock, Truck, Search,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 
@@ -75,6 +75,10 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
   const [mappings, setMappings] = useState<CpgMapping[]>([]);
   const [units, setUnits] = useState<DispatchUnit[]>([]);
   const [loadingDevices, setLoadingDevices] = useState(false);
+
+  // Account discovery
+  const [discoveredAccounts, setDiscoveredAccounts] = useState<{ accountId: string; accountName: string }[]>([]);
+  const [discovering, setDiscovering] = useState(false);
 
   // Polling interval
   const [pollInterval, setPollInterval] = useState(30);
@@ -160,6 +164,27 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
       setTestResult({ success: false, error: err instanceof Error ? err.message : 'Connection test failed' });
     } finally {
       setTesting(false);
+    }
+  };
+
+  // ── Discover accounts ──
+  const handleDiscoverAccounts = async () => {
+    setDiscovering(true);
+    setDiscoveredAccounts([]);
+    try {
+      const data = await apiFetch<{ accounts: { accountId: string; accountName: string }[]; error?: string }>('/clearpathgps/discover-accounts', { method: 'POST' });
+      if (data.error) {
+        setTestResult({ success: false, error: `Account discovery: ${data.error}` });
+      } else {
+        setDiscoveredAccounts(data.accounts || []);
+        if (data.accounts.length === 0) {
+          setTestResult({ success: false, error: 'No accounts found for this email/password' });
+        }
+      }
+    } catch (err) {
+      setTestResult({ success: false, error: err instanceof Error ? err.message : 'Account discovery failed' });
+    } finally {
+      setDiscovering(false);
     }
   };
 
@@ -341,6 +366,14 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                 Test Connection
               </button>
               <button
+                onClick={handleDiscoverAccounts}
+                disabled={discovering}
+                className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5"
+              >
+                {discovering ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
+                Discover Accounts
+              </button>
+              <button
                 onClick={handleClear}
                 className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 text-red-400 hover:text-red-300"
               >
@@ -363,6 +396,29 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
               ? `Connected — ${testResult.deviceCount} device(s) found`
               : `Connection failed: ${testResult.error}`
             }
+          </div>
+        )}
+
+        {/* Discovered accounts */}
+        {discoveredAccounts.length > 0 && (
+          <div className="space-y-1.5">
+            <div className="text-[9px] text-rmpg-500 uppercase tracking-wider">Available Accounts</div>
+            {discoveredAccounts.map((acct) => (
+              <button
+                key={acct.accountId}
+                onClick={() => setAccountId(acct.accountId)}
+                className="w-full flex items-center gap-2 px-2 py-1.5 bg-surface-sunken hover:bg-brand-900/20 border border-rmpg-600 hover:border-brand-500 rounded-sm text-[11px] transition-colors text-left"
+              >
+                <Navigation className="w-3 h-3 text-brand-400 shrink-0" />
+                <span className="text-rmpg-200 font-mono">{acct.accountId}</span>
+                <span className="text-rmpg-400">—</span>
+                <span className="text-rmpg-300">{acct.accountName}</span>
+                <span className="ml-auto text-[9px] text-brand-400">Click to use</span>
+              </button>
+            ))}
+            <div className="text-[9px] text-rmpg-600">
+              Click an account above to set it as Account ID, then save credentials and test connection.
+            </div>
           </div>
         )}
       </div>

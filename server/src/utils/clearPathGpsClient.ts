@@ -105,6 +105,38 @@ interface AuthTokens {
 
 let cachedAuth: AuthTokens | null = null;
 
+export interface CpgAccount {
+  accountId: string;
+  accountName: string;
+  [key: string]: any;
+}
+
+/** Discover available accounts for an email/password pair. */
+async function fetchAccounts(email: string, password: string): Promise<CpgAccount[]> {
+  const resp = await fetch(`${BASE_URL}/auth/accounts`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ emailId: email, password }),
+    signal: AbortSignal.timeout(15_000),
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`ClearPathGPS account discovery failed (${resp.status}): ${text}`);
+  }
+
+  const data = await resp.json();
+  return Array.isArray(data) ? data : data.items || data.accounts || [data];
+}
+
+/** Discover accounts using stored credentials — exposed for admin route. */
+export async function discoverAccounts(): Promise<CpgAccount[]> {
+  const email = getDecryptedValue(CONFIG_KEYS.email);
+  const password = getDecryptedValue(CONFIG_KEYS.password);
+  if (!email || !password) throw new Error('ClearPathGPS email/password not configured');
+  return fetchAccounts(email, password);
+}
+
 /** Try to authenticate with a given accountId value. */
 async function tryAuth(email: string, password: string, accountId: number | string): Promise<any> {
   const resp = await fetch(`${BASE_URL}/auth/token`, {
@@ -127,8 +159,25 @@ async function tryAuth(email: string, password: string, accountId: number | stri
   return resp.json();
 }
 
+/** Authenticate via /auth/accounts/switch/{accountId} after discovering accounts. */
+async function tryAccountSwitch(email: string, password: string, accountId: string): Promise<any> {
+  const resp = await fetch(`${BASE_URL}/auth/accounts/switch/${encodeURIComponent(accountId)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ emailId: email, password }),
+    signal: AbortSignal.timeout(15_000),
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`ClearPathGPS account switch failed (${resp.status}): ${text}`);
+  }
+
+  return resp.json();
+}
+
 /** Authenticate with email/password/accountId and get JWT tokens.
- *  Tries multiple accountId formats: numeric, string, and 0 (default). */
+ *  Strategy: 1) Try /auth/token directly  2) Discover accounts + switch */
 async function authenticate(): Promise<AuthTokens> {
   const email = getDecryptedValue(CONFIG_KEYS.email);
   const password = getDecryptedValue(CONFIG_KEYS.password);
@@ -138,10 +187,9 @@ async function authenticate(): Promise<AuthTokens> {
     throw new Error('ClearPathGPS credentials not configured');
   }
 
-  // Try different accountId formats — the API is inconsistent about type
+  // Strategy 1: Try /auth/token directly with various accountId formats
   const numericId = parseInt(accountIdRaw.replace(/\D/g, ''), 10) || 0;
   const attempts: (number | string)[] = [numericId, accountIdRaw, 0];
-  // Deduplicate
   const unique = [...new Set(attempts.map(String))].map(v => /^\d+$/.test(v) ? Number(v) : v);
 
   let lastError = '';
@@ -159,6 +207,61 @@ async function authenticate(): Promise<AuthTokens> {
     } catch (err: any) {
       lastError = err.message || 'Auth failed';
     }
+  }
+
+  // Strategy 2: Discover accounts, then switch to matching one
+  try {
+    console.log('[ClearPathGPS] Direct auth failed, trying account discovery...');
+    const accounts = await fetchAccounts(email, password);
+    console.log('[ClearPathGPS] Discovered accounts:', accounts.map(a => `${a.accountId} (${a.accountName})`).join(', '));
+
+    if (accounts.length === 0) {
+      throw new Error('No accounts found for this email');
+    }
+
+    // Try matching by stored accountId first, then try all accounts
+    const sortedAccounts = [...accounts].sort((a, b) => {
+      const aMatch = a.accountId === accountIdRaw || a.accountId === String(numericId);
+      const bMatch = b.accountId === accountIdRaw || b.accountId === String(numericId);
+      return (bMatch ? 1 : 0) - (aMatch ? 1 : 0);
+    });
+
+    for (const acct of sortedAccounts) {
+      try {
+        const data = await tryAccountSwitch(email, password, acct.accountId);
+        cachedAuth = {
+          token: data.token,
+          refreshToken: data.refreshToken,
+          userId: data.userId,
+          userIdCp: data.userIdCp,
+          expiresAt: Date.now() + 55 * 60 * 1000,
+        };
+        console.log(`[ClearPathGPS] Authenticated via account switch: ${acct.accountId} (${acct.accountName})`);
+        return cachedAuth;
+      } catch (err: any) {
+        lastError = err.message || 'Account switch failed';
+      }
+    }
+
+    // If switch didn't work, try /auth/token with discovered accountIds
+    for (const acct of sortedAccounts) {
+      try {
+        const data = await tryAuth(email, password, acct.accountId);
+        cachedAuth = {
+          token: data.token,
+          refreshToken: data.refreshToken,
+          userId: data.userId,
+          userIdCp: data.userIdCp,
+          expiresAt: Date.now() + 55 * 60 * 1000,
+        };
+        console.log(`[ClearPathGPS] Authenticated with discovered accountId: ${acct.accountId}`);
+        return cachedAuth;
+      } catch (err: any) {
+        lastError = err.message || 'Auth failed';
+      }
+    }
+  } catch (discoverErr: any) {
+    lastError = discoverErr.message || lastError;
   }
 
   throw new Error(lastError);
