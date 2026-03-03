@@ -18,6 +18,7 @@ import { apiRateLimit } from './middleware/rateLimiter';
 import { liveBroadcast } from './middleware/liveBroadcast';
 import { startPatrolMonitor } from './utils/patrolMonitor';
 import { startDailyReportScheduler } from './utils/dailyReportGenerator';
+import { startClearPathGpsPoller } from './utils/clearPathGpsPoller';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -58,6 +59,7 @@ import shiftPlanRoutes from './routes/shiftPlans';
 import downloadsRoutes, { mountDownloadFileRoute } from './routes/downloads';
 import serveManagerRoutes from './routes/servemanager';
 import microbiltRoutes from './routes/microbilt';
+import clearPathGpsRoutes from './routes/clearpathgps';
 import fieldInterviewRoutes from './routes/fieldInterviews';
 import trespassOrderRoutes from './routes/trespassOrders';
 import caseRoutes from './routes/cases';
@@ -161,6 +163,7 @@ app.use('/api/downloads', downloadsRoutes);
 app.use('/api/updates', downloadsRoutes);
 app.use('/api/servemanager', serveManagerRoutes);
 app.use('/api/microbilt', microbiltRoutes);
+app.use('/api/clearpathgps', clearPathGpsRoutes);
 app.use('/api/field-interviews', fieldInterviewRoutes);
 app.use('/api/trespass-orders', trespassOrderRoutes);
 app.use('/api/cases', caseRoutes);
@@ -330,6 +333,9 @@ try {
 
     // Start midnight daily patrol report scheduler
     startDailyReportScheduler();
+
+    // Start ClearPathGPS fleet position poller (if enabled)
+    startClearPathGpsPoller();
   });
 } catch (error) {
   console.error('Failed to start server:', error);

@@ -178,13 +178,16 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   const latestPositionRef = useRef<QueuedPoint | null>(null);
   // Flag: send first position immediately for real-time icon placement
   const firstPositionSentRef = useRef(false);
+  // GPS source: 'browser' (default) or 'clearpathgps' (hardware tracker manages position)
+  const gpsSourceRef = useRef<string>('browser');
 
   // Fetch the user's assigned unit on mount
   useEffect(() => {
-    apiFetch<{ id: number; call_sign: string; status: string } | null>('/dispatch/gps/my-unit')
+    apiFetch<{ id: number; call_sign: string; status: string; gps_source?: string } | null>('/dispatch/gps/my-unit')
       .then((unit) => {
         if (unit) {
           setState((prev) => ({ ...prev, unitCallSign: unit.call_sign, unitId: unit.id }));
+          gpsSourceRef.current = unit.gps_source || 'browser';
         }
       })
       .catch(() => {
@@ -196,6 +199,13 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   // Drains the queue and POSTs all collected points to the server.
   // On failure, persists points to localStorage so they survive page reloads.
   const sendBatch = useCallback(async () => {
+    // Skip POST when a hardware GPS tracker (ClearPathGPS) is managing this unit's position
+    if (gpsSourceRef.current === 'clearpathgps') {
+      queueRef.current = [];
+      clearFailoverQueue();
+      return;
+    }
+
     // Merge any previously failed points from localStorage
     const failoverPoints = loadFailoverQueue();
     const currentPoints = queueRef.current;
@@ -230,6 +240,9 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
 
   // ─── Send single position immediately (for first fix) ────
   const sendImmediate = useCallback(async (point: QueuedPoint) => {
+    // Skip POST when a hardware GPS tracker is managing this unit's position
+    if (gpsSourceRef.current === 'clearpathgps') return;
+
     try {
       await apiFetch('/dispatch/gps', {
         method: 'POST',

@@ -793,6 +793,22 @@ function createTables(): void {
 
     CREATE INDEX IF NOT EXISTS idx_company_docs_category ON company_documents(category);
     CREATE INDEX IF NOT EXISTS idx_company_docs_published ON company_documents(published);
+
+    -- ClearPathGPS device-to-unit mappings
+    CREATE TABLE IF NOT EXISTS cpg_device_mappings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cpg_device_id TEXT NOT NULL UNIQUE,
+      cpg_display_name TEXT,
+      cpg_serial_number TEXT,
+      unit_id INTEGER NOT NULL,
+      is_active INTEGER DEFAULT 1,
+      last_synced_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (unit_id) REFERENCES units(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_cpg_mappings_unit ON cpg_device_mappings(unit_id);
+    CREATE INDEX IF NOT EXISTS idx_cpg_mappings_device ON cpg_device_mappings(cpg_device_id);
   `);
 }
 
@@ -1225,6 +1241,7 @@ function migrateSchema(): void {
 
   // ── UNITS — missing columns ────────────────────────────
   addCol('units', 'updated_at', "TEXT DEFAULT (datetime('now','localtime'))");
+  addCol('units', 'gps_source', "TEXT DEFAULT 'browser'");
 
   // ── EVIDENCE — new chain-of-custody fields ────────────
   addCol('evidence', 'evidence_number', 'TEXT');

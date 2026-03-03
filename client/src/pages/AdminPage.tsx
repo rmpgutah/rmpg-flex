@@ -21,6 +21,7 @@ import {
   DatabaseZap,
   Lock,
   Palette,
+  Navigation,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -49,6 +50,7 @@ import AdminTrainingTab from './admin/AdminTrainingTab';
 import AdminRadioTab from './admin/AdminRadioTab';
 import AdminOfflineTab from './admin/AdminOfflineTab';
 import AdminMicrobiltTab from './admin/AdminMicrobiltTab';
+import AdminClearPathGpsTab from './admin/AdminClearPathGpsTab';
 import AdminSecurityTab from './admin/AdminSecurityTab';
 import AdminBrandingTab from './admin/AdminBrandingTab';
 
@@ -209,7 +211,7 @@ function mapAuditRow(row: AuditRow): AuditEntry {
 // Constants
 // ============================================================
 
-type TabId = 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'sessions' | 'training' | 'radio' | 'offline' | 'security' | 'branding';
+type TabId = 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'sessions' | 'training' | 'radio' | 'offline' | 'security' | 'branding';
 
 const LS_ADMIN_TAB = 'rmpg_admin_tab';
 
@@ -226,7 +228,7 @@ export default function AdminPage() {
   const [activeTab, setActiveTabState] = useState<TabId>(() => {
     try {
       const saved = localStorage.getItem(LS_ADMIN_TAB);
-      if (saved && ['users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'sessions', 'training', 'radio', 'offline', 'security', 'branding'].includes(saved)) return saved as TabId;
+      if (saved && ['users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'sessions', 'training', 'radio', 'offline', 'security', 'branding'].includes(saved)) return saved as TabId;
     } catch { /* ignore */ }
     return 'users';
   });
@@ -612,6 +614,7 @@ export default function AdminPage() {
       tabs: [
         { id: 'servemanager', label: 'ServeManager', icon: Link2 },
         { id: 'microbilt', label: 'Microbilt', icon: DatabaseZap },
+        { id: 'clearpathgps', label: 'ClearPathGPS', icon: Navigation },
         { id: 'training', label: 'Training', icon: GraduationCap },
       ],
     },
@@ -823,6 +826,14 @@ export default function AdminPage() {
 
         {activeTab === 'microbilt' && (
           <AdminMicrobiltTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
+        {activeTab === 'clearpathgps' && (
+          <AdminClearPathGpsTab
             LoadingSpinner={LoadingSpinner}
             error={error}
             setError={setError}
