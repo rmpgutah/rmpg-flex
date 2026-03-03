@@ -6,6 +6,11 @@ interface LoginResult {
   success: boolean;
 }
 
+interface TwoFactorMethods {
+  totp: boolean;
+  webauthn: boolean;
+}
+
 interface AuthContextType {
   user: User | null;
   token: string | null;
@@ -14,7 +19,10 @@ interface AuthContextType {
   loginBusy: boolean;
   login: (username: string, password: string) => Promise<LoginResult>;
   verify2FA: (code: string) => Promise<void>;
+  verifyWebAuthn: () => Promise<void>;
   pending2FA: boolean;
+  twoFactorMethods: TwoFactorMethods;
+  tempToken: string | null;
   cancel2FA: () => void;
   logout: () => void;
   refreshUser: () => Promise<void>;
@@ -264,10 +272,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // ── Two-Factor Authentication state ───────────────────
   const [pending2FA, setPending2FA] = useState(false);
   const [tempToken, setTempToken] = useState<string | null>(null);
+  const [twoFactorMethods, setTwoFactorMethods] = useState<TwoFactorMethods>({ totp: false, webauthn: false });
 
   const cancel2FA = useCallback(() => {
     setPending2FA(false);
     setTempToken(null);
+    setTwoFactorMethods({ totp: false, webauthn: false });
     setError(null);
   }, []);
 
@@ -306,6 +316,72 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [tempToken, scheduleRefresh]);
 
+  const verifyWebAuthn = useCallback(async () => {
+    if (!tempToken) throw new Error('No pending 2FA session');
+    setLoginBusy(true);
+    setError(null);
+
+    try {
+      // Step 1: Get authentication options from server
+      const beginRes = await fetch('/api/auth/webauthn/authenticate/begin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tempToken }),
+      });
+
+      if (!beginRes.ok) {
+        const errData = await beginRes.json().catch(() => ({}));
+        throw new Error(errData.error || 'Failed to begin WebAuthn authentication');
+      }
+
+      const options = await beginRes.json();
+
+      // Step 2: Use @simplewebauthn/browser to get credential
+      const { startAuthentication } = await import('@simplewebauthn/browser');
+      const credential = await startAuthentication({ optionsJSON: options });
+
+      // Step 3: Verify with server
+      const verifyRes = await fetch('/api/auth/webauthn/authenticate/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tempToken,
+          response: credential,
+          challenge: options.challenge,
+        }),
+      });
+
+      if (verifyRes.ok) {
+        const data = await verifyRes.json();
+        localStorage.setItem(TOKEN_KEY, data.token);
+        if (data.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
+        if (data.sessionId) localStorage.setItem(SESSION_ID_KEY, data.sessionId);
+
+        setUser(data.user);
+        setToken(data.token);
+        setPending2FA(false);
+        setTempToken(null);
+        setTwoFactorMethods({ totp: false, webauthn: false });
+        setIsLoading(false);
+        scheduleRefresh(data.token);
+      } else {
+        const errData = await verifyRes.json().catch(() => ({}));
+        const message = errData.error || 'Security key verification failed';
+        setError(message);
+        throw new Error(message);
+      }
+    } catch (err: any) {
+      if (err.name === 'NotAllowedError') {
+        setError('Security key authentication was cancelled or timed out');
+      } else if (!error) {
+        setError(err.message || 'Security key authentication failed');
+      }
+      throw err;
+    } finally {
+      setLoginBusy(false);
+    }
+  }, [tempToken, scheduleRefresh, error]);
+
   const login = useCallback(async (username: string, password: string): Promise<LoginResult> => {
     setLoginBusy(true);
     setError(null);
@@ -324,6 +400,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (data.requires2FA) {
           setTempToken(data.tempToken);
           setPending2FA(true);
+          setTwoFactorMethods(data.methods || { totp: true, webauthn: false });
           return { requires2FA: true, success: false };
         }
 
@@ -450,13 +527,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loginBusy,
     login,
     verify2FA,
+    verifyWebAuthn,
     pending2FA,
+    twoFactorMethods,
+    tempToken,
     cancel2FA,
     logout,
     refreshUser,
     error,
     clearError,
-  }), [user, token, isLoading, loginBusy, login, verify2FA, pending2FA, cancel2FA, logout, refreshUser, error, clearError]);
+  }), [user, token, isLoading, loginBusy, login, verify2FA, verifyWebAuthn, pending2FA, twoFactorMethods, tempToken, cancel2FA, logout, refreshUser, error, clearError]);
 
   return (
     <AuthContext.Provider value={contextValue}>

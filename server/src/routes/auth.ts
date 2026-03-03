@@ -26,6 +26,15 @@ import {
   decryptSecret,
 } from '../utils/totp';
 import { createNotification } from './notifications';
+import {
+  beginRegistration,
+  completeRegistration,
+  beginAuthentication,
+  verifyAuthentication,
+  removeCredential,
+  getUserWebAuthnStatus,
+  hasWebAuthnCredentials,
+} from '../utils/webauthn';
 
 const router = Router();
 
@@ -194,13 +203,21 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
     };
 
     // ── Two-Factor Authentication gate ──────────────────
-    if (userFull?.totp_enabled) {
+    const webauthnEnabled = db.prepare('SELECT webauthn_enabled FROM users WHERE id = ?')
+      .get(user.id) as { webauthn_enabled: number } | undefined;
+    const hasWebAuthn = !!webauthnEnabled?.webauthn_enabled;
+
+    if (userFull?.totp_enabled || hasWebAuthn) {
       // Don't issue full tokens yet — return a 2FA-pending token
       const tempToken = generate2faPendingToken(payload);
       res.json({
         requires2FA: true,
         tempToken,
         userId: user.id,
+        methods: {
+          totp: !!userFull?.totp_enabled,
+          webauthn: hasWebAuthn,
+        },
       });
       return;
     }
@@ -963,6 +980,226 @@ router.post('/totp/disable', authenticateToken, (req: Request, res: Response) =>
     console.error('TOTP disable error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
+});
+
+// ─── WebAuthn / YubiKey Registration ──────────────────
+// GET /api/auth/webauthn/status — check WebAuthn status for current user
+router.get('/webauthn/status', authenticateToken, (req: Request, res: Response) => {
+  try {
+    const status = getUserWebAuthnStatus(req.user!.userId);
+    res.json(status);
+  } catch (error: any) {
+    console.error('WebAuthn status error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/auth/webauthn/register/begin — start key registration
+router.post('/webauthn/register/begin', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const options = await beginRegistration(req.user!.userId, req.user!.username);
+    res.json(options);
+  } catch (error: any) {
+    console.error('WebAuthn register begin error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/auth/webauthn/register/complete — verify and store key
+router.post('/webauthn/register/complete', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { response: webauthnResponse, challenge, deviceName } = req.body;
+
+    if (!webauthnResponse || !challenge) {
+      res.status(400).json({ error: 'Response and challenge are required' });
+      return;
+    }
+
+    const result = await completeRegistration(
+      req.user!.userId,
+      webauthnResponse,
+      challenge,
+      deviceName || 'Security Key',
+    );
+
+    if (!result.success) {
+      res.status(400).json({ error: result.error });
+      return;
+    }
+
+    const db = getDb();
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'webauthn_key_registered', 'user', ?, ?, ?)
+    `).run(req.user!.userId, req.user!.userId, `Registered security key: ${deviceName || 'Security Key'}`, req.ip || 'unknown');
+
+    const status = getUserWebAuthnStatus(req.user!.userId);
+    res.json({ success: true, ...status });
+  } catch (error: any) {
+    console.error('WebAuthn register complete error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/auth/webauthn/credentials/:id — remove a registered key
+router.delete('/webauthn/credentials/:id', authenticateToken, (req: Request, res: Response) => {
+  try {
+    const credId = parseInt(req.params.id, 10);
+    if (isNaN(credId)) {
+      res.status(400).json({ error: 'Invalid credential ID' });
+      return;
+    }
+
+    const removed = removeCredential(req.user!.userId, credId);
+    if (!removed) {
+      res.status(404).json({ error: 'Credential not found' });
+      return;
+    }
+
+    const db = getDb();
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'webauthn_key_removed', 'user', ?, 'Removed security key', ?)
+    `).run(req.user!.userId, req.user!.userId, req.ip || 'unknown');
+
+    const status = getUserWebAuthnStatus(req.user!.userId);
+    res.json({ success: true, ...status });
+  } catch (error: any) {
+    console.error('WebAuthn remove credential error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── WebAuthn Authentication (2FA verification) ──────
+// POST /api/auth/webauthn/authenticate/begin — start assertion for login
+router.post('/webauthn/authenticate/begin', authRateLimit, (req: Request, res: Response) => {
+  (async () => {
+    try {
+      const { tempToken } = req.body;
+
+      if (!tempToken) {
+        res.status(400).json({ error: 'Temp token is required' });
+        return;
+      }
+
+      let decoded: JwtPayload;
+      try {
+        decoded = jwt.verify(tempToken, config.jwt.secret) as JwtPayload;
+      } catch {
+        res.status(401).json({ error: 'Session expired. Please log in again.' });
+        return;
+      }
+
+      if (decoded.type !== '2fa_pending') {
+        res.status(403).json({ error: 'Invalid token type' });
+        return;
+      }
+
+      if (!hasWebAuthnCredentials(decoded.userId)) {
+        res.status(400).json({ error: 'No security keys registered' });
+        return;
+      }
+
+      const options = await beginAuthentication(decoded.userId);
+      res.json(options);
+    } catch (error: any) {
+      console.error('WebAuthn authenticate begin error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  })();
+});
+
+// POST /api/auth/webauthn/authenticate/verify — verify assertion for login
+router.post('/webauthn/authenticate/verify', authRateLimit, (req: Request, res: Response) => {
+  (async () => {
+    try {
+      const { tempToken, response: webauthnResponse, challenge } = req.body;
+
+      if (!tempToken || !webauthnResponse || !challenge) {
+        res.status(400).json({ error: 'Token, response, and challenge are required' });
+        return;
+      }
+
+      let decoded: JwtPayload;
+      try {
+        decoded = jwt.verify(tempToken, config.jwt.secret) as JwtPayload;
+      } catch {
+        res.status(401).json({ error: 'Session expired. Please log in again.' });
+        return;
+      }
+
+      if (decoded.type !== '2fa_pending') {
+        res.status(403).json({ error: 'Invalid token type' });
+        return;
+      }
+
+      const result = await verifyAuthentication(decoded.userId, webauthnResponse, challenge);
+
+      if (!result.success) {
+        res.status(401).json({ error: result.error || 'Security key verification failed' });
+        return;
+      }
+
+      // WebAuthn verified — issue full tokens (same as TOTP verify-2fa)
+      const db = getDb();
+      const user = db.prepare(
+        'SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, avatar_url, status, must_change_password FROM users WHERE id = ?'
+      ).get(decoded.userId) as any;
+
+      if (!user) {
+        res.status(401).json({ error: 'User not found' });
+        return;
+      }
+
+      const ip = req.ip || 'unknown';
+      const userAgent = req.headers['user-agent'] || 'unknown';
+
+      const payload: Omit<JwtPayload, 'type'> = {
+        userId: user.id,
+        username: user.username,
+        role: user.role,
+        fullName: user.full_name,
+      };
+
+      const refreshToken = generateRefreshToken(payload);
+      const sessionId = createSession(user.id, refreshToken, ip, userAgent);
+      const accessToken = generateAccessToken({ ...payload, sessionId });
+
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'user_login_webauthn', 'user', ?, 'WebAuthn/YubiKey login completed', ?)
+      `).run(user.id, user.id, ip);
+
+      db.prepare(`
+        UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login_at = ? WHERE id = ?
+      `).run(localNow(), user.id);
+
+      res.json({
+        token: accessToken,
+        refreshToken,
+        sessionId,
+        expiresIn: config.jwt.accessExpiry,
+        user: {
+          id: user.id,
+          username: user.username,
+          full_name: user.full_name,
+          first_name: user.first_name,
+          last_name: user.last_name,
+          email: user.email,
+          role: user.role,
+          badge_number: user.badge_number,
+          phone: user.phone,
+          avatar_url: user.avatar_url,
+          must_change_password: !!user.must_change_password,
+          totp_enabled: true,
+          requires_2fa_setup: false,
+        },
+      });
+    } catch (error: any) {
+      console.error('WebAuthn authenticate verify error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  })();
 });
 
 export default router;

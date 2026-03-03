@@ -1208,6 +1208,9 @@ function migrateSchema(): void {
   // ── USERS — Digital Signature (PNG base64 data URL) ──
   addCol('users', 'digital_signature', 'TEXT');            // base64 data:image/png;base64,... stored per officer
 
+  // ── USERS — WebAuthn / YubiKey hardware key auth ──────
+  addCol('users', 'webauthn_enabled', 'INTEGER DEFAULT 0'); // 0 = disabled, 1 = enabled
+
   // ── NOTIFICATIONS — widen type CHECK for login_alert / security ──
   try {
     // SQLite can't ALTER CHECK constraints, so recreate the table
@@ -2353,6 +2356,50 @@ function migrateSchema(): void {
          OR (recorded_at LIKE '2026-02-28 23:04:12%' AND latitude BETWEEN 40.694 AND 40.695)
     `).run();
   } catch { /* table may not exist yet — safe to ignore */ }
+
+  // ── WEBAUTHN CREDENTIALS — FIDO2/YubiKey hardware keys ──
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS webauthn_credentials (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        credential_id TEXT NOT NULL UNIQUE,
+        public_key TEXT NOT NULL,
+        sign_count INTEGER NOT NULL DEFAULT 0,
+        device_name TEXT DEFAULT 'Security Key',
+        transports TEXT DEFAULT '[]',
+        device_type TEXT DEFAULT 'unknown',
+        backed_up INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_webauthn_user ON webauthn_credentials(user_id);
+      CREATE INDEX IF NOT EXISTS idx_webauthn_cred_id ON webauthn_credentials(credential_id);
+    `);
+  } catch { /* table already exists */ }
+
+  // ── CLEARPATHGPS — enriched device data (vehicle info, ignition, odometer) ──
+  addCol('cpg_device_mappings', 'vehicle_make', 'TEXT');
+  addCol('cpg_device_mappings', 'vehicle_model', 'TEXT');
+  addCol('cpg_device_mappings', 'vehicle_vin', 'TEXT');
+  addCol('cpg_device_mappings', 'license_plate', 'TEXT');
+  addCol('cpg_device_mappings', 'ignition_state', 'TEXT');
+  addCol('cpg_device_mappings', 'last_odometer', 'REAL');
+  addCol('cpg_device_mappings', 'driver_name', 'TEXT');
+  addCol('cpg_device_mappings', 'gts_device_id', 'TEXT');
+
+  // ── CLEARPATHGPS — enriched breadcrumb data ──
+  addCol('gps_breadcrumbs', 'odometer', 'REAL');
+  addCol('gps_breadcrumbs', 'satellite_count', 'INTEGER');
+  addCol('gps_breadcrumbs', 'ignition', 'INTEGER');
+
+  // ── CLEARPATHGPS — enriched dashcam event data ──
+  addCol('dashcam_events', 'odometer', 'REAL');
+  addCol('dashcam_events', 'ignition', 'INTEGER');
+  addCol('dashcam_events', 'driver_name', 'TEXT');
+  addCol('dashcam_events', 'city', 'TEXT');
+  addCol('dashcam_events', 'state_province', 'TEXT');
+  addCol('dashcam_events', 'satellite_count', 'INTEGER');
 
   console.log('Schema migration completed.');
 }

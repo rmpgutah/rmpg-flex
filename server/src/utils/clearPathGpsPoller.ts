@@ -141,10 +141,10 @@ async function pollFleetPositions(): Promise<void> {
   const insertBreadcrumb = db.prepare(`
     INSERT INTO gps_breadcrumbs (unit_id, officer_id, latitude, longitude, accuracy, heading, speed,
       unit_status, call_sign, officer_name, badge_number, current_call_id, current_call_number, current_call_type,
-      road_name, nearest_intersection, gps_source, recorded_at)
+      road_name, nearest_intersection, gps_source, recorded_at, odometer, satellite_count, ignition)
     VALUES (?, ?, ?, ?, NULL, ?, ?,
       ?, ?, ?, ?, ?, ?, ?,
-      ?, NULL, 'clearpathgps', ?)
+      ?, NULL, 'clearpathgps', ?, ?, ?, ?)
   `);
 
   const updateSyncTime = db.prepare(`
@@ -205,6 +205,9 @@ async function pollFleetPositions(): Promise<void> {
         unit.current_call_id || null, unit.call_number || null, unit.current_call_type || null,
         ed.address || null,
         recordedAt,
+        ed.reportedOdometer ?? null,
+        ed.satelliteCount ?? null,
+        ed.ignition != null ? (ed.ignition ? 1 : 0) : null,
       );
 
       // Track this timestamp for dedup
@@ -225,8 +228,37 @@ async function pollFleetPositions(): Promise<void> {
         );
       }
 
-      // Update sync time
+      // Update sync time + enriched device data
       updateSyncTime.run(now, now, mapping.id);
+
+      // Sync enriched device data from ClearPathGPS to mapping record
+      const device = event.device;
+      if (device) {
+        try {
+          db.prepare(`
+            UPDATE cpg_device_mappings SET
+              vehicle_make = COALESCE(?, vehicle_make),
+              vehicle_model = COALESCE(?, vehicle_model),
+              vehicle_vin = COALESCE(?, vehicle_vin),
+              license_plate = COALESCE(?, license_plate),
+              ignition_state = ?,
+              last_odometer = COALESCE(?, last_odometer),
+              driver_name = COALESCE(?, driver_name),
+              gts_device_id = COALESCE(?, gts_device_id)
+            WHERE cpg_device_id = ?
+          `).run(
+            device.vehicleMake || null,
+            device.vehicleModel || null,
+            device.vehicleID || null,
+            device.licensePlate || null,
+            device.ignitionState || (ed.ignition != null ? (ed.ignition ? 'on' : 'off') : null),
+            ed.reportedOdometer || null,
+            ed.driverName || device.driverName || null,
+            device.gtsDeviceId || null,
+            deviceId,
+          );
+        } catch { /* non-critical enrichment */ }
+      }
 
       // Broadcast position update (same event as browser GPS)
       broadcastUnitUpdate({ action: 'unit_position_update', unit: { ...unit, latitude: lat, longitude: lng, gps_source: 'clearpathgps' } });
@@ -308,6 +340,9 @@ async function backfillHistory(
               unit.current_call_id || null, unit.call_number || null, unit.current_call_type || null,
               ed.address || ed.streetAddress || null,
               recordedAt,
+              ed.reportedOdometer ?? null,
+              ed.satelliteCount ?? null,
+              ed.ignition != null ? (ed.ignition ? 1 : 0) : null,
             );
             backfillCount++;
 

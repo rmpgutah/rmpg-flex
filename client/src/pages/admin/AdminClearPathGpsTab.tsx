@@ -48,6 +48,13 @@ interface CpgMapping {
   unit_status: string | null;
   officer_name: string | null;
   last_synced_at: string | null;
+  vehicle_make: string | null;
+  vehicle_model: string | null;
+  vehicle_vin: string | null;
+  license_plate: string | null;
+  ignition_state: string | null;
+  last_odometer: number | null;
+  driver_name: string | null;
 }
 
 interface DispatchUnit {
@@ -586,31 +593,53 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
           {mappings.length > 0 && (
             <div className="space-y-1">
               <div className="text-[9px] text-rmpg-500 uppercase tracking-wider">Active Mappings</div>
-              {mappings.map((m) => (
-                <div
-                  key={m.id}
-                  className="flex items-center gap-2 px-2 py-1.5 bg-surface-sunken rounded-sm text-[11px]"
-                >
-                  <Truck className="w-3 h-3 text-brand-400 shrink-0" />
-                  <span className="text-rmpg-200 font-medium">{m.cpg_display_name || m.cpg_device_id}</span>
-                  <span className="text-rmpg-600">→</span>
-                  <span className="text-brand-400 font-mono font-medium">{m.call_sign || `Unit #${m.unit_id}`}</span>
-                  {m.officer_name && <span className="text-rmpg-500 text-[10px]">({m.officer_name})</span>}
-                  {m.last_synced_at && (
-                    <span className="ml-auto text-[9px] text-rmpg-600 flex items-center gap-1">
-                      <Clock className="w-2.5 h-2.5" />
-                      {new Date(m.last_synced_at).toLocaleTimeString()}
-                    </span>
-                  )}
-                  <button
-                    onClick={() => handleRemoveMapping(m.id)}
-                    className="ml-1 text-red-500 hover:text-red-400"
-                    title="Remove mapping"
+              {mappings.map((m) => {
+                const vehicleInfo = [m.vehicle_make, m.vehicle_model].filter(Boolean).join(' ');
+                return (
+                  <div
+                    key={m.id}
+                    className="px-2 py-1.5 bg-surface-sunken rounded-sm text-[11px]"
                   >
-                    <Unlink className="w-3 h-3" />
-                  </button>
-                </div>
-              ))}
+                    <div className="flex items-center gap-2">
+                      <Truck className="w-3 h-3 text-brand-400 shrink-0" />
+                      <span className="text-rmpg-200 font-medium">{m.cpg_display_name || m.cpg_device_id}</span>
+                      <span className="text-rmpg-600">→</span>
+                      <span className="text-brand-400 font-mono font-medium">{m.call_sign || `Unit #${m.unit_id}`}</span>
+                      {m.officer_name && <span className="text-rmpg-500 text-[10px]">({m.officer_name})</span>}
+                      {m.ignition_state && (
+                        <span className={`text-[9px] px-1 py-0.5 rounded ${
+                          m.ignition_state === 'on' ? 'text-green-400 bg-green-950/30' : 'text-rmpg-500 bg-surface-sunken'
+                        }`}>
+                          IGN {m.ignition_state.toUpperCase()}
+                        </span>
+                      )}
+                      {m.last_synced_at && (
+                        <span className="ml-auto text-[9px] text-rmpg-600 flex items-center gap-1">
+                          <Clock className="w-2.5 h-2.5" />
+                          {new Date(m.last_synced_at).toLocaleTimeString()}
+                        </span>
+                      )}
+                      <button
+                        onClick={() => handleRemoveMapping(m.id)}
+                        className="ml-1 text-red-500 hover:text-red-400"
+                        title="Remove mapping"
+                      >
+                        <Unlink className="w-3 h-3" />
+                      </button>
+                    </div>
+                    {/* Vehicle telemetry row */}
+                    {(vehicleInfo || m.license_plate || m.vehicle_vin || m.last_odometer != null) && (
+                      <div className="flex items-center gap-3 ml-5 mt-0.5 text-[9px] text-rmpg-500">
+                        {vehicleInfo && <span>{vehicleInfo}</span>}
+                        {m.license_plate && <span className="font-mono">Plate: {m.license_plate}</span>}
+                        {m.vehicle_vin && <span className="font-mono">VIN: {m.vehicle_vin}</span>}
+                        {m.last_odometer != null && <span>{m.last_odometer.toLocaleString()} mi</span>}
+                        {m.driver_name && <span>Driver: {m.driver_name}</span>}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
 

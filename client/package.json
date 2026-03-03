@@ -20,6 +20,7 @@
     "@capacitor/splash-screen": "^8.0.1",
     "@capacitor/status-bar": "^8.0.1",
     "@googlemaps/js-api-loader": "^2.0.2",
+    "@simplewebauthn/browser": "^13.2.2",
     "jspdf": "^4.1.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.468.0",

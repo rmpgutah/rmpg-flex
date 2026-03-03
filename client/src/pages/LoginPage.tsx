@@ -5,9 +5,11 @@
 // ============================================================
 
 import React, { useState } from 'react';
-import { Eye, EyeOff, AlertCircle, ShieldCheck, ArrowLeft } from 'lucide-react';
+import { Eye, EyeOff, AlertCircle, ShieldCheck, ArrowLeft, KeyRound, Smartphone } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import TotpCodeInput from '../components/TotpCodeInput';
+
+type TwoFactorMode = 'choose' | 'totp' | 'webauthn' | 'backup';
 
 const APP_VERSION: string =
   typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '5.3.9';
@@ -16,7 +18,9 @@ export default function LoginPage() {
   const {
     login,
     verify2FA,
+    verifyWebAuthn,
     pending2FA,
+    twoFactorMethods,
     cancel2FA,
     error,
     clearError,
@@ -27,8 +31,9 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [totpCode, setTotpCode] = useState('');
-  const [useBackupCode, setUseBackupCode] = useState(false);
+  const [twoFactorMode, setTwoFactorMode] = useState<TwoFactorMode>('choose');
   const [backupCode, setBackupCode] = useState('');
+  const [webauthnError, setWebauthnError] = useState(false);
 
   const handleCredentialsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,11 +61,54 @@ export default function LoginPage() {
     await handleTotpSubmit(backupCode.trim());
   };
 
+  const handleWebAuthn = async () => {
+    clearError();
+    setWebauthnError(false);
+    try {
+      await verifyWebAuthn();
+    } catch {
+      setWebauthnError(true);
+    }
+  };
+
+  // Determine initial 2FA mode when entering 2FA step
+  const getEffectiveMode = (): TwoFactorMode => {
+    if (twoFactorMode !== 'choose') return twoFactorMode;
+    // If only one method available, go directly to it
+    const hasBoth = twoFactorMethods.totp && twoFactorMethods.webauthn;
+    if (!hasBoth) {
+      if (twoFactorMethods.webauthn) return 'webauthn';
+      return 'totp';
+    }
+    return 'choose';
+  };
+
+  const effectiveMode = pending2FA ? getEffectiveMode() : 'choose';
+
   const handleBack = () => {
+    if (twoFactorMode !== 'choose' && twoFactorMethods.totp && twoFactorMethods.webauthn) {
+      // Go back to method selection
+      setTwoFactorMode('choose');
+      setTotpCode('');
+      setBackupCode('');
+      setWebauthnError(false);
+      clearError();
+      return;
+    }
     cancel2FA();
     setTotpCode('');
     setBackupCode('');
-    setUseBackupCode(false);
+    setTwoFactorMode('choose');
+    setWebauthnError(false);
+    setPassword('');
+  };
+
+  const handleBackToLogin = () => {
+    cancel2FA();
+    setTotpCode('');
+    setBackupCode('');
+    setTwoFactorMode('choose');
+    setWebauthnError(false);
     setPassword('');
   };
 
@@ -345,8 +393,79 @@ export default function LoginPage() {
               </form>
             )}
 
+            {/* ── Step 2: Method Selection ─────────────────── */}
+            {pending2FA && effectiveMode === 'choose' && (
+              <div className="space-y-3">
+                <div className="text-center mb-2">
+                  <p
+                    className="text-[10px] uppercase tracking-wide font-bold mb-1"
+                    style={{ color: '#a0a0a0' }}
+                  >
+                    Choose Verification Method
+                  </p>
+                  <p className="text-[9px]" style={{ color: '#666' }}>
+                    Select how you'd like to verify your identity
+                  </p>
+                </div>
+
+                {twoFactorMethods.totp && (
+                  <button
+                    type="button"
+                    onClick={() => { setTwoFactorMode('totp'); clearError(); }}
+                    className="w-full flex items-center gap-3 p-3 transition-colors"
+                    style={{
+                      background: '#1a1a1a',
+                      border: '1px solid #333',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#bc1010'; e.currentTarget.style.background = '#1e1a1a'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#333'; e.currentTarget.style.background = '#1a1a1a'; }}
+                  >
+                    <Smartphone className="w-5 h-5 flex-shrink-0" style={{ color: '#bc1010' }} />
+                    <div className="text-left">
+                      <p className="text-xs font-bold" style={{ color: '#e0e0e0' }}>Authenticator App</p>
+                      <p className="text-[9px]" style={{ color: '#666' }}>Enter a 6-digit code from your app</p>
+                    </div>
+                  </button>
+                )}
+
+                {twoFactorMethods.webauthn && (
+                  <button
+                    type="button"
+                    onClick={() => { setTwoFactorMode('webauthn'); clearError(); handleWebAuthn(); }}
+                    className="w-full flex items-center gap-3 p-3 transition-colors"
+                    style={{
+                      background: '#1a1a1a',
+                      border: '1px solid #333',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#bc1010'; e.currentTarget.style.background = '#1e1a1a'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#333'; e.currentTarget.style.background = '#1a1a1a'; }}
+                  >
+                    <KeyRound className="w-5 h-5 flex-shrink-0" style={{ color: '#bc1010' }} />
+                    <div className="text-left">
+                      <p className="text-xs font-bold" style={{ color: '#e0e0e0' }}>Security Key</p>
+                      <p className="text-[9px]" style={{ color: '#666' }}>Use your YubiKey or hardware security key</p>
+                    </div>
+                  </button>
+                )}
+
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={handleBackToLogin}
+                    className="flex items-center gap-1 text-[10px] uppercase tracking-wide font-bold transition-colors"
+                    style={{ color: '#666' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = '#e0e0e0'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = '#666'; }}
+                  >
+                    <ArrowLeft className="w-3 h-3" />
+                    Back
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* ── Step 2: TOTP Verification ────────────────── */}
-            {pending2FA && !useBackupCode && (
+            {pending2FA && effectiveMode === 'totp' && (
               <div className="space-y-4">
                 <div className="text-center mb-2">
                   <p
@@ -386,30 +505,19 @@ export default function LoginPage() {
                     onClick={handleBack}
                     className="flex items-center gap-1 text-[10px] uppercase tracking-wide font-bold transition-colors"
                     style={{ color: '#666' }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.color = '#e0e0e0';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.color = '#666';
-                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = '#e0e0e0'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = '#666'; }}
                   >
                     <ArrowLeft className="w-3 h-3" />
                     Back
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      setUseBackupCode(true);
-                      clearError();
-                    }}
+                    onClick={() => { setTwoFactorMode('backup'); clearError(); }}
                     className="text-[10px] uppercase tracking-wide font-bold transition-colors"
                     style={{ color: '#666' }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.color = '#bc1010';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.color = '#666';
-                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = '#bc1010'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = '#666'; }}
                   >
                     Use Backup Code
                   </button>
@@ -417,8 +525,65 @@ export default function LoginPage() {
               </div>
             )}
 
+            {/* ── Step 2: WebAuthn / Security Key ──────────── */}
+            {pending2FA && effectiveMode === 'webauthn' && (
+              <div className="space-y-4">
+                <div className="text-center mb-2">
+                  <KeyRound className="w-8 h-8 mx-auto mb-2" style={{ color: '#bc1010' }} />
+                  <p
+                    className="text-[10px] uppercase tracking-wide font-bold mb-1"
+                    style={{ color: '#a0a0a0' }}
+                  >
+                    Security Key Verification
+                  </p>
+                  <p className="text-[9px]" style={{ color: '#666' }}>
+                    {webauthnError
+                      ? 'Verification failed — tap your key to try again'
+                      : 'Insert your security key and tap it when prompted'}
+                  </p>
+                </div>
+
+                {loginBusy && (
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span
+                      className="text-[10px] uppercase tracking-wide"
+                      style={{ color: '#a0a0a0' }}
+                    >
+                      Waiting for security key...
+                    </span>
+                  </div>
+                )}
+
+                {!loginBusy && (
+                  <button
+                    type="button"
+                    onClick={handleWebAuthn}
+                    className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2"
+                  >
+                    <KeyRound className="w-3.5 h-3.5" />
+                    {webauthnError ? 'RETRY SECURITY KEY' : 'ACTIVATE SECURITY KEY'}
+                  </button>
+                )}
+
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={handleBack}
+                    className="flex items-center gap-1 text-[10px] uppercase tracking-wide font-bold transition-colors"
+                    style={{ color: '#666' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = '#e0e0e0'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = '#666'; }}
+                  >
+                    <ArrowLeft className="w-3 h-3" />
+                    Back
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* ── Step 2 (alt): Backup Code ────────────────── */}
-            {pending2FA && useBackupCode && (
+            {pending2FA && effectiveMode === 'backup' && (
               <form onSubmit={handleBackupSubmit} className="space-y-3">
                 <div className="text-center mb-2">
                   <p
@@ -463,30 +628,19 @@ export default function LoginPage() {
                     onClick={handleBack}
                     className="flex items-center gap-1 text-[10px] uppercase tracking-wide font-bold transition-colors"
                     style={{ color: '#666' }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.color = '#e0e0e0';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.color = '#666';
-                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = '#e0e0e0'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = '#666'; }}
                   >
                     <ArrowLeft className="w-3 h-3" />
                     Back
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      setUseBackupCode(false);
-                      clearError();
-                    }}
+                    onClick={() => { setTwoFactorMode('totp'); clearError(); }}
                     className="text-[10px] uppercase tracking-wide font-bold transition-colors"
                     style={{ color: '#666' }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.color = '#bc1010';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.color = '#666';
-                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = '#bc1010'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = '#666'; }}
                   >
                     Use Authenticator
                   </button>

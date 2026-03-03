@@ -14,6 +14,9 @@ import {
   ShieldOff,
   Copy,
   RefreshCw,
+  KeyRound,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../hooks/useApi';
@@ -65,6 +68,17 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
   const [securityBusy, setSecurityBusy] = useState(false);
   const [securityMsg, setSecurityMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [copiedBackups, setCopiedBackups] = useState(false);
+
+  // WebAuthn / Security Keys
+  const [webauthnStatus, setWebauthnStatus] = useState<{
+    enabled: boolean;
+    credentialCount: number;
+    credentials: { id: number; device_name: string; created_at: string; device_type: string }[];
+  } | null>(null);
+  const [webauthnBusy, setWebauthnBusy] = useState(false);
+  const [webauthnMsg, setWebauthnMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [newKeyName, setNewKeyName] = useState('');
+  const [showKeyNameInput, setShowKeyNameInput] = useState(false);
 
   useEffect(() => {
     if (isOpen && user) {
@@ -121,9 +135,15 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
       setSetupCode('');
       setDisablePassword('');
       setCopiedBackups(false);
+      setWebauthnMsg(null);
+      setShowKeyNameInput(false);
+      setNewKeyName('');
       apiFetch<any>('/auth/totp/status')
         .then(data => setTotpStatus(data))
         .catch(() => setTotpStatus(null));
+      apiFetch<any>('/auth/webauthn/status')
+        .then(data => setWebauthnStatus(data))
+        .catch(() => setWebauthnStatus(null));
     }
   }, [isOpen, activeTab]);
 
@@ -241,6 +261,65 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
       setCopiedBackups(true);
       setTimeout(() => setCopiedBackups(false), 2000);
     }).catch(() => {});
+  };
+
+  // ── WebAuthn Handlers ──────────────────────────────
+  const handleRegisterKey = async () => {
+    const deviceName = newKeyName.trim() || 'Security Key';
+    setWebauthnBusy(true);
+    setWebauthnMsg(null);
+    try {
+      // Step 1: Get registration options from server
+      const options = await apiFetch<any>('/auth/webauthn/register/begin', {
+        method: 'POST',
+        body: JSON.stringify({ deviceName }),
+      });
+
+      // Step 2: Use browser WebAuthn API
+      const { startRegistration } = await import('@simplewebauthn/browser');
+      const credential = await startRegistration({ optionsJSON: options });
+
+      // Step 3: Send response to server
+      await apiFetch<any>('/auth/webauthn/register/complete', {
+        method: 'POST',
+        body: JSON.stringify({
+          response: credential,
+          challenge: options.challenge,
+          deviceName,
+        }),
+      });
+
+      setWebauthnMsg({ type: 'success', text: `Security key "${deviceName}" registered successfully.` });
+      setShowKeyNameInput(false);
+      setNewKeyName('');
+
+      // Refresh status
+      const status = await apiFetch<any>('/auth/webauthn/status');
+      setWebauthnStatus(status);
+    } catch (err: any) {
+      if (err.name === 'NotAllowedError') {
+        setWebauthnMsg({ type: 'error', text: 'Registration was cancelled or timed out.' });
+      } else {
+        setWebauthnMsg({ type: 'error', text: err.message || 'Failed to register security key' });
+      }
+    } finally {
+      setWebauthnBusy(false);
+    }
+  };
+
+  const handleRemoveKey = async (credId: number, name: string) => {
+    setWebauthnBusy(true);
+    setWebauthnMsg(null);
+    try {
+      await apiFetch(`/auth/webauthn/credentials/${credId}`, { method: 'DELETE' });
+      setWebauthnMsg({ type: 'success', text: `Security key "${name}" removed.` });
+      const status = await apiFetch<any>('/auth/webauthn/status');
+      setWebauthnStatus(status);
+    } catch (err: any) {
+      setWebauthnMsg({ type: 'error', text: err.message || 'Failed to remove key' });
+    } finally {
+      setWebauthnBusy(false);
+    }
   };
 
   const initials = `${(user.first_name || 'U')[0]}${(user.last_name || '')[0] || ''}`.toUpperCase();
@@ -700,6 +779,105 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   </div>
                 </div>
               )}
+
+              {/* ═══════════════════════════════════════════ */}
+              {/* ── Security Keys (WebAuthn / YubiKey) ───── */}
+              {/* ═══════════════════════════════════════════ */}
+              <div className="mt-4 pt-4 border-t border-rmpg-700">
+                <div className="flex items-center gap-2 mb-3">
+                  <KeyRound style={{ width: 16, height: 16, color: '#bc1010' }} />
+                  <div className="text-xs font-bold uppercase tracking-wider" style={{ color: '#a0a0a0' }}>
+                    Security Keys
+                  </div>
+                  <div className="text-[9px] ml-auto" style={{ color: '#555' }}>
+                    YubiKey / FIDO2
+                  </div>
+                </div>
+
+                {webauthnMsg && (
+                  <div className={`flex items-center gap-2 px-3 py-2 text-xs mb-3 ${webauthnMsg.type === 'success' ? 'text-green-400 bg-green-900/20 border border-green-800/40' : 'text-red-400 bg-red-900/20 border border-red-800/40'}`}>
+                    {webauthnMsg.type === 'success' ? <Check style={{ width: 12, height: 12 }} /> : <AlertCircle style={{ width: 12, height: 12 }} />}
+                    {webauthnMsg.text}
+                  </div>
+                )}
+
+                {/* Registered keys list */}
+                {webauthnStatus && webauthnStatus.credentials.length > 0 && (
+                  <div className="space-y-1.5 mb-3">
+                    {webauthnStatus.credentials.map(cred => (
+                      <div
+                        key={cred.id}
+                        className="flex items-center justify-between p-2"
+                        style={{ background: '#141414', border: '1px solid #282828' }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <KeyRound style={{ width: 13, height: 13, color: '#4ade80' }} />
+                          <div>
+                            <div className="text-[11px] text-white font-bold">{cred.device_name}</div>
+                            <div className="text-[9px]" style={{ color: '#555' }}>
+                              Added {new Date(cred.created_at).toLocaleDateString()} · {cred.device_type}
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleRemoveKey(cred.id, cred.device_name)}
+                          disabled={webauthnBusy}
+                          className="p-1 transition-colors hover:text-red-400"
+                          style={{ color: '#555' }}
+                          title="Remove key"
+                        >
+                          <Trash2 style={{ width: 12, height: 12 }} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {webauthnStatus && webauthnStatus.credentials.length === 0 && (
+                  <p className="text-[10px] mb-3" style={{ color: '#555' }}>
+                    No security keys registered. Add a YubiKey or FIDO2 security key for hardware-based 2FA.
+                  </p>
+                )}
+
+                {/* Register new key */}
+                {showKeyNameInput ? (
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      value={newKeyName}
+                      onChange={e => setNewKeyName(e.target.value)}
+                      className="input-dark"
+                      placeholder="Key name (e.g., 'Office YubiKey')"
+                      autoFocus
+                      maxLength={50}
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => { setShowKeyNameInput(false); setNewKeyName(''); setWebauthnMsg(null); }}
+                        className="btn-secondary flex-1"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleRegisterKey}
+                        disabled={webauthnBusy}
+                        className="btn-primary flex-1"
+                      >
+                        <KeyRound style={{ width: 12, height: 12 }} />
+                        {webauthnBusy ? 'Waiting for key...' : 'Register Key'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => { setShowKeyNameInput(true); setWebauthnMsg(null); }}
+                    className="btn-secondary w-full"
+                  >
+                    <Plus style={{ width: 12, height: 12 }} />
+                    Add Security Key
+                  </button>
+                )}
+              </div>
             </>
           )}
 
