@@ -1157,6 +1157,7 @@ export default function MapPage() {
       lat: number; lng: number; accuracy: number | null; heading: number | null;
       speed: number | null; status: string; call_number: string | null;
       call_type: string | null; time: string;
+      road_name: string | null; gps_source: string;
     }
     interface Trail {
       unit_id: number; call_sign: string; officer_name: string;
@@ -1218,20 +1219,27 @@ export default function MapPage() {
 
             dot.addListener('click', () => {
               const time = new Date(pt.time).toLocaleString();
+              const isCpg = pt.gps_source === 'clearpathgps';
+              const gpsBadge = isCpg
+                ? '<span style="display:inline-block;font-size:8px;font-weight:900;color:#60a5fa;background:#1e3a5f;border:1px solid #2563eb40;padding:1px 5px;margin-left:6px;letter-spacing:0.5px">CPG HARDWARE</span>'
+                : '<span style="display:inline-block;font-size:8px;font-weight:900;color:#4ade80;background:#14532d80;border:1px solid #22c55e40;padding:1px 5px;margin-left:6px;letter-spacing:0.5px">BROWSER GPS</span>';
+              const speedColor = pt.speed != null && pt.speed > 80 ? '#f87171' : pt.speed != null && pt.speed > 60 ? '#fbbf24' : '#e0e0e0';
               const html = `
-                <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:200px;line-height:1.6;background:#0a0e14;padding:10px 12px;border-radius:6px;border:1px solid #1e2a3a">
-                  <div style="font-weight:bold;font-size:13px;margin-bottom:4px;color:#ff4444">
-                    ${trail.call_sign} — ${trail.officer_name || 'Unknown'}
+                <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:220px;line-height:1.6;background:#0a0e14;padding:10px 12px;border-radius:6px;border:1px solid #1e2a3a">
+                  <div style="font-weight:bold;font-size:13px;margin-bottom:2px;color:#ff4444;display:flex;align-items:center;flex-wrap:wrap">
+                    ${escapeHtml(trail.call_sign)} — ${escapeHtml(trail.officer_name || 'Unknown')}
+                    ${gpsBadge}
                   </div>
-                  <div style="color:#8899aa;font-size:10px;margin-bottom:6px">${trail.badge_number || ''}</div>
+                  <div style="color:#8899aa;font-size:10px;margin-bottom:4px">${escapeHtml(trail.badge_number || '')}</div>
+                  ${pt.road_name ? `<div style="color:#fbbf24;font-weight:bold;font-size:12px;margin-bottom:4px;padding:2px 0;border-bottom:1px solid #1e2a3a">${escapeHtml(pt.road_name)}</div>` : ''}
+                  <div style="font-size:18px;font-weight:900;color:${speedColor};margin-bottom:4px">${formatSpeed(pt.speed)}</div>
                   <table style="width:100%;font-size:11px;border-collapse:collapse">
-                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Time</td><td style="font-weight:bold;color:#fff">${time}</td></tr>
-                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Status</td><td style="font-weight:bold;color:#4fc3f7">${STATUS_LABELS[pt.status] || pt.status}</td></tr>
-                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Speed</td><td style="color:#e0e0e0">${formatSpeed(pt.speed)}</td></tr>
-                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Heading</td><td style="color:#e0e0e0">${formatHeading(pt.heading)}</td></tr>
+                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Time</td><td style="font-weight:bold;color:#fff">${escapeHtml(time)}</td></tr>
+                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Status</td><td style="font-weight:bold;color:#4fc3f7">${escapeHtml(STATUS_LABELS[pt.status] || pt.status)}</td></tr>
+                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Heading</td><td style="color:#e0e0e0">${escapeHtml(formatHeading(pt.heading))}</td></tr>
                     <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Accuracy</td><td style="color:#e0e0e0">${pt.accuracy != null ? `±${Math.round(pt.accuracy)}m` : '—'}</td></tr>
                     <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Position</td><td style="font-size:10px;color:#e0e0e0">${pt.lat.toFixed(6)}, ${pt.lng.toFixed(6)}</td></tr>
-                    ${pt.call_number ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Call</td><td style="font-weight:bold;color:#4fc3f7">${pt.call_number} — ${pt.call_type || ''}</td></tr>` : ''}
+                    ${pt.call_number ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Call</td><td style="font-weight:bold;color:#4fc3f7">${escapeHtml(pt.call_number)} — ${escapeHtml(pt.call_type || '')}</td></tr>` : ''}
                   </table>
                 </div>
               `;

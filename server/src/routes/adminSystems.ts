@@ -84,6 +84,14 @@ function initTables(): void {
       FOREIGN KEY (created_by) REFERENCES users(id)
     );
   `);
+
+  // Seed default retention policies for GPS breadcrumbs and dashcam events
+  const seedRetention = db.prepare(`
+    INSERT OR IGNORE INTO retention_policies (entity_type, retention_days, auto_archive, auto_delete, is_active)
+    VALUES (?, ?, 0, 1, 1)
+  `);
+  seedRetention.run('gps_breadcrumbs', 30);
+  seedRetention.run('dashcam_events', 90);
 }
 
 // Run table init on import (may fail if DB not yet initialized)

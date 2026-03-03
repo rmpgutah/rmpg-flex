@@ -4,14 +4,14 @@
 
 import {
   Users, Radio, Calendar, Clock, Award, GraduationCap, Package, MapPinned, BarChart3,
-  User, Activity, Video,
+  User, Activity, Video, Car,
 } from 'lucide-react';
 import type React from 'react';
 
 // Main tabs
-export type MainTab = 'roster' | 'duty_board' | 'schedule' | 'time' | 'credentials' | 'training' | 'equipment' | 'deployment' | 'analytics';
+export type MainTab = 'roster' | 'duty_board' | 'schedule' | 'time' | 'credentials' | 'training' | 'equipment' | 'dash_cameras' | 'deployment' | 'analytics';
 
-export type DetailTab = 'profile' | 'credentials' | 'schedule' | 'time' | 'activity' | 'training' | 'equipment' | 'body_cameras' | 'deployment';
+export type DetailTab = 'profile' | 'credentials' | 'schedule' | 'time' | 'activity' | 'training' | 'equipment' | 'body_cameras' | 'dash_cameras' | 'deployment';
 
 export type ModalMode =
   | 'none'
@@ -39,6 +39,7 @@ export const MAIN_TABS: { id: MainTab; label: string; icon: React.ElementType }[
   { id: 'credentials', label: 'Credentials', icon: Award },
   { id: 'training', label: 'Training', icon: GraduationCap },
   { id: 'equipment', label: 'Equipment', icon: Package },
+  { id: 'dash_cameras', label: 'Dash Cams', icon: Car },
   { id: 'deployment', label: 'Deployment', icon: MapPinned },
   { id: 'analytics', label: 'Analytics', icon: BarChart3 },
 ];
@@ -52,6 +53,7 @@ export const DETAIL_TABS: { id: DetailTab; label: string; icon: React.ElementTyp
   { id: 'training', label: 'Training', icon: GraduationCap },
   { id: 'equipment', label: 'Equipment', icon: Package },
   { id: 'body_cameras', label: 'Body Cams', icon: Video },
+  { id: 'dash_cameras', label: 'Dash Cams', icon: Car },
   { id: 'deployment', label: 'Deployment', icon: MapPinned },
 ];
 
@@ -146,6 +148,25 @@ export const VIDEO_CLASSIFICATION_COLORS: Record<string, string> = {
   evidence: 'bg-purple-900/50 text-purple-400 border border-purple-700/50',
   flagged: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
   restricted: 'bg-red-900/50 text-red-400 border border-red-700/50',
+};
+
+export const DASHCAM_EVENT_COLORS: Record<string, string> = {
+  hard_brake: 'bg-red-900/50 text-red-400 border border-red-700/50',
+  hard_accel: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
+  hard_turn: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
+  hard_cornering: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
+  speeding: 'bg-red-900/50 text-red-400 border border-red-700/50',
+  impact: 'bg-red-900/60 text-red-300 border border-red-600/50',
+  tamper: 'bg-purple-900/50 text-purple-400 border border-purple-700/50',
+  panic: 'bg-red-900/60 text-red-300 border border-red-600/50',
+  sos: 'bg-red-900/60 text-red-300 border border-red-600/50',
+  video_start: 'bg-green-900/50 text-green-400 border border-green-700/50',
+  video_stop: 'bg-rmpg-700 text-rmpg-300 border border-rmpg-600',
+  video_alarm: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
+  video_lost: 'bg-red-900/50 text-red-400 border border-red-700/50',
+  camera_motion: 'bg-blue-900/50 text-blue-400 border border-blue-700/50',
+  camera_triggered: 'bg-blue-900/50 text-blue-400 border border-blue-700/50',
+  camera_event: 'bg-blue-900/50 text-blue-400 border border-blue-700/50',
 };
 
 export const CHART_TOOLTIP_STYLE = {

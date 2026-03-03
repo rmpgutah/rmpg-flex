@@ -809,6 +809,30 @@ function createTables(): void {
     );
     CREATE INDEX IF NOT EXISTS idx_cpg_mappings_unit ON cpg_device_mappings(unit_id);
     CREATE INDEX IF NOT EXISTS idx_cpg_mappings_device ON cpg_device_mappings(cpg_device_id);
+
+    -- ClearPathGPS dashcam video events
+    CREATE TABLE IF NOT EXISTS dashcam_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cpg_device_id TEXT NOT NULL,
+      unit_id INTEGER,
+      dashcam_id TEXT,
+      event_type TEXT NOT NULL,
+      event_timestamp TEXT NOT NULL,
+      latitude REAL,
+      longitude REAL,
+      heading REAL,
+      speed_mph REAL,
+      address TEXT,
+      status_code TEXT,
+      status_code_text TEXT,
+      video_available INTEGER DEFAULT 0,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (unit_id) REFERENCES units(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_dashcam_events_device_time ON dashcam_events(cpg_device_id, event_timestamp);
+    CREATE INDEX IF NOT EXISTS idx_dashcam_events_unit ON dashcam_events(unit_id);
+    CREATE INDEX IF NOT EXISTS idx_dashcam_events_type ON dashcam_events(event_type);
   `);
 }
 
@@ -2072,6 +2096,7 @@ function migrateSchema(): void {
   // ── gps_breadcrumbs — road name and cross-street columns ──
   addCol('gps_breadcrumbs', 'road_name', 'TEXT');
   addCol('gps_breadcrumbs', 'nearest_intersection', 'TEXT');
+  addCol('gps_breadcrumbs', 'gps_source', "TEXT DEFAULT 'browser'");
 
   // ── Async backfill: geocode past breadcrumbs missing road/cross-street data ──
   // Runs in the background after startup so it doesn't block the server.

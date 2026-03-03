@@ -1444,9 +1444,9 @@ router.post('/gps', (req: Request, res: Response) => {
     const insertStmt = db.prepare(`
       INSERT INTO gps_breadcrumbs (unit_id, officer_id, latitude, longitude, accuracy, heading, speed,
         unit_status, call_sign, officer_name, badge_number, current_call_id, current_call_number, current_call_type,
-        road_name, nearest_intersection, recorded_at)
+        road_name, nearest_intersection, gps_source, recorded_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-        NULL, NULL,
+        NULL, NULL, 'browser',
         COALESCE(?, datetime('now','localtime')))
     `);
 
@@ -1599,7 +1599,7 @@ router.get('/gps/trails', (req: Request, res: Response) => {
     const rows = db.prepare(`
       SELECT b.unit_id, b.call_sign, b.latitude, b.longitude, b.accuracy,
         b.heading, b.speed, b.unit_status, b.officer_name, b.badge_number,
-        b.current_call_number, b.current_call_type, b.recorded_at
+        b.current_call_number, b.current_call_type, b.road_name, b.gps_source, b.recorded_at
       FROM gps_breadcrumbs b
       JOIN units u ON b.unit_id = u.id
       WHERE b.recorded_at >= datetime('now', 'localtime', '-' || ? || ' hours')
@@ -1641,6 +1641,8 @@ router.get('/gps/trails', (req: Request, res: Response) => {
         call_number: row.current_call_number,
         call_type: row.current_call_type,
         time: row.recorded_at,
+        road_name: row.road_name || null,
+        gps_source: row.gps_source || 'browser',
       };
 
       const trailPts = trails[row.unit_id].points;

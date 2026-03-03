@@ -18,6 +18,7 @@ import {
   isEnabled,
   testConnection,
   getDevices,
+  getDeviceHistory,
   discoverAccounts,
 } from '../utils/clearPathGpsClient';
 import {
@@ -301,6 +302,191 @@ router.delete('/mappings/:id', requireRole('admin'), (req: Request, res: Respons
     res.json({ message: 'Mapping removed' });
   } catch (error: any) {
     console.error('ClearPathGPS remove mapping error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// GET /api/clearpathgps/settings — get integration settings
+// ============================================================
+router.get('/settings', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
+  try {
+    const historyBackfill = getConfigValue('clearpathgps_history_backfill');
+    res.json({
+      history_backfill: historyBackfill !== 'false', // default true
+    });
+  } catch (error: any) {
+    console.error('ClearPathGPS get settings error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// PUT /api/clearpathgps/settings — update integration settings
+// ============================================================
+router.put('/settings', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const { history_backfill } = req.body;
+
+    if (typeof history_backfill === 'boolean') {
+      setConfigValue('clearpathgps_history_backfill', String(history_backfill), false);
+    }
+
+    const db = getDb();
+    db.prepare(
+      "INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'clearpathgps_settings_updated', 'integration', 0, ?, ?)"
+    ).run(req.user!.userId, `History backfill: ${history_backfill}`, req.ip || 'unknown');
+
+    res.json({ message: 'Settings updated' });
+  } catch (error: any) {
+    console.error('ClearPathGPS update settings error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// GET /api/clearpathgps/history/:deviceId — fetch device history from API
+// ============================================================
+router.get('/history/:deviceId', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+  try {
+    if (!isConfigured()) {
+      res.status(400).json({ error: 'ClearPathGPS not configured' });
+      return;
+    }
+
+    const { deviceId } = req.params;
+    const from = req.query.from as string;
+    const to = req.query.to as string;
+
+    if (!from || !to) {
+      res.status(400).json({ error: 'from and to query parameters are required (ISO date strings)' });
+      return;
+    }
+
+    const events = await getDeviceHistory(deviceId, String(from), String(to));
+    res.json({ events, count: events.length });
+  } catch (error: any) {
+    console.error('ClearPathGPS fetch history error:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch device history' });
+  }
+});
+
+// ============================================================
+// GET /api/clearpathgps/dashcam-events — list dashcam events
+// ============================================================
+router.get('/dashcam-events', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { from, to, device_id, event_type, limit: limitStr } = req.query;
+    const limit = Math.min(parseInt(limitStr as string, 10) || 100, 500);
+
+    let query = `
+      SELECT d.*, u.call_sign, usr.full_name as officer_name
+      FROM dashcam_events d
+      LEFT JOIN units u ON d.unit_id = u.id
+      LEFT JOIN users usr ON u.officer_id = usr.id
+      WHERE 1=1
+    `;
+    const params: any[] = [];
+
+    if (from) {
+      query += ' AND d.event_timestamp >= ?';
+      params.push(from);
+    }
+    if (to) {
+      query += ' AND d.event_timestamp <= ?';
+      params.push(to);
+    }
+    if (device_id) {
+      query += ' AND d.cpg_device_id = ?';
+      params.push(device_id);
+    }
+    if (event_type) {
+      query += ' AND d.event_type = ?';
+      params.push(event_type);
+    }
+
+    query += ' ORDER BY d.event_timestamp DESC LIMIT ?';
+    params.push(limit);
+
+    const events = db.prepare(query).all(...params);
+    const total = (db.prepare(
+      'SELECT COUNT(*) as cnt FROM dashcam_events'
+    ).get() as any)?.cnt || 0;
+
+    res.json({ events, total });
+  } catch (error: any) {
+    console.error('ClearPathGPS fetch dashcam events error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// GET /api/clearpathgps/dashcam-events/by-officer/:officerId
+// Must be defined BEFORE /dashcam-events/:id to avoid Express
+// matching "by-officer" as a numeric :id parameter.
+// ============================================================
+router.get('/dashcam-events/by-officer/:officerId', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const officerId = parseInt(req.params.officerId, 10);
+    if (isNaN(officerId)) { res.status(400).json({ error: 'Invalid officer ID' }); return; }
+
+    const { from, to, event_type, limit: limitStr } = req.query;
+    const limit = Math.min(parseInt(String(limitStr), 10) || 100, 500);
+
+    const units = db.prepare('SELECT id FROM units WHERE officer_id = ?').all(officerId) as { id: number }[];
+    if (units.length === 0) { res.json({ events: [], total: 0 }); return; }
+
+    const unitIds = units.map(u => u.id);
+    const placeholders = unitIds.map(() => '?').join(',');
+
+    let query = `
+      SELECT d.*, u.call_sign, m.cpg_display_name as device_name
+      FROM dashcam_events d
+      LEFT JOIN units u ON d.unit_id = u.id
+      LEFT JOIN cpg_device_mappings m ON d.cpg_device_id = m.cpg_device_id AND m.is_active = 1
+      WHERE d.unit_id IN (${placeholders})
+    `;
+    const params: any[] = [...unitIds];
+
+    if (from) { query += ' AND d.event_timestamp >= ?'; params.push(String(from)); }
+    if (to) { query += ' AND d.event_timestamp <= ?'; params.push(String(to)); }
+    if (event_type) { query += ' AND d.event_type = ?'; params.push(String(event_type)); }
+
+    query += ' ORDER BY d.event_timestamp DESC LIMIT ?';
+    params.push(limit);
+
+    const events = db.prepare(query).all(...params);
+    res.json({ events, total: events.length });
+  } catch (error: any) {
+    console.error('ClearPathGPS fetch officer dashcam events error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// GET /api/clearpathgps/dashcam-events/:id — single event detail
+// ============================================================
+router.get('/dashcam-events/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const event = db.prepare(`
+      SELECT d.*, u.call_sign, usr.full_name as officer_name
+      FROM dashcam_events d
+      LEFT JOIN units u ON d.unit_id = u.id
+      LEFT JOIN users usr ON u.officer_id = usr.id
+      WHERE d.id = ?
+    `).get(req.params.id);
+
+    if (!event) {
+      res.status(404).json({ error: 'Dashcam event not found' });
+      return;
+    }
+
+    res.json(event);
+  } catch (error: any) {
+    console.error('ClearPathGPS fetch dashcam event error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

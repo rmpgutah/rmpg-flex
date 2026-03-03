@@ -375,20 +375,22 @@ async function cpgFetch<T>(endpoint: string, options: RequestInit = {}): Promise
 // ============================================================
 
 export interface CpgDevice {
-  gtsDeviceId: string;
+  deviceId: string;          // e.g. "cp160817"
+  gtsDeviceId?: string;      // Alias used by some endpoints
   uniqueId: string;
   serialNumber: string;
   displayName: string;
   lastValidLatitude: number;
   lastValidLongitude: number;
   lastValidHeading: number;
-  lastGpsTimestampUtc: string;
+  lastGPSTimestamp: number;  // epoch ms
   vehicleMake: string;
   vehicleModel: string;
-  vehiclePlateNumber: string;
-  vin: string;
+  licensePlate: string;
+  vehicleID: string;         // VIN
   driverName: string;
   ignitionState: string;
+  description: string;
   [key: string]: any;
 }
 
@@ -428,10 +430,13 @@ export interface CpgPaginatedResponse<T> {
   [key: string]: any;
 }
 
-/** Fetch all devices registered in the ClearPathGPS account. */
+/** Fetch all devices registered in the ClearPathGPS account.
+ *  NOTE: The /devices endpoint returns a plain JSON array (not paginated). */
 export async function getDevices(): Promise<CpgDevice[]> {
-  const data = await cpgFetch<CpgPaginatedResponse<CpgDevice>>('/devices?pageSize=500');
-  return data.items || [];
+  const data = await cpgFetch<CpgDevice[] | CpgPaginatedResponse<CpgDevice>>('/devices?pageSize=500');
+  // Handle both array response and paginated response
+  const devices = Array.isArray(data) ? data : (data.items || []);
+  return devices;
 }
 
 /** Fetch latest fleet positions (one event per device with valid GPS). */

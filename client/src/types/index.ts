@@ -688,6 +688,43 @@ export interface BodyCamVideo {
   camera_serial?: string;
 }
 
+// --- Dash Camera (ClearPathGPS) ---
+
+export interface DashcamEvent {
+  id: number;
+  cpg_device_id: string;
+  unit_id: number;
+  dashcam_id: string | null;
+  event_type: string;
+  event_timestamp: string;
+  latitude: number | null;
+  longitude: number | null;
+  heading: number | null;
+  speed_mph: number | null;
+  address: string | null;
+  status_code: string | null;
+  status_code_text: string | null;
+  video_available: boolean;
+  notes: string | null;
+  created_at: string;
+  call_sign?: string;
+  officer_name?: string;
+  device_name?: string;
+}
+
+export interface CpgDeviceMapping {
+  id: number;
+  cpg_device_id: string;
+  cpg_display_name: string;
+  cpg_serial_number: string | null;
+  unit_id: number;
+  is_active: boolean;
+  last_synced_at: string | null;
+  call_sign?: string;
+  unit_status?: string;
+  officer_name?: string;
+}
+
 // --- Equipment ---
 
 export type EquipmentType = 'radio' | 'body_camera' | 'firearm' | 'taser' | 'baton' | 'handcuffs' | 'vest' | 'badge' | 'id_card' | 'keys' | 'flashlight' | 'vehicle_key' | 'laptop' | 'phone' | 'other';

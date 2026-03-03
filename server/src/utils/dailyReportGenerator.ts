@@ -884,17 +884,38 @@ export function startDailyReportScheduler(): void {
         console.error('[Daily Report] Generation failed:', err);
       }
 
-      // Auto-archive: purge breadcrumbs older than 24 hours after report is saved
+      // Auto-archive: purge old breadcrumbs based on retention policy (default 30 days)
       try {
         const db = getDb();
+        const policy = db.prepare(
+          "SELECT retention_days FROM retention_policies WHERE entity_type = 'gps_breadcrumbs' AND is_active = 1"
+        ).get() as { retention_days: number } | undefined;
+        const days = policy?.retention_days ?? 30;
         const result = db.prepare(
-          `DELETE FROM gps_breadcrumbs WHERE recorded_at < datetime('now', 'localtime', '-1 days')`
-        ).run();
+          `DELETE FROM gps_breadcrumbs WHERE recorded_at < datetime('now', 'localtime', '-' || ? || ' days')`
+        ).run(days);
         if (result.changes > 0) {
-          console.log(`[Daily Report] Auto-archived ${result.changes} breadcrumbs older than 24h`);
+          console.log(`[Daily Report] Purged ${result.changes} breadcrumbs older than ${days} day(s)`);
         }
       } catch (err) {
-        console.error('[Daily Report] Breadcrumb auto-archive failed:', err);
+        console.error('[Daily Report] Breadcrumb retention cleanup failed:', err);
+      }
+
+      // Purge old dashcam events based on retention policy (default 90 days)
+      try {
+        const db = getDb();
+        const camPolicy = db.prepare(
+          "SELECT retention_days FROM retention_policies WHERE entity_type = 'dashcam_events' AND is_active = 1"
+        ).get() as { retention_days: number } | undefined;
+        const camDays = camPolicy?.retention_days ?? 90;
+        const camResult = db.prepare(
+          `DELETE FROM dashcam_events WHERE created_at < datetime('now', 'localtime', '-' || ? || ' days')`
+        ).run(camDays);
+        if (camResult.changes > 0) {
+          console.log(`[Daily Report] Purged ${camResult.changes} dashcam events older than ${camDays} day(s)`);
+        }
+      } catch (err) {
+        console.error('[Daily Report] Dashcam event retention cleanup failed:', err);
       }
 
       // Schedule the next one

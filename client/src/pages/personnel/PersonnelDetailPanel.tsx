@@ -3,7 +3,7 @@ import {
   X, Zap, Star, Shield, Clock, Award, Calendar, User, Activity, GraduationCap, MapPinned,
   Pencil, Trash2, LogIn, LogOut, Archive, RotateCcw, Coffee, Printer, ChevronDown,
 } from 'lucide-react';
-import type { Credential, Schedule, TimeEntry, TrainingRecord, Deployment, OfficerEquipment, BodyCamera, BodyCamVideo } from '../../types';
+import type { Credential, Schedule, TimeEntry, TrainingRecord, Deployment, OfficerEquipment, BodyCamera, BodyCamVideo, DashcamEvent, CpgDeviceMapping } from '../../types';
 import type { OfficerWithStatus } from './utils/personnelMappers';
 import { calcYearsOfService } from './utils/personnelFormatters';
 import { DETAIL_TABS, ROLE_COLORS, type DetailTab } from './utils/personnelConstants';
@@ -17,6 +17,7 @@ import ActivityDetailTab from './detail-tabs/ActivityDetailTab';
 import TrainingDetailTab from './detail-tabs/TrainingDetailTab';
 import EquipmentDetailTab from './detail-tabs/EquipmentDetailTab';
 import BodyCameraDetailTab from './detail-tabs/BodyCameraDetailTab';
+import DashCameraDetailTab from './detail-tabs/DashCameraDetailTab';
 import DeploymentDetailTab from './detail-tabs/DeploymentDetailTab';
 import PrintRecordButton from '../../components/PrintRecordButton';
 
@@ -170,6 +171,9 @@ interface Props {
   onUploadVideo: () => void;
   onDeleteVideo: (videoId: number) => void;
   onPlayVideo: (video: BodyCamVideo) => void;
+  dashcamEvents: DashcamEvent[];
+  dashcamDeviceMapping: CpgDeviceMapping | null;
+  dashcamLoading: boolean;
   onAddDeployment: (officerId: string) => void;
   onEditOfficer: () => void;
   onDeleteOfficer: () => void;
@@ -196,6 +200,7 @@ export default function PersonnelDetailPanel({
   bodyCameras, bodyCamVideos, bodyCamerasLoading,
   onAddBodyCamera, onEditBodyCamera, onDeleteBodyCamera,
   onUploadVideo, onDeleteVideo, onPlayVideo,
+  dashcamEvents, dashcamDeviceMapping, dashcamLoading,
   onAddDeployment,
   onEditOfficer, onDeleteOfficer,
   onArchiveOfficer, onUnarchiveOfficer, isArchived,
@@ -441,6 +446,13 @@ export default function PersonnelDetailPanel({
             onDeleteVideo={onDeleteVideo}
             onPlayVideo={onPlayVideo}
             loading={bodyCamerasLoading}
+          />
+        )}
+        {activeTab === 'dash_cameras' && (
+          <DashCameraDetailTab
+            events={dashcamEvents}
+            deviceMapping={dashcamDeviceMapping}
+            loading={dashcamLoading}
           />
         )}
         {activeTab === 'deployment' && (

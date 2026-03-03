@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Navigation, Key, Eye, EyeOff, Loader2, CheckCircle2, XCircle,
   Trash2, Zap, AlertTriangle, ToggleLeft, ToggleRight, Link2, Unlink,
-  Radio, Clock, Truck, Search,
+  Radio, Clock, Truck, Search, Camera, History, RefreshCw,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 
@@ -21,7 +21,8 @@ interface CpgStatus {
 }
 
 interface CpgDevice {
-  gtsDeviceId: string;
+  deviceId: string;        // ClearPathGPS device identifier (e.g. "cp160817")
+  gtsDeviceId?: string;    // Alias (some endpoints use this)
   uniqueId: string;
   serialNumber: string;
   displayName: string;
@@ -29,10 +30,12 @@ interface CpgDevice {
   lastValidLongitude: number;
   vehicleMake: string;
   vehicleModel: string;
-  vehiclePlateNumber: string;
-  vin: string;
+  licensePlate: string;    // API field name
+  vehicleID: string;       // VIN
   driverName: string;
   ignitionState: string;
+  description?: string;
+  [key: string]: any;
 }
 
 interface CpgMapping {
@@ -52,6 +55,23 @@ interface DispatchUnit {
   call_sign: string;
   status: string;
   officer_name?: string;
+}
+
+interface DashcamEvent {
+  id: number;
+  cpg_device_id: string;
+  unit_id: number | null;
+  dashcam_id: string | null;
+  event_type: string;
+  event_timestamp: string;
+  latitude: number | null;
+  longitude: number | null;
+  speed_mph: number | null;
+  address: string | null;
+  status_code: string | null;
+  status_code_text: string | null;
+  call_sign: string | null;
+  officer_name: string | null;
 }
 
 export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }: Props) {
@@ -77,11 +97,19 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
   const [loadingDevices, setLoadingDevices] = useState(false);
 
   // Account discovery
-  const [discoveredAccounts, setDiscoveredAccounts] = useState<{ accountId: string; accountName: string }[]>([]);
+  const [discoveredAccounts, setDiscoveredAccounts] = useState<{ accountId: string | number; description?: string; accountName?: string }[]>([]);
   const [discovering, setDiscovering] = useState(false);
 
   // Polling interval
   const [pollInterval, setPollInterval] = useState(30);
+
+  // History backfill toggle
+  const [historyBackfill, setHistoryBackfill] = useState(true);
+
+  // Dashcam events
+  const [dashcamEvents, setDashcamEvents] = useState<DashcamEvent[]>([]);
+  const [loadingDashcam, setLoadingDashcam] = useState(false);
+  const [dashcamTotal, setDashcamTotal] = useState(0);
 
   // ── Fetch status ──
   const fetchStatus = useCallback(async () => {
@@ -112,21 +140,42 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
     } catch { /* ignore */ }
   }, []);
 
+  // ── Fetch settings ──
+  const fetchSettings = useCallback(async () => {
+    try {
+      const data = await apiFetch<{ history_backfill: boolean }>('/clearpathgps/settings');
+      setHistoryBackfill(data.history_backfill);
+    } catch { /* ignore */ }
+  }, []);
+
+  // ── Fetch dashcam events ──
+  const fetchDashcamEvents = useCallback(async () => {
+    setLoadingDashcam(true);
+    try {
+      const data = await apiFetch<{ events: DashcamEvent[]; total: number }>('/clearpathgps/dashcam-events?limit=50');
+      setDashcamEvents(data.events || []);
+      setDashcamTotal(data.total || 0);
+    } catch { /* ignore */ }
+    finally { setLoadingDashcam(false); }
+  }, []);
+
   useEffect(() => {
     fetchStatus();
     fetchMappings();
     fetchUnits();
-  }, [fetchStatus, fetchMappings, fetchUnits]);
+    fetchSettings();
+    fetchDashcamEvents();
+  }, [fetchStatus, fetchMappings, fetchUnits, fetchSettings, fetchDashcamEvents]);
 
   // ── Save credentials ──
   const handleSaveCredentials = async () => {
-    if (!email.trim() || !password.trim() || !accountId.trim()) return;
+    if (!email.trim() || !password.trim() || !String(accountId).trim()) return;
     setSaving(true);
     setTestResult(null);
     try {
       await apiFetch('/clearpathgps/credentials', {
         method: 'PUT',
-        body: JSON.stringify({ email, password, account_id: accountId }),
+        body: JSON.stringify({ email, password, account_id: String(accountId) }),
       });
       setEmail('');
       setPassword('');
@@ -172,7 +221,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
     setDiscovering(true);
     setDiscoveredAccounts([]);
     try {
-      const data = await apiFetch<{ accounts: { accountId: string; accountName: string }[]; error?: string }>('/clearpathgps/discover-accounts', { method: 'POST' });
+      const data = await apiFetch<{ accounts: { accountId: string | number; description?: string; accountName?: string }[]; error?: string }>('/clearpathgps/discover-accounts', { method: 'POST' });
       if (data.error) {
         setTestResult({ success: false, error: `Account discovery: ${data.error}` });
       } else {
@@ -238,7 +287,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
       await apiFetch('/clearpathgps/mappings', {
         method: 'POST',
         body: JSON.stringify({
-          cpg_device_id: device.gtsDeviceId,
+          cpg_device_id: device.deviceId || device.gtsDeviceId,
           cpg_display_name: device.displayName,
           cpg_serial_number: device.serialNumber,
           unit_id: unitId,
@@ -259,6 +308,21 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
       await fetchStatus();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to remove mapping');
+    }
+  };
+
+  // ── Toggle history backfill ──
+  const handleToggleBackfill = async () => {
+    const newVal = !historyBackfill;
+    setHistoryBackfill(newVal);
+    try {
+      await apiFetch('/clearpathgps/settings', {
+        method: 'PUT',
+        body: JSON.stringify({ history_backfill: newVal }),
+      });
+    } catch (err) {
+      setHistoryBackfill(!newVal); // revert
+      setError(err instanceof Error ? err.message : 'Failed to update settings');
     }
   };
 
@@ -349,7 +413,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
         <div className="flex items-center gap-2">
           <button
             onClick={handleSaveCredentials}
-            disabled={saving || !email.trim() || !password.trim() || !accountId.trim()}
+            disabled={saving || !email.trim() || !password.trim() || !String(accountId).trim()}
             className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
           >
             {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
@@ -406,13 +470,13 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
             {discoveredAccounts.map((acct) => (
               <button
                 key={acct.accountId}
-                onClick={() => setAccountId(acct.accountId)}
+                onClick={() => setAccountId(String(acct.accountId))}
                 className="w-full flex items-center gap-2 px-2 py-1.5 bg-surface-sunken hover:bg-brand-900/20 border border-rmpg-600 hover:border-brand-500 rounded-sm text-[11px] transition-colors text-left"
               >
                 <Navigation className="w-3 h-3 text-brand-400 shrink-0" />
                 <span className="text-rmpg-200 font-mono">{acct.accountId}</span>
                 <span className="text-rmpg-400">—</span>
-                <span className="text-rmpg-300">{acct.accountName}</span>
+                <span className="text-rmpg-300">{acct.description || acct.accountName || ''}</span>
                 <span className="ml-auto text-[9px] text-brand-400">Click to use</span>
               </button>
             ))}
@@ -473,6 +537,29 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                 </span>
               )}
             </div>
+          </div>
+
+          {/* History backfill toggle */}
+          <div className="flex items-center gap-4 pt-2 border-t border-rmpg-700/50">
+            <button
+              onClick={handleToggleBackfill}
+              className="flex items-center gap-2 text-[11px]"
+            >
+              {historyBackfill
+                ? <ToggleRight className="w-6 h-6 text-green-400" />
+                : <ToggleLeft className="w-6 h-6 text-rmpg-600" />
+              }
+              <History className="w-3 h-3 text-rmpg-400" />
+              <span className={historyBackfill ? 'text-green-400 font-medium' : 'text-rmpg-400'}>
+                History Backfill
+              </span>
+            </button>
+            <span className="text-[9px] text-rmpg-500">
+              {historyBackfill
+                ? 'Fetches all GPS points between polls for high-resolution trails'
+                : 'Only captures latest position each poll cycle'
+              }
+            </span>
           </div>
         </div>
       )}
@@ -535,17 +622,18 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
               </div>
               <div className="max-h-64 overflow-y-auto space-y-1">
                 {devices.map((device) => {
-                  const existingMapping = mappings.find(m => m.cpg_device_id === device.gtsDeviceId);
+                  const devId = device.deviceId || device.gtsDeviceId;
+                  const existingMapping = mappings.find(m => m.cpg_device_id === devId);
                   return (
                     <div
-                      key={device.gtsDeviceId}
+                      key={devId}
                       className="flex items-center gap-2 px-2 py-1.5 bg-surface-sunken rounded-sm text-[11px]"
                     >
                       <Truck className="w-3 h-3 text-rmpg-400 shrink-0" />
                       <div className="flex-1 min-w-0">
                         <div className="text-rmpg-200 font-medium truncate">{device.displayName}</div>
                         <div className="text-[9px] text-rmpg-500 truncate">
-                          {[device.vehicleMake, device.vehicleModel, device.vehiclePlateNumber].filter(Boolean).join(' · ') || device.serialNumber || device.gtsDeviceId}
+                          {[device.vehicleMake, device.vehicleModel, device.licensePlate].filter(Boolean).join(' · ') || device.serialNumber || devId}
                         </div>
                       </div>
                       {existingMapping ? (
@@ -583,6 +671,73 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
             <div className="flex items-center gap-2 text-[10px] text-rmpg-500 bg-surface-sunken p-2 rounded-sm">
               <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
               Click "Load Devices" to fetch your ClearPathGPS hardware trackers and map them to dispatch units.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══ Section 4: Dashcam Events ═══ */}
+      {status?.configured && (
+        <div className="panel-beveled bg-surface-base p-3 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">
+              <Camera className="w-3.5 h-3.5" />
+              Dashcam Events
+              {dashcamTotal > 0 && (
+                <span className="text-rmpg-500 font-normal">({dashcamTotal} total)</span>
+              )}
+            </div>
+            <button
+              onClick={fetchDashcamEvents}
+              disabled={loadingDashcam}
+              className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5"
+            >
+              {loadingDashcam ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+              Refresh
+            </button>
+          </div>
+
+          {dashcamEvents.length > 0 ? (
+            <div className="max-h-72 overflow-y-auto space-y-1">
+              {dashcamEvents.map((evt) => {
+                const typeColor = /impact|collision|panic|sos/i.test(evt.event_type)
+                  ? 'text-red-400 bg-red-950/30 border-red-800/40'
+                  : /hard_brake|hard_turn|hard_accel|speeding/i.test(evt.event_type)
+                  ? 'text-amber-400 bg-amber-950/30 border-amber-800/40'
+                  : /video|camera|recording/i.test(evt.event_type)
+                  ? 'text-blue-400 bg-blue-950/30 border-blue-800/40'
+                  : 'text-rmpg-300 bg-surface-sunken border-rmpg-600';
+                return (
+                  <div
+                    key={evt.id}
+                    className="flex items-center gap-2 px-2 py-1.5 bg-surface-sunken rounded-sm text-[11px]"
+                  >
+                    <Camera className="w-3 h-3 text-rmpg-400 shrink-0" />
+                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono uppercase border ${typeColor}`}>
+                      {evt.event_type.replace(/_/g, ' ')}
+                    </span>
+                    {evt.call_sign && (
+                      <span className="text-brand-400 font-mono font-medium">{evt.call_sign}</span>
+                    )}
+                    {evt.speed_mph != null && (
+                      <span className="text-rmpg-500 text-[10px]">{Math.round(evt.speed_mph)} mph</span>
+                    )}
+                    {evt.address && (
+                      <span className="text-rmpg-500 text-[10px] truncate max-w-48" title={evt.address}>
+                        {evt.address}
+                      </span>
+                    )}
+                    <span className="ml-auto text-[9px] text-rmpg-600 whitespace-nowrap">
+                      {new Date(evt.event_timestamp).toLocaleString()}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-[10px] text-rmpg-500 bg-surface-sunken p-2 rounded-sm">
+              <Camera className="w-3.5 h-3.5 text-rmpg-600 shrink-0" />
+              No dashcam events recorded yet. Events are captured automatically from ClearPathGPS when the poller detects camera triggers, hard braking, impacts, or other driving events.
             </div>
           )}
         </div>
