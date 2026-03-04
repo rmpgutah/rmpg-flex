@@ -454,6 +454,7 @@ router.get('/bodycam-videos/:videoId/stream', (req: Request, res: Response) => {
 
     const filePath = path.resolve(BODYCAM_DIR, video.file_path);
     if (!filePath.startsWith(BODYCAM_DIR) || !fs.existsSync(filePath)) {
+      console.warn(`[bodycam] Video ${video.id} file missing: ${filePath}`);
       res.status(404).json({ error: 'Video file not found on disk' });
       return;
     }
@@ -478,6 +479,7 @@ router.get('/bodycam-videos/:videoId/stream', (req: Request, res: Response) => {
       fs.createReadStream(filePath, { start, end }).pipe(res);
     } else {
       res.writeHead(200, {
+        'Accept-Ranges': 'bytes',
         'Content-Length': fileSize,
         'Content-Type': video.mime_type || 'video/mp4',
       });
@@ -2168,59 +2170,9 @@ export function mountScheduleRoutes(parentRouter: Router): void {
     }
   });
 
-  // GET /api/personnel/bodycam-videos/:videoId/stream - Stream video with Range support
-  // Accept token from query string for <video> elements that can't set Authorization headers
-  parentRouter.get('/personnel/bodycam-videos/:videoId/stream', (req: Request, res: Response, next) => {
-    if (!req.headers['authorization'] && req.query.token) {
-      req.headers['authorization'] = `Bearer ${req.query.token}`;
-    }
-    next();
-  }, authenticateToken, (req: Request, res: Response) => {
-    try {
-      const db = getDb();
-      const video = db.prepare('SELECT * FROM bodycam_videos WHERE id = ?').get(req.params.videoId) as any;
-      if (!video) {
-        res.status(404).json({ error: 'Video not found' });
-        return;
-      }
-
-      const filePath = path.resolve(BODYCAM_DIR, video.file_path);
-      if (!filePath.startsWith(BODYCAM_DIR) || !fs.existsSync(filePath)) {
-        res.status(404).json({ error: 'Video file not found on disk' });
-        return;
-      }
-
-      const stat = fs.statSync(filePath);
-      const fileSize = stat.size;
-      const range = req.headers.range;
-
-      if (range) {
-        const parts = range.replace(/bytes=/, '').split('-');
-        const start = parseInt(parts[0], 10);
-        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-        const chunkSize = end - start + 1;
-
-        res.writeHead(206, {
-          'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-          'Accept-Ranges': 'bytes',
-          'Content-Length': chunkSize,
-          'Content-Type': video.mime_type || 'video/mp4',
-        });
-
-        fs.createReadStream(filePath, { start, end }).pipe(res);
-      } else {
-        res.writeHead(200, {
-          'Content-Length': fileSize,
-          'Content-Type': video.mime_type || 'video/mp4',
-        });
-
-        fs.createReadStream(filePath).pipe(res);
-      }
-    } catch (error: any) {
-      console.error('Stream bodycam video error:', error);
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
+  // NOTE: bodycam video streaming is handled by router.get('/bodycam-videos/:videoId/stream')
+  // on the sub-router (line ~446). The blanket router.use() middleware at the top of this file
+  // promotes ?token= to Authorization header and runs authenticateToken.
 
   // GET /api/personnel/coverage-gaps - Get coverage gap analysis
   parentRouter.get('/personnel/coverage-gaps', authenticateToken, (req: Request, res: Response) => {

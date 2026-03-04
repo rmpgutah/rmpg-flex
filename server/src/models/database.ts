@@ -1444,9 +1444,11 @@ function migrateSchema(): void {
   addCol('messages', 'parent_id', 'INTEGER');
   addCol('messages', 'thread_id', 'INTEGER');
 
-  // ── WARRANTS — statute linkage ────────────────────
+  // ── WARRANTS — statute linkage + archive support ──
   addCol('warrants', 'statute_id', 'INTEGER');
   addCol('warrants', 'statute_citation', 'TEXT');
+  addCol('warrants', 'archived_at', 'TEXT');
+  addCol('warrants', 'archived_by', 'INTEGER');
 
   // ── UTAH STATUTES — criminal/vehicle code reference ──
   try {

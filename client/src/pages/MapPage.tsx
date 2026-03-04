@@ -37,6 +37,9 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Loader2,
+  MessageSquare,
+  Clock,
+  Send,
 } from 'lucide-react';
 // Direct script-tag loader — more reliable than @googlemaps/js-api-loader
 // which has known issues with React StrictMode and intermittent failures.
@@ -96,6 +99,23 @@ interface ActiveCall {
   property_name: string | null;
 }
 
+interface CallDetail {
+  id: string;
+  call_number: string;
+  incident_type: string;
+  priority: string;
+  status: string;
+  location_address: string;
+  cross_street: string | null;
+  caller_name: string | null;
+  caller_phone: string | null;
+  description: string | null;
+  notes: { id: string; note: string; created_by_name: string; created_at: string }[];
+  assigned_units: { id: string; call_sign: string; status: string; officer_name: string }[];
+  latitude: number | null;
+  longitude: number | null;
+}
+
 interface Property {
   id: string;
   name: string;
@@ -133,6 +153,17 @@ const PRIORITY_COLORS: Record<string, string> = {
   P3: '#3b82f6',
   P4: '#6b7280',
 };
+
+// ── Spillman Flex F-Key Status Buttons ──
+const FKEY_STATUS_BUTTONS: { label: string; fKey: string; keyCode: string; status: UnitStatus; color: string }[] = [
+  { label: 'DSPTCH', fKey: 'F2', keyCode: 'F2', status: 'dispatched', color: '#f59e0b' },
+  { label: 'ENRT',   fKey: 'F4', keyCode: 'F4', status: 'enroute',    color: '#3b82f6' },
+  { label: 'ARRVD',  fKey: 'F5', keyCode: 'F5', status: 'onscene',    color: '#a855f7' },
+  { label: 'CLEAR',  fKey: 'F6', keyCode: 'F6', status: 'available',  color: '#22c55e' },
+  { label: 'AVL',    fKey: 'F7', keyCode: 'F7', status: 'available',  color: '#22c55e' },
+  { label: 'BUSY',   fKey: 'F9', keyCode: 'F9', status: 'busy',       color: '#ef4444' },
+  { label: 'OFD',    fKey: 'F10', keyCode: 'F10', status: 'off_duty', color: '#6b7280' },
+];
 
 // Map style options
 type MapStyleId = 'dark' | 'satellite' | 'hybrid' | 'streets';
@@ -511,6 +542,12 @@ export default function MapPage() {
   // WebSocket
   const { isConnected, subscribe } = useWebSocket();
 
+  // ── Spillman Flex: Selected Unit + Call Detail ──
+  const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
+  const [callDetail, setCallDetail] = useState<CallDetail | null>(null);
+  const [newNote, setNewNote] = useState('');
+  const [statusTimer, setStatusTimer] = useState('00:00:00');
+
   // Shift planning (area-based officer assignment)
   const shiftPlanning = useShiftPlanning();
   const [showShiftPanel, setShowShiftPanel] = useState(false);
@@ -593,6 +630,99 @@ export default function MapPage() {
   // Live sync — auto-refresh map when dispatch data changes from any device (silent to avoid unmounting UI)
   const silentRefreshMap = useCallback(() => fetchAllData({ silent: true }), [fetchAllData]);
   useLiveSync('dispatch', silentRefreshMap);
+
+  // ============================================================
+  // Spillman Flex: Selected Unit + F-Key Status
+  // ============================================================
+
+  const selectedUnit = units.find(u => u.id === selectedUnitId) || null;
+
+  // Fetch full call detail when selected unit has an active call
+  const fetchCallDetail = useCallback(async (callId: string) => {
+    try {
+      const data = await apiFetch<any>(`/dispatch/calls/${callId}`);
+      if (data) setCallDetail(data);
+    } catch (err) {
+      console.error('Error fetching call detail:', err);
+      setCallDetail(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedUnit?.current_call_id) {
+      fetchCallDetail(selectedUnit.current_call_id);
+    } else {
+      setCallDetail(null);
+    }
+  }, [selectedUnit?.current_call_id, fetchCallDetail]);
+
+  // Status timer — shows elapsed time since last status change
+  useEffect(() => {
+    if (!selectedUnit) { setStatusTimer('00:00:00'); return; }
+    const update = () => {
+      // Use last_status_change if available, otherwise fall back to a rough estimate
+      const raw = (selectedUnit as any).last_status_change;
+      if (!raw) { setStatusTimer('--:--:--'); return; }
+      const diff = Math.max(0, Math.floor((Date.now() - new Date(raw).getTime()) / 1000));
+      const h = String(Math.floor(diff / 3600)).padStart(2, '0');
+      const m = String(Math.floor((diff % 3600) / 60)).padStart(2, '0');
+      const s = String(diff % 60).padStart(2, '0');
+      setStatusTimer(`${h}:${m}:${s}`);
+    };
+    update();
+    const iv = setInterval(update, 1000);
+    return () => clearInterval(iv);
+  }, [selectedUnit]);
+
+  // Change unit status via API
+  const handleUnitStatusChange = useCallback(async (unitId: string, newStatus: UnitStatus) => {
+    try {
+      await apiFetch(`/dispatch/units/${unitId}/status`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: newStatus }),
+      });
+      await Promise.all([fetchUnits(), fetchCalls()]);
+    } catch (err) {
+      console.error('Failed to change unit status:', err);
+    }
+  }, [fetchUnits, fetchCalls]);
+
+  // Select a unit (from marker click, sidebar click, etc.)
+  const handleSelectUnit = useCallback((unitId: string) => {
+    setSelectedUnitId(prev => prev === unitId ? null : unitId);
+  }, []);
+
+  // Add note to current call
+  const handleAddNote = useCallback(async () => {
+    if (!callDetail || !newNote.trim()) return;
+    try {
+      await apiFetch(`/dispatch/calls/${callDetail.id}/notes`, {
+        method: 'POST',
+        body: JSON.stringify({ note: newNote.trim() }),
+      });
+      setNewNote('');
+      fetchCallDetail(callDetail.id);
+    } catch (err) {
+      console.error('Failed to add note:', err);
+    }
+  }, [callDetail, newNote, fetchCallDetail]);
+
+  // F-Key keyboard handler
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Only handle F-keys when not in an input/textarea
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+      const btn = FKEY_STATUS_BUTTONS.find(b => b.keyCode === e.key);
+      if (btn && selectedUnit) {
+        e.preventDefault();
+        handleUnitStatusChange(selectedUnit.id, btn.status);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [selectedUnit, handleUnitStatusChange]);
 
   // ============================================================
   // WebSocket Subscriptions
@@ -930,6 +1060,7 @@ export default function MapPage() {
             zIndex: 1000,
             title: `${unit.call_sign} - ${unit.officer_name}`,
             onClick: () => {
+              handleSelectUnit(unit.id);
               const isCpgUnit = unit.gps_source === 'clearpathgps';
               const cpgSection = isCpgUnit ? `
                 <div style="margin-top:6px;padding-top:6px;border-top:1px solid #333;">
@@ -1478,9 +1609,54 @@ export default function MapPage() {
   // ============================================================
 
   return (
-    <div className="relative h-full flex font-mono">
+    <div className="relative h-full flex flex-col font-mono">
+      <div className="flex-1 flex min-h-0">
+
+      {/* ── Left F-Key Status Bar (Spillman Flex) ── */}
+      {!isMobile && (
+        <div className="flex flex-col panel-beveled flex-shrink-0" style={{ width: 70, background: '#1a1a1a', borderRight: '1px solid #383838' }}>
+          <div className="panel-title-bar flex items-center justify-center" style={{ minHeight: 20 }}>
+            <span className="text-[8px] font-bold text-rmpg-400 uppercase tracking-wider">STATUS</span>
+          </div>
+          <div className="flex-1 flex flex-col gap-0.5 p-0.5 overflow-y-auto">
+            {FKEY_STATUS_BUTTONS.map(btn => {
+              const isActive = selectedUnit?.status === btn.status;
+              return (
+                <button
+                  key={btn.keyCode}
+                  onClick={() => selectedUnit && handleUnitStatusChange(selectedUnit.id, btn.status)}
+                  disabled={!selectedUnit}
+                  className={`flex flex-col items-center justify-center py-2 text-center transition-colors ${
+                    !selectedUnit ? 'opacity-30 cursor-default' : 'cursor-pointer hover:brightness-125'
+                  }`}
+                  style={{
+                    background: isActive ? btn.color + '30' : '#141414',
+                    border: isActive ? `2px solid ${btn.color}` : '1px solid #303030',
+                    borderTop: isActive ? `2px solid ${btn.color}` : '1px solid #3a3a3a',
+                    borderLeft: isActive ? `2px solid ${btn.color}` : '1px solid #3a3a3a',
+                    borderBottom: isActive ? `2px solid ${btn.color}` : '1px solid #1a1a1a',
+                    borderRight: isActive ? `2px solid ${btn.color}` : '1px solid #1a1a1a',
+                  }}
+                  title={`${btn.label} (${btn.fKey})`}
+                >
+                  <span className="text-[10px] font-black tracking-wide" style={{ color: isActive ? btn.color : '#a0a0a0' }}>{btn.label}</span>
+                  <span className="text-[8px] font-bold" style={{ color: isActive ? btn.color : '#555' }}>{btn.fKey}</span>
+                </button>
+              );
+            })}
+          </div>
+          {/* Selected unit indicator */}
+          {selectedUnit && (
+            <div className="panel-inset px-1 py-1.5 text-center" style={{ background: '#0a0a0a' }}>
+              <div className="text-[10px] font-black" style={{ color: UNIT_STATUS_COLORS[selectedUnit.status] }}>{selectedUnit.call_sign}</div>
+              <div className="text-[7px] font-bold text-rmpg-400 uppercase">{UNIT_STATUS_LABELS[selectedUnit.status]}</div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Map Container */}
-      <div className="flex-1 relative flex flex-col">
+      <div className="flex-1 relative flex flex-col min-w-0">
         {/* ── Spillman Flex Map Toolbar ── */}
         {!isMobile && (
           <div
@@ -1546,6 +1722,42 @@ export default function MapPage() {
               <div className="flex items-center gap-1">
                 <div className={`led-dot ${gps.isTracking ? 'led-green' : 'led-red'}`} style={{ width: 6, height: 6 }} />
                 <span className="text-[8px] font-bold" style={{ color: gps.isTracking ? '#22c55e' : '#ef4444' }}>GPS</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Spillman Flex Call Info Header ── */}
+        {!isMobile && selectedUnit && callDetail && (
+          <div className="panel-beveled flex-shrink-0" style={{ background: '#1a1a1a', borderBottom: '1px solid #383838' }}>
+            <div className="flex items-start gap-4 px-3 py-2">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-[14px] font-black text-rmpg-100">{formatIncidentType(callDetail.incident_type)}</span>
+                  <span className="text-[10px] font-bold text-rmpg-400">[{callDetail.call_number}]</span>
+                  <span className="text-[9px] font-bold px-1.5 py-0.5" style={{
+                    background: (PRIORITY_COLORS[callDetail.priority] || '#6b7280') + '25',
+                    color: PRIORITY_COLORS[callDetail.priority] || '#6b7280',
+                    border: `1px solid ${(PRIORITY_COLORS[callDetail.priority] || '#6b7280')}40`,
+                  }}>{callDetail.priority}</span>
+                </div>
+                <div className="text-[12px] font-bold text-white mt-0.5">{callDetail.location_address}</div>
+                {callDetail.cross_street && (
+                  <div className="text-[9px] text-rmpg-400 mt-0.5">X-ST: {callDetail.cross_street}</div>
+                )}
+              </div>
+              <div className="text-right flex-shrink-0">
+                {callDetail.caller_name && (
+                  <div className="text-[10px] text-rmpg-300">Cmplnt: <span className="text-rmpg-100 font-bold">{callDetail.caller_name}</span></div>
+                )}
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-[16px] font-black" style={{ color: UNIT_STATUS_COLORS[selectedUnit.status] }}>{selectedUnit.call_sign}</span>
+                  <span className="text-[10px] font-bold uppercase px-1.5 py-0.5" style={{
+                    background: UNIT_STATUS_COLORS[selectedUnit.status] + '25',
+                    color: UNIT_STATUS_COLORS[selectedUnit.status],
+                    border: `1px solid ${UNIT_STATUS_COLORS[selectedUnit.status]}40`,
+                  }}>{UNIT_STATUS_LABELS[selectedUnit.status]}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -2601,9 +2813,30 @@ export default function MapPage() {
           </button>
         </div>
         </div>{/* end inner map canvas wrapper */}
-      </div>
 
-      {/* ── Right Sidebar - Unit/Call List (Desktop only, responsive width) ── */}
+        {/* ── Spillman Flex Directions Panel (bottom of center) ── */}
+        {!isMobile && selectedUnit && callDetail && callDetail.latitude && callDetail.longitude && selectedUnit.latitude && selectedUnit.longitude && (
+          <div className="panel-beveled flex-shrink-0" style={{ background: '#1a1a1a', borderTop: '1px solid #383838', maxHeight: 120 }}>
+            <div className="px-3 py-1.5">
+              <div className="flex items-center gap-2 text-[9px]">
+                <span className="text-rmpg-400">Start:</span>
+                <span className="font-bold" style={{ color: UNIT_STATUS_COLORS[selectedUnit.status] }}>{selectedUnit.call_sign}, {UNIT_STATUS_LABELS[selectedUnit.status]}</span>
+                <span className="text-rmpg-500">→</span>
+                <span className="text-rmpg-400">End:</span>
+                <span className="font-bold text-rmpg-100">{callDetail.call_number}, {formatIncidentType(callDetail.incident_type)}</span>
+              </div>
+              <div className="panel-inset mt-1 px-2 py-1" style={{ background: '#0a0a0a' }}>
+                <div className="text-[9px] text-rmpg-300 font-bold">{callDetail.location_address}</div>
+                {callDetail.cross_street && (
+                  <div className="text-[8px] text-rmpg-500 mt-0.5">Cross: {callDetail.cross_street}</div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>{/* end Map Container */}
+
+      {/* ── Right Sidebar ── */}
       {!isMobile && <div
         className="flex flex-col panel-beveled transition-all"
         style={{
@@ -2622,6 +2855,69 @@ export default function MapPage() {
 
         {sidebarOpen && (
           <>
+            {/* ── Spillman Flex: Unit Detail Panel (when unit selected + has call) ── */}
+            {selectedUnit && callDetail && (
+              <div className="flex flex-col flex-shrink-0" style={{ maxHeight: '55%' }}>
+                {/* Unit header */}
+                <div className="panel-inset px-3 py-2" style={{ background: '#0a0a0a' }}>
+                  <div className="flex items-center gap-2">
+                    <div className="led-dot" style={{ backgroundColor: UNIT_STATUS_COLORS[selectedUnit.status], boxShadow: `0 0 8px ${UNIT_STATUS_COLORS[selectedUnit.status]}80`, width: 10, height: 10 }} />
+                    <span className="text-[14px] font-black" style={{ color: UNIT_STATUS_COLORS[selectedUnit.status] }}>{selectedUnit.call_sign}</span>
+                    <span className="text-[9px] font-bold uppercase px-1.5 py-0.5" style={{
+                      background: UNIT_STATUS_COLORS[selectedUnit.status] + '25',
+                      color: UNIT_STATUS_COLORS[selectedUnit.status],
+                      border: `1px solid ${UNIT_STATUS_COLORS[selectedUnit.status]}40`,
+                    }}>{UNIT_STATUS_LABELS[selectedUnit.status]}</span>
+                    <button onClick={() => setSelectedUnitId(null)} className="ml-auto toolbar-btn p-0.5" title="Deselect unit">
+                      <X style={{ width: 10, height: 10 }} />
+                    </button>
+                  </div>
+                  <div className="text-[10px] text-rmpg-300 mt-0.5">{selectedUnit.officer_name}</div>
+                </div>
+
+                {/* Complaint/description */}
+                {callDetail.description && (
+                  <div className="px-3 py-2" style={{ borderBottom: '1px solid #2a2a2a', background: '#141414' }}>
+                    <div className="text-[9px] text-rmpg-200 leading-relaxed">{callDetail.description}</div>
+                  </div>
+                )}
+
+                {/* Notes/Comments timeline */}
+                <div className="flex-1 overflow-y-auto min-h-0" style={{ background: '#111' }}>
+                  {callDetail.notes?.map(note => (
+                    <div key={note.id} className="px-3 py-1.5" style={{ borderBottom: '1px solid #1a1a1a' }}>
+                      <div className="flex items-center gap-1 text-[8px] text-rmpg-500">
+                        <Clock style={{ width: 8, height: 8 }} />
+                        <span>{new Date(note.created_at).toLocaleTimeString()} {new Date(note.created_at).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' })}</span>
+                        <span className="text-rmpg-400 font-bold ml-1">{note.created_by_name}</span>
+                      </div>
+                      <div className="text-[9px] text-rmpg-200 mt-0.5 leading-snug">{note.note}</div>
+                    </div>
+                  ))}
+                  {(!callDetail.notes || callDetail.notes.length === 0) && (
+                    <div className="py-4 text-center text-[9px] text-rmpg-500">No notes yet</div>
+                  )}
+                </div>
+
+                {/* Add Comment */}
+                <div className="flex items-center gap-1 px-2 py-1.5 panel-inset" style={{ background: '#0a0a0a' }}>
+                  <input
+                    type="text"
+                    className="input-dark flex-1 text-[10px] py-1 px-2"
+                    placeholder="Add comment..."
+                    value={newNote}
+                    onChange={e => setNewNote(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleAddNote(); }}
+                  />
+                  <button onClick={handleAddNote} className="toolbar-btn p-1" title="Add Comment" disabled={!newNote.trim()}>
+                    <Send style={{ width: 10, height: 10 }} />
+                  </button>
+                </div>
+
+                <div className="h-px" style={{ background: '#383838' }} />
+              </div>
+            )}
+
             {/* Compact status counters */}
             <div className="flex items-center justify-center gap-2 px-2 py-1.5 panel-inset" style={{ background: '#0a0a0a' }}>
               {([
@@ -2679,10 +2975,10 @@ export default function MapPage() {
                     return (
                       <button
                         key={unit.id}
-                        onClick={() => hasCoords && panTo(unit.latitude!, unit.longitude!)}
+                        onClick={() => { handleSelectUnit(unit.id); if (hasCoords) panTo(unit.latitude!, unit.longitude!); }}
                         className={`w-full text-left px-3 py-2.5 hover:bg-rmpg-800/50 transition-colors ${
                           hasCoords ? 'cursor-pointer' : 'cursor-default opacity-60'
-                        }`}
+                        } ${selectedUnitId === unit.id ? 'bg-rmpg-800/70 border-l-2 border-l-brand-500' : ''}`}
                       >
                         <div className="flex items-center gap-2">
                           <div
@@ -2993,6 +3289,41 @@ export default function MapPage() {
             )}
           </MobileBottomSheet>
         </>
+      )}
+
+      </div>{/* end flex-1 flex min-h-0 row */}
+
+      {/* ── Spillman Flex Map Status Bar ── */}
+      {!isMobile && (
+        <div className="status-bar flex-shrink-0" style={{ borderTop: '1px solid #383838' }}>
+          <div className="status-bar-section">
+            <span className="text-rmpg-400">Status:</span>
+            {selectedUnit ? (
+              <>
+                <span className="font-bold" style={{ color: UNIT_STATUS_COLORS[selectedUnit.status] }}>{UNIT_STATUS_LABELS[selectedUnit.status]}</span>
+                <span className="text-rmpg-200 font-mono">{statusTimer}</span>
+              </>
+            ) : (
+              <span className="text-rmpg-500">No unit selected</span>
+            )}
+          </div>
+          <div className="status-bar-section">
+            <span className="text-rmpg-400">Units:</span>
+            <span className="text-rmpg-200 font-bold">{units.length}</span>
+          </div>
+          <div className="status-bar-section">
+            <span className="text-rmpg-400">Calls:</span>
+            <span className="text-rmpg-200 font-bold">{calls.length}</span>
+          </div>
+          <div className="status-bar-section">
+            <Clock style={{ width: 9, height: 9 }} className="text-rmpg-400" />
+            <span className="text-rmpg-200">{new Date().toLocaleTimeString()}</span>
+          </div>
+          <div className="status-bar-section">
+            <div className={`led-dot ${isConnected ? 'led-green' : 'led-red'}`} style={{ width: 6, height: 6 }} />
+            <span className="text-[9px]" style={{ color: isConnected ? '#22c55e' : '#ef4444' }}>{isConnected ? 'LIVE' : 'OFFLINE'}</span>
+          </div>
+        </div>
       )}
     </div>
   );
