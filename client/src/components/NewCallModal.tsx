@@ -130,24 +130,64 @@ const DEFAULT_FORM_DATA = {
   historical_closed_at: '',
 };
 
+const DRAFT_KEY = 'rmpg_pending_dispatch_draft';
+
 export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [], clients = [], initialData }: NewCallModalProps) {
   const [formData, setFormData] = useState({ ...DEFAULT_FORM_DATA });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [hasDraft, setHasDraft] = useState(false);
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const { identify: identifyDistrict } = useDistrictIdentify();
 
-  // Pre-fill form when initialData changes (e.g. from a template)
+  // Pre-fill form when initialData changes, or restore draft on open
   useEffect(() => {
     if (isOpen && initialData) {
       setFormData({ ...DEFAULT_FORM_DATA, ...initialData } as typeof DEFAULT_FORM_DATA);
+      setHasDraft(false);
     } else if (isOpen) {
+      // Check for saved draft
+      const draft = localStorage.getItem(DRAFT_KEY);
+      if (draft) {
+        try {
+          const parsed = JSON.parse(draft);
+          if (parsed._savedAt && Date.now() - parsed._savedAt < 24 * 60 * 60 * 1000) {
+            delete parsed._savedAt;
+            setFormData({ ...DEFAULT_FORM_DATA, ...parsed });
+            setHasDraft(true);
+            return;
+          }
+        } catch { /* ignore corrupt draft */ }
+        localStorage.removeItem(DRAFT_KEY);
+      }
       setFormData({ ...DEFAULT_FORM_DATA });
+      setHasDraft(false);
     }
   }, [isOpen, initialData]);
 
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  // Save draft on close (if form has meaningful data)
+  const handleClose = () => {
+    const hasData = Object.entries(formData).some(([key, val]) => {
+      // Skip fields that have default dropdown values
+      if (key === 'incident_type' || key === 'priority' || key === 'source' || key === 'historical_status') return false;
+      const defaultVal = DEFAULT_FORM_DATA[key as keyof typeof DEFAULT_FORM_DATA];
+      return val !== defaultVal && val !== '' && val !== false;
+    });
+    if (hasData) {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...formData, _savedAt: Date.now() }));
+    }
+    setHasDraft(false);
+    onClose();
+  };
+
+  const discardDraft = () => {
+    localStorage.removeItem(DRAFT_KEY);
+    setFormData({ ...DEFAULT_FORM_DATA });
+    setHasDraft(false);
+  };
+
+  const onCloseRef = useRef(handleClose);
+  onCloseRef.current = handleClose;
 
   // Focus trap — only re-run on open/close transitions
   useEffect(() => {
@@ -223,6 +263,8 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
         ...historicalFields,
       } as any);
       // Only reset form on success (parent closes the modal)
+      localStorage.removeItem(DRAFT_KEY);
+      setHasDraft(false);
       setFormData({ ...DEFAULT_FORM_DATA });
     } catch {
       // Error is handled by the parent (toast shown there) — keep form data so user can retry
@@ -238,7 +280,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} ref={dialogRef}>
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={isSubmitting ? undefined : onClose} />
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={isSubmitting ? undefined : handleClose} />
 
       {/* Modal - Blocky */}
       <div className="relative w-full max-w-2xl mx-4 bg-surface-base border border-rmpg-600 shadow-2xl animate-fade-in">
@@ -251,12 +293,23 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
             </h2>
           </div>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-white transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
+
+        {/* Draft restored banner */}
+        {hasDraft && (
+          <div className="flex items-center gap-2 px-4 py-2 bg-amber-900/30 border-b border-amber-700/30">
+            <History className="w-3.5 h-3.5 text-amber-400" />
+            <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">Restored pending draft</span>
+            <button onClick={discardDraft} className="ml-auto text-[9px] text-rmpg-400 hover:text-white transition-colors uppercase tracking-wider font-bold">
+              Discard
+            </button>
+          </div>
+        )}
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">

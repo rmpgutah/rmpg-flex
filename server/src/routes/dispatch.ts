@@ -1140,10 +1140,15 @@ router.get('/units', (req: Request, res: Response) => {
     const db = getDb();
     const units = db.prepare(`
       SELECT u.*, usr.full_name as officer_name, usr.badge_number, usr.phone as officer_phone,
-        c.call_number, c.incident_type as current_call_type, c.location_address as current_call_location
+        c.call_number, c.incident_type as current_call_type, c.location_address as current_call_location,
+        cpg.vehicle_make as cpg_vehicle_make, cpg.vehicle_model as cpg_vehicle_model,
+        cpg.license_plate as cpg_license_plate, cpg.ignition_state as cpg_ignition_state,
+        cpg.last_odometer as cpg_last_odometer, cpg.driver_name as cpg_driver_name,
+        cpg.last_synced_at as cpg_last_synced_at
       FROM units u
       LEFT JOIN users usr ON u.officer_id = usr.id
       LEFT JOIN calls_for_service c ON u.current_call_id = c.id
+      LEFT JOIN cpg_device_mappings cpg ON cpg.unit_id = u.id AND cpg.is_active = 1
       ORDER BY u.call_sign
     `).all();
 

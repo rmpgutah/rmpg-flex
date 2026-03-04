@@ -42,6 +42,7 @@ import {
 // which has known issues with React StrictMode and intermittent failures.
 import type { UnitStatus } from '../types';
 import RmpgLogo from '../components/RmpgLogo';
+import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { usePersistedTab } from '../hooks/usePersistedState';
@@ -73,6 +74,14 @@ interface Unit {
   call_number: string | null;
   current_call_type: string | null;
   current_call_location: string | null;
+  gps_source: string;
+  cpg_vehicle_make: string | null;
+  cpg_vehicle_model: string | null;
+  cpg_license_plate: string | null;
+  cpg_ignition_state: string | null;
+  cpg_last_odometer: number | null;
+  cpg_driver_name: string | null;
+  cpg_last_synced_at: string | null;
 }
 
 interface ActiveCall {
@@ -188,9 +197,10 @@ function getIncidentCategory(type: string): { symbol: string; category: string }
 // Marker Content Builders for AdvancedMarkerElement
 // ============================================================
 
-function buildUnitMarkerContent(callSign: string, status: UnitStatus): HTMLElement {
+function buildUnitMarkerContent(callSign: string, status: UnitStatus, gpsSource?: string): HTMLElement {
   const color = UNIT_STATUS_COLORS[status];
   const label = UNIT_STATUS_LABELS[status];
+  const isCpg = gpsSource === 'clearpathgps';
 
   const wrapper = document.createElement('div');
   wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;';
@@ -198,8 +208,15 @@ function buildUnitMarkerContent(callSign: string, status: UnitStatus): HTMLEleme
   const tag = document.createElement('div');
   tag.style.cssText =
     `background:${color};color:#fff;font-size:9px;font-weight:900;` +
-    "padding:2px 5px;border:1px solid rgba(255,255,255,0.8);white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;" +
-    'display:flex;align-items:center;gap:3px;';
+    `padding:2px 5px;border:1px solid ${isCpg ? '#60a5fa' : 'rgba(255,255,255,0.8)'};white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;` +
+    `display:flex;align-items:center;gap:3px;${isCpg ? 'box-shadow:0 0 6px rgba(96,165,250,0.4);' : ''}`;
+
+  if (isCpg) {
+    const satIcon = document.createElement('span');
+    satIcon.textContent = '\u{1F4E1}';
+    satIcon.style.cssText = 'font-size:8px;line-height:1;';
+    tag.appendChild(satIcon);
+  }
 
   const csSpan = document.createElement('span');
   csSpan.textContent = callSign;
@@ -418,7 +435,7 @@ function injectKeyframes() {
     @keyframes pulse-led { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
     @keyframes pulse-incident { 0%,100% { box-shadow:0 0 4px rgba(220,38,38,0.3); transform:scale(1); } 50% { box-shadow:0 0 14px rgba(220,38,38,0.7); transform:scale(1.05); } }
     @keyframes pulse-gps { 0%,100% { transform:scale(1); opacity:0.7; } 50% { transform:scale(2.5); opacity:0; } }
-    .gm-style-iw { background:#111 !important; border:1px solid #333 !important; border-radius:4px !important; color:#e5e7eb !important; }
+    .gm-style-iw { background:#111 !important; border:1px solid #333 !important; border-radius:0 !important; color:#e5e7eb !important; }
     .gm-style-iw-d { overflow:auto !important; }
     .gm-style-iw button[aria-label="Close"] { filter: invert(1) !important; }
     .gm-style .gm-style-iw-tc::after { background:#111 !important; }
@@ -902,7 +919,7 @@ export default function MapPage() {
     if (layers.units) {
       units.forEach((unit) => {
         if (unit.latitude != null && unit.longitude != null) {
-          const content = buildUnitMarkerContent(unit.call_sign, unit.status);
+          const content = buildUnitMarkerContent(unit.call_sign, unit.status, unit.gps_source);
           const statusColor = UNIT_STATUS_COLORS[unit.status];
           const location = unit.current_call_location || 'No active assignment';
 
@@ -913,12 +930,28 @@ export default function MapPage() {
             zIndex: 1000,
             title: `${unit.call_sign} - ${unit.officer_name}`,
             onClick: () => {
+              const isCpgUnit = unit.gps_source === 'clearpathgps';
+              const cpgSection = isCpgUnit ? `
+                <div style="margin-top:6px;padding-top:6px;border-top:1px solid #333;">
+                  <div style="display:flex;align-items:center;gap:4px;margin-bottom:4px;">
+                    <span style="font-size:8px;font-weight:900;color:#60a5fa;background:#1e3a5f;border:1px solid #2563eb40;padding:1px 5px;letter-spacing:0.5px">CPG HARDWARE</span>
+                  </div>
+                  <table style="width:100%;font-size:10px;border-collapse:collapse;color:#d1d5db;">
+                    ${unit.cpg_ignition_state ? `<tr><td style="color:#6b7280;padding:1px 6px 1px 0">Ignition</td><td style="font-weight:bold;color:${unit.cpg_ignition_state === 'on' ? '#22c55e' : '#6b7280'}">${escapeHtml(unit.cpg_ignition_state.toUpperCase())}</td></tr>` : ''}
+                    ${unit.cpg_last_odometer != null ? `<tr><td style="color:#6b7280;padding:1px 6px 1px 0">Odometer</td><td>${Number(unit.cpg_last_odometer).toLocaleString()} mi</td></tr>` : ''}
+                    ${unit.cpg_vehicle_make ? `<tr><td style="color:#6b7280;padding:1px 6px 1px 0">Vehicle</td><td>${escapeHtml(unit.cpg_vehicle_make)} ${escapeHtml(unit.cpg_vehicle_model || '')}</td></tr>` : ''}
+                    ${unit.cpg_license_plate ? `<tr><td style="color:#6b7280;padding:1px 6px 1px 0">Plate</td><td style="font-weight:bold;color:#fbbf24">${escapeHtml(unit.cpg_license_plate)}</td></tr>` : ''}
+                    ${unit.cpg_driver_name ? `<tr><td style="color:#6b7280;padding:1px 6px 1px 0">Driver</td><td>${escapeHtml(unit.cpg_driver_name)}</td></tr>` : ''}
+                    ${unit.cpg_last_synced_at ? `<tr><td style="color:#6b7280;padding:1px 6px 1px 0">Last Sync</td><td style="font-size:9px">${new Date(unit.cpg_last_synced_at).toLocaleTimeString()}</td></tr>` : ''}
+                  </table>
+                </div>
+              ` : '';
               infoWindowRef.current?.setContent(`
-                <div style="min-width:200px;font-family:'Courier New',monospace;background:#111;color:#e5e7eb;padding:10px;border:1px solid ${statusColor}50;border-radius:4px;">
+                <div style="min-width:200px;font-family:'Courier New',monospace;background:#111;color:#e5e7eb;padding:10px;border:1px solid ${statusColor}50;">
                   <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #333;">
                     <div style="width:10px;height:10px;border-radius:50%;background:${statusColor};box-shadow:0 0 8px ${statusColor}80;"></div>
                     <span style="font-weight:900;font-size:15px;color:${statusColor};letter-spacing:-0.5px;">${escapeHtml(unit.call_sign)}</span>
-                    <span style="margin-left:auto;font-size:9px;text-transform:uppercase;color:${statusColor};font-weight:800;letter-spacing:1px;padding:1px 6px;background:${statusColor}20;border:1px solid ${statusColor}30;border-radius:2px;">${escapeHtml(unit.status.replace('_', ' '))}</span>
+                    <span style="margin-left:auto;font-size:9px;text-transform:uppercase;color:${statusColor};font-weight:800;letter-spacing:1px;padding:1px 6px;background:${statusColor}20;border:1px solid ${statusColor}30;">${escapeHtml(unit.status.replace('_', ' '))}</span>
                   </div>
                   <div style="font-size:11px;color:#d1d5db;margin-bottom:2px;">${escapeHtml(unit.officer_name)}</div>
                   ${unit.vehicle ? `<div style="font-size:10px;color:#6b7280;margin-bottom:6px;">Vehicle: ${escapeHtml(unit.vehicle)}</div>` : ''}
@@ -929,6 +962,7 @@ export default function MapPage() {
                       <div style="font-size:9px;color:#6b7280;margin-top:2px;">${escapeHtml(location)}</div>
                     </div>
                   ` : `<div style="font-size:9px;color:#4b5563;margin-top:4px;">${escapeHtml(location)}</div>`}
+                  ${cpgSection}
                 </div>
               `);
               infoWindowRef.current?.setPosition({ lat: unit.latitude!, lng: unit.longitude! });
@@ -974,9 +1008,9 @@ export default function MapPage() {
               }
 
               infoWindowRef.current?.setContent(`
-                <div style="min-width:200px;font-family:'Courier New',monospace;background:#111;color:#e5e7eb;padding:10px;border:1px solid ${pColor}50;border-radius:4px;">
+                <div style="min-width:200px;font-family:'Courier New',monospace;background:#111;color:#e5e7eb;padding:10px;border:1px solid ${pColor}50;">
                   <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-                    <span style="background:${pColor};color:white;padding:2px 8px;font-size:10px;font-weight:900;border-radius:3px;letter-spacing:0.5px;">${escapeHtml(call.priority)}</span>
+                    <span style="background:${pColor};color:white;padding:2px 8px;font-size:10px;font-weight:900;letter-spacing:0.5px;">${escapeHtml(call.priority)}</span>
                     <span style="font-weight:900;font-size:13px;color:${pColor};">${escapeHtml(formatIncidentType(call.incident_type))}</span>
                   </div>
                   <div style="font-size:12px;color:#60a5fa;font-weight:bold;">${escapeHtml(call.call_number)}</div>
@@ -1010,7 +1044,7 @@ export default function MapPage() {
             title: prop.name,
             onClick: () => {
               infoWindowRef.current?.setContent(`
-                <div style="min-width:160px;font-family:'Courier New',monospace;background:#111;color:#e5e7eb;padding:10px;border:1px solid #3b82f650;border-radius:4px;">
+                <div style="min-width:160px;font-family:'Courier New',monospace;background:#111;color:#e5e7eb;padding:10px;border:1px solid #3b82f650;">
                   <div style="font-weight:900;font-size:13px;color:#60a5fa;margin-bottom:4px;">${escapeHtml(prop.name)}</div>
                   <div style="font-size:10px;color:#d1d5db;">${escapeHtml(prop.address)}</div>
                   ${prop.client_name ? `<div style="font-size:9px;margin-top:6px;color:#9ca3af;font-weight:600;">Client: ${escapeHtml(prop.client_name)}</div>` : ''}
@@ -1225,7 +1259,7 @@ export default function MapPage() {
                 : '<span style="display:inline-block;font-size:8px;font-weight:900;color:#4ade80;background:#14532d80;border:1px solid #22c55e40;padding:1px 5px;margin-left:6px;letter-spacing:0.5px">BROWSER GPS</span>';
               const speedColor = pt.speed != null && pt.speed > 80 ? '#f87171' : pt.speed != null && pt.speed > 60 ? '#fbbf24' : '#e0e0e0';
               const html = `
-                <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:220px;line-height:1.6;background:#0a0e14;padding:10px 12px;border-radius:6px;border:1px solid #1e2a3a">
+                <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:220px;line-height:1.6;background:#0a0e14;padding:10px 12px;border:1px solid #1e2a3a">
                   <div style="font-weight:bold;font-size:13px;margin-bottom:2px;color:#ff4444;display:flex;align-items:center;flex-wrap:wrap">
                     ${escapeHtml(trail.call_sign)} — ${escapeHtml(trail.officer_name || 'Unknown')}
                     ${gpsBadge}
@@ -1444,9 +1478,81 @@ export default function MapPage() {
   // ============================================================
 
   return (
-    <div className="relative h-full flex">
+    <div className="relative h-full flex font-mono">
       {/* Map Container */}
-      <div className="flex-1 relative">
+      <div className="flex-1 relative flex flex-col">
+        {/* ── Spillman Flex Map Toolbar ── */}
+        {!isMobile && (
+          <div
+            className="flex items-center px-1 gap-0 flex-shrink-0 z-[1002]"
+            style={{
+              height: 26,
+              background: 'linear-gradient(180deg, #2a2a2a 0%, #1e1e1e 100%)',
+              borderBottom: '1px solid #303030',
+              borderTop: '1px solid #484848',
+            }}
+          >
+            <button onClick={() => setLayersPanelOpen(!layersPanelOpen)} className={layersPanelOpen ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'} title="Layers Panel">
+              <Layers style={{ width: 11, height: 11 }} />
+              <span>Layers</span>
+            </button>
+            <button onClick={() => setSidebarOpen(!sidebarOpen)} className={sidebarOpen ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'} title="Sidebar">
+              {sidebarOpen ? <PanelLeftClose style={{ width: 11, height: 11 }} /> : <PanelLeftOpen style={{ width: 11, height: 11 }} />}
+              <span>Sidebar</span>
+            </button>
+            <div className="toolbar-separator" />
+            {(Object.entries(MAP_STYLE_LABELS) as [MapStyleId, string][]).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setMapStyle(key)}
+                className={mapStyle === key ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'}
+              >
+                {label}
+              </button>
+            ))}
+            <div className="toolbar-separator" />
+            <button onClick={() => setShowBreadcrumbs(!showBreadcrumbs)} className={showBreadcrumbs ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'} title="GPS Breadcrumb Trails">
+              <Route style={{ width: 11, height: 11 }} />
+              <span>Trails</span>
+            </button>
+            <button onClick={() => setShowHeatmap(!showHeatmap)} className={showHeatmap ? 'toolbar-btn toolbar-btn-danger' : 'toolbar-btn'} title="Crime Heat Map">
+              <Thermometer style={{ width: 11, height: 11 }} />
+              <span>Heat</span>
+            </button>
+            <button onClick={() => setShowTrackingLines(!showTrackingLines)} className={showTrackingLines ? 'toolbar-btn toolbar-btn-success' : 'toolbar-btn'} title="Unit Tracking Lines">
+              <Navigation2 style={{ width: 11, height: 11 }} />
+              <span>Track</span>
+            </button>
+            <div className="toolbar-separator" />
+            <button onClick={() => setShowGeoPanel(!showGeoPanel)} className={showGeoPanel ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'} title="Spatial GeoJSON Layers">
+              <Globe2 style={{ width: 11, height: 11 }} />
+              <span>Geo</span>
+            </button>
+            <button onClick={() => setShowShiftPanel(!showShiftPanel)} className={showShiftPanel ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'} title="Shift Planning">
+              <CalendarDays style={{ width: 11, height: 11 }} />
+              <span>Shifts</span>
+            </button>
+            <button onClick={() => setShowEventPanel(!showEventPanel)} className={showEventPanel ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'} title="Event Planning">
+              <MapPin style={{ width: 11, height: 11 }} />
+              <span>Events</span>
+            </button>
+            <div className="flex-1" />
+            {/* Right side: GPS + WebSocket status */}
+            <div className="flex items-center gap-2 panel-inset px-2 py-0.5" style={{ background: '#141414' }}>
+              <div className="flex items-center gap-1">
+                <div className={`led-dot ${isConnected ? 'led-green' : 'led-red'}`} style={{ width: 6, height: 6 }} />
+                <span className="text-[8px] font-bold" style={{ color: isConnected ? '#22c55e' : '#ef4444' }}>WS</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className={`led-dot ${gps.isTracking ? 'led-green' : 'led-red'}`} style={{ width: 6, height: 6 }} />
+                <span className="text-[8px] font-bold" style={{ color: gps.isTracking ? '#22c55e' : '#ef4444' }}>GPS</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Map Canvas */}
+        <div className="flex-1 relative">
         <div
           ref={mapRef}
           className="absolute inset-0 bg-surface-deep"
@@ -1458,12 +1564,12 @@ export default function MapPage() {
         </div>
 
         {mapError && (
-          <div className="absolute inset-0 z-[2000] flex items-center justify-center bg-black/80 backdrop-blur-sm">
-            <div className="bg-surface-overlay/95 border border-red-600 p-8 shadow-xl max-w-lg text-center" style={{ borderRadius: 4 }}>
+          <div className="absolute inset-0 z-[2000] flex items-center justify-center bg-black/90">
+            <div className="panel-beveled p-8 shadow-xl max-w-lg text-center" style={{ background: '#1a1a1a' }}>
               <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-3" />
               <h3 className="text-white text-sm font-bold mb-2">Map Configuration Required</h3>
               <pre className="text-rmpg-300 text-xs leading-relaxed mb-4 whitespace-pre-wrap text-left">{mapError}</pre>
-              <div className="bg-surface-deep border border-rmpg-600 p-3 text-left mb-4" style={{ borderRadius: 4 }}>
+              <div className="panel-inset p-3 text-left mb-4" style={{ background: '#0a0a0a' }}>
                 <p className="text-[10px] text-rmpg-400 font-mono leading-relaxed">
                   <span className="text-amber-400 font-bold">Checklist:</span><br/>
                   1. Go to <span className="text-blue-400">console.cloud.google.com/apis/library</span><br/>
@@ -1479,15 +1585,13 @@ export default function MapPage() {
               <div className="flex gap-3 justify-center">
                 <button
                   onClick={() => setMapRetry((n) => n + 1)}
-                  className="px-4 py-1.5 bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold uppercase tracking-wider transition-colors"
-                  style={{ borderRadius: 4 }}
+                  className="toolbar-btn-primary px-4 py-1.5 text-xs font-bold uppercase tracking-wider"
                 >
                   Retry
                 </button>
                 <button
                   onClick={() => window.location.reload()}
-                  className="px-4 py-1.5 bg-surface-deep hover:bg-surface-overlay text-rmpg-300 text-xs font-bold uppercase tracking-wider border border-rmpg-600 transition-colors"
-                  style={{ borderRadius: 4 }}
+                  className="toolbar-btn px-4 py-1.5 text-xs font-bold uppercase tracking-wider"
                 >
                   Hard Reload
                 </button>
@@ -1498,8 +1602,8 @@ export default function MapPage() {
 
         {/* Loading Overlay */}
         {loading && !mapError && (
-          <div className="absolute inset-0 z-[2000] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-            <div className="bg-surface-overlay/95 border border-rmpg-600 p-6 shadow-xl" style={{ borderRadius: 4 }}>
+          <div className="absolute inset-0 z-[2000] flex items-center justify-center bg-black/90">
+            <div className="panel-beveled p-6 shadow-xl" style={{ background: '#1a1a1a' }}>
               <div className="flex items-center gap-3">
                 <div className="w-5 h-5 border-2 border-brand-400 border-t-transparent rounded-full animate-spin" />
                 <span className="text-white text-sm font-mono">Initializing tactical map...</span>
@@ -1511,7 +1615,7 @@ export default function MapPage() {
         {/* Error Banner */}
         {error && !loading && (
           <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-[1000]">
-            <div className="bg-red-900/95 border border-red-600 px-4 py-2 backdrop-blur-sm shadow-xl" style={{ borderRadius: 4 }}>
+            <div className="panel-beveled px-4 py-2 shadow-xl" style={{ background: '#3a0a0a', borderColor: '#8a0c0c' }}>
               <span className="text-white text-sm">{error}</span>
             </div>
           </div>
@@ -1525,7 +1629,7 @@ export default function MapPage() {
           >
             <div className="relative">
               <div className="relative flex items-center">
-                <Search className="absolute left-2.5 w-3.5 h-3.5 text-white/50 pointer-events-none" />
+                <Search className="absolute left-2.5 w-3.5 h-3.5 text-rmpg-500 pointer-events-none" />
                 <input
                   type="text"
                   value={addressSearch}
@@ -1535,9 +1639,8 @@ export default function MapPage() {
                   onKeyDown={(e) => {
                     if (e.key === 'Escape') { setShowAddressResults(false); setAddressSearch(''); setAddressResults([]); }
                   }}
-                  placeholder="Search address..."
-                  className="bg-black/30 border border-white/15 text-[11px] text-white placeholder:text-white/40 pl-8 pr-8 py-1.5 w-[240px] focus:border-white/40 focus:bg-black/50 focus:outline-none backdrop-blur-md shadow-lg font-mono transition-colors"
-                  style={{ borderRadius: 4 }}
+                  placeholder="SEARCH ADDRESS..."
+                  className="input-dark text-[11px] pl-8 pr-8 py-1.5 w-[240px] font-mono"
                 />
                 {addressSearch && (
                   <button
@@ -1557,13 +1660,13 @@ export default function MapPage() {
                 )}
               </div>
               {showAddressResults && addressResults.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-black/80 border border-white/15 shadow-2xl backdrop-blur-md overflow-hidden" style={{ borderRadius: 4 }}>
+                <div className="absolute top-full left-0 right-0 mt-1 panel-beveled shadow-2xl overflow-hidden" style={{ background: '#1a1a1a', zIndex: 50 }}>
                   {addressResults.map((r) => (
                     <button
                       key={r.place_id}
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => handleAddressSelect(r.place_id, r.description)}
-                      className="w-full text-left px-3 py-2 text-[10px] text-white/80 hover:bg-white/10 hover:text-white transition-colors border-b border-white/10 last:border-0 flex items-center gap-2"
+                      className="w-full text-left px-3 py-2 text-[10px] text-rmpg-200 hover:bg-rmpg-700/50 hover:text-white transition-colors border-b border-rmpg-700 last:border-0 flex items-center gap-2"
                     >
                       <MapPin className="w-3 h-3 text-blue-400 shrink-0" />
                       <span className="truncate">{r.description}</span>
@@ -1573,28 +1676,28 @@ export default function MapPage() {
               )}
             </div>
             {/* Zoom +/- controls */}
-            <div className="flex flex-col" style={{ borderRadius: 4, overflow: 'hidden' }}>
+            <div className="flex flex-col panel-beveled" style={{ overflow: 'hidden' }}>
               <button
                 onClick={() => {
                   const map = mapInstanceRef.current;
                   if (map) map.setZoom((map.getZoom() || 12) + 1);
                 }}
-                className="bg-black/30 border border-white/15 border-b-0 backdrop-blur-md px-2 py-1.5 hover:bg-black/50 transition-colors"
-                style={{ borderRadius: '4px 4px 0 0' }}
+                className="toolbar-btn"
+                style={{ padding: '4px 6px', borderBottom: '1px solid #303030' }}
                 title="Zoom in"
               >
-                <Plus className="w-3.5 h-3.5 text-white/70" />
+                <Plus className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={() => {
                   const map = mapInstanceRef.current;
                   if (map) map.setZoom((map.getZoom() || 12) - 1);
                 }}
-                className="bg-black/30 border border-white/15 backdrop-blur-md px-2 py-1.5 hover:bg-black/50 transition-colors"
-                style={{ borderRadius: '0 0 4px 4px' }}
+                className="toolbar-btn"
+                style={{ padding: '4px 6px' }}
                 title="Zoom out"
               >
-                <Minus className="w-3.5 h-3.5 text-white/70" />
+                <Minus className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
@@ -1605,26 +1708,25 @@ export default function MapPage() {
           {!layersPanelOpen ? (
             <button
               onClick={() => setLayersPanelOpen(true)}
-              className="bg-black/30 border border-white/15 backdrop-blur-md p-2 hover:bg-black/50 transition-colors shadow-lg"
-              style={{ borderRadius: 4 }}
+              className="toolbar-btn shadow-lg"
+              style={{ padding: '6px' }}
               title="Show layers"
             >
-              <PanelLeftOpen className="w-4 h-4 text-white/70" />
+              <PanelLeftOpen className="w-4 h-4" />
             </button>
           ) : (
-          <div className="bg-surface-deep/95 border border-rmpg-600 backdrop-blur-sm shadow-2xl" style={{ width: 'clamp(160px, 14vw, 200px)', borderRadius: 4 }}>
-            <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700">
-              <Layers className="w-3.5 h-3.5 text-brand-400" />
-              <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-widest flex-1">Layers</span>
-              <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-green-400 animate-pulse' : 'bg-red-500'}`} />
+          <div className="panel-beveled shadow-2xl" style={{ width: 'clamp(160px, 14vw, 200px)', background: '#1a1a1a' }}>
+            <PanelTitleBar title="LAYERS" icon={Layers}>
+              <div className={`led-dot ${isConnected ? 'led-green' : 'led-red'}`} style={{ width: 6, height: 6 }} />
               <button
                 onClick={() => setLayersPanelOpen(false)}
-                className="text-rmpg-500 hover:text-rmpg-200 transition-colors -mr-1"
+                className="toolbar-btn"
+                style={{ padding: '0 2px' }}
                 title="Hide layers"
               >
-                <PanelLeftClose className="w-3.5 h-3.5" />
+                <PanelLeftClose style={{ width: 10, height: 10 }} />
               </button>
-            </div>
+            </PanelTitleBar>
 
             <div className="p-1.5 space-y-0.5">
               {[
@@ -1635,8 +1737,8 @@ export default function MapPage() {
                 <button
                   key={key}
                   onClick={() => toggleLayer(key)}
-                  className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors rounded ${
-                    layers[key] ? 'bg-rmpg-700/30 hover:bg-rmpg-700/50' : 'opacity-40 hover:opacity-70'
+                  className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors ${
+                    layers[key] ? 'panel-inset bg-surface-deep' : 'opacity-40 hover:opacity-70 hover:bg-rmpg-800/50'
                   }`}
                 >
                   {layers[key] ? <Eye className="w-3 h-3 text-green-400" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
@@ -1648,8 +1750,8 @@ export default function MapPage() {
 
               <button
                 onClick={() => setShowHeatmap(!showHeatmap)}
-                className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors rounded ${
-                  showHeatmap ? 'bg-red-900/30 hover:bg-red-900/40' : 'opacity-40 hover:opacity-70'
+                className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors ${
+                  showHeatmap ? 'panel-inset bg-surface-deep' : 'opacity-40 hover:opacity-70 hover:bg-rmpg-800/50'
                 }`}
               >
                 {showHeatmap ? <Eye className="w-3 h-3 text-red-400" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
@@ -1665,9 +1767,9 @@ export default function MapPage() {
                     <button
                       key={days}
                       onClick={() => setHeatmapDays(days)}
-                      className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded transition-colors ${
+                      className={`px-1.5 py-0.5 text-[8px] font-mono font-bold transition-colors ${
                         heatmapDays === days
-                          ? 'bg-red-900/50 text-red-400 border border-red-700/50'
+                          ? 'panel-inset bg-surface-deep text-red-400'
                           : 'text-rmpg-500 hover:text-rmpg-300'
                       }`}
                     >
@@ -1679,8 +1781,8 @@ export default function MapPage() {
 
               <button
                 onClick={() => setShowTrackingLines(!showTrackingLines)}
-                className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors rounded ${
-                  showTrackingLines ? 'bg-green-900/30 hover:bg-green-900/40' : 'opacity-40 hover:opacity-70'
+                className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors ${
+                  showTrackingLines ? 'panel-inset bg-surface-deep' : 'opacity-40 hover:opacity-70 hover:bg-rmpg-800/50'
                 }`}
               >
                 {showTrackingLines ? <Eye className="w-3 h-3 text-green-400" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
@@ -1690,8 +1792,8 @@ export default function MapPage() {
 
               <button
                 onClick={() => setShowBreadcrumbs(!showBreadcrumbs)}
-                className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors rounded ${
-                  showBreadcrumbs ? 'bg-cyan-900/30 hover:bg-cyan-900/40' : 'opacity-40 hover:opacity-70'
+                className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors ${
+                  showBreadcrumbs ? 'panel-inset bg-surface-deep' : 'opacity-40 hover:opacity-70 hover:bg-rmpg-800/50'
                 }`}
               >
                 {showBreadcrumbs ? <Eye className="w-3 h-3 text-cyan-400" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
@@ -1704,9 +1806,9 @@ export default function MapPage() {
                     <button
                       key={h}
                       onClick={() => setBreadcrumbHours(h)}
-                      className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded transition-colors ${
+                      className={`px-1.5 py-0.5 text-[8px] font-mono font-bold transition-colors ${
                         breadcrumbHours === h
-                          ? 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50'
+                          ? 'panel-inset bg-surface-deep text-cyan-400'
                           : 'text-rmpg-500 hover:text-rmpg-300'
                       }`}
                     >
@@ -1730,7 +1832,7 @@ export default function MapPage() {
                       }
                     }}
                     disabled={exportingPdf}
-                    className="px-1.5 py-0.5 text-[8px] font-mono font-bold rounded transition-colors text-brand-400 hover:bg-brand-900/30 ml-1 flex items-center gap-0.5"
+                    className="toolbar-btn px-1.5 py-0.5 text-[8px] font-mono font-bold transition-colors text-brand-400 ml-1 flex items-center gap-0.5"
                     title="Export patrol tracking PDF"
                   >
                     {exportingPdf ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <FileText className="w-2.5 h-2.5" />}
@@ -1743,7 +1845,7 @@ export default function MapPage() {
             <div className="border-t border-rmpg-700 p-1.5">
               <button
                 onClick={() => setShowMapStyles(!showMapStyles)}
-                className="flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors rounded hover:bg-rmpg-700/30"
+                className="flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors hover:bg-rmpg-800/50"
               >
                 <MapIcon className="w-3 h-3 text-rmpg-400" />
                 <span className="text-[10px] text-rmpg-300 flex-1">Map Style</span>
@@ -1755,8 +1857,8 @@ export default function MapPage() {
                     <button
                       key={key}
                       onClick={() => { setMapStyle(key); setShowMapStyles(false); }}
-                      className={`w-full text-left px-4 py-1 text-[10px] rounded transition-colors ${
-                        mapStyle === key ? 'text-brand-400 bg-brand-900/20' : 'text-rmpg-400 hover:text-rmpg-200 hover:bg-rmpg-700/30'
+                      className={`w-full text-left px-4 py-1 text-[10px] transition-colors ${
+                        mapStyle === key ? 'text-brand-400 panel-inset bg-surface-deep' : 'text-rmpg-400 hover:text-rmpg-200 hover:bg-rmpg-800/50'
                       }`}
                     >
                       {label}
@@ -1770,7 +1872,7 @@ export default function MapPage() {
             <div className="border-t border-rmpg-700 p-1.5">
               <button
                 onClick={() => setShowGeoPanel(!showGeoPanel)}
-                className="flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors rounded hover:bg-rmpg-700/30"
+                className="flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors hover:bg-rmpg-800/50"
               >
                 <Globe2 className="w-3 h-3 text-cyan-400" />
                 <span className="text-[10px] text-rmpg-300 flex-1">Spatial Layers</span>
@@ -1787,8 +1889,8 @@ export default function MapPage() {
                       <button
                         key={cfg.id}
                         onClick={() => toggleGeoLayer(cfg.id)}
-                        className={`flex items-center gap-2 w-full px-2 py-1 text-left transition-colors rounded ${
-                          state?.visible ? 'bg-rmpg-700/30 hover:bg-rmpg-700/50' : 'opacity-40 hover:opacity-70'
+                        className={`flex items-center gap-2 w-full px-2 py-1 text-left transition-colors ${
+                          state?.visible ? 'panel-inset bg-surface-deep' : 'opacity-40 hover:opacity-70 hover:bg-rmpg-800/50'
                         }`}
                       >
                         {state?.visible ? <Eye className="w-2.5 h-2.5 text-green-400" /> : <EyeOff className="w-2.5 h-2.5 text-rmpg-500" />}
@@ -1810,12 +1912,12 @@ export default function MapPage() {
             <div className="border-t border-rmpg-700 p-1.5">
               <button
                 onClick={() => setShowShiftPanel(!showShiftPanel)}
-                className="flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors rounded hover:bg-rmpg-700/30"
+                className="flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors hover:bg-rmpg-800/50"
               >
                 <CalendarDays className="w-3 h-3 text-emerald-400" />
                 <span className="text-[10px] text-rmpg-300 flex-1">Shift Planning</span>
                 {shiftPlanning.selectionMode && (
-                  <span className="text-[7px] px-1 py-0.5 bg-amber-900/40 text-amber-400 border border-amber-700/40 rounded font-bold animate-pulse">SELECT</span>
+                  <span className="text-[7px] px-1 py-0.5 bg-amber-900/40 text-amber-400 border border-amber-700/40 font-bold animate-pulse">SELECT</span>
                 )}
                 {shiftPlanning.activePlan && (
                   <span className="text-[8px] text-emerald-400 font-mono font-bold truncate max-w-[60px]">
@@ -1834,10 +1936,10 @@ export default function MapPage() {
                         return (
                           <div
                             key={plan.id}
-                            className={`flex items-center gap-1.5 px-2 py-1 rounded transition-colors cursor-pointer ${
+                            className={`flex items-center gap-1.5 px-2 py-1 transition-colors cursor-pointer ${
                               shiftPlanning.activePlanId === plan.id
-                                ? 'bg-emerald-900/30 border border-emerald-700/40'
-                                : 'hover:bg-rmpg-700/30'
+                                ? 'panel-inset bg-surface-deep'
+                                : 'hover:bg-rmpg-800/50'
                             }`}
                             onClick={() => shiftPlanning.setActivePlanId(
                               shiftPlanning.activePlanId === plan.id ? null : plan.id
@@ -1848,7 +1950,7 @@ export default function MapPage() {
                               <div className="text-[9px] text-rmpg-200 truncate">{plan.name}</div>
                               <div className="text-[7px] text-rmpg-500 font-mono">{plan.date} · {shiftInfo.label}</div>
                             </div>
-                            <span className={`text-[7px] px-1 py-0.5 rounded font-bold ${
+                            <span className={`text-[7px] px-1 py-0.5 font-bold ${
                               plan.status === 'active' ? 'bg-green-900/30 text-green-400' :
                               plan.status === 'draft' ? 'bg-rmpg-700/30 text-rmpg-400' :
                               'bg-rmpg-800/30 text-rmpg-500'
@@ -1876,13 +1978,13 @@ export default function MapPage() {
                         value={newShiftPlanName}
                         onChange={(e) => setNewShiftPlanName(e.target.value)}
                         placeholder="Plan name..."
-                        className="flex-1 bg-transparent border border-rmpg-700 px-1.5 py-0.5 text-[9px] text-rmpg-200 placeholder:text-rmpg-600 rounded focus:border-emerald-600 outline-none"
+                        className="input-dark flex-1 px-1.5 py-0.5 text-[9px]"
                       />
                       <input
                         type="date"
                         value={newShiftPlanDate}
                         onChange={(e) => setNewShiftPlanDate(e.target.value)}
-                        className="bg-transparent border border-rmpg-700 px-1 py-0.5 text-[9px] text-rmpg-200 rounded focus:border-emerald-600 outline-none w-[90px]"
+                        className="input-dark px-1 py-0.5 text-[9px] w-[90px]"
                       />
                     </div>
                     <div className="flex items-center gap-1">
@@ -1890,9 +1992,9 @@ export default function MapPage() {
                         <button
                           key={key}
                           onClick={() => setNewShiftPlanType(key)}
-                          className={`flex-1 text-[8px] py-0.5 rounded font-bold transition-colors ${
+                          className={`flex-1 text-[8px] py-0.5 font-bold transition-colors ${
                             newShiftPlanType === key
-                              ? 'border text-white'
+                              ? 'panel-inset text-white'
                               : 'text-rmpg-500 hover:text-rmpg-300'
                           }`}
                           style={newShiftPlanType === key ? { borderColor: info.color, backgroundColor: `${info.color}20`, color: info.color } : undefined}
@@ -1932,10 +2034,10 @@ export default function MapPage() {
                               ensureLayerLoaded('beat');
                             }
                           }}
-                          className={`flex items-center gap-2 w-full px-2 py-1.5 rounded transition-colors ${
+                          className={`flex items-center gap-2 w-full px-2 py-1.5 transition-colors ${
                             shiftPlanning.selectionMode
-                              ? 'bg-amber-900/40 border border-amber-600/50 text-amber-300'
-                              : 'hover:bg-rmpg-700/30 text-rmpg-400'
+                              ? 'panel-inset bg-amber-900/30 text-amber-300'
+                              : 'hover:bg-rmpg-800/50 text-rmpg-400'
                           }`}
                         >
                           <MousePointer2 className="w-3 h-3" />
@@ -1961,7 +2063,7 @@ export default function MapPage() {
                                 {shiftPlanning.pendingFeatures.map((feat) => (
                                   <div
                                     key={`${feat.layerId}::${feat.featureKey}`}
-                                    className="flex items-center gap-1.5 px-2 py-0.5 bg-amber-900/20 rounded"
+                                    className="flex items-center gap-1.5 px-2 py-0.5 bg-amber-900/20"
                                   >
                                     <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />
                                     <span className="text-[8px] text-amber-300 flex-1 truncate">{feat.label}</span>
@@ -1989,10 +2091,10 @@ export default function MapPage() {
                                     {shiftPlanning.officers.slice(0, 30).map((officer) => (
                                       <label
                                         key={officer.id}
-                                        className={`flex items-center gap-1.5 px-1.5 py-0.5 rounded cursor-pointer transition-colors ${
+                                        className={`flex items-center gap-1.5 px-1.5 py-0.5 cursor-pointer transition-colors ${
                                           assignOfficerIds.includes(officer.id)
                                             ? 'bg-emerald-900/30 text-emerald-300'
-                                            : 'hover:bg-rmpg-700/30 text-rmpg-400'
+                                            : 'hover:bg-rmpg-800/50 text-rmpg-400'
                                         }`}
                                       >
                                         <input
@@ -2024,10 +2126,10 @@ export default function MapPage() {
                                       {shiftPlanning.units.map((unit) => (
                                         <label
                                           key={unit.id}
-                                          className={`flex items-center gap-1.5 px-1.5 py-0.5 rounded cursor-pointer transition-colors ${
+                                          className={`flex items-center gap-1.5 px-1.5 py-0.5 cursor-pointer transition-colors ${
                                             assignUnitIds.includes(unit.id)
                                               ? 'bg-blue-900/30 text-blue-300'
-                                              : 'hover:bg-rmpg-700/30 text-rmpg-400'
+                                              : 'hover:bg-rmpg-800/50 text-rmpg-400'
                                           }`}
                                         >
                                           <input
@@ -2059,7 +2161,7 @@ export default function MapPage() {
                                     value={assignNotes}
                                     onChange={(e) => setAssignNotes(e.target.value)}
                                     placeholder="Assignment notes..."
-                                    className="w-full bg-transparent border border-rmpg-700 px-1.5 py-0.5 text-[8px] text-rmpg-200 placeholder:text-rmpg-600 rounded focus:border-emerald-600 outline-none"
+                                    className="input-dark w-full px-1.5 py-0.5 text-[8px]"
                                   />
                                 </div>
 
@@ -2080,14 +2182,14 @@ export default function MapPage() {
                                       setAssignNotes('');
                                     }}
                                     disabled={assignOfficerIds.length === 0 && assignUnitIds.length === 0}
-                                    className="flex-1 flex items-center justify-center gap-1 px-2 py-1 text-[8px] font-bold bg-emerald-900/40 text-emerald-400 border border-emerald-700/40 rounded hover:bg-emerald-900/60 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                    className="toolbar-btn-success flex-1 flex items-center justify-center gap-1 px-2 py-1 text-[8px] font-bold disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                                   >
                                     <UserCheck className="w-2.5 h-2.5" />
                                     Assign
                                   </button>
                                   <button
                                     onClick={() => shiftPlanning.clearSelection()}
-                                    className="px-2 py-1 text-[8px] font-bold text-rmpg-400 border border-rmpg-700 rounded hover:bg-rmpg-700/30 transition-colors"
+                                    className="toolbar-btn px-2 py-1 text-[8px] font-bold transition-colors"
                                   >
                                     Clear
                                   </button>
@@ -2126,9 +2228,9 @@ export default function MapPage() {
                             {shiftPlanning.activePlan.assignments.map((assignment) => (
                               <div
                                 key={assignment.id}
-                                className="flex items-center gap-1.5 px-2 py-0.5 rounded hover:bg-rmpg-700/30"
+                                className="flex items-center gap-1.5 px-2 py-0.5 hover:bg-rmpg-800/50"
                               >
-                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                <div className="led-dot led-green" style={{ width: 6, height: 6 }} />
                                 <div className="flex-1 min-w-0">
                                   <div className="text-[8px] text-rmpg-300 truncate">{assignment.label}</div>
                                   <div className="text-[7px] text-rmpg-500 truncate">
@@ -2175,7 +2277,7 @@ export default function MapPage() {
                             tomorrow.setDate(tomorrow.getDate() + 1);
                             shiftPlanning.duplicatePlan(shiftPlanning.activePlanId!, dateToLocalYMD(tomorrow));
                           }}
-                          className="flex items-center gap-1 px-1.5 py-0.5 text-[8px] text-rmpg-400 hover:text-rmpg-200 border border-rmpg-700 rounded hover:bg-rmpg-700/30 transition-colors"
+                          className="toolbar-btn flex items-center gap-1 px-1.5 py-0.5 text-[8px] transition-colors"
                           title="Duplicate for next day"
                         >
                           <Copy className="w-2 h-2" /> Duplicate
@@ -2183,7 +2285,7 @@ export default function MapPage() {
                         {shiftPlanning.activePlan.assignments.length > 0 && (
                           <button
                             onClick={() => shiftPlanning.removeAllAssignments()}
-                            className="flex items-center gap-1 px-1.5 py-0.5 text-[8px] text-red-400/60 hover:text-red-400 border border-rmpg-700 rounded hover:bg-red-900/20 transition-colors"
+                            className="toolbar-btn-danger flex items-center gap-1 px-1.5 py-0.5 text-[8px] transition-colors"
                           >
                             <Trash2 className="w-2 h-2" /> Clear All
                           </button>
@@ -2199,7 +2301,7 @@ export default function MapPage() {
             <div className="border-t border-rmpg-700 p-1.5">
               <button
                 onClick={() => setShowEventPanel(!showEventPanel)}
-                className="flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors rounded hover:bg-rmpg-700/30"
+                className="flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors hover:bg-rmpg-800/50"
               >
                 <Pencil className="w-3 h-3 text-amber-400" />
                 <span className="text-[10px] text-rmpg-300 flex-1">Event Planning</span>
@@ -2218,10 +2320,10 @@ export default function MapPage() {
                       {eventPlanning.plans.map((plan) => (
                         <div
                           key={plan.id}
-                          className={`flex items-center gap-1.5 px-2 py-1 rounded transition-colors cursor-pointer ${
+                          className={`flex items-center gap-1.5 px-2 py-1 transition-colors cursor-pointer ${
                             eventPlanning.activePlanId === plan.id
-                              ? 'bg-amber-900/30 border border-amber-700/40'
-                              : 'hover:bg-rmpg-700/30'
+                              ? 'panel-inset bg-surface-deep'
+                              : 'hover:bg-rmpg-800/50'
                           }`}
                           onClick={() => eventPlanning.setActivePlanId(
                             eventPlanning.activePlanId === plan.id ? null : plan.id
@@ -2254,7 +2356,7 @@ export default function MapPage() {
                         }
                       }}
                       placeholder="New plan name..."
-                      className="flex-1 bg-transparent border border-rmpg-700 px-1.5 py-0.5 text-[9px] text-rmpg-200 placeholder:text-rmpg-600 rounded focus:border-amber-600 outline-none"
+                      className="input-dark flex-1 px-1.5 py-0.5 text-[9px]"
                     />
                     <button
                       onClick={() => {
@@ -2290,10 +2392,10 @@ export default function MapPage() {
                                   eventPlanning.startDrawing(type);
                                 }
                               }}
-                              className={`flex items-center gap-1 px-1.5 py-1 text-[9px] rounded transition-colors ${
+                              className={`flex items-center gap-1 px-1.5 py-1 text-[9px] transition-colors ${
                                 eventPlanning.drawMode === type
-                                  ? 'bg-amber-900/40 text-amber-300 border border-amber-600/50'
-                                  : 'text-rmpg-400 hover:text-rmpg-200 hover:bg-rmpg-700/30 border border-transparent'
+                                  ? 'panel-inset bg-amber-900/30 text-amber-300'
+                                  : 'text-rmpg-400 hover:text-rmpg-200 hover:bg-rmpg-800/50'
                               }`}
                               style={{ color: eventPlanning.drawMode === type ? PLAN_COLORS[type] : undefined }}
                             >
@@ -2306,7 +2408,7 @@ export default function MapPage() {
 
                       {/* Drawing instructions */}
                       {eventPlanning.isDrawing && eventPlanning.drawMode && (
-                        <div className="mx-1 px-2 py-1.5 bg-amber-900/20 border border-amber-700/30 rounded">
+                        <div className="mx-1 px-2 py-1.5 bg-amber-900/20 border border-amber-700/30">
                           <div className="text-[9px] text-amber-300 font-bold mb-0.5">
                             Drawing: {PLAN_TYPE_LABELS[eventPlanning.drawMode]}
                           </div>
@@ -2319,14 +2421,14 @@ export default function MapPage() {
                             {(eventPlanning.drawMode === 'perimeter' || eventPlanning.drawMode === 'route') && (
                               <button
                                 onClick={() => eventPlanning.finishDrawing()}
-                                className="text-[8px] px-1.5 py-0.5 bg-green-900/40 text-green-400 border border-green-700/40 rounded hover:bg-green-900/60"
+                                className="toolbar-btn-success text-[8px] px-1.5 py-0.5"
                               >
                                 <Check className="w-2.5 h-2.5 inline mr-0.5" />Finish
                               </button>
                             )}
                             <button
                               onClick={() => eventPlanning.cancelDrawing()}
-                              className="text-[8px] px-1.5 py-0.5 bg-red-900/40 text-red-400 border border-red-700/40 rounded hover:bg-red-900/60"
+                              className="toolbar-btn-danger text-[8px] px-1.5 py-0.5"
                             >
                               <X className="w-2.5 h-2.5 inline mr-0.5" />Cancel
                             </button>
@@ -2352,9 +2454,9 @@ export default function MapPage() {
                             {eventPlanning.activePlan.items.map((item) => (
                               <div
                                 key={item.id}
-                                className="flex items-center gap-1.5 px-2 py-0.5 rounded hover:bg-rmpg-700/30"
+                                className="flex items-center gap-1.5 px-2 py-0.5 hover:bg-rmpg-800/50"
                               >
-                                <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: item.color }} />
+                                <div className="w-1.5 h-1.5" style={{ backgroundColor: item.color }} />
                                 <span className="text-[9px] text-rmpg-300 flex-1 truncate">{item.label}</span>
                                 <span className="text-[7px] text-rmpg-600 uppercase">{item.type}</span>
                                 <button
@@ -2379,7 +2481,7 @@ export default function MapPage() {
 
         {/* ── Status Legend - Bottom Left (desktop only, wraps on narrow) ── */}
         {!isMobile && <div className="absolute bottom-2 left-2 z-[1000] max-w-[calc(100vw-16rem)]">
-          <div className="bg-surface-deep/95 border border-rmpg-600 px-2 py-1.5 backdrop-blur-sm shadow-xl" style={{ borderRadius: 4 }}>
+          <div className="panel-beveled px-2 py-1.5 shadow-xl" style={{ background: '#1a1a1a' }}>
             <span className="text-[8px] font-bold text-rmpg-400 uppercase tracking-widest">Legend</span>
             <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
               {(Object.entries(UNIT_STATUS_COLORS) as [UnitStatus, string][])
@@ -2399,7 +2501,7 @@ export default function MapPage() {
           className="absolute top-2 z-[1000] transition-all"
           style={{ left: layersPanelOpen ? 'calc(clamp(160px, 14vw, 200px) + 24px)' : 52 }}
         >
-          <div className="bg-surface-deep/95 border border-rmpg-600 px-3 py-1.5 backdrop-blur-sm shadow-xl" style={{ borderRadius: 4 }}>
+          <div className="panel-beveled px-3 py-1.5 shadow-xl" style={{ background: '#1a1a1a' }}>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-mono">
               <div className="flex items-center gap-1.5">
                 <Siren className="w-3 h-3 text-red-400 shrink-0" />
@@ -2480,8 +2582,7 @@ export default function MapPage() {
                   mapInstanceRef.current?.setZoom(16);
                 }
               }}
-              className="bg-surface-deep/95 border border-blue-500/50 p-2 backdrop-blur-sm shadow-xl hover:bg-blue-900/30 transition-colors"
-              style={{ borderRadius: 4 }}
+              className="toolbar-btn p-2 shadow-xl text-blue-400"
               title={`Center on my position${gps.unitCallSign ? ` (${gps.unitCallSign})` : ''}`}
             >
               <Navigation2 className="w-4 h-4 text-blue-400" />
@@ -2493,27 +2594,28 @@ export default function MapPage() {
               mapInstanceRef.current?.panTo({ lat: 40.7608, lng: -111.8910 });
               mapInstanceRef.current?.setZoom(12);
             }}
-            className="bg-surface-deep/95 border border-rmpg-600 p-2 backdrop-blur-sm shadow-xl hover:bg-rmpg-700/40 transition-colors"
-            style={{ borderRadius: 4 }}
+            className="toolbar-btn p-2 shadow-xl"
             title="Reset view"
           >
             <Crosshair className="w-4 h-4 text-rmpg-300" />
           </button>
         </div>
+        </div>{/* end inner map canvas wrapper */}
       </div>
 
       {/* ── Right Sidebar - Unit/Call List (Desktop only, responsive width) ── */}
       {!isMobile && <div
-        className="flex flex-col border-l border-rmpg-600 transition-all"
+        className="flex flex-col panel-beveled transition-all"
         style={{
           width: sidebarOpen ? 'clamp(220px, 20vw, 300px)' : 36,
-          background: '#0a0a0a',
+          background: '#1a1a1a',
           flexShrink: 0,
         }}
       >
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="flex items-center justify-center h-8 border-b border-rmpg-600 hover:bg-rmpg-700/40 transition-colors"
+          className="toolbar-btn flex items-center justify-center h-7"
+          style={{ borderRadius: 0 }}
         >
           {sidebarOpen ? <ChevronUp className="w-3.5 h-3.5 text-rmpg-400 rotate-90" /> : <ChevronDown className="w-3.5 h-3.5 text-rmpg-400 -rotate-90" />}
         </button>
@@ -2521,7 +2623,7 @@ export default function MapPage() {
         {sidebarOpen && (
           <>
             {/* Compact status counters */}
-            <div className="flex items-center justify-center gap-2 px-2 py-1.5 border-b border-rmpg-700 bg-rmpg-900/50">
+            <div className="flex items-center justify-center gap-2 px-2 py-1.5 panel-inset" style={{ background: '#0a0a0a' }}>
               {([
                 { label: 'AVL', count: unitsByStatus['available'] || 0, color: '#22c55e' },
                 { label: 'DSP', count: unitsByStatus['dispatched'] || 0, color: '#f59e0b' },
@@ -2530,7 +2632,7 @@ export default function MapPage() {
                 { label: 'BSY', count: unitsByStatus['busy'] || 0, color: '#ef4444' },
               ]).map(({ label, count, color }) => (
                 <div key={label} className="flex items-center gap-0.5" title={label}>
-                  <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
+                  <div className="led-dot" style={{ backgroundColor: color, width: 6, height: 6 }} />
                   <span className="text-[8px] font-mono font-bold" style={{ color }}>{count}</span>
                 </div>
               ))}
@@ -2540,32 +2642,28 @@ export default function MapPage() {
               {callsByPriority['P3'] ? <span className="text-[8px] font-mono font-bold text-blue-400">P3:{callsByPriority['P3']}</span> : null}
             </div>
 
-            <div className="flex border-b border-rmpg-600">
+            <div className="tab-bar">
               <button
                 onClick={() => setSidebarTab('units')}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-[10px] font-bold uppercase tracking-wider transition-colors ${
-                  sidebarTab === 'units' ? 'text-green-400 border-b-2 border-green-400 bg-green-400/5' : 'text-rmpg-400 hover:text-rmpg-200'
-                }`}
+                className={`tab-bar-item flex items-center justify-center gap-1.5 ${sidebarTab === 'units' ? 'active' : ''}`}
               >
                 <Shield className="w-3 h-3" /> Units ({filteredUnits.length})
               </button>
               <button
                 onClick={() => setSidebarTab('calls')}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-[10px] font-bold uppercase tracking-wider transition-colors ${
-                  sidebarTab === 'calls' ? 'text-red-400 border-b-2 border-red-400 bg-red-400/5' : 'text-rmpg-400 hover:text-rmpg-200'
-                }`}
+                className={`tab-bar-item flex items-center justify-center gap-1.5 ${sidebarTab === 'calls' ? 'active' : ''}`}
               >
                 <AlertTriangle className="w-3 h-3" /> Calls ({filteredCalls.length})
               </button>
             </div>
 
-            <div className="px-2 py-1.5 border-b border-rmpg-700">
+            <div className="px-2 py-1.5" style={{ borderBottom: '1px solid #303030' }}>
               <div className="relative">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
                 <input
                   type="text"
                   className="input-dark w-full text-[10px] py-1 pl-6 pr-2"
-                  placeholder={sidebarTab === 'units' ? 'Search units...' : 'Search calls...'}
+                  placeholder={sidebarTab === 'units' ? 'SEARCH UNITS...' : 'SEARCH CALLS...'}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
@@ -2582,16 +2680,19 @@ export default function MapPage() {
                       <button
                         key={unit.id}
                         onClick={() => hasCoords && panTo(unit.latitude!, unit.longitude!)}
-                        className={`w-full text-left px-3 py-2.5 hover:bg-rmpg-700/30 transition-colors ${
+                        className={`w-full text-left px-3 py-2.5 hover:bg-rmpg-800/50 transition-colors ${
                           hasCoords ? 'cursor-pointer' : 'cursor-default opacity-60'
                         }`}
                       >
                         <div className="flex items-center gap-2">
                           <div
-                            className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                            style={{ backgroundColor: statusColor, boxShadow: `0 0 6px ${statusColor}80` }}
+                            className="led-dot flex-shrink-0"
+                            style={{ backgroundColor: statusColor, boxShadow: `0 0 6px ${statusColor}80`, width: 10, height: 10 }}
                           />
                           <span className="text-[11px] font-mono font-bold text-rmpg-100">{unit.call_sign}</span>
+                          {unit.gps_source === 'clearpathgps' && (
+                            <span className="text-[7px] font-bold px-1 py-0 bg-blue-900/40 text-blue-400 border border-blue-700/30" title="ClearPathGPS Hardware Tracker">CPG</span>
+                          )}
                           <span className="text-[9px] font-mono ml-auto uppercase font-bold" style={{ color: statusColor }}>{UNIT_STATUS_LABELS[unit.status]}</span>
                         </div>
                         <div className="ml-5 mt-0.5">
@@ -2622,20 +2723,20 @@ export default function MapPage() {
                       <button
                         key={call.id}
                         onClick={() => hasCoords && panTo(call.latitude!, call.longitude!)}
-                        className={`w-full text-left px-3 py-2.5 hover:bg-rmpg-700/30 transition-colors ${
+                        className={`w-full text-left px-3 py-2.5 hover:bg-rmpg-800/50 transition-colors ${
                           hasCoords ? 'cursor-pointer' : 'cursor-default opacity-60'
                         }`}
                       >
                         <div className="flex items-center gap-2">
                           <span
-                            className="text-[8px] font-mono font-bold px-1.5 py-0.5 rounded"
+                            className="text-[8px] font-mono font-bold px-1.5 py-0.5"
                             style={{ background: pColor + '25', color: pColor, border: `1px solid ${pColor}40` }}
                           >{call.priority}</span>
                           <span className="text-[10px] font-mono font-bold text-rmpg-100 flex-1">{call.call_number}</span>
                           <span className="text-[8px] font-mono text-rmpg-400 uppercase font-bold">{call.status.replace(/_/g, ' ')}</span>
                         </div>
                         <div className="flex items-center gap-1.5 mt-1 ml-8">
-                          <span className="text-[9px] font-bold px-1 py-0.5 rounded" style={{ background: pColor + '15', color: pColor, fontSize: '8px' }}>{category}</span>
+                          <span className="text-[9px] font-bold px-1 py-0.5" style={{ background: pColor + '15', color: pColor, fontSize: '8px' }}>{category}</span>
                           <span className="text-[9px]" style={{ color: pColor }}>{formatIncidentType(call.incident_type)}</span>
                         </div>
                         <div className="ml-8 text-[8px] text-rmpg-500 truncate mt-0.5">{call.location_address}</div>
@@ -2840,6 +2941,9 @@ export default function MapPage() {
                       <div className="flex items-center gap-2">
                         <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: statusColor, boxShadow: `0 0 6px ${statusColor}80` }} />
                         <span className="text-[12px] font-mono font-bold text-rmpg-100">{unit.call_sign}</span>
+                        {unit.gps_source === 'clearpathgps' && (
+                          <span className="text-[7px] font-bold px-1 py-0 bg-blue-900/40 text-blue-400 border border-blue-700/30" title="ClearPathGPS Hardware Tracker">CPG</span>
+                        )}
                         <span className="text-[10px] font-mono ml-auto uppercase font-bold" style={{ color: statusColor }}>{UNIT_STATUS_LABELS[unit.status]}</span>
                       </div>
                       <div className="ml-5 mt-0.5 text-[10px] text-rmpg-400">{unit.officer_name}</div>
