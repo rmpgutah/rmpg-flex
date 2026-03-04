@@ -22,7 +22,6 @@ import {
   Lock,
   Palette,
   Navigation,
-  Search,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -617,7 +616,7 @@ export default function AdminPage() {
       tabs: [
         { id: 'servemanager', label: 'ServeManager', icon: Link2 },
         { id: 'microbilt', label: 'Microbilt', icon: DatabaseZap },
-        { id: 'searchbug', label: 'SearchBug', icon: Search },
+        { id: 'searchbug', label: 'NCIC Searches', icon: Shield },
         { id: 'traccar', label: 'Traccar GPS', icon: Navigation },
         { id: 'clearpathgps', label: 'ClearPath GPS', icon: Navigation },
         { id: 'training', label: 'Training', icon: GraduationCap },
