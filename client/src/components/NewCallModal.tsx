@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useId } from 'react';
+import React, { useState, useEffect, useRef, useId, useCallback } from 'react';
 import { X, Phone, AlertTriangle, Clock, History, Loader2 } from 'lucide-react';
 import type { CallForService, CallPriority, CallSource } from '../types';
 import { INCIDENT_TYPE_CATEGORIES, type IncidentType } from '../utils/caseNumbers';
@@ -188,6 +188,44 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
 
   const onCloseRef = useRef(handleClose);
   onCloseRef.current = handleClose;
+
+  // ---------- Real-time auto-save: persist draft on every form change ----------
+  const formDataRef = useRef(formData);
+  formDataRef.current = formData;
+
+  const saveDraftNow = useCallback(() => {
+    const data = formDataRef.current;
+    const hasData = Object.entries(data).some(([key, val]) => {
+      if (key === 'incident_type' || key === 'priority' || key === 'source' || key === 'historical_status') return false;
+      const defaultVal = DEFAULT_FORM_DATA[key as keyof typeof DEFAULT_FORM_DATA];
+      return val !== defaultVal && val !== '' && val !== false;
+    });
+    if (hasData) {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...data, _savedAt: Date.now() }));
+    }
+  }, []);
+
+  // Debounced auto-save: fires 500ms after last keystroke while modal is open
+  useEffect(() => {
+    if (!isOpen) return;
+    const timer = setTimeout(saveDraftNow, 500);
+    return () => clearTimeout(timer);
+  }, [isOpen, formData, saveDraftNow]);
+
+  // Safety nets: save immediately when tab is hidden or browser is closing
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleVisChange = () => { if (document.hidden) saveDraftNow(); };
+    const handleBeforeUnload = () => saveDraftNow();
+    document.addEventListener('visibilitychange', handleVisChange);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisChange);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      // Component unmount while open — flush draft
+      saveDraftNow();
+    };
+  }, [isOpen, saveDraftNow]);
 
   // Focus trap — only re-run on open/close transitions
   useEffect(() => {
