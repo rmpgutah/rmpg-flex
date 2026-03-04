@@ -22,6 +22,7 @@ import {
   Lock,
   Palette,
   Navigation,
+  Search,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -50,6 +51,7 @@ import AdminTrainingTab from './admin/AdminTrainingTab';
 import AdminRadioTab from './admin/AdminRadioTab';
 import AdminOfflineTab from './admin/AdminOfflineTab';
 import AdminMicrobiltTab from './admin/AdminMicrobiltTab';
+import AdminSearchBugTab from './admin/AdminSearchBugTab';
 import AdminTraccarTab from './admin/AdminTraccarTab';
 import AdminClearPathGpsTab from './admin/AdminClearPathGpsTab';
 import AdminSecurityTab from './admin/AdminSecurityTab';
@@ -212,7 +214,7 @@ function mapAuditRow(row: AuditRow): AuditEntry {
 // Constants
 // ============================================================
 
-type TabId = 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'traccar' | 'clearpathgps' | 'sessions' | 'training' | 'radio' | 'offline' | 'security' | 'branding';
+type TabId = 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'searchbug' | 'traccar' | 'clearpathgps' | 'sessions' | 'training' | 'radio' | 'offline' | 'security' | 'branding';
 
 const LS_ADMIN_TAB = 'rmpg_admin_tab';
 
@@ -229,7 +231,7 @@ export default function AdminPage() {
   const [activeTab, setActiveTabState] = useState<TabId>(() => {
     try {
       const saved = localStorage.getItem(LS_ADMIN_TAB);
-      if (saved && ['users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'traccar', 'clearpathgps', 'sessions', 'training', 'radio', 'offline', 'security', 'branding'].includes(saved)) return saved as TabId;
+      if (saved && ['users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'searchbug', 'traccar', 'clearpathgps', 'sessions', 'training', 'radio', 'offline', 'security', 'branding'].includes(saved)) return saved as TabId;
     } catch { /* ignore */ }
     return 'users';
   });
@@ -615,6 +617,7 @@ export default function AdminPage() {
       tabs: [
         { id: 'servemanager', label: 'ServeManager', icon: Link2 },
         { id: 'microbilt', label: 'Microbilt', icon: DatabaseZap },
+        { id: 'searchbug', label: 'SearchBug', icon: Search },
         { id: 'traccar', label: 'Traccar GPS', icon: Navigation },
         { id: 'clearpathgps', label: 'ClearPath GPS', icon: Navigation },
         { id: 'training', label: 'Training', icon: GraduationCap },
@@ -828,6 +831,14 @@ export default function AdminPage() {
 
         {activeTab === 'microbilt' && (
           <AdminMicrobiltTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
+        {activeTab === 'searchbug' && (
+          <AdminSearchBugTab
             LoadingSpinner={LoadingSpinner}
             error={error}
             setError={setError}
