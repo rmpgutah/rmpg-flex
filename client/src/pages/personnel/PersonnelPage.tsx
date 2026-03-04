@@ -35,6 +35,7 @@ import TrainingTab from './tabs/TrainingTab';
 import EquipmentTab from './tabs/EquipmentTab';
 import DeploymentTab from './tabs/DeploymentTab';
 import AnalyticsTab from './tabs/AnalyticsTab';
+import BodyCameraTab from './tabs/BodyCameraTab';
 import DashCameraTab from './tabs/DashCameraTab';
 import TrainingFormModal from './modals/TrainingFormModal';
 import type { TrainingFormData } from './modals/TrainingFormModal';
@@ -80,7 +81,7 @@ export default function PersonnelPage() {
   const [activeTab, setActiveTab] = usePersistedTab(
     'rmpg_personnel_tab',
     'roster' as MainTab,
-    ['roster', 'duty_board', 'schedule', 'time', 'credentials', 'training', 'equipment', 'deployment', 'analytics'] as const,
+    ['roster', 'duty_board', 'schedule', 'time', 'credentials', 'training', 'equipment', 'body_cameras', 'dash_cameras', 'deployment', 'analytics'] as const,
   );
   const [detailTab, setDetailTab] = useState<DetailTab>('profile');
   const [searchQuery, setSearchQuery] = useState('');
@@ -259,7 +260,22 @@ export default function PersonnelPage() {
         .catch(() => addToast('Failed to load equipment data', 'error'))
         .finally(() => setEquipmentLoading(false));
     }
-    // Dash camera data is loaded on-demand from officer detail tab (see detailTab === 'dash_cameras' below)
+    if (activeTab === 'body_cameras' && bodyCameras.length === 0 && !bodyCamerasLoading) {
+      setBodyCamerasLoading(true);
+      Promise.all([
+        apiFetch<any[]>('/personnel/body-cameras'),
+        apiFetch<any[]>('/personnel/body-cam-videos'),
+      ])
+        .then(([cams, vids]) => {
+          setBodyCameras((Array.isArray(cams) ? cams : []).map(mapBodyCamera));
+          setBodyCamVideos((Array.isArray(vids) ? vids : []).map(mapBodyCamVideo));
+        })
+        .catch(() => addToast('Failed to load body camera data', 'error'))
+        .finally(() => setBodyCamerasLoading(false));
+    }
+    if (activeTab === 'dash_cameras' && dashcamEvents.length === 0 && dashcamVideos.length === 0 && !dashcamLoading) {
+      refreshDashcamData();
+    }
     if (activeTab === 'analytics' && !analytics && !analyticsLoading) {
       setAnalyticsLoading(true);
       apiFetch<PersonnelAnalytics>('/personnel/analytics')
@@ -1254,6 +1270,36 @@ export default function PersonnelPage() {
             onAddEquipment={() => openAddEquipment()}
             onEditEquipment={openEditEquipment}
             onDeleteEquipment={handleEquipmentDelete}
+          />
+        )}
+
+        {!loading && !error && activeTab === 'body_cameras' && (
+          <BodyCameraTab
+            cameras={bodyCameras}
+            videos={bodyCamVideos}
+            onAddCamera={() => openAddBodyCamera()}
+            onEditCamera={openEditBodyCamera}
+            onDeleteCamera={handleBodyCameraDelete}
+            onSelectOfficer={(id) => { const match = officers.find(o => String(o.id) === id); if (match) setSelectedOfficer(match); }}
+            onPlayVideo={setPlayingVideo}
+            onEditVideo={setEditingBodyCamVideo}
+            onDeleteVideo={handleVideoDelete}
+            onUploadVideo={() => setModal('upload_video')}
+          />
+        )}
+
+        {!loading && !error && activeTab === 'dash_cameras' && (
+          <DashCameraTab
+            dashcamEvents={dashcamEvents}
+            deviceMappings={deviceMappings}
+            dashcamVideos={dashcamVideos}
+            loading={dashcamLoading}
+            onSelectOfficer={(id) => { const match = officers.find(o => String(o.id) === id); if (match) setSelectedOfficer(match); }}
+            onRefresh={refreshDashcamData}
+            onPlayVideo={setPlayingDashcamVideo}
+            onDeleteVideo={handleDashcamVideoDelete}
+            onUploadVideo={() => setModal('upload_dashcam_video')}
+            onSyncNow={handleSyncNow}
           />
         )}
 
