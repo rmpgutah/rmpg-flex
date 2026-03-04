@@ -447,14 +447,14 @@ export async function getFleetLatest(): Promise<CpgFleetEvent[]> {
   return data.items || [];
 }
 
-/** Fetch event history for a specific device. */
+/** Fetch event history for a specific device — up to 5000 points per request. */
 export async function getDeviceHistory(
   deviceId: string,
   from: string,
   to: string
 ): Promise<CpgFleetEvent[]> {
   const data = await cpgFetch<CpgPaginatedResponse<CpgFleetEvent>>(
-    `/events/device/${encodeURIComponent(deviceId)}?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&hasValidGPS=true&pageSize=1000`
+    `/events/device/${encodeURIComponent(deviceId)}?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&hasValidGPS=true&pageSize=5000`
   );
   return data.items || [];
 }

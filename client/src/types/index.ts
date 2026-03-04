@@ -667,6 +667,12 @@ export interface BodyCamera {
   officer_name?: string;
 }
 
+export type BwcInteractionType =
+  | 'traffic_stop' | 'arrest' | 'use_of_force' | 'search_warrant'
+  | 'domestic_violence' | 'welfare_check' | 'community_contact'
+  | 'foot_pursuit' | 'vehicle_pursuit' | 'interview'
+  | 'evidence_collection' | 'field_training' | 'other';
+
 export interface BodyCamVideo {
   id: number;
   camera_id: number;
@@ -678,6 +684,7 @@ export interface BodyCamVideo {
   mime_type: string;
   recorded_at: string;
   case_number: string;
+  interaction_type: BwcInteractionType | null;
   classification: VideoClassification;
   retention_status: VideoRetention;
   notes: string;
@@ -688,7 +695,7 @@ export interface BodyCamVideo {
   camera_serial?: string;
 }
 
-// --- Dash Camera (ClearPathGPS) ---
+// --- Dash Camera / GPS Telemetry (Traccar) ---
 
 export interface DashcamEvent {
   id: number;
@@ -717,12 +724,50 @@ export interface CpgDeviceMapping {
   cpg_device_id: string;
   cpg_display_name: string;
   cpg_serial_number: string | null;
+  traccar_device_id?: number;
   unit_id: number;
   is_active: boolean;
   last_synced_at: string | null;
   call_sign?: string;
   unit_status?: string;
   officer_name?: string;
+  officer_id?: number;
+}
+
+// --- Dash Camera Videos ---
+
+export type DashcamVideoSource = 'manual' | 'cpg_sync' | 'cpg_proxy';
+
+export interface DashcamVideo {
+  id: number;
+  source: DashcamVideoSource;
+  cpg_event_id: number | null;
+  cpg_video_url: string | null;
+  officer_id: number | null;
+  unit_id: number | null;
+  cpg_device_id: string | null;
+  title: string;
+  file_path: string | null;
+  file_size: number;
+  duration_seconds: number | null;
+  mime_type: string;
+  recorded_at: string | null;
+  event_type: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  heading: number | null;
+  speed_mph: number | null;
+  address: string | null;
+  case_number: string | null;
+  classification: VideoClassification;
+  retention_status: VideoRetention;
+  notes: string | null;
+  uploaded_by: string | null;
+  created_at: string;
+  updated_at: string;
+  officer_name?: string;
+  call_sign?: string;
+  device_name?: string;
 }
 
 // --- Equipment ---

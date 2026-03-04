@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useId } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus,
   Filter,
@@ -206,6 +206,7 @@ function formatElapsed(dateStr: string): string {
 export default function DispatchPage() {
   const unitModalTitleId = useId();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { addToast } = useToast();
   const { subscribe } = useWebSocket();
   const isMobile = useIsMobile();
@@ -437,6 +438,20 @@ export default function DispatchPage() {
   // Live sync — auto-refresh when any device modifies dispatch data (silent to avoid unmounting UI)
   const silentRefresh = useCallback(() => fetchData({ silent: true }), [fetchData]);
   useLiveSync('dispatch', silentRefresh);
+
+  // Deep-link: auto-select call for a unit from query params (?unitId=)
+  useEffect(() => {
+    if (units.length === 0 || calls.length === 0) return;
+    const unitId = searchParams.get('unitId');
+    if (unitId) {
+      const unit = units.find(u => String(u.id) === unitId);
+      if (unit?.current_call_id) {
+        const call = calls.find(c => String(c.id) === String(unit.current_call_id));
+        if (call) setSelectedCall(call);
+      }
+      setSearchParams({}, { replace: true });
+    }
+  }, [units, calls, searchParams, setSearchParams]);
 
   // ── WebSocket: real-time dispatch updates & panic auto-dispatch ──
   useEffect(() => {

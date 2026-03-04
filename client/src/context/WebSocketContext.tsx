@@ -14,7 +14,7 @@ interface WebSocketContextType {
 const WebSocketContext = createContext<WebSocketContextType | undefined>(undefined);
 
 const WS_RECONNECT_DELAY = 3000;
-const WS_MAX_RECONNECT_DELAY = 30000;
+const WS_MAX_RECONNECT_DELAY = 15000; // Capped at 15s for vehicle/hotspot use
 
 export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const { token, isAuthenticated } = useAuth();
@@ -105,7 +105,21 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     connect();
 
+    // Reconnect immediately when the device comes back online
+    // (e.g. vehicle hotspot regains cellular signal)
+    const handleOnline = () => {
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        if (reconnectTimeoutRef.current) {
+          clearTimeout(reconnectTimeoutRef.current);
+        }
+        reconnectDelayRef.current = WS_RECONNECT_DELAY; // reset backoff
+        connect();
+      }
+    };
+    window.addEventListener('online', handleOnline);
+
     return () => {
+      window.removeEventListener('online', handleOnline);
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }

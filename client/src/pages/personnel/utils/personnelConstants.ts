@@ -9,7 +9,7 @@ import {
 import type React from 'react';
 
 // Main tabs
-export type MainTab = 'roster' | 'duty_board' | 'schedule' | 'time' | 'credentials' | 'training' | 'equipment' | 'dash_cameras' | 'deployment' | 'analytics';
+export type MainTab = 'roster' | 'duty_board' | 'schedule' | 'time' | 'credentials' | 'training' | 'equipment' | 'deployment' | 'analytics';
 
 export type DetailTab = 'profile' | 'credentials' | 'schedule' | 'time' | 'activity' | 'training' | 'equipment' | 'body_cameras' | 'dash_cameras' | 'deployment';
 
@@ -29,7 +29,9 @@ export type ModalMode =
   | 'edit_time_entry'
   | 'new_body_camera'
   | 'edit_body_camera'
-  | 'upload_video';
+  | 'upload_video'
+  | 'upload_dashcam_video'
+  | 'edit_dashcam_video';
 
 export const MAIN_TABS: { id: MainTab; label: string; icon: React.ElementType }[] = [
   { id: 'roster', label: 'Roster', icon: Users },
@@ -39,7 +41,6 @@ export const MAIN_TABS: { id: MainTab; label: string; icon: React.ElementType }[
   { id: 'credentials', label: 'Credentials', icon: Award },
   { id: 'training', label: 'Training', icon: GraduationCap },
   { id: 'equipment', label: 'Equipment', icon: Package },
-  { id: 'dash_cameras', label: 'Dash Cams', icon: Car },
   { id: 'deployment', label: 'Deployment', icon: MapPinned },
   { id: 'analytics', label: 'Analytics', icon: BarChart3 },
 ];
@@ -167,6 +168,19 @@ export const DASHCAM_EVENT_COLORS: Record<string, string> = {
   camera_motion: 'bg-blue-900/50 text-blue-400 border border-blue-700/50',
   camera_triggered: 'bg-blue-900/50 text-blue-400 border border-blue-700/50',
   camera_event: 'bg-blue-900/50 text-blue-400 border border-blue-700/50',
+  // GPS / telemetry events
+  ignition_on: 'bg-green-900/50 text-green-400 border border-green-700/50',
+  ignition_off: 'bg-rmpg-700 text-rmpg-300 border border-rmpg-600',
+  position_update: 'bg-rmpg-800 text-rmpg-400 border border-rmpg-700',
+  inmotion: 'bg-sky-900/50 text-sky-400 border border-sky-700/50',
+  stopped: 'bg-rmpg-700 text-rmpg-400 border border-rmpg-600',
+  idle: 'bg-yellow-900/50 text-yellow-400 border border-yellow-700/50',
+};
+
+export const DASHCAM_VIDEO_SOURCE_COLORS: Record<string, string> = {
+  manual: 'bg-blue-900/50 text-blue-400 border border-blue-700/50',
+  cpg_sync: 'bg-green-900/50 text-green-400 border border-green-700/50',
+  cpg_proxy: 'bg-purple-900/50 text-purple-400 border border-purple-700/50',
 };
 
 export const CHART_TOOLTIP_STYLE = {

@@ -1,12 +1,13 @@
 // ============================================================
-// ClearPathGPS Poller
+// ClearPathGPS Poller — Second-by-Second Capture
 // ============================================================
 // Background service that polls the ClearPathGPS fleet API
 // and writes hardware GPS positions into the dispatch system.
 // Follows the patrolMonitor.ts start/stop pattern.
 //
-// Enhancement: History backfill fetches ALL GPS points between
-// polls (not just latest), and detects dashcam video events.
+// Captures EVERY event as a dashcam record with raw JSON data,
+// deep-scans for video URLs, and stores second-by-second
+// telemetry for complete vehicle tracking and video retrieval.
 
 import { getDb } from '../models/database';
 import { broadcastUnitUpdate } from './websocket';
@@ -59,8 +60,8 @@ export function restartClearPathGpsPoller(): void {
 
 function getPollIntervalMs(): number {
   const val = getConfigValue(CONFIG_KEYS.pollInterval);
-  const seconds = val ? parseInt(val, 10) : 30;
-  return Math.max(15, seconds) * 1000;
+  const seconds = val ? parseInt(val, 10) : 5;
+  return Math.max(3, seconds) * 1000; // Floor: 3s for near-real-time capture
 }
 
 // Status codes that indicate dashcam/camera events
@@ -81,22 +82,82 @@ const DRIVING_EVENT_CODES = new Set([
   'SPEEDING', 'IMPACT', 'TAMPER', 'PANIC', 'SOS',
 ]);
 
-function classifyDashcamEvent(ed: CpgEventData): string | null {
-  const code = (ed.statusCode || '').toUpperCase().replace(/[\s-]/g, '_');
-  const text = ed.statusCodeText || '';
+/** Known field names that contain video URLs. */
+const VIDEO_URL_KEYS = new Set([
+  'videourl', 'video_url', 'clipurl', 'clip_url',
+  'mediaurl', 'media_url', 'videolink', 'video_link',
+  'recordingurl', 'recording_url', 'footageurl', 'footage_url',
+  'playbackurl', 'playback_url', 'streamurl', 'stream_url',
+  'downloadurl', 'download_url', 'fileurl', 'file_url',
+  'url', 'href', 'src',
+]);
 
-  // Direct status code match
+/** Deep-scan an object for video URLs — checks top-level keys by name,
+ *  then recursively walks nested objects/arrays up to 3 levels. */
+function extractVideoUrl(ed: CpgEventData): string | null {
+  function isVideoUrl(val: unknown): val is string {
+    return typeof val === 'string' &&
+      (val.startsWith('http://') || val.startsWith('https://')) &&
+      // Quick heuristic: URL contains a video-related path segment or file extension
+      (/\.(mp4|avi|mov|mkv|webm|m3u8|ts|flv|wmv|3gp)/i.test(val) ||
+       /video|clip|record|footage|media|camera|dashcam|stream|playback/i.test(val));
+  }
+
+  function scan(obj: any, depth: number): string | null {
+    if (depth > 3 || obj == null || typeof obj !== 'object') return null;
+
+    // Check each key
+    const keys = Array.isArray(obj) ? obj.map((_, i) => String(i)) : Object.keys(obj);
+    for (const key of keys) {
+      const val = Array.isArray(obj) ? obj[Number(key)] : obj[key];
+
+      // Known key name → check if value is any URL
+      if (VIDEO_URL_KEYS.has(key.toLowerCase())) {
+        if (typeof val === 'string' && (val.startsWith('http://') || val.startsWith('https://'))) {
+          return val;
+        }
+      }
+
+      // Any string that looks like a video URL
+      if (isVideoUrl(val)) return val;
+
+      // Recurse into objects / arrays
+      if (typeof val === 'object' && val !== null) {
+        const found = scan(val, depth + 1);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+
+  return scan(ed, 0);
+}
+
+/** Classify every event — never returns null.
+ *  Known dashcam / driving-behavior codes get their canonical label;
+ *  everything else uses the raw status code or 'position_update'. */
+function getEventType(ed: CpgEventData): string {
+  const code = String(ed.statusCode ?? '').toUpperCase().replace(/[\s-]/g, '_');
+  const text = String(ed.statusCodeText ?? '');
+
+  // Known dashcam event
   if (DASHCAM_STATUS_CODES.has(code)) return code.toLowerCase();
+  // Known driving behavior event
   if (DRIVING_EVENT_CODES.has(code)) return code.toLowerCase();
 
-  // Text pattern match
+  // Text pattern match (camera / video keywords)
   for (const pattern of DASHCAM_TEXT_PATTERNS) {
     if (pattern.test(text) || pattern.test(code)) {
       return text.toLowerCase().replace(/\s+/g, '_').substring(0, 50) || 'camera_event';
     }
   }
 
-  return null;
+  // Fall back to the raw status code itself (e.g. "InMotion" → "inmotion")
+  if (code && code.length > 0) {
+    return code.toLowerCase().replace(/[^a-z0-9_]/g, '_').substring(0, 50);
+  }
+
+  return 'position_update';
 }
 
 function formatTimestamp(ts: string | number | undefined): string {
@@ -161,9 +222,10 @@ async function pollFleetPositions(): Promise<void> {
   `);
 
   const insertDashcamEvent = db.prepare(`
-    INSERT INTO dashcam_events (cpg_device_id, unit_id, dashcam_id, event_type, event_timestamp,
-      latitude, longitude, heading, speed_mph, address, status_code, status_code_text, video_available)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT OR IGNORE INTO dashcam_events (cpg_device_id, unit_id, dashcam_id, event_type, event_timestamp,
+      latitude, longitude, heading, speed_mph, address, status_code, status_code_text, video_available,
+      cpg_raw_data, video_url)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   // Check if history backfill is enabled (default: true)
@@ -214,25 +276,25 @@ async function pollFleetPositions(): Promise<void> {
       if (!insertedTimestamps.has(deviceId)) insertedTimestamps.set(deviceId, new Set());
       insertedTimestamps.get(deviceId)!.add(recordedAt);
 
-      // Check for dashcam event in latest position
-      const eventType = classifyDashcamEvent(ed);
-      if (eventType) {
-        const device = event.device;
-        insertDashcamEvent.run(
-          deviceId, mapping.unit_id,
-          device?.camera?.dashcamId || null,
-          eventType, recordedAt,
-          lat, lng, ed.heading ?? null, ed.speedMph ?? null,
-          ed.address || null, ed.statusCode || null, ed.statusCodeText || null,
-          device?.camera ? 1 : 0,
-        );
-      }
+      // ── Capture EVERY event as a dashcam record (second-by-second) ──
+      const eventType = getEventType(ed);
+      const device = event.device;
+      const videoUrl = extractVideoUrl(ed);
+      const rawData = JSON.stringify(ed);
+      insertDashcamEvent.run(
+        deviceId, mapping.unit_id,
+        device?.camera?.dashcamId || null,
+        eventType, recordedAt,
+        lat, lng, ed.heading ?? null, ed.speedMph ?? null,
+        ed.address || null, String(ed.statusCode ?? '') || null, String(ed.statusCodeText ?? '') || null,
+        videoUrl ? 1 : (device?.camera ? 1 : 0),
+        rawData, videoUrl,
+      );
 
       // Update sync time + enriched device data
       updateSyncTime.run(now, now, mapping.id);
 
       // Sync enriched device data from ClearPathGPS to mapping record
-      const device = event.device;
       if (device) {
         try {
           db.prepare(`
@@ -346,20 +408,21 @@ async function backfillHistory(
             );
             backfillCount++;
 
-            // Check for dashcam event
-            const eventType = classifyDashcamEvent(ed);
-            if (eventType) {
-              insertDashcamEvent.run(
-                mapping.cpg_device_id, mapping.unit_id,
-                null, // dashcamId not available in history events
-                eventType, recordedAt,
-                lat, lng, ed.heading ?? null, ed.speedMph ?? null,
-                ed.address || ed.streetAddress || null,
-                ed.statusCode || null, ed.statusCodeText || null,
-                0, // video_available unknown from history
-              );
-              dashcamCount++;
-            }
+            // ── Capture EVERY event as dashcam record (second-by-second) ──
+            const eventType = getEventType(ed);
+            const videoUrl = extractVideoUrl(ed);
+            const rawData = JSON.stringify(ed);
+            insertDashcamEvent.run(
+              mapping.cpg_device_id, mapping.unit_id,
+              null, // dashcamId not available in history events
+              eventType, recordedAt,
+              lat, lng, ed.heading ?? null, ed.speedMph ?? null,
+              ed.address || ed.streetAddress || null,
+              String(ed.statusCode ?? '') || null, String(ed.statusCodeText ?? '') || null,
+              videoUrl ? 1 : 0,
+              rawData, videoUrl,
+            );
+            dashcamCount++;
           }
         }
       });

@@ -178,7 +178,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   const latestPositionRef = useRef<QueuedPoint | null>(null);
   // Flag: send first position immediately for real-time icon placement
   const firstPositionSentRef = useRef(false);
-  // GPS source: 'browser' (default) or 'clearpathgps' (hardware tracker manages position)
+  // GPS source: 'browser' (default), 'traccar', or 'clearpathgps' (hardware tracker manages position)
   const gpsSourceRef = useRef<string>('browser');
 
   // Fetch the user's assigned unit on mount
@@ -199,8 +199,8 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   // Drains the queue and POSTs all collected points to the server.
   // On failure, persists points to localStorage so they survive page reloads.
   const sendBatch = useCallback(async () => {
-    // Skip POST when a hardware GPS tracker (ClearPathGPS) is managing this unit's position
-    if (gpsSourceRef.current === 'clearpathgps') {
+    // Skip POST when a hardware GPS tracker (Traccar or ClearPathGPS) is managing this unit's position
+    if (gpsSourceRef.current === 'traccar' || gpsSourceRef.current === 'clearpathgps') {
       queueRef.current = [];
       clearFailoverQueue();
       return;
@@ -241,7 +241,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   // ─── Send single position immediately (for first fix) ────
   const sendImmediate = useCallback(async (point: QueuedPoint) => {
     // Skip POST when a hardware GPS tracker is managing this unit's position
-    if (gpsSourceRef.current === 'clearpathgps') return;
+    if (gpsSourceRef.current === 'traccar' || gpsSourceRef.current === 'clearpathgps') return;
 
     try {
       await apiFetch('/dispatch/gps', {

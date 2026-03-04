@@ -6,10 +6,12 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import os from 'os';
 import { fileURLToPath } from 'url';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
+import { probeVideo, buildBwcFilter, burnOverlay, generateBwcSourceFile } from '../utils/videoBurner';
 
 const execAsync = promisify(exec);
 
@@ -489,6 +491,91 @@ router.get('/bodycam-videos/:videoId/stream', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Stream bodycam video error:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── BODYCAM VIDEO — DOWNLOAD WITH BURNED OVERLAY ────
+// FFmpeg renders the HUD overlay (timestamp, officer, case #, etc.)
+// permanently into the video pixels so downloads contain chain-of-custody info.
+
+router.get('/bodycam-videos/:videoId/download-burned', async (req: Request, res: Response) => {
+  req.setTimeout(600000);   // 10 min for FFmpeg processing
+  res.setTimeout(600000);
+
+  let tempPath = '';
+  try {
+    const db = getDb();
+
+    // Look up video + officer name
+    const video = db.prepare(`
+      SELECT bv.*, u.full_name AS officer_name, u.first_name, u.last_name
+      FROM bodycam_videos bv
+      LEFT JOIN users u ON bv.officer_id = u.id
+      WHERE bv.id = ?
+    `).get(req.params.videoId) as any;
+
+    if (!video) {
+      res.status(404).json({ error: 'Video not found' });
+      return;
+    }
+
+    // Resolve and validate file path
+    const filePath = path.resolve(BODYCAM_DIR, video.file_path);
+    if (!filePath.startsWith(BODYCAM_DIR) || !fs.existsSync(filePath)) {
+      res.status(404).json({ error: 'Video file not found on disk' });
+      return;
+    }
+
+    // Probe video dimensions
+    const probe = await probeVideo(filePath);
+
+    // Build BWC overlay filter
+    const officerName = video.officer_name || [video.first_name, video.last_name].filter(Boolean).join(' ') || '';
+    const filter = buildBwcFilter(probe.width, probe.height, {
+      cameraSerial: video.camera_serial || '',
+      officerName,
+      caseNumber: video.case_number || '',
+      interactionType: video.interaction_type || null,
+      classification: video.classification || 'routine',
+      recordedAt: video.recorded_at || null,
+    });
+
+    // Create temp output file
+    tempPath = path.join(os.tmpdir(), `rmpg_burn_bwc_${video.id}_${Date.now()}.mp4`);
+
+    // Burn overlay
+    await burnOverlay(filePath, tempPath, filter);
+
+    // Build download filename
+    const datePart = video.recorded_at
+      ? new Date(video.recorded_at).toISOString().slice(0, 10).replace(/-/g, '')
+      : 'undated';
+    const safeName = (officerName || 'Unknown').replace(/[^a-zA-Z0-9]/g, '_').slice(0, 30);
+    const caseTag = video.case_number ? `_${video.case_number.replace(/[^a-zA-Z0-9-]/g, '')}` : '';
+    const downloadName = `BWC_${safeName}${caseTag}_${datePart}.mp4`;
+
+    // Stream the burned file back
+    const stat = fs.statSync(tempPath);
+    res.setHeader('Content-Type', 'video/mp4');
+    res.setHeader('Content-Length', stat.size);
+    res.setHeader('Content-Disposition', `attachment; filename="${downloadName}"`);
+
+    const stream = fs.createReadStream(tempPath);
+    stream.pipe(res);
+    stream.on('end', () => {
+      try { fs.unlinkSync(tempPath); } catch { /* ignore cleanup errors */ }
+    });
+    stream.on('error', () => {
+      try { fs.unlinkSync(tempPath); } catch { /* ignore */ }
+    });
+  } catch (error: any) {
+    console.error('Burn BWC overlay error:', error);
+    if (tempPath) {
+      try { fs.unlinkSync(tempPath); } catch { /* ignore */ }
+    }
+    if (!res.headersSent) {
+      res.status(500).json({ error: `Overlay burn failed: ${error.message}` });
+    }
   }
 });
 
@@ -2038,7 +2125,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
             return;
           }
 
-          const { camera_id, officer_id, title, duration_seconds, recorded_at, case_number, classification, notes } = req.body;
+          const { camera_id, officer_id, title, duration_seconds, recorded_at, case_number, classification, notes, interaction_type } = req.body;
 
           if (!camera_id || !officer_id || !title) {
             if (file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
@@ -2056,13 +2143,14 @@ export function mountScheduleRoutes(parentRouter: Router): void {
           const relativePath = path.relative(BODYCAM_DIR, file.path);
 
           const result = db.prepare(`
-            INSERT INTO bodycam_videos (camera_id, officer_id, title, file_path, file_size, duration_seconds, mime_type, recorded_at, case_number, classification, notes, uploaded_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO bodycam_videos (camera_id, officer_id, title, file_path, file_size, duration_seconds, mime_type, recorded_at, case_number, classification, notes, uploaded_by, interaction_type)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).run(
             camera_id, officer_id, title, relativePath, verifiedSize,
             duration_seconds || null, file.mimetype,
             recorded_at || localNow(), case_number || null,
-            classification || 'routine', notes || null, String(req.user!.userId)
+            classification || 'routine', notes || null, String(req.user!.userId),
+            interaction_type || null
           );
 
           const videoId = result.lastInsertRowid;
@@ -2089,6 +2177,27 @@ export function mountScheduleRoutes(parentRouter: Router): void {
             }
           }).catch(() => { /* ffprobe not available — client value used */ });
 
+          // Fire-and-forget: generate source.txt sidecar with metadata + video specs
+          const joinedVideo = video as any;
+          generateBwcSourceFile(fullFilePath, {
+            videoId: Number(videoId),
+            title,
+            officerName: joinedVideo?.officer_name || '',
+            cameraSerial: joinedVideo?.camera_serial || '',
+            fileName: path.basename(file.path),
+            fileSize: verifiedSize,
+            mimeType: file.mimetype,
+            durationSeconds: duration_seconds ? parseInt(duration_seconds) : null,
+            recordedAt: recorded_at || null,
+            interactionType: interaction_type || null,
+            caseNumber: case_number || '',
+            classification: classification || 'routine',
+            retentionStatus: 'active',
+            notes: notes || '',
+            uploadedBy: req.user!.username || String(req.user!.userId),
+            uploadedAt: localNow(),
+          }).catch(err => console.warn('BWC source file generation failed:', err?.message));
+
           res.status(201).json(video);
         } catch (error: any) {
           console.error('Upload bodycam video DB error:', error?.message, error?.stack);
@@ -2113,7 +2222,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         return;
       }
 
-      const fields = ['title', 'recorded_at', 'case_number', 'classification', 'retention_status', 'notes', 'duration_seconds'];
+      const fields = ['title', 'recorded_at', 'case_number', 'classification', 'retention_status', 'notes', 'duration_seconds', 'interaction_type'];
       const bodyKeys = Object.keys(req.body);
       const setClauses: string[] = [];
       const vals: any[] = [];

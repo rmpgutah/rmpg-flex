@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { useState } from 'react';
-import { Video, Plus, Edit2, Trash2, Loader2, Camera, Play, Upload, Download, Eye } from 'lucide-react';
+import { Video, Plus, Edit2, Edit3, Trash2, Loader2, Camera, Play, Upload, Download, Eye } from 'lucide-react';
 import type { BodyCamera, BodyCamVideo } from '../../../types';
 import { CAMERA_STATUS_COLORS, EQUIPMENT_CONDITION_COLORS, VIDEO_CLASSIFICATION_COLORS } from '../utils/personnelConstants';
 
@@ -15,6 +15,7 @@ interface Props {
   onDeleteCamera: (camId: number) => void;
   onUploadVideo: () => void;
   onDeleteVideo: (videoId: number) => void;
+  onEditVideo?: (video: BodyCamVideo) => void;
   onPlayVideo: (video: BodyCamVideo) => void;
   loading: boolean;
 }
@@ -27,6 +28,7 @@ export default function BodyCameraDetailTab({
   onDeleteCamera,
   onUploadVideo,
   onDeleteVideo,
+  onEditVideo,
   onPlayVideo,
   loading,
 }: Props) {
@@ -257,6 +259,15 @@ export default function BodyCameraDetailTab({
                       >
                         <Play className="w-3 h-3" />
                       </button>
+                      {onEditVideo && (
+                        <button
+                          onClick={() => onEditVideo(vid)}
+                          className="toolbar-btn p-1"
+                          title="Edit video details"
+                        >
+                          <Edit3 className="w-3 h-3" />
+                        </button>
+                      )}
                       <button
                         onClick={() => onDeleteVideo(vid.id)}
                         className="toolbar-btn toolbar-btn-danger p-1"

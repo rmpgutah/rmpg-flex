@@ -231,7 +231,7 @@ function getIncidentCategory(type: string): { symbol: string; category: string }
 function buildUnitMarkerContent(callSign: string, status: UnitStatus, gpsSource?: string): HTMLElement {
   const color = UNIT_STATUS_COLORS[status];
   const label = UNIT_STATUS_LABELS[status];
-  const isCpg = gpsSource === 'clearpathgps';
+  const isCpg = gpsSource === 'traccar' || gpsSource === 'clearpathgps';
 
   const wrapper = document.createElement('div');
   wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;';
@@ -492,6 +492,8 @@ export default function MapPage() {
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [mapRetry, setMapRetry] = useState(0); // bump to re-trigger Google Maps init
+  const [showTileRetry, setShowTileRetry] = useState(false); // tile load failure banner
+  const tileTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [layers, setLayers] = useState({ units: true, incidents: true, properties: true });
 
@@ -901,6 +903,29 @@ export default function MapPage() {
       useAdvancedMarkersRef.current = false;
       devLog('[MapPage] Using OverlayView markers (no mapId configured)');
       if (!authFailed) setMapLoaded(true);
+
+      // Monitor tile loading — detect stale/failed tiles on spotty connections.
+      // After each pan/zoom, start a 15s timer. If tilesloaded fires before then,
+      // the timer is cleared. If not, show a retry banner.
+      let tileWatchActive = false;
+      const startTileWatch = () => {
+        if (tileTimerRef.current) clearTimeout(tileTimerRef.current);
+        tileWatchActive = true;
+        tileTimerRef.current = setTimeout(() => {
+          if (tileWatchActive) {
+            setShowTileRetry(true);
+          }
+        }, 15000);
+      };
+
+      map.addListener('tilesloaded', () => {
+        tileWatchActive = false;
+        if (tileTimerRef.current) clearTimeout(tileTimerRef.current);
+        setShowTileRetry(false);
+      });
+
+      // Start watching on interaction
+      map.addListener('idle', startTileWatch);
     }
 
     function attemptLoad(attempt: number) {
@@ -1061,11 +1086,11 @@ export default function MapPage() {
             title: `${unit.call_sign} - ${unit.officer_name}`,
             onClick: () => {
               handleSelectUnit(unit.id);
-              const isCpgUnit = unit.gps_source === 'clearpathgps';
+              const isCpgUnit = unit.gps_source === 'traccar' || unit.gps_source === 'clearpathgps';
               const cpgSection = isCpgUnit ? `
                 <div style="margin-top:6px;padding-top:6px;border-top:1px solid #333;">
                   <div style="display:flex;align-items:center;gap:4px;margin-bottom:4px;">
-                    <span style="font-size:8px;font-weight:900;color:#60a5fa;background:#1e3a5f;border:1px solid #2563eb40;padding:1px 5px;letter-spacing:0.5px">CPG HARDWARE</span>
+                    <span style="font-size:8px;font-weight:900;color:#60a5fa;background:#1e3a5f;border:1px solid #2563eb40;padding:1px 5px;letter-spacing:0.5px">GPS HARDWARE</span>
                   </div>
                   <table style="width:100%;font-size:10px;border-collapse:collapse;color:#d1d5db;">
                     ${unit.cpg_ignition_state ? `<tr><td style="color:#6b7280;padding:1px 6px 1px 0">Ignition</td><td style="font-weight:bold;color:${unit.cpg_ignition_state === 'on' ? '#22c55e' : '#6b7280'}">${escapeHtml(unit.cpg_ignition_state.toUpperCase())}</td></tr>` : ''}
@@ -1384,9 +1409,9 @@ export default function MapPage() {
 
             dot.addListener('click', () => {
               const time = new Date(pt.time).toLocaleString();
-              const isCpg = pt.gps_source === 'clearpathgps';
+              const isCpg = pt.gps_source === 'traccar' || pt.gps_source === 'clearpathgps';
               const gpsBadge = isCpg
-                ? '<span style="display:inline-block;font-size:8px;font-weight:900;color:#60a5fa;background:#1e3a5f;border:1px solid #2563eb40;padding:1px 5px;margin-left:6px;letter-spacing:0.5px">CPG HARDWARE</span>'
+                ? '<span style="display:inline-block;font-size:8px;font-weight:900;color:#60a5fa;background:#1e3a5f;border:1px solid #2563eb40;padding:1px 5px;margin-left:6px;letter-spacing:0.5px">GPS HARDWARE</span>'
                 : '<span style="display:inline-block;font-size:8px;font-weight:900;color:#4ade80;background:#14532d80;border:1px solid #22c55e40;padding:1px 5px;margin-left:6px;letter-spacing:0.5px">BROWSER GPS</span>';
               const speedColor = pt.speed != null && pt.speed > 80 ? '#f87171' : pt.speed != null && pt.speed > 60 ? '#fbbf24' : '#e0e0e0';
               const html = `
@@ -1808,6 +1833,33 @@ export default function MapPage() {
                   Hard Reload
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Tile retry banner — shown when tiles fail to load on spotty connections */}
+        {showTileRetry && mapLoaded && !mapError && (
+          <div className="absolute top-12 left-1/2 -translate-x-1/2 z-[1500] animate-fade-in">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-900/90 border border-amber-700/50 text-amber-200 text-[10px] font-mono shadow-lg backdrop-blur-sm">
+              <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+              <span>Map tiles slow to load</span>
+              <button
+                onClick={() => {
+                  setShowTileRetry(false);
+                  const map = mapInstanceRef.current;
+                  if (map) {
+                    // Nudge the map slightly to force tile re-request
+                    const c = map.getCenter();
+                    if (c) {
+                      map.panTo({ lat: c.lat() + 0.0001, lng: c.lng() });
+                      setTimeout(() => map.panTo(c), 100);
+                    }
+                  }
+                }}
+                className="px-2 py-0.5 bg-amber-700/50 hover:bg-amber-700 border border-amber-600/50 text-amber-100 text-[9px] font-bold uppercase tracking-wider transition-colors"
+              >
+                Retry
+              </button>
             </div>
           </div>
         )}
@@ -2986,8 +3038,8 @@ export default function MapPage() {
                             style={{ backgroundColor: statusColor, boxShadow: `0 0 6px ${statusColor}80`, width: 10, height: 10 }}
                           />
                           <span className="text-[11px] font-mono font-bold text-rmpg-100">{unit.call_sign}</span>
-                          {unit.gps_source === 'clearpathgps' && (
-                            <span className="text-[7px] font-bold px-1 py-0 bg-blue-900/40 text-blue-400 border border-blue-700/30" title="ClearPathGPS Hardware Tracker">CPG</span>
+                          {(unit.gps_source === 'traccar' || unit.gps_source === 'clearpathgps') && (
+                            <span className="text-[7px] font-bold px-1 py-0 bg-blue-900/40 text-blue-400 border border-blue-700/30" title="Hardware GPS">GPS</span>
                           )}
                           <span className="text-[9px] font-mono ml-auto uppercase font-bold" style={{ color: statusColor }}>{UNIT_STATUS_LABELS[unit.status]}</span>
                         </div>
@@ -3237,8 +3289,8 @@ export default function MapPage() {
                       <div className="flex items-center gap-2">
                         <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: statusColor, boxShadow: `0 0 6px ${statusColor}80` }} />
                         <span className="text-[12px] font-mono font-bold text-rmpg-100">{unit.call_sign}</span>
-                        {unit.gps_source === 'clearpathgps' && (
-                          <span className="text-[7px] font-bold px-1 py-0 bg-blue-900/40 text-blue-400 border border-blue-700/30" title="ClearPathGPS Hardware Tracker">CPG</span>
+                        {(unit.gps_source === 'traccar' || unit.gps_source === 'clearpathgps') && (
+                          <span className="text-[7px] font-bold px-1 py-0 bg-blue-900/40 text-blue-400 border border-blue-700/30" title="Hardware GPS">GPS</span>
                         )}
                         <span className="text-[10px] font-mono ml-auto uppercase font-bold" style={{ color: statusColor }}>{UNIT_STATUS_LABELS[unit.status]}</span>
                       </div>

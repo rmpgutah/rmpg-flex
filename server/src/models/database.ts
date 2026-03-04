@@ -833,6 +833,45 @@ function createTables(): void {
     CREATE INDEX IF NOT EXISTS idx_dashcam_events_device_time ON dashcam_events(cpg_device_id, event_timestamp);
     CREATE INDEX IF NOT EXISTS idx_dashcam_events_unit ON dashcam_events(unit_id);
     CREATE INDEX IF NOT EXISTS idx_dashcam_events_type ON dashcam_events(event_type);
+
+    -- Dash camera video clips (manual uploads + ClearPathGPS synced)
+    CREATE TABLE IF NOT EXISTS dashcam_videos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source TEXT NOT NULL DEFAULT 'manual',
+      cpg_event_id INTEGER,
+      cpg_video_url TEXT,
+      officer_id INTEGER,
+      unit_id INTEGER,
+      cpg_device_id TEXT,
+      title TEXT NOT NULL,
+      file_path TEXT,
+      file_size INTEGER NOT NULL DEFAULT 0,
+      duration_seconds INTEGER,
+      mime_type TEXT DEFAULT 'video/mp4',
+      recorded_at TEXT,
+      event_type TEXT,
+      latitude REAL,
+      longitude REAL,
+      heading REAL,
+      speed_mph REAL,
+      address TEXT,
+      case_number TEXT,
+      classification TEXT DEFAULT 'routine',
+      retention_status TEXT DEFAULT 'active',
+      notes TEXT,
+      uploaded_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (officer_id) REFERENCES users(id),
+      FOREIGN KEY (unit_id) REFERENCES units(id),
+      FOREIGN KEY (cpg_event_id) REFERENCES dashcam_events(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_dashcam_videos_officer ON dashcam_videos(officer_id);
+    CREATE INDEX IF NOT EXISTS idx_dashcam_videos_unit ON dashcam_videos(unit_id);
+    CREATE INDEX IF NOT EXISTS idx_dashcam_videos_device ON dashcam_videos(cpg_device_id);
+    CREATE INDEX IF NOT EXISTS idx_dashcam_videos_event ON dashcam_videos(cpg_event_id);
+    CREATE INDEX IF NOT EXISTS idx_dashcam_videos_case ON dashcam_videos(case_number);
+    CREATE INDEX IF NOT EXISTS idx_dashcam_videos_recorded ON dashcam_videos(recorded_at);
   `);
 }
 
@@ -2402,6 +2441,34 @@ function migrateSchema(): void {
   addCol('dashcam_events', 'city', 'TEXT');
   addCol('dashcam_events', 'state_province', 'TEXT');
   addCol('dashcam_events', 'satellite_count', 'INTEGER');
+  addCol('dashcam_events', 'cpg_raw_data', 'TEXT');
+  addCol('dashcam_events', 'video_url', 'TEXT');
+  addCol('dashcam_events', 'video_synced', 'INTEGER DEFAULT 0');
+
+  // BWC interaction type (traffic_stop, domestic, arrest, etc.)
+  addCol('bodycam_videos', 'interaction_type', 'TEXT');
+
+  // ── TRACCAR GPS — add numeric device ID for position queries ──
+  addCol('cpg_device_mappings', 'traccar_device_id', 'INTEGER');
+
+  // Migrate gps_source from 'clearpathgps' → 'traccar'
+  try {
+    db.exec("UPDATE units SET gps_source = 'traccar' WHERE gps_source = 'clearpathgps'");
+    db.exec("UPDATE gps_breadcrumbs SET gps_source = 'traccar' WHERE gps_source = 'clearpathgps'");
+  } catch { /* safe to ignore if column doesn't exist yet */ }
+
+  // Deduplicate dashcam_events before adding unique constraint
+  try {
+    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_dashcam_events_device_timestamp_unique
+      ON dashcam_events(cpg_device_id, event_timestamp, status_code)`);
+  } catch {
+    // Duplicates exist — clean them up first, keep only the row with the lowest id
+    db.exec(`DELETE FROM dashcam_events WHERE id NOT IN (
+      SELECT MIN(id) FROM dashcam_events GROUP BY cpg_device_id, event_timestamp, status_code
+    )`);
+    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_dashcam_events_device_timestamp_unique
+      ON dashcam_events(cpg_device_id, event_timestamp, status_code)`);
+  }
 
   console.log('Schema migration completed.');
 }

@@ -5,7 +5,7 @@
 // exposes map styles + a global registry for print-mode switching.
 //
 // Designed for vehicle/mobile use on intermittent WiFi/cellular:
-// - 45-second timeout (slow connections while driving)
+// - Adaptive timeout: 60s normal, 90s on slow cellular (2g)
 // - Online/offline awareness (waits for connectivity before retry)
 // - Prevents duplicate script injection race conditions
 // - Callers can subscribe to connectivity-based auto-retry
@@ -24,11 +24,11 @@ function gmapsReady(): boolean {
 /**
  * Loads the Google Maps JS API via a script tag.
  * Idempotent — returns a cached promise on subsequent calls.
- * On error or timeout (45 s), resets so the caller can retry.
+ * On error or timeout (60–90 s), resets so the caller can retry.
  *
  * Vehicle/mobile resilience:
  * - If navigator.onLine is false, waits for the 'online' event before loading
- * - 45-second timeout to accommodate slow cellular/satellite connections
+ * - Adaptive timeout (60s / 90s on slow networks) for cellular/satellite connections
  * - Guards against duplicate script injection when multiple components call
  *   simultaneously (e.g. MapPage + DispatchMiniMap)
  */
@@ -130,9 +130,13 @@ function doScriptLoad(
   };
   document.head.appendChild(script);
 
-  // Safety timeout — 45 seconds to accommodate slow mobile/vehicle connections.
-  // This is intentionally long because officers driving on cellular/satellite
-  // connections may experience very slow downloads.
+  // Adaptive timeout — use Network Information API when available.
+  // On slow cellular (2g/slow-2g), allow 90s; otherwise 60s.
+  // Officers on moving vehicle hotspots can have very slow downloads.
+  const conn = (navigator as any).connection;
+  const isSlowNetwork = conn && (conn.effectiveType === '2g' || conn.effectiveType === 'slow-2g');
+  const loadTimeout = isSlowNetwork ? 90000 : 60000;
+
   setTimeout(() => {
     if (settled) return;
     // Check one more time — script may have loaded just as timeout fires
@@ -146,8 +150,8 @@ function doScriptLoad(
     _gmapsLoadPromise = null;
     script.remove();
     cleanup();
-    reject(new Error('Google Maps script load timed out (45s)'));
-  }, 45000);
+    reject(new Error(`Google Maps script load timed out (${loadTimeout / 1000}s)`));
+  }, loadTimeout);
 }
 
 /**

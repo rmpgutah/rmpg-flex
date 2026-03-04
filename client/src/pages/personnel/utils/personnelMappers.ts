@@ -199,6 +199,7 @@ export function mapBodyCamVideo(row: any): BodyCamVideo {
     mime_type: row.mime_type || 'video/mp4',
     recorded_at: row.recorded_at || '',
     case_number: row.case_number || '',
+    interaction_type: row.interaction_type || null,
     classification: row.classification || 'routine',
     retention_status: row.retention_status || 'active',
     notes: row.notes || '',

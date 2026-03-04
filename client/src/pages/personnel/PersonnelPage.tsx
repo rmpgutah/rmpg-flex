@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Users, Search, X, Clock, AlertTriangle, BarChart3, Loader2, Plus, Archive, RotateCcw,
 } from 'lucide-react';
-import type { Schedule, TimeEntry, Credential, TrainingRecord, TrainingRequirement, Deployment, CoverageGap, PersonnelAnalytics, OfficerEquipment, BodyCamera, BodyCamVideo, DashcamEvent, CpgDeviceMapping } from '../../types';
+import type { Schedule, TimeEntry, Credential, TrainingRecord, TrainingRequirement, Deployment, CoverageGap, PersonnelAnalytics, OfficerEquipment, BodyCamera, BodyCamVideo, DashcamEvent, CpgDeviceMapping, DashcamVideo } from '../../types';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import RmpgLogo from '../../components/RmpgLogo';
 import PrintButton from '../../components/PrintButton';
@@ -43,6 +44,10 @@ import BodyCameraFormModal from './modals/BodyCameraFormModal';
 import type { BodyCameraFormData } from './modals/BodyCameraFormModal';
 import VideoUploadModal from '../../components/VideoUploadModal';
 import VideoPlayer from '../../components/VideoPlayer';
+import DashCamVideoPlayer from '../../components/DashCamVideoPlayer';
+import BodyCamVideoEditModal from '../../components/BodyCamVideoEditModal';
+import DashCamVideoEditModal from '../../components/DashCamVideoEditModal';
+import DashCamUploadModal from '../../components/DashCamUploadModal';
 import DeploymentFormModal from './modals/DeploymentFormModal';
 import type { DeploymentFormData } from './modals/DeploymentFormModal';
 import OfficerFormModal from './modals/OfficerFormModal';
@@ -69,12 +74,13 @@ interface ActivityEntry {
 export default function PersonnelPage() {
   const { addToast } = useToast();
   const isMobile = useIsMobile();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // Tab state
   const [activeTab, setActiveTab] = usePersistedTab(
     'rmpg_personnel_tab',
     'roster' as MainTab,
-    ['roster', 'duty_board', 'schedule', 'time', 'credentials', 'training', 'equipment', 'dash_cameras', 'deployment', 'analytics'] as const,
+    ['roster', 'duty_board', 'schedule', 'time', 'credentials', 'training', 'equipment', 'deployment', 'analytics'] as const,
   );
   const [detailTab, setDetailTab] = useState<DetailTab>('profile');
   const [searchQuery, setSearchQuery] = useState('');
@@ -107,14 +113,21 @@ export default function PersonnelPage() {
   const [bodyCameraEditData, setBodyCameraEditData] = useState<(Partial<BodyCameraFormData> & { id?: number }) | undefined>(undefined);
   const [bodyCameraModalMode, setBodyCameraModalMode] = useState<'create' | 'edit'>('create');
   const [playingVideo, setPlayingVideo] = useState<BodyCamVideo | null>(null);
+  const [editingBodyCamVideo, setEditingBodyCamVideo] = useState<BodyCamVideo | null>(null);
+  const [editingDashcamVideo, setEditingDashcamVideo] = useState<DashcamVideo | null>(null);
 
-  // Dash camera data (ClearPathGPS)
+  // Dash camera data (Traccar GPS)
   const [dashcamEvents, setDashcamEvents] = useState<DashcamEvent[]>([]);
   const [deviceMappings, setDeviceMappings] = useState<CpgDeviceMapping[]>([]);
   const [dashcamLoading, setDashcamLoading] = useState(false);
   const [officerDashcamEvents, setOfficerDashcamEvents] = useState<DashcamEvent[]>([]);
   const [officerDeviceMapping, setOfficerDeviceMapping] = useState<CpgDeviceMapping | null>(null);
   const [officerDashcamLoading, setOfficerDashcamLoading] = useState(false);
+
+  // Dash camera video data
+  const [dashcamVideos, setDashcamVideos] = useState<DashcamVideo[]>([]);
+  const [officerDashcamVideos, setOfficerDashcamVideos] = useState<DashcamVideo[]>([]);
+  const [playingDashcamVideo, setPlayingDashcamVideo] = useState<DashcamVideo | null>(null);
 
   // All properties from the database (for deployment/schedule dropdowns)
   const [allProperties, setAllProperties] = useState<{ id: string; name: string }[]>([]);
@@ -201,6 +214,17 @@ export default function PersonnelPage() {
   const silentRefresh = useCallback(() => fetchCoreData({ silent: true }), [fetchCoreData]);
   useLiveSync('personnel', silentRefresh);
 
+  // Deep-link: auto-select officer from query params (?officerId=)
+  useEffect(() => {
+    if (officers.length === 0) return;
+    const officerId = searchParams.get('officerId');
+    if (officerId) {
+      const match = officers.find(o => String(o.id) === officerId);
+      if (match) setSelectedOfficer(match);
+      setSearchParams({}, { replace: true });
+    }
+  }, [officers, searchParams, setSearchParams]);
+
   // Lazy-load tab data
   useEffect(() => {
     if (activeTab === 'training' && training.length === 0 && !trainingLoading) {
@@ -235,19 +259,7 @@ export default function PersonnelPage() {
         .catch(() => addToast('Failed to load equipment data', 'error'))
         .finally(() => setEquipmentLoading(false));
     }
-    if (activeTab === 'dash_cameras' && dashcamEvents.length === 0 && !dashcamLoading) {
-      setDashcamLoading(true);
-      Promise.all([
-        apiFetch<any[]>('/clearpathgps/dashcam-events'),
-        apiFetch<any[]>('/clearpathgps/mappings'),
-      ])
-        .then(([events, mappings]) => {
-          setDashcamEvents(Array.isArray(events) ? events : []);
-          setDeviceMappings(Array.isArray(mappings) ? mappings : []);
-        })
-        .catch(() => addToast('Failed to load dash camera data', 'error'))
-        .finally(() => setDashcamLoading(false));
-    }
+    // Dash camera data is loaded on-demand from officer detail tab (see detailTab === 'dash_cameras' below)
     if (activeTab === 'analytics' && !analytics && !analyticsLoading) {
       setAnalyticsLoading(true);
       apiFetch<PersonnelAnalytics>('/personnel/analytics')
@@ -294,17 +306,30 @@ export default function PersonnelPage() {
     }
     if (detailTab === 'dash_cameras') {
       setOfficerDashcamLoading(true);
-      // Fetch per-officer dashcam events and find their device mapping
+      // Fetch per-officer dashcam events, device mapping, and videos
       Promise.all([
-        apiFetch<any[]>(`/clearpathgps/dashcam-events/by-officer/${selectedOfficer.id}`),
-        apiFetch<any[]>('/clearpathgps/mappings'),
+        apiFetch<any>(`/traccar/dashcam-events/by-officer/${selectedOfficer.id}`),
+        apiFetch<any>('/traccar/mappings'),
+        apiFetch<any>(`/dashcam-videos/by-officer/${selectedOfficer.id}`),
       ])
-        .then(([events, mappings]) => {
-          setOfficerDashcamEvents(Array.isArray(events) ? events : []);
-          // Find the mapping for this officer's unit
-          const allMappings: CpgDeviceMapping[] = Array.isArray(mappings) ? mappings : [];
-          const match = allMappings.find(m => m.officer_name && selectedOfficer &&
-            m.officer_name === `${selectedOfficer.first_name} ${selectedOfficer.last_name}`);
+        .then(([evtRes, mapRes, vidRes]) => {
+          const evts = Array.isArray(evtRes?.events) ? evtRes.events : Array.isArray(evtRes) ? evtRes : [];
+          const allMappings: CpgDeviceMapping[] = Array.isArray(mapRes?.mappings) ? mapRes.mappings : Array.isArray(mapRes) ? mapRes : [];
+          const vids = Array.isArray(vidRes?.videos) ? vidRes.videos : Array.isArray(vidRes) ? vidRes : [];
+          setOfficerDashcamEvents(evts);
+          setOfficerDashcamVideos(vids);
+          // Find the mapping for this officer's unit — match by unit_id first, then name
+          const officerUnits = selectedOfficer ? (selectedOfficer as any).unit_id : null;
+          const match = allMappings.find(m => {
+            if (!m || !selectedOfficer) return false;
+            // Match by unit_id (most reliable)
+            if (officerUnits && m.unit_id === officerUnits) return true;
+            // Fallback: match by officer name (case-insensitive, flexible)
+            const officerFullName = `${selectedOfficer.first_name} ${selectedOfficer.last_name}`.toLowerCase();
+            const mappingName = (m.officer_name || '').toLowerCase();
+            return mappingName === officerFullName ||
+              mappingName === `${selectedOfficer.last_name}, ${selectedOfficer.first_name}`.toLowerCase();
+          });
           setOfficerDeviceMapping(match || null);
         })
         .catch(() => addToast('Failed to load dash camera data', 'error'))
@@ -534,16 +559,57 @@ export default function PersonnelPage() {
   const refreshDashcamData = async () => {
     setDashcamLoading(true);
     try {
-      const [events, mappings] = await Promise.all([
-        apiFetch<any[]>('/clearpathgps/dashcam-events'),
-        apiFetch<any[]>('/clearpathgps/mappings'),
+      const [evtRes, mapRes, vidRes] = await Promise.all([
+        apiFetch<any>('/traccar/dashcam-events'),
+        apiFetch<any>('/traccar/mappings'),
+        apiFetch<any>('/dashcam-videos'),
       ]);
-      setDashcamEvents(Array.isArray(events) ? events : []);
-      setDeviceMappings(Array.isArray(mappings) ? mappings : []);
+      setDashcamEvents(Array.isArray(evtRes?.events) ? evtRes.events : Array.isArray(evtRes) ? evtRes : []);
+      setDeviceMappings(Array.isArray(mapRes?.mappings) ? mapRes.mappings : Array.isArray(mapRes) ? mapRes : []);
+      setDashcamVideos(Array.isArray(vidRes?.videos) ? vidRes.videos : Array.isArray(vidRes) ? vidRes : []);
     } catch {
       addToast('Failed to refresh dash camera data', 'error');
     } finally {
       setDashcamLoading(false);
+    }
+  };
+
+  // Dashcam video handlers
+  const handleSyncNow = async () => {
+    setDashcamLoading(true);
+    try {
+      await apiFetch('/dashcam-videos/sync', { method: 'POST' });
+      addToast('Dashcam sync complete', 'success');
+      await refreshDashcamData();
+    } catch {
+      addToast('Dashcam sync failed', 'error');
+      setDashcamLoading(false);
+    }
+  };
+
+  const handleDashcamVideoDelete = async (videoId: number) => {
+    try {
+      await apiFetch(`/dashcam-videos/${videoId}`, { method: 'DELETE' });
+      setDashcamVideos(prev => prev.filter(v => v.id !== videoId));
+      setOfficerDashcamVideos(prev => prev.filter(v => v.id !== videoId));
+      addToast('Video deleted', 'success');
+    } catch {
+      addToast('Failed to delete video', 'error');
+    }
+  };
+
+  const handleDashcamUploadComplete = async () => {
+    // Refresh both the global and per-officer video lists
+    try {
+      const vidRes = await apiFetch<any>('/dashcam-videos');
+      setDashcamVideos(Array.isArray(vidRes?.videos) ? vidRes.videos : Array.isArray(vidRes) ? vidRes : []);
+      if (selectedOfficer) {
+        const officerVidRes = await apiFetch<any>(`/dashcam-videos/by-officer/${selectedOfficer.id}`);
+        setOfficerDashcamVideos(Array.isArray(officerVidRes?.videos) ? officerVidRes.videos : Array.isArray(officerVidRes) ? officerVidRes : []);
+      }
+      addToast('Video uploaded successfully', 'success');
+    } catch {
+      // Silent — the upload was successful, just refresh failed
     }
   };
 
@@ -603,6 +669,28 @@ export default function PersonnelPage() {
     } catch {
       addToast('Failed to delete video', 'error');
     }
+  };
+
+  const handleEditBodyCamVideo = async (videoId: number, data: Record<string, any>) => {
+    await apiFetch(`/personnel/bodycam-videos/${videoId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    await refreshBodyCameras();
+    addToast('Video updated', 'success');
+  };
+
+  const handleEditDashcamVideo = async (videoId: number, data: Record<string, any>) => {
+    await apiFetch(`/dashcam-videos/${videoId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    await refreshDashcamData();
+    if (selectedOfficer) {
+      const officerVidRes = await apiFetch<any>(`/dashcam-videos/by-officer/${selectedOfficer.id}`);
+      setOfficerDashcamVideos(Array.isArray(officerVidRes?.videos) ? officerVidRes.videos : []);
+    }
+    addToast('Video updated', 'success');
   };
 
   const handleDeploymentSubmit = async (data: DeploymentFormData) => {
@@ -965,10 +1053,16 @@ export default function PersonnelPage() {
       onDeleteBodyCamera={handleBodyCameraDelete}
       onUploadVideo={() => setModal('upload_video')}
       onDeleteVideo={handleVideoDelete}
+      onEditVideo={setEditingBodyCamVideo}
       onPlayVideo={setPlayingVideo}
       dashcamEvents={officerDashcamEvents}
       dashcamDeviceMapping={officerDeviceMapping}
       dashcamLoading={officerDashcamLoading}
+      dashcamVideos={officerDashcamVideos}
+      onPlayDashcamVideo={setPlayingDashcamVideo}
+      onDeleteDashcamVideo={handleDashcamVideoDelete}
+      onEditDashcamVideo={setEditingDashcamVideo}
+      onUploadDashcamVideo={() => setModal('upload_dashcam_video')}
       onAddDeployment={id => openAddDeployment(id)}
       onEditOfficer={openEditOfficer}
       onDeleteOfficer={() => setDeleteTarget(selectedOfficer)}
@@ -1163,19 +1257,6 @@ export default function PersonnelPage() {
           />
         )}
 
-        {!loading && !error && activeTab === 'dash_cameras' && (
-          <DashCameraTab
-            dashcamEvents={dashcamEvents}
-            deviceMappings={deviceMappings}
-            loading={dashcamLoading}
-            onSelectOfficer={officerId => {
-              const officer = officers.find(o => o.id === officerId);
-              if (officer) { setActiveTab('roster'); setSelectedOfficer(officer); setDetailTab('dash_cameras'); }
-            }}
-            onRefresh={refreshDashcamData}
-          />
-        )}
-
         {!loading && !error && activeTab === 'deployment' && (
           <DeploymentTab
             deployments={deployments}
@@ -1271,6 +1352,34 @@ export default function PersonnelPage() {
         }}
       />
 
+      <DashCamVideoPlayer
+        isOpen={!!playingDashcamVideo}
+        onClose={() => setPlayingDashcamVideo(null)}
+        video={playingDashcamVideo}
+        apiBase={window.location.origin + '/api'}
+        getAuthHeaders={() => {
+          const token = localStorage.getItem('rmpg_token');
+          const headers: Record<string, string> = {};
+          if (token) headers['Authorization'] = `Bearer ${token}`;
+          return headers;
+        }}
+      />
+
+      <DashCamUploadModal
+        isOpen={modal === 'upload_dashcam_video'}
+        onClose={() => setModal('none')}
+        onSuccess={handleDashcamUploadComplete}
+        apiBase={window.location.origin + '/api'}
+        getAuthHeaders={() => {
+          const token = localStorage.getItem('rmpg_token');
+          const headers: Record<string, string> = {};
+          if (token) headers['Authorization'] = `Bearer ${token}`;
+          return headers;
+        }}
+        deviceMappings={deviceMappings}
+        officers={officers.map(o => ({ id: Number(o.id), full_name: `${o.first_name} ${o.last_name}` }))}
+      />
+
       <DeploymentFormModal
         isOpen={modal === 'new_deployment' || modal === 'edit_deployment'}
         onClose={() => { setModal('none'); setDeploymentEditData(undefined); }}
@@ -1308,6 +1417,20 @@ export default function PersonnelPage() {
         confirmLabel="Terminate"
         confirmVariant="danger"
         isLoading={deleting}
+      />
+
+      <BodyCamVideoEditModal
+        isOpen={!!editingBodyCamVideo}
+        onClose={() => setEditingBodyCamVideo(null)}
+        video={editingBodyCamVideo}
+        onSave={handleEditBodyCamVideo}
+      />
+
+      <DashCamVideoEditModal
+        isOpen={!!editingDashcamVideo}
+        onClose={() => setEditingDashcamVideo(null)}
+        video={editingDashcamVideo}
+        onSave={handleEditDashcamVideo}
       />
     </div>
   );
