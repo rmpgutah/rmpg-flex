@@ -4,6 +4,7 @@ import { authenticateToken } from '../middleware/auth';
 import { sendCsv } from '../utils/csvExport';
 import { localNow, localToday } from '../utils/timeUtils';
 import { searchOfacLocal } from '../utils/ofacScraper';
+import { searchUtahWarrants } from '../utils/utahWarrantScraper';
 
 const router = Router();
 
@@ -2256,7 +2257,7 @@ router.get('/persons/:id/invoice-summary', (req: Request, res: Response) => {
 // ─── GET /api/records/ncic-query ─────────────────────────────
 // NCIC/NLETS query simulation — searches local database and returns
 // raw record data for client-side NCIC formatting.
-router.get('/ncic-query', (req: Request, res: Response) => {
+router.get('/ncic-query', async (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { type, query: q } = req.query;
@@ -2365,7 +2366,7 @@ router.get('/ncic-query', (req: Request, res: Response) => {
         // Search warrants by subject name or warrant number
         const warrants = db.prepare(`
           SELECT w.*, p.first_name as subject_first_name, p.last_name as subject_last_name,
-            p.date_of_birth as subject_dob
+            p.dob as subject_dob
           FROM warrants w
           LEFT JOIN persons p ON w.subject_person_id = p.id
           WHERE w.status = 'active'
@@ -2373,11 +2374,19 @@ router.get('/ncic-query', (req: Request, res: Response) => {
               OR p.first_name LIKE ? OR p.last_name LIKE ?
               OR (p.first_name || ' ' || p.last_name) LIKE ?
               OR w.charge_description LIKE ?)
-          ORDER BY w.issue_date DESC
+          ORDER BY w.created_at DESC
           LIMIT 10
         `).all(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
 
-        res.json({ type: 'warrant', results: warrants, query: q });
+        // Also search Utah state warrants (real-time from warrants.utah.gov)
+        let utahWarrants: any[] = [];
+        try {
+          utahWarrants = await searchUtahWarrants(q as string);
+        } catch (utahErr: any) {
+          console.warn('[NCIC] Utah warrant search failed:', utahErr.message);
+        }
+
+        res.json({ type: 'warrant', results: warrants, utahResults: utahWarrants, query: q });
         break;
       }
 

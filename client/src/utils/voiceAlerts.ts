@@ -27,6 +27,7 @@ interface ScreeningResult {
   }>;
   directWarrantHits: Array<{ id: number }>;
   ofacHits: Array<{ name: string }>;
+  utahWarrantHits?: Array<{ warrant_id: string }>;
   premiseWarnings: string[];
   hasWarnings: boolean;
 }
@@ -284,6 +285,11 @@ function buildScreeningPhrases(result: ScreeningResult): VoicePhrase[] {
     add('FEDERAL WATCHLIST HIT');
   }
 
+  // Utah state warrants
+  if ((result.utahWarrantHits || []).length > 0) {
+    add('UTAH STATE WARRANT');
+  }
+
   // Premise history warnings
   for (const w of (result.premiseWarnings || [])) {
     if (w === 'ARMED_HISTORY') add('PRIOR ARMED CALLS AT LOCATION');
@@ -423,6 +429,7 @@ export const VOICE_ALERT_CATALOG = {
     'GANG AFFILIATED',
     'WATCHLIST MATCH',
     'FEDERAL WATCHLIST HIT',
+    'UTAH STATE WARRANT',
     'CRIMINAL HISTORY',
     'WARRANT HIT',
   ],

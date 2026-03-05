@@ -56,6 +56,19 @@ interface ScreeningResult {
     program: string;
     source_list: string;
   }>;
+  utahWarrantHits: Array<{
+    name: string;
+    first_name: string;
+    last_name: string;
+    middle_name?: string;
+    age?: number;
+    city?: string;
+    warrant_id: string;
+    issue_date?: string;
+    court_name?: string;
+    case_id?: string;
+    charges?: string;
+  }>;
   premiseWarnings: string[];
   hasWarnings: boolean;
 }
@@ -120,6 +133,7 @@ export default function SafetyScreening({ callerName, subjectDescription }: Safe
   const hasCautionFlags = result.persons.some(p => p.person.caution_flags);
   const hasSexOffender = result.persons.some(p => p.person.is_sex_offender);
   const hasOfac = (result.ofacHits || []).length > 0;
+  const hasUtahWarrants = (result.utahWarrantHits || []).length > 0;
   const hasPremise = (result.premiseWarnings || []).length > 0;
 
   return (
@@ -131,6 +145,7 @@ export default function SafetyScreening({ callerName, subjectDescription }: Safe
           <span className="font-bold">OFFICER SAFETY ALERT</span>
           {hasActiveWarrants && <span className="safety-tag safety-tag-warrant">ACTIVE WARRANT</span>}
           {hasOfac && <span className="safety-tag safety-tag-ofac">OFAC SANCTIONS</span>}
+          {hasUtahWarrants && <span className="safety-tag safety-tag-warrant">UTAH STATE WARRANT</span>}
           {hasCautionFlags && <span className="safety-tag safety-tag-caution">CAUTION FLAGS</span>}
           {hasSexOffender && <span className="safety-tag safety-tag-sex-offender">SEX OFFENDER</span>}
           {hasPremise && <span className="safety-tag safety-tag-premise">PREMISE HISTORY</span>}
@@ -247,6 +262,43 @@ export default function SafetyScreening({ callerName, subjectDescription }: Safe
               <span className="text-[9px] text-rmpg-400">{hit.source_list} — {hit.type}</span>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Utah State Warrant Hits */}
+      {hasUtahWarrants && (
+        <div className="safety-ofac-section">
+          <div className="safety-ofac-header">
+            <Scale style={{ width: 11, height: 11 }} />
+            <span className="font-bold">UTAH STATE WARRANT — {result.utahWarrantHits.length} HIT(S)</span>
+          </div>
+          {result.utahWarrantHits.map((hit, idx) => {
+            let chargeList: string[] = [];
+            try { chargeList = JSON.parse(hit.charges || '[]'); } catch { /* non-JSON */ }
+            return (
+              <div key={idx} className="safety-ofac-entry">
+                <span className="text-[10px] text-red-300 font-bold">
+                  {hit.last_name}, {hit.first_name}{hit.middle_name ? ` ${hit.middle_name}` : ''}
+                </span>
+                {hit.age && <span className="text-[9px] text-rmpg-400">Age {hit.age}</span>}
+                {hit.city && <span className="text-[9px] text-rmpg-400">{hit.city}</span>}
+                {hit.court_name && (
+                  <span className="text-[9px] text-red-400/80">{hit.court_name}</span>
+                )}
+                {hit.case_id && (
+                  <span className="text-[9px] text-rmpg-400">Case #{hit.case_id}</span>
+                )}
+                {hit.issue_date && (
+                  <span className="text-[9px] text-rmpg-500">Issued: {hit.issue_date}</span>
+                )}
+                {chargeList.length > 0 && (
+                  <div className="text-[9px] text-red-400/90 mt-0.5">
+                    {chargeList.map((c, ci) => <div key={ci}>• {c}</div>)}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 

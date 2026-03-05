@@ -477,6 +477,39 @@ function createTables(): void {
       synced_at TEXT DEFAULT (datetime('now','localtime'))
     );
 
+    -- Utah State Warrants — scraped from warrants.utah.gov
+    CREATE TABLE IF NOT EXISTS utah_warrants (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      utah_person_id TEXT NOT NULL,
+      first_name TEXT NOT NULL,
+      middle_name TEXT,
+      last_name TEXT NOT NULL,
+      age INTEGER,
+      city TEXT,
+      utah_warrant_id TEXT NOT NULL,
+      issue_date TEXT,
+      court_name TEXT,
+      case_id TEXT,
+      charges TEXT,
+      fetched_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_utah_warrant_name
+      ON utah_warrants(last_name COLLATE NOCASE, first_name COLLATE NOCASE);
+    CREATE INDEX IF NOT EXISTS idx_utah_warrant_person
+      ON utah_warrants(utah_person_id);
+
+    CREATE TABLE IF NOT EXISTS utah_warrant_sync_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      persons_found INTEGER DEFAULT 0,
+      warrants_found INTEGER DEFAULT 0,
+      requests_made INTEGER DEFAULT 0,
+      search_strategy TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      error_message TEXT,
+      duration_ms INTEGER,
+      synced_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+
     CREATE TABLE IF NOT EXISTS microbilt_searches (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       product TEXT NOT NULL,

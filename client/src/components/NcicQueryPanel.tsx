@@ -192,11 +192,12 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
               subject_last_name?: string;
               subject_dob?: string;
             })[];
+            utahResults?: any[];
             query: string;
           }>(`/records/ncic-query?type=warrant&query=${encodeURIComponent(queryText)}`);
 
-          response = formatWarrantResponse(data.results, queryText);
-          hasHit = data.results.length > 0;
+          response = formatWarrantResponse(data.results, queryText, data.utahResults);
+          hasHit = data.results.length > 0 || (data.utahResults || []).length > 0;
           if (hasHit) playTone('warning');
           break;
         }

@@ -315,26 +315,59 @@ export function formatVehicleResponse(vehicle: NcicVehicle): string {
 export function formatWarrantResponse(
   warrants: (NcicWarrant & { subject_first_name?: string; subject_last_name?: string; subject_dob?: string })[],
   searchTerm: string,
+  utahWarrants?: Array<{ first_name?: string; last_name?: string; middle_name?: string; age?: number; city?: string; court_name?: string; case_id?: string; issue_date?: string; charges?: string; source?: string }>,
 ): string {
-  if (warrants.length === 0) return noRecord('WARRANT', searchTerm);
+  const totalCount = warrants.length + (utahWarrants?.length || 0);
+  if (totalCount === 0) return noRecord('WARRANT', searchTerm);
 
   const lines: string[] = [header('WARRANT')];
 
-  lines.push('');
-  lines.push(`  WARRANT QUERY — ${warrants.length} RESULT(S)`);
-  lines.push(`  ${'─'.repeat(56)}`);
-
-  for (const w of warrants) {
-    lines.push(`  OCA/${pad(w.warrant_number, 15)}  STS/${pad(w.status, 8)}`);
-    if (w.subject_last_name) {
-      lines.push(`  NAM/${pad(w.subject_last_name, 20)},${pad(w.subject_first_name, 15)}`);
-    }
-    if (w.subject_dob) lines.push(`  DOB/${ncicDate(w.subject_dob)}`);
-    lines.push(`  CHG/${(w.charge_description || w.type || '').toUpperCase()}`);
-    lines.push(`  OFL/${pad(w.offense_level, 3)}  BAL/${w.bail_amount ? `$${Number(w.bail_amount).toLocaleString()}` : 'N/A'}`);
-    if (w.issue_date) lines.push(`  DOW/${ncicDate(w.issue_date)}`);
-    if (w.issuing_court) lines.push(`  CRT/${w.issuing_court.toUpperCase()}`);
+  // Local warrants
+  if (warrants.length > 0) {
     lines.push('');
+    lines.push(`  LOCAL WARRANT QUERY — ${warrants.length} RESULT(S)`);
+    lines.push(`  ${'─'.repeat(56)}`);
+
+    for (const w of warrants) {
+      lines.push(`  OCA/${pad(w.warrant_number, 15)}  STS/${pad(w.status, 8)}`);
+      if (w.subject_last_name) {
+        lines.push(`  NAM/${pad(w.subject_last_name, 20)},${pad(w.subject_first_name, 15)}`);
+      }
+      if (w.subject_dob) lines.push(`  DOB/${ncicDate(w.subject_dob)}`);
+      lines.push(`  CHG/${(w.charge_description || w.type || '').toUpperCase()}`);
+      lines.push(`  OFL/${pad(w.offense_level, 3)}  BAL/${w.bail_amount ? `$${Number(w.bail_amount).toLocaleString()}` : 'N/A'}`);
+      if (w.issue_date) lines.push(`  DOW/${ncicDate(w.issue_date)}`);
+      if (w.issuing_court) lines.push(`  CRT/${w.issuing_court.toUpperCase()}`);
+      lines.push('');
+    }
+  }
+
+  // Utah state warrants
+  if (utahWarrants && utahWarrants.length > 0) {
+    lines.push('');
+    lines.push(`  *** UTAH STATE WARRANTS — ${utahWarrants.length} HIT(S) ***`);
+    lines.push(`  SRC/UTAH STATE — WARRANTS.UTAH.GOV`);
+    lines.push(`  ${'─'.repeat(56)}`);
+
+    for (const uw of utahWarrants) {
+      const fullName = `${uw.last_name || ''}`.toUpperCase();
+      const firstName = `${uw.first_name || ''}`.toUpperCase();
+      lines.push(`  NAM/${pad(fullName, 20)},${pad(firstName, 15)}`);
+      if (uw.age) lines.push(`  AGE/${uw.age}`);
+      if (uw.city) lines.push(`  CTY/${uw.city.toUpperCase()}`);
+      // Parse charges from JSON
+      let chargeStr = '';
+      try {
+        const charges = JSON.parse(uw.charges || '[]');
+        chargeStr = charges.join('; ');
+      } catch { chargeStr = uw.charges || ''; }
+      if (chargeStr) lines.push(`  CHG/${chargeStr.toUpperCase()}`);
+      if (uw.court_name) lines.push(`  CRT/${uw.court_name.toUpperCase()}`);
+      if (uw.case_id) lines.push(`  CSE/${uw.case_id}`);
+      if (uw.issue_date) lines.push(`  DOW/${uw.issue_date}`);
+      lines.push(`  SRC/UTAH STATE`);
+      lines.push('');
+    }
   }
 
   lines.push(`─`.repeat(60));

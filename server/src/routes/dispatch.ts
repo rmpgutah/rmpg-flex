@@ -7,6 +7,7 @@ import { sendCsv } from '../utils/csvExport';
 import { localNow } from '../utils/timeUtils';
 import { geocodeCallIfNeeded, reverseGeocodeAddress, reverseGeocodeDetailed } from '../utils/geocode';
 import { searchOfacLocal } from '../utils/ofacScraper';
+import { searchUtahWarrants } from '../utils/utahWarrantScraper';
 import { identifyBeat } from '../utils/geofence';
 
 const router = Router();
@@ -2750,6 +2751,17 @@ router.get('/safety-screen', (req: Request, res: Response) => {
       ofacHits = searchOfacLocal(searchName, ofacOpts);
     } catch { /* OFAC search may fail if not synced */ }
 
+    // ── Utah state warrants check ──
+    let utahWarrantHits: any[] = [];
+    try {
+      const utahOpts: any = { limit: 10 };
+      if (parts.length >= 2) {
+        utahOpts.firstName = parts[0];
+        utahOpts.lastName = parts.slice(1).join(' ');
+      }
+      utahWarrantHits = searchUtahWarrants(searchName, utahOpts);
+    } catch { /* Utah warrants may not be synced yet */ }
+
     // ── Premise history check (if address provided) ──
     const address = req.query.address as string | undefined;
     let premiseWarnings: string[] = [];
@@ -2782,6 +2794,7 @@ router.get('/safety-screen', (req: Request, res: Response) => {
       ) ||
       uniqueDirectWarrants.length > 0 ||
       ofacHits.length > 0 ||
+      utahWarrantHits.length > 0 ||
       premiseWarnings.length > 0;
 
     res.json({
@@ -2792,6 +2805,19 @@ router.get('/safety-screen', (req: Request, res: Response) => {
         type: h.sdn_type,
         program: h.program,
         source_list: h.source_list,
+      })),
+      utahWarrantHits: utahWarrantHits.map(h => ({
+        name: `${h.first_name} ${h.last_name}`.trim(),
+        first_name: h.first_name,
+        last_name: h.last_name,
+        middle_name: h.middle_name,
+        age: h.age,
+        city: h.city,
+        warrant_id: h.utah_warrant_id,
+        issue_date: h.issue_date,
+        court_name: h.court_name,
+        case_id: h.case_id,
+        charges: h.charges,
       })),
       premiseWarnings,
       hasWarnings,

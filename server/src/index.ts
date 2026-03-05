@@ -20,6 +20,7 @@ import { startPatrolMonitor } from './utils/patrolMonitor';
 import { startDailyReportScheduler } from './utils/dailyReportGenerator';
 import { startClearPathGpsPoller } from './utils/clearPathGpsPoller';
 import { scheduleOfacSync, searchOfacLocal } from './utils/ofacScraper';
+import { scheduleUtahWarrantSync } from './utils/utahWarrantScraper';
 import { getDb } from './models/database';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -345,6 +346,9 @@ try {
 
     // Start OFAC SDN data sync (downloads from U.S. Treasury, syncs daily)
     scheduleOfacSync();
+
+    // Start Utah state warrant scraper (syncs daily at midnight from warrants.utah.gov)
+    scheduleUtahWarrantSync();
 
     // Auto-backfill OFAC screening for existing person records (runs 60s after boot
     // to allow OFAC data sync to complete first)

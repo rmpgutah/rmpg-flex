@@ -18,6 +18,9 @@ import {
   ChevronDown,
   X,
   Scale,
+  RefreshCw,
+  ExternalLink,
+  Database,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import RmpgLogo from '../components/RmpgLogo';
@@ -86,6 +89,32 @@ interface Person {
   first_name: string;
   last_name: string;
   dob?: string;
+}
+
+interface UtahWarrant {
+  id: number;
+  utah_person_id: string;
+  first_name: string;
+  middle_name?: string;
+  last_name: string;
+  age?: number;
+  city?: string;
+  utah_warrant_id: string;
+  issue_date?: string;
+  court_name?: string;
+  case_id?: string;
+  charges?: string; // JSON array string
+  fetched_at: string;
+}
+
+interface UtahSyncStatus {
+  lastSync: string | null;
+  status: string | null;
+  personsFound: number;
+  warrantsFound: number;
+  durationMs: number;
+  lastError: string | null;
+  currentCount: number;
 }
 
 // ============================================================
@@ -190,10 +219,24 @@ export default function WarrantsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
 
-  // Pagination
+  // Source tab: local vs utah
+  const [warrantSource, setWarrantSource] = useState<'local' | 'utah'>('local');
+
+  // Pagination (local)
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+
+  // Utah state warrants
+  const [utahWarrants, setUtahWarrants] = useState<UtahWarrant[]>([]);
+  const [utahLoading, setUtahLoading] = useState(false);
+  const [utahSearchQuery, setUtahSearchQuery] = useState('');
+  const [utahPage, setUtahPage] = useState(1);
+  const [utahTotalPages, setUtahTotalPages] = useState(1);
+  const [utahTotalCount, setUtahTotalCount] = useState(0);
+  const [selectedUtahWarrant, setSelectedUtahWarrant] = useState<UtahWarrant | null>(null);
+  const [utahSyncStatus, setUtahSyncStatus] = useState<UtahSyncStatus | null>(null);
+  const [utahCountBadge, setUtahCountBadge] = useState<number>(0);
 
   // Form modal
   const [formOpen, setFormOpen] = useState(false);
@@ -263,7 +306,48 @@ export default function WarrantsPage() {
   const silentRefreshWarrants = useCallback(() => fetchWarrants({ silent: true }), [fetchWarrants]);
   useLiveSync('alerts', silentRefreshWarrants);
 
-  // Fetch warrant detail
+  // ── Utah warrants fetch ──
+  const fetchUtahWarrants = useCallback(async () => {
+    setUtahLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (utahSearchQuery) params.set('search', utahSearchQuery);
+      params.set('page', String(utahPage));
+      params.set('per_page', '50');
+
+      const res = await apiFetch<{
+        data: UtahWarrant[];
+        pagination: { total: number; totalPages: number };
+      }>(`/warrants/utah?${params.toString()}`);
+      setUtahWarrants(res.data || []);
+      setUtahTotalPages(res.pagination?.totalPages || 1);
+      setUtahTotalCount(res.pagination?.total || 0);
+    } catch {
+      setUtahWarrants([]);
+    } finally {
+      setUtahLoading(false);
+    }
+  }, [utahSearchQuery, utahPage]);
+
+  // Fetch Utah warrants only when user triggers search (not on tab switch)
+  // Auto-fetch removed — real-time search requires explicit name input
+
+  // Fetch Utah badge count + sync status on mount
+  useEffect(() => {
+    const fetchUtahMeta = async () => {
+      try {
+        const [countRes, syncRes] = await Promise.all([
+          apiFetch<{ count: number }>('/warrants/utah/count'),
+          apiFetch<UtahSyncStatus>('/warrants/utah/sync-status'),
+        ]);
+        setUtahCountBadge(countRes.count);
+        setUtahSyncStatus(syncRes);
+      } catch { /* Utah warrants not available */ }
+    };
+    fetchUtahMeta();
+  }, []);
+
+  // Fetch warrant detail (local)
   const fetchWarrantDetail = useCallback(async (id: number) => {
     try {
       const detail = await apiFetch<Warrant>(`/warrants/${id}`);
@@ -447,64 +531,123 @@ export default function WarrantsPage() {
   return (
     <div className={`absolute inset-0 ${isMobile ? 'flex flex-col' : 'flex'} overflow-hidden bg-surface-deep`}>
       {/* ── LEFT: Warrant List ── */}
-      <div className={`${isMobile ? (selectedWarrant ? 'hidden' : 'flex-1') : 'w-[55%]'} flex flex-col ${!isMobile ? 'border-r border-rmpg-600' : ''}`}>
+      <div className={`${isMobile ? ((selectedWarrant || selectedUtahWarrant) ? 'hidden' : 'flex-1') : 'w-[55%]'} flex flex-col ${!isMobile ? 'border-r border-rmpg-600' : ''}`}>
         <PanelTitleBar title="WARRANTS" icon={AlertTriangle}>
           <RmpgLogo height={16} iconOnly />
           <span className="toolbar-separator" />
           <span className="text-[9px] font-mono text-red-400">{activeCount} ACTIVE</span>
           <span className="toolbar-separator" />
           <span className="text-[9px] font-mono text-rmpg-400">{totalCount} TOTAL</span>
-          <span className="toolbar-separator" />
-          <button
-            onClick={() => { setShowArchived(!showArchived); setPage(1); }}
-            className={`toolbar-btn text-[9px] ${showArchived ? 'text-amber-400' : ''}`}
-            title={showArchived ? 'Show active warrants' : 'Show archived warrants'}
-          >
-            <Archive className="w-3 h-3" />
-            {showArchived ? 'Showing Archived' : 'Archives'}
-          </button>
-          <span className="toolbar-separator" />
-          {!showArchived && (
-            <button onClick={openNewForm} className="toolbar-btn toolbar-btn-primary text-[9px]">
-              <Plus className="w-3 h-3" /> New Warrant
-            </button>
+          {warrantSource === 'local' && (
+            <>
+              <span className="toolbar-separator" />
+              <button
+                onClick={() => { setShowArchived(!showArchived); setPage(1); }}
+                className={`toolbar-btn text-[9px] ${showArchived ? 'text-amber-400' : ''}`}
+                title={showArchived ? 'Show active warrants' : 'Show archived warrants'}
+              >
+                <Archive className="w-3 h-3" />
+                {showArchived ? 'Showing Archived' : 'Archives'}
+              </button>
+              <span className="toolbar-separator" />
+              {!showArchived && (
+                <button onClick={openNewForm} className="toolbar-btn toolbar-btn-primary text-[9px]">
+                  <Plus className="w-3 h-3" /> New Warrant
+                </button>
+              )}
+            </>
           )}
           <ExportButton exportUrl="/warrants/export" exportFilename="warrants_export.csv" />
           <PrintButton />
         </PanelTitleBar>
 
+        {/* ── Source Tabs ── */}
+        <div className="flex items-center gap-0 border-b border-rmpg-700 bg-surface-sunken px-2">
+          <button
+            onClick={() => { setWarrantSource('local'); setSelectedUtahWarrant(null); }}
+            className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors relative ${
+              warrantSource === 'local'
+                ? 'text-white border-b-2 border-brand-500'
+                : 'text-rmpg-400 hover:text-rmpg-200'
+            }`}
+          >
+            <Database className="w-3 h-3 inline mr-1" />
+            Local Warrants
+            <span className="ml-1.5 text-[9px] font-mono text-rmpg-400">({totalCount})</span>
+          </button>
+          <button
+            onClick={() => { setWarrantSource('utah'); setSelectedWarrant(null); }}
+            className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors relative ${
+              warrantSource === 'utah'
+                ? 'text-white border-b-2 border-red-500'
+                : 'text-rmpg-400 hover:text-rmpg-200'
+            }`}
+          >
+            <Scale className="w-3 h-3 inline mr-1" />
+            Utah State
+            <span className="ml-1.5 text-[9px] font-mono text-red-400">(Live)</span>
+          </button>
+          <span className="ml-auto text-[9px] text-rmpg-500 flex items-center gap-1">
+            <ExternalLink className="w-2.5 h-2.5" />
+            warrants.utah.gov
+          </span>
+        </div>
+
         {/* Filters */}
         <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700 bg-surface-sunken">
-          <div className="relative flex-1">
-            <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
-            <input
-              type="text"
-              className="input-dark text-xs w-full pl-7"
-              placeholder="Search by subject name..."
-              value={searchQuery}
-              onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
-            />
-          </div>
-          <select
-            className="input-dark text-xs w-28"
-            value={filterStatus}
-            onChange={(e) => { setFilterStatus(e.target.value); setPage(1); }}
-          >
-            <option value="">All Status</option>
-            {WARRANT_STATUSES.map((s) => (
-              <option key={s.value} value={s.value}>{s.label}</option>
-            ))}
-          </select>
-          <select
-            className="input-dark text-xs w-24"
-            value={filterType}
-            onChange={(e) => { setFilterType(e.target.value); setPage(1); }}
-          >
-            <option value="">All Types</option>
-            {WARRANT_TYPES.map((t) => (
-              <option key={t.value} value={t.value}>{t.label}</option>
-            ))}
-          </select>
+          {warrantSource === 'local' ? (
+            <>
+              <div className="relative flex-1">
+                <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
+                <input
+                  type="text"
+                  className="input-dark text-xs w-full pl-7"
+                  placeholder="Search by subject name..."
+                  value={searchQuery}
+                  onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
+                />
+              </div>
+              <select
+                className="input-dark text-xs w-28"
+                value={filterStatus}
+                onChange={(e) => { setFilterStatus(e.target.value); setPage(1); }}
+              >
+                <option value="">All Status</option>
+                {WARRANT_STATUSES.map((s) => (
+                  <option key={s.value} value={s.value}>{s.label}</option>
+                ))}
+              </select>
+              <select
+                className="input-dark text-xs w-24"
+                value={filterType}
+                onChange={(e) => { setFilterType(e.target.value); setPage(1); }}
+              >
+                <option value="">All Types</option>
+                {WARRANT_TYPES.map((t) => (
+                  <option key={t.value} value={t.value}>{t.label}</option>
+                ))}
+              </select>
+            </>
+          ) : (
+            <div className="relative flex-1">
+              <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
+              <input
+                type="text"
+                className="input-dark text-xs w-full pl-7 pr-16"
+                placeholder="Enter first & last name (e.g. Karl Turley)..."
+                value={utahSearchQuery}
+                onChange={(e) => setUtahSearchQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && utahSearchQuery.trim().length >= 2) fetchUtahWarrants(); }}
+              />
+              <button
+                onClick={() => { if (utahSearchQuery.trim().length >= 2) fetchUtahWarrants(); }}
+                disabled={utahSearchQuery.trim().length < 2 || utahLoading}
+                className="absolute right-1 top-1/2 -translate-y-1/2 px-2 py-0.5 text-[10px] font-bold bg-brand-600 hover:bg-brand-500 disabled:bg-rmpg-600 disabled:text-rmpg-400 text-white rounded"
+              >
+                {utahLoading ? 'Searching...' : 'Search'}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Error */}
@@ -515,88 +658,289 @@ export default function WarrantsPage() {
           </div>
         )}
 
-        {/* Table */}
-        <div className="flex-1 overflow-auto">
-          {loading ? (
-            <div className="flex items-center justify-center h-full text-rmpg-400">
-              <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading warrants...
+        {/* Table — Local Warrants */}
+        {warrantSource === 'local' && (
+          <>
+            <div className="flex-1 overflow-auto">
+              {loading ? (
+                <div className="flex items-center justify-center h-full text-rmpg-400">
+                  <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading warrants...
+                </div>
+              ) : warrants.length === 0 ? (
+                <div className="flex items-center justify-center h-full text-rmpg-400">
+                  <div className="text-center">
+                    <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-rmpg-500" />
+                    <p className="text-sm">{showArchived ? 'No archived warrants' : 'No warrants found'}</p>
+                    {!showArchived && <p className="text-xs text-rmpg-500 mt-1">Create a new warrant to get started</p>}
+                  </div>
+                </div>
+              ) : (
+                <table className="table-dark">
+                  <thead>
+                    <tr>
+                      <th style={{ width: 120 }}>Number</th>
+                      <th style={{ width: 80 }}>Type</th>
+                      <th>Subject</th>
+                      <th>Charge</th>
+                      <th style={{ width: 90 }}>Status</th>
+                      <th style={{ width: 90 }}>Offense</th>
+                      <th style={{ width: 110 }}>Created</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {warrants.filter((w) => {
+                      if (!searchQuery.trim()) return true;
+                      const q = searchQuery.toLowerCase();
+                      return (
+                        (w.warrant_number || '').toLowerCase().includes(q) ||
+                        (w.charge_description || '').toLowerCase().includes(q) ||
+                        (w.subject_first_name || '').toLowerCase().includes(q) ||
+                        (w.subject_last_name || '').toLowerCase().includes(q) ||
+                        (w.subject_name || '').toLowerCase().includes(q)
+                      );
+                    }).map((w) => (
+                      <tr
+                        key={w.id}
+                        onClick={() => fetchWarrantDetail(w.id)}
+                        className={`cursor-pointer ${selectedWarrant?.id === w.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : ''}`}
+                      >
+                        <td className="font-mono text-xs text-white font-bold">{w.warrant_number || '-'}</td>
+                        <td>
+                          <span className={`inline-flex px-1.5 py-0.5 text-[10px] font-bold rounded border ${TYPE_COLORS[w.type] || TYPE_COLORS.other}`}>
+                            {w.type.toUpperCase()}
+                          </span>
+                        </td>
+                        <td className="text-rmpg-200 text-xs">{w.subject_name || <span className="text-rmpg-500">Unknown</span>}</td>
+                        <td className="text-xs text-rmpg-300 truncate max-w-[200px]">{w.charge_description}</td>
+                        <td>
+                          <span className={`inline-flex px-1.5 py-0.5 text-[10px] font-bold rounded border ${STATUS_COLORS[w.status] || ''}`}>
+                            {w.status.toUpperCase()}
+                          </span>
+                        </td>
+                        <td className="text-xs text-rmpg-400">{w.offense_level ? w.offense_level.charAt(0).toUpperCase() + w.offense_level.slice(1) : '-'}</td>
+                        <td className="text-xs text-rmpg-400">{formatDate(w.created_at)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
-          ) : warrants.length === 0 ? (
-            <div className="flex items-center justify-center h-full text-rmpg-400">
-              <div className="text-center">
-                <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-rmpg-500" />
-                <p className="text-sm">{showArchived ? 'No archived warrants' : 'No warrants found'}</p>
-                {!showArchived && <p className="text-xs text-rmpg-500 mt-1">Create a new warrant to get started</p>}
-              </div>
-            </div>
-          ) : (
-            <table className="table-dark">
-              <thead>
-                <tr>
-                  <th style={{ width: 120 }}>Number</th>
-                  <th style={{ width: 80 }}>Type</th>
-                  <th>Subject</th>
-                  <th>Charge</th>
-                  <th style={{ width: 90 }}>Status</th>
-                  <th style={{ width: 90 }}>Offense</th>
-                  <th style={{ width: 110 }}>Created</th>
-                </tr>
-              </thead>
-              <tbody>
-                {warrants.filter((w) => {
-                  if (!searchQuery.trim()) return true;
-                  const q = searchQuery.toLowerCase();
-                  return (
-                    (w.warrant_number || '').toLowerCase().includes(q) ||
-                    (w.charge_description || '').toLowerCase().includes(q) ||
-                    (w.subject_first_name || '').toLowerCase().includes(q) ||
-                    (w.subject_last_name || '').toLowerCase().includes(q) ||
-                    (w.subject_name || '').toLowerCase().includes(q)
-                  );
-                }).map((w) => (
-                  <tr
-                    key={w.id}
-                    onClick={() => fetchWarrantDetail(w.id)}
-                    className={`cursor-pointer ${selectedWarrant?.id === w.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : ''}`}
-                  >
-                    <td className="font-mono text-xs text-white font-bold">{w.warrant_number || '-'}</td>
-                    <td>
-                      <span className={`inline-flex px-1.5 py-0.5 text-[10px] font-bold rounded border ${TYPE_COLORS[w.type] || TYPE_COLORS.other}`}>
-                        {w.type.toUpperCase()}
-                      </span>
-                    </td>
-                    <td className="text-rmpg-200 text-xs">{w.subject_name || <span className="text-rmpg-500">Unknown</span>}</td>
-                    <td className="text-xs text-rmpg-300 truncate max-w-[200px]">{w.charge_description}</td>
-                    <td>
-                      <span className={`inline-flex px-1.5 py-0.5 text-[10px] font-bold rounded border ${STATUS_COLORS[w.status] || ''}`}>
-                        {w.status.toUpperCase()}
-                      </span>
-                    </td>
-                    <td className="text-xs text-rmpg-400">{w.offense_level ? w.offense_level.charAt(0).toUpperCase() + w.offense_level.slice(1) : '-'}</td>
-                    <td className="text-xs text-rmpg-400">{formatDate(w.created_at)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
 
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between px-3 py-1.5 border-t border-rmpg-700 bg-surface-sunken">
-            <span className="text-[10px] text-rmpg-400">
-              Page {page} of {totalPages} ({totalCount} results)
-            </span>
-            <div className="flex gap-1">
-              <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1} className="toolbar-btn text-[9px]">Prev</button>
-              <button onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page >= totalPages} className="toolbar-btn text-[9px]">Next</button>
+            {/* Pagination — Local */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-3 py-1.5 border-t border-rmpg-700 bg-surface-sunken">
+                <span className="text-[10px] text-rmpg-400">
+                  Page {page} of {totalPages} ({totalCount} results)
+                </span>
+                <div className="flex gap-1">
+                  <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1} className="toolbar-btn text-[9px]">Prev</button>
+                  <button onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page >= totalPages} className="toolbar-btn text-[9px]">Next</button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Table — Utah State Warrants */}
+        {warrantSource === 'utah' && (
+          <>
+            <div className="flex-1 overflow-auto">
+              {utahLoading ? (
+                <div className="flex items-center justify-center h-full text-rmpg-400">
+                  <Loader2 className="w-5 h-5 animate-spin mr-2" /> Searching warrants.utah.gov...
+                </div>
+              ) : utahWarrants.length === 0 ? (
+                <div className="flex items-center justify-center h-full text-rmpg-400">
+                  <div className="text-center">
+                    <Scale className="w-10 h-10 mx-auto mb-3 text-rmpg-500" />
+                    {utahSearchQuery.trim().length >= 2 ? (
+                      <>
+                        <p className="text-sm">No warrants found for "{utahSearchQuery}"</p>
+                        <p className="text-xs text-rmpg-500 mt-1">Try a different name — requires both first and last name</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-sm font-semibold text-rmpg-300">Search Utah State Warrants</p>
+                        <p className="text-xs text-rmpg-500 mt-1">Enter a first and last name to search warrants.utah.gov in real-time</p>
+                        <p className="text-[10px] text-rmpg-600 mt-2">Example: "Karl Turley" or "John Smith"</p>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <table className="table-dark">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th style={{ width: 50 }}>Age</th>
+                      <th style={{ width: 100 }}>City</th>
+                      <th>Court</th>
+                      <th style={{ width: 100 }}>Case ID</th>
+                      <th>Charges</th>
+                      <th style={{ width: 100 }}>Issued</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {utahWarrants.map((uw) => {
+                      let charges: string[] = [];
+                      try { charges = JSON.parse(uw.charges || '[]'); } catch { /* non-JSON */ }
+                      return (
+                        <tr
+                          key={uw.id}
+                          onClick={() => setSelectedUtahWarrant(uw)}
+                          className={`cursor-pointer ${selectedUtahWarrant?.id === uw.id ? 'bg-red-900/20 border-l-2 border-l-red-500' : ''}`}
+                        >
+                          <td className="text-white text-xs font-bold">
+                            {uw.last_name}, {uw.first_name}{uw.middle_name ? ` ${uw.middle_name}` : ''}
+                          </td>
+                          <td className="text-xs text-rmpg-300">{uw.age || '-'}</td>
+                          <td className="text-xs text-rmpg-300">{uw.city || '-'}</td>
+                          <td className="text-xs text-rmpg-300 truncate max-w-[150px]">{uw.court_name || '-'}</td>
+                          <td className="text-xs text-rmpg-400 font-mono">{uw.case_id || '-'}</td>
+                          <td className="text-xs text-rmpg-300 truncate max-w-[200px]">
+                            {charges.length > 0 ? charges[0] : '-'}
+                            {charges.length > 1 && <span className="text-rmpg-500"> +{charges.length - 1}</span>}
+                          </td>
+                          <td className="text-xs text-rmpg-400">{uw.issue_date || '-'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
             </div>
-          </div>
+
+            {/* Pagination — Utah */}
+            {utahTotalPages > 1 && (
+              <div className="flex items-center justify-between px-3 py-1.5 border-t border-rmpg-700 bg-surface-sunken">
+                <span className="text-[10px] text-rmpg-400">
+                  Page {utahPage} of {utahTotalPages} ({utahTotalCount.toLocaleString()} results)
+                </span>
+                <div className="flex gap-1">
+                  <button onClick={() => setUtahPage(Math.max(1, utahPage - 1))} disabled={utahPage <= 1} className="toolbar-btn text-[9px]">Prev</button>
+                  <button onClick={() => setUtahPage(Math.min(utahTotalPages, utahPage + 1))} disabled={utahPage >= utahTotalPages} className="toolbar-btn text-[9px]">Next</button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
 
       {/* ── RIGHT: Warrant Detail ── */}
-      <div ref={warrantDetailRef} className={`${isMobile ? (selectedWarrant ? 'flex-1' : 'hidden') : 'flex-1'} flex flex-col overflow-hidden`}>
+      <div ref={warrantDetailRef} className={`${isMobile ? ((selectedWarrant || selectedUtahWarrant) ? 'flex-1' : 'hidden') : 'flex-1'} flex flex-col overflow-hidden`}>
+        {warrantSource === 'utah' && selectedUtahWarrant ? (
+          /* ── Utah Warrant Detail Panel ── */
+          <>
+            <PanelTitleBar title="UTAH STATE WARRANT" icon={Scale}>
+              {isMobile && (
+                <button onClick={() => setSelectedUtahWarrant(null)} className="toolbar-btn text-[9px]">
+                  ← Back
+                </button>
+              )}
+            </PanelTitleBar>
+            <div className="flex-1 overflow-auto p-4 space-y-4">
+              {/* State badge */}
+              <div className="flex items-center gap-2">
+                <span className="inline-flex px-3 py-1 text-[10px] font-bold rounded border bg-red-900/50 text-red-300 border-red-700/50 uppercase tracking-wider">
+                  <Scale className="w-3 h-3 mr-1.5" /> State of Utah
+                </span>
+                <span className="inline-flex px-2 py-0.5 text-[10px] font-bold rounded border bg-red-900/40 text-red-400 border-red-700/50">
+                  ACTIVE WARRANT
+                </span>
+              </div>
+
+              {/* Person Info */}
+              <div className="panel-beveled p-4">
+                <h3 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider flex items-center gap-2 mb-3">
+                  <User className="w-4 h-4 text-red-400" /> Subject Information
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+                  <div>
+                    <span className="text-rmpg-400">Name</span>
+                    <div className="text-white font-bold text-sm">
+                      {selectedUtahWarrant.last_name}, {selectedUtahWarrant.first_name}
+                      {selectedUtahWarrant.middle_name ? ` ${selectedUtahWarrant.middle_name}` : ''}
+                    </div>
+                  </div>
+                  {selectedUtahWarrant.age && (
+                    <div>
+                      <span className="text-rmpg-400">Age</span>
+                      <div className="text-rmpg-200">{selectedUtahWarrant.age}</div>
+                    </div>
+                  )}
+                  {selectedUtahWarrant.city && (
+                    <div>
+                      <span className="text-rmpg-400">City</span>
+                      <div className="text-rmpg-200 flex items-center gap-1">
+                        <MapPin className="w-3 h-3 text-rmpg-500" /> {selectedUtahWarrant.city}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Warrant Info */}
+              <div className="panel-beveled p-4">
+                <h3 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider flex items-center gap-2 mb-3">
+                  <Gavel className="w-4 h-4 text-red-400" /> Warrant Details
+                </h3>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  {selectedUtahWarrant.court_name && (
+                    <div>
+                      <span className="text-rmpg-400">Court</span>
+                      <div className="text-rmpg-200">{selectedUtahWarrant.court_name}</div>
+                    </div>
+                  )}
+                  {selectedUtahWarrant.case_id && (
+                    <div>
+                      <span className="text-rmpg-400">Case ID</span>
+                      <div className="text-rmpg-200 font-mono">{selectedUtahWarrant.case_id}</div>
+                    </div>
+                  )}
+                  {selectedUtahWarrant.issue_date && (
+                    <div>
+                      <span className="text-rmpg-400">Issue Date</span>
+                      <div className="text-rmpg-200">{selectedUtahWarrant.issue_date}</div>
+                    </div>
+                  )}
+                  <div>
+                    <span className="text-rmpg-400">Fetched</span>
+                    <div className="text-rmpg-400 text-[10px]">{formatDateTime(selectedUtahWarrant.fetched_at)}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Charges */}
+              {(() => {
+                let charges: string[] = [];
+                try { charges = JSON.parse(selectedUtahWarrant.charges || '[]'); } catch { /* */ }
+                return charges.length > 0 ? (
+                  <div className="panel-beveled p-4">
+                    <h3 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider flex items-center gap-2 mb-3">
+                      <AlertTriangle className="w-4 h-4 text-red-400" /> Charges
+                    </h3>
+                    <div className="space-y-1.5">
+                      {charges.map((charge, idx) => (
+                        <div key={idx} className="flex items-start gap-2 text-xs">
+                          <span className="text-red-400 font-bold mt-0.5">•</span>
+                          <span className="text-rmpg-200">{charge}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null;
+              })()}
+
+              {/* Data source note */}
+              <div className="text-[9px] text-rmpg-500 flex items-center gap-1 px-1">
+                <ExternalLink className="w-3 h-3" />
+                Source: warrants.utah.gov — This is external data and is read-only.
+              </div>
+            </div>
+          </>
+        ) : (
+          /* ── Local Warrant Detail Panel (existing) ── */
+          <>
         <PanelTitleBar title="WARRANT DETAIL" icon={Gavel}>
           {isMobile && selectedWarrant && (
             <button onClick={() => setSelectedWarrant(null)} className="toolbar-btn text-[9px]">
@@ -839,6 +1183,8 @@ export default function WarrantsPage() {
             </div>
           </div>
         )}
+          </>
+        )}
       </div>
 
       {/* ── FORM MODAL ── */}
@@ -1032,7 +1378,7 @@ export default function WarrantsPage() {
       )}
 
       {/* ── MOBILE FAB ── */}
-      {isMobile && !selectedWarrant && !showArchived && !formOpen && (
+      {isMobile && warrantSource === 'local' && !selectedWarrant && !showArchived && !formOpen && (
         <button onClick={openNewForm} className="mobile-fab" aria-label="New Warrant">
           <Plus className="w-6 h-6" />
         </button>
