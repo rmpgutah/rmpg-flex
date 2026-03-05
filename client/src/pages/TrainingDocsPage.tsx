@@ -1,3 +1,3 @@
 export default function TrainingDocsPage() {
-  return <div className="p-4 text-rmpg-400">Training Docs — Coming Soon</div>;
+  return <div className="p-6 text-rmpg-400 text-sm">Training Docs — Coming Soon</div>;
 }

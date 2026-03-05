@@ -405,6 +405,141 @@ function createTables(): void {
     );
     CREATE UNIQUE INDEX IF NOT EXISTS idx_system_config_key_value ON system_config(config_key, config_value);
 
+    -- OFAC SDN (Specially Designated Nationals) — scraped from U.S. Treasury
+    CREATE TABLE IF NOT EXISTS ofac_sdn_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ent_num INTEGER UNIQUE NOT NULL,
+      sdn_name TEXT NOT NULL,
+      sdn_type TEXT,
+      program TEXT,
+      title TEXT,
+      remarks TEXT,
+      call_sign TEXT,
+      vessel_type TEXT,
+      tonnage TEXT,
+      grt TEXT,
+      vessel_flag TEXT,
+      vessel_owner TEXT,
+      updated_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_ofac_sdn_name ON ofac_sdn_entries(sdn_name COLLATE NOCASE);
+    CREATE INDEX IF NOT EXISTS idx_ofac_sdn_type ON ofac_sdn_entries(sdn_type);
+
+    CREATE TABLE IF NOT EXISTS ofac_sdn_aliases (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ent_num INTEGER NOT NULL,
+      alt_num INTEGER,
+      alt_type TEXT,
+      alt_name TEXT NOT NULL,
+      alt_remarks TEXT,
+      FOREIGN KEY (ent_num) REFERENCES ofac_sdn_entries(ent_num) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_ofac_alias_name ON ofac_sdn_aliases(alt_name COLLATE NOCASE);
+    CREATE INDEX IF NOT EXISTS idx_ofac_alias_ent ON ofac_sdn_aliases(ent_num);
+
+    CREATE TABLE IF NOT EXISTS ofac_sdn_addresses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ent_num INTEGER NOT NULL,
+      add_num INTEGER,
+      address TEXT,
+      city TEXT,
+      state_province TEXT,
+      postal_code TEXT,
+      country TEXT,
+      add_remarks TEXT,
+      FOREIGN KEY (ent_num) REFERENCES ofac_sdn_entries(ent_num) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_ofac_addr_ent ON ofac_sdn_addresses(ent_num);
+
+    CREATE TABLE IF NOT EXISTS ofac_sdn_ids (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ent_num INTEGER NOT NULL,
+      id_type TEXT,
+      id_number TEXT,
+      id_country TEXT,
+      issue_date TEXT,
+      expiration_date TEXT,
+      remarks TEXT,
+      FOREIGN KEY (ent_num) REFERENCES ofac_sdn_entries(ent_num) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_ofac_ids_ent ON ofac_sdn_ids(ent_num);
+
+    CREATE TABLE IF NOT EXISTS ofac_sync_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_url TEXT NOT NULL,
+      entries_count INTEGER DEFAULT 0,
+      aliases_count INTEGER DEFAULT 0,
+      addresses_count INTEGER DEFAULT 0,
+      ids_count INTEGER DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'pending',
+      error_message TEXT,
+      duration_ms INTEGER,
+      synced_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS microbilt_searches (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product TEXT NOT NULL,
+      search_type TEXT NOT NULL,
+      search_input TEXT NOT NULL,
+      response_data TEXT NOT NULL,
+      hit INTEGER DEFAULT 0,
+      subject_count INTEGER DEFAULT 0,
+      searched_by INTEGER,
+      linked_incident TEXT,
+      ip_address TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_mb_search_product ON microbilt_searches(product);
+    CREATE INDEX IF NOT EXISTS idx_mb_search_date ON microbilt_searches(created_at);
+
+    -- Driver's License records (structured local store — captured from MicroBilt API)
+    CREATE TABLE IF NOT EXISTS dl_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      dl_number TEXT,
+      dl_state TEXT,
+      dl_class TEXT,
+      dl_status TEXT,
+      dl_expiration TEXT,
+      dl_issue_date TEXT,
+      dl_restrictions TEXT,
+      dl_endorsements TEXT,
+      first_name TEXT,
+      middle_name TEXT,
+      last_name TEXT,
+      full_name TEXT,
+      suffix TEXT,
+      date_of_birth TEXT,
+      gender TEXT,
+      height TEXT,
+      weight TEXT,
+      eye_color TEXT,
+      hair_color TEXT,
+      race TEXT,
+      raw_record TEXT,
+      source TEXT DEFAULT 'MICROBILT',
+      fetched_at TEXT DEFAULT (datetime('now','localtime')),
+      updated_at TEXT DEFAULT (datetime('now','localtime')),
+      UNIQUE(dl_number, dl_state)
+    );
+    CREATE INDEX IF NOT EXISTS idx_dl_number_state ON dl_records(dl_number, dl_state);
+    CREATE INDEX IF NOT EXISTS idx_dl_last_name ON dl_records(last_name COLLATE NOCASE);
+    CREATE INDEX IF NOT EXISTS idx_dl_first_name ON dl_records(first_name COLLATE NOCASE);
+    CREATE INDEX IF NOT EXISTS idx_dl_dob ON dl_records(date_of_birth);
+
+    CREATE TABLE IF NOT EXISTS dl_addresses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      dl_record_id INTEGER NOT NULL,
+      address TEXT,
+      address2 TEXT,
+      city TEXT,
+      state TEXT,
+      postal_code TEXT,
+      country TEXT DEFAULT 'US',
+      FOREIGN KEY (dl_record_id) REFERENCES dl_records(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_dl_addr_record ON dl_addresses(dl_record_id);
+
     -- Warrants
     CREATE TABLE IF NOT EXISTS warrants (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2101,6 +2236,11 @@ function migrateSchema(): void {
   addCol('gps_breadcrumbs', 'nearest_intersection', 'TEXT');
   addCol('gps_breadcrumbs', 'gps_source', "TEXT DEFAULT 'browser'");
 
+  // ── gps_breadcrumbs — position source (gps/wifi/ip/unknown) ──
+  // Tracks how each breadcrumb position was obtained for audit trail visibility
+  // on maps. WiFi/IP points have reduced accuracy vs hardware GPS.
+  addCol('gps_breadcrumbs', 'source', "TEXT DEFAULT 'unknown'");
+
   // ── Async backfill: geocode past breadcrumbs missing road/cross-street data ──
   // Runs in the background after startup so it doesn't block the server.
   // Samples distinct locations (rounded to ~100m grid) to minimize API calls.
@@ -2357,7 +2497,7 @@ function migrateSchema(): void {
     `).run();
   } catch { /* table may not exist yet — safe to ignore */ }
 
-  // ── WEBAUTHN CREDENTIALS — FIDO2/YubiKey hardware keys ──
+  // ── WEBAUTHN CREDENTIALS -- FIDO2/YubiKey hardware keys ──
   try {
     db.exec(`
       CREATE TABLE IF NOT EXISTS webauthn_credentials (
@@ -2378,7 +2518,7 @@ function migrateSchema(): void {
     `);
   } catch { /* table already exists */ }
 
-  // ── CLEARPATHGPS — enriched device data (vehicle info, ignition, odometer) ──
+  // ── CLEARPATHGPS -- enriched device data (vehicle info, ignition, odometer) ──
   addCol('cpg_device_mappings', 'vehicle_make', 'TEXT');
   addCol('cpg_device_mappings', 'vehicle_model', 'TEXT');
   addCol('cpg_device_mappings', 'vehicle_vin', 'TEXT');
@@ -2388,18 +2528,46 @@ function migrateSchema(): void {
   addCol('cpg_device_mappings', 'driver_name', 'TEXT');
   addCol('cpg_device_mappings', 'gts_device_id', 'TEXT');
 
-  // ── CLEARPATHGPS — enriched breadcrumb data ──
+  // ── CLEARPATHGPS -- enriched breadcrumb data ──
   addCol('gps_breadcrumbs', 'odometer', 'REAL');
   addCol('gps_breadcrumbs', 'satellite_count', 'INTEGER');
   addCol('gps_breadcrumbs', 'ignition', 'INTEGER');
 
-  // ── CLEARPATHGPS — enriched dashcam event data ──
+  // ── CLEARPATHGPS -- enriched dashcam event data ──
   addCol('dashcam_events', 'odometer', 'REAL');
   addCol('dashcam_events', 'ignition', 'INTEGER');
   addCol('dashcam_events', 'driver_name', 'TEXT');
   addCol('dashcam_events', 'city', 'TEXT');
   addCol('dashcam_events', 'state_province', 'TEXT');
   addCol('dashcam_events', 'satellite_count', 'INTEGER');
+
+  // ── OFAC tables -- fix column names to match Treasury CSV format ──
+  try {
+    const aliasInfo = db.prepare("PRAGMA table_info(ofac_sdn_aliases)").all() as any[];
+    const hasOldName = aliasInfo.some((c: any) => c.name === 'alias_name');
+    if (hasOldName) {
+      db.prepare('DROP TABLE IF EXISTS ofac_sdn_ids').run();
+      db.prepare('DROP TABLE IF EXISTS ofac_sdn_addresses').run();
+      db.prepare('DROP TABLE IF EXISTS ofac_sdn_aliases').run();
+      db.prepare('DROP TABLE IF EXISTS ofac_sdn_entries').run();
+      db.prepare('DROP TABLE IF EXISTS ofac_sync_log').run();
+      // Recreate with correct schema
+      createTables();
+      console.log('[migrate] Recreated OFAC tables with corrected column names');
+    }
+  } catch { /* tables may not exist yet */ }
+
+  addCol('ofac_sdn_addresses', 'add_num', 'INTEGER');
+  addCol('ofac_sdn_addresses', 'add_remarks', 'TEXT');
+  addCol('ofac_sdn_ids', 'remarks', 'TEXT');
+
+  // ── OFAC consolidated sanctions -- add source_list column ──
+  addCol('ofac_sdn_entries', 'source_list', "TEXT DEFAULT 'SDN'");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_ofac_source_list ON ofac_sdn_entries(source_list)");
+
+  // ── Person watchlist auto-screening flag ──
+  addCol('persons', 'watchlist_match', 'TEXT DEFAULT NULL');
+  addCol('persons', 'watchlist_checked_at', 'TEXT DEFAULT NULL');
 
   console.log('Schema migration completed.');
 }

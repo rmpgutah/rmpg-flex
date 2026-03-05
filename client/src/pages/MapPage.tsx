@@ -1192,11 +1192,19 @@ export default function MapPage() {
       speed: number | null; status: string; call_number: string | null;
       call_type: string | null; time: string;
       road_name: string | null; gps_source: string;
+      source?: string;
     }
     interface Trail {
       unit_id: number; call_sign: string; officer_name: string;
       badge_number: string; points: TrailPoint[];
     }
+
+    const SOURCE_LABELS: Record<string, { label: string; color: string; icon: string }> = {
+      gps: { label: 'GPS', color: '#22c55e', icon: '📡' },
+      wifi: { label: 'WiFi', color: '#3b82f6', icon: '📶' },
+      ip: { label: 'IP', color: '#f59e0b', icon: '🌐' },
+      unknown: { label: '—', color: '#6b7280', icon: '' },
+    };
 
     const fetchTrails = async () => {
       // Clear previous
@@ -1237,14 +1245,17 @@ export default function MapPage() {
           }
 
           // Place dot markers at each breadcrumb point (every point for interaction)
+          // WiFi/IP-sourced points get a distinct visual style (larger, different stroke)
           trail.points.forEach((pt, ptIdx) => {
+            const isWifiSource = pt.source === 'wifi' || pt.source === 'ip';
+            const isLast = ptIdx === trail.points.length - 1;
             const dot = new google.maps.Circle({
               center: { lat: pt.lat, lng: pt.lng },
-              radius: 4,
-              fillColor: color,
-              fillOpacity: ptIdx === trail.points.length - 1 ? 1 : 0.6,
-              strokeColor: '#fff',
-              strokeWeight: ptIdx === trail.points.length - 1 ? 2 : 0.5,
+              radius: isWifiSource ? 6 : 4,
+              fillColor: isWifiSource ? '#3b82f6' : color,
+              fillOpacity: isLast ? 1 : 0.6,
+              strokeColor: isWifiSource ? '#60a5fa' : '#fff',
+              strokeWeight: isLast ? 2 : (isWifiSource ? 1.5 : 0.5),
               strokeOpacity: 0.8,
               map,
               clickable: true,
@@ -1257,6 +1268,7 @@ export default function MapPage() {
               const gpsBadge = isCpg
                 ? '<span style="display:inline-block;font-size:8px;font-weight:900;color:#60a5fa;background:#1e3a5f;border:1px solid #2563eb40;padding:1px 5px;margin-left:6px;letter-spacing:0.5px">CPG HARDWARE</span>'
                 : '<span style="display:inline-block;font-size:8px;font-weight:900;color:#4ade80;background:#14532d80;border:1px solid #22c55e40;padding:1px 5px;margin-left:6px;letter-spacing:0.5px">BROWSER GPS</span>';
+              const src = SOURCE_LABELS[pt.source || 'unknown'] || SOURCE_LABELS.unknown;
               const speedColor = pt.speed != null && pt.speed > 80 ? '#f87171' : pt.speed != null && pt.speed > 60 ? '#fbbf24' : '#e0e0e0';
               const html = `
                 <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:220px;line-height:1.6;background:#0a0e14;padding:10px 12px;border:1px solid #1e2a3a">
@@ -1270,6 +1282,7 @@ export default function MapPage() {
                   <table style="width:100%;font-size:11px;border-collapse:collapse">
                     <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Time</td><td style="font-weight:bold;color:#fff">${escapeHtml(time)}</td></tr>
                     <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Status</td><td style="font-weight:bold;color:#4fc3f7">${escapeHtml(STATUS_LABELS[pt.status] || pt.status)}</td></tr>
+                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Source</td><td style="font-weight:bold;color:${src.color}">${src.icon} ${src.label}</td></tr>
                     <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Heading</td><td style="color:#e0e0e0">${escapeHtml(formatHeading(pt.heading))}</td></tr>
                     <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Accuracy</td><td style="color:#e0e0e0">${pt.accuracy != null ? `±${Math.round(pt.accuracy)}m` : '—'}</td></tr>
                     <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Position</td><td style="font-size:10px;color:#e0e0e0">${pt.lat.toFixed(6)}, ${pt.lng.toFixed(6)}</td></tr>

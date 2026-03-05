@@ -19,6 +19,8 @@ import { liveBroadcast } from './middleware/liveBroadcast';
 import { startPatrolMonitor } from './utils/patrolMonitor';
 import { startDailyReportScheduler } from './utils/dailyReportGenerator';
 import { startClearPathGpsPoller } from './utils/clearPathGpsPoller';
+import { scheduleOfacSync, searchOfacLocal } from './utils/ofacScraper';
+import { getDb } from './models/database';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -60,6 +62,7 @@ import downloadsRoutes, { mountDownloadFileRoute } from './routes/downloads';
 import serveManagerRoutes from './routes/servemanager';
 import microbiltRoutes from './routes/microbilt';
 import clearPathGpsRoutes from './routes/clearpathgps';
+import dlRecordRoutes from './routes/dlRecords';
 import fieldInterviewRoutes from './routes/fieldInterviews';
 import trespassOrderRoutes from './routes/trespassOrders';
 import caseRoutes from './routes/cases';
@@ -164,6 +167,7 @@ app.use('/api/updates', downloadsRoutes);
 app.use('/api/servemanager', serveManagerRoutes);
 app.use('/api/microbilt', microbiltRoutes);
 app.use('/api/clearpathgps', clearPathGpsRoutes);
+app.use('/api/dl-records', dlRecordRoutes);
 app.use('/api/field-interviews', fieldInterviewRoutes);
 app.use('/api/trespass-orders', trespassOrderRoutes);
 app.use('/api/cases', caseRoutes);
@@ -336,6 +340,48 @@ try {
 
     // Start ClearPathGPS fleet position poller (if enabled)
     startClearPathGpsPoller();
+
+    // Start OFAC SDN data sync (downloads from U.S. Treasury, syncs daily)
+    scheduleOfacSync();
+
+    // Auto-backfill OFAC screening for existing person records (runs 60s after boot
+    // to allow OFAC data sync to complete first)
+    setTimeout(() => {
+      try {
+        const db = getDb();
+        const unchecked = db.prepare(
+          'SELECT id, first_name, last_name FROM persons WHERE watchlist_checked_at IS NULL AND first_name IS NOT NULL AND last_name IS NOT NULL'
+        ).all() as { id: number; first_name: string; last_name: string }[];
+
+        if (unchecked.length > 0) {
+          console.log(`[OFAC Backfill] Screening ${unchecked.length} person record(s) that were never checked...`);
+          let matches = 0;
+          const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+          for (const p of unchecked) {
+            try {
+              const hits = searchOfacLocal(`${p.last_name}, ${p.first_name}`, { type: 'person' as const, firstName: p.first_name, lastName: p.last_name, limit: 3 });
+              const matchInfo = hits.length > 0
+                ? JSON.stringify(hits.map((h: any) => ({ name: h.sdn_name, program: h.program, list: h.source_list })))
+                : null;
+              db.prepare('UPDATE persons SET watchlist_match = ?, watchlist_checked_at = ? WHERE id = ?').run(matchInfo, now, p.id);
+              if (hits.length > 0) {
+                matches++;
+                // Create notification for matches
+                try {
+                  db.prepare(`INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, created_at) VALUES ('system', 'high', ?, ?, 'person', ?, ?)`)
+                    .run(`OFAC WATCHLIST MATCH: ${p.first_name} ${p.last_name}`, `Person #${p.id} matches OFAC sanctions list`, p.id, now);
+                } catch { /* notifications table may not exist */ }
+              }
+            } catch { /* skip individual failures */ }
+          }
+          console.log(`[OFAC Backfill] Complete — ${unchecked.length} screened, ${matches} match(es) found`);
+        } else {
+          console.log('[OFAC Backfill] All person records already screened');
+        }
+      } catch (err) {
+        console.warn('[OFAC Backfill] Failed:', (err as Error).message);
+      }
+    }, 60_000); // 60s delay — after OFAC sync (15s) has time to complete
   });
 } catch (error) {
   console.error('Failed to start server:', error);

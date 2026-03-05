@@ -40,6 +40,7 @@ import CourtTrackerPage from './pages/CourtTrackerPage';
 import DailyActivityReportsPage from './pages/DailyActivityReportsPage';
 import OffenderRegistryPage from './pages/OffenderRegistryPage';
 import NcicPage from './pages/NcicPage';
+import DlSearchPage from './pages/DlSearchPage';
 import BodyCamerasPage from './pages/BodyCamerasPage';
 import TrainingDocsPage from './pages/TrainingDocsPage';
 import IncidentDetailWindow from './pages/detached/IncidentDetailWindow';
@@ -132,6 +133,7 @@ function AppRoutes() {
           <Route path="/dar" element={<DailyActivityReportsPage />} />
           <Route path="/offender-registry" element={<OffenderRegistryPage />} />
           <Route path="/ncic" element={<NcicPage />} />
+          <Route path="/dl-search" element={<DlSearchPage />} />
           <Route path="/audit" element={<AuditLogPage />} />
           <Route path="/training-docs" element={<TrainingDocsPage />} />
           <Route path="/admin" element={<AdminPage />} />

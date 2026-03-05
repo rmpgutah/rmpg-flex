@@ -941,7 +941,8 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
       SELECT b.id, b.unit_id, b.officer_id, b.latitude, b.longitude, b.accuracy,
         b.heading, b.speed, b.unit_status, b.call_sign, b.officer_name,
         b.badge_number, b.current_call_id, b.current_call_number,
-        b.current_call_type, b.recorded_at
+        b.current_call_type, b.road_name, b.nearest_intersection,
+        b.recorded_at, COALESCE(b.source, 'unknown') as source
       FROM gps_breadcrumbs b
       WHERE ${dateClause} ${whereExtra}
       ORDER BY b.unit_id, b.recorded_at ASC
@@ -976,6 +977,7 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
       road_name?: string | null;
       nearest_intersection?: string | null;
       formatted_address?: string | null;
+      source: string;
       beat_id: string | null;
       beat_code: string | null;
       zone: string | null;
@@ -997,6 +999,7 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
         max_speed_mph: number;
         avg_speed_mph: number;
         duration_minutes: number;
+        source_breakdown: Record<string, number>;
       };
       response_segments: any[];
       zone_coverage: Record<string, {
@@ -1102,6 +1105,9 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
           distance_from_prev_meters: distFromPrev != null ? Math.round(distFromPrev * 10) / 10 : null,
           time_delta_seconds: timeDelta != null ? Math.round(timeDelta) : null,
           is_stationary: isStationary,
+          road_name: row.road_name || null,
+          nearest_intersection: row.nearest_intersection || null,
+          source: row.source || 'unknown',
           beat_id: beat?.beat_id || null,
           beat_code: beat?.beat_code || null,
           zone: beat ? `${beat.city} ${beat.district_letter}${beat.beat_number}` : null,
@@ -1212,6 +1218,7 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
           max_speed_mph: Math.round(maxSpeed * 10) / 10,
           avg_speed_mph: speedCount > 0 ? Math.round((speedSum / speedCount) * 10) / 10 : 0,
           duration_minutes: durationMinutes,
+          source_breakdown: points.reduce((acc, p) => { acc[p.source] = (acc[p.source] || 0) + 1; return acc; }, {} as Record<string, number>),
         },
         response_segments: responseSegments,
         zone_coverage: zoneCoverage,

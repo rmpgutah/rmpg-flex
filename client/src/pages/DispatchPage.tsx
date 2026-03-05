@@ -43,6 +43,7 @@ import DispatchMiniMap from '../components/DispatchMiniMap';
 import BoloAlertBanner from '../components/BoloAlertBanner';
 import StatusBadge from '../components/StatusBadge';
 import NewCallModal from '../components/NewCallModal';
+import QuickPsoModal from '../components/QuickPsoModal';
 import PanelTitleBar from '../components/PanelTitleBar';
 import ExportButton from '../components/ExportButton';
 import TabBar from '../components/TabBar';
@@ -66,6 +67,7 @@ import UnitRecommendationPanel from '../components/UnitRecommendationPanel';
 import type { CommandAction } from '../utils/cadCommandParser';
 import { getTimerState, isActiveStatus } from '../utils/dispatchTimers';
 import { playTone } from '../utils/dispatchTones';
+import { announceCallAlerts, announcePanicAlert } from '../utils/voiceAlerts';
 import { useIsMobile } from '../hooks/useIsMobile';
 import MobileCardList from '../components/mobile/MobileCardList';
 import MobileDetailView from '../components/mobile/MobileDetailView';
@@ -214,6 +216,7 @@ export default function DispatchPage() {
   const [selectedCall, setSelectedCall] = useState<CallForService | null>(null);
   const [filterTab, setFilterTab] = usePersistedTab('rmpg_dispatch_tab', 'all' as FilterTab, ['all', 'pending', 'active', 'cleared', 'archived'] as const);
   const [showNewCallModal, setShowNewCallModal] = useState(false);
+  const [showQuickPsoModal, setShowQuickPsoModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [newNote, setNewNote] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -450,6 +453,8 @@ export default function DispatchPage() {
           if (prev.some((c) => c.id === mapped.id)) return prev;
           return [mapped, ...prev];
         });
+        // Voice-synthesized safety alerts for calls with critical flags
+        announceCallAlerts(mapped);
         // If it's a panic call, auto-select it so the dispatch card opens immediately
         if (data.call.source === 'panic') {
           setSelectedCall(mapped);
@@ -485,9 +490,11 @@ export default function DispatchPage() {
       }
     });
 
-    // Listen for panic alerts — switch to active tab so the card is visible
-    const unsubPanic = subscribe('panic_alert', (_msg: any) => {
+    // Listen for panic alerts — play alarm tone + voice alert, switch to active tab
+    const unsubPanic = subscribe('panic_alert', (msg: any) => {
+      const data = msg.data || msg;
       setFilterTab('active');
+      announcePanicAlert(data.user_name || data.userName);
     });
 
     return () => { unsubDispatch(); unsubUnit(); unsubPanic(); };
@@ -706,6 +713,13 @@ export default function DispatchPage() {
         return;
       }
 
+      // P - Quick PSO Client Request
+      if (e.key === 'p' || e.key === 'P') {
+        e.preventDefault();
+        setShowQuickPsoModal(true);
+        return;
+      }
+
       // R - Refresh
       if (e.key === 'r' || e.key === 'R') {
         e.preventDefault();
@@ -767,6 +781,7 @@ export default function DispatchPage() {
       // Escape - close modal
       if (e.key === 'Escape') {
         setShowNewCallModal(false);
+        setShowQuickPsoModal(false);
         return;
       }
     };
@@ -774,6 +789,15 @@ export default function DispatchPage() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedCall, filteredCalls, fetchData]);
+
+  const handlePsoExpandToFullForm = (data: Record<string, any>) => {
+    setShowQuickPsoModal(false);
+    setTemplateInitialData({
+      ...data,
+      incident_type: data.incident_type || 'pso_client_request',
+    });
+    setShowNewCallModal(true);
+  };
 
   const handleNewCall = async (callData: Partial<CallForService> & Record<string, any>) => {
     setIsSaving(true);
@@ -821,6 +845,18 @@ export default function DispatchPage() {
         damage_description: callData.damage_description || null,
         responding_officer: callData.responding_officer || null,
         action_taken: callData.action_taken || null,
+        // PSO Client Request fields
+        contract_id: callData.contract_id || null,
+        pso_service_type: callData.pso_service_type || null,
+        pso_authorization: callData.pso_authorization || null,
+        pso_requestor_name: callData.pso_requestor_name || null,
+        pso_requestor_phone: callData.pso_requestor_phone || null,
+        pso_requestor_email: callData.pso_requestor_email || null,
+        pso_billing_code: callData.pso_billing_code || null,
+        // Process Service sub-fields
+        process_service_type: callData.process_service_type || null,
+        process_served_to: callData.process_served_to || null,
+        process_served_address: callData.process_served_address || null,
         // Historical entry fields (passed through from NewCallModal)
         ...(callData.created_at ? { created_at: callData.created_at } : {}),
         ...(callData.status && callData.status !== 'pending' ? { status: callData.status } : {}),
@@ -1514,13 +1550,25 @@ export default function DispatchPage() {
           )}
         </MobileDetailView>
 
-        {/* FAB — New Call */}
+        {/* FABs — New Call + PSO */}
         <button
           className="mobile-fab"
           onClick={() => { setTemplateInitialData(undefined); setShowNewCallModal(true); }}
           aria-label="New Call"
         >
           <Plus style={{ width: 24, height: 24 }} />
+        </button>
+        <button
+          className="mobile-fab"
+          onClick={() => setShowQuickPsoModal(true)}
+          aria-label="Quick PSO"
+          style={{
+            right: '80px',
+            background: 'linear-gradient(180deg, #7c3aed 0%, #6b21a8 100%)',
+            borderColor: '#7c3aed',
+          }}
+        >
+          <Shield style={{ width: 20, height: 20 }} />
         </button>
 
         {/* New Call Modal (shared with desktop) */}
@@ -1530,6 +1578,14 @@ export default function DispatchPage() {
           onSubmit={handleNewCall}
           properties={propertiesList}
           initialData={templateInitialData}
+        />
+
+        {/* Quick PSO Modal */}
+        <QuickPsoModal
+          isOpen={showQuickPsoModal}
+          onClose={() => setShowQuickPsoModal(false)}
+          onSubmit={handleNewCall}
+          onExpandToFullForm={handlePsoExpandToFullForm}
         />
       </div>
     );
@@ -1632,6 +1688,21 @@ export default function DispatchPage() {
               </div>
             )}
           </div>
+          <button
+            onClick={() => setShowQuickPsoModal(true)}
+            className="toolbar-btn"
+            title="Quick PSO Client Request (P)"
+            style={{
+              background: 'linear-gradient(180deg, #7c3aed 0%, #6b21a8 100%)',
+              borderColor: '#7c3aed',
+              borderBottomColor: '#3b0764',
+              borderRightColor: '#3b0764',
+              color: '#ffffff',
+            }}
+          >
+            <Shield style={{ width: 10, height: 10 }} />
+            PSO
+          </button>
         </PanelTitleBar>
         <TabBar
           tabs={[
@@ -2560,6 +2631,13 @@ export default function DispatchPage() {
         initialData={templateInitialData}
       />
 
+      {/* Quick PSO Modal */}
+      <QuickPsoModal
+        isOpen={showQuickPsoModal}
+        onClose={() => setShowQuickPsoModal(false)}
+        onSubmit={handleNewCall}
+        onExpandToFullForm={handlePsoExpandToFullForm}
+      />
 
       {/* Create / Edit Unit Modal */}
       {showCreateUnitModal && (

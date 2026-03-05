@@ -3,8 +3,52 @@ import { getDb } from '../models/database';
 import { authenticateToken } from '../middleware/auth';
 import { sendCsv } from '../utils/csvExport';
 import { localNow, localToday } from '../utils/timeUtils';
+import { searchOfacLocal } from '../utils/ofacScraper';
 
 const router = Router();
+
+/**
+ * Screen a person against the OFAC consolidated sanctions list.
+ * Updates watchlist_match and watchlist_checked_at on the person record.
+ * Non-blocking — does not throw on failure.
+ */
+function screenPersonOfac(personId: number, firstName: string, lastName: string): void {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const hits = searchOfacLocal(`${lastName}, ${firstName}`, {
+      type: 'person',
+      firstName,
+      lastName,
+      limit: 3,
+    });
+
+    const matchInfo = hits.length > 0
+      ? JSON.stringify(hits.map(h => ({ name: h.sdn_name, program: h.program, list: h.source_list })))
+      : null;
+
+    db.prepare(
+      'UPDATE persons SET watchlist_match = ?, watchlist_checked_at = ? WHERE id = ?'
+    ).run(matchInfo, now, personId);
+
+    // Create notification if there's a hit
+    if (hits.length > 0) {
+      try {
+        db.prepare(`
+          INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, created_at)
+          VALUES ('system', 'high', ?, ?, 'person', ?, ?)
+        `).run(
+          `OFAC WATCHLIST MATCH: ${firstName} ${lastName}`,
+          `Person record #${personId} matches ${hits.length} OFAC entry(ies): ${hits.map(h => h.sdn_name).join(', ')}`,
+          personId,
+          now,
+        );
+      } catch { /* notifications table may not exist */ }
+    }
+  } catch (err) {
+    console.warn('OFAC screening failed for person', personId, err);
+  }
+}
 
 router.use(authenticateToken);
 
@@ -127,11 +171,18 @@ router.get('/persons/export', (req: Request, res: Response) => {
 router.get('/persons/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id) as any;
+    let person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id) as any;
 
     if (!person) {
       res.status(404).json({ error: 'Person not found' });
       return;
+    }
+
+    // Auto-screen against OFAC if this person was never checked
+    if (!person.watchlist_checked_at && person.first_name && person.last_name) {
+      screenPersonOfac(person.id, person.first_name, person.last_name);
+      // Re-fetch to include updated watchlist_match
+      person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id) as any;
     }
 
     // Get owned vehicles
@@ -369,13 +420,16 @@ router.post('/persons', (req: Request, res: Response) => {
       photo_url || null, JSON.stringify(flags || []), notes || null,
     );
 
-    const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(result.lastInsertRowid);
-
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'person_created', 'person', ?, ?, ?)
     `).run(req.user!.userId, result.lastInsertRowid, `Created person record: ${first_name} ${last_name}`, req.ip || 'unknown');
 
+    // Auto-screen against OFAC sanctions BEFORE returning response
+    screenPersonOfac(Number(result.lastInsertRowid), first_name, last_name);
+
+    // SELECT after screening so watchlist_match is included in response
+    const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json(person);
   } catch (error: any) {
     console.error('Create person error:', error);
@@ -472,6 +526,13 @@ router.put('/persons/:id', (req: Request, res: Response) => {
       VALUES (?, 'person_updated', 'person', ?, ?, ?)
     `).run(req.user!.userId, req.params.id, `Updated person record: ${person.first_name} ${person.last_name}`, req.ip || 'unknown');
 
+    // Re-screen against OFAC if name changed (non-blocking)
+    const newFirst = req.body.first_name || person.first_name;
+    const newLast = req.body.last_name || person.last_name;
+    if (newFirst !== person.first_name || newLast !== person.last_name) {
+      screenPersonOfac(Number(req.params.id), newFirst, newLast);
+    }
+
     const updated = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id);
     res.json(updated);
   } catch (error: any) {
@@ -505,6 +566,49 @@ router.delete('/persons/:id', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Delete person error:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/records/persons/screen-all-ofac - Bulk OFAC screening for all unscreened persons
+router.post('/persons/screen-all-ofac', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const unchecked = db.prepare(
+      'SELECT id, first_name, last_name FROM persons WHERE watchlist_checked_at IS NULL AND first_name IS NOT NULL AND last_name IS NOT NULL'
+    ).all() as { id: number; first_name: string; last_name: string }[];
+
+    let screened = 0;
+    let matches = 0;
+    for (const p of unchecked) {
+      screenPersonOfac(p.id, p.first_name, p.last_name);
+      screened++;
+      // Check if a match was found
+      const updated = db.prepare('SELECT watchlist_match FROM persons WHERE id = ?').get(p.id) as any;
+      if (updated && updated.watchlist_match) matches++;
+    }
+
+    res.json({ screened, matches, message: `Screened ${screened} person(s), found ${matches} OFAC match(es)` });
+  } catch (error: any) {
+    console.error('Bulk OFAC screening error:', error);
+    res.status(500).json({ error: 'Bulk OFAC screening failed' });
+  }
+});
+
+// POST /api/records/persons/:id/screen-ofac - Force re-screen a single person
+router.post('/persons/:id/screen-ofac', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id) as any;
+    if (!person) { res.status(404).json({ error: 'Person not found' }); return; }
+
+    // Force re-screen regardless of previous check
+    screenPersonOfac(person.id, person.first_name, person.last_name);
+
+    const updated = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id);
+    res.json(updated);
+  } catch (error: any) {
+    console.error('OFAC re-screen error:', error);
+    res.status(500).json({ error: 'OFAC re-screen failed' });
   }
 });
 
@@ -2219,6 +2323,44 @@ router.get('/ncic-query', (req: Request, res: Response) => {
         break;
       }
 
+      case 'phone': {
+        // Search persons by phone number — normalise both sides to digits-only
+        const rawDigits = (q as string).replace(/\D/g, '');
+        const phoneTerm = `%${rawDigits.length >= 4 ? rawDigits : q}%`;
+
+        // Strip common formatting chars from stored phone values for comparison
+        const stripSql = (col: string) =>
+          `REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(${col},''), '-', ''), '(', ''), ')', ''), ' ', '')`;
+
+        const persons = db.prepare(`
+          SELECT * FROM persons
+          WHERE ${stripSql('phone')} LIKE ?
+            OR ${stripSql('phone_secondary')} LIKE ?
+          ORDER BY last_name, first_name
+          LIMIT 5
+        `).all(phoneTerm, phoneTerm) as any[];
+
+        const results = persons.map(p => {
+          const criminalHistory = db.prepare(`
+            SELECT * FROM criminal_history WHERE person_id = ?
+            ORDER BY offense_date DESC
+          `).all(p.id);
+
+          let warrants: any[] = [];
+          try {
+            warrants = db.prepare(`
+              SELECT * FROM warrants WHERE subject_person_id = ? AND status = 'active'
+              ORDER BY issue_date DESC
+            `).all(p.id);
+          } catch { /* warrants table may not exist */ }
+
+          return { person: p, criminalHistory, warrants };
+        });
+
+        res.json({ type: 'phone', results, query: q });
+        break;
+      }
+
       case 'warrant': {
         // Search warrants by subject name or warrant number
         const warrants = db.prepare(`
@@ -2239,8 +2381,73 @@ router.get('/ncic-query', (req: Request, res: Response) => {
         break;
       }
 
+      case 'address': {
+        // Search by address across persons, calls_for_service, properties, dl_addresses
+        const addrTerm = searchTerm; // already %query%
+
+        // Persons at this address
+        const addrPersons = db.prepare(`
+          SELECT * FROM persons
+          WHERE address LIKE ? OR (city || ' ' || state || ' ' || zip) LIKE ?
+          ORDER BY last_name, first_name LIMIT 10
+        `).all(addrTerm, addrTerm) as any[];
+
+        // Enrich persons with warrants
+        const addrPersonResults = addrPersons.map(p => {
+          let warrants: any[] = [];
+          try {
+            warrants = db.prepare(
+              "SELECT * FROM warrants WHERE subject_person_id = ? AND status = 'active'"
+            ).all(p.id);
+          } catch { /* warrants table may not exist */ }
+          return { ...p, active_warrants: warrants.length };
+        });
+
+        // Prior calls at this address
+        let priorCalls: any[] = [];
+        try {
+          priorCalls = db.prepare(`
+            SELECT id, call_number, incident_type, priority, status, disposition,
+              location_address, created_at, weapons_involved, domestic_violence
+            FROM calls_for_service
+            WHERE location_address LIKE ?
+            ORDER BY created_at DESC LIMIT 10
+          `).all(addrTerm);
+        } catch { /* table may not exist */ }
+
+        // Properties matching this address
+        let properties: any[] = [];
+        try {
+          properties = db.prepare(`
+            SELECT id, name, address, gate_code, alarm_code, post_orders, hazard_notes
+            FROM properties WHERE address LIKE ? LIMIT 5
+          `).all(addrTerm);
+        } catch { /* table may not exist */ }
+
+        // Trespass orders at this address
+        let trespassOrders: any[] = [];
+        try {
+          trespassOrders = db.prepare(`
+            SELECT t.id, t.order_number, t.status, t.subject_name, t.expiration_date
+            FROM trespass_orders t
+            WHERE t.location_address LIKE ? AND t.status = 'active'
+            LIMIT 5
+          `).all(addrTerm);
+        } catch { /* table may not exist */ }
+
+        res.json({
+          type: 'address',
+          persons: addrPersonResults,
+          calls: priorCalls,
+          properties,
+          trespassOrders,
+          query: q,
+        });
+        break;
+      }
+
       default:
-        res.status(400).json({ error: 'Invalid type. Use: person, vehicle, warrant' });
+        res.status(400).json({ error: 'Invalid type. Use: person, vehicle, warrant, phone, address' });
     }
   } catch (error: any) {
     console.error('NCIC query error:', error);

@@ -920,6 +920,20 @@ export default function IncidentsPage() {
       if (sigRes?.signature) pdfData._officerSignature = sigRes.signature;
     } catch { /* proceed without signature */ }
 
+    // Fetch GPS breadcrumb trail (via linked call_id)
+    const callId = (selectedIncident as any)?.call_id;
+    if (callId) {
+      try {
+        const trail = await apiFetch<{
+          points: any[];
+          stats: { total_points: number; total_distance_miles: number; duration_minutes: number; avg_speed_mph: number; max_speed_mph: number; source_breakdown?: Record<string, number> };
+        }>(`/dispatch/gps/call-trail/${callId}`);
+        if (trail?.points?.length > 0) {
+          pdfData.breadcrumb_trail = trail;
+        }
+      } catch { /* GPS data optional — proceed without */ }
+    }
+
     return pdfData;
   };
 
