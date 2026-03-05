@@ -876,6 +876,66 @@ function createTables(): void {
     CREATE INDEX IF NOT EXISTS idx_bodycam_videos_officer ON bodycam_videos(officer_id);
     CREATE INDEX IF NOT EXISTS idx_bodycam_videos_case ON bodycam_videos(case_number);
 
+    -- ── Two-Factor Authentication ─────────────────────────
+    CREATE TABLE IF NOT EXISTS user_totp_secrets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL UNIQUE,
+      encrypted_secret TEXT NOT NULL,
+      encryption_iv TEXT NOT NULL,
+      encryption_tag TEXT NOT NULL,
+      is_verified INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS user_backup_codes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      code_hash TEXT NOT NULL,
+      is_used INTEGER NOT NULL DEFAULT 0,
+      used_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS trusted_devices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      device_fingerprint TEXT NOT NULL,
+      device_name TEXT,
+      ip_address TEXT,
+      trusted_until TEXT NOT NULL,
+      last_used_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS password_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      password_hash TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS security_notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      event_type TEXT NOT NULL CHECK(event_type IN (
+        'new_device_login','suspicious_login','password_changed',
+        '2fa_enabled','2fa_disabled','2fa_reset','device_revoked',
+        'session_revoked','password_expiring','failed_login_threshold'
+      )),
+      title TEXT NOT NULL,
+      details TEXT,
+      ip_address TEXT,
+      device_info TEXT,
+      is_read INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
     -- Radio transmission transcripts — permanent log of PTT voice comms
     CREATE TABLE IF NOT EXISTS radio_transcripts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2569,6 +2629,19 @@ function migrateSchema(): void {
   addCol('persons', 'watchlist_match', 'TEXT DEFAULT NULL');
   addCol('persons', 'watchlist_checked_at', 'TEXT DEFAULT NULL');
 
+  // ── Security / 2FA columns ──────────────────────────
+  addCol('users', 'totp_enabled', 'INTEGER DEFAULT 0');
+  addCol('users', 'totp_setup_required', 'INTEGER DEFAULT 1');
+  addCol('users', 'password_expires_at', 'TEXT');
+  addCol('users', 'force_password_change', 'INTEGER DEFAULT 0');
+  addCol('users', 'password_changed_at', 'TEXT');
+
+  addCol('login_attempts', 'user_agent', 'TEXT');
+  addCol('login_attempts', 'device_fingerprint', 'TEXT');
+
+  addCol('sessions', 'device_fingerprint', 'TEXT');
+  addCol('sessions', 'device_name', 'TEXT');
+
   console.log('Schema migration completed.');
 }
 
@@ -2863,6 +2936,18 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_offender_alerts_type ON offender_alerts(alert_type);
     CREATE INDEX IF NOT EXISTS idx_offender_alerts_status ON offender_alerts(status);
     CREATE INDEX IF NOT EXISTS idx_offender_alerts_severity ON offender_alerts(severity);
+
+    -- 2FA / Security indexes
+    CREATE INDEX IF NOT EXISTS idx_totp_secrets_user ON user_totp_secrets(user_id);
+    CREATE INDEX IF NOT EXISTS idx_backup_codes_user ON user_backup_codes(user_id);
+    CREATE INDEX IF NOT EXISTS idx_backup_codes_unused ON user_backup_codes(user_id, is_used);
+    CREATE INDEX IF NOT EXISTS idx_trusted_devices_user ON trusted_devices(user_id);
+    CREATE INDEX IF NOT EXISTS idx_trusted_devices_fingerprint ON trusted_devices(device_fingerprint);
+    CREATE INDEX IF NOT EXISTS idx_trusted_devices_expiry ON trusted_devices(trusted_until);
+    CREATE INDEX IF NOT EXISTS idx_password_history_user ON password_history(user_id);
+    CREATE INDEX IF NOT EXISTS idx_security_notifs_user ON security_notifications(user_id);
+    CREATE INDEX IF NOT EXISTS idx_security_notifs_read ON security_notifications(user_id, is_read);
+    CREATE INDEX IF NOT EXISTS idx_security_notifs_created ON security_notifications(created_at);
   `);
 }
 

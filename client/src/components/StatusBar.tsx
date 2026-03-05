@@ -6,6 +6,9 @@
 import React, { useState, useEffect } from 'react';
 import RmpgLogo from './RmpgLogo';
 
+const APP_VERSION: string =
+  typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0';
+
 interface StatusBarProps {
   isConnected: boolean;
   user: { first_name: string; last_name: string; role: string; badge_number?: string } | null;
@@ -47,7 +50,7 @@ export default function StatusBar({
       {/* Server */}
       <div className="status-bar-section">
         <RmpgLogo height={12} iconOnly />
-        <span>RMPG-FLEX v5.3.9</span>
+        <span>RMPG-FLEX v{APP_VERSION}</span>
       </div>
 
       {/* Active Calls */}

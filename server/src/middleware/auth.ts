@@ -9,7 +9,8 @@ export interface JwtPayload {
   role: string;
   fullName: string;
   sessionId?: string;
-  type?: 'access' | 'refresh' | '2fa_pending';
+  type?: 'access' | 'refresh' | '2fa_pending' | 'mfa_pending';
+  pendingActions?: string[];
 }
 
 // Extend Express Request to include user
@@ -33,8 +34,66 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
   try {
     const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
 
-    // Reject refresh tokens and 2FA-pending tokens used as access tokens
-    if (decoded.type === 'refresh' || decoded.type === '2fa_pending') {
+    // Reject refresh tokens, 2FA-pending tokens, and MFA-pending tokens used as access tokens
+    if (decoded.type === 'refresh' || decoded.type === '2fa_pending' || decoded.type === 'mfa_pending') {
+      res.status(403).json({ error: 'Invalid token type' });
+      return;
+    }
+
+    req.user = decoded;
+    next();
+  } catch (err: any) {
+    if (err.name === 'TokenExpiredError') {
+      res.status(401).json({ error: 'Token expired', code: 'TOKEN_EXPIRED' });
+    } else {
+      res.status(403).json({ error: 'Invalid or expired token' });
+    }
+  }
+}
+
+// Middleware for 2FA endpoints — only accepts mfa_pending tokens
+export function authenticateTempToken(req: Request, res: Response, next: NextFunction): void {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.substring(7) : null;
+
+  if (!token) {
+    res.status(401).json({ error: 'Authentication required' });
+    return;
+  }
+
+  try {
+    const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
+
+    if (decoded.type !== 'mfa_pending') {
+      res.status(403).json({ error: 'Invalid token type — MFA token required' });
+      return;
+    }
+
+    req.user = decoded;
+    next();
+  } catch (err: any) {
+    if (err.name === 'TokenExpiredError') {
+      res.status(401).json({ error: 'MFA verification expired. Please log in again.', code: 'MFA_EXPIRED' });
+    } else {
+      res.status(403).json({ error: 'Invalid MFA token' });
+    }
+  }
+}
+
+// Accepts EITHER a full access token OR an mfa_pending temp token
+export function authenticateAnyToken(req: Request, res: Response, next: NextFunction): void {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.substring(7) : null;
+
+  if (!token) {
+    res.status(401).json({ error: 'Authentication required' });
+    return;
+  }
+
+  try {
+    const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
+
+    if (decoded.type === 'refresh') {
       res.status(403).json({ error: 'Invalid token type' });
       return;
     }
@@ -109,6 +168,15 @@ export function generateRefreshToken(payload: Omit<JwtPayload, 'type'>): string 
   const options: SignOptions = { expiresIn: config.jwt.refreshExpiry as SignOptions['expiresIn'] };
   return jwt.sign(
     { ...payload, type: 'refresh' },
+    config.jwt.secret,
+    options
+  );
+}
+
+export function generateTempToken(payload: Omit<JwtPayload, 'type'>, pendingActions: string[] = []): string {
+  const options: SignOptions = { expiresIn: config.totp.tempTokenExpiry as SignOptions['expiresIn'] };
+  return jwt.sign(
+    { ...payload, type: 'mfa_pending', pendingActions },
     config.jwt.secret,
     options
   );

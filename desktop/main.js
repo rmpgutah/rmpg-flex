@@ -29,6 +29,9 @@ const DEV_MODE = process.argv.includes('--dev');
 const REMOTE_SERVER_URL = DEV_MODE
   ? 'http://localhost:3001'
   : (process.env.UPDATE_SERVER_URL || 'https://rmpgutah.us');
+const UPDATE_SERVER_URL = DEV_MODE
+  ? `http://localhost:${SERVER_PORT}`
+  : 'github';
 
 let mainWindow = null;
 let splashWindow = null;

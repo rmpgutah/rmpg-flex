@@ -15,6 +15,7 @@ import {
   Copy,
   RefreshCw,
   KeyRound,
+  Key,
   Plus,
   Trash2,
 } from 'lucide-react';
@@ -22,6 +23,11 @@ import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../hooks/useApi';
 import TotpCodeInput from './TotpCodeInput';
 import SignaturePad from './SignaturePad';
+import SecurityStatusCard from './security/SecurityStatusCard';
+import TwoFactorSetupWizard from './security/TwoFactorSetupWizard';
+import TrustedDevicesList from './security/TrustedDevicesList';
+import LoginHistoryTable from './security/LoginHistoryTable';
+import BackupCodesDisplay from './security/BackupCodesDisplay';
 
 interface UserProfileModalProps {
   isOpen: boolean;
@@ -79,6 +85,14 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
   const [webauthnMsg, setWebauthnMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [newKeyName, setNewKeyName] = useState('');
   const [showKeyNameInput, setShowKeyNameInput] = useState(false);
+
+  // Security tab state (remote)
+  const [securityView, setSecurityView] = useState<'overview' | 'setup-2fa' | 'regen-backup' | 'devices' | 'history'>('overview');
+  const [tfaStatus, setTfaStatus] = useState<{ enabled: boolean; backupCodesRemaining: number } | null>(null);
+  const [regenLoading, setRegenLoading] = useState(false);
+  const [regenPassword, setRegenPassword] = useState('');
+  const [regenCodes, setRegenCodes] = useState<string[] | null>(null);
+  const [regenError, setRegenError] = useState('');
 
   useEffect(() => {
     if (isOpen && user) {
@@ -144,6 +158,13 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
       apiFetch<any>('/auth/webauthn/status')
         .then(data => setWebauthnStatus(data))
         .catch(() => setWebauthnStatus(null));
+      apiFetch<any>('/auth/2fa/status')
+        .then(data => setTfaStatus({ enabled: data.enabled, backupCodesRemaining: data.backupCodesRemaining }))
+        .catch(() => {});
+      setSecurityView('overview');
+      setRegenCodes(null);
+      setRegenPassword('');
+      setRegenError('');
     }
   }, [isOpen, activeTab]);
 
@@ -327,9 +348,26 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
   const tabs = [
     { id: 'profile' as const, label: 'Profile', icon: User },
     { id: 'password' as const, label: 'Password', icon: Lock },
-    { id: 'security' as const, label: '2FA', icon: ShieldCheck },
-    { id: 'sessions' as const, label: 'Sessions', icon: Shield },
+    { id: 'security' as const, label: 'Security', icon: ShieldCheck },
+    { id: 'sessions' as const, label: 'Sessions', icon: Key },
   ];
+
+  const handleRegenBackupCodes = async () => {
+    if (!regenPassword) return;
+    setRegenLoading(true);
+    setRegenError('');
+    try {
+      const data = await apiFetch<any>('/auth/2fa/backup-codes/regenerate', {
+        method: 'POST',
+        body: JSON.stringify({ password: regenPassword }),
+      });
+      setRegenCodes(data.backupCodes);
+      setRegenPassword('');
+    } catch (err: any) {
+      setRegenError(err.message || 'Failed to regenerate codes');
+    }
+    setRegenLoading(false);
+  };
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center" onClick={onClose}>
@@ -338,7 +376,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
 
       {/* Modal */}
       <div
-        className="relative w-[480px] max-h-[80vh] flex flex-col"
+        className="relative w-[520px] max-h-[80vh] flex flex-col"
         style={{
           background: '#1a1a1a',
           border: '1px solid #484848',
@@ -915,6 +953,180 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                       </button>
                     </div>
                   ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {activeTab === 'security' && (
+            <>
+              {/* Sub-navigation */}
+              {securityView === 'overview' && (
+                <div className="space-y-4">
+                  <SecurityStatusCard />
+
+                  {/* 2FA actions */}
+                  <div className="panel-beveled p-3" style={{ background: '#1a1a1a' }}>
+                    <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">
+                      Two-Factor Authentication
+                    </h3>
+                    {tfaStatus?.enabled ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-[11px]">
+                          <span className="led-dot led-green" />
+                          <span style={{ color: '#22c55e' }}>2FA is enabled</span>
+                          <span className="text-[9px] ml-auto font-mono" style={{ color: '#6b7280' }}>
+                            {tfaStatus.backupCodesRemaining} backup codes left
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => setSecurityView('regen-backup')}
+                          className="toolbar-btn w-full h-7 text-[10px] uppercase tracking-wider flex items-center justify-center gap-1.5"
+                        >
+                          <RefreshCw className="w-3 h-3" />
+                          Regenerate Backup Codes
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-[11px]">
+                          <span className="led-dot led-red" />
+                          <span style={{ color: '#ef4444' }}>2FA is not enabled</span>
+                        </div>
+                        <button
+                          onClick={() => setSecurityView('setup-2fa')}
+                          className="toolbar-btn toolbar-btn-primary w-full h-7 text-white text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5"
+                        >
+                          <Shield className="w-3 h-3" />
+                          Set Up 2FA Now
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Quick links */}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setSecurityView('devices')}
+                      className="toolbar-btn flex-1 h-7 text-[10px] uppercase tracking-wider"
+                    >
+                      Trusted Devices
+                    </button>
+                    <button
+                      onClick={() => setSecurityView('history')}
+                      className="toolbar-btn flex-1 h-7 text-[10px] uppercase tracking-wider"
+                    >
+                      Login History
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {securityView === 'setup-2fa' && (
+                <div>
+                  <button
+                    onClick={() => setSecurityView('overview')}
+                    className="text-[10px] mb-3 flex items-center gap-1"
+                    style={{ color: '#4a90c4' }}
+                  >
+                    ← Back to Security Overview
+                  </button>
+                  <TwoFactorSetupWizard
+                    onComplete={() => {
+                      setSecurityView('overview');
+                      apiFetch<any>('/auth/2fa/status')
+                        .then(data => setTfaStatus({ enabled: data.enabled, backupCodesRemaining: data.backupCodesRemaining }))
+                        .catch(() => {});
+                    }}
+                    onCancel={() => setSecurityView('overview')}
+                  />
+                </div>
+              )}
+
+              {securityView === 'regen-backup' && (
+                <div>
+                  <button
+                    onClick={() => { setSecurityView('overview'); setRegenCodes(null); }}
+                    className="text-[10px] mb-3 flex items-center gap-1"
+                    style={{ color: '#4a90c4' }}
+                  >
+                    ← Back to Security Overview
+                  </button>
+
+                  {regenCodes ? (
+                    <BackupCodesDisplay
+                      codes={regenCodes}
+                      onAcknowledge={() => {
+                        setRegenCodes(null);
+                        setSecurityView('overview');
+                        apiFetch<any>('/auth/2fa/status')
+                          .then(data => setTfaStatus({ enabled: data.enabled, backupCodesRemaining: data.backupCodesRemaining }))
+                          .catch(() => {});
+                      }}
+                    />
+                  ) : (
+                    <div className="space-y-3">
+                      <div
+                        className="flex items-start gap-2 p-3 text-[10px]"
+                        style={{ background: 'rgba(212, 160, 23, 0.12)', border: '1px solid rgba(212, 160, 23, 0.4)', color: '#e8b820' }}
+                      >
+                        <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                        <span>This will invalidate all existing backup codes. Enter your password to confirm.</span>
+                      </div>
+
+                      <div>
+                        <label className="field-label">Current Password</label>
+                        <input
+                          type="password"
+                          value={regenPassword}
+                          onChange={e => setRegenPassword(e.target.value)}
+                          className="input-dark"
+                          placeholder="Enter your password"
+                        />
+                      </div>
+
+                      {regenError && (
+                        <div className="flex items-center gap-2 text-[10px]" style={{ color: '#ef4444' }}>
+                          <AlertCircle className="w-3 h-3" />
+                          {regenError}
+                        </div>
+                      )}
+
+                      <button
+                        onClick={handleRegenBackupCodes}
+                        disabled={!regenPassword || regenLoading}
+                        className="toolbar-btn toolbar-btn-primary w-full h-8 text-white text-[10px] font-bold uppercase tracking-wider disabled:opacity-50 flex items-center justify-center gap-1.5"
+                      >
+                        {regenLoading ? <RefreshCw className="w-3 h-3 animate-spin" /> : 'Regenerate Codes'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {securityView === 'devices' && (
+                <div>
+                  <button
+                    onClick={() => setSecurityView('overview')}
+                    className="text-[10px] mb-3 flex items-center gap-1"
+                    style={{ color: '#4a90c4' }}
+                  >
+                    ← Back to Security Overview
+                  </button>
+                  <TrustedDevicesList />
+                </div>
+              )}
+
+              {securityView === 'history' && (
+                <div>
+                  <button
+                    onClick={() => setSecurityView('overview')}
+                    className="text-[10px] mb-3 flex items-center gap-1"
+                    style={{ color: '#4a90c4' }}
+                  >
+                    ← Back to Security Overview
+                  </button>
+                  <LoginHistoryTable />
                 </div>
               )}
             </>

@@ -648,18 +648,6 @@ export default function RadioPage() {
                 )}
               </div>
 
-              {/* Live transcript while transmitting */}
-              {isTransmitting && liveTranscript && (
-                <div className="mt-3 px-4 py-2 max-w-md rounded border border-rmpg-700 bg-rmpg-900/60">
-                  <div className="text-[9px] font-mono font-bold tracking-wider text-rmpg-500 mb-1 uppercase">
-                    Live Transcript
-                  </div>
-                  <div className="text-xs font-mono text-rmpg-200 leading-relaxed">
-                    {liveTranscript}
-                  </div>
-                </div>
-              )}
-
               {/* Error display */}
               {error && (
                 <div className="flex items-center gap-2 mt-3 px-3 py-2 text-xs font-mono text-red-400 border border-red-900 bg-red-950/30 max-w-sm">

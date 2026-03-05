@@ -1,8 +1,8 @@
-version: 4.3.1
+version: 5.3.9
 files:
-  - url: RMPG Flex Setup 4.3.1.exe
-    sha512: ok2MHcL1YuCO0gjb2ieW9kl51dhfM54MDFw50MiuuV3jkgHeh1o4pjdko/6jB2cWnxOuTAoNIvYlB+7n82wFgw==
-    size: 89115183
-path: RMPG Flex Setup 4.3.1.exe
-sha512: ok2MHcL1YuCO0gjb2ieW9kl51dhfM54MDFw50MiuuV3jkgHeh1o4pjdko/6jB2cWnxOuTAoNIvYlB+7n82wFgw==
-releaseDate: '2026-02-27T14:29:26.030Z'
+  - url: RMPG-Flex-Setup-5.3.9.exe
+    sha512: i8savGuE8Q+fjzUj6hZTXK8ct87r0Lz18LpG9WPFLmAAJMVyMTz60XUCCNaPkoJjrDGA3iU9eB3aWVZNhDkprA==
+    size: 115901317
+path: RMPG-Flex-Setup-5.3.9.exe
+sha512: i8savGuE8Q+fjzUj6hZTXK8ct87r0Lz18LpG9WPFLmAAJMVyMTz60XUCCNaPkoJjrDGA3iU9eB3aWVZNhDkprA==
+releaseDate: '2026-02-28T11:44:48.557Z'

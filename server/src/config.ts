@@ -112,16 +112,32 @@ export const config = {
     requireLowercase: envBool('PASSWORD_REQUIRE_LOWERCASE', true),
     requireNumber: envBool('PASSWORD_REQUIRE_NUMBER', true),
     requireSpecial: envBool('PASSWORD_REQUIRE_SPECIAL', true),
-    historyCount: envInt('PASSWORD_HISTORY_COUNT', 5),
     expiryDays: envInt('PASSWORD_EXPIRY_DAYS', 90),
+    historyCount: envInt('PASSWORD_HISTORY_COUNT', 5),
+    expiryWarningDays: envInt('PASSWORD_EXPIRY_WARNING_DAYS', 7),
   },
 
   // Two-Factor Authentication (TOTP)
   totp: {
-    encryptionKey: process.env.TOTP_ENCRYPTION_KEY || jwtSecret,
     issuer: process.env.TOTP_ISSUER || 'RMPG Flex',
+    encryptionKey: process.env.TOTP_ENCRYPTION_KEY || (isProduction
+      ? (() => {
+          console.error('');
+          console.error('╔═══════════════════════════════════════════════════════════╗');
+          console.error('║  CRITICAL: TOTP_ENCRYPTION_KEY is not set!               ║');
+          console.error('║  Generate one: openssl rand -hex 32                       ║');
+          console.error('║  Set it in .env: TOTP_ENCRYPTION_KEY=<your-key>           ║');
+          console.error('╚═══════════════════════════════════════════════════════════╝');
+          console.error('');
+          return crypto.randomBytes(32).toString('hex');
+        })()
+      // Dev fallback: deterministic key so TOTP secrets survive server restarts
+      : 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2'
+    ),
     requiredRoles: (process.env.TOTP_REQUIRED_ROLES || 'admin,manager,supervisor,officer,dispatcher,contract_manager').split(',').map(s => s.trim()).filter(Boolean),
+    tempTokenExpiry: process.env.TOTP_TEMP_TOKEN_EXPIRY || '3m',
     backupCodeCount: envInt('TOTP_BACKUP_CODE_COUNT', 10),
+    trustedDeviceDays: envInt('TRUSTED_DEVICE_DAYS', 30),
   },
 
   // Session

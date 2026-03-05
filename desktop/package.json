@@ -21,8 +21,9 @@
       "output": "dist"
     },
     "publish": {
-      "provider": "generic",
-      "url": "https://rmpgutah.us/updates"
+      "provider": "github",
+      "owner": "rmpgutah",
+      "repo": "rmpg-flex"
     },
     "files": [
       "main.js",

@@ -1,8 +1,8 @@
-version: 4.3.1
+version: 5.3.9
 files:
-  - url: RMPG Flex-4.3.1-arm64.dmg
-    sha512: lQYEgwNSoGmexb/dPtQWbTmPUy+AN9wTYD6wUOQ2Ac6Yo60IZd/B/7jDJZqvc08kYVwv/6okXSWjnRqrywknnQ==
-    size: 111266883
-path: RMPG Flex-4.3.1-arm64.dmg
-sha512: lQYEgwNSoGmexb/dPtQWbTmPUy+AN9wTYD6wUOQ2Ac6Yo60IZd/B/7jDJZqvc08kYVwv/6okXSWjnRqrywknnQ==
-releaseDate: '2026-02-27T14:28:54.455Z'
+  - url: RMPG-Flex-5.3.9-arm64.dmg
+    sha512: BNirGMnfB5Ya4swagP+t2B4YrrCAf3lMIpwP7kIPNJgjxHHHNfZKNO3MB0TuyJYZfj5D7DAxWqYktKhR6myUqw==
+    size: 145759537
+path: RMPG-Flex-5.3.9-arm64.dmg
+sha512: BNirGMnfB5Ya4swagP+t2B4YrrCAf3lMIpwP7kIPNJgjxHHHNfZKNO3MB0TuyJYZfj5D7DAxWqYktKhR6myUqw==
+releaseDate: '2026-02-28T11:45:42.549Z'

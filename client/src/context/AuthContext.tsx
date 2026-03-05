@@ -11,6 +11,16 @@ interface TwoFactorMethods {
   webauthn: boolean;
 }
 
+export type LoginStep =
+  | 'username'
+  | 'password'
+  | 'verify_2fa'
+  | 'setup_2fa'
+  | 'confirm_setup_2fa'
+  | 'show_backup_codes'
+  | 'password_change'
+  | 'complete';
+
 interface AuthContextType {
   user: User | null;
   token: string | null;
@@ -18,8 +28,12 @@ interface AuthContextType {
   isLoading: boolean;
   loginBusy: boolean;
   login: (username: string, password: string) => Promise<LoginResult>;
-  verify2FA: (code: string) => Promise<void>;
+  verify2FA: (code: string, trustDevice?: boolean) => Promise<void>;
   verifyWebAuthn: () => Promise<void>;
+  verifyBackupCode: (code: string) => Promise<void>;
+  setup2FA: () => Promise<{ qrCodeDataUri: string; manualKey: string }>;
+  confirmSetup2FA: (code: string) => Promise<{ backupCodes: string[] }>;
+  changePasswordDuringLogin: (newPassword: string) => Promise<void>;
   pending2FA: boolean;
   twoFactorMethods: TwoFactorMethods;
   tempToken: string | null;
@@ -28,6 +42,13 @@ interface AuthContextType {
   refreshUser: () => Promise<void>;
   error: string | null;
   clearError: () => void;
+  // Multi-step login state
+  loginStep: LoginStep;
+  setLoginStep: (step: LoginStep) => void;
+  loginUsername: string;
+  setLoginUsername: (u: string) => void;
+  backupCodes: string[] | null;
+  requiresPasswordChange: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -40,10 +61,7 @@ const LAST_USERNAME_KEY = 'rmpg_last_username';
 // Access window.electron safely (only present in Electron desktop app)
 const electron = typeof window !== 'undefined' ? (window as any).electron : null;
 
-// Refresh access token 60 seconds before it expires
 const REFRESH_BUFFER_MS = 60 * 1000;
-
-// Max time (ms) any auth fetch is allowed before aborting — prevents infinite "Initializing..."
 const AUTH_FETCH_TIMEOUT_MS = 8000;
 
 function parseJwtExpiry(token: string): number | null {
@@ -55,11 +73,36 @@ function parseJwtExpiry(token: string): number | null {
   }
 }
 
-/** Fetch with an AbortController timeout so auth requests never hang indefinitely. */
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = AUTH_FETCH_TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
+// Generate a device fingerprint hash for trusted device recognition
+async function getDeviceFingerprint(): Promise<string> {
+  const raw = [
+    navigator.userAgent,
+    navigator.language,
+    screen.width + 'x' + screen.height,
+    Intl.DateTimeFormat().resolvedOptions().timeZone,
+  ].join('|');
+
+  try {
+    const buffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw));
+    return Array.from(new Uint8Array(buffer))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+  } catch {
+    // Fallback for environments without SubtleCrypto
+    let hash = 0;
+    for (let i = 0; i < raw.length; i++) {
+      const char = raw.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash |= 0;
+    }
+    return Math.abs(hash).toString(16);
+  }
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -67,12 +110,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(localStorage.getItem(TOKEN_KEY));
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [loginBusy, setLoginBusy] = useState(false);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isRefreshingRef = useRef(false);
 
+  // Multi-step login state
+  const [loginStep, setLoginStep] = useState<LoginStep>('username');
+  const [loginUsername, setLoginUsername] = useState('');
+  const [tempToken, setTempToken] = useState<string | null>(null);
+  const [backupCodes, setBackupCodes] = useState<string[] | null>(null);
+  const [requiresPasswordChange, setRequiresPasswordChange] = useState(false);
+  const deviceFingerprintRef = useRef<string | null>(null);
+
   const clearError = useCallback(() => setError(null), []);
 
-  // Schedule token refresh based on access token expiry
+  // Initialize device fingerprint
+  useEffect(() => {
+    getDeviceFingerprint().then(fp => { deviceFingerprintRef.current = fp; });
+  }, []);
+
   const scheduleRefresh = useCallback((accessToken: string) => {
     if (refreshTimerRef.current) {
       clearTimeout(refreshTimerRef.current);
@@ -90,7 +146,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
         if (!refreshToken) {
-          // No refresh token — force logout
           clearTokens();
           setToken(null);
           setUser(null);
@@ -131,7 +186,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(null);
         }
       } catch {
-        // Network/timeout error — try again in 30 seconds
         refreshTimerRef.current = setTimeout(() => {
           isRefreshingRef.current = false;
           const currentToken = localStorage.getItem(TOKEN_KEY);
@@ -153,14 +207,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  // Monotonically-increasing "generation" counter.
-  // Every time login/logout/mount kicks off an async load we bump this.
-  // When the async work finishes, it only applies its result if the
-  // generation is still current — preventing stale responses from winning.
+  // Helper: complete login with tokens from server
+  function completeLogin(data: any) {
+    localStorage.setItem(TOKEN_KEY, data.token);
+    if (data.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
+    if (data.sessionId) localStorage.setItem(SESSION_ID_KEY, data.sessionId);
+    setUser(data.user);
+    setToken(data.token);
+    setIsLoading(false);
+    scheduleRefresh(data.token);
+    setLoginStep('complete');
+    setTempToken(null);
+    setRequiresPasswordChange(false);
+  }
+
   const generationRef = useRef(0);
 
-  // Load user from saved token on mount, or when a token-refresh changes
-  // the token.  login() sets user directly and never touches this path.
+  // Load user from saved token on mount / token change
   useEffect(() => {
     const gen = ++generationRef.current;
 
@@ -171,8 +234,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // If we already have a user for this token (login() just set both)
-      // there is nothing to fetch — just make sure loading is off.
       if (user) {
         setIsLoading(false);
         return;
@@ -183,14 +244,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           headers: { Authorization: `Bearer ${token}` },
         });
 
-        if (gen !== generationRef.current) return; // stale
+        if (gen !== generationRef.current) return;
 
         if (res.ok) {
           const data = await res.json();
           setUser(data.user || data);
           scheduleRefresh(token);
         } else if (res.status === 401) {
-          // Token expired — try refresh
           const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
           if (refreshToken) {
             const refreshRes = await fetchWithTimeout('/api/auth/refresh', {
@@ -199,14 +259,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               body: JSON.stringify({ refreshToken }),
             });
 
-            if (gen !== generationRef.current) return; // stale
+            if (gen !== generationRef.current) return;
 
             if (refreshRes.ok) {
               const data = await refreshRes.json();
               localStorage.setItem(TOKEN_KEY, data.token);
               localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
               setToken(data.token);
-              // setToken will re-trigger this effect — new generation will handle it
               return;
             } else {
               clearTokens();
@@ -259,19 +318,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     loadUser();
-    // NOTE: `user` is intentionally omitted from deps — we only re-run
-    // when the token itself changes (mount, refresh, logout).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, scheduleRefresh]);
 
-  // loginBusy drives the LoginPage "Authenticating…" button spinner,
-  // but does NOT flip the top-level isLoading (which gates AppRoutes
-  // and would show the full-screen "Initializing…" overlay).
-  const [loginBusy, setLoginBusy] = useState(false);
-
-  // ── Two-Factor Authentication state ───────────────────
+  // ── Two-Factor Authentication state (local WebAuthn flow) ───────
   const [pending2FA, setPending2FA] = useState(false);
-  const [tempToken, setTempToken] = useState<string | null>(null);
   const [twoFactorMethods, setTwoFactorMethods] = useState<TwoFactorMethods>({ totp: false, webauthn: false });
 
   const cancel2FA = useCallback(() => {
@@ -280,41 +331,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setTwoFactorMethods({ totp: false, webauthn: false });
     setError(null);
   }, []);
-
-  const verify2FA = useCallback(async (code: string) => {
-    if (!tempToken) throw new Error('No pending 2FA session');
-    setLoginBusy(true);
-    setError(null);
-
-    try {
-      const res = await fetch('/api/auth/verify-2fa', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tempToken, code }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        localStorage.setItem(TOKEN_KEY, data.token);
-        if (data.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
-        if (data.sessionId) localStorage.setItem(SESSION_ID_KEY, data.sessionId);
-
-        setUser(data.user);
-        setToken(data.token);
-        setPending2FA(false);
-        setTempToken(null);
-        setIsLoading(false);
-        scheduleRefresh(data.token);
-      } else {
-        const errData = await res.json().catch(() => ({}));
-        const message = errData.error || 'Invalid verification code';
-        setError(message);
-        throw new Error(message);
-      }
-    } finally {
-      setLoginBusy(false);
-    }
-  }, [tempToken, scheduleRefresh]);
 
   const verifyWebAuthn = useCallback(async () => {
     if (!tempToken) throw new Error('No pending 2FA session');
@@ -382,21 +398,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [tempToken, scheduleRefresh, error]);
 
+  // ─── Login Step 1: Username + Password ─────────────
   const login = useCallback(async (username: string, password: string): Promise<LoginResult> => {
     setLoginBusy(true);
     setError(null);
 
     try {
+      const deviceFingerprint = deviceFingerprintRef.current;
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, password, deviceFingerprint }),
       });
 
       if (res.ok) {
         const data = await res.json();
 
-        // ── Two-Factor Authentication required ──────────
+        // ── Two-Factor Authentication required (WebAuthn flow) ──
         if (data.requires2FA) {
           setTempToken(data.tempToken);
           setPending2FA(true);
@@ -404,23 +422,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return { requires2FA: true, success: false };
         }
 
-        localStorage.setItem(TOKEN_KEY, data.token);
-        if (data.refreshToken) {
-          localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
-        }
-        if (data.sessionId) {
-          localStorage.setItem(SESSION_ID_KEY, data.sessionId);
+        // Check multi-step responses (TOTP/backup-code/setup flow)
+        if (data.step === 'verify_2fa') {
+          setTempToken(data.tempToken);
+          setRequiresPasswordChange(!!data.requiresPasswordChange);
+          setLoginStep('verify_2fa');
+          return { requires2FA: true, success: false };
         }
 
+        if (data.step === 'setup_2fa') {
+          setTempToken(data.tempToken);
+          setRequiresPasswordChange(!!data.requiresPasswordChange);
+          setLoginStep('setup_2fa');
+          return { requires2FA: true, success: false };
+        }
+
+        if (data.step === 'password_change') {
+          setTempToken(data.tempToken);
+          setRequiresPasswordChange(true);
+          setLoginStep('password_change');
+          return { requires2FA: false, success: false };
+        }
+
+        // Direct login (trusted device, no 2FA needed)
         // Store username for offline auth lookup
         localStorage.setItem(LAST_USERNAME_KEY, username);
-
-        // Set user BEFORE token so the effect sees user is already
-        // populated and skips the redundant /me round-trip.
-        setUser(data.user);
-        setToken(data.token);
-        setIsLoading(false);
-        scheduleRefresh(data.token);
+        completeLogin(data);
 
         // Trigger offline sync to seed local DB (fire-and-forget)
         if (electron?.triggerSync) {
@@ -431,7 +458,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         const errData = await res.json().catch(() => ({}));
 
-        // Handle specific error codes
         if (errData.code === 'ACCOUNT_LOCKED') {
           throw new Error(errData.error || 'Account locked');
         }
@@ -443,8 +469,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         );
       }
     } catch (err: unknown) {
-      // If the server is unavailable, allow dev login
       if (err instanceof TypeError && err.message.includes('fetch')) {
+        // Dev fallback
         const mockToken = 'dev-token-' + Date.now();
         localStorage.setItem(TOKEN_KEY, mockToken);
         setUser({
@@ -461,6 +487,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         setToken(mockToken);
         setIsLoading(false);
+        setLoginStep('complete');
         return { requires2FA: false, success: true };
       } else {
         const message = err instanceof Error ? err.message : 'Login failed';
@@ -472,6 +499,196 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [scheduleRefresh]);
 
+  // ─── Step 2a: Verify 2FA TOTP Code ────────────────
+  const verify2FA = useCallback(async (code: string, trustDeviceFlag: boolean) => {
+    setLoginBusy(true);
+    setError(null);
+
+    try {
+      const res = await fetch('/api/auth/login/verify-2fa', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${tempToken}`,
+        },
+        body: JSON.stringify({
+          code,
+          trustDevice: trustDeviceFlag,
+          deviceFingerprint: deviceFingerprintRef.current,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+
+        if (data.step === 'password_change') {
+          setTempToken(data.tempToken);
+          setRequiresPasswordChange(true);
+          setLoginStep('password_change');
+          return;
+        }
+
+        completeLogin(data);
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        if (errData.code === 'MFA_EXPIRED') {
+          setLoginStep('password');
+          throw new Error('Verification expired. Please enter your password again.');
+        }
+        throw new Error(errData.error || 'Invalid verification code');
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Verification failed';
+      setError(message);
+      throw err;
+    } finally {
+      setLoginBusy(false);
+    }
+  }, [tempToken, scheduleRefresh]);
+
+  // ─── Step 2b: Verify Backup Code ──────────────────
+  const verifyBackupCode = useCallback(async (code: string) => {
+    setLoginBusy(true);
+    setError(null);
+
+    try {
+      const res = await fetch('/api/auth/login/verify-backup-code', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${tempToken}`,
+        },
+        body: JSON.stringify({ code, deviceFingerprint: deviceFingerprintRef.current }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+
+        if (data.step === 'password_change') {
+          setTempToken(data.tempToken);
+          setRequiresPasswordChange(true);
+          setLoginStep('password_change');
+          return;
+        }
+
+        completeLogin(data);
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Invalid backup code');
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Verification failed';
+      setError(message);
+      throw err;
+    } finally {
+      setLoginBusy(false);
+    }
+  }, [tempToken, scheduleRefresh]);
+
+  // ─── Step 3a: Setup 2FA (get QR code) ─────────────
+  const setup2FA = useCallback(async () => {
+    setError(null);
+
+    const res = await fetch('/api/auth/2fa/setup', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${tempToken}`,
+      },
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || 'Failed to start 2FA setup');
+    }
+
+    const data = await res.json();
+    return { qrCodeDataUri: data.qrCodeDataUri, manualKey: data.manualKey };
+  }, [tempToken]);
+
+  // ─── Step 3b: Confirm 2FA Setup (verify first code) ──
+  const confirmSetup2FA = useCallback(async (code: string) => {
+    setLoginBusy(true);
+    setError(null);
+
+    try {
+      const res = await fetch('/api/auth/2fa/setup/verify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${tempToken}`,
+        },
+        body: JSON.stringify({ code, deviceFingerprint: deviceFingerprintRef.current }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Invalid code');
+      }
+
+      const data = await res.json();
+      setBackupCodes(data.backupCodes);
+
+      // Check if there's more steps
+      if (data.requiresPasswordChange && data.tempToken) {
+        setTempToken(data.tempToken);
+        setRequiresPasswordChange(true);
+        setLoginStep('show_backup_codes');
+        return { backupCodes: data.backupCodes };
+      }
+
+      // If tokens are included, we can complete after showing backup codes
+      if (data.token) {
+        // Store for later completion after user acknowledges backup codes
+        setTempToken(null);
+        // Temporarily hold the final token data
+        localStorage.setItem(TOKEN_KEY, data.token);
+        if (data.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
+        if (data.sessionId) localStorage.setItem(SESSION_ID_KEY, data.sessionId);
+      }
+
+      setLoginStep('show_backup_codes');
+      return { backupCodes: data.backupCodes };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Setup verification failed';
+      setError(message);
+      throw err;
+    } finally {
+      setLoginBusy(false);
+    }
+  }, [tempToken]);
+
+  // ─── Step 4: Change Password During Login ─────────
+  const changePasswordDuringLogin = useCallback(async (newPassword: string) => {
+    setLoginBusy(true);
+    setError(null);
+
+    try {
+      const res = await fetch('/api/auth/login/change-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${tempToken}`,
+        },
+        body: JSON.stringify({ newPassword, deviceFingerprint: deviceFingerprintRef.current }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Password change failed');
+      }
+
+      const data = await res.json();
+      completeLogin(data);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Password change failed';
+      setError(message);
+      throw err;
+    } finally {
+      setLoginBusy(false);
+    }
+  }, [tempToken, scheduleRefresh]);
+
   const logout = useCallback(() => {
     const currentToken = localStorage.getItem(TOKEN_KEY);
     const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
@@ -480,8 +697,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     clearTokens();
     setToken(null);
     setUser(null);
+    setLoginStep('username');
+    setTempToken(null);
+    setBackupCodes(null);
+    setRequiresPasswordChange(false);
 
-    // Best-effort notify server
     if (currentToken) {
       fetch('/api/auth/logout', {
         method: 'POST',
@@ -494,7 +714,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Re-fetch user from /auth/me to pick up profile changes (name, email, etc.)
   const refreshUser = useCallback(async () => {
     const currentToken = localStorage.getItem(TOKEN_KEY);
     if (!currentToken) return;
@@ -506,10 +725,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const data = await res.json();
         setUser(data.user || data);
       }
-    } catch { /* silent — stale data is acceptable */ }
+    } catch { /* silent */ }
   }, []);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (refreshTimerRef.current) {
@@ -518,7 +736,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // Memoize context value to prevent unnecessary re-renders of consumers
   const contextValue = useMemo(() => ({
     user,
     token,
@@ -528,6 +745,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     login,
     verify2FA,
     verifyWebAuthn,
+    verifyBackupCode,
+    setup2FA,
+    confirmSetup2FA,
+    changePasswordDuringLogin,
     pending2FA,
     twoFactorMethods,
     tempToken,
@@ -536,7 +757,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     refreshUser,
     error,
     clearError,
-  }), [user, token, isLoading, loginBusy, login, verify2FA, verifyWebAuthn, pending2FA, twoFactorMethods, tempToken, cancel2FA, logout, refreshUser, error, clearError]);
+    loginStep,
+    setLoginStep,
+    loginUsername,
+    setLoginUsername,
+    backupCodes,
+    requiresPasswordChange,
+  }), [user, token, isLoading, loginBusy, login, verify2FA, verifyWebAuthn, verifyBackupCode, setup2FA, confirmSetup2FA, changePasswordDuringLogin, pending2FA, twoFactorMethods, tempToken, cancel2FA, logout, refreshUser, error, clearError, loginStep, loginUsername, backupCodes, requiresPasswordChange]);
 
   return (
     <AuthContext.Provider value={contextValue}>

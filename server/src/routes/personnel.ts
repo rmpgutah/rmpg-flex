@@ -115,6 +115,7 @@ router.get('/', (req: Request, res: Response) => {
         u.emergency_contact_name, u.emergency_contact_phone, u.emergency_contact_relationship,
         u.employee_id, u.certifications, u.notes, u.profile_image,
         u.login_count, u.last_login_at,
+        u.totp_enabled, u.totp_setup_required, u.password_expires_at, u.force_password_change, u.password_changed_at,
         u.created_at, u.updated_at,
         un.call_sign as unit_call_sign
       FROM users u

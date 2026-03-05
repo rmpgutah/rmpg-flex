@@ -5,8 +5,40 @@
       "version": "5.3.9",
       "date": "2026-02-28",
       "type": "major",
-      "summary": "High-security login system overhaul with TOTP 2FA, CJIS-compliant login UI, password policy enforcement, and admin CRUD access",
+      "summary": "Mandatory TOTP-based 2FA, trusted devices, password expiry & security dashboard",
       "changes": [
+        {
+          "type": "feature",
+          "description": "Mandatory TOTP-based two-factor authentication for all users"
+        },
+        {
+          "type": "feature",
+          "description": "Multi-step login: username → password → 2FA verify/setup → backup codes"
+        },
+        {
+          "type": "feature",
+          "description": "AES-256-GCM encrypted TOTP secrets at rest with bcrypt-hashed backup codes"
+        },
+        {
+          "type": "feature",
+          "description": "Trusted device management with 30-day device fingerprint bypass"
+        },
+        {
+          "type": "feature",
+          "description": "Password expiry enforcement with configurable history (last 5)"
+        },
+        {
+          "type": "feature",
+          "description": "Security dashboard: login history, trusted devices, security notifications"
+        },
+        {
+          "type": "feature",
+          "description": "Admin controls: Reset 2FA, Force Password Change per user"
+        },
+        {
+          "type": "feature",
+          "description": "User profile Security tab with security overview, backup code management"
+        },
         {
           "type": "feature",
           "description": "TOTP two-factor authentication via Google Authenticator with QR code enrollment"
@@ -34,6 +66,18 @@
         {
           "type": "enhancement",
           "description": "Admin role granted full CRUD access across all modules"
+        },
+        {
+          "type": "fix",
+          "description": "Admin Users 2FA badge now correctly reflects totp_enabled status"
+        },
+        {
+          "type": "fix",
+          "description": "Dev TOTP encryption key changed from random-per-restart to deterministic"
+        },
+        {
+          "type": "fix",
+          "description": "StatusBar version display now dynamic from package.json instead of hardcoded"
         },
         {
           "type": "fix",
