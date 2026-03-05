@@ -29,6 +29,9 @@
     "react-router-dom": "^6.28.0",
     "recharts": "^2.14.1"
   },
+  "overrides": {
+    "dompurify": "file:./stubs/dompurify"
+  },
   "devDependencies": {
     "@types/google.maps": "^3.58.1",
     "@types/leaflet": "^1.9.14",

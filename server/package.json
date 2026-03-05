@@ -24,6 +24,9 @@
     "uuid": "^10.0.0",
     "ws": "^8.18.0"
   },
+  "overrides": {
+    "dompurify": "file:./stubs/dompurify"
+  },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/better-sqlite3": "^7.6.12",
