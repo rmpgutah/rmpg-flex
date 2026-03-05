@@ -8,6 +8,8 @@ import path from 'path';
 import fs from 'fs';
 import http from 'http';
 import https from 'https';
+import crypto from 'crypto';
+import { execFile } from 'child_process';
 import { fileURLToPath } from 'url';
 import config from './config';
 import { initDatabase } from './models/database';
@@ -97,6 +99,68 @@ app.use(cors({
   origin: config.corsOrigins,
   credentials: true,
 }));
+
+// ─── GitHub Webhook (must come BEFORE express.json() for raw body HMAC) ──
+app.post('/api/webhook/github', express.raw({ type: 'application/json', limit: '5mb' }), (req, res) => {
+  const WEBHOOK_SECRET_FILE = path.resolve(__dirname, '../../.webhook-secret');
+  let secret = '';
+  try { secret = fs.readFileSync(WEBHOOK_SECRET_FILE, 'utf8').trim(); } catch { /* no secret file */ }
+
+  if (!secret) {
+    res.status(500).json({ error: 'Webhook secret not configured' });
+    return;
+  }
+
+  // Validate HMAC signature
+  const signature = req.headers['x-hub-signature-256'] as string;
+  const body = req.body as Buffer;
+  const expected = 'sha256=' + crypto.createHmac('sha256', secret).update(body).digest('hex');
+  try {
+    if (!signature || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
+      console.log('[Webhook] REJECTED — Invalid signature');
+      res.status(401).json({ error: 'Invalid signature' });
+      return;
+    }
+  } catch {
+    res.status(401).json({ error: 'Invalid signature' });
+    return;
+  }
+
+  const event = req.headers['x-github-event'] as string;
+  const payload = JSON.parse(body.toString());
+
+  // Only deploy on push to main
+  if (event !== 'push' || payload.ref !== 'refs/heads/main') {
+    console.log(`[Webhook] Ignored — event=${event}, ref=${payload.ref || 'n/a'}`);
+    res.json({ status: 'ignored', reason: `event=${event}` });
+    return;
+  }
+
+  const commitSha = (payload.after || '').slice(0, 8);
+  const pusher = payload.pusher?.name || 'unknown';
+  console.log(`[Webhook] DEPLOY TRIGGERED — commit=${commitSha}, by=${pusher}`);
+
+  // Respond immediately, deploy runs async
+  res.json({ status: 'deploying', commit: commitSha });
+
+  // Run deploy in background
+  const APP_DIR = '/opt/rmpg-flex';
+  const script = `cd ${APP_DIR} && git pull origin main && cd server && npm install --production 2>&1 | tail -2 && cd ../client && npm install 2>&1 | tail -2 && npx vite build 2>&1 | tail -3 && cd .. && systemctl restart rmpg-flex`;
+  const child = execFile('/bin/bash', ['-c', script], {
+    cwd: APP_DIR,
+    timeout: 300000,
+    env: { ...process.env, HOME: '/root' },
+  }, (error, stdout, stderr) => {
+    if (error) {
+      console.error(`[Webhook] DEPLOY FAILED — ${error.message}`);
+      if (stderr) console.error(`[Webhook] STDERR: ${stderr.slice(0, 500)}`);
+    } else {
+      console.log(`[Webhook] DEPLOY SUCCESS — ${(stdout || '').slice(0, 300)}`);
+    }
+  });
+  child.unref();
+});
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(sanitizeInput);
