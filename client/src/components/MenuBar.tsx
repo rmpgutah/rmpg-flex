@@ -75,6 +75,8 @@ import {
   Palette,
   Bug,
   Sparkles,
+  Mic,
+  MicOff,
 } from 'lucide-react';
 
 // ============================================================
@@ -157,6 +159,9 @@ export default function MenuBar({
   const [notificationsEnabled, setNotificationsEnabled] = useState(() => {
     return localStorage.getItem('rmpg-notifications') !== 'false';
   });
+  const [voiceAlertsEnabled, setVoiceAlertsEnabled] = useState(() => {
+    return localStorage.getItem('rmpg-voice-alerts') !== 'false';
+  });
   const [compactMode, setCompactMode] = useState(() => {
     return localStorage.getItem('rmpg-compact') === 'true';
   });
@@ -219,6 +224,12 @@ export default function MenuBar({
     setSoundEnabled(next);
     localStorage.setItem('rmpg-sound', String(next));
   }, [soundEnabled]);
+
+  const toggleVoiceAlerts = useCallback(() => {
+    const next = !voiceAlertsEnabled;
+    setVoiceAlertsEnabled(next);
+    localStorage.setItem('rmpg-voice-alerts', String(next));
+  }, [voiceAlertsEnabled]);
 
   const toggleNotifications = useCallback(() => {
     const next = !notificationsEnabled;
@@ -353,6 +364,8 @@ export default function MenuBar({
         items: [
           { type: 'toggle', label: 'Desktop Notifications', icon: notificationsEnabled ? Bell : BellOff, checked: notificationsEnabled, action: toggleNotifications },
           { type: 'toggle', label: 'Sound Effects', icon: soundEnabled ? Volume2 : VolumeX, checked: soundEnabled, action: toggleSound },
+          { type: 'toggle', label: 'Voice Alerts', icon: voiceAlertsEnabled ? Mic : MicOff, checked: voiceAlertsEnabled, action: toggleVoiceAlerts },
+          { type: 'action', label: 'Test Voice Alerts', icon: Volume2, action: () => { import('../utils/voiceAlerts').then(m => m.demoAllVoiceAlerts()); } },
         ],
       },
       { type: 'separator' },

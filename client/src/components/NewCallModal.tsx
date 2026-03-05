@@ -29,11 +29,31 @@ const CALL_SOURCES: { value: CallSource; label: string }[] = [
   { value: 'other', label: 'Other' },
 ];
 
-const PRIORITY_OPTIONS: { value: CallPriority; label: string; color: string; desc: string }[] = [
+export const PRIORITY_OPTIONS: { value: CallPriority; label: string; color: string; desc: string }[] = [
   { value: 'P1', label: 'P1', color: 'border-red-500 text-red-400 bg-red-900/30', desc: 'Emergency' },
   { value: 'P2', label: 'P2', color: 'border-amber-500 text-amber-400 bg-amber-900/30', desc: 'Urgent' },
   { value: 'P3', label: 'P3', color: 'border-brand-500 text-brand-400 bg-brand-900/30', desc: 'Routine' },
   { value: 'P4', label: 'P4', color: 'border-gray-500 text-rmpg-300 bg-rmpg-700/30', desc: 'Scheduled' },
+];
+
+export const PSO_SERVICE_TYPES = [
+  { value: '', label: '-- Select --' },
+  { value: 'patrol', label: 'Patrol' },
+  { value: 'standing_post', label: 'Standing Post' },
+  { value: 'escort', label: 'Escort' },
+  { value: 'process_service', label: 'Process Service' },
+  { value: 'alarm_response', label: 'Alarm Response' },
+  { value: 'event_security', label: 'Event Security' },
+];
+
+export const PROCESS_SERVICE_DOC_TYPES = [
+  { value: '', label: '-- Select --' },
+  { value: 'subpoena', label: 'Subpoena' },
+  { value: 'summons', label: 'Summons' },
+  { value: 'complaint', label: 'Complaint' },
+  { value: 'eviction', label: 'Eviction Notice' },
+  { value: 'restraining_order', label: 'Restraining Order' },
+  { value: 'other', label: 'Other' },
 ];
 
 const CALLER_RELATIONSHIPS = [
@@ -305,13 +325,9 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                 <div>
                   <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Service Type</label>
                   <select className="select-dark" value={formData.pso_service_type || ''} onChange={(e) => update('pso_service_type', e.target.value)}>
-                    <option value="">-- Select --</option>
-                    <option value="patrol">Patrol</option>
-                    <option value="standing_post">Standing Post</option>
-                    <option value="escort">Escort</option>
-                    <option value="process_service">Process Service</option>
-                    <option value="alarm_response">Alarm Response</option>
-                    <option value="event_security">Event Security</option>
+                    {PSO_SERVICE_TYPES.map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
                   </select>
                 </div>
                 <div>
@@ -341,13 +357,9 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                     <div>
                       <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Document Type</label>
                       <select className="select-dark" value={formData.process_service_type || ''} onChange={(e) => update('process_service_type', e.target.value)}>
-                        <option value="">-- Select --</option>
-                        <option value="subpoena">Subpoena</option>
-                        <option value="summons">Summons</option>
-                        <option value="complaint">Complaint</option>
-                        <option value="eviction">Eviction Notice</option>
-                        <option value="restraining_order">Restraining Order</option>
-                        <option value="other">Other</option>
+                        {PROCESS_SERVICE_DOC_TYPES.map((t) => (
+                          <option key={t.value} value={t.value}>{t.label}</option>
+                        ))}
                       </select>
                     </div>
                     <div>

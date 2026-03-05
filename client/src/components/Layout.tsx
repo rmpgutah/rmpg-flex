@@ -39,6 +39,7 @@ import {
   UserX,
   Gavel,
   Terminal,
+  CreditCard,
 } from 'lucide-react';
 import { Navigation2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -81,6 +82,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/trespass-orders': 'Trespass Orders',
   '/mdt': 'MDT',
   '/ncic': 'NCIC Terminal',
+  '/dl-search': 'DL Search',
   '/shift-plans': 'Shift Plans',
   '/statute-analytics': 'Statute Analytics',
   '/reports/custom': 'Report Builder',
@@ -119,6 +121,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/records', icon: Database, label: 'Records' },
     { path: '/field-interviews', icon: ClipboardList, label: 'Field Interviews' },
     { path: '/criminal-history', icon: Search, label: 'Criminal History' },
+    { path: '/dl-search', icon: CreditCard, label: 'DL Search' },
     { path: '/evidence', icon: Package, label: 'Evidence / Property' },
     { path: '/cases', icon: Briefcase, label: 'Case Management' },
   ]},
@@ -845,6 +848,8 @@ export default function Layout() {
         permissionPending={gps.permissionPending}
         error={gps.error}
         onRetry={gps.startTracking}
+        connectionType={gps.connectionType}
+        positionSource={gps.positionSource}
       />
 
       {/* Page Content (recessed panel — charcoal bg matching borders) */}

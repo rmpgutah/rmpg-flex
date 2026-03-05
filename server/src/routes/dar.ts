@@ -128,6 +128,67 @@ router.post('/auto-populate', (req: Request, res: Response) => {
       ORDER BY s.start_time LIMIT 1
     `).get(officer_id, shift_date) as any;
 
+    // Get field interviews conducted
+    let fieldInterviews: any[] = [];
+    try {
+      fieldInterviews = db.prepare(`
+        SELECT id, subject_first_name, subject_last_name, location, reason
+        FROM field_interviews
+        WHERE DATE(interview_date) = ? AND officer_id = ?
+      `).all(shift_date, officer_id);
+    } catch { /* table may not exist */ }
+
+    // ── Build auto-generated narrative ──
+    const narrativeParts: string[] = [];
+
+    if (schedule?.property_name) {
+      narrativeParts.push(`Assigned to ${schedule.property_name}.`);
+    }
+
+    if (timeEntry?.clock_in) {
+      const clockIn = new Date(timeEntry.clock_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      const clockOut = timeEntry.clock_out
+        ? new Date(timeEntry.clock_out).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+        : 'ongoing';
+      narrativeParts.push(`On duty ${clockIn} - ${clockOut}.`);
+    }
+
+    if (calls.length > 0) {
+      const typeCounts: Record<string, number> = {};
+      for (const c of calls) {
+        const t = (c.incident_type || 'other').replace(/_/g, ' ');
+        typeCounts[t] = (typeCounts[t] || 0) + 1;
+      }
+      const typeList = Object.entries(typeCounts)
+        .map(([type, count]) => count > 1 ? `${count} ${type}` : type)
+        .join(', ');
+      narrativeParts.push(`Responded to ${calls.length} call(s): ${typeList}.`);
+    }
+
+    if (incidents.length > 0) {
+      const incNums = incidents.map((i: any) => i.incident_number).join(', ');
+      narrativeParts.push(`Generated ${incidents.length} incident report(s): ${incNums}.`);
+    }
+
+    if (citations.length > 0) {
+      narrativeParts.push(`Issued ${citations.length} citation(s).`);
+    }
+
+    if (fieldInterviews.length > 0) {
+      narrativeParts.push(`Conducted ${fieldInterviews.length} field interview(s).`);
+    }
+
+    if (patrols.length > 0) {
+      const onTime = patrols.filter((p: any) => p.status === 'on_time').length;
+      narrativeParts.push(`Completed ${patrols.length} patrol check(s) (${onTime} on-time).`);
+    }
+
+    if (narrativeParts.length === 0) {
+      narrativeParts.push('No logged activity for this shift.');
+    }
+
+    const autoNarrative = narrativeParts.join(' ');
+
     res.json({
       data: {
         officer_name: officer?.full_name || '',
@@ -138,7 +199,9 @@ router.post('/auto-populate', (req: Request, res: Response) => {
         calls_handled: calls.map((c: any) => ({ call_id: c.id, number: c.call_number, type: c.incident_type, time: c.created_at, disposition: c.disposition })),
         incidents_created: incidents.map((i: any) => ({ incident_id: i.id, number: i.incident_number, type: i.incident_type })),
         citations_issued: citations.map((c: any) => ({ citation_id: c.id, number: c.citation_number, type: c.type })),
+        field_interviews: fieldInterviews.map((fi: any) => ({ name: `${fi.subject_first_name} ${fi.subject_last_name}`, location: fi.location, reason: fi.reason })),
         patrols_completed: patrols.map((p: any) => ({ checkpoint: p.checkpoint, time: p.scanned_at, status: p.status })),
+        auto_narrative: autoNarrative,
       },
     });
   } catch (error: any) {

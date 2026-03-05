@@ -36,6 +36,11 @@ export const COLOR = {
 
   // Watermark
   WATERMARK:       [120, 120, 120]  as const,
+
+  // NIBRS Grid Form — sidebar tabs + dense cells
+  BG_SIDEBAR_TAB:      [25, 25, 30]     as const,  // Dark sidebar tab background
+  BG_FORM_CELL_LABEL:  [240, 240, 245]  as const,  // Light gray label strip inside cell
+  BORDER_FORM_GRID:    [60, 60, 60]     as const,  // Dark grid lines (shared borders)
 } as const;
 
 // ── Typography Tokens ────────────────────────────────────────
@@ -65,6 +70,11 @@ export const FONT = {
   SIZE_SUBHEADER:         6.5,   // Subheader text in report header
   SIZE_REPORT_TYPE:       7,     // Report type label in header
   SIZE_CASE_NUMBER:       9,     // Case number value (courier bold)
+
+  // NIBRS Grid Form — cell typography
+  SIZE_FORM_CELL_LABEL:   5,     // Tiny label inside cell top-left
+  SIZE_FORM_CELL_VALUE:   8,     // Courier value below label in cell
+  SIZE_SIDEBAR_TAB:       7,     // Rotated sidebar tab label
 } as const;
 
 // ── Border / Line Width Tokens ───────────────────────────────
@@ -83,6 +93,11 @@ export const BORDER = {
   CASE_BOX:         1.2,   // White border inside case number box
   BANNER:           1.0,   // Bold banner borders
   DIAGRAM_GRID:     0.1,   // Accident diagram grid lines
+
+  // NIBRS Grid Form — border widths
+  FORM_GRID_OUTER:  0.6,   // Bold outer border around grid sections
+  FORM_CELL:        0.25,  // Inner cell borders (shared)
+  SIDEBAR_TAB:      0.5,   // Sidebar tab border
 } as const;
 
 // ── Spacing Tokens (tighter throughout) ──────────────────────
@@ -106,6 +121,12 @@ export const SPACING = {
   SIGNATURE_BOX_H:    30,    // Signature block total height (tighter)
   SIGNATURE_ROLE_H:   5,     // Role label header bar height (tighter)
   SIGNATURE_SUB_GAP:  5.5,   // Gap between sig line and sub-fields (tighter)
+
+  // NIBRS Grid Form — cell dimensions
+  FORM_CELL_H:        7,     // Default form cell height
+  FORM_CELL_LABEL_H:  2.5,   // Height reserved for label strip inside cell
+  FORM_CELL_PAD:      1.2,   // Padding inside cell for label/value text
+  SIDEBAR_TAB_W:      12,    // Width of sidebar section tab
 } as const;
 
 // ── Layout Tokens ────────────────────────────────────────────
@@ -121,6 +142,9 @@ export const LAYOUT = {
   CASE_BOX_W:        42,     // Case number box width
   LINE_HEIGHT:       3.5,    // Base line height for wrapped text (tighter)
   DIAGRAM_GRID_STEP: 10,     // Grid spacing in accident diagram
+
+  // NIBRS Grid Form — layout
+  SIDEBAR_TAB_W:     12,     // Sidebar tab width (matches SPACING)
 } as const;
 
 // ── Computed Layout Helpers ──────────────────────────────────
@@ -176,4 +200,16 @@ export function getProportionalColumns(doc: jsPDF, ratios: number[]): number[] {
     x += (r / totalRatio) * availW;
   }
   return positions;
+}
+
+// ── NIBRS Grid Layout Helpers ─────────────────────────────────
+
+/** X-position where grid content starts (after sidebar tab) */
+export function getGridStartX(): number {
+  return LAYOUT.PAGE_MARGIN + LAYOUT.SIDEBAR_TAB_W;
+}
+
+/** Available width for grid cells (page minus margins minus sidebar tab) */
+export function getGridContentWidth(doc: jsPDF): number {
+  return doc.internal.pageSize.getWidth() - 2 * LAYOUT.PAGE_MARGIN - LAYOUT.SIDEBAR_TAB_W;
 }

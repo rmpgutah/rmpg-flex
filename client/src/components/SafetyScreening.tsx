@@ -6,9 +6,10 @@
 // ============================================================
 
 import React, { useState, useEffect, useRef } from 'react';
-import { AlertTriangle, Shield, FileWarning, User, Scale } from 'lucide-react';
+import { AlertTriangle, Shield, FileWarning, User, Scale, Ban, MapPin } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { playTone } from '../utils/dispatchTones';
+import { announceScreeningAlerts } from '../utils/voiceAlerts';
 
 interface ScreeningPerson {
   person: {
@@ -49,6 +50,13 @@ interface ScreeningResult {
     offense_level: string;
     bail_amount?: number;
   }>;
+  ofacHits: Array<{
+    name: string;
+    type: string;
+    program: string;
+    source_list: string;
+  }>;
+  premiseWarnings: string[];
   hasWarnings: boolean;
 }
 
@@ -82,10 +90,11 @@ export default function SafetyScreening({ callerName, subjectDescription }: Safe
         );
         setResult(data);
 
-        // Play warning tone once per unique search that has hits
+        // Play warning tone + voice alert once per unique search that has hits
         if (data.hasWarnings && tonePlayedRef.current !== searchName) {
           tonePlayedRef.current = searchName;
           playTone('warning');
+          announceScreeningAlerts(data);
         }
       } catch {
         setResult(null);
@@ -110,6 +119,8 @@ export default function SafetyScreening({ callerName, subjectDescription }: Safe
   const hasActiveWarrants = result.persons.some(p => p.warrants.length > 0) || result.directWarrantHits.length > 0;
   const hasCautionFlags = result.persons.some(p => p.person.caution_flags);
   const hasSexOffender = result.persons.some(p => p.person.is_sex_offender);
+  const hasOfac = (result.ofacHits || []).length > 0;
+  const hasPremise = (result.premiseWarnings || []).length > 0;
 
   return (
     <div className={`safety-screening ${result.hasWarnings ? 'safety-screening-alert' : ''}`}>
@@ -119,8 +130,10 @@ export default function SafetyScreening({ callerName, subjectDescription }: Safe
           <Shield style={{ width: 12, height: 12 }} />
           <span className="font-bold">OFFICER SAFETY ALERT</span>
           {hasActiveWarrants && <span className="safety-tag safety-tag-warrant">ACTIVE WARRANT</span>}
+          {hasOfac && <span className="safety-tag safety-tag-ofac">OFAC SANCTIONS</span>}
           {hasCautionFlags && <span className="safety-tag safety-tag-caution">CAUTION FLAGS</span>}
           {hasSexOffender && <span className="safety-tag safety-tag-sex-offender">SEX OFFENDER</span>}
+          {hasPremise && <span className="safety-tag safety-tag-premise">PREMISE HISTORY</span>}
         </div>
       )}
 
@@ -219,6 +232,42 @@ export default function SafetyScreening({ callerName, subjectDescription }: Safe
           <span className="text-[10px] text-rmpg-300">{w.charge_description}</span>
         </div>
       ))}
+
+      {/* OFAC / U.S. Treasury Sanctions Hits */}
+      {hasOfac && (
+        <div className="safety-ofac-section">
+          <div className="safety-ofac-header">
+            <Ban style={{ width: 11, height: 11 }} />
+            <span className="font-bold">OFAC SANCTIONS MATCH — {result.ofacHits.length} HIT(S)</span>
+          </div>
+          {result.ofacHits.map((hit, idx) => (
+            <div key={idx} className="safety-ofac-entry">
+              <span className="text-[10px] text-red-300 font-bold">{hit.name}</span>
+              <span className="text-[9px] text-red-400/80">{hit.program}</span>
+              <span className="text-[9px] text-rmpg-400">{hit.source_list} — {hit.type}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Premise History Warnings */}
+      {hasPremise && (
+        <div className="safety-premise-section">
+          <div className="safety-premise-header">
+            <MapPin style={{ width: 10, height: 10 }} />
+            <span className="font-bold">PREMISE HISTORY</span>
+          </div>
+          <div className="flex flex-wrap gap-1 px-2 pb-1">
+            {result.premiseWarnings.map((w, idx) => (
+              <span key={idx} className="safety-premise-tag">
+                {w === 'ARMED_HISTORY' ? '⚠ PRIOR ARMED CALLS' :
+                 w === 'DV_HISTORY' ? '⚠ PRIOR DV CALLS' :
+                 w === 'DRUGS_HISTORY' ? '⚠ PRIOR DRUG ACTIVITY' : w}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

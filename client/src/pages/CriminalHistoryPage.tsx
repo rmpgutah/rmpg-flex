@@ -5,7 +5,7 @@
 // ============================================================
 
 import React, { useState, useCallback } from 'react';
-import { Search, AlertTriangle, User, Shield, Calendar, MapPin, FileText, ChevronRight } from 'lucide-react';
+import { Search, AlertTriangle, User, Shield, Calendar, MapPin, FileText, ChevronRight, Scale } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { toDisplayLabel } from '../utils/formatters';
@@ -130,6 +130,17 @@ export default function CriminalHistoryPage() {
     setHistoryLoading(false);
   }, []);
 
+  const openUtahCourts = useCallback((person?: PersonResult | null) => {
+    const base = 'https://www.utcourts.gov/xchange/CaseSearch';
+    const params = new URLSearchParams();
+    if (person) {
+      if (person.last_name) params.set('lastName', person.last_name);
+      if (person.first_name) params.set('firstName', person.first_name);
+    }
+    const url = params.toString() ? `${base}?${params}` : base;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }, []);
+
   const cautionFlags = selectedPerson?.caution_flags ? selectedPerson.caution_flags.split(',').map(f => f.trim()).filter(Boolean) : [];
 
   const typeIcon = (type: string) => {
@@ -178,6 +189,9 @@ export default function CriminalHistoryPage() {
           </div>
           <button onClick={handleSearch} disabled={loading} className="toolbar-btn toolbar-btn-primary">
             {loading ? 'Searching...' : 'Search'}
+          </button>
+          <button onClick={() => openUtahCourts()} className="toolbar-btn" title="Search Utah Courts Xchange (opens in new tab)">
+            <Scale className="w-3 h-3" /> Utah Courts
           </button>
         </div>
       </PanelTitleBar>}
@@ -282,9 +296,16 @@ export default function CriminalHistoryPage() {
                       {selectedPerson.address && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{selectedPerson.address}</span>}
                     </div>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right space-y-1">
                     <span className="text-[9px] text-rmpg-500 uppercase font-bold">Record ID</span>
                     <p className="text-sm font-mono text-brand-400 font-bold">{selectedPerson.id}</p>
+                    <button
+                      onClick={() => openUtahCourts(selectedPerson)}
+                      className="toolbar-btn text-[9px] gap-1"
+                      title="Search Utah Courts Xchange for this person"
+                    >
+                      <Scale className="w-3 h-3" /> Utah Courts
+                    </button>
                   </div>
                 </div>
 

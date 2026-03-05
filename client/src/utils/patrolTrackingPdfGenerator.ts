@@ -27,6 +27,7 @@ interface PatrolPoint {
   is_stationary: boolean;
   road_name?: string | null;
   nearest_intersection?: string | null;
+  source?: string;
   beat_id?: string | null;
   beat_code?: string | null;
   zone?: string | null;
@@ -58,6 +59,7 @@ interface UnitTrail {
     max_speed_mph: number;
     avg_speed_mph: number;
     duration_minutes: number;
+    source_breakdown?: Record<string, number>;
   };
   response_segments: ResponseSegment[];
   zone_coverage?: Record<string, {
@@ -346,6 +348,9 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     const stats = trail.stats;
     const zonesCount = trail.zone_coverage ? Object.keys(trail.zone_coverage).length : 0;
     const movingPct = stats.total_points > 0 ? Math.round((stats.moving_points / stats.total_points) * 100) : 0;
+    const sourceStr = stats.source_breakdown
+      ? Object.entries(stats.source_breakdown).map(([k, v]) => `${k.toUpperCase()}: ${v}`).join(', ')
+      : '';
     const statItems = [
       `Distance: ${stats.total_distance_miles} mi`,
       `Duration: ${stats.duration_minutes} min`,
@@ -355,16 +360,18 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
       `Avg Speed: ${stats.avg_speed_mph} mph`,
       `Calls: ${trail.response_segments.length}`,
       `Zones: ${zonesCount}`,
+      ...(sourceStr ? [`Sources: ${sourceStr}`] : []),
     ];
 
-    // 4 items per row, 2 rows
+    // 4 items per row
     const colW = contentW / 4;
+    const rowCount = Math.ceil(statItems.length / 4);
     for (let i = 0; i < statItems.length; i++) {
       const col = i % 4;
       const row = Math.floor(i / 4);
       doc.text(statItems[i], margin + 4 + col * colW, yPos + row * 4.5);
     }
-    yPos += 12;
+    yPos += rowCount * 4.5 + 3;
   }
 
   // ════════════════════════════════════════════════════════
@@ -377,7 +384,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     // Section header — light bg
     drawSectionHeader(`${trail.call_sign}  —  ${trail.officer_name}  |  Breadcrumb Detail`);
 
-    // Table headers — expanded with Date/Time, Beat, Sector, Zone, Call Type
+    // Table headers — expanded with Date/Time, Beat, Sector, Zone, Call Type, Source
     const cols = [
       { label: 'Date/Time', w: 24 },
       { label: 'Beat', w: 10 },
@@ -387,11 +394,12 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
       { label: 'Cross St', w: 18 },
       { label: 'Speed', w: 10 },
       { label: 'Hdg', w: 8 },
+      { label: 'Src', w: 8 },
       { label: 'Status', w: 14 },
       { label: 'Call #', w: 14 },
       { label: 'Call Type', w: 16 },
       { label: 'Dist (mi)', w: 12 },
-      { label: 'Lat/Lng', w: 20 },
+      { label: 'Lat/Lng', w: 18 },
     ];
 
     // Adjust widths to fit content width
@@ -447,6 +455,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
         pt.nearest_intersection || '-',                                 // Cross St
         pt.speed_mph != null ? `${pt.speed_mph}` : '-',                // Speed
         pt.heading_cardinal || '-',                                     // Heading
+        (pt.source || 'UNK').toUpperCase().slice(0, 4),                // Source
         (pt.status || '-').replace(/_/g, ' '),                          // Status
         pt.current_call_number || '-',                                  // Call #
         (pt.current_call_type || '-').replace(/_/g, ' '),              // Call Type

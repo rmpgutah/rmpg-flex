@@ -13,6 +13,12 @@ import { apiFetch } from './useApi';
 // is shown if the user denies location permission.
 // ============================================================
 
+/** Position source: how the lat/lng was obtained */
+export type PositionSource = 'gps' | 'wifi' | 'ip' | 'unknown';
+
+/** Network connection type detected via Network Information API */
+export type ConnectionType = 'wifi' | 'cellular' | 'ethernet' | 'none' | 'unknown';
+
 export interface GpsState {
   /** Whether GPS tracking is actively running */
   isTracking: boolean;
@@ -40,6 +46,10 @@ export interface GpsState {
   permissionDenied: boolean;
   /** Whether we're still waiting for location permission */
   permissionPending: boolean;
+  /** Current network connection type (wifi/cellular/ethernet/none) */
+  connectionType: ConnectionType;
+  /** How the current position was obtained (gps/wifi/ip) */
+  positionSource: PositionSource;
 }
 
 interface UseGpsTrackingOptions {
@@ -73,6 +83,35 @@ interface QueuedPoint {
   heading: number | null;
   speed: number | null;
   timestamp: string; // ISO 8601
+  source: PositionSource;
+}
+
+// ─── Network Information API ────────────────────────────────
+// Detect WiFi vs cellular vs ethernet using the Network Information API.
+// Used to adapt tracking behavior for in-vehicle WiFi / mobile hotspots.
+function getConnectionType(): ConnectionType {
+  try {
+    const conn = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
+    if (!conn) return 'unknown';
+    const type = conn.type; // 'wifi', 'cellular', 'ethernet', 'none', etc.
+    if (type === 'wifi') return 'wifi';
+    if (type === 'cellular') return 'cellular';
+    if (type === 'ethernet') return 'ethernet';
+    if (type === 'none') return 'none';
+    // effectiveType gives '4g', '3g', '2g', 'slow-2g' — implies cellular
+    if (!type && conn.effectiveType) return 'cellular';
+    return 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
+/** Infer position source from accuracy: GPS <50m, WiFi 50–300m, IP >300m */
+function inferPositionSource(accuracy: number | null, connType: ConnectionType): PositionSource {
+  if (accuracy == null) return 'unknown';
+  if (accuracy <= 50) return 'gps';
+  if (accuracy <= 300) return 'wifi';
+  return 'ip';
 }
 
 // ─── Haversine Distance (meters) ────────────────────────────
@@ -124,6 +163,8 @@ function clearFailoverQueue(): void {
 
 /** How long (ms) without a position callback before heartbeat restarts watchPosition */
 const HEARTBEAT_STALE_THRESHOLD = 30000; // 30 seconds
+/** Shorter stale threshold on WiFi — vehicle WiFi is less reliable */
+const HEARTBEAT_STALE_THRESHOLD_WIFI = 15000; // 15 seconds
 /** How often to check for stale GPS (ms) */
 const HEARTBEAT_INTERVAL = 15000; // 15 seconds
 
@@ -157,6 +198,8 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     unitId: null,
     permissionDenied: false,
     permissionPending: false,
+    connectionType: getConnectionType(),
+    positionSource: 'unknown',
   });
 
   const watchIdRef = useRef<number | null>(null);
@@ -285,6 +328,8 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       // Feed heartbeat so it doesn't trigger restart loops
       lastCallbackTimeRef.current = Date.now();
 
+      const connType = getConnectionType();
+
       // Update UI state exactly like a normal geolocation callback
       setState((prev) => ({
         ...prev,
@@ -296,6 +341,8 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         error: null,
         permissionDenied: false,
         permissionPending: false,
+        connectionType: connType,
+        positionSource: 'ip',
       }));
 
       // Queue the point for batch send
@@ -306,6 +353,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         heading: null,
         speed: null,
         timestamp: new Date().toISOString(),
+        source: 'ip',
       };
 
       if (shouldAcceptPoint(loc.latitude, loc.longitude, loc.accuracy || 5000)) {
@@ -354,6 +402,10 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         // Update heartbeat timestamp — proves watchPosition is still delivering
         lastCallbackTimeRef.current = Date.now();
 
+        // Detect connection type and infer position source
+        const connType = getConnectionType();
+        const source = inferPositionSource(accuracy, connType);
+
         // Update UI state (always, even if filtered from queue)
         setState((prev) => ({
           ...prev,
@@ -365,6 +417,8 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
           error: null,
           permissionDenied: false,
           permissionPending: false,
+          connectionType: connType,
+          positionSource: source,
         }));
 
         // Filter — only queue good points
@@ -379,6 +433,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
           heading,
           speed,
           timestamp: new Date().toISOString(),
+          source,
         };
 
         // Update tracking refs
@@ -455,19 +510,22 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     batchIntervalRef.current = interval;
 
     // Start heartbeat — detects when watchPosition stops delivering callbacks
-    // (common on mobile when OS reclaims resources or GPS hardware sleeps)
+    // (common on mobile when OS reclaims resources or GPS hardware sleeps).
+    // Uses a shorter threshold on WiFi since vehicle WiFi is less stable.
     lastCallbackTimeRef.current = Date.now();
     if (heartbeatRef.current) clearInterval(heartbeatRef.current);
     heartbeatRef.current = setInterval(() => {
       const staleDuration = Date.now() - lastCallbackTimeRef.current;
-      if (staleDuration > HEARTBEAT_STALE_THRESHOLD && watchIdRef.current !== null) {
-        console.warn(`[GPS] No position callback in ${Math.round(staleDuration / 1000)}s`);
+      const connType = getConnectionType();
+      const threshold = connType === 'wifi' ? HEARTBEAT_STALE_THRESHOLD_WIFI : HEARTBEAT_STALE_THRESHOLD;
+      if (staleDuration > threshold && watchIdRef.current !== null) {
+        console.warn(`[GPS] No position callback in ${Math.round(staleDuration / 1000)}s (connection: ${connType})`);
         // On Electron desktop, use IP fallback instead of endlessly restarting
         if (IS_ELECTRON) {
           startIpFallbackPoller();
           return;
         }
-        // Clear the stale watch and restart
+        // Clear the stale watch and restart — forces re-acquisition on WiFi networks
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
         stopTracking();
@@ -554,6 +612,68 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [isTracking, startTracking]);
+
+  // ─── Network change listener ────────────────────────────────
+  // When the device switches between WiFi ↔ cellular (e.g., entering/leaving
+  // a vehicle with in-vehicle WiFi), watchPosition may silently stop delivering
+  // callbacks. Listen for connection changes and proactively restart tracking
+  // to force re-acquisition on the new network.
+  useEffect(() => {
+    const conn = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
+    if (!conn) return;
+
+    let prevType = conn.type || conn.effectiveType || 'unknown';
+
+    const handleNetworkChange = () => {
+      const newType = conn.type || conn.effectiveType || 'unknown';
+      const newConnType = getConnectionType();
+      console.log(`[GPS] Network changed: ${prevType} → ${newType} (${newConnType})`);
+      setState((prev) => ({ ...prev, connectionType: newConnType }));
+
+      // Flush any queued points before restarting
+      if (queueRef.current.length > 0) {
+        sendBatch();
+      }
+
+      // Restart watchPosition to force re-acquisition on the new network
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+      // Short delay to let the new network stabilize, then restart
+      setTimeout(() => {
+        stopTracking();
+        startTracking();
+      }, 1000);
+
+      prevType = newType;
+    };
+
+    conn.addEventListener('change', handleNetworkChange);
+    return () => conn.removeEventListener('change', handleNetworkChange);
+  }, [sendBatch, stopTracking, startTracking]);
+
+  // ─── Online/offline listener ───────────────────────────────
+  // Handle browser online/offline events (covers WiFi disconnect/reconnect)
+  useEffect(() => {
+    const handleOnline = () => {
+      console.log('[GPS] Browser online — restarting tracking');
+      setState((prev) => ({ ...prev, connectionType: getConnectionType() }));
+      if (!isTracking) {
+        startTracking();
+      }
+    };
+    const handleOffline = () => {
+      console.log('[GPS] Browser offline — queueing locally');
+      setState((prev) => ({ ...prev, connectionType: 'none' }));
+    };
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, [isTracking, startTracking]);
 
   // Request WakeLock to prevent device sleep from interrupting GPS tracking

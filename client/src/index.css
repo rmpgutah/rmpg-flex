@@ -1652,9 +1652,36 @@
   color: #d4a017;
 }
 
-.ncic-entry-response.ncic-hit {
-  color: #ef4444;
-}
+/* ── NCIC Semantic Color Classes ──
+   Per-line coloring so officers can instantly
+   distinguish normal data from warnings. */
+
+/* System header/footer — teal bookends the response */
+.ncic-c-header { color: #00ccaa; }
+
+/* Section titles — bright white, stands out */
+.ncic-c-section { color: #e0e0e0; font-weight: bold; }
+
+/* Field labels (NAM/, DOB/) — mint, contrasts against amber values */
+.ncic-c-label { color: #88ccaa; }
+
+/* Danger — bright red for warrants, stolen, caution blocks, OFAC */
+.ncic-c-danger { color: #ff3333; font-weight: bold; }
+
+/* Caution detail lines (>> prefix) — orange between amber and red */
+.ncic-c-caution { color: #ff8c00; }
+
+/* "No record found" — muted green, calm "all clear" */
+.ncic-c-clear { color: #558855; }
+
+/* Dividers / dim system lines */
+.ncic-c-dim { color: #3a2a15; }
+
+/* Error lines */
+.ncic-c-error { color: #ff3333; }
+
+/* Summary / overview — gold, draws eye to bottom-line */
+.ncic-c-summary { color: #ffd700; font-weight: bold; }
 
 .ncic-loading {
   display: flex;
@@ -2711,4 +2738,66 @@
   gap: 6px;
   padding: 3px 8px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+/* ── OFAC Sanctions Section ────────────────── */
+.safety-tag-ofac {
+  color: #ff6b6b;
+  background: rgba(220, 38, 38, 0.3);
+  border: 1px solid rgba(220, 38, 38, 0.6);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.safety-tag-premise {
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.safety-ofac-section {
+  border-top: 1px solid rgba(220, 38, 38, 0.4);
+  background: rgba(220, 38, 38, 0.08);
+  margin-top: 2px;
+}
+
+.safety-ofac-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  font-size: 10px;
+  color: #ff4444;
+  background: rgba(220, 38, 38, 0.15);
+  border-bottom: 1px solid rgba(220, 38, 38, 0.2);
+}
+
+.safety-ofac-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 8px 2px 24px;
+}
+
+.safety-premise-section {
+  border-top: 1px solid rgba(245, 158, 11, 0.3);
+  background: rgba(245, 158, 11, 0.05);
+  margin-top: 2px;
+}
+
+.safety-premise-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  font-size: 10px;
+  color: #f59e0b;
+}
+
+.safety-premise-tag {
+  font-size: 9px;
+  font-weight: bold;
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  padding: 1px 5px;
 }

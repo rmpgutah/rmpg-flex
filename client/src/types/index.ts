@@ -401,6 +401,8 @@ export interface Person {
   known_associates?: string;
   emergency_contact_relationship?: string;
   caution_flags?: string;
+  watchlist_match?: string | null;
+  watchlist_checked_at?: string | null;
   flags: string[];
   notes?: string;
   incident_ids: string[];

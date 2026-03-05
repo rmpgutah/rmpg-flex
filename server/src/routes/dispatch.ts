@@ -6,6 +6,7 @@ import { generateIncidentNumber, generateCallNumber } from '../utils/caseNumbers
 import { sendCsv } from '../utils/csvExport';
 import { localNow } from '../utils/timeUtils';
 import { geocodeCallIfNeeded, reverseGeocodeAddress, reverseGeocodeDetailed } from '../utils/geocode';
+import { searchOfacLocal } from '../utils/ofacScraper';
 import { identifyBeat } from '../utils/geofence';
 
 const router = Router();
@@ -1378,13 +1379,17 @@ router.post('/gps', (req: Request, res: Response) => {
       heading: number | null;
       speed: number | null;
       timestamp: string | null;
+      source: string; // 'gps' | 'wifi' | 'ip' | 'unknown'
     }
 
     let points: GpsPoint[];
 
     if (Array.isArray(req.body.points)) {
       // Batch format: { points: [...] }
-      points = req.body.points.slice(0, 60); // Cap at 60 points per request
+      points = req.body.points.slice(0, 60).map((p: any) => ({
+        ...p,
+        source: p.source || 'unknown',
+      }));
     } else if (req.body.latitude != null && req.body.longitude != null) {
       // Legacy single-point format
       points = [{
@@ -1394,6 +1399,7 @@ router.post('/gps', (req: Request, res: Response) => {
         heading: req.body.heading ?? null,
         speed: req.body.speed ?? null,
         timestamp: null,
+        source: req.body.source || 'unknown',
       }];
     } else {
       res.status(400).json({ error: 'latitude/longitude or points[] required' });
@@ -1444,9 +1450,9 @@ router.post('/gps', (req: Request, res: Response) => {
     const insertStmt = db.prepare(`
       INSERT INTO gps_breadcrumbs (unit_id, officer_id, latitude, longitude, accuracy, heading, speed,
         unit_status, call_sign, officer_name, badge_number, current_call_id, current_call_number, current_call_type,
-        road_name, nearest_intersection, recorded_at)
+        road_name, nearest_intersection, source, recorded_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-        NULL, NULL,
+        NULL, NULL, ?,
         COALESCE(?, datetime('now','localtime')))
     `);
 
@@ -1458,6 +1464,7 @@ router.post('/gps', (req: Request, res: Response) => {
           updated?.status ?? unit.status, updated?.call_sign ?? unit.call_sign,
           updated?.officer_name ?? null, updated?.badge_number ?? null,
           updated?.current_call_id ?? null, updated?.call_number ?? null, updated?.current_call_type ?? null,
+          pt.source || 'unknown',
           pt.timestamp ?? null,
         );
       }
@@ -1522,7 +1529,7 @@ router.get('/gps/trail/:unitId', (req: Request, res: Response) => {
       SELECT latitude, longitude, accuracy, heading, speed,
         unit_status, call_sign, officer_name, badge_number,
         current_call_id, current_call_number, current_call_type,
-        recorded_at
+        recorded_at, COALESCE(source, 'unknown') as source
       FROM gps_breadcrumbs
       WHERE unit_id = ? AND recorded_at >= datetime('now', 'localtime', '-' || ? || ' hours')
       ORDER BY recorded_at ASC
@@ -1540,13 +1547,16 @@ router.get('/gps/trail/:unitId', (req: Request, res: Response) => {
       return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     };
 
-    const MAX_ACCURACY = 150;
+    const MAX_ACCURACY_GPS  = 150;  // meters — strict for GPS-sourced points
+    const MAX_ACCURACY_WIFI = 350;  // meters — lenient for WiFi/IP positioning
     const MAX_SPEED    = 80;
     const MIN_DISTANCE = 3;
     const filtered: any[] = [];
 
     for (const row of rows) {
-      if (row.accuracy != null && row.accuracy > MAX_ACCURACY) continue;
+      // WiFi/IP-sourced points get a more lenient accuracy gate
+      const maxAcc = (row.source === 'wifi' || row.source === 'ip') ? MAX_ACCURACY_WIFI : MAX_ACCURACY_GPS;
+      if (row.accuracy != null && row.accuracy > maxAcc) continue;
 
       if (filtered.length === 0) {
         filtered.push(row);
@@ -1599,7 +1609,8 @@ router.get('/gps/trails', (req: Request, res: Response) => {
     const rows = db.prepare(`
       SELECT b.unit_id, b.call_sign, b.latitude, b.longitude, b.accuracy,
         b.heading, b.speed, b.unit_status, b.officer_name, b.badge_number,
-        b.current_call_number, b.current_call_type, b.recorded_at
+        b.current_call_number, b.current_call_type, b.recorded_at,
+        COALESCE(b.source, 'unknown') as source
       FROM gps_breadcrumbs b
       JOIN units u ON b.unit_id = u.id
       WHERE b.recorded_at >= datetime('now', 'localtime', '-' || ? || ' hours')
@@ -1611,7 +1622,8 @@ router.get('/gps/trails', (req: Request, res: Response) => {
     //   1. Accuracy gate: skip points with accuracy > 150 m (WiFi triangulation)
     //   2. Jump detection: skip points implying > 80 m/s (~180 mph) from last accepted point
     //      This catches WiFi "teleportation" back to a router's estimated position.
-    const MAX_ACCURACY = 250;   // meters — accept WiFi/cell-tower positioning
+    const MAX_ACCURACY_GPS  = 250;   // meters — accept WiFi/cell-tower positioning
+    const MAX_ACCURACY_WIFI = 500;   // meters — lenient for WiFi/IP (vehicle networks)
     const MAX_SPEED    = 100;   // m/s (~224 mph) — reject impossible jumps
     const MIN_DISTANCE = 2;     // meters — collapse stationary duplicates
 
@@ -1628,8 +1640,9 @@ router.get('/gps/trails', (req: Request, res: Response) => {
         };
       }
 
-      // ── Accuracy gate ──
-      if (row.accuracy != null && row.accuracy > MAX_ACCURACY) continue;
+      // ── Accuracy gate — WiFi/IP-sourced points get a more lenient threshold ──
+      const maxAcc = (row.source === 'wifi' || row.source === 'ip') ? MAX_ACCURACY_WIFI : MAX_ACCURACY_GPS;
+      if (row.accuracy != null && row.accuracy > maxAcc) continue;
 
       const pt = {
         lat: row.latitude,
@@ -1641,6 +1654,7 @@ router.get('/gps/trails', (req: Request, res: Response) => {
         call_number: row.current_call_number,
         call_type: row.current_call_type,
         time: row.recorded_at,
+        source: row.source,
       };
 
       const trailPts = trails[row.unit_id].points;
@@ -1669,6 +1683,162 @@ router.get('/gps/trails', (req: Request, res: Response) => {
     res.json(Object.values(trails));
   } catch (error: any) {
     console.error('GPS trails error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/dispatch/gps/call-trail/:callId - GPS breadcrumb trail for a specific call
+// Queries by current_call_id (denormalized) PLUS unit assignment + time window
+// to capture en-route breadcrumbs before the unit was officially on-call.
+router.get('/gps/call-trail/:callId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const callId = parseInt(req.params.callId as string);
+    if (isNaN(callId)) { res.status(400).json({ error: 'Invalid call ID' }); return; }
+
+    // Fetch call metadata for time window + assigned units
+    const call = db.prepare(`
+      SELECT id, dispatched_at, enroute_at, onscene_at, cleared_at, closed_at,
+             created_at, assigned_unit_ids
+      FROM calls_for_service WHERE id = ?
+    `).get(callId) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+
+    // Build time window: from dispatched (or created) to cleared (or now)
+    const startTime = call.dispatched_at || call.created_at;
+    const endTime = call.cleared_at || call.closed_at || null; // null = still active
+
+    // Assigned unit IDs
+    let unitIds: number[] = [];
+    try { unitIds = JSON.parse(call.assigned_unit_ids || '[]'); } catch { /* ignore */ }
+
+    // Dual query: breadcrumbs with current_call_id match OR unit+time-window match
+    const baseCols = `latitude, longitude, accuracy, heading, speed,
+          unit_status, call_sign, officer_name, badge_number,
+          current_call_id, current_call_number, current_call_type,
+          road_name, nearest_intersection,
+          recorded_at, COALESCE(source, 'unknown') as source`;
+
+    let rows: any[];
+    if (unitIds.length > 0 && endTime) {
+      const placeholders = unitIds.map(() => '?').join(',');
+      rows = db.prepare(`
+        SELECT DISTINCT ${baseCols}
+        FROM gps_breadcrumbs
+        WHERE (current_call_id = ?)
+           OR (unit_id IN (${placeholders}) AND recorded_at >= ? AND recorded_at <= ?)
+        ORDER BY recorded_at ASC
+      `).all(callId, ...unitIds, startTime, endTime) as any[];
+    } else if (unitIds.length > 0) {
+      // Active call — no end time, use current time
+      const placeholders = unitIds.map(() => '?').join(',');
+      rows = db.prepare(`
+        SELECT DISTINCT ${baseCols}
+        FROM gps_breadcrumbs
+        WHERE (current_call_id = ?)
+           OR (unit_id IN (${placeholders}) AND recorded_at >= ?)
+        ORDER BY recorded_at ASC
+      `).all(callId, ...unitIds, startTime) as any[];
+    } else {
+      // No assigned units — only match by current_call_id
+      rows = db.prepare(`
+        SELECT ${baseCols}
+        FROM gps_breadcrumbs
+        WHERE current_call_id = ?
+        ORDER BY recorded_at ASC
+      `).all(callId) as any[];
+    }
+
+    // ── Filter: accuracy gate + jump detection + stationary collapse ──
+    const haversineM = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+      const R = 6_371_000;
+      const toRad = (d: number) => (d * Math.PI) / 180;
+      const dLat = toRad(lat2 - lat1);
+      const dLng = toRad(lng2 - lng1);
+      const a = Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    };
+
+    const MAX_ACCURACY_GPS = 150;
+    const MAX_ACCURACY_WIFI = 350;
+    const MAX_SPEED = 80; // m/s
+    const MIN_DISTANCE = 3; // meters
+    const filtered: any[] = [];
+
+    for (const row of rows) {
+      const maxAcc = (row.source === 'wifi' || row.source === 'ip') ? MAX_ACCURACY_WIFI : MAX_ACCURACY_GPS;
+      if (row.accuracy != null && row.accuracy > maxAcc) continue;
+
+      if (filtered.length === 0) { filtered.push(row); continue; }
+
+      const prev = filtered[filtered.length - 1];
+      const dist = haversineM(prev.latitude, prev.longitude, row.latitude, row.longitude);
+      if (dist < MIN_DISTANCE) continue;
+
+      const dtSec = Math.max(
+        (new Date(row.recorded_at).getTime() - new Date(prev.recorded_at).getTime()) / 1000, 0.5
+      );
+      if (dist / dtSec > MAX_SPEED) continue;
+
+      filtered.push(row);
+    }
+
+    // ── Compute summary stats ──
+    let totalDistanceM = 0;
+    let maxSpeedMps = 0;
+    const sourceCounts: Record<string, number> = {};
+
+    for (let i = 0; i < filtered.length; i++) {
+      const p = filtered[i];
+      sourceCounts[p.source] = (sourceCounts[p.source] || 0) + 1;
+
+      if (i > 0) {
+        const prev = filtered[i - 1];
+        const dist = haversineM(prev.latitude, prev.longitude, p.latitude, p.longitude);
+        totalDistanceM += dist;
+
+        const dtSec = Math.max(
+          (new Date(p.recorded_at).getTime() - new Date(prev.recorded_at).getTime()) / 1000, 0.5
+        );
+        const speedMps = dist / dtSec;
+        if (speedMps > maxSpeedMps) maxSpeedMps = speedMps;
+      }
+    }
+
+    const durationMin = filtered.length >= 2
+      ? (new Date(filtered[filtered.length - 1].recorded_at).getTime() - new Date(filtered[0].recorded_at).getTime()) / 60000
+      : 0;
+    const totalDistanceMiles = totalDistanceM * 0.000621371;
+    const avgSpeedMph = durationMin > 0 ? (totalDistanceMiles / (durationMin / 60)) : 0;
+    const maxSpeedMph = maxSpeedMps * 2.23694;
+
+    // Map to response points
+    const points = filtered.map(p => ({
+      lat: p.latitude,
+      lng: p.longitude,
+      time: p.recorded_at,
+      speed_mph: p.speed != null ? Math.round(p.speed * 2.23694 * 10) / 10 : null,
+      road_name: p.road_name || null,
+      nearest_intersection: p.nearest_intersection || null,
+      source: p.source,
+      call_sign: p.call_sign,
+      officer_name: p.officer_name,
+    }));
+
+    res.json({
+      points,
+      stats: {
+        total_points: filtered.length,
+        total_distance_miles: Math.round(totalDistanceMiles * 100) / 100,
+        duration_minutes: Math.round(durationMin * 10) / 10,
+        avg_speed_mph: Math.round(avgSpeedMph * 10) / 10,
+        max_speed_mph: Math.round(maxSpeedMph * 10) / 10,
+        source_breakdown: sourceCounts,
+      },
+    });
+  } catch (error: any) {
+    console.error('Call trail error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -2562,6 +2732,39 @@ router.get('/safety-screen', (req: Request, res: Response) => {
       (w: any) => !personWarrantIds.has(w.id)
     );
 
+    // ── OFAC / Sanctions check ──
+    let ofacHits: any[] = [];
+    try {
+      const ofacOpts: any = { limit: 5, type: 'person' as const };
+      if (parts.length >= 2) {
+        ofacOpts.lastName = parts[0];
+        ofacOpts.firstName = parts.slice(1).join(' ');
+      }
+      ofacHits = searchOfacLocal(searchName, ofacOpts);
+    } catch { /* OFAC search may fail if not synced */ }
+
+    // ── Premise history check (if address provided) ──
+    const address = req.query.address as string | undefined;
+    let premiseWarnings: string[] = [];
+    if (address && address.length >= 3) {
+      try {
+        const priorCalls = db.prepare(`
+          SELECT weapons_involved, domestic_violence, alcohol_involved, drugs_involved,
+            incident_type
+          FROM calls_for_service WHERE location_address LIKE ? LIMIT 50
+        `).all(`%${address}%`) as any[];
+
+        for (const c of priorCalls) {
+          if (c.weapons_involved && !premiseWarnings.includes('ARMED_HISTORY'))
+            premiseWarnings.push('ARMED_HISTORY');
+          if (c.domestic_violence && !premiseWarnings.includes('DV_HISTORY'))
+            premiseWarnings.push('DV_HISTORY');
+          if (c.drugs_involved && !premiseWarnings.includes('DRUGS_HISTORY'))
+            premiseWarnings.push('DRUGS_HISTORY');
+        }
+      } catch { /* calls table query may fail */ }
+    }
+
     // Determine if any warnings exist
     const hasWarnings =
       persons.some(p =>
@@ -2570,11 +2773,20 @@ router.get('/safety-screen', (req: Request, res: Response) => {
         p.person.is_sex_offender ||
         p.person.has_criminal_history
       ) ||
-      uniqueDirectWarrants.length > 0;
+      uniqueDirectWarrants.length > 0 ||
+      ofacHits.length > 0 ||
+      premiseWarnings.length > 0;
 
     res.json({
       persons,
       directWarrantHits: uniqueDirectWarrants,
+      ofacHits: ofacHits.map(h => ({
+        name: h.sdn_name,
+        type: h.sdn_type,
+        program: h.program,
+        source_list: h.source_list,
+      })),
+      premiseWarnings,
       hasWarnings,
     });
   } catch (error: any) {

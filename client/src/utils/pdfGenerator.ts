@@ -17,7 +17,14 @@ import {
   COLOR, FONT, BORDER, SPACING, LAYOUT,
   getContentWidth, getHalfWidth, getFullFieldWidth,
   getLeftX, getRightColumnX, getHalfFieldWidth, getThirdWidth, getQuarterWidth,
+  getGridStartX, getGridContentWidth,
 } from './pdfTokens';
+import {
+  drawFormSection, drawFormGrid, drawFormCell, drawFormRow,
+  drawSideTab, drawCheckboxGrid, drawCodeReferenceTable, drawNibrsHeader,
+  NIBRS_PROPERTY_CODES, NIBRS_WEAPON_CODES, NIBRS_LOCATION_CODES,
+  type FormCell, type FormRow, type CheckboxItem, type SideTabConfig,
+} from './pdfFormHelpers';
 
 // ── Branding Interface (matches Admin BrandingConfig) ────────
 
@@ -1086,197 +1093,317 @@ interface IncidentData {
   process_attempts?: number;
   process_served_at?: string;
   process_service_result?: string;
+  // GPS breadcrumb trail (auto-fetched before generation)
+  breadcrumb_trail?: {
+    points: { lat: number; lng: number; time: string; speed_mph: number | null; road_name?: string | null; nearest_intersection?: string | null; source?: string; call_sign?: string; officer_name?: string }[];
+    stats: { total_points: number; total_distance_miles: number; duration_minutes: number; avg_speed_mph: number; max_speed_mph: number; source_breakdown?: Record<string, number> };
+  };
+}
+
+// ── GPS Activity Log Section (shared across report templates) ──
+
+function addGpsActivityLogSection(doc: jsPDF, data: IncidentData, y: number, priority: string): number {
+  const lx = getLeftX();
+  const trail = data.breadcrumb_trail;
+
+  y = checkPageBreak(doc, y, 30, priority);
+  const sec = openAutoSection(doc, 'GPS Activity Log', y); y = sec.contentY;
+
+  if (trail && trail.points.length > 0) {
+    const stats = trail.stats;
+    y = addThreeColumnFields(doc, [
+      { label: 'Total Distance', value: `${stats.total_distance_miles} mi` },
+      { label: 'Duration', value: `${stats.duration_minutes} min` },
+      { label: 'Avg Speed', value: `${stats.avg_speed_mph} mph` },
+      { label: 'Max Speed', value: `${stats.max_speed_mph} mph` },
+      { label: 'Breadcrumb Points', value: String(stats.total_points) },
+      { label: 'Sources', value: stats.source_breakdown
+        ? Object.entries(stats.source_breakdown).map(([k, v]) => `${k.toUpperCase()}: ${v}`).join(', ')
+        : '' },
+    ], y);
+    y += SPACING.SM;
+
+    // Sampled breadcrumb table — max 50 rows for readability
+    const maxRows = 50;
+    const step = trail.points.length > maxRows ? Math.ceil(trail.points.length / maxRows) : 1;
+    const sampled = trail.points.filter((_, i) => i % step === 0 || i === trail.points.length - 1);
+
+    const colPositions = [lx, LAYOUT.PAGE_MARGIN + 38, LAYOUT.PAGE_MARGIN + 100, LAYOUT.PAGE_MARGIN + 130];
+    const tableHeaders = [
+      { label: 'TIME', x: colPositions[0] },
+      { label: 'LOCATION / ROAD', x: colPositions[1] },
+      { label: 'SPEED', x: colPositions[2] },
+      { label: 'SOURCE', x: colPositions[3] },
+    ];
+    const tableRows = sampled.map(p => {
+      let timeStr = '';
+      try {
+        timeStr = new Date(p.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+      } catch { timeStr = p.time; }
+      // Prefer road name + nearest intersection, fall back to raw coordinates
+      let locationStr = `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`;
+      if (p.road_name) {
+        locationStr = p.road_name;
+        if (p.nearest_intersection) locationStr += ` / ${p.nearest_intersection}`;
+      }
+      return [
+        timeStr,
+        locationStr,
+        p.speed_mph != null ? `${p.speed_mph} mph` : '-',
+        (p.source || 'unknown').toUpperCase(),
+      ];
+    });
+
+    y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
+
+    if (step > 1) {
+      doc.setFontSize(5);
+      doc.setTextColor(...COLOR.TEXT_TERTIARY);
+      doc.text(`Showing ${sampled.length} of ${trail.points.length} breadcrumb points (sampled every ${step} points)`, lx, y + 1);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      y += SPACING.MD;
+    }
+  } else {
+    doc.setFontSize(FONT.SIZE_TABLE_BODY);
+    doc.setTextColor(...COLOR.TEXT_TERTIARY);
+    doc.text('No GPS breadcrumb data available', lx, y);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    y += SPACING.XL;
+  }
+
+  y = closeAutoSection(doc, sec.sectionY, y);
+  return y;
 }
 
 // ── Report Templates ─────────────────────────────────────────
 
 function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
-  const hw = getHalfWidth(doc);
   const hfw = getHalfFieldWidth(doc);
-  const ffw = getFullFieldWidth(doc);
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
-  const cw = getContentWidth(doc);
+  const gridX = getGridStartX();
+  const gridW = getGridContentWidth(doc);
 
+  let y = drawNibrsHeader(doc, {
+    stateIdentifier: 'STATE OF UTAH',
+    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    formTitle: 'UNIFORM INCIDENT REPORT',
+    formNumber: FORM_NUMBERS.incident,
+    caseNumber: data.incident_number,
+    reportDate: data.occurred_date || data.created_at || '',
+  });
 
-  let y = addReportHeader(doc, data.incident_number, 'General Incident Report', data.priority, undefined, { useLogo: true });
+  // ═══════════════════════════════════════════════════════════
+  // ADMINISTRATIVE — sidebar tab + dense grid
+  // ═══════════════════════════════════════════════════════════
+  y = drawFormSection(doc, {
+    sideTab: { label: 'ADMINISTRATIVE' },
+    rows: [
+      { cells: [
+        { label: '1. INCIDENT TYPE', value: formatIncidentType(data.incident_type), ratio: 3, valueBold: true },
+        { label: '2. TYPE CODE', value: getTypeCode(data.incident_type), ratio: 1 },
+        { label: '3. INCIDENT #', value: data.incident_number || '', ratio: 2, valueBold: true },
+        { label: '4. CASE STATUS', value: data.status?.toUpperCase() || '', ratio: 1 },
+      ]},
+      { cells: [
+        { label: '5. OCCURRED DATE', value: data.occurred_date || '', ratio: 1 },
+        { label: '6. TIME', value: data.occurred_time || '', ratio: 1 },
+        { label: '7. END DATE', value: data.end_date || '', ratio: 1 },
+        { label: '8. END TIME', value: data.end_time || '', ratio: 1 },
+        { label: '9. PRIORITY', value: data.priority || '', ratio: 1 },
+        { label: '10. DISPOSITION', value: data.disposition || '', ratio: 1 },
+      ]},
+      { cells: [
+        { label: '11. REPORTING OFFICER', value: data.officer_name || '', ratio: 3, valueBold: true },
+        { label: '12. BADGE #', value: '', ratio: 1 },
+        { label: '13. SOURCE', value: '', ratio: 1 },
+      ]},
+      { cells: [
+        { label: '14. LOCATION OF INCIDENT', value: data.location || '', ratio: 1, valueBold: true },
+      ]},
+      { cells: [
+        { label: '15. SECTION ID', value: data.section_id || '', ratio: 1 },
+        { label: '16. ZONE ID', value: data.zone_id || '', ratio: 1 },
+        { label: '17. BEAT ID', value: data.beat_id || '', ratio: 1 },
+        { label: '18. RESPONDING AGENCY', value: data.responding_le_agency || '', ratio: 2 },
+        { label: '19. LE CASE #', value: data.le_case_number || '', ratio: 1 },
+      ]},
+    ],
+    y,
+  });
 
-  // Classification
-  { const sec = openAutoSection(doc, 'Classification', y); y = sec.contentY;
-    y = addThreeColumnFields(doc, [
-      { label: 'Incident Type', value: formatIncidentType(data.incident_type) },
-      { label: 'Type Code', value: getTypeCode(data.incident_type) },
-      { label: 'Priority', value: data.priority },
-      { label: 'Status', value: data.status?.toUpperCase() || '' },
-      { label: 'Disposition', value: data.disposition || '' },
-      { label: 'Section ID', value: data.section_id || '' },
-      { label: 'Zone ID', value: data.zone_id || '' },
-      { label: 'Beat ID', value: data.beat_id || '' },
-    ], y);
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  // ═══════════════════════════════════════════════════════════
+  // OFFENSE — sidebar tab + scene details + flags checkbox grid
+  // ═══════════════════════════════════════════════════════════
+  y = checkPageBreak(doc, y, 50, data.priority);
+  const offenseStartY = y;
+  y = drawFormGrid(doc, [
+    { cells: [
+      { label: '20. WEATHER CONDITIONS', value: data.weather_conditions || '', ratio: 1 },
+      { label: '21. LIGHTING CONDITIONS', value: data.lighting_conditions || '', ratio: 1 },
+      { label: '22. INJURIES', value: `${data.injuries || 'None'}${data.injury_description ? ' — ' + data.injury_description : ''}`, ratio: 2 },
+      { label: '23. DAMAGE ESTIMATE', value: data.damage_estimate ? '$' + data.damage_estimate : '', ratio: 1 },
+    ]},
+    { cells: [
+      { label: '24. WEAPONS INVOLVED', value: data.weapons_involved || 'None', ratio: 1, valueBold: !!data.weapons_involved },
+    ]},
+  ], gridX, y, gridW);
 
-  // Officer & Location
-  { const sec = openAutoSection(doc, 'Officer / Location', y); y = sec.contentY;
-    addFieldPair(doc, 'Officer', data.officer_name, lx, y, hfw);
-    y = addFieldPair(doc, 'Location', data.location, rx, y, hfw);
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  // Dense checkbox grid for flags
+  const flagItems: CheckboxItem[] = [
+    { label: 'Injuries Reported', checked: !!data.injuries_reported },
+    { label: 'Alcohol Involved', checked: !!data.alcohol_involved },
+    { label: 'Drugs Involved', checked: !!data.drugs_involved },
+    { label: 'Domestic Violence', checked: !!data.domestic_violence },
+    { label: 'Mental Health Crisis', checked: !!data.mental_health_crisis },
+    { label: 'Juvenile Involved', checked: !!data.juvenile_involved },
+    { label: 'Felony in Progress', checked: !!data.felony_in_progress },
+    { label: 'Officer Safety', checked: !!data.officer_safety_caution },
+    { label: 'Gang Related', checked: !!data.gang_related },
+    { label: 'HAZMAT', checked: !!data.hazmat },
+    { label: 'K9 Requested', checked: !!data.k9_requested },
+    { label: 'EMS Requested', checked: !!data.ems_requested },
+    { label: 'Fire Requested', checked: !!data.fire_requested },
+    { label: 'BWC Active', checked: !!data.body_camera_active },
+    { label: 'Evidence Collected', checked: !!data.evidence_collected },
+    { label: 'Photos Taken', checked: !!data.photos_taken },
+    { label: 'Supervisor Notified', checked: !!data.supervisor_notified },
+    { label: 'LE Notified', checked: !!data.le_notified },
+    { label: 'Trespass Issued', checked: !!data.trespass_issued },
+    { label: 'Vehicle Pursuit', checked: !!data.vehicle_pursuit },
+    { label: 'Foot Pursuit', checked: !!data.foot_pursuit },
+  ];
+  y = drawCheckboxGrid(doc, flagItems, gridX, y, 5, gridW);
 
-  // Date/Time — 2×2 layout (less cramped than 4-column)
-  { const sec = openAutoSection(doc, 'Date / Time', y); y = sec.contentY;
-    const hw = getHalfFieldWidth(doc);
-    const rx = getRightColumnX(doc);
-    addFieldPair(doc, 'Occurred Date', data.occurred_date || '', lx, y, hw);
-    y = addFieldPair(doc, 'Occurred Time', data.occurred_time || '', rx, y, hw);
-    addFieldPair(doc, 'End Date', data.end_date || '', lx, y, hw);
-    y = addFieldPair(doc, 'End Time', data.end_time || '', rx, y, hw);
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  // Draw sidebar tab spanning full OFFENSE section
+  drawSideTab(doc, 'OFFENSE', offenseStartY, y - offenseStartY);
+  y += SPACING.SECTION_GAP;
 
-  // Scene Details
-  { const sec = openAutoSection(doc, 'Scene Details', y); y = sec.contentY;
-    y = addThreeColumnFields(doc, [
-      { label: 'Weather', value: data.weather_conditions || '' },
-      { label: 'Lighting', value: data.lighting_conditions || '' },
-      { label: 'Injuries', value: `${data.injuries || 'None'}${data.injury_description ? ' \u2014 ' + data.injury_description : ''}` },
-      { label: 'Damage', value: `${data.damage_estimate ? '$' + data.damage_estimate : ''}${data.damage_description ? ' \u2014 ' + data.damage_description : ''}` },
-    ], y);
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
-
-  // Flags
+  // ═══════════════════════════════════════════════════════════
+  // VICTIM / PERSONS — sidebar tab + persons + vehicles tables
+  // ═══════════════════════════════════════════════════════════
   y = checkPageBreak(doc, y, 30, data.priority);
-  { const sec = openAutoSection(doc, 'Flags', y); y = sec.contentY;
-    let flagX = lx;
-    flagX = addCheckboxField(doc, 'Injuries', !!data.injuries_reported, flagX, y);
-    flagX = addCheckboxField(doc, 'Alcohol', !!data.alcohol_involved, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'Drugs', !!data.drugs_involved, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'DV', !!data.domestic_violence, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'Mental Health', !!data.mental_health_crisis, flagX + SPACING.SM, y);
-    addCheckboxField(doc, 'Juvenile', !!data.juvenile_involved, flagX + SPACING.SM, y);
-    y += SPACING.LG; flagX = lx;
-    flagX = addCheckboxField(doc, 'Felony IP', !!data.felony_in_progress, flagX, y);
-    flagX = addCheckboxField(doc, 'Ofc Safety', !!data.officer_safety_caution, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'Gang', !!data.gang_related, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'HAZMAT', !!data.hazmat, flagX + SPACING.SM, y);
-    if (data.weapons_involved) {
-      addCheckboxField(doc, 'Weapons: ' + data.weapons_involved, true, flagX + SPACING.SM, y);
-    } else {
-      addCheckboxField(doc, 'Weapons', false, flagX + SPACING.SM, y);
-    }
-    y += SPACING.LG; flagX = lx;
-    flagX = addCheckboxField(doc, 'K9 Req', !!data.k9_requested, flagX, y);
-    flagX = addCheckboxField(doc, 'EMS Req', !!data.ems_requested, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'Fire Req', !!data.fire_requested, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'BWC Active', !!data.body_camera_active, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'Evidence', !!data.evidence_collected, flagX + SPACING.SM, y);
-    addCheckboxField(doc, 'Photos', !!data.photos_taken, flagX + SPACING.SM, y);
-    y += SPACING.LG; flagX = lx;
-    flagX = addCheckboxField(doc, 'Supvr Notified', !!data.supervisor_notified, flagX, y);
-    flagX = addCheckboxField(doc, 'LE Notified', !!data.le_notified, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'Trespass', !!data.trespass_issued, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'Veh Pursuit', !!data.vehicle_pursuit, flagX + SPACING.SM, y);
-    addCheckboxField(doc, 'Foot Pursuit', !!data.foot_pursuit, flagX + SPACING.SM, y);
-    y += SPACING.XL;
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
-
-  // Persons Involved Table
-  y = checkPageBreak(doc, y, 25, data.priority);
   const persons = data.linked_persons || [];
-  { const sec = openAutoSection(doc, `Persons Involved (${persons.length})`, y); y = sec.contentY;
-    if (persons.length > 0) {
-      const colPositions = [lx, LAYOUT.PAGE_MARGIN + 30, LAYOUT.PAGE_MARGIN + 70, LAYOUT.PAGE_MARGIN + 110];
-      const tableHeaders = [
-        { label: 'ROLE', x: colPositions[0] },
-        { label: 'LAST NAME', x: colPositions[1] },
-        { label: 'FIRST NAME', x: colPositions[2] },
-        { label: 'DOB', x: colPositions[3] },
-      ];
-      const tableRows = persons.map((p) => [
-        p.role?.replace(/_/g, ' ') || '',
-        p.last_name || '',
-        p.first_name || '',
-        p.dob || '',
-      ]);
-      y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
-    } else {
-      doc.setFontSize(FONT.SIZE_TABLE_BODY);
-      doc.setTextColor(...COLOR.TEXT_TERTIARY);
-      doc.text('None recorded', lx, y);
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      y += SPACING.XL;
-    }
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
-
-  // Vehicles Involved Table
-  y = checkPageBreak(doc, y, 25, data.priority);
   const vehicles = data.linked_vehicles || [];
-  { const sec = openAutoSection(doc, `Vehicles Involved (${vehicles.length})`, y); y = sec.contentY;
-    if (vehicles.length > 0) {
-      const colPositions = [lx, LAYOUT.PAGE_MARGIN + 30, LAYOUT.PAGE_MARGIN + 65, LAYOUT.PAGE_MARGIN + 120];
-      const tableHeaders = [
-        { label: 'ROLE', x: colPositions[0] },
-        { label: 'PLATE', x: colPositions[1] },
-        { label: 'YEAR/MAKE/MODEL', x: colPositions[2] },
-        { label: 'COLOR', x: colPositions[3] },
-      ];
-      const tableRows = vehicles.map((v) => [
-        v.role?.replace(/_/g, ' ') || '',
-        `${v.plate_number || 'N/A'}${v.state ? ' (' + v.state + ')' : ''}`,
-        [v.year, v.make, v.model].filter(Boolean).join(' '),
-        v.color || '',
-      ]);
-      y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
-    } else {
-      doc.setFontSize(FONT.SIZE_TABLE_BODY);
-      doc.setTextColor(...COLOR.TEXT_TERTIARY);
-      doc.text('None recorded', lx, y);
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      y += SPACING.XL;
-    }
-    y = closeAutoSection(doc, sec.sectionY, y);
+  const victimStartY = y;
+
+  // Persons Involved grid header row
+  y = drawFormGrid(doc, [
+    { cells: [
+      { label: 'PERSONS INVOLVED', value: `${persons.length} RECORD(S)`, ratio: 1, valueBold: true },
+    ], height: 5 },
+  ], gridX, y, gridW);
+
+  if (persons.length > 0) {
+    const colPositions = [gridX, gridX + 20, gridX + 60, gridX + 100];
+    const tableHeaders = [
+      { label: 'ROLE', x: colPositions[0] },
+      { label: 'LAST NAME', x: colPositions[1] },
+      { label: 'FIRST NAME', x: colPositions[2] },
+      { label: 'DOB', x: colPositions[3] },
+    ];
+    const tableRows = persons.map((p) => [
+      p.role?.replace(/_/g, ' ') || '',
+      p.last_name || '',
+      p.first_name || '',
+      p.dob || '',
+    ]);
+    y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
+  } else {
+    doc.setFontSize(FONT.SIZE_TABLE_BODY);
+    doc.setTextColor(...COLOR.TEXT_TERTIARY);
+    doc.setFont('courier', 'normal');
+    doc.text('None recorded', gridX + 2, y + 3);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    y += SPACING.XL;
   }
 
-  // Evidence Table
+  // Vehicles Involved grid header row
+  y = drawFormGrid(doc, [
+    { cells: [
+      { label: 'VEHICLES INVOLVED', value: `${vehicles.length} RECORD(S)`, ratio: 1, valueBold: true },
+    ], height: 5 },
+  ], gridX, y, gridW);
+
+  if (vehicles.length > 0) {
+    const colPositions = [gridX, gridX + 20, gridX + 55, gridX + 110];
+    const tableHeaders = [
+      { label: 'ROLE', x: colPositions[0] },
+      { label: 'PLATE', x: colPositions[1] },
+      { label: 'YEAR/MAKE/MODEL', x: colPositions[2] },
+      { label: 'COLOR', x: colPositions[3] },
+    ];
+    const tableRows = vehicles.map((v) => [
+      v.role?.replace(/_/g, ' ') || '',
+      `${v.plate_number || 'N/A'}${v.state ? ' (' + v.state + ')' : ''}`,
+      [v.year, v.make, v.model].filter(Boolean).join(' '),
+      v.color || '',
+    ]);
+    y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
+  } else {
+    doc.setFontSize(FONT.SIZE_TABLE_BODY);
+    doc.setTextColor(...COLOR.TEXT_TERTIARY);
+    doc.setFont('courier', 'normal');
+    doc.text('None recorded', gridX + 2, y + 3);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    y += SPACING.XL;
+  }
+
+  drawSideTab(doc, 'VICTIM', victimStartY, y - victimStartY);
+  y += SPACING.SECTION_GAP;
+
+  // ═══════════════════════════════════════════════════════════
+  // PROPERTY — sidebar tab + evidence table + code reference
+  // ═══════════════════════════════════════════════════════════
   y = checkPageBreak(doc, y, 25, data.priority);
   const evidence = data.evidence || [];
-  { const sec = openAutoSection(doc, `Evidence (${evidence.length})`, y); y = sec.contentY;
-    if (evidence.length > 0) {
-      const colPositions = [lx, LAYOUT.PAGE_MARGIN + 25, LAYOUT.PAGE_MARGIN + 55, LAYOUT.PAGE_MARGIN + 130];
-      const tableHeaders = [
-        { label: 'ITEM #', x: colPositions[0] },
-        { label: 'TYPE', x: colPositions[1] },
-        { label: 'DESCRIPTION', x: colPositions[2] },
-        { label: 'STORAGE', x: colPositions[3] },
-      ];
-      const tableRows = evidence.map((e) => [
-        e.evidence_number || '',
-        e.evidence_type || '',
-        e.description || '',
-        e.storage_location || '',
-      ]);
-      y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
-    } else {
-      doc.setFontSize(FONT.SIZE_TABLE_BODY);
-      doc.setTextColor(...COLOR.TEXT_TERTIARY);
-      doc.text('None recorded', lx, y);
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      y += SPACING.XL;
-    }
-    y = closeAutoSection(doc, sec.sectionY, y);
+  const propertyStartY = y;
+
+  // Evidence header row
+  y = drawFormGrid(doc, [
+    { cells: [
+      { label: 'EVIDENCE / PROPERTY', value: `${evidence.length} ITEM(S)`, ratio: 1, valueBold: true },
+    ], height: 5 },
+  ], gridX, y, gridW);
+
+  if (evidence.length > 0) {
+    const colPositions = [gridX, gridX + 15, gridX + 45, gridX + gridW - 30];
+    const tableHeaders = [
+      { label: 'ITEM #', x: colPositions[0] },
+      { label: 'TYPE', x: colPositions[1] },
+      { label: 'DESCRIPTION', x: colPositions[2] },
+      { label: 'STORAGE', x: colPositions[3] },
+    ];
+    const tableRows = evidence.map((e) => [
+      e.evidence_number || '',
+      e.evidence_type || '',
+      e.description || '',
+      e.storage_location || '',
+    ]);
+    y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
+  } else {
+    doc.setFontSize(FONT.SIZE_TABLE_BODY);
+    doc.setTextColor(...COLOR.TEXT_TERTIARY);
+    doc.setFont('courier', 'normal');
+    doc.text('None recorded', gridX + 2, y + 3);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    y += SPACING.XL;
   }
 
-  // LE Coordination
-  if (data.responding_le_agency || data.le_case_number) {
-    y = checkPageBreak(doc, y, 20, data.priority);
-    const sec = openAutoSection(doc, 'External Agency Coordination', y); y = sec.contentY;
-    addFieldPair(doc, 'Responding Agency', data.responding_le_agency || '', lx, y, hfw);
-    y = addFieldPair(doc, 'LE Case #', data.le_case_number || '', rx, y, hfw);
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  // NIBRS Property Codes reference table (compact)
+  y = checkPageBreak(doc, y, 30, data.priority);
+  y = drawCodeReferenceTable(doc, 'NIBRS Property Type Codes', NIBRS_PROPERTY_CODES, gridX, y, gridW, 4);
+
+  drawSideTab(doc, 'PROPERTY', propertyStartY, y - propertyStartY);
+  y += SPACING.SECTION_GAP;
+
+  // ═══════════════════════════════════════════════════════════
+  // FREE-FORM SECTIONS — GPS, Narrative, Attachments, Signatures
+  // (These keep the existing layout style — no sidebar tabs)
+  // ═══════════════════════════════════════════════════════════
+
+  // GPS Activity Log
+  y = addGpsActivityLogSection(doc, data, y, data.priority);
 
   // Narrative
   y = addNarrativeSection(doc, 'Narrative', data.narrative || '', y, data.priority);
@@ -1298,63 +1425,84 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
 function generateTrespassWarning(doc: jsPDF, data: IncidentData) {
   const pageWidth = doc.internal.pageSize.getWidth();
   const cw = getContentWidth(doc);
-  const hw = getHalfWidth(doc);
   const hfw = getHalfFieldWidth(doc);
   const ffw = getFullFieldWidth(doc);
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
+  const gridX = getGridStartX();
+  const gridW = getGridContentWidth(doc);
 
+  const persons = data.linked_persons || [];
+  const subj = persons[0] || { first_name: '', last_name: '', dob: '' };
 
-  let y = addReportHeader(doc, data.incident_number, 'Trespass Warning', data.priority, undefined, { useLogo: true });
+  let y = drawNibrsHeader(doc, {
+    stateIdentifier: 'STATE OF UTAH',
+    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    formTitle: 'NOTICE OF TRESPASS WARNING',
+    formNumber: FORM_NUMBERS.trespass,
+    caseNumber: data.incident_number,
+    reportDate: data.occurred_date || data.created_at || '',
+  });
 
   // Large WARNING banner
   const primaryRgb = hexToRgb(activeBranding.primary_color);
   doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
-  doc.rect(LAYOUT.PAGE_MARGIN, y, cw, 12, 'F');
+  doc.rect(LAYOUT.PAGE_MARGIN, y, cw, 10, 'F');
   doc.setDrawColor(...COLOR.TEXT_INVERTED);
   doc.setLineWidth(BORDER.CASE_BOX);
-  doc.rect(LAYOUT.PAGE_MARGIN + 1.5, y + 1.5, cw - 3, 9);
+  doc.rect(LAYOUT.PAGE_MARGIN + 1.5, y + 1.2, cw - 3, 7.6);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_BANNER);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
-  doc.text('NOTICE OF TRESPASS WARNING', pageWidth / 2, y + 8.5, { align: 'center' });
+  doc.text('WARNING — TRESPASS NOTICE', pageWidth / 2, y + 7, { align: 'center' });
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
-  y += 16;
+  y += 12;
 
-  // Subject Details
-  { const sec = openAutoSection(doc, 'Subject Information', y); y = sec.contentY;
-    const persons = data.linked_persons || [];
-    if (persons.length > 0) {
-      const subj = persons[0];
-      y = addThreeColumnFields(doc, [
-        { label: 'Last Name', value: subj.last_name || '' },
-        { label: 'First Name', value: subj.first_name || '' },
-        { label: 'DOB', value: subj.dob || '' },
-      ], y);
-    } else {
-      y = addFieldPair(doc, 'Name', '', lx, y, ffw);
-      addFieldPair(doc, 'DOB', '', lx, y, hfw);
-      y += SPACING.FIELD_ROW_ADVANCE;
-    }
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  // ═══════════════════════════════════════════════════════════
+  // ADMINISTRATIVE — incident + subject + property grid
+  // ═══════════════════════════════════════════════════════════
+  y = drawFormSection(doc, {
+    sideTab: { label: 'ADMINISTRATIVE' },
+    rows: [
+      { cells: [
+        { label: '1. INCIDENT #', value: data.incident_number || '', ratio: 2, valueBold: true },
+        { label: '2. DATE', value: data.occurred_date || '', ratio: 1 },
+        { label: '3. TIME', value: data.occurred_time || '', ratio: 1 },
+        { label: '4. OFFICER', value: data.officer_name || '', ratio: 2 },
+      ]},
+      { cells: [
+        { label: '5. SUBJECT LAST NAME', value: subj.last_name || '', ratio: 2, valueBold: true },
+        { label: '6. FIRST NAME', value: subj.first_name || '', ratio: 2, valueBold: true },
+        { label: '7. DOB', value: subj.dob || '', ratio: 1 },
+      ]},
+    ],
+    y,
+  });
 
-  // Property Information
-  { const sec = openAutoSection(doc, 'Property Information', y); y = sec.contentY;
-    y = addFieldPair(doc, 'Location', data.location, lx, y, ffw);
-    y = addFieldPair(doc, 'Property Boundaries', data.property_boundaries || '', lx, y, ffw);
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  // ═══════════════════════════════════════════════════════════
+  // PROPERTY — location, boundaries, warning period
+  // ═══════════════════════════════════════════════════════════
+  y = drawFormSection(doc, {
+    sideTab: { label: 'PROPERTY' },
+    rows: [
+      { cells: [
+        { label: '8. PROPERTY LOCATION', value: data.location || '', ratio: 1, valueBold: true },
+      ]},
+      { cells: [
+        { label: '9. PROPERTY BOUNDARIES / DESCRIPTION', value: data.property_boundaries || '', ratio: 1 },
+      ], height: 12 },
+      { cells: [
+        { label: '10. EFFECTIVE DATE', value: data.trespass_effective_date || '', ratio: 1 },
+        { label: '11. EXPIRY DATE', value: data.trespass_expiry_date || '', ratio: 1 },
+        { label: '12. PRIORITY', value: data.priority || '', ratio: 1 },
+        { label: '13. STATUS', value: data.status?.toUpperCase() || '', ratio: 1 },
+      ]},
+    ],
+    y,
+  });
 
-  // Warning Dates
-  { const sec = openAutoSection(doc, 'Warning Period', y); y = sec.contentY;
-    addFieldPair(doc, 'Effective Date', data.trespass_effective_date || '', lx, y, hfw);
-    y = addFieldPair(doc, 'Expiry Date', data.trespass_expiry_date || '', rx, y, hfw);
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
-
-  // Warning Text
+  // Warning Text (full-width, no sidebar tab)
   { const sec = openAutoSection(doc, 'Notice', y); y = sec.contentY;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(FONT.SIZE_FIELD_VALUE);
@@ -1363,6 +1511,9 @@ function generateTrespassWarning(doc: jsPDF, data: IncidentData) {
     y += SPACING.MD;
     y = closeAutoSection(doc, sec.sectionY, y);
   }
+
+  // GPS Activity Log
+  y = addGpsActivityLogSection(doc, data, y, data.priority);
 
   // Narrative
   y = addNarrativeSection(doc, 'Officer Notes', data.narrative || '', y, data.priority);
@@ -1395,65 +1546,74 @@ function generateAccidentReport(doc: jsPDF, data: IncidentData) {
   const ffw = getFullFieldWidth(doc);
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
+  const gridX = getGridStartX();
+  const gridW = getGridContentWidth(doc);
 
+  let y = drawNibrsHeader(doc, {
+    stateIdentifier: 'STATE OF UTAH',
+    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    formTitle: 'VEHICLE ACCIDENT REPORT',
+    formNumber: FORM_NUMBERS.accident,
+    caseNumber: data.incident_number,
+    reportDate: data.occurred_date || data.created_at || '',
+  });
 
-  let y = addReportHeader(doc, data.incident_number, 'Vehicle Accident Report', data.priority, undefined, { useLogo: true });
+  // ═══════════════════════════════════════════════════════════
+  // ADMINISTRATIVE — incident + conditions grid
+  // ═══════════════════════════════════════════════════════════
+  y = drawFormSection(doc, {
+    sideTab: { label: 'ADMINISTRATIVE' },
+    rows: [
+      { cells: [
+        { label: '1. INCIDENT #', value: data.incident_number || '', ratio: 2, valueBold: true },
+        { label: '2. DATE', value: data.occurred_date || '', ratio: 1 },
+        { label: '3. TIME', value: data.occurred_time || '', ratio: 1 },
+        { label: '4. INVESTIGATING OFFICER', value: data.officer_name || '', ratio: 2 },
+      ]},
+      { cells: [
+        { label: '5. LOCATION OF ACCIDENT', value: data.location || '', ratio: 1, valueBold: true },
+      ]},
+      { cells: [
+        { label: '6. ROAD CONDITIONS', value: data.road_conditions || '', ratio: 1 },
+        { label: '7. TRAFFIC CONTROL', value: data.traffic_control || '', ratio: 1 },
+        { label: '8. WEATHER', value: data.weather_conditions || '', ratio: 1 },
+        { label: '9. LIGHTING', value: data.lighting_conditions || '', ratio: 1 },
+      ]},
+    ],
+    y,
+  });
 
-  // Incident Info
-  { const sec = openAutoSection(doc, 'Incident Information', y); y = sec.contentY;
-    y = addFieldPair(doc, 'Location', data.location, lx, y, ffw);
-    y = addThreeColumnFields(doc, [
-      { label: 'Date', value: data.occurred_date || '' },
-      { label: 'Time', value: data.occurred_time || '' },
-      { label: 'Officer', value: data.officer_name },
-    ], y);
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  // ═══════════════════════════════════════════════════════════
+  // VEHICLES — vehicle descriptions + flags
+  // ═══════════════════════════════════════════════════════════
+  y = checkPageBreak(doc, y, 35, data.priority);
+  const vehStartY = y;
 
-  // Road Conditions
-  { const sec = openAutoSection(doc, 'Conditions', y); y = sec.contentY;
-    y = addThreeColumnFields(doc, [
-      { label: 'Road Conditions', value: data.road_conditions || '' },
-      { label: 'Traffic Control', value: data.traffic_control || '' },
-      { label: 'Weather', value: data.weather_conditions || '' },
-    ], y);
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  y = drawFormGrid(doc, [
+    { cells: [
+      { label: '10. VEHICLE #1 DESCRIPTION', value: data.vehicle_1_info || '', ratio: 1 },
+    ], height: 10 },
+    { cells: [
+      { label: '11. VEHICLE #2 DESCRIPTION', value: data.vehicle_2_info || '', ratio: 1 },
+    ], height: 10 },
+  ], gridX, y, gridW);
 
-  // Flags
-  { const sec = openAutoSection(doc, 'Flags', y); y = sec.contentY;
-    let flagX = lx;
-    flagX = addCheckboxField(doc, 'Alcohol', !!data.alcohol_involved, flagX, y);
-    flagX = addCheckboxField(doc, 'Drugs', !!data.drugs_involved, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'Gang', !!data.gang_related, flagX + SPACING.SM, y);
-    if (data.weapons_involved) {
-      addCheckboxField(doc, 'Weapons: ' + data.weapons_involved, true, flagX + SPACING.SM, y);
-    } else {
-      addCheckboxField(doc, 'Weapons', false, flagX + SPACING.SM, y);
-    }
-    y += SPACING.LG; flagX = lx;
-    flagX = addCheckboxField(doc, 'BWC Active', !!data.body_camera_active, flagX, y);
-    flagX = addCheckboxField(doc, 'Photos', !!data.photos_taken, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'Evidence', !!data.evidence_collected, flagX + SPACING.SM, y);
-    addCheckboxField(doc, 'LE Notified', !!data.le_notified, flagX + SPACING.SM, y);
-    y += SPACING.XL;
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  const accidentFlags: CheckboxItem[] = [
+    { label: 'Alcohol Involved', checked: !!data.alcohol_involved },
+    { label: 'Drugs Involved', checked: !!data.drugs_involved },
+    { label: 'Gang Related', checked: !!data.gang_related },
+    { label: 'Weapons', checked: !!data.weapons_involved },
+    { label: 'BWC Active', checked: !!data.body_camera_active },
+    { label: 'Photos Taken', checked: !!data.photos_taken },
+    { label: 'Evidence Collected', checked: !!data.evidence_collected },
+    { label: 'LE Notified', checked: !!data.le_notified },
+  ];
+  y = drawCheckboxGrid(doc, accidentFlags, gridX, y, 4, gridW);
 
-  // Vehicle 1
-  { const sec = openAutoSection(doc, 'Vehicle #1', y); y = sec.contentY;
-    y = addFieldPair(doc, 'Vehicle Description', data.vehicle_1_info || '', lx, y, ffw);
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  drawSideTab(doc, 'VEHICLES', vehStartY, y - vehStartY);
+  y += SPACING.SECTION_GAP;
 
-  // Vehicle 2
-  y = checkPageBreak(doc, y, 30, data.priority);
-  { const sec = openAutoSection(doc, 'Vehicle #2', y); y = sec.contentY;
-    y = addFieldPair(doc, 'Vehicle Description', data.vehicle_2_info || '', lx, y, ffw);
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
-
-  // Diagram area
+  // Accident Diagram (keep as-is — needs grid drawing)
   y = checkPageBreak(doc, y, 80, data.priority);
   { const sec = openAutoSection(doc, 'Accident Diagram', y); y = sec.contentY;
     doc.setDrawColor(...COLOR.BORDER_TABLE);
@@ -1476,23 +1636,24 @@ function generateAccidentReport(doc: jsPDF, data: IncidentData) {
   // Scene Notes
   y = addNarrativeSection(doc, 'Scene Notes', data.diagram_notes || '', y, data.priority);
 
-  // Injuries & Damage
-  y = checkPageBreak(doc, y, 20, data.priority);
-  { const sec = openAutoSection(doc, 'Injuries & Damage', y); y = sec.contentY;
-    addFieldPair(doc, 'Injuries', `${data.injuries || 'None'}${data.injury_description ? ' \u2014 ' + data.injury_description : ''}`, lx, y, hfw);
-    y = addFieldPair(doc, 'Damage Estimate', data.damage_estimate ? '$' + data.damage_estimate : '', rx, y, hfw);
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  // Injuries & Damage (grid cells)
+  y = checkPageBreak(doc, y, 12, data.priority);
+  y = drawFormGrid(doc, [
+    { cells: [
+      { label: 'INJURIES', value: `${data.injuries || 'None'}${data.injury_description ? ' — ' + data.injury_description : ''}`, ratio: 2 },
+      { label: 'DAMAGE ESTIMATE', value: data.damage_estimate ? '$' + data.damage_estimate : '', ratio: 1 },
+    ]},
+  ], gridX, y, gridW);
+  y += SPACING.SECTION_GAP;
 
-  // Narrative
+  // GPS, Narrative, Attachments, Signatures
+  y = addGpsActivityLogSection(doc, data, y, data.priority);
   y = addNarrativeSection(doc, 'Narrative', data.narrative || '', y, data.priority);
 
-  // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {
     y = addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
   }
 
-  // Signatures
   y = checkPageBreak(doc, y, 40, data.priority);
   { const sec = openAutoSection(doc, 'Signatures', y); y = sec.contentY;
     addSignatureBlock(doc, 'Investigating Officer', lx, y, hfw, getOfficerSig());
@@ -1502,62 +1663,72 @@ function generateAccidentReport(doc: jsPDF, data: IncidentData) {
 }
 
 function generateMedicalReport(doc: jsPDF, data: IncidentData) {
-  const cw = getContentWidth(doc);
   const hfw = getHalfFieldWidth(doc);
   const ffw = getFullFieldWidth(doc);
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
+  const gridX = getGridStartX();
+  const gridW = getGridContentWidth(doc);
 
+  const persons = data.linked_persons || [];
+  const patient = persons[0] || { first_name: '', last_name: '', dob: '' };
 
-  let y = addReportHeader(doc, data.incident_number, 'Medical Response Report', data.priority, undefined, { useLogo: true });
+  let y = drawNibrsHeader(doc, {
+    stateIdentifier: 'STATE OF UTAH',
+    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    formTitle: 'MEDICAL RESPONSE REPORT',
+    formNumber: FORM_NUMBERS.medical,
+    caseNumber: data.incident_number,
+    reportDate: data.occurred_date || data.created_at || '',
+  });
 
-  // Incident Info
-  { const sec = openAutoSection(doc, 'Incident Information', y); y = sec.contentY;
-    y = addThreeColumnFields(doc, [
-      { label: 'Type', value: formatIncidentType(data.incident_type) },
-      { label: 'Priority', value: data.priority },
-      { label: 'Officer', value: data.officer_name },
-    ], y);
-    y = addFieldPair(doc, 'Location', data.location, lx, y, ffw);
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  // ═══════════════════════════════════════════════════════════
+  // ADMINISTRATIVE — incident + patient grid
+  // ═══════════════════════════════════════════════════════════
+  y = drawFormSection(doc, {
+    sideTab: { label: 'ADMINISTRATIVE' },
+    rows: [
+      { cells: [
+        { label: '1. INCIDENT TYPE', value: formatIncidentType(data.incident_type), ratio: 2 },
+        { label: '2. PRIORITY', value: data.priority || '', ratio: 1 },
+        { label: '3. OFFICER', value: data.officer_name || '', ratio: 2 },
+      ]},
+      { cells: [
+        { label: '4. LOCATION', value: data.location || '', ratio: 1, valueBold: true },
+      ]},
+    ],
+    y,
+  });
 
-  // Patient Information
-  { const sec = openAutoSection(doc, 'Patient Information', y); y = sec.contentY;
-    const persons = data.linked_persons || [];
-    if (persons.length > 0) {
-      const patient = persons[0];
-      y = addThreeColumnFields(doc, [
-        { label: 'Name', value: `${patient.last_name}, ${patient.first_name}` },
-        { label: 'DOB', value: patient.dob || '' },
-        { label: 'Patient Status', value: data.patient_status || '' },
-      ], y);
-    } else {
-      y = addThreeColumnFields(doc, [
-        { label: 'Name', value: '' },
-        { label: 'DOB', value: '' },
-        { label: 'Patient Status', value: data.patient_status || '' },
-      ], y);
-    }
-    y = addFieldPair(doc, 'EMS Transport', data.ems_transport || '', lx, y, hfw);
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  // ═══════════════════════════════════════════════════════════
+  // PATIENT — patient details grid
+  // ═══════════════════════════════════════════════════════════
+  y = drawFormSection(doc, {
+    sideTab: { label: 'PATIENT' },
+    rows: [
+      { cells: [
+        { label: '5. PATIENT LAST NAME', value: patient.last_name || '', ratio: 2, valueBold: true },
+        { label: '6. FIRST NAME', value: patient.first_name || '', ratio: 2, valueBold: true },
+        { label: '7. DOB', value: patient.dob || '', ratio: 1 },
+      ]},
+      { cells: [
+        { label: '8. PATIENT STATUS', value: data.patient_status || '', ratio: 1 },
+        { label: '9. EMS TRANSPORT', value: data.ems_transport || '', ratio: 1 },
+      ]},
+    ],
+    y,
+  });
 
-  // Vitals
+  // Free-form sections
   y = addNarrativeSection(doc, 'Vitals / Condition', data.patient_vitals || '', y, data.priority);
-
-  // Treatment
   y = addNarrativeSection(doc, 'Treatment Rendered', data.treatment_rendered || '', y, data.priority);
-
-  // Narrative
+  y = addGpsActivityLogSection(doc, data, y, data.priority);
   y = addNarrativeSection(doc, 'Narrative', data.narrative || '', y, data.priority);
 
-  // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {
     y = addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
   }
 
-  // Signatures
   y = checkPageBreak(doc, y, 75, data.priority);
   { const sec = openAutoSection(doc, 'Signatures', y); y = sec.contentY;
     addSignatureBlock(doc, 'Responding Officer', lx, y, hfw, getOfficerSig());
@@ -1574,9 +1745,20 @@ function generateUseOfForceReport(doc: jsPDF, data: IncidentData) {
   const ffw = getFullFieldWidth(doc);
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
+  const gridX = getGridStartX();
+  const gridW = getGridContentWidth(doc);
 
+  const persons = data.linked_persons || [];
+  const subj = persons[0] || { first_name: '', last_name: '', dob: '' };
 
-  let y = addReportHeader(doc, data.incident_number, 'Use of Force Report', data.priority, undefined, { useLogo: true });
+  let y = drawNibrsHeader(doc, {
+    stateIdentifier: 'STATE OF UTAH',
+    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    formTitle: 'USE OF FORCE REPORT',
+    formNumber: FORM_NUMBERS.use_of_force,
+    caseNumber: data.incident_number,
+    reportDate: data.occurred_date || data.created_at || '',
+  });
 
   // MANDATORY header banner
   const primaryRgb = hexToRgb(activeBranding.primary_color);
@@ -1593,60 +1775,54 @@ function generateUseOfForceReport(doc: jsPDF, data: IncidentData) {
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
   y += 12;
 
-  // Incident Info
-  { const sec = openAutoSection(doc, 'Incident Information', y); y = sec.contentY;
-    y = addThreeColumnFields(doc, [
-      { label: 'Type', value: formatIncidentType(data.incident_type) },
-      { label: 'Date/Time', value: `${data.occurred_date || ''} ${data.occurred_time || ''}` },
-      { label: 'Officer', value: data.officer_name },
-    ], y);
-    y = addFieldPair(doc, 'Location', data.location, lx, y, ffw);
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  // ═══════════════════════════════════════════════════════════
+  // ADMINISTRATIVE — incident + subject grid
+  // ═══════════════════════════════════════════════════════════
+  y = drawFormSection(doc, {
+    sideTab: { label: 'ADMINISTRATIVE' },
+    rows: [
+      { cells: [
+        { label: '1. INCIDENT TYPE', value: formatIncidentType(data.incident_type), ratio: 2 },
+        { label: '2. DATE/TIME', value: `${data.occurred_date || ''} ${data.occurred_time || ''}`, ratio: 1 },
+        { label: '3. OFFICER', value: data.officer_name || '', ratio: 2 },
+      ]},
+      { cells: [
+        { label: '4. LOCATION', value: data.location || '', ratio: 1, valueBold: true },
+      ]},
+    ],
+    y,
+  });
 
-  // Subject Information
-  { const sec = openAutoSection(doc, 'Subject Information', y); y = sec.contentY;
-    const persons = data.linked_persons || [];
-    if (persons.length > 0) {
-      const subj = persons[0];
-      y = addThreeColumnFields(doc, [
-        { label: 'Name', value: `${subj.last_name}, ${subj.first_name}` },
-        { label: 'DOB', value: subj.dob || '' },
-        { label: 'Force Type / Level', value: data.force_type || '' },
-      ], y);
-    } else {
-      y = addThreeColumnFields(doc, [
-        { label: 'Name', value: '' },
-        { label: 'DOB', value: '' },
-        { label: 'Force Type / Level', value: data.force_type || '' },
-      ], y);
-    }
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  // ═══════════════════════════════════════════════════════════
+  // SUBJECT — subject + force details grid
+  // ═══════════════════════════════════════════════════════════
+  y = drawFormSection(doc, {
+    sideTab: { label: 'SUBJECT' },
+    rows: [
+      { cells: [
+        { label: '5. SUBJECT LAST NAME', value: subj.last_name || '', ratio: 2, valueBold: true },
+        { label: '6. FIRST NAME', value: subj.first_name || '', ratio: 2, valueBold: true },
+        { label: '7. DOB', value: subj.dob || '', ratio: 1 },
+      ]},
+      { cells: [
+        { label: '8. FORCE TYPE / LEVEL', value: data.force_type || '', ratio: 2, valueBold: true },
+        { label: '9. SUBJECT INJURIES', value: data.subject_injuries || 'None', ratio: 2 },
+        { label: '10. OFFICER INJURIES', value: data.officer_injuries || 'None', ratio: 2 },
+      ]},
+    ],
+    y,
+  });
 
-  // De-Escalation
+  // Free-form sections
   y = addNarrativeSection(doc, 'De-Escalation Attempts', data.de_escalation_attempts || '', y, data.priority);
-
-  // Justification
   y = addNarrativeSection(doc, 'Justification', data.force_justification || '', y, data.priority);
-
-  // Injuries
-  y = checkPageBreak(doc, y, 20, data.priority);
-  { const sec = openAutoSection(doc, 'Injuries', y); y = sec.contentY;
-    addFieldPair(doc, 'Subject Injuries', data.subject_injuries || 'None', lx, y, hfw);
-    y = addFieldPair(doc, 'Officer Injuries', data.officer_injuries || 'None', rx, y, hfw);
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
-
-  // Narrative
+  y = addGpsActivityLogSection(doc, data, y, data.priority);
   y = addNarrativeSection(doc, 'Narrative', data.narrative || '', y, data.priority);
 
-  // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {
     y = addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
   }
 
-  // Signatures
   y = checkPageBreak(doc, y, 40, data.priority);
   { const sec = openAutoSection(doc, 'Signatures', y); y = sec.contentY;
     addSignatureBlock(doc, 'Reporting Officer', lx, y, hfw, getOfficerSig());
@@ -1659,25 +1835,43 @@ function generateDailyActivityReport(doc: jsPDF, data: IncidentData) {
   const pageWidth = doc.internal.pageSize.getWidth();
   const cw = getContentWidth(doc);
   const hfw = getHalfFieldWidth(doc);
-  const ffw = getFullFieldWidth(doc);
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
+  const gridX = getGridStartX();
+  const gridW = getGridContentWidth(doc);
 
+  let y = drawNibrsHeader(doc, {
+    stateIdentifier: 'STATE OF UTAH',
+    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    formTitle: 'DAILY ACTIVITY REPORT',
+    formNumber: FORM_NUMBERS.daily_activity,
+    caseNumber: data.incident_number,
+    reportDate: data.occurred_date || data.created_at || '',
+  });
 
-  let y = addReportHeader(doc, data.incident_number, 'Daily Activity Report', data.priority, undefined, { useLogo: true });
+  // ═══════════════════════════════════════════════════════════
+  // ADMINISTRATIVE — officer + shift grid
+  // ═══════════════════════════════════════════════════════════
+  y = drawFormSection(doc, {
+    sideTab: { label: 'SHIFT' },
+    rows: [
+      { cells: [
+        { label: '1. OFFICER NAME', value: data.officer_name || '', ratio: 2, valueBold: true },
+        { label: '2. SECTION', value: data.section_id || '', ratio: 1 },
+        { label: '3. ZONE', value: data.zone_id || '', ratio: 1 },
+        { label: '4. BEAT', value: data.beat_id || '', ratio: 1 },
+      ]},
+      { cells: [
+        { label: '5. SHIFT DATE', value: data.occurred_date || '', ratio: 1 },
+        { label: '6. SHIFT START', value: data.occurred_time || '', ratio: 1 },
+        { label: '7. SHIFT END', value: data.end_time || '', ratio: 1 },
+      ]},
+    ],
+    y,
+  });
 
-  // Officer / Shift Info
-  { const sec = openAutoSection(doc, 'Officer / Shift Information', y); y = sec.contentY;
-    addFieldPair(doc, 'Officer', data.officer_name, lx, y, hfw);
-    y = addFieldPair(doc, 'Sec/Zone/Beat', [data.section_id, data.zone_id, data.beat_id].filter(Boolean).join(' / ') || '', rx, y, hfw);
-    addFieldPair(doc, 'Shift Date', data.occurred_date || '', lx, y, hfw);
-    y = addFieldPair(doc, 'Shift Time', `${data.occurred_time || ''} \u2014 ${data.end_time || ''}`, rx, y, hfw);
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
-
-  // Activity Log
+  // Activity Log — blank table (keep manual-entry style)
   { const sec = openAutoSection(doc, 'Activity Log', y); y = sec.contentY;
-    // Light table header row with dark text
     doc.setFillColor(...COLOR.BG_TABLE_HDR);
     doc.rect(LAYOUT.PAGE_MARGIN + 1, y - 2, cw - 2, 7, 'F');
     doc.setDrawColor(...COLOR.BORDER_TABLE);
@@ -1716,15 +1910,14 @@ function generateDailyActivityReport(doc: jsPDF, data: IncidentData) {
     y = closeAutoSection(doc, sec.sectionY, y);
   }
 
-  // Narrative summary
+  // GPS, Narrative, Attachments, Signatures
+  y = addGpsActivityLogSection(doc, data, y, data.priority);
   y = addNarrativeSection(doc, 'Summary / Notes', data.narrative || '', y, data.priority);
 
-  // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {
     y = addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
   }
 
-  // Signature
   y = checkPageBreak(doc, y, 40, data.priority);
   { const sec = openAutoSection(doc, 'Signatures', y); y = sec.contentY;
     addSignatureBlock(doc, 'Officer', lx, y, hfw, getOfficerSig());
@@ -1734,123 +1927,153 @@ function generateDailyActivityReport(doc: jsPDF, data: IncidentData) {
 }
 
 function generateArrestReport(doc: jsPDF, data: IncidentData) {
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const cw = getContentWidth(doc);
   const hfw = getHalfFieldWidth(doc);
-  const ffw = getFullFieldWidth(doc);
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
+  const gridX = getGridStartX();
+  const gridW = getGridContentWidth(doc);
 
+  const persons = data.linked_persons || [];
+  const subj = persons[0] || { first_name: '', last_name: '', dob: '' };
 
-  let y = addReportHeader(doc, data.incident_number, 'Arrest / Detention Report', data.priority, undefined, { useLogo: true });
+  let y = drawNibrsHeader(doc, {
+    stateIdentifier: 'STATE OF UTAH',
+    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    formTitle: 'ARREST / DETENTION REPORT',
+    formNumber: FORM_NUMBERS.arrest,
+    caseNumber: data.incident_number,
+    reportDate: data.occurred_date || data.created_at || '',
+  });
 
-  // Incident Info
-  { const sec = openAutoSection(doc, 'Incident Information', y); y = sec.contentY;
-    y = addFieldPair(doc, 'Location', data.location, lx, y, ffw);
-    addFieldPair(doc, 'Date', data.occurred_date || '', lx, y, hfw);
-    y = addFieldPair(doc, 'Time', data.occurred_time || '', rx, y, hfw);
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  // ═══════════════════════════════════════════════════════════
+  // ADMINISTRATIVE — incident details grid
+  // ═══════════════════════════════════════════════════════════
+  y = drawFormSection(doc, {
+    sideTab: { label: 'ADMINISTRATIVE' },
+    rows: [
+      { cells: [
+        { label: '1. INCIDENT #', value: data.incident_number || '', ratio: 2, valueBold: true },
+        { label: '2. OCCURRED DATE', value: data.occurred_date || '', ratio: 1 },
+        { label: '3. TIME', value: data.occurred_time || '', ratio: 1 },
+        { label: '4. PRIORITY', value: data.priority || '', ratio: 1 },
+        { label: '5. STATUS', value: data.status?.toUpperCase() || '', ratio: 1 },
+      ]},
+      { cells: [
+        { label: '6. LOCATION OF ARREST', value: data.location || '', ratio: 1, valueBold: true },
+      ]},
+      { cells: [
+        { label: '7. ARRESTING OFFICER', value: data.officer_name || '', ratio: 2, valueBold: true },
+        { label: '8. DISPOSITION', value: data.disposition || '', ratio: 1 },
+      ]},
+    ],
+    y,
+  });
 
-  // Subject Details
-  { const sec = openAutoSection(doc, 'Subject Details', y); y = sec.contentY;
-    const persons = data.linked_persons || [];
-    if (persons.length > 0) {
-      const subj = persons[0];
-      y = addThreeColumnFields(doc, [
-        { label: 'Last Name', value: subj.last_name || '' },
-        { label: 'First Name', value: subj.first_name || '' },
-        { label: 'DOB', value: subj.dob || '' },
-      ], y);
-    } else {
-      y = addThreeColumnFields(doc, [
-        { label: 'Last Name', value: '' },
-        { label: 'First Name', value: '' },
-        { label: 'DOB', value: '' },
-      ], y);
-    }
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  // ═══════════════════════════════════════════════════════════
+  // SUBJECT — subject details + Miranda + flags
+  // ═══════════════════════════════════════════════════════════
+  y = checkPageBreak(doc, y, 55, data.priority);
+  const subjectStartY = y;
 
-  // Flags
+  y = drawFormGrid(doc, [
+    { cells: [
+      { label: '9. SUBJECT LAST NAME', value: subj.last_name || '', ratio: 2, valueBold: true },
+      { label: '10. FIRST NAME', value: subj.first_name || '', ratio: 2, valueBold: true },
+      { label: '11. DOB', value: subj.dob || '', ratio: 1 },
+    ]},
+  ], gridX, y, gridW);
+
+  // Miranda block (full-width within grid)
+  y = drawFormGrid(doc, [
+    { cells: [
+      { label: 'MIRANDA ADVISEMENT', value: 'You have the right to remain silent. Anything you say can and will be used against you. You have the right to an attorney. If you cannot afford one, one will be appointed.', ratio: 1 },
+    ], height: 11 },
+    { cells: [
+      { label: '12. MIRANDA GIVEN AT', value: '', ratio: 1 },
+      { label: '13. WAIVED / INVOKED', value: '', ratio: 1 },
+    ]},
+  ], gridX, y, gridW);
+
+  // Arrest-specific flags
+  const arrestFlags: CheckboxItem[] = [
+    { label: 'Alcohol Involved', checked: !!data.alcohol_involved },
+    { label: 'Drugs Involved', checked: !!data.drugs_involved },
+    { label: 'Domestic Violence', checked: !!data.domestic_violence },
+    { label: 'Gang Related', checked: !!data.gang_related },
+    { label: 'Weapons', checked: !!data.weapons_involved },
+    { label: 'Felony in Progress', checked: !!data.felony_in_progress },
+    { label: 'Officer Safety', checked: !!data.officer_safety_caution },
+    { label: 'Vehicle Pursuit', checked: !!data.vehicle_pursuit },
+    { label: 'Foot Pursuit', checked: !!data.foot_pursuit },
+    { label: 'BWC Active', checked: !!data.body_camera_active },
+    { label: 'Evidence Collected', checked: !!data.evidence_collected },
+    { label: 'Photos Taken', checked: !!data.photos_taken },
+    { label: 'LE Notified', checked: !!data.le_notified },
+  ];
+  y = drawCheckboxGrid(doc, arrestFlags, gridX, y, 5, gridW);
+
+  drawSideTab(doc, 'SUBJECT', subjectStartY, y - subjectStartY);
+  y += SPACING.SECTION_GAP;
+
+  // ═══════════════════════════════════════════════════════════
+  // CHARGES — charges table
+  // ═══════════════════════════════════════════════════════════
   y = checkPageBreak(doc, y, 30, data.priority);
-  { const sec = openAutoSection(doc, 'Flags', y); y = sec.contentY;
-    let flagX = lx;
-    flagX = addCheckboxField(doc, 'Alcohol', !!data.alcohol_involved, flagX, y);
-    flagX = addCheckboxField(doc, 'Drugs', !!data.drugs_involved, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'DV', !!data.domestic_violence, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'Gang', !!data.gang_related, flagX + SPACING.SM, y);
-    if (data.weapons_involved) {
-      addCheckboxField(doc, 'Weapons: ' + data.weapons_involved, true, flagX + SPACING.SM, y);
-    } else {
-      addCheckboxField(doc, 'Weapons', false, flagX + SPACING.SM, y);
-    }
-    y += SPACING.LG; flagX = lx;
-    flagX = addCheckboxField(doc, 'Felony IP', !!data.felony_in_progress, flagX, y);
-    flagX = addCheckboxField(doc, 'Ofc Safety', !!data.officer_safety_caution, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'Veh Pursuit', !!data.vehicle_pursuit, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'Foot Pursuit', !!data.foot_pursuit, flagX + SPACING.SM, y);
-    addCheckboxField(doc, 'BWC Active', !!data.body_camera_active, flagX + SPACING.SM, y);
-    y += SPACING.LG; flagX = lx;
-    flagX = addCheckboxField(doc, 'Evidence', !!data.evidence_collected, flagX, y);
-    flagX = addCheckboxField(doc, 'Photos', !!data.photos_taken, flagX + SPACING.SM, y);
-    addCheckboxField(doc, 'LE Notified', !!data.le_notified, flagX + SPACING.SM, y);
-    y += SPACING.XL;
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  const chargesStartY = y;
 
-  // Charges table
-  { const sec = openAutoSection(doc, 'Charges', y); y = sec.contentY;
-    const colPositions = [lx, LAYOUT.PAGE_MARGIN + 90, LAYOUT.PAGE_MARGIN + 130];
-    const tableHeaders = [
-      { label: 'CHARGE', x: colPositions[0] },
-      { label: 'CODE', x: colPositions[1] },
-      { label: 'CLASS', x: colPositions[2] },
-    ];
-    const emptyRows: string[][] = [['', '', ''], ['', '', ''], ['', '', ''], ['', '', '']];
-    y = addTableWithShading(doc, tableHeaders, emptyRows, y, colPositions);
-    y += SPACING.MD;
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  y = drawFormGrid(doc, [
+    { cells: [
+      { label: 'CHARGES', value: '', ratio: 1, valueBold: true },
+    ], height: 5 },
+  ], gridX, y, gridW);
 
-  // Miranda Advisement
+  const chargeColPositions = [gridX, gridX + gridW * 0.55, gridX + gridW * 0.8];
+  const chargeHeaders = [
+    { label: 'CHARGE', x: chargeColPositions[0] },
+    { label: 'STATUTE', x: chargeColPositions[1] },
+    { label: 'CLASS', x: chargeColPositions[2] },
+  ];
+  const emptyChargeRows: string[][] = [['', '', ''], ['', '', ''], ['', '', ''], ['', '', '']];
+  y = addTableWithShading(doc, chargeHeaders, emptyChargeRows, y, chargeColPositions);
+
+  drawSideTab(doc, 'CHARGES', chargesStartY, y - chargesStartY);
+  y += SPACING.SECTION_GAP;
+
+  // ═══════════════════════════════════════════════════════════
+  // PROPERTY — personal property inventory + codes
+  // ═══════════════════════════════════════════════════════════
   y = checkPageBreak(doc, y, 30, data.priority);
-  { const sec = openAutoSection(doc, 'Miranda Advisement', y); y = sec.contentY;
-    doc.setFontSize(FONT.SIZE_TABLE_BODY);
-    doc.setFont('helvetica', 'normal');
-    doc.text('You have the right to remain silent. Anything you say can and will be used against you in a court of law.', lx, y);
-    y += 4;
-    doc.text('You have the right to an attorney. If you cannot afford an attorney, one will be appointed for you.', lx, y);
-    y += SPACING.XL;
-    addFieldPair(doc, 'Miranda Given At', '', lx, y, hfw);
-    y = addFieldPair(doc, 'Waived / Invoked', '', rx, y, hfw);
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  const propStartY = y;
 
-  // Personal Property Inventory
-  y = checkPageBreak(doc, y, 30, data.priority);
-  { const sec = openAutoSection(doc, 'Personal Property Inventory', y); y = sec.contentY;
-    const colPositions = [lx, LAYOUT.PAGE_MARGIN + 20, LAYOUT.PAGE_MARGIN + 120];
-    const tableHeaders = [
-      { label: 'ITEM #', x: colPositions[0] },
-      { label: 'DESCRIPTION', x: colPositions[1] },
-      { label: 'DISPOSITION', x: colPositions[2] },
-    ];
-    const emptyRows: string[][] = [['', '', ''], ['', '', ''], ['', '', ''], ['', '', '']];
-    y = addTableWithShading(doc, tableHeaders, emptyRows, y, colPositions);
-    y += SPACING.MD;
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  y = drawFormGrid(doc, [
+    { cells: [
+      { label: 'PERSONAL PROPERTY INVENTORY', value: '', ratio: 1, valueBold: true },
+    ], height: 5 },
+  ], gridX, y, gridW);
 
-  // Narrative
+  const propColPositions = [gridX, gridX + 15, gridX + gridW - 30];
+  const propHeaders = [
+    { label: 'ITEM #', x: propColPositions[0] },
+    { label: 'DESCRIPTION', x: propColPositions[1] },
+    { label: 'DISPOSITION', x: propColPositions[2] },
+  ];
+  const emptyPropRows: string[][] = [['', '', ''], ['', '', ''], ['', '', ''], ['', '', '']];
+  y = addTableWithShading(doc, propHeaders, emptyPropRows, y, propColPositions);
+
+  drawSideTab(doc, 'PROPERTY', propStartY, y - propStartY);
+  y += SPACING.SECTION_GAP;
+
+  // ═══════════════════════════════════════════════════════════
+  // FREE-FORM — GPS, Narrative, Attachments, Signatures
+  // ═══════════════════════════════════════════════════════════
+
+  y = addGpsActivityLogSection(doc, data, y, data.priority);
   y = addNarrativeSection(doc, 'Narrative', data.narrative || '', y, data.priority);
 
-  // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {
     y = addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
   }
 
-  // Signatures
   y = checkPageBreak(doc, y, 40, data.priority);
   { const sec = openAutoSection(doc, 'Signatures', y); y = sec.contentY;
     addSignatureBlock(doc, 'Arresting Officer', lx, y, hfw, getOfficerSig());
@@ -1863,97 +2086,120 @@ function generateArrestReport(doc: jsPDF, data: IncidentData) {
 
 function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
   const hfw = getHalfFieldWidth(doc);
-  const ffw = getFullFieldWidth(doc);
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
+  const gridX = getGridStartX();
+  const gridW = getGridContentWidth(doc);
 
   const serviceTypeLabel = (data.process_service_type || '').replace(/_/g, ' ').toUpperCase() || 'GENERAL';
 
-  let y = addReportHeader(doc, data.incident_number, 'Process Service Report', data.priority, undefined, { useLogo: true });
+  let y = drawNibrsHeader(doc, {
+    stateIdentifier: 'STATE OF UTAH',
+    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    formTitle: 'PROCESS SERVICE REPORT',
+    formNumber: FORM_NUMBERS.incident,
+    caseNumber: data.incident_number,
+    reportDate: data.occurred_date || data.created_at || '',
+  });
 
-  // Classification
-  { const sec = openAutoSection(doc, 'Classification', y); y = sec.contentY;
-    y = addThreeColumnFields(doc, [
-      { label: 'Incident Number', value: data.incident_number },
-      { label: 'Priority', value: data.priority },
-      { label: 'Status', value: data.status?.toUpperCase() || '' },
-      { label: 'Disposition', value: data.disposition || '' },
-      { label: 'Service Type', value: serviceTypeLabel },
-      { label: 'Contract ID', value: data.contract_id || '' },
-    ], y);
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  // ═══════════════════════════════════════════════════════════
+  // ADMINISTRATIVE — classification + officer + dates
+  // ═══════════════════════════════════════════════════════════
+  y = drawFormSection(doc, {
+    sideTab: { label: 'ADMINISTRATIVE' },
+    rows: [
+      { cells: [
+        { label: '1. INCIDENT #', value: data.incident_number || '', ratio: 2, valueBold: true },
+        { label: '2. PRIORITY', value: data.priority || '', ratio: 1 },
+        { label: '3. STATUS', value: data.status?.toUpperCase() || '', ratio: 1 },
+        { label: '4. DISPOSITION', value: data.disposition || '', ratio: 1 },
+        { label: '5. CONTRACT ID', value: data.contract_id || '', ratio: 1 },
+      ]},
+      { cells: [
+        { label: '6. REPORTING OFFICER', value: data.officer_name || '', ratio: 2, valueBold: true },
+        { label: '7. SERVICE TYPE', value: serviceTypeLabel, ratio: 2, valueBold: true },
+      ]},
+      { cells: [
+        { label: '8. OCCURRED DATE', value: data.occurred_date || '', ratio: 1 },
+        { label: '9. TIME', value: data.occurred_time || '', ratio: 1 },
+        { label: '10. END DATE', value: data.end_date || '', ratio: 1 },
+        { label: '11. END TIME', value: data.end_time || '', ratio: 1 },
+      ]},
+      { cells: [
+        { label: '12. SECTION ID', value: data.section_id || '', ratio: 1 },
+        { label: '13. ZONE ID', value: data.zone_id || '', ratio: 1 },
+        { label: '14. BEAT ID', value: data.beat_id || '', ratio: 1 },
+      ]},
+    ],
+    y,
+  });
 
-  // Client / Requestor Information
-  y = checkPageBreak(doc, y, 30, data.priority);
-  { const sec = openAutoSection(doc, 'Client / Requestor Information', y); y = sec.contentY;
-    addFieldPair(doc, 'Requestor Name', data.pso_requestor_name || '', lx, y, hfw);
-    y = addFieldPair(doc, 'Requestor Phone', data.pso_requestor_phone || '', rx, y, hfw);
-    addFieldPair(doc, 'Requestor Email', data.pso_requestor_email || '', lx, y, hfw);
-    y = addFieldPair(doc, 'Billing Code', data.pso_billing_code || '', rx, y, hfw);
-    addFieldPair(doc, 'Authorization / PO#', data.pso_authorization || '', lx, y, hfw);
-    y = addFieldPair(doc, 'PSO Service Type', (data.pso_service_type || '').replace(/_/g, ' ').toUpperCase(), rx, y, hfw);
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
-
-  // Service of Process Details
-  y = checkPageBreak(doc, y, 35, data.priority);
-  { const sec = openAutoSection(doc, 'Service of Process Details', y); y = sec.contentY;
-    addFieldPair(doc, 'Document Type', serviceTypeLabel, lx, y, hfw);
-    y = addFieldPair(doc, 'Serve To (Name)', data.process_served_to || '', rx, y, hfw);
-    y = addFieldPair(doc, 'Service Address', data.process_served_address || data.location || '', lx, y, ffw);
-    addFieldPair(doc, 'Attempts Made', String(data.process_attempts || 0), lx, y, hfw);
-    y = addFieldPair(doc, 'Served At', data.process_served_at || '', rx, y, hfw);
-    y = addFieldPair(doc, 'Service Result', (data.process_service_result || '').replace(/_/g, ' ').toUpperCase(), lx, y, ffw);
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
-
-  // Officer / Location
+  // ═══════════════════════════════════════════════════════════
+  // CLIENT — requestor information grid
+  // ═══════════════════════════════════════════════════════════
   y = checkPageBreak(doc, y, 25, data.priority);
-  { const sec = openAutoSection(doc, 'Officer / Location', y); y = sec.contentY;
-    addFieldPair(doc, 'Officer', data.officer_name, lx, y, hfw);
-    y = addFieldPair(doc, 'Location', data.location, rx, y, hfw);
-    if (data.section_id || data.zone_id || data.beat_id) {
-      y = addThreeColumnFields(doc, [
-        { label: 'Section ID', value: data.section_id || '' },
-        { label: 'Zone ID', value: data.zone_id || '' },
-        { label: 'Beat ID', value: data.beat_id || '' },
-      ], y);
-    }
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  y = drawFormSection(doc, {
+    sideTab: { label: 'CLIENT' },
+    rows: [
+      { cells: [
+        { label: '15. REQUESTOR NAME', value: data.pso_requestor_name || '', ratio: 2, valueBold: true },
+        { label: '16. PHONE', value: data.pso_requestor_phone || '', ratio: 1 },
+        { label: '17. EMAIL', value: data.pso_requestor_email || '', ratio: 2 },
+      ]},
+      { cells: [
+        { label: '18. BILLING CODE', value: data.pso_billing_code || '', ratio: 1 },
+        { label: '19. AUTHORIZATION / PO#', value: data.pso_authorization || '', ratio: 2 },
+        { label: '20. PSO SERVICE TYPE', value: (data.pso_service_type || '').replace(/_/g, ' ').toUpperCase(), ratio: 2 },
+      ]},
+    ],
+    y,
+  });
 
-  // Date / Time
-  y = checkPageBreak(doc, y, 20, data.priority);
-  { const sec = openAutoSection(doc, 'Date / Time', y); y = sec.contentY;
-    addFieldPair(doc, 'Occurred Date', data.occurred_date || '', lx, y, hfw);
-    y = addFieldPair(doc, 'Occurred Time', data.occurred_time || '', rx, y, hfw);
-    addFieldPair(doc, 'End Date', data.end_date || '', lx, y, hfw);
-    y = addFieldPair(doc, 'End Time', data.end_time || '', rx, y, hfw);
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  // ═══════════════════════════════════════════════════════════
+  // SERVICE — service details grid
+  // ═══════════════════════════════════════════════════════════
+  y = checkPageBreak(doc, y, 30, data.priority);
+  y = drawFormSection(doc, {
+    sideTab: { label: 'SERVICE' },
+    rows: [
+      { cells: [
+        { label: '21. DOCUMENT TYPE', value: serviceTypeLabel, ratio: 1, valueBold: true },
+        { label: '22. SERVE TO (NAME)', value: data.process_served_to || '', ratio: 2, valueBold: true },
+      ]},
+      { cells: [
+        { label: '23. SERVICE ADDRESS', value: data.process_served_address || data.location || '', ratio: 1, valueBold: true },
+      ]},
+      { cells: [
+        { label: '24. ATTEMPTS MADE', value: String(data.process_attempts || 0), ratio: 1 },
+        { label: '25. SERVED AT', value: data.process_served_at || '', ratio: 1 },
+        { label: '26. SERVICE RESULT', value: (data.process_service_result || '').replace(/_/g, ' ').toUpperCase(), ratio: 2, valueBold: true },
+      ]},
+    ],
+    y,
+  });
 
   // Flags
-  y = checkPageBreak(doc, y, 20, data.priority);
-  { const sec = openAutoSection(doc, 'Flags', y); y = sec.contentY;
-    let flagX = lx;
-    flagX = addCheckboxField(doc, 'Evidence', !!data.evidence_collected, flagX, y);
-    flagX = addCheckboxField(doc, 'BWC Active', !!data.body_camera_active, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'Photos', !!data.photos_taken, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'LE Notified', !!data.le_notified, flagX + SPACING.SM, y);
-    addCheckboxField(doc, 'Supvr Notified', !!data.supervisor_notified, flagX + SPACING.SM, y);
-    y += SPACING.XL;
-    y = closeAutoSection(doc, sec.sectionY, y);
-  }
+  const psFlags: CheckboxItem[] = [
+    { label: 'Evidence Collected', checked: !!data.evidence_collected },
+    { label: 'BWC Active', checked: !!data.body_camera_active },
+    { label: 'Photos Taken', checked: !!data.photos_taken },
+    { label: 'LE Notified', checked: !!data.le_notified },
+    { label: 'Supervisor Notified', checked: !!data.supervisor_notified },
+  ];
+  y = drawCheckboxGrid(doc, psFlags, gridX, y, 5, gridW);
+  y += SPACING.SECTION_GAP;
+
+  // GPS Activity Log
+  y = addGpsActivityLogSection(doc, data, y, data.priority);
 
   // Narrative
   y = addNarrativeSection(doc, 'Narrative / Service Notes', data.narrative || '', y, data.priority);
 
-  // Linked Persons (subjects being served)
+  // Linked Persons
   if (data.linked_persons && data.linked_persons.length > 0) {
     y = checkPageBreak(doc, y, 25, data.priority);
     const sec = openAutoSection(doc, 'Linked Persons', y); y = sec.contentY;
-    const colPositions = [lx, LAYOUT.PAGE_MARGIN + 50, LAYOUT.PAGE_MARGIN + 100, LAYOUT.PAGE_MARGIN + 135];
+    const colPositions = [gridX, gridX + 50, gridX + 100];
     const tableHeaders = [
       { label: 'NAME', x: colPositions[0] },
       { label: 'ROLE', x: colPositions[1] },

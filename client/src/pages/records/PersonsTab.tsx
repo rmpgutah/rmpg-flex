@@ -106,6 +106,8 @@ function mapDbPerson(row: Record<string, unknown>): Person {
     known_associates: row.known_associates ? String(row.known_associates) : undefined,
     emergency_contact_relationship: row.emergency_contact_relationship ? String(row.emergency_contact_relationship) : undefined,
     caution_flags: row.caution_flags ? String(row.caution_flags) : undefined,
+    watchlist_match: row.watchlist_match ? String(row.watchlist_match) : null,
+    watchlist_checked_at: row.watchlist_checked_at ? String(row.watchlist_checked_at) : null,
     flags: parseFlags(row.flags),
     notes: row.notes ? String(row.notes) : undefined,
     incident_ids: [],
@@ -250,6 +252,14 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
     if (selectedPerson.gang_affiliation) {
       alerts.push({ type: 'flag', priority: 'high', title: 'GANG AFFILIATION', description: `Affiliated with: ${selectedPerson.gang_affiliation}` });
     }
+    if (selectedPerson.watchlist_match) {
+      let matchNames = '';
+      try {
+        const parsed = JSON.parse(selectedPerson.watchlist_match);
+        matchNames = Array.isArray(parsed) ? parsed.map((m: { name?: string; program?: string }) => `${m.name || 'Unknown'} (${m.program || '?'})`).join(', ') : '';
+      } catch { matchNames = 'See details'; }
+      alerts.push({ type: 'flag', priority: 'critical', title: 'OFAC WATCHLIST MATCH', description: `U.S. Treasury sanctions match: ${matchNames}` });
+    }
     if (flagsLower.some(f => f.includes('pre-trial') || f.includes('pts') || f.includes('pretrial'))) {
       alerts.push({ type: 'flag', priority: 'high', title: 'PRE-TRIAL SUPERVISION', description: 'Subject is under pre-trial supervision — verify compliance conditions' });
     }
@@ -386,6 +396,9 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
                   {person.is_sex_offender && (
                     <span className="px-1 py-0.5 text-[8px] font-bold bg-red-900/60 text-red-400 border border-red-700/50">RSO</span>
                   )}
+                  {person.watchlist_match && (
+                    <span className="px-1 py-0.5 text-[8px] font-bold bg-red-900/80 text-red-300 border border-red-500/70 animate-pulse">OFAC</span>
+                  )}
                 </div>
                 <div className="flex items-center gap-3 mt-0.5 text-[10px] text-rmpg-400">
                   {person.date_of_birth && <span>DOB: {person.date_of_birth}</span>}
@@ -498,13 +511,14 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
       <div className="px-4 pt-3 pb-2 border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
         <AlertBanner alerts={personAlerts} />
         {/* Special Flags */}
-        {(selectedPerson.flags.length > 0 || selectedPerson.is_sex_offender || selectedPerson.is_veteran || selectedPerson.gang_affiliation || (selectedPerson.probation_parole && selectedPerson.probation_parole !== 'None')) && (
+        {(selectedPerson.flags.length > 0 || selectedPerson.is_sex_offender || selectedPerson.is_veteran || selectedPerson.gang_affiliation || selectedPerson.watchlist_match || (selectedPerson.probation_parole && selectedPerson.probation_parole !== 'None')) && (
           <div className="flex flex-wrap gap-2 mt-1">
             {selectedPerson.flags.map((flag) => (
               <span key={flag} className={`inline-flex items-center px-2 py-0.5 text-[10px] font-semibold border ${FLAG_COLORS[flag] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
                 {flag}
               </span>
             ))}
+            {selectedPerson.watchlist_match && <span className="px-2 py-0.5 text-[10px] font-bold bg-red-900/80 text-red-300 border border-red-500/70 animate-pulse">⚠ OFAC WATCHLIST MATCH</span>}
             {selectedPerson.is_sex_offender && <span className="px-2 py-0.5 text-[10px] font-bold bg-red-900/50 text-red-400 border border-red-700/50">SEX OFFENDER</span>}
             {selectedPerson.is_veteran && <span className="px-2 py-0.5 text-[10px] font-bold bg-brand-900/50 text-brand-400 border border-brand-700/50">VETERAN</span>}
             {selectedPerson.gang_affiliation && <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-900/50 text-amber-400 border border-amber-700/50">GANG: {selectedPerson.gang_affiliation}</span>}
