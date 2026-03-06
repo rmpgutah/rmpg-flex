@@ -40,6 +40,7 @@ import {
   Gavel,
   Terminal,
   CreditCard,
+  Microscope,
 } from 'lucide-react';
 import { Navigation2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -95,6 +96,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/dar': 'Daily Activity Reports',
   '/offender-registry': 'Offender Registry',
   '/reports': 'Reports',
+  '/forensics': 'Digital Forensics',
   '/audit': 'Audit Log',
   '/admin': 'Admin',
 };
@@ -122,6 +124,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/field-interviews', icon: ClipboardList, label: 'Field Interviews' },
     { path: '/criminal-history', icon: Search, label: 'Criminal History' },
     { path: '/dl-search', icon: CreditCard, label: 'DL Search' },
+    { path: '/skip-tracer', icon: Search, label: 'Skip Tracer' },
     { path: '/evidence', icon: Package, label: 'Evidence / Property' },
     { path: '/cases', icon: Briefcase, label: 'Case Management' },
   ]},
@@ -151,6 +154,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/crime-analysis', icon: TrendingUp, label: 'Crime Analysis' },
     { path: '/dar', icon: ClipboardCheck, label: 'Daily Activity' },
   ]},
+  { path: '/forensics', icon: Microscope, label: 'Forensics', group: 'analysis', adminOnly: true },
   { path: '/audit', icon: ScrollText, label: 'Audit', group: 'system', adminOnly: true },
   { path: '/admin', icon: Settings, label: 'Admin', group: 'system', adminOnly: true },
 ];

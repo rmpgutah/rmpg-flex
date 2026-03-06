@@ -125,7 +125,9 @@ export function drawFormCell(
     doc.setFontSize(cell.valueFontSize || FONT.SIZE_FORM_CELL_VALUE);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
-    const valueY = y + SPACING.FORM_CELL_LABEL_H + pad + 2.5;
+    // Center value vertically between label bottom and cell bottom
+    const labelBottom = SPACING.FORM_CELL_LABEL_H + pad + 1;
+    const valueY = y + labelBottom + (h - labelBottom) / 2 + 0.8;
     const maxW = w - 2 * pad;
 
     if (cell.align === 'center') {

@@ -72,8 +72,10 @@ function getInstallerInfo(): {
   mac?: InstallerMeta;
   win?: InstallerMeta;
   android?: InstallerMeta;
+  iped_mac?: InstallerMeta;
+  iped_win?: InstallerMeta;
 } {
-  const result: { mac?: InstallerMeta; win?: InstallerMeta; android?: InstallerMeta } = {};
+  const result: { mac?: InstallerMeta; win?: InstallerMeta; android?: InstallerMeta; iped_mac?: InstallerMeta; iped_win?: InstallerMeta } = {};
 
   if (!fs.existsSync(DOWNLOADS_DIR)) return result;
 
@@ -91,6 +93,22 @@ function getInstallerInfo(): {
       bytes: stat.size,
       releaseDate: stat.mtime.toISOString(),
     };
+
+    // IPED bundles: IPED-{version}-mac.zip, IPED-{version}-win.zip
+    const ipedMatch = file.match(/^IPED-[\d.]+-(mac|win)\.zip$/i);
+    if (ipedMatch) {
+      const platform = ipedMatch[1].toLowerCase();
+      if (platform === 'mac') {
+        if (!result.iped_mac || isVersionLessThan(result.iped_mac.version, meta.version)) {
+          result.iped_mac = meta;
+        }
+      } else if (platform === 'win') {
+        if (!result.iped_win || isVersionLessThan(result.iped_win.version, meta.version)) {
+          result.iped_win = meta;
+        }
+      }
+      continue; // Don't double-match as regular installer
+    }
 
     if (file.endsWith('.dmg') && !file.includes('blockmap')) {
       if (!result.mac || isVersionLessThan(result.mac.version, meta.version)) {

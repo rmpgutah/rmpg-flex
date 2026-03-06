@@ -23,6 +23,9 @@ import { startDailyReportScheduler } from './utils/dailyReportGenerator';
 import { startClearPathGpsPoller } from './utils/clearPathGpsPoller';
 import { scheduleOfacSync, searchOfacLocal } from './utils/ofacScraper';
 import { scheduleUtahWarrantSync } from './utils/utahWarrantScraper';
+import { scheduleArrestSync } from './utils/arrestScraper';
+import { scheduleJailRosterSync } from './utils/jailRosterScraper';
+import { scheduleOverlayReprocessing } from './utils/videoOverlay';
 import { getDb } from './models/database';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -65,6 +68,8 @@ import shiftPlanRoutes from './routes/shiftPlans';
 import downloadsRoutes, { mountDownloadFileRoute } from './routes/downloads';
 import serveManagerRoutes from './routes/servemanager';
 import microbiltRoutes from './routes/microbilt';
+import arrestRoutes from './routes/arrests';
+import jailRosterRoutes from './routes/jailRoster';
 import clearPathGpsRoutes from './routes/clearpathgps';
 import dlRecordRoutes from './routes/dlRecords';
 import fieldInterviewRoutes from './routes/fieldInterviews';
@@ -76,6 +81,8 @@ import darRoutes from './routes/dar';
 import offenderRegistryRoutes from './routes/offenderRegistry';
 import offlineRoutes from './routes/offline';
 import companyDocumentsRoutes from './routes/companyDocuments';
+import ipedRoutes from './routes/iped';
+import skiptracerRoutes from './routes/skiptracer';
 
 const app = express();
 
@@ -233,6 +240,8 @@ app.use('/api/downloads', downloadsRoutes);
 app.use('/api/updates', downloadsRoutes);
 app.use('/api/servemanager', serveManagerRoutes);
 app.use('/api/microbilt', microbiltRoutes);
+app.use('/api/arrests', arrestRoutes);
+app.use('/api/jail-roster', jailRosterRoutes);
 app.use('/api/clearpathgps', clearPathGpsRoutes);
 app.use('/api/dl-records', dlRecordRoutes);
 app.use('/api/field-interviews', fieldInterviewRoutes);
@@ -244,6 +253,8 @@ app.use('/api/dar', darRoutes);
 app.use('/api/offender-registry', offenderRegistryRoutes);
 app.use('/api/offline', offlineRoutes);
 app.use('/api/company-documents', companyDocumentsRoutes);
+app.use('/api/iped', ipedRoutes);
+app.use('/api/skiptracer', skiptracerRoutes);
 
 // Mount download page and file serving routes (outside /api)
 // Also mounts /updates/latest.yml, /updates/latest-mac.yml for electron-updater
@@ -395,6 +406,10 @@ try {
     console.log('║    /api/citations  - Citations / Summons          ║');
     console.log('║    /api/invoices   - Invoice Management           ║');
     console.log('║    /api/servemanager - ServeManager               ║');
+    console.log('║    /api/arrests    - Arrest Records (JailBase)   ║');
+    console.log('║    /api/jail-roster - Jail Roster Scraper         ║');
+    console.log('║    /api/iped       - IPED Digital Forensics      ║');
+    console.log('║    /api/skiptracer - Skip Tracer (RapidAPI)      ║');
     console.log('║    /api/health     - Health Check                ║');
     console.log('╚══════════════════════════════════════════════════╝');
     console.log('');
@@ -413,6 +428,15 @@ try {
 
     // Start Utah state warrant scraper (syncs daily at midnight from warrants.utah.gov)
     scheduleUtahWarrantSync();
+
+    // Start JailBase arrest record sync (hourly from RapidAPI)
+    scheduleArrestSync();
+
+    // Start Utah county jail roster scraper (scrapes county jail websites/PDFs)
+    scheduleJailRosterSync();
+
+    // Check for pending video overlay processing (60s after startup)
+    scheduleOverlayReprocessing();
 
     // Auto-backfill OFAC screening for existing person records (runs 60s after boot
     // to allow OFAC data sync to complete first)

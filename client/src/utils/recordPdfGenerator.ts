@@ -1023,70 +1023,63 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // FREE-FORM — GPS, Notes, Narrative, Attachments, Signatures
   // ═══════════════════════════════════════════════════════════
 
-  // GPS Activity Log
-  y = checkPageBreak(doc, y, 30, prio);
-  { const sec = openAutoSection(doc, 'GPS Activity Log', y); y = sec.contentY;
-    const trail = data.breadcrumb_trail;
-    if (trail && trail.points.length > 0) {
-      const stats = trail.stats;
-      y = addThreeColumnFields(doc, [
-        { label: 'Total Distance', value: `${stats.total_distance_miles} mi` },
-        { label: 'Duration', value: `${stats.duration_minutes} min` },
-        { label: 'Avg Speed', value: `${stats.avg_speed_mph} mph` },
-        { label: 'Max Speed', value: `${stats.max_speed_mph} mph` },
-        { label: 'Breadcrumb Points', value: String(stats.total_points) },
-        { label: 'Sources', value: stats.source_breakdown
-          ? Object.entries(stats.source_breakdown).map(([k, v]) => `${k.toUpperCase()}: ${v}`).join(', ')
-          : '' },
-      ], y);
-      y += SPACING.SM;
+  // GPS Activity Log — only render when breadcrumb data exists
+  const trail = data.breadcrumb_trail;
+  if (trail && trail.points && trail.points.length > 0) {
+    y = checkPageBreak(doc, y, 30, prio);
+    const sec = openAutoSection(doc, 'GPS Activity Log', y); y = sec.contentY;
+    const stats = trail.stats;
+    y = addThreeColumnFields(doc, [
+      { label: 'Total Distance', value: `${stats.total_distance_miles} mi` },
+      { label: 'Duration', value: `${stats.duration_minutes} min` },
+      { label: 'Avg Speed', value: `${stats.avg_speed_mph} mph` },
+      { label: 'Max Speed', value: `${stats.max_speed_mph} mph` },
+      { label: 'Breadcrumb Points', value: String(stats.total_points) },
+      { label: 'Sources', value: stats.source_breakdown
+        ? Object.entries(stats.source_breakdown).map(([k, v]) => `${k.toUpperCase()}: ${v}`).join(', ')
+        : '' },
+    ], y);
+    y += SPACING.SM;
 
-      const maxRows = 50;
-      const step = trail.points.length > maxRows ? Math.ceil(trail.points.length / maxRows) : 1;
-      const sampled = trail.points.filter((_, i) => i % step === 0 || i === trail.points.length - 1);
+    const maxRows = 50;
+    const step = trail.points.length > maxRows ? Math.ceil(trail.points.length / maxRows) : 1;
+    const sampled = trail.points.filter((_: any, i: number) => i % step === 0 || i === trail.points.length - 1);
 
-      const colPositions = [lx, LAYOUT.PAGE_MARGIN + 38, LAYOUT.PAGE_MARGIN + 100, LAYOUT.PAGE_MARGIN + 130, LAYOUT.PAGE_MARGIN + 155];
-      const tableHeaders = [
-        { label: 'TIME', x: colPositions[0] },
-        { label: 'LOCATION / ROAD', x: colPositions[1] },
-        { label: 'SPEED', x: colPositions[2] },
-        { label: 'SOURCE', x: colPositions[3] },
-        { label: 'UNIT', x: colPositions[4] },
-      ];
-      const tableRows = sampled.map(p => {
-        let timeStr = '';
-        try {
-          timeStr = new Date(p.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-        } catch { timeStr = p.time; }
-        let locationStr = `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`;
-        if (p.road_name) {
-          locationStr = p.road_name;
-          if (p.nearest_intersection) locationStr += ` / ${p.nearest_intersection}`;
-        }
-        return [
-          timeStr,
-          locationStr,
-          p.speed_mph != null ? `${p.speed_mph} mph` : '-',
-          (p.source || 'unknown').toUpperCase(),
-          p.call_sign || '',
-        ];
-      });
-
-      y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
-
-      if (step > 1) {
-        doc.setFontSize(5);
-        doc.setTextColor(...COLOR.TEXT_TERTIARY);
-        doc.text(`Showing ${sampled.length} of ${trail.points.length} breadcrumb points (sampled every ${step} points)`, lx, y + 1);
-        doc.setTextColor(...COLOR.TEXT_PRIMARY);
-        y += SPACING.MD;
+    const colPositions = [lx, LAYOUT.PAGE_MARGIN + 38, LAYOUT.PAGE_MARGIN + 100, LAYOUT.PAGE_MARGIN + 130, LAYOUT.PAGE_MARGIN + 155];
+    const tableHeaders = [
+      { label: 'TIME', x: colPositions[0] },
+      { label: 'LOCATION / ROAD', x: colPositions[1] },
+      { label: 'SPEED', x: colPositions[2] },
+      { label: 'SOURCE', x: colPositions[3] },
+      { label: 'UNIT', x: colPositions[4] },
+    ];
+    const tableRows = sampled.map((p: any) => {
+      let timeStr = '';
+      try {
+        timeStr = new Date(p.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+      } catch { timeStr = p.time; }
+      let locationStr = `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`;
+      if (p.road_name) {
+        locationStr = p.road_name;
+        if (p.nearest_intersection) locationStr += ` / ${p.nearest_intersection}`;
       }
-    } else {
-      doc.setFontSize(FONT.SIZE_TABLE_BODY);
+      return [
+        timeStr,
+        locationStr,
+        p.speed_mph != null ? `${p.speed_mph} mph` : '-',
+        (p.source || 'unknown').toUpperCase(),
+        p.call_sign || '',
+      ];
+    });
+
+    y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
+
+    if (step > 1) {
+      doc.setFontSize(5);
       doc.setTextColor(...COLOR.TEXT_TERTIARY);
-      doc.text('No GPS breadcrumb data available for this call', lx, y);
+      doc.text(`Showing ${sampled.length} of ${trail.points.length} breadcrumb points (sampled every ${step} points)`, lx, y + 1);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      y += SPACING.XL;
+      y += SPACING.MD;
     }
     y = closeAutoSection(doc, sec.sectionY, y);
   }
@@ -2590,13 +2583,18 @@ export async function downloadRecordPdf<T extends RecordPdfType>(
   setActiveBranding(branding);
   await loadPdfAssets();
 
-  // Extract officer digital signature from enriched data
+  // Always populate officer info (name, badge, date) even without a digital signature image
   const anyData = data as any;
-  if (anyData._officerSignature) {
+  const officerName = anyData.officer_name || anyData.responding_officer || anyData.full_name || anyData.issuing_officer_name || '';
+  const hasOfficerInfo = anyData._officerSignature || officerName || anyData.badge_number;
+  if (hasOfficerInfo) {
     setActiveOfficerSignature({
-      signatureImage: anyData._officerSignature,
-      printedName: anyData.officer_name || anyData.full_name || anyData.issuing_officer_name || '',
+      signatureImage: anyData._officerSignature || null,
+      printedName: officerName,
       badgeNumber: anyData.badge_number || '',
+      date: anyData.created_at
+        ? new Date(anyData.created_at).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
+        : new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }),
     });
   } else {
     setActiveOfficerSignature(undefined);
@@ -2618,13 +2616,18 @@ export async function generateRecordPdfBlobUrl<T extends RecordPdfType>(
   setActiveBranding(branding);
   await loadPdfAssets();
 
-  // Extract officer digital signature from enriched data
+  // Always populate officer info (name, badge, date) even without a digital signature image
   const anyData = data as any;
-  if (anyData._officerSignature) {
+  const officerName = anyData.officer_name || anyData.responding_officer || anyData.full_name || anyData.issuing_officer_name || '';
+  const hasOfficerInfo = anyData._officerSignature || officerName || anyData.badge_number;
+  if (hasOfficerInfo) {
     setActiveOfficerSignature({
-      signatureImage: anyData._officerSignature,
-      printedName: anyData.officer_name || anyData.full_name || anyData.issuing_officer_name || '',
+      signatureImage: anyData._officerSignature || null,
+      printedName: officerName,
       badgeNumber: anyData.badge_number || '',
+      date: anyData.created_at
+        ? new Date(anyData.created_at).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
+        : new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }),
     });
   } else {
     setActiveOfficerSignature(undefined);

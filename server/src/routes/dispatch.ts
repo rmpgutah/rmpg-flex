@@ -2003,14 +2003,15 @@ router.post('/calls/:id/generate-incident', (req: Request, res: Response) => {
       return;
     }
 
-    // Generate incident number: RMP-YY-NNNNN-CODE
-    const incidentNumber = generateIncidentNumber(db, call.incident_type);
+    // Generate incident number: RKY-YY-NNNNN-CODE
+    const incType = call.incident_type || 'general';
+    const incidentNumber = generateIncidentNumber(db, incType);
 
     // Build narrative template from call data
     const narrativeParts: string[] = [];
     narrativeParts.push(`Incident generated from dispatch call ${call.call_number}.`);
-    narrativeParts.push(`\nCall Type: ${(call.incident_type || '').replace(/_/g, ' ').toUpperCase()}`);
-    narrativeParts.push(`Priority: ${call.priority}`);
+    narrativeParts.push(`\nCall Type: ${incType.replace(/_/g, ' ').toUpperCase()}`);
+    narrativeParts.push(`Priority: ${call.priority || 'P3'}`);
     narrativeParts.push(`Location: ${call.location_address || 'Unknown'}`);
     if (call.property_name) narrativeParts.push(`Property: ${call.property_name}`);
     if (call.caller_name) narrativeParts.push(`Caller: ${call.caller_name}${call.caller_phone ? ` (${call.caller_phone})` : ''}`);
@@ -2028,13 +2029,19 @@ router.post('/calls/:id/generate-incident', (req: Request, res: Response) => {
 
     const result = db.prepare(`
       INSERT INTO incidents (incident_number, call_id, incident_type, priority, status, location_address,
-        property_id, latitude, longitude, narrative, officer_id)
-      VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?)
+        property_id, latitude, longitude, narrative, officer_id,
+        zone_beat, section_id, zone_id, beat_id, domestic_violence, weapons_involved, injuries, created_by)
+      VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      incidentNumber, call.id, call.incident_type, call.priority,
+      incidentNumber, call.id, incType, call.priority || 'P3',
       call.location_address || call.property_address || null,
       call.property_id || null, call.latitude || null, call.longitude || null,
-      narrative, req.user!.userId
+      narrative, req.user!.userId,
+      call.zone_beat || null, call.section_id || null,
+      call.zone_id || null, call.beat_id || null,
+      call.domestic_violence || 0, call.weapons_involved || 0,
+      call.injuries_reported || 0, req.user!.userId
     );
 
     const incident = db.prepare(`

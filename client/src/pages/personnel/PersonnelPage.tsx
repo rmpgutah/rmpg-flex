@@ -43,6 +43,8 @@ import BodyCameraFormModal from './modals/BodyCameraFormModal';
 import type { BodyCameraFormData } from './modals/BodyCameraFormModal';
 import VideoUploadModal from '../../components/VideoUploadModal';
 import VideoPlayer from '../../components/VideoPlayer';
+import VideoEditModal from '../../components/VideoEditModal';
+import type { BodyCamVideoEditData } from '../../components/VideoEditModal';
 import DeploymentFormModal from './modals/DeploymentFormModal';
 import type { DeploymentFormData } from './modals/DeploymentFormModal';
 import OfficerFormModal from './modals/OfficerFormModal';
@@ -107,6 +109,7 @@ export default function PersonnelPage() {
   const [bodyCameraEditData, setBodyCameraEditData] = useState<(Partial<BodyCameraFormData> & { id?: number }) | undefined>(undefined);
   const [bodyCameraModalMode, setBodyCameraModalMode] = useState<'create' | 'edit'>('create');
   const [playingVideo, setPlayingVideo] = useState<BodyCamVideo | null>(null);
+  const [editingVideo, setEditingVideo] = useState<BodyCamVideo | null>(null);
 
   // Dash camera data (ClearPathGPS)
   const [dashcamEvents, setDashcamEvents] = useState<DashcamEvent[]>([]);
@@ -605,6 +608,41 @@ export default function PersonnelPage() {
     }
   };
 
+  const handleVideoEdit = async (videoId: number, data: BodyCamVideoEditData) => {
+    setIsSubmitting(true);
+    try {
+      // Capture original values to detect overlay-relevant changes
+      const original = editingVideo;
+      await apiFetch(`/personnel/bodycam-videos/${videoId}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      });
+      await refreshBodyCameras();
+      setEditingVideo(null);
+      addToast('Video updated', 'success');
+      // Auto-reprocess overlay if overlay-affecting fields changed
+      if (original && original.overlay_status === 'complete') {
+        const overlayChanged =
+          original.classification !== data.classification ||
+          (original.case_number || '') !== data.case_number ||
+          (original.recorded_at ? original.recorded_at.slice(0, 16) : '') !== data.recorded_at;
+        if (overlayChanged) {
+          try {
+            await apiFetch(`/personnel/bodycam-videos/${videoId}/reprocess`, { method: 'POST' });
+            await refreshBodyCameras();
+            addToast('Overlay reprocessing started', 'info');
+          } catch {
+            addToast('Video saved but overlay reprocess failed', 'warning');
+          }
+        }
+      }
+    } catch {
+      addToast('Failed to update video', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleDeploymentSubmit = async (data: DeploymentFormData) => {
     setIsSubmitting(true);
     try {
@@ -965,6 +1003,7 @@ export default function PersonnelPage() {
       onDeleteBodyCamera={handleBodyCameraDelete}
       onUploadVideo={() => setModal('upload_video')}
       onDeleteVideo={handleVideoDelete}
+      onEditVideo={setEditingVideo}
       onPlayVideo={setPlayingVideo}
       dashcamEvents={officerDashcamEvents}
       dashcamDeviceMapping={officerDeviceMapping}
@@ -1269,6 +1308,15 @@ export default function PersonnelPage() {
           if (token) headers['Authorization'] = `Bearer ${token}`;
           return headers;
         }}
+        onEditVideo={(vid) => { setPlayingVideo(null); setEditingVideo(vid); }}
+      />
+
+      <VideoEditModal
+        isOpen={!!editingVideo}
+        onClose={() => setEditingVideo(null)}
+        onSave={handleVideoEdit}
+        video={editingVideo}
+        isSubmitting={isSubmitting}
       />
 
       <DeploymentFormModal

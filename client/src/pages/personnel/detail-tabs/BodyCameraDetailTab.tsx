@@ -15,6 +15,7 @@ interface Props {
   onDeleteCamera: (camId: number) => void;
   onUploadVideo: () => void;
   onDeleteVideo: (videoId: number) => void;
+  onEditVideo: (video: BodyCamVideo) => void;
   onPlayVideo: (video: BodyCamVideo) => void;
   loading: boolean;
 }
@@ -27,6 +28,7 @@ export default function BodyCameraDetailTab({
   onDeleteCamera,
   onUploadVideo,
   onDeleteVideo,
+  onEditVideo,
   onPlayVideo,
   loading,
 }: Props) {
@@ -256,6 +258,13 @@ export default function BodyCameraDetailTab({
                         title="Play video"
                       >
                         <Play className="w-3 h-3" />
+                      </button>
+                      <button
+                        onClick={() => onEditVideo(vid)}
+                        className="toolbar-btn p-1"
+                        title="Edit video metadata"
+                      >
+                        <Edit2 className="w-3 h-3" />
                       </button>
                       <button
                         onClick={() => onDeleteVideo(vid.id)}

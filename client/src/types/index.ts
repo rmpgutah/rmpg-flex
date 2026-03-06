@@ -722,6 +722,8 @@ export interface BodyCamera {
   officer_name?: string;
 }
 
+export type OverlayStatus = 'pending' | 'processing' | 'complete' | 'error';
+
 export interface BodyCamVideo {
   id: number;
   camera_id: number;
@@ -735,12 +737,45 @@ export interface BodyCamVideo {
   case_number: string;
   classification: VideoClassification;
   retention_status: VideoRetention;
+  overlay_status?: OverlayStatus;
+  overlay_error?: string;
   notes: string;
   uploaded_by: string;
   created_at: string;
   updated_at: string;
   officer_name?: string;
   camera_serial?: string;
+}
+
+// --- Dash Camera Video (Fleet/Vehicle-mounted) ---
+
+export interface DashCamVideo {
+  id: number;
+  vehicle_id: number | null;
+  unit_id: number | null;
+  title: string;
+  file_path: string;
+  file_size: number;
+  duration_seconds: number;
+  mime_type: string;
+  recorded_at: string;
+  speed_mph: number | null;
+  latitude: number | null;
+  longitude: number | null;
+  address: string | null;
+  overlay_status: OverlayStatus;
+  overlay_error?: string;
+  classification: string;
+  case_number: string | null;
+  notes: string | null;
+  uploaded_by: string;
+  created_at: string;
+  updated_at: string;
+  vehicle_number?: string;
+  vehicle_make?: string;
+  vehicle_model?: string;
+  vehicle_year?: number;
+  unit_call_sign?: string;
 }
 
 // --- Dash Camera (ClearPathGPS) ---

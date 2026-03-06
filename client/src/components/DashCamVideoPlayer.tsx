@@ -1,19 +1,18 @@
 // ============================================================
-// RMPG Flex — Body Camera Video Player Modal
+// RMPG Flex — Dash Camera Video Player Modal
 // ============================================================
 
 import React from 'react';
-import { X, Video, Shield, FileText, CheckCircle, AlertTriangle, Loader2, Edit2 } from 'lucide-react';
-import type { BodyCamVideo } from '../types';
-import { VIDEO_CLASSIFICATION_COLORS } from '../pages/personnel/utils/personnelConstants';
+import { X, Video, Car, MapPin, Gauge, CheckCircle, AlertTriangle, Loader2, Edit2 } from 'lucide-react';
+import type { DashCamVideo } from '../types';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  video: BodyCamVideo | null;
+  video: DashCamVideo | null;
   apiBase: string;
   getAuthHeaders: () => Record<string, string>;
-  onEditVideo?: (video: BodyCamVideo) => void;
+  onEditVideo?: (video: DashCamVideo) => void;
 }
 
 const OVERLAY_STATUS_BADGE: Record<string, { label: string; cls: string; icon: React.ElementType }> = {
@@ -23,7 +22,7 @@ const OVERLAY_STATUS_BADGE: Record<string, { label: string; cls: string; icon: R
   error:      { label: 'Overlay Failed',      cls: 'bg-red-900/40 text-red-400 border-red-700/40',        icon: AlertTriangle },
 };
 
-export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHeaders, onEditVideo }: Props) {
+export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, getAuthHeaders, onEditVideo }: Props) {
   if (!isOpen || !video) return null;
 
   const formatDate = (d?: string) => {
@@ -41,18 +40,24 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
   };
 
   const formatSize = (bytes: number) => {
+    if (!bytes) return '-';
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
     if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
   };
 
-  const classLabel = (cls: string) => cls.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  const formatCoords = (lat: number | null, lon: number | null) => {
+    if (lat == null || lon == null) return '-';
+    const latDir = lat >= 0 ? 'N' : 'S';
+    const lonDir = lon >= 0 ? 'E' : 'W';
+    return `${Math.abs(lat).toFixed(4)}\u00B0 ${latDir}, ${Math.abs(lon).toFixed(4)}\u00B0 ${lonDir}`;
+  };
 
-  // Build a stream URL with auth token in query param for <video> element
   const headers = getAuthHeaders();
   const token = headers['Authorization']?.replace('Bearer ', '') || '';
-  const streamUrl = `${apiBase}/personnel/bodycam-videos/${video.id}/stream?token=${encodeURIComponent(token)}`;
+  const streamUrl = `${apiBase}/fleet/dashcam-videos/${video.id}/stream?token=${encodeURIComponent(token)}`;
 
+  const vehDesc = [video.vehicle_year, video.vehicle_make, video.vehicle_model].filter(Boolean).join(' ');
   const overlayInfo = OVERLAY_STATUS_BADGE[video.overlay_status || 'pending'];
   const OverlayIcon = overlayInfo?.icon || Loader2;
 
@@ -62,14 +67,8 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700 bg-surface-raised">
           <div className="flex items-center gap-2 min-w-0">
-            <Video className="w-4 h-4 text-brand-400 flex-shrink-0" />
+            <Car className="w-4 h-4 text-brand-400 flex-shrink-0" />
             <h2 className="text-sm font-bold text-rmpg-100 truncate">{video.title}</h2>
-            <span className={`text-[9px] px-1.5 py-0.5 font-bold flex-shrink-0 ${
-              VIDEO_CLASSIFICATION_COLORS[video.classification] || 'bg-rmpg-700 text-rmpg-300'
-            }`}>
-              {classLabel(video.classification)}
-            </span>
-            {/* Overlay status badge */}
             {overlayInfo && (
               <span className={`text-[9px] px-1.5 py-0.5 font-semibold flex items-center gap-1 border rounded flex-shrink-0 ${overlayInfo.cls}`}>
                 <OverlayIcon className={`w-2.5 h-2.5 ${video.overlay_status === 'processing' || video.overlay_status === 'pending' ? 'animate-spin' : ''}`} />
@@ -91,12 +90,7 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
 
         {/* Video Player */}
         <div className="bg-black">
-          <video
-            controls
-            autoPlay
-            className="w-full max-h-[50vh]"
-            src={streamUrl}
-          >
+          <video controls autoPlay className="w-full max-h-[50vh]" src={streamUrl}>
             Your browser does not support the video tag.
           </video>
         </div>
@@ -105,12 +99,12 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
         <div className="p-4 space-y-3">
           <div className="grid grid-cols-4 gap-4">
             <div>
-              <p className="field-label flex items-center gap-1"><Shield className="w-2.5 h-2.5" /> Officer</p>
-              <p className="text-xs text-rmpg-100">{video.officer_name || '-'}</p>
+              <p className="field-label flex items-center gap-1"><Car className="w-2.5 h-2.5" /> Vehicle</p>
+              <p className="text-xs text-rmpg-100">{video.vehicle_number ? `#${video.vehicle_number}` : '-'}{vehDesc ? ` — ${vehDesc}` : ''}</p>
             </div>
             <div>
-              <p className="field-label">Camera</p>
-              <p className="text-xs text-rmpg-100 font-mono">{video.camera_serial || '-'}</p>
+              <p className="field-label">Unit</p>
+              <p className="text-xs text-rmpg-100 font-mono">{video.unit_call_sign || '-'}</p>
             </div>
             <div>
               <p className="field-label">Duration</p>
@@ -128,20 +122,26 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
               <p className="text-xs text-rmpg-100 font-mono">{formatDate(video.recorded_at)}</p>
             </div>
             <div>
-              <p className="field-label">Uploaded</p>
-              <p className="text-xs text-rmpg-100 font-mono">{formatDate(video.created_at)}</p>
+              <p className="field-label flex items-center gap-1"><Gauge className="w-2.5 h-2.5" /> Speed</p>
+              <p className="text-xs text-rmpg-100 font-mono">{video.speed_mph != null ? `${video.speed_mph} MPH` : '-'}</p>
             </div>
             <div>
-              <p className="field-label flex items-center gap-1"><FileText className="w-2.5 h-2.5" /> Case #</p>
+              <p className="field-label flex items-center gap-1"><MapPin className="w-2.5 h-2.5" /> Coordinates</p>
+              <p className="text-xs text-rmpg-100 font-mono">{formatCoords(video.latitude, video.longitude)}</p>
+            </div>
+            <div>
+              <p className="field-label">Case #</p>
               <p className="text-xs text-rmpg-100 font-mono">{video.case_number || '-'}</p>
-            </div>
-            <div>
-              <p className="field-label">Retention</p>
-              <p className="text-xs text-rmpg-100 capitalize">{video.retention_status?.replace(/_/g, ' ') || '-'}</p>
             </div>
           </div>
 
-          {/* Overlay error details */}
+          {video.address && (
+            <div className="panel-inset px-3 py-2">
+              <p className="field-label flex items-center gap-1 mb-0.5"><MapPin className="w-2.5 h-2.5" /> Location</p>
+              <p className="text-xs text-rmpg-100">{video.address}</p>
+            </div>
+          )}
+
           {video.overlay_status === 'error' && video.overlay_error && (
             <div className="panel-beveled p-2 border border-red-700/40 bg-red-900/20">
               <p className="text-[10px] text-red-400"><AlertTriangle className="w-3 h-3 inline mr-1" />Overlay Error: {video.overlay_error}</p>

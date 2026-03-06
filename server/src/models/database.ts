@@ -510,6 +510,90 @@ function createTables(): void {
       synced_at TEXT DEFAULT (datetime('now','localtime'))
     );
 
+    -- ── ARREST RECORDS — JailBase county arrest data ──
+    CREATE TABLE IF NOT EXISTS arrest_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      jailbase_id TEXT,
+      source_id TEXT,
+      source_name TEXT,
+      full_name TEXT NOT NULL,
+      first_name TEXT,
+      last_name TEXT,
+      middle_name TEXT,
+      date_of_birth TEXT,
+      booking_date TEXT,
+      release_date TEXT,
+      charges TEXT,
+      mugshot_url TEXT,
+      details_url TEXT,
+      county TEXT,
+      status TEXT DEFAULT 'active',
+      raw_record TEXT,
+      fetched_at TEXT DEFAULT (datetime('now','localtime')),
+      updated_at TEXT DEFAULT (datetime('now','localtime')),
+      UNIQUE(jailbase_id, source_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_arrest_full_name ON arrest_records(full_name COLLATE NOCASE);
+    CREATE INDEX IF NOT EXISTS idx_arrest_last_name ON arrest_records(last_name COLLATE NOCASE);
+    CREATE INDEX IF NOT EXISTS idx_arrest_first_name ON arrest_records(first_name COLLATE NOCASE);
+    CREATE INDEX IF NOT EXISTS idx_arrest_booking ON arrest_records(booking_date);
+    CREATE INDEX IF NOT EXISTS idx_arrest_source ON arrest_records(source_id);
+    CREATE INDEX IF NOT EXISTS idx_arrest_county ON arrest_records(county);
+
+    CREATE TABLE IF NOT EXISTS arrest_sync_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_id TEXT,
+      records_count INTEGER DEFAULT 0,
+      counties_synced INTEGER DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'pending',
+      error_message TEXT,
+      duration_ms INTEGER,
+      synced_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS arrest_cross_links (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      arrest_record_id INTEGER NOT NULL,
+      linked_type TEXT NOT NULL,
+      linked_id INTEGER NOT NULL,
+      match_type TEXT DEFAULT 'name',
+      match_confidence REAL DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (arrest_record_id) REFERENCES arrest_records(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_crosslink_arrest ON arrest_cross_links(arrest_record_id);
+    CREATE INDEX IF NOT EXISTS idx_crosslink_type ON arrest_cross_links(linked_type, linked_id);
+
+    -- ── Jail Roster Scraper ──────────────────────────
+    CREATE TABLE IF NOT EXISTS jail_roster_sync_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      county TEXT NOT NULL,
+      records_found INTEGER DEFAULT 0,
+      records_new INTEGER DEFAULT 0,
+      records_updated INTEGER DEFAULT 0,
+      records_released INTEGER DEFAULT 0,
+      details_fetched INTEGER DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'pending',
+      error_message TEXT,
+      duration_ms INTEGER,
+      synced_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_jail_sync_county ON jail_roster_sync_log(county);
+
+    CREATE TABLE IF NOT EXISTS jail_roster_config (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      county TEXT NOT NULL UNIQUE,
+      display_name TEXT,
+      roster_url TEXT,
+      roster_type TEXT DEFAULT 'html',
+      enabled INTEGER DEFAULT 0,
+      scrape_interval_minutes INTEGER DEFAULT 30,
+      last_scrape_at TEXT,
+      consecutive_errors INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      updated_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+
     CREATE TABLE IF NOT EXISTS microbilt_searches (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       product TEXT NOT NULL,
@@ -909,6 +993,8 @@ function createTables(): void {
     CREATE INDEX IF NOT EXISTS idx_bodycam_videos_officer ON bodycam_videos(officer_id);
     CREATE INDEX IF NOT EXISTS idx_bodycam_videos_case ON bodycam_videos(case_number);
 
+    -- Dash camera video footage (table created via migration if not existing)
+
     -- ── Two-Factor Authentication ─────────────────────────
     CREATE TABLE IF NOT EXISTS user_totp_secrets (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1061,6 +1147,69 @@ function createTables(): void {
     CREATE INDEX IF NOT EXISTS idx_dashcam_events_device_time ON dashcam_events(cpg_device_id, event_timestamp);
     CREATE INDEX IF NOT EXISTS idx_dashcam_events_unit ON dashcam_events(unit_id);
     CREATE INDEX IF NOT EXISTS idx_dashcam_events_type ON dashcam_events(event_type);
+
+    -- IPED Digital Forensics — processing job tracking
+    CREATE TABLE IF NOT EXISTS iped_jobs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      evidence_id INTEGER,
+      job_type TEXT NOT NULL CHECK(job_type IN ('hash','process','triage','csam_scan')),
+      status TEXT NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','running','completed','failed','cancelled')),
+      profile TEXT DEFAULT 'forensic',
+      input_path TEXT NOT NULL,
+      output_path TEXT,
+      source_type TEXT,
+      started_at TEXT,
+      completed_at TEXT,
+      progress_percent INTEGER DEFAULT 0,
+      items_found INTEGER DEFAULT 0,
+      items_processed INTEGER DEFAULT 0,
+      error_message TEXT,
+      result_summary TEXT,
+      created_by INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (evidence_id) REFERENCES evidence(id),
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_iped_jobs_evidence ON iped_jobs(evidence_id);
+    CREATE INDEX IF NOT EXISTS idx_iped_jobs_status ON iped_jobs(status);
+
+    -- IPED Digital Forensics — hash results for evidence files
+    CREATE TABLE IF NOT EXISTS digital_evidence_hashes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      evidence_id INTEGER,
+      attachment_id INTEGER,
+      iped_job_id INTEGER,
+      file_name TEXT NOT NULL,
+      file_path TEXT,
+      file_size INTEGER,
+      mime_type TEXT,
+      md5 TEXT,
+      sha1 TEXT,
+      sha256 TEXT,
+      sha512 TEXT,
+      photodna_hash TEXT,
+      phash TEXT,
+      dhash TEXT,
+      hash_set_match INTEGER DEFAULT 0,
+      hash_set_name TEXT,
+      hash_set_category TEXT,
+      match_confidence REAL,
+      flagged INTEGER DEFAULT 0,
+      flag_reason TEXT,
+      reviewed_by INTEGER,
+      reviewed_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (evidence_id) REFERENCES evidence(id),
+      FOREIGN KEY (attachment_id) REFERENCES attachments(id),
+      FOREIGN KEY (iped_job_id) REFERENCES iped_jobs(id),
+      FOREIGN KEY (reviewed_by) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_deh_evidence_id ON digital_evidence_hashes(evidence_id);
+    CREATE INDEX IF NOT EXISTS idx_deh_md5 ON digital_evidence_hashes(md5);
+    CREATE INDEX IF NOT EXISTS idx_deh_sha256 ON digital_evidence_hashes(sha256);
+    CREATE INDEX IF NOT EXISTS idx_deh_photodna ON digital_evidence_hashes(photodna_hash);
+    CREATE INDEX IF NOT EXISTS idx_deh_flagged ON digital_evidence_hashes(flagged);
   `);
 }
 
@@ -2674,6 +2823,180 @@ function migrateSchema(): void {
 
   addCol('sessions', 'device_fingerprint', 'TEXT');
   addCol('sessions', 'device_name', 'TEXT');
+
+  // ── ARREST RECORDS -- JailBase county arrest data tables ──
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS arrest_records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        jailbase_id TEXT,
+        source_id TEXT,
+        source_name TEXT,
+        full_name TEXT NOT NULL,
+        first_name TEXT,
+        last_name TEXT,
+        middle_name TEXT,
+        date_of_birth TEXT,
+        booking_date TEXT,
+        release_date TEXT,
+        charges TEXT,
+        mugshot_url TEXT,
+        details_url TEXT,
+        county TEXT,
+        status TEXT DEFAULT 'active',
+        raw_record TEXT,
+        fetched_at TEXT DEFAULT (datetime('now','localtime')),
+        updated_at TEXT DEFAULT (datetime('now','localtime')),
+        UNIQUE(jailbase_id, source_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_arrest_full_name ON arrest_records(full_name COLLATE NOCASE);
+      CREATE INDEX IF NOT EXISTS idx_arrest_last_name ON arrest_records(last_name COLLATE NOCASE);
+      CREATE INDEX IF NOT EXISTS idx_arrest_first_name ON arrest_records(first_name COLLATE NOCASE);
+      CREATE INDEX IF NOT EXISTS idx_arrest_booking ON arrest_records(booking_date);
+      CREATE INDEX IF NOT EXISTS idx_arrest_source ON arrest_records(source_id);
+      CREATE INDEX IF NOT EXISTS idx_arrest_county ON arrest_records(county);
+
+      CREATE TABLE IF NOT EXISTS arrest_sync_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_id TEXT,
+        records_count INTEGER DEFAULT 0,
+        counties_synced INTEGER DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'pending',
+        error_message TEXT,
+        duration_ms INTEGER,
+        synced_at TEXT DEFAULT (datetime('now','localtime'))
+      );
+
+      CREATE TABLE IF NOT EXISTS arrest_cross_links (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        arrest_record_id INTEGER NOT NULL,
+        linked_type TEXT NOT NULL,
+        linked_id INTEGER NOT NULL,
+        match_type TEXT DEFAULT 'name',
+        match_confidence REAL DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (arrest_record_id) REFERENCES arrest_records(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_crosslink_arrest ON arrest_cross_links(arrest_record_id);
+      CREATE INDEX IF NOT EXISTS idx_crosslink_type ON arrest_cross_links(linked_type, linked_id);
+    `);
+  } catch { /* tables already exist */ }
+
+  // ── ARREST / JAIL ROSTER — manual entry columns ──
+  addCol('arrest_records', 'booking_number', 'TEXT');
+  addCol('arrest_records', 'agency', 'TEXT');
+  addCol('arrest_records', 'gender', 'TEXT');
+  addCol('arrest_records', 'race', 'TEXT');
+  addCol('arrest_records', 'height', 'TEXT');
+  addCol('arrest_records', 'weight', 'TEXT');
+  addCol('arrest_records', 'hair_color', 'TEXT');
+  addCol('arrest_records', 'eye_color', 'TEXT');
+  addCol('arrest_records', 'address', 'TEXT');
+  addCol('arrest_records', 'bail_amount', 'REAL');
+  addCol('arrest_records', 'hold_reason', 'TEXT');
+  addCol('arrest_records', 'notes', 'TEXT');
+  addCol('arrest_records', 'entry_source', "TEXT DEFAULT 'api'");
+  addCol('arrest_records', 'entered_by', 'INTEGER');
+  addCol('arrest_records', 'created_at', "TEXT DEFAULT (datetime('now','localtime'))");
+  addCol('arrest_records', 'detail_fetched', 'INTEGER DEFAULT 0');
+  addCol('arrest_records', 'person_id', 'INTEGER');  // Manual link to persons table
+
+  // ── Jail Roster Scraper seed data ──
+  try {
+    const hasConfig = db.prepare("SELECT COUNT(*) as cnt FROM jail_roster_config").get() as any;
+    if (!hasConfig || hasConfig.cnt === 0) {
+      db.prepare(`INSERT OR IGNORE INTO jail_roster_config (county, display_name, roster_url, roster_type, enabled) VALUES
+        ('weber', 'Weber County', 'https://www.webercountyutah.gov/sheriff/roster/index.php', 'html', 1),
+        ('davis', 'Davis County', 'https://www.daviscountyutah.gov/sheriff/inmate-roster', 'html', 0),
+        ('iron', 'Iron County', 'https://api2025.ironcounty.net/inmate-bookings', 'json', 0),
+        ('uinta', 'Uinta County', 'https://inmateroster.uintacounty.com/CURRENT_INMATE_LIST.pdf', 'pdf', 0),
+        ('summit', 'Summit County', 'https://www.summitcountysheriff.org/DocumentCenter/View/24970/Inmates20250305', 'pdf', 0),
+        ('salt_lake', 'Salt Lake County', 'https://iml.saltlakecounty.gov/IML', 'html', 0)
+      `).run();
+    }
+  } catch { /* table may already be seeded */ }
+
+  // ── IPED Digital Forensics tables ──
+  addCol('evidence', 'iped_processed', 'INTEGER DEFAULT 0');
+  addCol('evidence', 'iped_last_job_id', 'INTEGER');
+  addCol('evidence', 'hash_count', 'INTEGER DEFAULT 0');
+  addCol('evidence', 'flagged_hash_count', 'INTEGER DEFAULT 0');
+
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS iped_jobs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        evidence_id INTEGER,
+        job_type TEXT NOT NULL CHECK(job_type IN ('hash','process','triage','csam_scan')),
+        status TEXT NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','running','completed','failed','cancelled')),
+        profile TEXT DEFAULT 'forensic',
+        input_path TEXT NOT NULL,
+        output_path TEXT,
+        source_type TEXT,
+        started_at TEXT,
+        completed_at TEXT,
+        progress_percent INTEGER DEFAULT 0,
+        items_found INTEGER DEFAULT 0,
+        items_processed INTEGER DEFAULT 0,
+        error_message TEXT,
+        result_summary TEXT,
+        created_by INTEGER NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (evidence_id) REFERENCES evidence(id),
+        FOREIGN KEY (created_by) REFERENCES users(id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_iped_jobs_evidence ON iped_jobs(evidence_id);
+      CREATE INDEX IF NOT EXISTS idx_iped_jobs_status ON iped_jobs(status);
+
+      CREATE TABLE IF NOT EXISTS digital_evidence_hashes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        evidence_id INTEGER,
+        attachment_id INTEGER,
+        iped_job_id INTEGER,
+        file_name TEXT NOT NULL,
+        file_path TEXT,
+        file_size INTEGER,
+        mime_type TEXT,
+        md5 TEXT,
+        sha1 TEXT,
+        sha256 TEXT,
+        sha512 TEXT,
+        photodna_hash TEXT,
+        phash TEXT,
+        dhash TEXT,
+        hash_set_match INTEGER DEFAULT 0,
+        hash_set_name TEXT,
+        hash_set_category TEXT,
+        match_confidence REAL,
+        flagged INTEGER DEFAULT 0,
+        flag_reason TEXT,
+        reviewed_by INTEGER,
+        reviewed_at TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (evidence_id) REFERENCES evidence(id),
+        FOREIGN KEY (attachment_id) REFERENCES attachments(id),
+        FOREIGN KEY (iped_job_id) REFERENCES iped_jobs(id),
+        FOREIGN KEY (reviewed_by) REFERENCES users(id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_deh_evidence_id ON digital_evidence_hashes(evidence_id);
+      CREATE INDEX IF NOT EXISTS idx_deh_md5 ON digital_evidence_hashes(md5);
+      CREATE INDEX IF NOT EXISTS idx_deh_sha256 ON digital_evidence_hashes(sha256);
+      CREATE INDEX IF NOT EXISTS idx_deh_photodna ON digital_evidence_hashes(photodna_hash);
+      CREATE INDEX IF NOT EXISTS idx_deh_flagged ON digital_evidence_hashes(flagged);
+    `);
+  } catch { /* tables already exist */ }
+
+  // ── VIDEO OVERLAY -- bodycam overlay processing columns ──
+  addCol('bodycam_videos', 'overlay_status', "TEXT DEFAULT 'pending'");
+  addCol('bodycam_videos', 'processed_file_path', 'TEXT');
+  addCol('bodycam_videos', 'overlay_error', 'TEXT');
+
+  // ── DASHCAM VIDEOS -- add vehicle_id + overlay columns (table may exist from ClearPathGPS) ──
+  addCol('dashcam_videos', 'vehicle_id', 'INTEGER');
+  addCol('dashcam_videos', 'overlay_status', "TEXT DEFAULT 'pending'");
+  addCol('dashcam_videos', 'processed_file_path', 'TEXT');
+  addCol('dashcam_videos', 'overlay_error', 'TEXT');
 
   console.log('Schema migration completed.');
 }

@@ -21,6 +21,10 @@ export function getNcicLineClass(line: string): string {
   if (t.startsWith('*** NCIC RESPONSE') || t.startsWith('*** END OF')) return 'ncic-c-header';
   if (t.startsWith('HDR/') || t.startsWith('ORI/')) return 'ncic-c-header';
   if (t.startsWith('*** UTAH COURTS') || t.startsWith('*** DL MANUAL')) return 'ncic-c-header';
+  if (t.startsWith('*** END OF BACKGROUND') || t.startsWith('*** END OF ARREST') || t.startsWith('*** END OF SKIP TRACER')) return 'ncic-c-header';
+
+  // Cached result indicator — amber
+  if (t.startsWith('CACHED RESULT FROM')) return 'ncic-c-caution';
 
   // Pure divider lines (all ─ or ═ characters) — dim
   if (/^[─═]+$/.test(t)) return 'ncic-c-dim';
@@ -31,13 +35,16 @@ export function getNcicLineClass(line: string): string {
     t.startsWith('*** STOLEN') || t.startsWith('*** HAZARD') ||
     t.startsWith('*** PREMISE WARNINGS') ||
     t.startsWith('*** OFAC WATCHLIST') || t.startsWith('*** OFAC CONSOLIDATED') ||
+    t.startsWith('*** SEX OFFENDER') ||
     /\*\*\* \d+ ACTIVE WARRANT/.test(t) ||
+    /\*\*\* \d+ LINKED WARRANT/.test(t) ||
+    t.startsWith('*** ARREST RECORDS') ||
     t.includes('WARNINGS PRESENT') || t.includes('EXERCISE CAUTION')
   ) return 'ncic-c-danger';
 
   // Section headers using ═══ — white, unless they contain danger keywords
   if (t.includes('═══')) {
-    if (t.includes('OFAC') || t.includes('TRESPASS') || t.includes('WARRANT')) return 'ncic-c-danger';
+    if (t.includes('OFAC') || t.includes('TRESPASS') || t.includes('WARRANT') || t.includes('SEX OFFENDER') || (t.includes('ARREST') && t.includes('***'))) return 'ncic-c-danger';
     return 'ncic-c-section';
   }
 
@@ -584,11 +591,50 @@ export function formatAddressResponse(results: AddressLookupResults, searchTerm:
 
 // ─── Cross-Reference Query Response ────────────────────────
 
+// ── Arrest Record Types ─────────────────────────────────────
+
+export interface NcicArrestRecord {
+  id?: number;
+  full_name?: string;
+  first_name?: string;
+  last_name?: string;
+  middle_name?: string;
+  date_of_birth?: string;
+  booking_date?: string;
+  release_date?: string;
+  charges?: string[];
+  county?: string;
+  source_name?: string;
+  mugshot_url?: string;
+  status?: string;
+  // ── Manual booking fields ──
+  booking_number?: string;
+  agency?: string;
+  gender?: string;
+  race?: string;
+  height?: string;
+  weight?: string;
+  hair_color?: string;
+  eye_color?: string;
+  address?: string;
+  bail_amount?: number;
+  hold_reason?: string;
+  notes?: string;
+  entry_source?: string;   // 'manual' | 'csv' | 'api'
+  cross_links?: {
+    warrants?: { warrant_number: string; charge_description: string; status: string; bail_amount?: number }[];
+    court_events?: { event_number: string; event_type: string; court_name: string; event_date: string }[];
+    persons?: { id: number; first_name: string; last_name: string }[];
+  };
+}
+
 export interface CrossReferenceResults {
   persons: { person: NcicPerson; criminalHistory: NcicCriminalHistory[]; warrants: NcicWarrant[] }[];
   directWarrants: (NcicWarrant & { subject_first_name?: string; subject_last_name?: string; subject_dob?: string })[];
   dlSubjects: NcicDlSubject[];
   ofacSubjects: NcicOfacSubject[];
+  arrestRecords: NcicArrestRecord[];
+  skipTracerPeople: SkipTracerPerson[];
   errors: string[];
 }
 
@@ -686,7 +732,7 @@ export function formatCrossReferenceResponse(results: CrossReferenceResults, sea
     }
   } else {
     lines.push('  ═══ DRIVER\'S LICENSE ═══');
-    lines.push('  NO RECORD FOUND');
+    lines.push('  NO RECORD FOUND — NO LOCAL DL RECORDS OR API DATA');
     lines.push('');
   }
 
@@ -704,6 +750,64 @@ export function formatCrossReferenceResponse(results: CrossReferenceResults, sea
     }
   } else {
     lines.push('  ═══ OFAC SANCTIONS ═══');
+    lines.push('  NO RECORD FOUND');
+    lines.push('');
+  }
+
+  // ── Section 5: Arrest Records
+  if (results.arrestRecords && results.arrestRecords.length > 0) {
+    totalHits += results.arrestRecords.length;
+    const hasActiveArrests = results.arrestRecords.some(r => r.status === 'active');
+    if (hasActiveArrests) hasWarnings = true;
+    lines.push(`  ═══ ${hasActiveArrests ? '*** ' : ''}ARREST RECORDS — ${results.arrestRecords.length} MATCH(ES)${hasActiveArrests ? ' ***' : ''} ═══`);
+    for (const r of results.arrestRecords) {
+      lines.push(`  NAM/${pad((r.last_name || '').toUpperCase(), 20)},${pad((r.first_name || '').toUpperCase(), 15)}`);
+      const descLine: string[] = [];
+      if (r.gender) descLine.push(`SEX/${r.gender.toUpperCase()}`);
+      if (r.race) descLine.push(`RAC/${r.race.toUpperCase()}`);
+      descLine.push(`DOB/${r.date_of_birth || 'N/A'}`);
+      if (descLine.length > 1) lines.push(`  ${descLine.join('  ')}`);
+      lines.push(`  BKG/${r.booking_date || 'N/A'}  CTY/${pad((r.county || '').toUpperCase(), 20)}  STS/${pad((r.status || 'UNKNOWN').toUpperCase(), 10)}`);
+      if (r.agency) lines.push(`  AGY/${r.agency.toUpperCase()}`);
+      if (r.bail_amount) lines.push(`  BAL/$${Number(r.bail_amount).toLocaleString()}`);
+      if (r.charges && r.charges.length > 0) {
+        lines.push(`  CHG/${r.charges[0].toUpperCase()}`);
+        if (r.charges.length > 1) lines.push(`    ... +${r.charges.length - 1} MORE CHARGE(S)`);
+      }
+      if (r.cross_links?.warrants && r.cross_links.warrants.length > 0) {
+        lines.push(`  *** ${r.cross_links.warrants.length} LINKED WARRANT(S) ***`);
+      }
+      if (r.entry_source && r.entry_source !== 'api') lines.push(`  ENT/${r.entry_source.toUpperCase()}`);
+      lines.push('');
+    }
+  } else {
+    lines.push('  ═══ ARREST RECORDS ═══');
+    lines.push('  NO RECORD FOUND');
+    lines.push('');
+  }
+
+  // ── Section 6: Skip Tracer (RapidAPI)
+  if (results.skipTracerPeople && results.skipTracerPeople.length > 0) {
+    totalHits += results.skipTracerPeople.length;
+    lines.push(`  ═══ SKIP TRACER — ${results.skipTracerPeople.length} MATCH(ES) ═══`);
+    lines.push(`  SRC/RAPIDAPI SKIP TRACING`);
+    for (const p of results.skipTracerPeople.slice(0, 5)) {
+      if (p.Name) lines.push(`  NAM/${p.Name.toUpperCase()}`);
+      if (p['Person ID']) lines.push(`  PID/${p['Person ID']}`);
+      if (p.Age) lines.push(`  AGE/${p.Age}`);
+      if (p['Lives in']) lines.push(`  ADR/${p['Lives in'].toUpperCase()}`);
+      if (p['Related to']) {
+        const rels = p['Related to'].split(';').map(s => s.trim()).filter(Boolean);
+        lines.push(`  REL/${rels.slice(0, 3).join(', ').toUpperCase()}`);
+      }
+      lines.push('');
+    }
+    if (results.skipTracerPeople.length > 5) {
+      lines.push(`  ... +${results.skipTracerPeople.length - 5} MORE — USE QS FOR FULL RESULTS`);
+      lines.push('');
+    }
+  } else {
+    lines.push('  ═══ SKIP TRACER ═══');
     lines.push('  NO RECORD FOUND');
     lines.push('');
   }
@@ -726,6 +830,249 @@ export function formatCrossReferenceResponse(results: CrossReferenceResults, sea
   lines.push(`─`.repeat(60));
   lines.push('*** END OF CROSS-REFERENCE ***');
 
+  return lines.join('\n');
+}
+
+// ─── Background Check Query Response ────────────────────────
+
+export interface BackgroundRecord {
+  record_type: string;      // 'CRIMINAL' | 'COURT' | 'SEX_OFFENDER'
+  source: string;           // 'STATE_CRIMINAL', 'FEDERAL_COURT', 'NATIONAL_REGISTRY', etc.
+  subject_name: string;
+  dob?: string;
+  offense?: string;
+  offense_date?: string;
+  case_number?: string;
+  court?: string;
+  disposition?: string;
+  sentence?: string;
+  state?: string;
+  status?: string;          // 'ACTIVE' | 'CLOSED' | 'REGISTERED'
+  tier?: string;            // For sex offender: 'TIER_1', 'TIER_2', 'TIER_3'
+  registry_address?: string;
+}
+
+export function formatBackgroundResponse(
+  records: BackgroundRecord[],
+  searchTerm: string,
+  cached?: boolean,
+  cachedAt?: string,
+): string {
+  if (records.length === 0) return noRecord('BACKGROUND', searchTerm);
+
+  const lines: string[] = [header('BACKGROUND CHECK', 'QB')];
+
+  // Group records by type
+  const criminal = records.filter(r => r.record_type === 'CRIMINAL');
+  const court = records.filter(r => r.record_type === 'COURT');
+  const sexOffender = records.filter(r => r.record_type === 'SEX_OFFENDER');
+
+  // ── Criminal Records
+  if (criminal.length > 0) {
+    lines.push('');
+    lines.push(`  ═══ CRIMINAL RECORDS — ${criminal.length} ═══`);
+    for (const r of criminal) {
+      if (r.subject_name) lines.push(`  NAM/${r.subject_name.toUpperCase()}`);
+      if (r.dob) lines.push(`  DOB/${ncicDate(r.dob)}`);
+      lines.push(`  OFF/${(r.offense || 'UNKNOWN').toUpperCase()}`);
+      if (r.offense_date) lines.push(`  DTM/${ncicDate(r.offense_date)}`);
+      if (r.court) lines.push(`  CRT/${r.court.toUpperCase()}`);
+      if (r.case_number) lines.push(`  CSE/${r.case_number.toUpperCase()}`);
+      if (r.disposition) lines.push(`  DSP/${r.disposition.toUpperCase()}`);
+      if (r.sentence) lines.push(`  SEN/${r.sentence.toUpperCase()}`);
+      if (r.state) lines.push(`  STA/${r.state.toUpperCase()}`);
+      if (r.status) lines.push(`  STS/${r.status.toUpperCase()}`);
+      lines.push('');
+    }
+  }
+
+  // ── Court / Public Records
+  if (court.length > 0) {
+    lines.push(`  ═══ COURT / PUBLIC RECORDS — ${court.length} ═══`);
+    for (const r of court) {
+      if (r.subject_name) lines.push(`  NAM/${r.subject_name.toUpperCase()}`);
+      lines.push(`  TYP/${(r.offense || 'COURT RECORD').toUpperCase()}`);
+      if (r.offense_date) lines.push(`  DTM/${ncicDate(r.offense_date)}`);
+      if (r.court) lines.push(`  CRT/${r.court.toUpperCase()}`);
+      if (r.case_number) lines.push(`  CSE/${r.case_number.toUpperCase()}`);
+      if (r.disposition) lines.push(`  DSP/${r.disposition.toUpperCase()}`);
+      if (r.state) lines.push(`  STA/${r.state.toUpperCase()}`);
+      if (r.status) lines.push(`  STS/${r.status.toUpperCase()}`);
+      lines.push('');
+    }
+  }
+
+  // ── Sex Offender Registry
+  if (sexOffender.length > 0) {
+    lines.push(`  ═══ *** SEX OFFENDER REGISTRY — ${sexOffender.length} HIT(S) *** ═══`);
+    for (const r of sexOffender) {
+      if (r.subject_name) lines.push(`  NAM/${r.subject_name.toUpperCase()}`);
+      if (r.dob) lines.push(`  DOB/${ncicDate(r.dob)}`);
+      lines.push(`  OFF/${(r.offense || 'REGISTERED SEX OFFENDER').toUpperCase()}`);
+      if (r.tier) lines.push(`  TIR/${r.tier.toUpperCase()}`);
+      if (r.state) lines.push(`  STA/${r.state.toUpperCase()}`);
+      lines.push(`  REG/${(r.status || 'REGISTERED').toUpperCase()}`);
+      if (r.registry_address) lines.push(`  ADR/${r.registry_address.toUpperCase()}`);
+      if (r.court) lines.push(`  JUR/${r.court.toUpperCase()}`);
+      if (r.offense_date) lines.push(`  DTM/${ncicDate(r.offense_date)}`);
+      lines.push('');
+    }
+  }
+
+  // Summary
+  lines.push(`  ${'─'.repeat(56)}`);
+  lines.push(`  ** ${records.length} RECORD(S) FOUND — ${cached ? 'CACHED' : 'LIVE SEARCH'} **`);
+  if (cached && cachedAt) {
+    const cachedDate = new Date(cachedAt);
+    const dateStr = `${String(cachedDate.getMonth() + 1).padStart(2, '0')}/${String(cachedDate.getDate()).padStart(2, '0')}/${cachedDate.getFullYear()}`;
+    lines.push(`  CACHED RESULT FROM ${dateStr} — USE QB! TO FORCE FRESH`);
+  }
+  if (sexOffender.length > 0) {
+    lines.push('  *** SEX OFFENDER MATCH — EXERCISE CAUTION ***');
+  }
+
+  lines.push(`${'─'.repeat(60)}`);
+  lines.push('*** END OF BACKGROUND CHECK ***');
+
+  return lines.join('\n');
+}
+
+// ── Arrest Record Formatter ─────────────────────────────────
+
+export function formatArrestResponse(records: NcicArrestRecord[], searchTerm: string): string {
+  if (!records || records.length === 0) return formatNoRecord('ARREST RECORDS', searchTerm);
+
+  const lines: string[] = [header('ARREST RECORDS', 'QR')];
+  lines.push('');
+  lines.push(`  ARREST RECORD QUERY — ${records.length} RESULT(S)`);
+  lines.push(`  ${'─'.repeat(56)}`);
+
+  for (const r of records) {
+    const lastName = (r.last_name || '').toUpperCase();
+    const firstName = (r.first_name || '').toUpperCase();
+    const src = (r.entry_source || 'api').toUpperCase();
+    lines.push('');
+    lines.push(`  NAM/${pad(lastName, 20)},${pad(firstName, 15)}`);
+    // Descriptors: sex, race, DOB, physical
+    const descParts: string[] = [];
+    if (r.gender) descParts.push(`SEX/${pad(r.gender.toUpperCase(), 1)}`);
+    if (r.race) descParts.push(`RAC/${pad(r.race.toUpperCase(), 1)}`);
+    descParts.push(`DOB/${r.date_of_birth || 'N/A'}`);
+    lines.push(`  ${descParts.join('  ')}`);
+    // Physical descriptors (if any)
+    const physParts: string[] = [];
+    if (r.height) physParts.push(`HGT/${pad(r.height.toUpperCase(), 4)}`);
+    if (r.weight) physParts.push(`WGT/${pad(r.weight, 3)}`);
+    if (r.eye_color) physParts.push(`EYE/${pad(r.eye_color.toUpperCase(), 3)}`);
+    if (r.hair_color) physParts.push(`HAI/${pad(r.hair_color.toUpperCase(), 3)}`);
+    if (physParts.length > 0) lines.push(`  ${physParts.join('  ')}`);
+    // Booking info
+    lines.push(`  BKG/${r.booking_date || 'N/A'}  CTY/${pad((r.county || '').toUpperCase(), 20)}  STS/${pad((r.status || 'UNKNOWN').toUpperCase(), 10)}`);
+    if (r.booking_number) lines.push(`  BKN/${r.booking_number.toUpperCase()}`);
+    if (r.agency) lines.push(`  AGY/${r.agency.toUpperCase()}`);
+    if (r.bail_amount) lines.push(`  BAL/$${Number(r.bail_amount).toLocaleString()}`);
+    if (r.hold_reason) lines.push(`  HLD/${r.hold_reason.toUpperCase()}`);
+    if (r.address) lines.push(`  ADR/${r.address.toUpperCase()}`);
+    if (r.release_date) lines.push(`  REL/${r.release_date}`);
+    // Source indicator
+    if (r.source_name) {
+      lines.push(`  SRC/${r.source_name.toUpperCase()}  ENT/${src}`);
+    } else {
+      lines.push(`  ENT/${src}`);
+    }
+
+    // Charges
+    if (r.charges && r.charges.length > 0) {
+      lines.push(`  CHG/${r.charges.length} CHARGE(S):`);
+      for (const ch of r.charges) {
+        lines.push(`    >> ${ch.toUpperCase()}`);
+      }
+    }
+
+    // Notes (manual entries may have officer notes)
+    if (r.notes) lines.push(`  NTE/${r.notes.toUpperCase()}`);
+
+    // Cross-linked warrants
+    if (r.cross_links?.warrants && r.cross_links.warrants.length > 0) {
+      lines.push(`  *** ${r.cross_links.warrants.length} LINKED WARRANT(S) ***`);
+      for (const w of r.cross_links.warrants) {
+        lines.push(`    OCA/${pad(w.warrant_number || 'N/A', 15)} CHG/${(w.charge_description || 'N/A').toUpperCase()}`);
+        lines.push(`    STS/${pad((w.status || '').toUpperCase(), 8)}  BAL/${w.bail_amount ? `$${Number(w.bail_amount).toLocaleString()}` : 'N/A'}`);
+      }
+    }
+
+    // Cross-linked court events
+    if (r.cross_links?.court_events && r.cross_links.court_events.length > 0) {
+      lines.push(`  --- LINKED COURT RECORDS: ${r.cross_links.court_events.length} ---`);
+      for (const ce of r.cross_links.court_events) {
+        lines.push(`    EVT/${pad(ce.event_number || '', 15)} ${(ce.event_type || '').toUpperCase()}`);
+        lines.push(`    CRT/${(ce.court_name || '').toUpperCase()}  DTE/${ce.event_date || 'N/A'}`);
+      }
+    }
+
+    // Cross-linked known persons
+    if (r.cross_links?.persons && r.cross_links.persons.length > 0) {
+      lines.push(`  >>> KNOWN PERSON MATCH: ${r.cross_links.persons.map(p => `${p.last_name}, ${p.first_name} (ID#${p.id})`).join('; ')}`);
+    }
+
+    lines.push(`  ${'─'.repeat(56)}`);
+  }
+
+  lines.push('');
+  lines.push('*** END OF ARREST RECORDS ***');
+  return lines.join('\n');
+}
+
+// ─── Skip Tracer Query Response ─────────────────────────────
+
+export interface SkipTracerPerson {
+  Name?: string;
+  'Person ID'?: string;
+  Age?: string;
+  'Lives in'?: string;
+  'Used to live in'?: string;
+  'Related to'?: string;
+  Link?: string;
+}
+
+export function formatSkipTracerResponse(
+  people: SkipTracerPerson[],
+  searchTerm: string,
+  totalRecords?: number,
+  searchType?: string,
+): string {
+  if (!people || people.length === 0) return noRecord('SKIP TRACER', searchTerm);
+
+  const lines: string[] = [header('SKIP TRACER', 'QS')];
+
+  lines.push('');
+  lines.push(`  SKIP TRACER — ${totalRecords || people.length} RESULT(S)`);
+  lines.push(`  SRC/RAPIDAPI SKIP TRACING  TYP/${(searchType || 'NAME').toUpperCase()}`);
+  lines.push(`  ${'─'.repeat(56)}`);
+
+  for (const p of people) {
+    lines.push('');
+    if (p.Name) lines.push(`  NAM/${p.Name.toUpperCase()}`);
+    if (p['Person ID']) lines.push(`  PID/${p['Person ID']}`);
+    if (p.Age) lines.push(`  AGE/${p.Age}`);
+    if (p['Lives in']) lines.push(`  ADR/${p['Lives in'].toUpperCase()}`);
+    if (p['Used to live in']) {
+      const priors = p['Used to live in'].split(';').map(s => s.trim()).filter(Boolean);
+      for (const prior of priors.slice(0, 3)) {
+        lines.push(`  PRA/${prior.toUpperCase()}`);
+      }
+      if (priors.length > 3) lines.push(`    ... +${priors.length - 3} MORE`);
+    }
+    if (p['Related to']) {
+      const relatives = p['Related to'].split(';').map(s => s.trim()).filter(Boolean);
+      lines.push(`  REL/${relatives.slice(0, 5).join(', ').toUpperCase()}`);
+      if (relatives.length > 5) lines.push(`    ... +${relatives.length - 5} MORE`);
+    }
+    lines.push(`  ${'─'.repeat(56)}`);
+  }
+
+  lines.push('');
+  lines.push('*** END OF SKIP TRACER ***');
   return lines.join('\n');
 }
 

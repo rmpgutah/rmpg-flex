@@ -45,6 +45,7 @@ const PRODUCT_CATALOG: { category: string; icon: React.ElementType; products: { 
     category: 'Background Screening',
     icon: FileSearch,
     products: [
+      { id: 'background_check', name: 'Background Check (QB Command)', desc: 'Combined criminal records, sex offender registry, and court records search via NCIC QB command' },
       { id: 'criminal_records', name: 'Criminal Records Search', desc: 'Search criminal history databases nationwide', credentialed: true },
       { id: 'sex_offender', name: 'Sex Offender Registry', desc: 'Search national sex offender registries' },
       { id: 'public_records', name: 'Public Records Search', desc: 'Search court records, liens, judgments, and bankruptcies' },
@@ -89,6 +90,51 @@ const PRODUCT_CATALOG: { category: string; icon: React.ElementType; products: { 
     ],
   },
 ];
+
+// Background Check usage stats sub-panel
+function BackgroundCheckUsagePanel() {
+  const [usage, setUsage] = useState<{
+    totalSearches: number;
+    totalHits: number;
+    hitRate: number;
+    uniqueSubjects: number;
+    last30Days: number;
+  } | null>(null);
+
+  useEffect(() => {
+    apiFetch<any>('/microbilt/background/usage')
+      .then(setUsage)
+      .catch(() => setUsage(null));
+  }, []);
+
+  if (!usage) return null;
+
+  return (
+    <div className="panel-beveled bg-surface-base p-3 space-y-2">
+      <div className="flex items-center gap-2 text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">
+        <FileSearch className="w-3.5 h-3.5" />
+        Background Check Usage (QB)
+      </div>
+      <div className="grid grid-cols-5 gap-2">
+        {[
+          { label: 'Total Searches', value: usage.totalSearches },
+          { label: 'Total Hits', value: usage.totalHits },
+          { label: 'Hit Rate', value: `${usage.hitRate}%` },
+          { label: 'Unique Subjects', value: usage.uniqueSubjects },
+          { label: 'Last 30 Days', value: usage.last30Days },
+        ].map(stat => (
+          <div key={stat.label} className="bg-surface-sunken p-2 rounded-sm text-center">
+            <div className="text-sm font-bold text-rmpg-100">{stat.value}</div>
+            <div className="text-[9px] text-rmpg-500 uppercase">{stat.label}</div>
+          </div>
+        ))}
+      </div>
+      <div className="text-[9px] text-rmpg-600">
+        Results are cached for 30 days to avoid duplicate API charges. Use QB! to force a fresh search.
+      </div>
+    </div>
+  );
+}
 
 export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: Props) {
   // Status
@@ -460,6 +506,11 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
           })}
         </div>
       </div>
+
+      {/* ═══ Section 3: Background Check Usage Stats ═══ */}
+      {status?.configured && status?.enabled_products?.includes('background_check') && (
+        <BackgroundCheckUsagePanel />
+      )}
 
       {/* Not configured hint */}
       {!status?.configured && (
