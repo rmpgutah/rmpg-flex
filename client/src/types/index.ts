@@ -1755,6 +1755,92 @@ export interface ForensicActivityLog {
   performed_at: string;
 }
 
+// --- IPED Digital Forensics Integration ---
+
+export type IpedImportType = 'case_link' | 'findings' | 'timeline' | 'report' | 'bookmarks' | 'items';
+
+export interface IpedCase {
+  id: string;
+  name: string;
+  path?: string;
+  totalItems?: number;
+  processedItems?: number;
+  categories?: Record<string, number>;
+}
+
+export interface IpedItem {
+  id: string;
+  name: string;
+  path?: string;
+  category?: string;
+  type?: string;
+  size?: number;
+  hash?: string;
+  md5?: string;
+  sha256?: string;
+  content_preview?: string;
+  metadata?: Record<string, any>;
+  bookmarked?: boolean;
+  created?: string;
+  modified?: string;
+  accessed?: string;
+}
+
+export interface IpedBookmark {
+  id: string;
+  name: string;
+  comment?: string;
+  itemIds?: string[];
+  itemCount?: number;
+}
+
+export interface IpedFinding {
+  id: string;
+  name: string;
+  path?: string;
+  category: string;
+  type?: string;
+  size?: number;
+  hash?: string;
+  content_preview?: string;
+  metadata?: Record<string, any>;
+  bookmarked?: boolean;
+}
+
+export interface IpedTimelineEvent {
+  timestamp: string;
+  type?: string;
+  description?: string;
+  name?: string;
+  path?: string;
+  source?: string;
+}
+
+export interface IpedImport {
+  id: number;
+  forensic_case_id: number;
+  import_type: IpedImportType;
+  iped_case_id: string;
+  iped_case_name?: string;
+  source_query?: string;
+  item_count: number;
+  imported_data: string;
+  summary?: string;
+  imported_by?: number;
+  imported_by_name?: string;
+  created_at: string;
+  // Joined fields
+  lab_number?: string;
+  case_title?: string;
+}
+
+export interface IpedConnectionStatus {
+  configured: boolean;
+  enabled: boolean;
+  baseUrl: string | null;
+  hasApiKey: boolean;
+}
+
 // --- Code Enforcement ---
 
 export type ViolationType = 'noise' | 'property_maintenance' | 'zoning' | 'signage' | 'health' | 'fire' | 'nuisance' | 'other';

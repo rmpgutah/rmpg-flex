@@ -2886,6 +2886,27 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_offender_alerts_type ON offender_alerts(alert_type);
     CREATE INDEX IF NOT EXISTS idx_offender_alerts_status ON offender_alerts(status);
     CREATE INDEX IF NOT EXISTS idx_offender_alerts_severity ON offender_alerts(severity);
+
+    -- ═══ IPED Digital Forensics Integration ═══
+
+    CREATE TABLE IF NOT EXISTS iped_imports (
+      id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+      forensic_case_id    INTEGER NOT NULL REFERENCES forensic_cases(id) ON DELETE CASCADE,
+      import_type         TEXT NOT NULL CHECK(import_type IN ('case_link','findings','timeline','report','bookmarks','items')),
+      iped_case_id        TEXT NOT NULL,
+      iped_case_name      TEXT,
+      source_query        TEXT,
+      item_count          INTEGER DEFAULT 0,
+      imported_data       TEXT DEFAULT '[]',
+      summary             TEXT,
+      imported_by         INTEGER REFERENCES users(id),
+      imported_by_name    TEXT,
+      created_at          TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_iped_imports_case ON iped_imports(forensic_case_id);
+    CREATE INDEX IF NOT EXISTS idx_iped_imports_iped ON iped_imports(iped_case_id);
+    CREATE INDEX IF NOT EXISTS idx_iped_imports_type ON iped_imports(import_type);
   `);
 }
 

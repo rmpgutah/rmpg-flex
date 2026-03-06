@@ -71,6 +71,7 @@ import offenderRegistryRoutes from './routes/offenderRegistry';
 import offlineRoutes from './routes/offline';
 import companyDocumentsRoutes from './routes/companyDocuments';
 import forensicsRoutes from './routes/forensics';
+import ipedRoutes from './routes/iped';
 
 const app = express();
 
@@ -176,6 +177,7 @@ app.use('/api/offender-registry', offenderRegistryRoutes);
 app.use('/api/offline', offlineRoutes);
 app.use('/api/company-documents', companyDocumentsRoutes);
 app.use('/api/forensics', forensicsRoutes);
+app.use('/api/iped', ipedRoutes);
 
 // Mount download page and file serving routes (outside /api)
 // Also mounts /updates/latest.yml, /updates/latest-mac.yml for electron-updater

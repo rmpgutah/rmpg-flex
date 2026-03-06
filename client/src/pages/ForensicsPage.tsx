@@ -11,11 +11,15 @@ import {
   X, Save, Loader2, Package, FlaskConical, Activity, Hash,
   ArrowRight, CheckCircle, AlertTriangle, Shield, Fingerprint,
   Trash2, Edit3, ChevronRight, Link2, Beaker, Eye, Lock,
+  HardDrive, Download, Globe, Database, Wifi, WifiOff, RefreshCw,
+  FileSearch, Tag, BookMarked, Calendar, Server,
 } from 'lucide-react';
 import type {
   ForensicCase, ForensicExhibit, ForensicAnalysis, ForensicActivityLog,
   ForensicCaseStatus, ForensicCaseType, ForensicPriority,
   ExhibitType, AnalysisType, AnalysisStatus, ExhibitDisposition,
+  IpedCase, IpedItem, IpedFinding, IpedImport, IpedConnectionStatus,
+  IpedBookmark, IpedTimelineEvent,
 } from '../types';
 import SplitPanel from '../components/SplitPanel';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -189,7 +193,25 @@ export default function ForensicsPage() {
   const [analysisSubmitting, setAnalysisSubmitting] = useState(false);
 
   // ── Detail tab ─────────────────────────────────────────
-  const [detailTab, setDetailTab] = useState<'exhibits' | 'analyses' | 'timeline'>('exhibits');
+  const [detailTab, setDetailTab] = useState<'exhibits' | 'analyses' | 'timeline' | 'iped'>('exhibits');
+
+  // ── IPED Integration state ────────────────────────────
+  const [ipedStatus, setIpedStatus] = useState<IpedConnectionStatus | null>(null);
+  const [ipedCases, setIpedCases] = useState<IpedCase[]>([]);
+  const [ipedSelectedCase, setIpedSelectedCase] = useState<IpedCase | null>(null);
+  const [ipedSearchQuery, setIpedSearchQuery] = useState('');
+  const [ipedSearchResults, setIpedSearchResults] = useState<IpedItem[]>([]);
+  const [ipedSearchTotal, setIpedSearchTotal] = useState(0);
+  const [ipedBookmarks, setIpedBookmarks] = useState<IpedBookmark[]>([]);
+  const [ipedFindings, setIpedFindings] = useState<IpedFinding[]>([]);
+  const [ipedImports, setIpedImports] = useState<IpedImport[]>([]);
+  const [ipedLoading, setIpedLoading] = useState(false);
+  const [ipedImporting, setIpedImporting] = useState(false);
+  const [ipedSubTab, setIpedSubTab] = useState<'browse' | 'findings' | 'bookmarks' | 'imports'>('browse');
+  // IPED setup form
+  const [ipedSetupOpen, setIpedSetupOpen] = useState(false);
+  const [ipedSetupForm, setIpedSetupForm] = useState({ baseUrl: '', apiKey: '' });
+  const [ipedSetupSubmitting, setIpedSetupSubmitting] = useState(false);
 
   // ── Form dirty tracking ────────────────────────────────
   const { isDirty: caseDirty, snapshot: caseSnapshot } = useFormDirty(caseForm, caseFormOpen);
@@ -257,6 +279,194 @@ export default function ForensicsPage() {
       if (updated) setSelected(updated);
     }
   }, [cases]);
+
+  // ── IPED data fetching ────────────────────────────────
+
+  const fetchIpedStatus = useCallback(async () => {
+    try {
+      const res = await apiFetch<IpedConnectionStatus>('/iped/status');
+      setIpedStatus(res);
+    } catch { setIpedStatus(null); }
+  }, []);
+
+  const fetchIpedCases = useCallback(async () => {
+    setIpedLoading(true);
+    try {
+      const res = await apiFetch<{ data: IpedCase[] }>('/iped/cases');
+      setIpedCases(res.data || []);
+    } catch { setIpedCases([]); }
+    finally { setIpedLoading(false); }
+  }, []);
+
+  const fetchIpedImports = useCallback(async (caseId: number) => {
+    try {
+      const res = await apiFetch<{ data: IpedImport[] }>(`/iped/imports/${caseId}`);
+      setIpedImports(res.data || []);
+    } catch { setIpedImports([]); }
+  }, []);
+
+  const handleIpedSearch = useCallback(async () => {
+    if (!ipedSelectedCase) return;
+    setIpedLoading(true);
+    try {
+      const q = ipedSearchQuery.trim() || '*';
+      const res = await apiFetch<{ data: any }>(`/iped/cases/${encodeURIComponent(ipedSelectedCase.id)}/search?q=${encodeURIComponent(q)}&pageSize=100`);
+      const items = Array.isArray(res.data?.items || res.data) ? (res.data?.items || res.data) : [];
+      setIpedSearchResults(items);
+      setIpedSearchTotal(res.data?.totalItems || items.length);
+    } catch { setIpedSearchResults([]); setIpedSearchTotal(0); }
+    finally { setIpedLoading(false); }
+  }, [ipedSelectedCase, ipedSearchQuery]);
+
+  const handleIpedFetchBookmarks = useCallback(async () => {
+    if (!ipedSelectedCase) return;
+    setIpedLoading(true);
+    try {
+      const res = await apiFetch<{ data: IpedBookmark[] }>(`/iped/cases/${encodeURIComponent(ipedSelectedCase.id)}/bookmarks`);
+      setIpedBookmarks(res.data || []);
+    } catch { setIpedBookmarks([]); }
+    finally { setIpedLoading(false); }
+  }, [ipedSelectedCase]);
+
+  const handleIpedFetchFindings = useCallback(async () => {
+    if (!ipedSelectedCase) return;
+    setIpedLoading(true);
+    try {
+      const res = await apiFetch<{ data: IpedFinding[]; total: number }>(`/iped/cases/${encodeURIComponent(ipedSelectedCase.id)}/findings`);
+      setIpedFindings(res.data || []);
+    } catch { setIpedFindings([]); }
+    finally { setIpedLoading(false); }
+  }, [ipedSelectedCase]);
+
+  // Fetch IPED status on mount
+  useEffect(() => { fetchIpedStatus(); }, [fetchIpedStatus]);
+
+  // Fetch IPED imports when selected case changes
+  useEffect(() => {
+    if (selected && detailTab === 'iped') fetchIpedImports(selected.id);
+  }, [selected, detailTab, fetchIpedImports]);
+
+  // IPED import handlers
+  const handleIpedSetup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ipedSetupForm.baseUrl.trim()) { addToast('Base URL is required', 'error'); return; }
+    setIpedSetupSubmitting(true);
+    try {
+      await apiFetch('/iped/credentials', { method: 'PUT', body: JSON.stringify(ipedSetupForm) });
+      addToast('IPED connection configured', 'success');
+      setIpedSetupOpen(false);
+      setIpedSetupForm({ baseUrl: '', apiKey: '' });
+      fetchIpedStatus();
+    } catch (err: any) { addToast(err?.message || 'Failed to save credentials', 'error'); }
+    finally { setIpedSetupSubmitting(false); }
+  };
+
+  const handleIpedTestConnection = async () => {
+    setIpedLoading(true);
+    try {
+      const res = await apiFetch<{ connected: boolean; latency: number; caseCount?: number; error?: string }>('/iped/test-connection', { method: 'POST' });
+      if (res.connected) {
+        addToast(`Connected to IPED (${res.latency}ms, ${res.caseCount} cases)`, 'success');
+        fetchIpedCases();
+      } else {
+        addToast(`Connection failed: ${res.error || 'Unknown error'}`, 'error');
+      }
+    } catch (err: any) { addToast(err?.message || 'Connection test failed', 'error'); }
+    finally { setIpedLoading(false); }
+  };
+
+  const handleIpedLinkCase = async (ipedCase: IpedCase) => {
+    if (!selected) return;
+    setIpedImporting(true);
+    try {
+      await apiFetch('/iped/import/link', { method: 'POST', body: JSON.stringify({
+        forensicCaseId: selected.id, ipedCaseId: ipedCase.id, ipedCaseName: ipedCase.name,
+      })});
+      addToast(`Linked IPED case: ${ipedCase.name}`, 'success');
+      setIpedSelectedCase(ipedCase);
+      fetchIpedImports(selected.id);
+      fetchActivity(selected.id);
+    } catch (err: any) { addToast(err?.message || 'Failed to link case', 'error'); }
+    finally { setIpedImporting(false); }
+  };
+
+  const handleIpedImportFindings = async () => {
+    if (!selected || !ipedSelectedCase || ipedFindings.length === 0) return;
+    setIpedImporting(true);
+    try {
+      const targetAnalysis = analyses.find(a => a.analysis_type === 'digital_forensics' && a.status !== 'cancelled');
+      await apiFetch('/iped/import/findings', { method: 'POST', body: JSON.stringify({
+        forensicCaseId: selected.id,
+        ipedCaseId: ipedSelectedCase.id,
+        ipedCaseName: ipedSelectedCase.name,
+        findings: ipedFindings,
+        analysisId: targetAnalysis?.id || null,
+        category: 'regex',
+      })});
+      addToast(`Imported ${ipedFindings.length} findings`, 'success');
+      fetchIpedImports(selected.id);
+      fetchActivity(selected.id);
+      if (targetAnalysis) fetchAnalyses(selected.id);
+    } catch (err: any) { addToast(err?.message || 'Import failed', 'error'); }
+    finally { setIpedImporting(false); }
+  };
+
+  const handleIpedImportTimeline = async () => {
+    if (!selected || !ipedSelectedCase) return;
+    setIpedImporting(true);
+    try {
+      const res = await apiFetch<{ data: IpedTimelineEvent[] }>(`/iped/cases/${encodeURIComponent(ipedSelectedCase.id)}/timeline`);
+      const events = res.data || [];
+      if (events.length === 0) { addToast('No timeline events found', 'warning'); setIpedImporting(false); return; }
+      await apiFetch('/iped/import/timeline', { method: 'POST', body: JSON.stringify({
+        forensicCaseId: selected.id,
+        ipedCaseId: ipedSelectedCase.id,
+        ipedCaseName: ipedSelectedCase.name,
+        events,
+      })});
+      addToast(`Imported ${events.length} timeline events`, 'success');
+      fetchIpedImports(selected.id);
+      fetchActivity(selected.id);
+    } catch (err: any) { addToast(err?.message || 'Timeline import failed', 'error'); }
+    finally { setIpedImporting(false); }
+  };
+
+  const handleIpedImportItems = async (items: IpedItem[]) => {
+    if (!selected || !ipedSelectedCase || items.length === 0) return;
+    setIpedImporting(true);
+    try {
+      await apiFetch('/iped/import/items', { method: 'POST', body: JSON.stringify({
+        forensicCaseId: selected.id,
+        ipedCaseId: ipedSelectedCase.id,
+        ipedCaseName: ipedSelectedCase.name,
+        items,
+      })});
+      addToast(`Imported ${items.length} items as exhibits`, 'success');
+      fetchIpedImports(selected.id);
+      fetchExhibits(selected.id);
+      fetchActivity(selected.id);
+    } catch (err: any) { addToast(err?.message || 'Item import failed', 'error'); }
+    finally { setIpedImporting(false); }
+  };
+
+  const handleIpedAttachReport = async (reportType: 'html' | 'csv') => {
+    if (!selected || !ipedSelectedCase) return;
+    setIpedImporting(true);
+    try {
+      await apiFetch('/iped/import/report', { method: 'POST', body: JSON.stringify({
+        forensicCaseId: selected.id,
+        ipedCaseId: ipedSelectedCase.id,
+        ipedCaseName: ipedSelectedCase.name,
+        reportName: `IPED ${reportType.toUpperCase()} Report — ${ipedSelectedCase.name}`,
+        reportType,
+        itemCount: ipedSelectedCase.totalItems || 0,
+      })});
+      addToast(`Attached ${reportType.toUpperCase()} report reference`, 'success');
+      fetchIpedImports(selected.id);
+      fetchActivity(selected.id);
+    } catch (err: any) { addToast(err?.message || 'Failed to attach report', 'error'); }
+    finally { setIpedImporting(false); }
+  };
 
   // ── CRUD handlers ──────────────────────────────────────
 
@@ -582,7 +792,7 @@ export default function ForensicsPage() {
 
         {/* Tab bar */}
         <div className="flex border-t border-rmpg-700/30">
-          {(['exhibits', 'analyses', 'timeline'] as const).map(tab => (
+          {(['exhibits', 'analyses', 'timeline', 'iped'] as const).map(tab => (
             <button
               key={tab}
               onClick={() => setDetailTab(tab)}
@@ -596,9 +806,11 @@ export default function ForensicsPage() {
               {tab === 'exhibits' && <Package className="w-3 h-3 inline mr-1 -mt-0.5" />}
               {tab === 'analyses' && <FlaskConical className="w-3 h-3 inline mr-1 -mt-0.5" />}
               {tab === 'timeline' && <Activity className="w-3 h-3 inline mr-1 -mt-0.5" />}
+              {tab === 'iped' && <HardDrive className="w-3 h-3 inline mr-1 -mt-0.5" />}
               {tab === 'exhibits' ? `Exhibits (${exhibits.length})` :
                tab === 'analyses' ? `Analyses (${analyses.length})` :
-               `Timeline (${activity.length})`}
+               tab === 'timeline' ? `Timeline (${activity.length})` :
+               `IPED${ipedImports.length ? ` (${ipedImports.length})` : ''}`}
             </button>
           ))}
         </div>
@@ -808,6 +1020,379 @@ export default function ForensicsPage() {
                   </div>
                 ))}
               </div>
+            )}
+          </div>
+        )}
+
+        {/* ── IPED Integration Tab ──────────────────────── */}
+        {detailTab === 'iped' && (
+          <div className="space-y-2">
+
+            {/* IPED Connection Status Bar */}
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-2">
+                <HardDrive className="w-3.5 h-3.5 text-rmpg-400" />
+                <span className="text-[10px] text-rmpg-400 font-bold uppercase">IPED Digital Forensics</span>
+                {ipedStatus?.configured ? (
+                  <span className="flex items-center gap-1 text-[9px] font-bold text-green-400">
+                    <Wifi className="w-2.5 h-2.5" /> Connected
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1 text-[9px] font-bold text-rmpg-600">
+                    <WifiOff className="w-2.5 h-2.5" /> Not Configured
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-1">
+                {ipedStatus?.configured && (
+                  <button onClick={handleIpedTestConnection} className="toolbar-btn text-[9px]" style={{ padding: '2px 6px' }} disabled={ipedLoading}>
+                    <RefreshCw className={`w-3 h-3 ${ipedLoading ? 'animate-spin' : ''}`} /> Test
+                  </button>
+                )}
+                <button onClick={() => { setIpedSetupOpen(true); setIpedSetupForm({ baseUrl: '', apiKey: '' }); }} className="toolbar-btn toolbar-btn-primary text-[9px]" style={{ padding: '2px 6px' }}>
+                  <Server className="w-3 h-3" /> {ipedStatus?.configured ? 'Reconfigure' : 'Setup'}
+                </button>
+              </div>
+            </div>
+
+            {/* IPED Setup Inline Form */}
+            {ipedSetupOpen && (
+              <form onSubmit={handleIpedSetup} className="panel-beveled bg-surface-base p-3 space-y-2">
+                <p className="text-[10px] text-rmpg-300 font-bold uppercase">IPED Server Configuration</p>
+                <div>
+                  <label className="text-[9px] text-rmpg-400 uppercase font-semibold block mb-0.5">Base URL *</label>
+                  <input className="input-dark w-full text-xs" placeholder="http://192.168.1.100:11111" value={ipedSetupForm.baseUrl}
+                    onChange={e => setIpedSetupForm(f => ({ ...f, baseUrl: e.target.value }))} required />
+                </div>
+                <div>
+                  <label className="text-[9px] text-rmpg-400 uppercase font-semibold block mb-0.5">API Key (optional)</label>
+                  <input className="input-dark w-full text-xs" placeholder="Optional API key" type="password" value={ipedSetupForm.apiKey}
+                    onChange={e => setIpedSetupForm(f => ({ ...f, apiKey: e.target.value }))} />
+                </div>
+                <div className="flex items-center gap-2 pt-1">
+                  <button type="submit" className="toolbar-btn toolbar-btn-primary text-[9px]" style={{ padding: '3px 10px' }} disabled={ipedSetupSubmitting}>
+                    {ipedSetupSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />} Save
+                  </button>
+                  <button type="button" onClick={() => setIpedSetupOpen(false)} className="toolbar-btn text-[9px]" style={{ padding: '3px 10px' }}>Cancel</button>
+                </div>
+              </form>
+            )}
+
+            {/* If not configured, show setup prompt */}
+            {!ipedStatus?.configured && !ipedSetupOpen && (
+              <div className="text-center py-8">
+                <Server className="w-10 h-10 text-rmpg-600 mx-auto mb-3" />
+                <p className="text-xs text-rmpg-400 font-semibold">IPED Not Connected</p>
+                <p className="text-[10px] text-rmpg-500 mt-1 max-w-xs mx-auto">
+                  Configure your IPED server connection to browse cases, import findings, and sync timeline data.
+                </p>
+              </div>
+            )}
+
+            {/* If configured, show sub-tabs and content */}
+            {ipedStatus?.configured && !ipedSetupOpen && (
+              <>
+                {/* Sub-tab bar */}
+                <div className="flex gap-0.5 mb-2">
+                  {([
+                    { key: 'browse' as const, label: 'Case Browser', icon: FileSearch },
+                    { key: 'findings' as const, label: 'Findings', icon: Tag },
+                    { key: 'bookmarks' as const, label: 'Bookmarks', icon: BookMarked },
+                    { key: 'imports' as const, label: 'Import Log', icon: Database },
+                  ]).map(st => (
+                    <button
+                      key={st.key}
+                      onClick={() => {
+                        setIpedSubTab(st.key);
+                        if (st.key === 'findings' && ipedSelectedCase) handleIpedFetchFindings();
+                        if (st.key === 'bookmarks' && ipedSelectedCase) handleIpedFetchBookmarks();
+                        if (st.key === 'imports' && selected) fetchIpedImports(selected.id);
+                      }}
+                      className="flex items-center gap-1 px-2 py-1.5 text-[9px] font-bold uppercase tracking-wide rounded transition-colors"
+                      style={{
+                        background: ipedSubTab === st.key ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
+                        color: ipedSubTab === st.key ? '#93c5fd' : '#808080',
+                        borderBottom: ipedSubTab === st.key ? '2px solid #3b82f6' : '2px solid transparent',
+                      }}
+                    >
+                      <st.icon className="w-3 h-3" /> {st.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Browse Sub-tab: IPED Case list + Search */}
+                {ipedSubTab === 'browse' && (
+                  <div className="space-y-2">
+                    {/* Load Cases button */}
+                    {ipedCases.length === 0 && (
+                      <div className="text-center py-4">
+                        <button onClick={fetchIpedCases} className="toolbar-btn toolbar-btn-primary text-[10px]" style={{ padding: '4px 12px' }} disabled={ipedLoading}>
+                          {ipedLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Globe className="w-3.5 h-3.5" />} Load IPED Cases
+                        </button>
+                      </div>
+                    )}
+
+                    {/* IPED Case list */}
+                    {ipedCases.length > 0 && (
+                      <div className="space-y-1">
+                        <span className="text-[9px] text-rmpg-400 font-bold uppercase">Available IPED Cases ({ipedCases.length})</span>
+                        <div className="max-h-32 overflow-y-auto space-y-1">
+                          {ipedCases.map(ic => (
+                            <div
+                              key={ic.id}
+                              onClick={() => { setIpedSelectedCase(ic); setIpedSearchResults([]); setIpedSearchTotal(0); }}
+                              className={`flex items-center justify-between p-2 rounded cursor-pointer transition-colors
+                                ${ipedSelectedCase?.id === ic.id
+                                  ? 'bg-blue-900/30 border border-blue-700/40'
+                                  : 'panel-beveled bg-surface-base hover:bg-rmpg-800/50'}`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <HardDrive className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
+                                <div className="min-w-0">
+                                  <p className="text-[11px] text-white font-semibold truncate">{ic.name}</p>
+                                  {ic.totalItems != null && (
+                                    <p className="text-[9px] text-rmpg-500">{ic.totalItems.toLocaleString()} items</p>
+                                  )}
+                                </div>
+                              </div>
+                              <button
+                                onClick={e => { e.stopPropagation(); handleIpedLinkCase(ic); }}
+                                className="toolbar-btn text-[8px] flex-shrink-0" style={{ padding: '2px 6px' }}
+                                disabled={ipedImporting}
+                                title="Link this IPED case to the current forensic case"
+                              >
+                                <Link2 className="w-3 h-3" /> Link
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Search within selected IPED case */}
+                    {ipedSelectedCase && (
+                      <div className="space-y-2 mt-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[9px] text-blue-400 font-bold uppercase flex-shrink-0">Search in: {ipedSelectedCase.name}</span>
+                        </div>
+                        <div className="flex gap-1">
+                          <div className="flex-1 relative">
+                            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
+                            <input
+                              className="input-dark w-full text-xs pl-6"
+                              placeholder="Lucene query (e.g., crypto OR wallet, *.pdf, email:*@gmail.com)"
+                              value={ipedSearchQuery}
+                              onChange={e => setIpedSearchQuery(e.target.value)}
+                              onKeyDown={e => e.key === 'Enter' && handleIpedSearch()}
+                            />
+                          </div>
+                          <button onClick={handleIpedSearch} className="toolbar-btn toolbar-btn-primary text-[9px]" style={{ padding: '2px 8px' }} disabled={ipedLoading}>
+                            {ipedLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />} Search
+                          </button>
+                        </div>
+
+                        {/* Search results */}
+                        {ipedSearchResults.length > 0 && (
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[9px] text-rmpg-400 font-bold">{ipedSearchTotal} results</span>
+                              <button
+                                onClick={() => handleIpedImportItems(ipedSearchResults)}
+                                className="toolbar-btn toolbar-btn-primary text-[8px]" style={{ padding: '2px 6px' }}
+                                disabled={ipedImporting}
+                              >
+                                <Download className="w-3 h-3" /> Import All as Exhibits
+                              </button>
+                            </div>
+                            <div className="max-h-48 overflow-y-auto space-y-1">
+                              {ipedSearchResults.map((item, i) => (
+                                <div key={item.id || i} className="flex items-center gap-2 p-1.5 panel-beveled bg-surface-base text-[10px]">
+                                  <FileText className="w-3 h-3 text-rmpg-500 flex-shrink-0" />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-rmpg-200 truncate font-medium">{item.name || 'Unnamed'}</p>
+                                    <p className="text-rmpg-500 truncate">{item.path || ''}</p>
+                                  </div>
+                                  <span className="text-[8px] text-rmpg-600 flex-shrink-0">{item.type || item.category || ''}</span>
+                                  {item.size != null && <span className="text-[8px] text-rmpg-600 flex-shrink-0">{(item.size / 1024).toFixed(1)}KB</span>}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Action buttons */}
+                        <div className="flex flex-wrap gap-1 pt-1 border-t border-rmpg-700/30">
+                          <button onClick={() => handleIpedAttachReport('html')} className="toolbar-btn text-[9px]" style={{ padding: '2px 8px' }} disabled={ipedImporting}>
+                            <FileText className="w-3 h-3" /> Attach HTML Report
+                          </button>
+                          <button onClick={() => handleIpedAttachReport('csv')} className="toolbar-btn text-[9px]" style={{ padding: '2px 8px' }} disabled={ipedImporting}>
+                            <FileText className="w-3 h-3" /> Attach CSV Report
+                          </button>
+                          <button onClick={handleIpedImportTimeline} className="toolbar-btn text-[9px]" style={{ padding: '2px 8px' }} disabled={ipedImporting}>
+                            <Calendar className="w-3 h-3" /> Import Timeline
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Findings Sub-tab */}
+                {ipedSubTab === 'findings' && (
+                  <div className="space-y-2">
+                    {!ipedSelectedCase ? (
+                      <div className="text-center py-6">
+                        <Tag className="w-8 h-8 text-rmpg-600 mx-auto mb-2" />
+                        <p className="text-xs text-rmpg-400">Link an IPED case first</p>
+                        <p className="text-[10px] text-rmpg-500">Use the Case Browser tab to select and link an IPED case</p>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] text-rmpg-400 font-bold uppercase">
+                            Regex Findings — {ipedSelectedCase.name} ({ipedFindings.length} hits)
+                          </span>
+                          <div className="flex gap-1">
+                            <button onClick={handleIpedFetchFindings} className="toolbar-btn text-[8px]" style={{ padding: '2px 6px' }} disabled={ipedLoading}>
+                              <RefreshCw className={`w-3 h-3 ${ipedLoading ? 'animate-spin' : ''}`} /> Refresh
+                            </button>
+                            {ipedFindings.length > 0 && (
+                              <button onClick={handleIpedImportFindings} className="toolbar-btn toolbar-btn-primary text-[8px]" style={{ padding: '2px 6px' }} disabled={ipedImporting}>
+                                <Download className="w-3 h-3" /> Import to Analysis
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <p className="text-[9px] text-rmpg-500">
+                          Crypto wallets, emails, IPs, credit cards, and other PII detected by IPED's regex engine.
+                          {analyses.some(a => a.analysis_type === 'digital_forensics') ?
+                            ' Findings will be appended to the Digital Forensics analysis.' :
+                            ' Create a Digital Forensics analysis first to auto-link findings.'
+                          }
+                        </p>
+                        {ipedLoading ? (
+                          <div className="text-center py-6"><Loader2 className="w-6 h-6 text-rmpg-500 mx-auto animate-spin" /></div>
+                        ) : ipedFindings.length === 0 ? (
+                          <div className="text-center py-6">
+                            <Tag className="w-8 h-8 text-rmpg-600 mx-auto mb-2" />
+                            <p className="text-xs text-rmpg-400">No regex findings loaded</p>
+                          </div>
+                        ) : (
+                          <div className="max-h-64 overflow-y-auto space-y-1">
+                            {ipedFindings.map((f, i) => (
+                              <div key={f.id || i} className="panel-beveled bg-surface-base p-2 space-y-0.5">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 bg-amber-900/40 text-amber-400 border border-amber-700/40 panel-beveled">
+                                    {f.category}
+                                  </span>
+                                  <span className="text-[10px] text-white font-medium truncate">{f.name}</span>
+                                </div>
+                                {f.path && <p className="text-[9px] text-rmpg-500 truncate">{f.path}</p>}
+                                {f.content_preview && (
+                                  <p className="text-[9px] text-rmpg-400 font-mono bg-rmpg-900/50 p-1 rounded truncate">{f.content_preview}</p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Bookmarks Sub-tab */}
+                {ipedSubTab === 'bookmarks' && (
+                  <div className="space-y-2">
+                    {!ipedSelectedCase ? (
+                      <div className="text-center py-6">
+                        <BookMarked className="w-8 h-8 text-rmpg-600 mx-auto mb-2" />
+                        <p className="text-xs text-rmpg-400">Link an IPED case first</p>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] text-rmpg-400 font-bold uppercase">
+                            IPED Bookmarks — {ipedSelectedCase.name} ({ipedBookmarks.length})
+                          </span>
+                          <button onClick={handleIpedFetchBookmarks} className="toolbar-btn text-[8px]" style={{ padding: '2px 6px' }} disabled={ipedLoading}>
+                            <RefreshCw className={`w-3 h-3 ${ipedLoading ? 'animate-spin' : ''}`} /> Refresh
+                          </button>
+                        </div>
+                        {ipedLoading ? (
+                          <div className="text-center py-6"><Loader2 className="w-6 h-6 text-rmpg-500 mx-auto animate-spin" /></div>
+                        ) : ipedBookmarks.length === 0 ? (
+                          <div className="text-center py-6">
+                            <BookMarked className="w-8 h-8 text-rmpg-600 mx-auto mb-2" />
+                            <p className="text-xs text-rmpg-400">No bookmarks loaded</p>
+                          </div>
+                        ) : (
+                          <div className="max-h-64 overflow-y-auto space-y-1">
+                            {ipedBookmarks.map((bk, i) => (
+                              <div key={bk.id || i} className="panel-beveled bg-surface-base p-2">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <BookMarked className="w-3 h-3 text-blue-400" />
+                                    <span className="text-[11px] text-white font-semibold">{bk.name}</span>
+                                    {bk.itemCount != null && (
+                                      <span className="text-[9px] text-rmpg-500">{bk.itemCount} items</span>
+                                    )}
+                                  </div>
+                                </div>
+                                {bk.comment && <p className="text-[9px] text-rmpg-400 mt-0.5">{bk.comment}</p>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Import Log Sub-tab */}
+                {ipedSubTab === 'imports' && (
+                  <div className="space-y-2">
+                    <span className="text-[9px] text-rmpg-400 font-bold uppercase block">IPED Import History ({ipedImports.length})</span>
+                    {ipedImports.length === 0 ? (
+                      <div className="text-center py-6">
+                        <Database className="w-8 h-8 text-rmpg-600 mx-auto mb-2" />
+                        <p className="text-xs text-rmpg-400">No imports yet</p>
+                        <p className="text-[10px] text-rmpg-500 mt-1">Link an IPED case and import data to see history here</p>
+                      </div>
+                    ) : (
+                      <div className="max-h-64 overflow-y-auto space-y-1">
+                        {ipedImports.map(imp => {
+                          const typeColors: Record<string, string> = {
+                            case_link: 'bg-blue-900/40 text-blue-400 border-blue-700/40',
+                            findings: 'bg-amber-900/40 text-amber-400 border-amber-700/40',
+                            timeline: 'bg-purple-900/40 text-purple-400 border-purple-700/40',
+                            report: 'bg-cyan-900/40 text-cyan-400 border-cyan-700/40',
+                            bookmarks: 'bg-green-900/40 text-green-400 border-green-700/40',
+                            items: 'bg-red-900/40 text-red-400 border-red-700/40',
+                          };
+                          return (
+                            <div key={imp.id} className="panel-beveled bg-surface-base p-2">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 border panel-beveled ${typeColors[imp.import_type] || 'bg-rmpg-800 text-rmpg-300 border-rmpg-600'}`}>
+                                    {imp.import_type.replace(/_/g, ' ')}
+                                  </span>
+                                  <span className="text-[10px] text-rmpg-200 font-medium">{imp.iped_case_name || imp.iped_case_id}</span>
+                                  {imp.item_count > 0 && (
+                                    <span className="text-[9px] text-rmpg-500">{imp.item_count} items</span>
+                                  )}
+                                </div>
+                                <span className="text-[9px] text-rmpg-600">{fmtDateTime(imp.created_at)}</span>
+                              </div>
+                              {imp.summary && <p className="text-[9px] text-rmpg-400 mt-0.5">{imp.summary}</p>}
+                              {imp.imported_by_name && <p className="text-[8px] text-rmpg-500">by {imp.imported_by_name}</p>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
