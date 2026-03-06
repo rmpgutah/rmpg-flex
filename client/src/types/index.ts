@@ -1658,6 +1658,103 @@ export interface CaseNote {
   created_at: string;
 }
 
+// --- Forensics Lab ---
+
+export type ForensicCaseStatus = 'received' | 'in_progress' | 'analysis_complete' | 'report_drafted' | 'reviewed' | 'released' | 'cancelled';
+export type ForensicCaseType = 'general' | 'homicide' | 'sexual_assault' | 'narcotics' | 'arson' | 'fraud' | 'burglary' | 'robbery' | 'digital' | 'traffic' | 'cold_case' | 'other';
+export type ForensicPriority = 'routine' | 'normal' | 'rush' | 'urgent';
+export type ExhibitType = 'biological' | 'chemical' | 'digital' | 'document' | 'drug' | 'explosive' | 'fingerprint' | 'firearm' | 'trace' | 'clothing' | 'dna_sample' | 'tool_mark' | 'glass' | 'paint' | 'fiber' | 'soil' | 'impression' | 'other';
+export type ExhibitDisposition = 'in_lab' | 'returned' | 'destroyed' | 'transferred' | 'in_storage';
+export type AnalysisType = 'dna' | 'fingerprint' | 'drug_analysis' | 'toxicology' | 'ballistics' | 'digital_forensics' | 'document_exam' | 'trace_evidence' | 'serology' | 'arson_analysis' | 'tool_mark' | 'glass_analysis' | 'paint_analysis' | 'fiber_analysis' | 'blood_spatter' | 'gunshot_residue' | 'other';
+export type AnalysisStatus = 'pending' | 'in_progress' | 'completed' | 'inconclusive' | 'cancelled';
+
+export interface ForensicCase {
+  id: number;
+  lab_number: string;
+  case_type: ForensicCaseType;
+  status: ForensicCaseStatus;
+  priority: ForensicPriority;
+  title: string;
+  description?: string;
+  requesting_agency: string;
+  requesting_officer?: string;
+  lead_examiner_id?: number;
+  lead_examiner_name?: string;
+  linked_incident_id?: number;
+  linked_case_id?: number;
+  linked_incident_number?: string;
+  linked_case_number?: string;
+  received_date: string;
+  due_date?: string;
+  completed_date?: string;
+  released_date?: string;
+  notes?: string;
+  created_by?: number;
+  created_by_name?: string;
+  exhibit_count?: number;
+  analysis_count?: number;
+  completed_analysis_count?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ForensicExhibit {
+  id: number;
+  forensic_case_id: number;
+  exhibit_number: string;
+  exhibit_type: ExhibitType;
+  description: string;
+  quantity: number;
+  condition_received?: string;
+  storage_location?: string;
+  storage_temp?: string;
+  collected_by?: string;
+  collected_date?: string;
+  collection_method?: string;
+  hash_md5?: string;
+  hash_sha256?: string;
+  chain_of_custody: string;
+  disposition: ExhibitDisposition;
+  disposition_date?: string;
+  disposition_notes?: string;
+  photos: string;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ForensicAnalysis {
+  id: number;
+  forensic_case_id: number;
+  exhibit_id?: number;
+  exhibit_number?: string;
+  analysis_type: AnalysisType;
+  methodology?: string;
+  equipment_used?: string;
+  examiner_id?: number;
+  examiner_name?: string;
+  status: AnalysisStatus;
+  started_at?: string;
+  completed_at?: string;
+  results?: string;
+  conclusion?: string;
+  limitations?: string;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ForensicActivityLog {
+  id: number;
+  forensic_case_id: number;
+  exhibit_id?: number;
+  action: string;
+  details: string;
+  performed_by?: number;
+  performed_by_name?: string;
+  performed_at: string;
+}
+
 // --- Code Enforcement ---
 
 export type ViolationType = 'noise' | 'property_maintenance' | 'zoning' | 'signage' | 'health' | 'fire' | 'nuisance' | 'other';

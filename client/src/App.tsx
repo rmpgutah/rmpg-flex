@@ -43,6 +43,7 @@ import NcicPage from './pages/NcicPage';
 import DlSearchPage from './pages/DlSearchPage';
 import BodyCamerasPage from './pages/BodyCamerasPage';
 import TrainingDocsPage from './pages/TrainingDocsPage';
+import ForensicsPage from './pages/ForensicsPage';
 import IncidentDetailWindow from './pages/detached/IncidentDetailWindow';
 import RecordDetailWindow from './pages/detached/RecordDetailWindow';
 
@@ -126,6 +127,7 @@ function AppRoutes() {
           <Route path="/reports/custom" element={<CustomReportBuilder />} />
           <Route path="/criminal-history" element={<CriminalHistoryPage />} />
           <Route path="/evidence" element={<EvidencePropertyPage />} />
+          <Route path="/forensics" element={<ForensicsPage />} />
           <Route path="/cases" element={<CaseManagementPage />} />
           <Route path="/crime-analysis" element={<CrimeAnalysisPage />} />
           <Route path="/code-enforcement" element={<CodeEnforcementPage />} />

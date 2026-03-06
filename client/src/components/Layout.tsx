@@ -40,6 +40,7 @@ import {
   Gavel,
   Terminal,
   CreditCard,
+  Microscope,
 } from 'lucide-react';
 import { Navigation2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -88,6 +89,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/reports/custom': 'Report Builder',
   '/criminal-history': 'Criminal History',
   '/evidence': 'Evidence / Property',
+  '/forensics': 'Forensics Lab',
   '/cases': 'Case Management',
   '/crime-analysis': 'Crime Analysis',
   '/code-enforcement': 'Code Enforcement',
@@ -123,6 +125,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/criminal-history', icon: Search, label: 'Criminal History' },
     { path: '/dl-search', icon: CreditCard, label: 'DL Search' },
     { path: '/evidence', icon: Package, label: 'Evidence / Property' },
+    { path: '/forensics', icon: Microscope, label: 'Forensics Lab' },
     { path: '/cases', icon: Briefcase, label: 'Case Management' },
   ]},
   { path: '/warrants', icon: AlertTriangle, label: 'Enforcement', group: 'records', children: [

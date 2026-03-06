@@ -2480,6 +2480,118 @@ function migrateSchema(): void {
   addCol('persons', 'watchlist_match', 'TEXT DEFAULT NULL');
   addCol('persons', 'watchlist_checked_at', 'TEXT DEFAULT NULL');
 
+  // ── FORENSICS — Lab case management tables ─────────────────
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS forensic_cases (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        lab_number TEXT UNIQUE NOT NULL,
+        case_type TEXT NOT NULL DEFAULT 'general' CHECK(case_type IN (
+          'general','homicide','sexual_assault','narcotics','arson','fraud',
+          'burglary','robbery','digital','traffic','cold_case','other'
+        )),
+        status TEXT NOT NULL DEFAULT 'received' CHECK(status IN (
+          'received','in_progress','analysis_complete','report_drafted','reviewed','released','cancelled'
+        )),
+        priority TEXT NOT NULL DEFAULT 'normal' CHECK(priority IN ('routine','normal','rush','urgent')),
+        title TEXT NOT NULL,
+        description TEXT,
+        requesting_agency TEXT DEFAULT 'RMPG',
+        requesting_officer TEXT,
+        lead_examiner_id INTEGER REFERENCES users(id),
+        linked_incident_id INTEGER REFERENCES incidents(id),
+        linked_case_id INTEGER REFERENCES cases(id),
+        linked_incident_number TEXT,
+        linked_case_number TEXT,
+        received_date TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        due_date TEXT,
+        completed_date TEXT,
+        released_date TEXT,
+        notes TEXT,
+        created_by INTEGER REFERENCES users(id),
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+      );
+
+      CREATE TABLE IF NOT EXISTS forensic_exhibits (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        forensic_case_id INTEGER NOT NULL REFERENCES forensic_cases(id) ON DELETE CASCADE,
+        exhibit_number TEXT NOT NULL,
+        exhibit_type TEXT NOT NULL DEFAULT 'other' CHECK(exhibit_type IN (
+          'biological','chemical','digital','document','drug','explosive',
+          'fingerprint','firearm','trace','clothing','dna_sample','tool_mark',
+          'glass','paint','fiber','soil','impression','other'
+        )),
+        description TEXT NOT NULL,
+        quantity INTEGER DEFAULT 1,
+        condition_received TEXT,
+        storage_location TEXT,
+        storage_temp TEXT,
+        collected_by TEXT,
+        collected_date TEXT,
+        collection_method TEXT,
+        hash_md5 TEXT,
+        hash_sha256 TEXT,
+        chain_of_custody TEXT DEFAULT '[]',
+        disposition TEXT DEFAULT 'in_lab' CHECK(disposition IN (
+          'in_lab','returned','destroyed','transferred','in_storage'
+        )),
+        disposition_date TEXT,
+        disposition_notes TEXT,
+        photos TEXT DEFAULT '[]',
+        notes TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        UNIQUE(forensic_case_id, exhibit_number)
+      );
+
+      CREATE TABLE IF NOT EXISTS forensic_analyses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        forensic_case_id INTEGER NOT NULL REFERENCES forensic_cases(id) ON DELETE CASCADE,
+        exhibit_id INTEGER REFERENCES forensic_exhibits(id) ON DELETE SET NULL,
+        analysis_type TEXT NOT NULL CHECK(analysis_type IN (
+          'dna','fingerprint','drug_analysis','toxicology','ballistics',
+          'digital_forensics','document_exam','trace_evidence','serology',
+          'arson_analysis','tool_mark','glass_analysis','paint_analysis',
+          'fiber_analysis','blood_spatter','gunshot_residue','other'
+        )),
+        methodology TEXT,
+        equipment_used TEXT,
+        examiner_id INTEGER REFERENCES users(id),
+        status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN (
+          'pending','in_progress','completed','inconclusive','cancelled'
+        )),
+        started_at TEXT,
+        completed_at TEXT,
+        results TEXT,
+        conclusion TEXT,
+        limitations TEXT,
+        notes TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+      );
+
+      CREATE TABLE IF NOT EXISTS forensic_activity_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        forensic_case_id INTEGER NOT NULL REFERENCES forensic_cases(id) ON DELETE CASCADE,
+        exhibit_id INTEGER REFERENCES forensic_exhibits(id),
+        action TEXT NOT NULL,
+        details TEXT,
+        performed_by INTEGER REFERENCES users(id),
+        performed_by_name TEXT,
+        performed_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+      );
+    `);
+
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_forensic_cases_status ON forensic_cases(status);
+      CREATE INDEX IF NOT EXISTS idx_forensic_cases_lab ON forensic_cases(lab_number);
+      CREATE INDEX IF NOT EXISTS idx_forensic_exhibits_case ON forensic_exhibits(forensic_case_id);
+      CREATE INDEX IF NOT EXISTS idx_forensic_analyses_case ON forensic_analyses(forensic_case_id);
+      CREATE INDEX IF NOT EXISTS idx_forensic_activity_case ON forensic_activity_log(forensic_case_id);
+    `);
+  } catch { /* tables already exist */ }
+
   console.log('Schema migration completed.');
 }
 
