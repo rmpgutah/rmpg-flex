@@ -15,6 +15,9 @@ import {
   formatOfacResponse,
   formatCrossReferenceResponse,
   formatAddressResponse,
+  formatBackgroundResponse,
+  formatArrestResponse,
+  formatSkipTracerResponse,
   formatNoRecord,
   getNcicLineClass,
   type NcicPerson,
@@ -23,8 +26,11 @@ import {
   type NcicWarrant,
   type NcicDlSubject,
   type NcicOfacSubject,
+  type NcicArrestRecord,
+  type SkipTracerPerson,
   type CrossReferenceResults,
   type AddressLookupResults,
+  type BackgroundRecord,
 } from '../utils/ncicFormatter';
 import { playTone } from '../utils/dispatchTones';
 
@@ -306,8 +312,8 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
             if (nameParts.length > 1) xrefBody.firstName = nameParts.slice(1).join(' ');
           }
 
-          // Fire all 4 queries in parallel — allSettled so one failure doesn't block others
-          const [personResult, warrantResult, dlResult, ofacResult] = await Promise.allSettled([
+          // Fire all queries in parallel — allSettled so one failure doesn't block others
+          const [personResult, warrantResult, dlResult, ofacResult, arrestResult, skipResult] = await Promise.allSettled([
             apiFetch<{ results: Array<{ person: NcicPerson; criminalHistory: NcicCriminalHistory[]; warrants: NcicWarrant[] }> }>(
               `/records/ncic-query?type=person&query=${encodeURIComponent(queryText)}`
             ),
@@ -322,11 +328,17 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
               '/microbilt/ofac/search',
               { method: 'POST', body: JSON.stringify(xrefBody.firstName ? { lastName: xrefBody.lastName, firstName: xrefBody.firstName } : { fullName: queryText }) }
             ),
+            apiFetch<{ hit: boolean; records: NcicArrestRecord[] }>(
+              `/arrests/search?name=${encodeURIComponent(queryText)}`
+            ),
+            apiFetch<{ PeopleDetails?: SkipTracerPerson[]; Records?: number }>(
+              `/skiptracer/search/byname?name=${encodeURIComponent(queryText)}&page=1`
+            ),
           ]);
 
           // Collect results, track errors
           const xref: CrossReferenceResults = {
-            persons: [], directWarrants: [], dlSubjects: [], ofacSubjects: [], errors: [],
+            persons: [], directWarrants: [], dlSubjects: [], ofacSubjects: [], arrestRecords: [], skipTracerPeople: [], errors: [],
           };
 
           if (personResult.status === 'fulfilled') {
@@ -359,14 +371,73 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
             xref.errors.push('OFAC QUERY FAILED');
           }
 
+          if (arrestResult.status === 'fulfilled') {
+            xref.arrestRecords = arrestResult.value.records || [];
+          } else {
+            xref.errors.push('ARREST QUERY FAILED');
+          }
+
+          if (skipResult.status === 'fulfilled') {
+            xref.skipTracerPeople = skipResult.value.PeopleDetails || [];
+          } else {
+            xref.errors.push('SKIP TRACER QUERY FAILED');
+          }
+
+          // ── Cross-load: enrich empty sections from person records ──
+          if (xref.persons.length > 0) {
+            // If DL search returned empty but person records have DL info, synthesize DL subjects
+            if (xref.dlSubjects.length === 0) {
+              const dlFromPersons = xref.persons
+                .filter(r => r.person.drivers_license)
+                .map(r => ({
+                  first_name: r.person.first_name,
+                  last_name: r.person.last_name,
+                  middle_name: r.person.middle_name,
+                  date_of_birth: r.person.date_of_birth,
+                  gender: r.person.sex,
+                  height: r.person.height,
+                  weight: r.person.weight ? String(r.person.weight) : undefined,
+                  eye_color: r.person.eye_color,
+                  hair_color: r.person.hair_color,
+                  race: r.person.race,
+                  dl_number: r.person.drivers_license,
+                  dl_state: r.person.dl_state || 'UT',
+                  dl_status: 'SEE PERSON RECORD',
+                  addresses: r.person.address ? [{ address: r.person.address }] : [],
+                  source: 'PERSON_RECORD',
+                  match_source: 'CROSS-LOADED FROM PERSON RECORD',
+                }));
+              if (dlFromPersons.length > 0) {
+                xref.dlSubjects = dlFromPersons;
+              }
+            }
+
+            // Cross-link: if arrest records found, match person records by name
+            if (xref.arrestRecords.length > 0) {
+              const personNames = new Set(
+                xref.persons.map(r => `${(r.person.last_name || '').toLowerCase()},${(r.person.first_name || '').toLowerCase()}`)
+              );
+              for (const ar of xref.arrestRecords) {
+                const arKey = `${(ar.last_name || '').toLowerCase()},${(ar.first_name || '').toLowerCase()}`;
+                if (personNames.has(arKey) && !ar.cross_links) {
+                  ar.cross_links = ar.cross_links || {};
+                }
+              }
+            }
+          }
+
           response = formatCrossReferenceResponse(xref, queryText);
           hasHit = xref.persons.length > 0 || xref.directWarrants.length > 0 ||
-                   xref.dlSubjects.length > 0 || xref.ofacSubjects.length > 0;
+                   xref.dlSubjects.length > 0 || xref.ofacSubjects.length > 0 ||
+                   xref.arrestRecords.length > 0 || xref.skipTracerPeople.length > 0;
 
           // Play appropriate tone based on severity
           const xrefHasWarrants = xref.persons.some(r => r.warrants.length > 0) || xref.directWarrants.length > 0;
           const xrefHasOfac = xref.ofacSubjects.length > 0;
-          if (xrefHasWarrants || xrefHasOfac) {
+          const xrefHasActiveArrests = xref.arrestRecords.some(
+            r => r.status === 'active' || (r.cross_links?.warrants && r.cross_links.warrants.length > 0)
+          );
+          if (xrefHasWarrants || xrefHasOfac || xrefHasActiveArrests) {
             playTone('warning');
           } else if (hasHit) {
             playTone('info');
@@ -473,8 +544,143 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
           break;
         }
 
+        case 'QB':
+        case 'QB!': {
+          // Background check — nationwide criminal records, court cases, sex offender
+          const forceFresh = verb === 'QB!';
+          const bgBody: any = { forceFresh };
+
+          // Parse: QB FIRST LAST  |  QB LAST,FIRST  |  QB FIRST LAST MM/DD/YYYY
+          if (queryText.includes(',')) {
+            const [last, first] = queryText.split(',').map(s => s.trim());
+            bgBody.lastName = last;
+            bgBody.firstName = first;
+          } else {
+            const bgParts = queryText.trim().split(/\s+/).filter(Boolean);
+            if (bgParts.length >= 2) {
+              // Check if last part looks like a date (DOB)
+              const lastPart = bgParts[bgParts.length - 1];
+              if (/^\d{2}[\/-]\d{2}[\/-]\d{4}$/.test(lastPart) || /^\d{8}$/.test(lastPart)) {
+                bgBody.dob = lastPart;
+                bgBody.firstName = bgParts[0];
+                bgBody.lastName = bgParts.length > 2 ? bgParts[bgParts.length - 2] : bgParts[0];
+              } else {
+                bgBody.firstName = bgParts[0];
+                bgBody.lastName = bgParts[bgParts.length - 1];
+              }
+            } else if (bgParts.length === 1) {
+              bgBody.lastName = bgParts[0];
+            }
+          }
+
+          const bgData = await apiFetch<{
+            hit: boolean;
+            sources: string[];
+            records: BackgroundRecord[];
+            resultCount: number;
+            cached?: boolean;
+            cachedAt?: string;
+            searchId?: number;
+            message?: string;
+          }>('/microbilt/background/search', {
+            method: 'POST',
+            body: JSON.stringify(bgBody),
+          });
+
+          if (bgData.message && !bgData.hit && bgData.records?.length === 0) {
+            // Service not enabled or other message
+            response = [
+              '*** BACKGROUND CHECK ***',
+              '',
+              `  ${bgData.message}`,
+              '',
+              '*** END ***',
+            ].join('\n');
+          } else if (!bgData.hit || !bgData.records?.length) {
+            response = formatNoRecord('BACKGROUND CHECK', queryText);
+          } else {
+            response = formatBackgroundResponse(bgData.records, queryText, bgData.cached, bgData.cachedAt);
+            hasHit = true;
+
+            // Sex offender hits get warning tone, others get info
+            const hasSexOffender = bgData.records.some(r => r.record_type === 'SEX_OFFENDER');
+            playTone(hasSexOffender ? 'warning' : 'info');
+          }
+          break;
+        }
+
+        case 'QR': {
+          // Arrest record query — JailBase county arrest records
+          let arName = queryText;
+          if (queryText.includes(',')) {
+            const [last, first] = queryText.split(',').map(s => s.trim());
+            arName = `${first} ${last}`;
+          }
+
+          const arData = await apiFetch<{
+            hit: boolean;
+            records: NcicArrestRecord[];
+            resultCount: number;
+            cached: boolean;
+          }>(`/arrests/search?name=${encodeURIComponent(arName)}`);
+
+          if (!arData.hit || !arData.records?.length) {
+            response = formatNoRecord('ARREST RECORDS', queryText);
+          } else {
+            response = formatArrestResponse(arData.records, queryText);
+            hasHit = true;
+
+            const hasActive = arData.records.some(r => r.status === 'active');
+            const hasLinkedWarrants = arData.records.some(r => (r.cross_links?.warrants?.length || 0) > 0);
+            playTone(hasActive || hasLinkedWarrants ? 'warning' : 'info');
+          }
+          break;
+        }
+
+        case 'QS': {
+          // Skip Tracer — RapidAPI skip tracing lookup
+          // Supports: QS NAME  |  QS ADDR:123 Main St  |  QS PHONE:8015551234  |  QS EMAIL:john@example.com
+          let stPath = '/skiptracer/search/byname';
+          let stParams: Record<string, string> = {};
+          let stType = 'NAME';
+
+          if (queryText.toUpperCase().startsWith('ADDR:')) {
+            stPath = '/skiptracer/search/byaddress';
+            stParams = { address: queryText.substring(5).trim() };
+            stType = 'ADDRESS';
+          } else if (queryText.toUpperCase().startsWith('PHONE:')) {
+            stPath = '/skiptracer/search/byphone';
+            stParams = { phone: queryText.substring(6).trim() };
+            stType = 'PHONE';
+          } else if (queryText.toUpperCase().startsWith('EMAIL:')) {
+            stPath = '/skiptracer/search/byemail';
+            stParams = { email: queryText.substring(6).trim() };
+            stType = 'EMAIL';
+          } else {
+            stParams = { name: queryText.trim() };
+          }
+
+          const stQs = new URLSearchParams({ ...stParams, page: '1' }).toString();
+          const stData = await apiFetch<{
+            PeopleDetails?: SkipTracerPerson[];
+            Records?: number;
+            Status?: number;
+          }>(`${stPath}?${stQs}`);
+
+          const stPeople = stData.PeopleDetails || [];
+
+          if (stPeople.length === 0) {
+            response = formatNoRecord('SKIP TRACER', queryText);
+          } else {
+            response = formatSkipTracerResponse(stPeople, queryText, stData.Records, stType);
+            hasHit = true;
+            playTone('info');
+          }
+          break;
+        }
+
         default:
-          response = `UNKNOWN QUERY TYPE: ${verb}\nValid: QX (cross-ref), QH/QP (person), QV (vehicle), QW (warrant), QT (phone), QA (address), QD (DL), QO (OFAC), QC (courts)`;
+          response = `UNKNOWN QUERY TYPE: ${verb}\nValid: QX (cross-ref), QH/QP (person), QV (vehicle), QW (warrant), QT (phone), QA (address), QD (DL), QO (OFAC), QR (arrests), QS (skip tracer), QC (courts), QB (background)`;
       }
 
       setEntries(prev => [...prev, {
@@ -538,7 +744,10 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
 ║  QD <name/DL#> Query Driver's License    ║
 ║  QA <address>  Query Address / Premise   ║
 ║  QO <name>     Query OFAC Watchlist      ║
-║  QC <name>     Query Utah Courts (web)  ║
+║  QR <name>     Query Arrest Records      ║
+║  QS <name>     Query Skip Tracer         ║
+║  QB <name>     Query Background Check    ║
+║  QC <name>     Query Utah Courts (web)   ║
 ╚══════════════════════════════════════════╝`}</pre>
             </div>
           )}
@@ -570,7 +779,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
             value={input}
             onChange={e => setInput(e.target.value.toUpperCase())}
             onKeyDown={handleKeyDown}
-            placeholder="QX SMITH, JOHN | QH NAME | QV PLATE | QT PHONE | QD DL#"
+            placeholder="QX SMITH, JOHN | QH NAME | QS NAME | QR NAME | QB NAME"
             spellCheck={false}
             autoComplete="off"
             disabled={loading}
@@ -613,7 +822,10 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
 ║  QD <name/DL#> Query Driver's License    ║
 ║  QA <address>  Query Address / Premise   ║
 ║  QO <name>     Query OFAC Watchlist      ║
-║  QC <name>     Query Utah Courts (web)  ║
+║  QR <name>     Query Arrest Records      ║
+║  QS <name>     Query Skip Tracer         ║
+║  QB <name>     Query Background Check    ║
+║  QC <name>     Query Utah Courts (web)   ║
 ╚══════════════════════════════════════════╝`}</pre>
             </div>
           )}
@@ -648,7 +860,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
             value={input}
             onChange={e => setInput(e.target.value.toUpperCase())}
             onKeyDown={handleKeyDown}
-            placeholder="QX SMITH, JOHN | QH NAME | QV PLATE | QT PHONE | QD DL#"
+            placeholder="QX SMITH, JOHN | QH NAME | QS NAME | QV PLATE | QB NAME"
             spellCheck={false}
             autoComplete="off"
             disabled={loading}

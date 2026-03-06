@@ -631,8 +631,55 @@ router.post('/dl/search', requireRole('admin', 'manager', 'officer'), async (req
       subjects = localResults;
       source = 'LOCAL_DB';
     } else {
-      subjects = [];
-      source = 'NONE';
+      // ── 5. Fallback: check persons table for DL info ──────
+      // If no dl_records or API results, search the persons table
+      // which may have DL numbers entered directly on person records
+      try {
+        let personDlQuery = '';
+        const personDlParams: any[] = [];
+        if (dlNumber) {
+          personDlQuery = `SELECT * FROM persons WHERE drivers_license LIKE ? AND drivers_license IS NOT NULL LIMIT 5`;
+          personDlParams.push(`%${dlNumber}%`);
+        } else if (firstName && lastName) {
+          personDlQuery = `SELECT * FROM persons WHERE last_name LIKE ? AND first_name LIKE ? AND drivers_license IS NOT NULL AND drivers_license != '' LIMIT 5`;
+          personDlParams.push(`${lastName}%`, `${firstName}%`);
+        } else if (lastName) {
+          personDlQuery = `SELECT * FROM persons WHERE last_name LIKE ? AND drivers_license IS NOT NULL AND drivers_license != '' LIMIT 5`;
+          personDlParams.push(`${lastName}%`);
+        }
+
+        if (personDlQuery) {
+          const personDlResults = db.prepare(personDlQuery).all(...personDlParams) as any[];
+          if (personDlResults.length > 0) {
+            subjects = personDlResults.map(p => ({
+              first_name: p.first_name,
+              last_name: p.last_name,
+              middle_name: p.middle_name,
+              date_of_birth: p.date_of_birth,
+              gender: p.sex,
+              height: p.height,
+              weight: p.weight ? String(p.weight) : undefined,
+              eye_color: p.eye_color,
+              hair_color: p.hair_color,
+              race: p.race,
+              dl_number: p.drivers_license,
+              dl_state: p.dl_state || state || 'UT',
+              dl_status: 'RECORD ON FILE',
+              addresses: p.address ? [{ address: p.address, city: p.city, state: p.state }] : [],
+              source: 'PERSON_RECORD',
+              match_source: 'Cross-loaded from person records',
+            }));
+            source = 'PERSON_RECORD';
+          }
+        }
+      } catch (err) {
+        console.log('[DL Search] Person table fallback failed:', err);
+      }
+
+      if (subjects.length === 0) {
+        subjects = [];
+        source = 'NONE';
+      }
     }
 
     const hit = subjects.length > 0;
@@ -732,6 +779,360 @@ function parseMicrobiltDlResponse(data: any): any[] {
     console.error('[DL Search] Error parsing MicroBilt response:', err);
   }
   return subjects;
+}
+
+// ============================================================
+// Background Check Search (QB command)
+// ============================================================
+
+// POST /api/microbilt/background/search — nationwide background check
+// Checks cache first (30-day window), calls MicroBilt API if no cached result.
+router.post('/background/search', requireRole('admin', 'manager', 'officer'), async (req: Request, res: Response) => {
+  try {
+    const { firstName, lastName, dob, state, forceFresh, linkedIncident } = req.body;
+
+    if (!lastName && !firstName) {
+      res.json({ hit: false, sources: [], records: [], resultCount: 0, message: 'Provide at least a first or last name' });
+      return;
+    }
+
+    const searchInput = JSON.stringify({ firstName, lastName, dob, state });
+    const db = getDb();
+
+    // ── 1. Check enabled products ─────────────────────────────
+    const enabledProducts = getConfigValue(CONFIG_KEYS.enabledProducts);
+    let products: string[] = [];
+    try { products = enabledProducts ? JSON.parse(enabledProducts) : []; } catch { /* */ }
+
+    if (!products.includes('background_check')) {
+      res.json({
+        hit: false,
+        sources: [],
+        records: [],
+        resultCount: 0,
+        message: 'Background Check is not enabled. Enable it in Admin → Microbilt → API Products.',
+      });
+      return;
+    }
+
+    // ── 2. Cache check (30-day window) ────────────────────────
+    if (!forceFresh) {
+      const cacheWindow = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const namePattern = `%${(firstName || '').toUpperCase()}%${(lastName || '').toUpperCase()}%`;
+
+      const cached = db.prepare(`
+        SELECT id, response_data, created_at FROM microbilt_searches
+        WHERE product = 'background'
+          AND UPPER(search_input) LIKE ?
+          AND created_at > ?
+        ORDER BY created_at DESC LIMIT 1
+      `).get(namePattern, cacheWindow) as { id: number; response_data: string; created_at: string } | undefined;
+
+      if (cached) {
+        try {
+          const cachedData = JSON.parse(cached.response_data);
+          res.json({
+            ...cachedData,
+            cached: true,
+            cachedAt: cached.created_at,
+            searchId: cached.id,
+          });
+          return;
+        } catch { /* fall through to live search */ }
+      }
+    }
+
+    // ── 3. Build MicroBilt API request ────────────────────────
+    const allRecords: any[] = [];
+    const sources: string[] = [];
+
+    // 3a. Criminal Records Search
+    try {
+      const crimBody: any = {
+        CriminalSearchRequest: {
+          SearchBy: {
+            PersonInfo: {
+              PersonName: {} as any,
+            },
+          },
+        },
+      };
+      if (firstName) crimBody.CriminalSearchRequest.SearchBy.PersonInfo.PersonName.FirstName = firstName.toUpperCase();
+      if (lastName) crimBody.CriminalSearchRequest.SearchBy.PersonInfo.PersonName.LastName = lastName.toUpperCase();
+      if (dob) crimBody.CriminalSearchRequest.SearchBy.PersonInfo.BirthDt = dob;
+      if (state) crimBody.CriminalSearchRequest.SearchBy.PersonInfo.ContactInfo = { PostAddr: { StateProv: state } };
+
+      const crimResult = await callMicrobiltApi('/CriminalSearch/GetReport', crimBody);
+      if (crimResult) {
+        sources.push('CRIMINAL_RECORDS');
+        const records = parseCriminalResponse(crimResult);
+        allRecords.push(...records);
+      }
+    } catch (err) {
+      console.log('[Background Check] Criminal records API unavailable');
+    }
+
+    // 3b. Sex Offender Registry Search
+    try {
+      const soBody: any = {
+        SexOffenderSearchRequest: {
+          SearchBy: {
+            PersonInfo: {
+              PersonName: {} as any,
+            },
+          },
+        },
+      };
+      if (firstName) soBody.SexOffenderSearchRequest.SearchBy.PersonInfo.PersonName.FirstName = firstName.toUpperCase();
+      if (lastName) soBody.SexOffenderSearchRequest.SearchBy.PersonInfo.PersonName.LastName = lastName.toUpperCase();
+      if (dob) soBody.SexOffenderSearchRequest.SearchBy.PersonInfo.BirthDt = dob;
+      if (state) soBody.SexOffenderSearchRequest.SearchBy.PersonInfo.ContactInfo = { PostAddr: { StateProv: state } };
+
+      const soResult = await callMicrobiltApi('/SexOffenderSearch/GetReport', soBody);
+      if (soResult) {
+        sources.push('SEX_OFFENDER_REGISTRY');
+        const records = parseSexOffenderResponse(soResult);
+        allRecords.push(...records);
+      }
+    } catch (err) {
+      console.log('[Background Check] Sex offender API unavailable');
+    }
+
+    // 3c. Public Records / Court Cases Search
+    try {
+      const prBody: any = {
+        PublicRecordSearchRequest: {
+          SearchBy: {
+            PersonInfo: {
+              PersonName: {} as any,
+            },
+          },
+        },
+      };
+      if (firstName) prBody.PublicRecordSearchRequest.SearchBy.PersonInfo.PersonName.FirstName = firstName.toUpperCase();
+      if (lastName) prBody.PublicRecordSearchRequest.SearchBy.PersonInfo.PersonName.LastName = lastName.toUpperCase();
+      if (dob) prBody.PublicRecordSearchRequest.SearchBy.PersonInfo.BirthDt = dob;
+
+      const prResult = await callMicrobiltApi('/PublicRecordSearch/GetReport', prBody);
+      if (prResult) {
+        sources.push('PUBLIC_RECORDS');
+        const records = parsePublicRecordResponse(prResult);
+        allRecords.push(...records);
+      }
+    } catch (err) {
+      console.log('[Background Check] Public records API unavailable');
+    }
+
+    const hit = allRecords.length > 0;
+
+    // ── 4. Persist search result for caching & audit ──────────
+    const responsePayload = { hit, sources, records: allRecords, resultCount: allRecords.length };
+
+    const searchId = persistSearch({
+      product: 'background',
+      searchType: 'person',
+      searchInput,
+      responseData: responsePayload,
+      hit,
+      subjectCount: allRecords.length,
+      userId: req.user!.userId,
+      linkedIncident,
+      ipAddress: req.ip,
+    });
+
+    // Audit log
+    db.prepare(
+      "INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'background_check', 'screening', ?, ?, ?)"
+    ).run(
+      req.user!.userId,
+      searchId,
+      `Background check: ${firstName || ''} ${lastName || ''} — ${hit ? allRecords.length + ' record(s)' : 'no records'}`,
+      req.ip || 'unknown'
+    );
+
+    res.json({
+      ...responsePayload,
+      cached: false,
+      searchId,
+    });
+  } catch (error: any) {
+    console.error('Background check error:', error);
+    res.json({ hit: false, sources: [], records: [], resultCount: 0, message: 'Search completed with no results' });
+  }
+});
+
+// GET /api/microbilt/background/:searchId — retrieve a cached background check result
+router.get('/background/:searchId', requireRole('admin', 'manager', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const row = db.prepare(
+      "SELECT * FROM microbilt_searches WHERE id = ? AND product = 'background'"
+    ).get(req.params.searchId) as any;
+
+    if (!row) {
+      res.json({ found: false, message: 'Background check record not found' });
+      return;
+    }
+
+    let responseData = {};
+    try { responseData = JSON.parse(row.response_data); } catch { /* */ }
+
+    res.json({
+      found: true,
+      search: { ...row, response_data: responseData },
+    });
+  } catch (error: any) {
+    res.json({ found: false, message: 'Unable to retrieve record' });
+  }
+});
+
+// GET /api/microbilt/background/usage — background check usage stats for admin
+router.get('/background/usage', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    const total = (db.prepare(
+      "SELECT COUNT(*) as cnt FROM microbilt_searches WHERE product = 'background'"
+    ).get() as any).cnt;
+
+    const totalHits = (db.prepare(
+      "SELECT COUNT(*) as cnt FROM microbilt_searches WHERE product = 'background' AND hit = 1"
+    ).get() as any).cnt;
+
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const last30Days = (db.prepare(
+      "SELECT COUNT(*) as cnt FROM microbilt_searches WHERE product = 'background' AND created_at > ?"
+    ).get(thirtyDaysAgo) as any).cnt;
+
+    // Count unique subjects searched
+    const uniqueSubjects = (db.prepare(
+      "SELECT COUNT(DISTINCT search_input) as cnt FROM microbilt_searches WHERE product = 'background'"
+    ).get() as any).cnt;
+
+    res.json({
+      totalSearches: total,
+      totalHits,
+      hitRate: total > 0 ? Math.round((totalHits / total) * 100) : 0,
+      uniqueSubjects,
+      last30Days,
+    });
+  } catch (error: any) {
+    res.json({ totalSearches: 0, totalHits: 0, hitRate: 0, uniqueSubjects: 0, last30Days: 0 });
+  }
+});
+
+// ── Background check response parsers ──────────────────────
+
+function parseCriminalResponse(data: any): any[] {
+  const records: any[] = [];
+  try {
+    const searchRecords = data?.CriminalSearchInfo?.CriminalSearchRecord;
+    const list = Array.isArray(searchRecords) ? searchRecords : searchRecords ? [searchRecords] : [];
+    for (const rec of list) {
+      if (!rec) continue;
+      const personName = rec.PersonInfo?.PersonName || {};
+      const offenses = rec.Offenses || rec.CriminalOffense;
+      const offenseList = offenses ? (Array.isArray(offenses) ? offenses : [offenses]) : [];
+
+      for (const offense of offenseList) {
+        records.push({
+          record_type: 'CRIMINAL',
+          source: 'STATE_CRIMINAL',
+          subject_name: personName.FullName || `${personName.FirstName || ''} ${personName.LastName || ''}`.trim(),
+          dob: rec.PersonInfo?.BirthDt || '',
+          offense: offense.OffenseDesc || offense.ChargeDesc || offense.Offense || '',
+          offense_date: offense.OffenseDt || offense.ArrestDt || '',
+          case_number: offense.CaseNum || offense.CaseId || '',
+          court: offense.CourtName || offense.Court || '',
+          disposition: offense.Disposition || '',
+          sentence: offense.Sentence || '',
+          state: offense.State || rec.PersonInfo?.ContactInfo?.PostAddr?.StateProv || '',
+          status: offense.CaseStatus || 'CLOSED',
+        });
+      }
+
+      // If no individual offenses but record exists, add the record itself
+      if (offenseList.length === 0) {
+        records.push({
+          record_type: 'CRIMINAL',
+          source: 'STATE_CRIMINAL',
+          subject_name: personName.FullName || `${personName.FirstName || ''} ${personName.LastName || ''}`.trim(),
+          dob: rec.PersonInfo?.BirthDt || '',
+          offense: rec.ChargeDesc || 'CRIMINAL RECORD ON FILE',
+          offense_date: rec.OffenseDt || '',
+          case_number: rec.CaseNum || '',
+          court: rec.CourtName || '',
+          disposition: rec.Disposition || '',
+          sentence: '',
+          state: rec.PersonInfo?.ContactInfo?.PostAddr?.StateProv || '',
+          status: rec.CaseStatus || '',
+        });
+      }
+    }
+  } catch (err) {
+    console.error('[Background Check] Error parsing criminal response:', err);
+  }
+  return records;
+}
+
+function parseSexOffenderResponse(data: any): any[] {
+  const records: any[] = [];
+  try {
+    const searchRecords = data?.SexOffenderSearchInfo?.SexOffenderSearchRecord;
+    const list = Array.isArray(searchRecords) ? searchRecords : searchRecords ? [searchRecords] : [];
+    for (const rec of list) {
+      if (!rec) continue;
+      const personName = rec.PersonInfo?.PersonName || {};
+      records.push({
+        record_type: 'SEX_OFFENDER',
+        source: 'NATIONAL_REGISTRY',
+        subject_name: personName.FullName || `${personName.FirstName || ''} ${personName.LastName || ''}`.trim(),
+        dob: rec.PersonInfo?.BirthDt || '',
+        offense: rec.Offense || rec.ConvictionOffense || 'REGISTERED SEX OFFENDER',
+        offense_date: rec.RegistrationDt || rec.ConvictionDt || '',
+        case_number: rec.CaseNum || '',
+        court: rec.ConvictionJurisdiction || '',
+        disposition: '',
+        sentence: '',
+        state: rec.RegistrationState || rec.State || '',
+        status: rec.RegistrationStatus || 'REGISTERED',
+        tier: rec.RiskLevel || rec.Tier || '',
+        registry_address: rec.Address || '',
+      });
+    }
+  } catch (err) {
+    console.error('[Background Check] Error parsing sex offender response:', err);
+  }
+  return records;
+}
+
+function parsePublicRecordResponse(data: any): any[] {
+  const records: any[] = [];
+  try {
+    const searchRecords = data?.PublicRecordSearchInfo?.PublicRecordSearchRecord;
+    const list = Array.isArray(searchRecords) ? searchRecords : searchRecords ? [searchRecords] : [];
+    for (const rec of list) {
+      if (!rec) continue;
+      const personName = rec.PersonInfo?.PersonName || {};
+      records.push({
+        record_type: 'COURT',
+        source: rec.RecordSource || 'PUBLIC_RECORD',
+        subject_name: personName.FullName || `${personName.FirstName || ''} ${personName.LastName || ''}`.trim(),
+        dob: rec.PersonInfo?.BirthDt || '',
+        offense: rec.CaseType || rec.Description || '',
+        offense_date: rec.FilingDt || rec.CaseDt || '',
+        case_number: rec.CaseNum || rec.CaseId || '',
+        court: rec.CourtName || rec.FilingJurisdiction || '',
+        disposition: rec.CaseDisposition || '',
+        sentence: '',
+        state: rec.State || rec.FilingState || '',
+        status: rec.CaseStatus || '',
+      });
+    }
+  } catch (err) {
+    console.error('[Background Check] Error parsing public record response:', err);
+  }
+  return records;
 }
 
 // ============================================================

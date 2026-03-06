@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Package } from 'lucide-react';
+import { Package, Microscope, Hash, Shield } from 'lucide-react';
 import FormModal from './FormModal';
 import { useFormDirty } from '../hooks/useFormDirty';
 import { apiFetch } from '../hooks/useApi';
@@ -84,7 +84,7 @@ const EMPTY_FORM: EvidenceFormData = {
 export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreated, editingEvidence }: EvidenceFormModalProps) {
   const [form, setForm] = useState<EvidenceFormData>({ ...EMPTY_FORM });
   const { isDirty, snapshot } = useFormDirty(form, isOpen);
-  const [activeTab, setActiveTab] = useState<'basic' | 'details' | 'lab'>('basic');
+  const [activeTab, setActiveTab] = useState<'basic' | 'details' | 'lab' | 'digital'>('basic');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -191,6 +191,7 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
     { id: 'basic' as const, label: 'Basic Info' },
     { id: 'details' as const, label: 'Item Details' },
     { id: 'lab' as const, label: 'Lab / Disposal' },
+    { id: 'digital' as const, label: 'Digital Forensics' },
   ];
 
   return (
@@ -386,6 +387,71 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
                 <input type="text" className="input-dark text-xs" placeholder="Name of authorizing person" value={form.disposal_authorized_by} onChange={(e) => updateField('disposal_authorized_by', e.target.value)} />
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Digital Forensics Tab */}
+      {activeTab === 'digital' && (
+        <div className="space-y-3">
+          <div className="panel-beveled p-3 space-y-3">
+            <div className="flex items-center gap-2">
+              <Microscope className="w-3.5 h-3.5 text-brand-400" />
+              <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">IPED Digital Forensics</label>
+            </div>
+
+            {editingEvidence ? (
+              <>
+                {/* Hash summary for existing evidence */}
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="bg-surface-sunken p-2 rounded-sm">
+                    <Hash className="w-3 h-3 mx-auto mb-1 text-rmpg-400" />
+                    <div className="text-sm font-bold text-rmpg-100">{(editingEvidence as any).hash_count || 0}</div>
+                    <div className="text-[9px] text-rmpg-500 uppercase">Hashes</div>
+                  </div>
+                  <div className="bg-surface-sunken p-2 rounded-sm">
+                    <Shield className="w-3 h-3 mx-auto mb-1 text-rmpg-400" />
+                    <div className="text-sm font-bold text-rmpg-100">{(editingEvidence as any).flagged_hash_count || 0}</div>
+                    <div className="text-[9px] text-rmpg-500 uppercase">Flagged</div>
+                  </div>
+                  <div className="bg-surface-sunken p-2 rounded-sm">
+                    <Microscope className="w-3 h-3 mx-auto mb-1 text-rmpg-400" />
+                    <div className="text-sm font-bold text-rmpg-100">{(editingEvidence as any).iped_processed ? 'Yes' : 'No'}</div>
+                    <div className="text-[9px] text-rmpg-500 uppercase">IPED Processed</div>
+                  </div>
+                </div>
+
+                <div className="text-[9px] text-rmpg-500 bg-surface-sunken p-2 rounded-sm leading-relaxed">
+                  Hash computation and IPED processing are available in the evidence detail view.
+                  Open this evidence record and use the "Digital Forensics" section to compute hashes
+                  or run IPED analysis on attached files.
+                </div>
+              </>
+            ) : (
+              <div className="text-[9px] text-rmpg-500 bg-surface-sunken p-2 rounded-sm leading-relaxed">
+                Digital forensics features (hash computation, IPED processing, hash set matching)
+                become available after the evidence record is created and files are attached.
+                Save this evidence record first, then use the detail view to run forensic analysis.
+              </div>
+            )}
+          </div>
+
+          <div className="panel-beveled p-3 space-y-2">
+            <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block">Capabilities</label>
+            <div className="space-y-1 text-[10px]">
+              <div className="flex items-center gap-2 text-rmpg-300">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0" />
+                <span><strong>Tier 1 (Built-in):</strong> MD5, SHA-1, SHA-256, SHA-512, content fingerprint</span>
+              </div>
+              <div className="flex items-center gap-2 text-rmpg-300">
+                <span className="w-1.5 h-1.5 rounded-full bg-purple-400 shrink-0" />
+                <span><strong>Tier 2 (IPED):</strong> PhotoDNA, disk image processing, file carving, OCR, face recognition</span>
+              </div>
+              <div className="flex items-center gap-2 text-rmpg-300">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                <span><strong>Hash Sets:</strong> NSRL, ProjectVIC, custom CSV — automatic known-file flagging</span>
+              </div>
+            </div>
           </div>
         </div>
       )}

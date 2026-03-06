@@ -43,6 +43,9 @@ import NcicPage from './pages/NcicPage';
 import DlSearchPage from './pages/DlSearchPage';
 import BodyCamerasPage from './pages/BodyCamerasPage';
 import TrainingDocsPage from './pages/TrainingDocsPage';
+import ForensicsPage from './pages/ForensicsPage';
+import SkipTracerPage from './pages/SkipTracerPage';
+import ArrestRecordsPage from './pages/ArrestRecordsPage';
 import IncidentDetailWindow from './pages/detached/IncidentDetailWindow';
 import RecordDetailWindow from './pages/detached/RecordDetailWindow';
 
@@ -136,6 +139,9 @@ function AppRoutes() {
           <Route path="/dl-search" element={<DlSearchPage />} />
           <Route path="/audit" element={<AuditLogPage />} />
           <Route path="/training-docs" element={<TrainingDocsPage />} />
+          <Route path="/forensics" element={<ForensicsPage />} />
+          <Route path="/skip-tracer" element={<SkipTracerPage />} />
+          <Route path="/arrest-records" element={<ArrestRecordsPage />} />
           <Route path="/admin" element={<AdminPage />} />
         </Route>
 

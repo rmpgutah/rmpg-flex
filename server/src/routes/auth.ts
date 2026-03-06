@@ -20,13 +20,13 @@ import { validatePassword, getPasswordPolicyDescription, checkPasswordHistory, i
 import config from '../config';
 import { localNow } from '../utils/timeUtils';
 import {
-  generateTotpSecret,
+  generateTotpSecret as legacyGenerateTotpSecret,
   generateQrCodeDataUrl,
   verifyTotpCode,
   generateBackupCodes,
   verifyBackupCode,
-  encryptSecret,
-  decryptSecret,
+  encryptSecret as legacyEncryptSecret,
+  decryptSecret as legacyDecryptSecret,
 } from '../utils/totp';
 import { createNotification } from './notifications';
 import {
@@ -39,8 +39,11 @@ import {
   hasWebAuthnCredentials,
 } from '../utils/webauthn';
 import {
+  generateTotpSecret,
   generateQRCodeDataUri,
   verifyTotpToken,
+  encryptSecret,
+  decryptSecret,
   hashBackupCode,
   verifyBackupCode as verifyBackupCodeHash,
 } from '../utils/totpService';
@@ -1395,8 +1398,8 @@ router.post('/verify-2fa', authRateLimit, (req: Request, res: Response) => {
     const ip = req.ip || 'unknown';
     const userAgent = req.headers['user-agent'] || 'unknown';
 
-    // Try TOTP code first
-    const secret = decryptSecret(user.totp_secret_enc);
+    // Try TOTP code first (legacy — combined iv:tag:ciphertext format)
+    const secret = legacyDecryptSecret(user.totp_secret_enc);
     let codeValid = verifyTotpCode(secret, code);
 
     // If TOTP fails, try backup code
@@ -1523,15 +1526,15 @@ router.post('/totp/setup', authenticateToken, async (req: Request, res: Response
       return;
     }
 
-    // Generate secret
-    const { secret, otpauthUrl } = generateTotpSecret(user.username);
+    // Generate secret (legacy — combined string format for users table)
+    const { secret, otpauthUrl } = legacyGenerateTotpSecret(user.username);
     const qrCodeUrl = await generateQrCodeDataUrl(otpauthUrl);
 
     // Generate backup codes
     const { plain: backupCodes, hashed: hashedBackupCodes } = generateBackupCodes(config.totp?.backupCodeCount || 10);
 
     // Store pending secret (not active yet — user must verify first)
-    const encPendingSecret = encryptSecret(secret);
+    const encPendingSecret = legacyEncryptSecret(secret);
     db.prepare('UPDATE users SET totp_pending_secret = ? WHERE id = ?')
       .run(encPendingSecret, user.id);
 
@@ -1570,8 +1573,8 @@ router.post('/totp/verify-setup', authenticateToken, (req: Request, res: Respons
       return;
     }
 
-    // Decrypt pending secret and verify code
-    const secret = decryptSecret(user.totp_pending_secret);
+    // Decrypt pending secret and verify code (legacy — combined string format)
+    const secret = legacyDecryptSecret(user.totp_pending_secret);
     if (!verifyTotpCode(secret, code)) {
       res.status(401).json({ error: 'Invalid code. Ensure your authenticator app is synced and try again.' });
       return;

@@ -742,7 +742,10 @@ app.whenReady().then(async () => {
 });
 
 app.on('activate', () => {
-  // macOS: re-create window when dock icon is clicked
+  // macOS: re-create window when dock icon is clicked.
+  // Guard against the `activate` event firing before `whenReady()` resolves —
+  // this can happen on macOS if the dock icon is clicked during startup.
+  if (!app.isReady()) return;
   if (mainWindow === null) {
     createMainWindow();
   } else {

@@ -1,9 +1,80 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import crypto from 'crypto';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import { fileURLToPath } from 'url';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
+import { queueOverlayProcessing, type DashCamOverlayConfig } from '../utils/videoOverlay';
+
+const execAsync = promisify(exec);
+const __filename_f = fileURLToPath(import.meta.url);
+const __dirname_f = path.dirname(__filename_f);
+
+// ── Dash camera video storage ───────────────────────────────
+const DASHCAM_DIR = process.env.RMPG_UPLOADS_DIR
+  ? path.join(process.env.RMPG_UPLOADS_DIR, 'dashcam')
+  : path.resolve(__dirname_f, '../../uploads/dashcam');
+
+if (!fs.existsSync(DASHCAM_DIR)) {
+  fs.mkdirSync(DASHCAM_DIR, { recursive: true });
+}
+
+const DASHCAM_MIME_TYPES = new Set([
+  'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm', 'video/x-matroska',
+]);
+
+const dashcamStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    const now = new Date();
+    const subDir = path.join(DASHCAM_DIR, `${now.getFullYear()}`, String(now.getMonth() + 1).padStart(2, '0'));
+    if (!fs.existsSync(subDir)) fs.mkdirSync(subDir, { recursive: true });
+    cb(null, subDir);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, `${crypto.randomUUID()}${ext}`);
+  },
+});
+
+const dashcamUpload = multer({
+  storage: dashcamStorage,
+  fileFilter: (_req, file, cb) => {
+    if (DASHCAM_MIME_TYPES.has(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`File type ${file.mimetype} is not allowed. Accepted: MP4, MOV, AVI, WebM`));
+    }
+  },
+});
+
+/** Extract video duration using ffprobe */
+async function extractDashcamDuration(filePath: string): Promise<number | null> {
+  try {
+    const { stdout } = await execAsync(
+      `ffprobe -v error -show_entries format=duration -of csv=p=0 "${filePath}"`,
+      { timeout: 30000 },
+    );
+    const seconds = parseFloat(stdout.trim());
+    return isFinite(seconds) ? Math.round(seconds) : null;
+  } catch {
+    return null;
+  }
+}
 
 const router = Router();
+
+// Promote query-string token to Authorization header for <video> streaming
+router.use((req: Request, _res: Response, next: NextFunction) => {
+  if (!req.headers['authorization'] && req.query.token) {
+    req.headers['authorization'] = `Bearer ${req.query.token}`;
+  }
+  next();
+});
 
 // All fleet routes require authentication
 router.use(authenticateToken);
@@ -1585,6 +1656,368 @@ router.post('/import/simply-fleet', requireRole('admin', 'manager'), (req: Reque
   } catch (error: any) {
     console.error('Simply Fleet import error:', error);
     res.status(500).json({ error: 'Failed to import Simply Fleet data' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// DASH CAMERA VIDEO MANAGEMENT
+// ═══════════════════════════════════════════════════════════════
+
+// ── GET /api/fleet/dashcam-videos — List all dash cam videos ──
+router.get('/dashcam-videos', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { vehicle_id, unit_id, classification } = req.query;
+
+    let where = 'WHERE 1=1';
+    const params: any[] = [];
+
+    if (vehicle_id) { where += ' AND v.vehicle_id = ?'; params.push(vehicle_id); }
+    if (unit_id) { where += ' AND v.unit_id = ?'; params.push(unit_id); }
+    if (classification) { where += ' AND v.classification = ?'; params.push(classification); }
+
+    const videos = db.prepare(`
+      SELECT v.*, fv.vehicle_number, fv.make as vehicle_make, fv.model as vehicle_model, fv.year as vehicle_year,
+             un.call_sign as unit_call_sign
+      FROM dashcam_videos v
+      LEFT JOIN fleet_vehicles fv ON v.vehicle_id = fv.id
+      LEFT JOIN units un ON v.unit_id = un.id
+      ${where}
+      ORDER BY v.recorded_at DESC, v.created_at DESC
+      LIMIT 200
+    `).all(...params);
+
+    res.json(videos);
+  } catch (error: any) {
+    console.error('Get dashcam videos error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── GET /api/fleet/:vehicleId/dashcam-videos — Videos for a vehicle ──
+router.get('/:vehicleId/dashcam-videos', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const videos = db.prepare(`
+      SELECT v.*, fv.vehicle_number, un.call_sign as unit_call_sign
+      FROM dashcam_videos v
+      LEFT JOIN fleet_vehicles fv ON v.vehicle_id = fv.id
+      LEFT JOIN units un ON v.unit_id = un.id
+      WHERE v.vehicle_id = ?
+      ORDER BY v.recorded_at DESC
+    `).all(req.params.vehicleId);
+
+    res.json(videos);
+  } catch (error: any) {
+    console.error('Get vehicle dashcam videos error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── POST /api/fleet/dashcam-videos — Upload dash cam video ──
+router.post('/dashcam-videos', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  req.setTimeout(600000);
+  res.setTimeout(600000);
+
+  try {
+    if (!fs.existsSync(DASHCAM_DIR)) fs.mkdirSync(DASHCAM_DIR, { recursive: true });
+    fs.accessSync(DASHCAM_DIR, fs.constants.W_OK);
+  } catch (dirErr: any) {
+    res.status(503).json({ error: `Upload storage unavailable: ${dirErr.message}` });
+    return;
+  }
+
+  try {
+    dashcamUpload.single('video')(req, res, (multerErr: any) => {
+      if (multerErr) {
+        res.status(400).json({ error: multerErr.message || 'Upload failed' });
+        return;
+      }
+
+      try {
+        const db = getDb();
+        const file = req.file;
+        if (!file) {
+          res.status(400).json({ error: 'No video file provided' });
+          return;
+        }
+
+        const { vehicle_id, unit_id, title, duration_seconds, recorded_at,
+                speed_mph, latitude, longitude, address,
+                case_number, classification, notes } = req.body;
+
+        if (!title) {
+          if (file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
+          res.status(400).json({ error: 'title is required' });
+          return;
+        }
+
+        const diskStat = fs.statSync(file.path);
+        const verifiedSize = diskStat.size;
+        const relativePath = path.relative(DASHCAM_DIR, file.path);
+
+        // Auto-populate speed/lat/lon/address from nearest ClearPathGPS event
+        let resolvedSpeed = speed_mph ? parseFloat(speed_mph) : null;
+        let resolvedLat = latitude ? parseFloat(latitude) : null;
+        let resolvedLon = longitude ? parseFloat(longitude) : null;
+        let resolvedAddr = address || null;
+
+        if (unit_id && recorded_at && (resolvedSpeed == null || resolvedLat == null)) {
+          try {
+            const nearestEvent = db.prepare(`
+              SELECT speed_mph, latitude, longitude, address
+              FROM dashcam_events
+              WHERE unit_id = ?
+              AND ABS(julianday(event_timestamp) - julianday(?)) < 0.007
+              ORDER BY ABS(julianday(event_timestamp) - julianday(?))
+              LIMIT 1
+            `).get(unit_id, recorded_at, recorded_at) as any;
+
+            if (nearestEvent) {
+              if (resolvedSpeed == null && nearestEvent.speed_mph != null) resolvedSpeed = nearestEvent.speed_mph;
+              if (resolvedLat == null && nearestEvent.latitude != null) resolvedLat = nearestEvent.latitude;
+              if (resolvedLon == null && nearestEvent.longitude != null) resolvedLon = nearestEvent.longitude;
+              if (!resolvedAddr && nearestEvent.address) resolvedAddr = nearestEvent.address;
+            }
+          } catch { /* ClearPathGPS lookup failed — use manual values */ }
+        }
+
+        const result = db.prepare(`
+          INSERT INTO dashcam_videos (vehicle_id, unit_id, title, file_path, file_size, duration_seconds,
+            mime_type, recorded_at, speed_mph, latitude, longitude, address,
+            case_number, classification, notes, uploaded_by)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          vehicle_id || null, unit_id || null, title, relativePath, verifiedSize,
+          duration_seconds || null, file.mimetype,
+          recorded_at || localNow(),
+          resolvedSpeed, resolvedLat, resolvedLon, resolvedAddr,
+          case_number || null, classification || 'routine',
+          notes || null, String(req.user!.userId),
+        );
+
+        const videoId = result.lastInsertRowid;
+
+        const video = db.prepare(`
+          SELECT v.*, fv.vehicle_number, fv.year as vehicle_year, fv.make as vehicle_make, fv.model as vehicle_model,
+                 un.call_sign as unit_call_sign
+          FROM dashcam_videos v
+          LEFT JOIN fleet_vehicles fv ON v.vehicle_id = fv.id
+          LEFT JOIN units un ON v.unit_id = un.id
+          WHERE v.id = ?
+        `).get(videoId) as any;
+
+        // Fire-and-forget: extract duration
+        const fullFilePath = path.resolve(DASHCAM_DIR, relativePath);
+        extractDashcamDuration(fullFilePath).then((dur) => {
+          if (dur != null) {
+            try {
+              getDb().prepare('UPDATE dashcam_videos SET duration_seconds = ?, updated_at = ? WHERE id = ?')
+                .run(dur, localNow(), videoId);
+            } catch { /* ignore */ }
+          }
+        }).catch(() => {});
+
+        // Fire-and-forget: queue overlay burn
+        const vehDesc = [video?.vehicle_year, video?.vehicle_make, video?.vehicle_model].filter(Boolean).join(' ');
+        const overlayConfig: DashCamOverlayConfig = {
+          type: 'dashcam',
+          unitCallSign: video?.unit_call_sign || '',
+          vehicleDescription: vehDesc,
+          recordedAtUnix: Math.floor(new Date(recorded_at || Date.now()).getTime() / 1000),
+          speedMph: resolvedSpeed,
+          latitude: resolvedLat,
+          longitude: resolvedLon,
+          address: resolvedAddr || '',
+        };
+        queueOverlayProcessing(videoId, 'dashcam', fullFilePath, overlayConfig);
+
+        res.status(201).json(video);
+      } catch (error: any) {
+        console.error('Dashcam upload DB error:', error?.message, error?.stack);
+        res.status(500).json({ error: `Upload processing failed: ${error?.message || 'Internal server error'}` });
+      }
+    });
+  } catch (outerErr: any) {
+    console.error('Dashcam upload error:', outerErr?.message);
+    if (!res.headersSent) {
+      res.status(500).json({ error: `Upload failed: ${outerErr?.message || 'Internal server error'}` });
+    }
+  }
+});
+
+// ── GET /api/fleet/dashcam-videos/:id/stream — Stream with overlay ──
+router.get('/dashcam-videos/:id/stream', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const video = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
+    if (!video) {
+      res.status(404).json({ error: 'Video not found' });
+      return;
+    }
+
+    // Serve processed (overlaid) file if available
+    const servePath = (video.overlay_status === 'complete' && video.processed_file_path)
+      ? path.resolve(DASHCAM_DIR, video.processed_file_path)
+      : path.resolve(DASHCAM_DIR, video.file_path);
+
+    const filePath = fs.existsSync(servePath) ? servePath : path.resolve(DASHCAM_DIR, video.file_path);
+
+    if (!filePath.startsWith(DASHCAM_DIR) || !fs.existsSync(filePath)) {
+      res.status(404).json({ error: 'Video file not found on disk' });
+      return;
+    }
+
+    const stat = fs.statSync(filePath);
+    const fileSize = stat.size;
+    const mimeType = filePath.endsWith('.mp4') ? 'video/mp4' : (video.mime_type || 'video/mp4');
+    const range = req.headers.range;
+
+    if (range) {
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      const chunkSize = end - start + 1;
+
+      res.writeHead(206, {
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunkSize,
+        'Content-Type': mimeType,
+      });
+      fs.createReadStream(filePath, { start, end }).pipe(res);
+    } else {
+      res.writeHead(200, { 'Content-Length': fileSize, 'Content-Type': mimeType });
+      fs.createReadStream(filePath).pipe(res);
+    }
+  } catch (error: any) {
+    console.error('Stream dashcam video error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── PUT /api/fleet/dashcam-videos/:id — Update metadata ──
+router.put('/dashcam-videos/:id', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
+    if (!existing) {
+      res.status(404).json({ error: 'Video not found' });
+      return;
+    }
+
+    const { title, classification, case_number, notes, speed_mph, latitude, longitude, address } = req.body;
+    const setClauses: string[] = [];
+    const vals: any[] = [];
+
+    if (title !== undefined) { setClauses.push('title = ?'); vals.push(title); }
+    if (classification !== undefined) { setClauses.push('classification = ?'); vals.push(classification); }
+    if (case_number !== undefined) { setClauses.push('case_number = ?'); vals.push(case_number || null); }
+    if (notes !== undefined) { setClauses.push('notes = ?'); vals.push(notes || null); }
+    if (speed_mph !== undefined) { setClauses.push('speed_mph = ?'); vals.push(speed_mph != null ? parseFloat(speed_mph) : null); }
+    if (latitude !== undefined) { setClauses.push('latitude = ?'); vals.push(latitude != null ? parseFloat(latitude) : null); }
+    if (longitude !== undefined) { setClauses.push('longitude = ?'); vals.push(longitude != null ? parseFloat(longitude) : null); }
+    if (address !== undefined) { setClauses.push('address = ?'); vals.push(address || null); }
+
+    if (setClauses.length === 0) {
+      res.status(400).json({ error: 'No fields to update' });
+      return;
+    }
+
+    setClauses.push('updated_at = ?');
+    vals.push(localNow());
+    vals.push(req.params.id);
+
+    db.prepare(`UPDATE dashcam_videos SET ${setClauses.join(', ')} WHERE id = ?`).run(...vals);
+
+    const updated = db.prepare(`
+      SELECT v.*, fv.vehicle_number, un.call_sign as unit_call_sign
+      FROM dashcam_videos v
+      LEFT JOIN fleet_vehicles fv ON v.vehicle_id = fv.id
+      LEFT JOIN units un ON v.unit_id = un.id
+      WHERE v.id = ?
+    `).get(req.params.id);
+
+    res.json(updated);
+  } catch (error: any) {
+    console.error('Update dashcam video error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── DELETE /api/fleet/dashcam-videos/:id — Delete video + files ──
+router.delete('/dashcam-videos/:id', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
+    if (!existing) {
+      res.status(404).json({ error: 'Video not found' });
+      return;
+    }
+
+    // Delete original file
+    const filePath = path.resolve(DASHCAM_DIR, existing.file_path);
+    if (filePath.startsWith(DASHCAM_DIR) && fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+    // Delete processed overlay file
+    if (existing.processed_file_path) {
+      const processedPath = path.resolve(DASHCAM_DIR, existing.processed_file_path);
+      if (processedPath.startsWith(DASHCAM_DIR) && fs.existsSync(processedPath)) {
+        fs.unlinkSync(processedPath);
+      }
+    }
+
+    db.prepare('DELETE FROM dashcam_videos WHERE id = ?').run(req.params.id);
+    res.json({ message: 'Dash cam video deleted' });
+  } catch (error: any) {
+    console.error('Delete dashcam video error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── POST /api/fleet/dashcam-videos/:id/reprocess — Re-queue overlay ──
+router.post('/dashcam-videos/:id/reprocess', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const video = db.prepare(`
+      SELECT v.*, fv.vehicle_number, fv.year as vehicle_year, fv.make as vehicle_make, fv.model as vehicle_model,
+             un.call_sign as unit_call_sign
+      FROM dashcam_videos v
+      LEFT JOIN fleet_vehicles fv ON v.vehicle_id = fv.id
+      LEFT JOIN units un ON v.unit_id = un.id
+      WHERE v.id = ?
+    `).get(req.params.id) as any;
+
+    if (!video) {
+      res.status(404).json({ error: 'Video not found' });
+      return;
+    }
+
+    const inputPath = path.resolve(DASHCAM_DIR, video.file_path);
+    if (!fs.existsSync(inputPath)) {
+      res.status(404).json({ error: 'Original video file not found' });
+      return;
+    }
+
+    const vehDesc = [video.vehicle_year, video.vehicle_make, video.vehicle_model].filter(Boolean).join(' ');
+    const recordedAt = video.recorded_at ? new Date(video.recorded_at) : new Date();
+    const config: DashCamOverlayConfig = {
+      type: 'dashcam',
+      unitCallSign: video.unit_call_sign || '',
+      vehicleDescription: vehDesc,
+      recordedAtUnix: Math.floor(recordedAt.getTime() / 1000),
+      speedMph: video.speed_mph,
+      latitude: video.latitude,
+      longitude: video.longitude,
+      address: video.address || '',
+    };
+
+    queueOverlayProcessing(video.id, 'dashcam', inputPath, config);
+    res.json({ message: 'Overlay reprocessing queued', videoId: video.id });
+  } catch (error: any) {
+    console.error('Reprocess dashcam overlay error:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

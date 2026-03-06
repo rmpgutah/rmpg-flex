@@ -913,30 +913,48 @@ export default function DispatchPage() {
 
   const handleConfirmClear = async (disposition: string, createIncident?: boolean) => {
     if (!dispositionPromptCallId) return;
+    const callId = dispositionPromptCallId;
     try {
-      const result = await apiFetch<any>(`/dispatch/calls/${dispositionPromptCallId}/status`, {
+      const result = await apiFetch<any>(`/dispatch/calls/${callId}/status`, {
         method: 'POST',
         body: JSON.stringify({ status: 'cleared', disposition }),
       });
       const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === dispositionPromptCallId ? updatedCall : c));
-      setSelectedCall((prev) => prev?.id === dispositionPromptCallId ? updatedCall : prev);
+      setCalls((prev) => prev.map((c) => c.id === callId ? updatedCall : c));
+      setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
       const unitsRes = await apiFetch<any[]>('/dispatch/units');
       setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
 
-      // Auto-promote to incident report if checkbox was checked
+      // Auto-create incident report if checkbox was checked
       if (createIncident) {
         try {
-          await apiFetch<any>(`/dispatch/calls/${dispositionPromptCallId}/promote-to-incident`, {
+          const token = localStorage.getItem('rmpg_token');
+          const incRes = await fetch(`/api/dispatch/calls/${callId}/generate-incident`, {
             method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
           });
-          navigate('/incidents');
-        } catch (err) {
-          console.error('Failed to promote call to incident:', err);
+
+          if (incRes.status === 409) {
+            addToast('An incident report already exists for this call', 'info');
+          } else if (!incRes.ok) {
+            const errData = await incRes.json().catch(() => ({}));
+            throw new Error(errData.error || `Failed to create report (${incRes.status})`);
+          } else {
+            const incident = await incRes.json();
+            addToast(`Incident ${incident.incident_number || ''} created`, 'success');
+            navigate('/incidents');
+          }
+        } catch (err: any) {
+          console.error('Failed to create incident from clear:', err);
+          addToast(err?.message || 'Failed to create incident report — use the Report button after clearing', 'error');
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to clear call:', err);
+      addToast(err?.message || 'Failed to clear call', 'error');
     }
     setDispositionPromptCallId(null);
   };
@@ -993,19 +1011,34 @@ export default function DispatchPage() {
     if (!selectedCall) return;
     setIsGenerating(true);
     try {
-      const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/generate-incident`, {
+      // Direct fetch to preserve full error response (apiFetch wraps errors in plain Error)
+      const token = localStorage.getItem('rmpg_token');
+      const res = await fetch(`/api/dispatch/calls/${selectedCall.id}/generate-incident`, {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
       });
-      // Navigate to incidents page after successful generation
+
+      if (res.status === 409) {
+        // Incident already exists — navigate to it
+        addToast('An incident report already exists for this call', 'info');
+        navigate('/incidents');
+        return;
+      }
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || errData.message || `Request failed with status ${res.status}`);
+      }
+
+      const incident = await res.json();
+      addToast(`Incident ${incident.incident_number || ''} created`, 'success');
       navigate('/incidents');
     } catch (err: any) {
-      // If incident already exists, show it
-      if (err?.incident_id) {
-        navigate('/incidents');
-      } else {
-        console.error('Failed to generate incident:', err);
-        addToast(err?.message || err?.error || 'Failed to generate incident report', 'error');
-      }
+      console.error('Failed to generate incident:', err);
+      addToast(err?.message || 'Failed to generate incident report', 'error');
     } finally {
       setIsGenerating(false);
     }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Search,
   Package,
@@ -17,6 +17,11 @@ import {
   Link2,
   Activity,
   FileText,
+  Microscope,
+  Copy,
+  CheckCircle2,
+  AlertTriangle,
+  Shield,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import EvidenceFormModal from '../../components/EvidenceFormModal';
@@ -321,6 +326,163 @@ export function EvidenceTabList({ state }: { state: EvidenceTabState }) {
 }
 
 // ════════════════════════════════════════════════════
+// DIGITAL FORENSICS — inline section for evidence detail
+// ════════════════════════════════════════════════════
+
+interface HashResult {
+  id: number;
+  file_name: string;
+  md5: string | null;
+  sha1: string | null;
+  sha256: string | null;
+  photodna_hash: string | null;
+  phash: string | null;
+  hash_set_match: number;
+  hash_set_name: string | null;
+  flagged: number;
+  flag_reason: string | null;
+}
+
+function DigitalForensicsSection({ evidenceId }: { evidenceId: string }) {
+  const [hashes, setHashes] = useState<HashResult[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [computing, setComputing] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  const fetchHashes = useCallback(async () => {
+    try {
+      const data = await apiFetch<{ results: HashResult[] }>(`/iped/hash/results?evidence_id=${evidenceId}`);
+      setHashes(data.results || []);
+    } catch {
+      setHashes([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [evidenceId]);
+
+  useEffect(() => { fetchHashes(); }, [fetchHashes]);
+
+  const handleComputeHashes = async () => {
+    setComputing(true);
+    try {
+      await apiFetch('/iped/hash/batch', {
+        method: 'POST',
+        body: JSON.stringify({ evidence_id: evidenceId }),
+      });
+      await fetchHashes();
+    } catch {
+      // Error handled by parent
+    } finally {
+      setComputing(false);
+    }
+  };
+
+  const copyToClipboard = (text: string, field: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(null), 1500);
+  };
+
+  const flaggedCount = hashes.filter(h => h.flagged).length;
+  const matchCount = hashes.filter(h => h.hash_set_match).length;
+
+  if (loading) return (
+    <div className="flex items-center gap-2 text-[10px] text-rmpg-500 py-2">
+      <Loader2 className="w-3 h-3 animate-spin" /> Loading hash data...
+    </div>
+  );
+
+  return (
+    <div className="space-y-2">
+      {/* Action bar */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={handleComputeHashes}
+          disabled={computing}
+          className="toolbar-btn text-[10px] flex items-center gap-1 px-2.5 py-1 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
+        >
+          {computing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Hash className="w-3 h-3" />}
+          {computing ? 'Computing...' : 'Compute Hashes'}
+        </button>
+        <span className="text-[9px] text-rmpg-500">{hashes.length} file(s) hashed</span>
+      </div>
+
+      {/* Alerts */}
+      {flaggedCount > 0 && (
+        <div className="flex items-center gap-2 text-[10px] px-2 py-1.5 rounded-sm bg-red-950/30 border border-red-800/40 text-red-400">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+          {flaggedCount} file(s) flagged — {matchCount} hash set match(es)
+        </div>
+      )}
+
+      {/* Hash results */}
+      {hashes.length > 0 ? (
+        <div className="space-y-1 max-h-48 overflow-y-auto">
+          {hashes.map(h => (
+            <div
+              key={h.id}
+              className={`bg-surface-sunken p-2 rounded-sm text-[10px] ${
+                h.flagged ? 'border border-red-800/40' : ''
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <span className="font-medium text-rmpg-200 truncate flex-1">{h.file_name}</span>
+                {h.flagged ? (
+                  <span className="px-1.5 py-0.5 text-[8px] font-bold bg-red-900/40 text-red-400 border border-red-700/40 shrink-0">
+                    FLAGGED{h.hash_set_name ? `: ${h.hash_set_name}` : ''}
+                  </span>
+                ) : h.hash_set_match ? (
+                  <span className="px-1.5 py-0.5 text-[8px] font-bold bg-amber-900/30 text-amber-400 border border-amber-700/30 shrink-0">
+                    HASH SET MATCH
+                  </span>
+                ) : null}
+              </div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[9px]">
+                {h.md5 && (
+                  <div className="flex items-center gap-1">
+                    <span className="text-rmpg-500 w-12 shrink-0">MD5:</span>
+                    <span className="text-rmpg-300 font-mono truncate">{h.md5}</span>
+                    <button onClick={() => copyToClipboard(h.md5!, `md5-${h.id}`)} className="shrink-0 text-rmpg-600 hover:text-rmpg-300">
+                      {copiedField === `md5-${h.id}` ? <CheckCircle2 className="w-2.5 h-2.5 text-green-400" /> : <Copy className="w-2.5 h-2.5" />}
+                    </button>
+                  </div>
+                )}
+                {h.sha256 && (
+                  <div className="flex items-center gap-1">
+                    <span className="text-rmpg-500 w-12 shrink-0">SHA-256:</span>
+                    <span className="text-rmpg-300 font-mono truncate">{h.sha256.slice(0, 24)}...</span>
+                    <button onClick={() => copyToClipboard(h.sha256!, `sha256-${h.id}`)} className="shrink-0 text-rmpg-600 hover:text-rmpg-300">
+                      {copiedField === `sha256-${h.id}` ? <CheckCircle2 className="w-2.5 h-2.5 text-green-400" /> : <Copy className="w-2.5 h-2.5" />}
+                    </button>
+                  </div>
+                )}
+                {h.photodna_hash && (
+                  <div className="flex items-center gap-1">
+                    <span className="text-rmpg-500 w-12 shrink-0">PhotoDNA:</span>
+                    <span className="text-purple-400 font-mono truncate">{h.photodna_hash.slice(0, 20)}...</span>
+                    <Shield className="w-2.5 h-2.5 text-purple-400 shrink-0" />
+                  </div>
+                )}
+                {h.phash && (
+                  <div className="flex items-center gap-1">
+                    <span className="text-rmpg-500 w-12 shrink-0">pHash:</span>
+                    <span className="text-rmpg-300 font-mono truncate">{h.phash}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-[9px] text-rmpg-600">
+          No hashes computed yet. Click "Compute Hashes" to generate MD5/SHA-256 and content fingerprints for all file attachments.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════
 // DETAIL — EvidenceTabDetail (right panel content)
 // ════════════════════════════════════════════════════
 
@@ -485,6 +647,11 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
             <p className="text-xs text-rmpg-200 leading-relaxed">{selectedEvidence.notes}</p>
           </CollapsibleSection>
         )}
+
+        {/* ── Digital Forensics ──────────────── */}
+        <CollapsibleSection title="Digital Forensics" icon={Microscope} defaultOpen={false}>
+          <DigitalForensicsSection evidenceId={String(selectedEvidence.id)} />
+        </CollapsibleSection>
 
         {/* ── Record Info ─────────────────────── */}
         <CollapsibleSection title="Record Info" icon={Calendar} defaultOpen={false}>

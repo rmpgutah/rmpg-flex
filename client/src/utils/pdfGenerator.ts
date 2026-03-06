@@ -400,7 +400,10 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   const valColor = isEmpty ? COLOR.TEXT_TERTIARY : COLOR.TEXT_PRIMARY;
   doc.setTextColor(valColor[0], valColor[1], valColor[2]);
 
-  const textStartY = boxY + 4.5;
+  // Center single-line text; for multi-line, start ~40% down to balance visually
+  const textStartY = lines.length === 1
+    ? boxY + boxH / 2 + 1.2
+    : boxY + 3.5;
   let lineY = textStartY;
   for (const line of lines) {
     doc.text(line, x + innerPad, lineY);
@@ -472,8 +475,8 @@ export interface PdfSignatureData {
 }
 
 /**
- * Government-style signature block with shaded role header,
- * signature line with X marker, and grid sub-fields.
+ * Government-style signature block with shaded role header and
+ * two solid bordered rows: (1) signature area, (2) officer info grid.
  * Optionally embeds a digital signature image and pre-fills name/badge/date.
  */
 export function addSignatureBlock(
@@ -486,38 +489,37 @@ export function addSignatureBlock(
 ): number {
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
-  const boxH = SPACING.SIGNATURE_BOX_H;
 
-  // Outer border — black to match section style
-  doc.setDrawColor(0, 0, 0);
-  doc.setLineWidth(BORDER.SECTION_OUTER);
-  doc.rect(x, y, width, boxH);
+  const roleBarH = SPACING.SIGNATURE_ROLE_H;   // 5mm header
+  const sigRowH = 16;                           // Row 1: signature area
+  const infoRowH = 11;                          // Row 2: officer info
+  const totalH = roleBarH + sigRowH + infoRowH;
 
-  // Role label in dark header bar with white text
-  const roleBarH = SPACING.SIGNATURE_ROLE_H;
+  // ── Role label header bar (dark background, white text) ──
   doc.setFillColor(...COLOR.BG_SECTION_HDR);
   doc.rect(x, y, width, roleBarH, 'F');
-  doc.setDrawColor(...COLOR.BORDER_SECTION);
-  doc.setLineWidth(BORDER.SECTION_OUTER);
-  doc.line(x, y + roleBarH, x + width, y + roleBarH);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_FIELD_LABEL);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
   doc.text(roleLabel.toUpperCase(), x + SPACING.CONTENT_INSET, y + 3.8);
 
-  // Signature area
-  const sigLineY = y + roleBarH + 10;
+  // ── ROW 1: Signature area (solid bordered) ──
+  const row1Y = y + roleBarH;
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(BORDER.SECTION_OUTER);
+  doc.rect(x, row1Y, width, sigRowH);
 
   // Embed digital signature image if provided
   if (sigData?.signatureImage) {
     try {
       const imgW = width - SPACING.MD * 2 - 10;
-      const imgH = 10;
-      doc.addImage(sigData.signatureImage, 'PNG', x + SPACING.MD + 5, y + roleBarH + 1, imgW, imgH);
+      const imgH = sigRowH - 4;
+      doc.addImage(sigData.signatureImage, 'PNG', x + SPACING.MD + 5, row1Y + 1, imgW, imgH);
     } catch { /* signature image unavailable — fall back to empty line */ }
   }
 
-  // Signature line
+  // Signature line (solid, visible)
+  const sigLineY = row1Y + sigRowH - 3;
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
   doc.setLineWidth(BORDER.SIGNATURE_LINE);
   doc.line(x + SPACING.MD, sigLineY, x + width - SPACING.MD, sigLineY);
@@ -526,55 +528,65 @@ export function addSignatureBlock(
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_SIGNATURE_X);
     doc.setTextColor(...COLOR.TEXT_TERTIARY);
-    doc.text('X', x + SPACING.CONTENT_INSET, sigLineY - 1.5);
+    doc.text('X', x + SPACING.CONTENT_INSET, sigLineY - 2);
   }
 
+  // "SIGNATURE" label below the line (centered under line)
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
-  doc.text('SIGNATURE', x + FONT.SIZE_SIGNATURE_X + 1, sigLineY + 3);
+  const sigLabelW = doc.getTextWidth('SIGNATURE');
+  doc.text('SIGNATURE', x + width / 2 - sigLabelW / 2, sigLineY + 2.5);
 
-  // Bottom row: PRINTED NAME | BADGE # | DATE
-  const subY = sigLineY + SPACING.SIGNATURE_SUB_GAP;
-  const colW = (width - SPACING.SM) / 3;
+  // ── ROW 2: Officer info grid — three solid-bordered cells ──
+  const row2Y = row1Y + sigRowH;
+  const colW = width / 3;
 
-  doc.setDrawColor(...COLOR.BORDER_FIELD);
-  doc.setLineWidth(BORDER.FIELD);
-  doc.line(x, subY, x + width, subY);
-  doc.line(x + colW, subY, x + colW, y + boxH);
-  doc.line(x + colW * 2, subY, x + colW * 2, y + boxH);
+  // Draw solid outer border for entire row
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(BORDER.SECTION_OUTER);
+  doc.rect(x, row2Y, width, infoRowH);
 
-  // Sub-field labels
+  // Vertical dividers (solid black)
+  doc.line(x + colW, row2Y, x + colW, row2Y + infoRowH);
+  doc.line(x + colW * 2, row2Y, x + colW * 2, row2Y + infoRowH);
+
+  // Cell labels (top of each cell — consistent 2.5mm from cell top)
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
-  doc.text('PRINTED NAME', x + SPACING.MD, subY + 3.5);
-  doc.text('BADGE NUMBER', x + colW + SPACING.MD, subY + 3.5);
-  doc.text('DATE', x + colW * 2 + SPACING.MD, subY + 3.5);
+  const labelY = row2Y + 2.8;
+  doc.text('PRINTED NAME', x + SPACING.MD, labelY);
+  doc.text('BADGE NUMBER', x + colW + SPACING.MD, labelY);
+  doc.text('DATE', x + colW * 2 + SPACING.MD, labelY);
 
-  // Fill in values if provided
+  // Cell values (centered vertically in remaining cell space)
+  const valY = row2Y + infoRowH / 2 + 2;
   if (sigData?.printedName || sigData?.badgeNumber || sigData?.date) {
     doc.setFont('courier', 'normal');
     doc.setFontSize(FONT.SIZE_FIELD_VALUE);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    const valY = subY + 7.5;
     if (sigData.printedName) doc.text(sigData.printedName, x + SPACING.MD, valY);
     if (sigData.badgeNumber) doc.text(sigData.badgeNumber, x + colW + SPACING.MD, valY);
     const dateStr = sigData.date || new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
     doc.text(dateStr, x + colW * 2 + SPACING.MD, valY);
   } else {
-    // Empty lines for manual signing
-    doc.setDrawColor(...COLOR.BORDER_FIELD);
-    doc.setLineWidth(BORDER.FIELD);
-    const lineYSub = subY + 7;
-    doc.line(x + SPACING.MD, lineYSub, x + colW - SPACING.MD, lineYSub);
-    doc.line(x + colW + SPACING.MD, lineYSub, x + colW * 2 - SPACING.MD, lineYSub);
-    doc.line(x + colW * 2 + SPACING.MD, lineYSub, x + width - SPACING.MD, lineYSub);
+    // Solid write lines inside each cell for manual entry
+    doc.setDrawColor(0, 0, 0);
+    doc.setLineWidth(BORDER.SIGNATURE_LINE);
+    doc.line(x + SPACING.MD, valY, x + colW - SPACING.MD, valY);
+    doc.line(x + colW + SPACING.MD, valY, x + colW * 2 - SPACING.MD, valY);
+    doc.line(x + colW * 2 + SPACING.MD, valY, x + width - SPACING.MD, valY);
   }
+
+  // Outer border around entire block (signature area + info row)
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(BORDER.SECTION_OUTER);
+  doc.rect(x, y, width, totalH);
 
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  return y + boxH + SPACING.LG;
+  return y + totalH + SPACING.LG;
 }
 
 /**
@@ -2293,13 +2305,15 @@ export async function downloadPdfReport(reportType: PdfReportType, data: Inciden
   setActiveBranding(branding);
   await loadPdfAssets();
 
-  // Extract officer digital signature from enriched data
+  // Always populate officer info (name, badge, date) even without a digital signature image
   const anyData = data as any;
-  if (anyData._officerSignature) {
+  const hasOfficerInfo = anyData._officerSignature || anyData.officer_name || anyData.badge_number;
+  if (hasOfficerInfo) {
     setActiveOfficerSig({
-      signatureImage: anyData._officerSignature,
+      signatureImage: anyData._officerSignature || null,
       printedName: anyData.officer_name || '',
       badgeNumber: anyData.badge_number || '',
+      date: anyData.occurred_date || new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }),
     });
   } else {
     setActiveOfficerSig(undefined);
@@ -2317,13 +2331,15 @@ export async function generatePdfReportBlobUrl(reportType: PdfReportType, data: 
   setActiveBranding(branding);
   await loadPdfAssets();
 
-  // Extract officer digital signature from enriched data
+  // Always populate officer info (name, badge, date) even without a digital signature image
   const anyData = data as any;
-  if (anyData._officerSignature) {
+  const hasOfficerInfo = anyData._officerSignature || anyData.officer_name || anyData.badge_number;
+  if (hasOfficerInfo) {
     setActiveOfficerSig({
-      signatureImage: anyData._officerSignature,
+      signatureImage: anyData._officerSignature || null,
       printedName: anyData.officer_name || '',
       badgeNumber: anyData.badge_number || '',
+      date: anyData.occurred_date || new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }),
     });
   } else {
     setActiveOfficerSig(undefined);

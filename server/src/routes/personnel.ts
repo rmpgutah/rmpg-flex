@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
+import { queueOverlayProcessing, type BodyCamOverlayConfig } from '../utils/videoOverlay';
 
 const execAsync = promisify(exec);
 
@@ -453,7 +454,13 @@ router.get('/bodycam-videos/:videoId/stream', (req: Request, res: Response) => {
       return;
     }
 
-    const filePath = path.resolve(BODYCAM_DIR, video.file_path);
+    // Serve processed (overlaid) file if available, otherwise original
+    const servePath = (video.overlay_status === 'complete' && video.processed_file_path)
+      ? path.resolve(BODYCAM_DIR, video.processed_file_path)
+      : path.resolve(BODYCAM_DIR, video.file_path);
+
+    const filePath = fs.existsSync(servePath) ? servePath : path.resolve(BODYCAM_DIR, video.file_path);
+
     if (!filePath.startsWith(BODYCAM_DIR) || !fs.existsSync(filePath)) {
       res.status(404).json({ error: 'Video file not found on disk' });
       return;
@@ -461,6 +468,7 @@ router.get('/bodycam-videos/:videoId/stream', (req: Request, res: Response) => {
 
     const stat = fs.statSync(filePath);
     const fileSize = stat.size;
+    const mimeType = filePath.endsWith('.mp4') ? 'video/mp4' : (video.mime_type || 'video/mp4');
     const range = req.headers.range;
 
     if (range) {
@@ -473,14 +481,14 @@ router.get('/bodycam-videos/:videoId/stream', (req: Request, res: Response) => {
         'Content-Range': `bytes ${start}-${end}/${fileSize}`,
         'Accept-Ranges': 'bytes',
         'Content-Length': chunkSize,
-        'Content-Type': video.mime_type || 'video/mp4',
+        'Content-Type': mimeType,
       });
 
       fs.createReadStream(filePath, { start, end }).pipe(res);
     } else {
       res.writeHead(200, {
         'Content-Length': fileSize,
-        'Content-Type': video.mime_type || 'video/mp4',
+        'Content-Type': mimeType,
       });
 
       fs.createReadStream(filePath).pipe(res);
@@ -2088,6 +2096,19 @@ export function mountScheduleRoutes(parentRouter: Router): void {
             }
           }).catch(() => { /* ffprobe not available — client value used */ });
 
+          // Fire-and-forget: queue overlay burn via FFmpeg
+          const videoRecord = video as any;
+          const overlayConfig: BodyCamOverlayConfig = {
+            type: 'bodycam',
+            officerName: videoRecord?.officer_name || 'UNKNOWN',
+            badgeNumber: (db.prepare('SELECT badge_number FROM users WHERE id = ?').get(officer_id) as any)?.badge_number || '',
+            cameraSerial: videoRecord?.camera_serial || '',
+            recordedAtUnix: Math.floor(new Date(recorded_at || Date.now()).getTime() / 1000),
+            caseNumber: case_number || '',
+            classification: (classification || 'routine').toUpperCase(),
+          };
+          queueOverlayProcessing(videoId, 'bodycam', fullFilePath, overlayConfig);
+
           res.status(201).json(video);
         } catch (error: any) {
           console.error('Upload bodycam video DB error:', error?.message, error?.stack);
@@ -2155,10 +2176,17 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         return;
       }
 
-      // Delete file from disk
+      // Delete original file from disk
       const filePath = path.resolve(BODYCAM_DIR, existing.file_path);
       if (filePath.startsWith(BODYCAM_DIR) && fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
+      }
+      // Delete processed overlay file if it exists
+      if (existing.processed_file_path) {
+        const processedPath = path.resolve(BODYCAM_DIR, existing.processed_file_path);
+        if (processedPath.startsWith(BODYCAM_DIR) && fs.existsSync(processedPath)) {
+          fs.unlinkSync(processedPath);
+        }
       }
 
       db.prepare('DELETE FROM bodycam_videos WHERE id = ?').run(req.params.videoId);
@@ -2185,7 +2213,13 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         return;
       }
 
-      const filePath = path.resolve(BODYCAM_DIR, video.file_path);
+      // Serve processed (overlaid) file if available, otherwise original
+      const servePath = (video.overlay_status === 'complete' && video.processed_file_path)
+        ? path.resolve(BODYCAM_DIR, video.processed_file_path)
+        : path.resolve(BODYCAM_DIR, video.file_path);
+
+      const filePath = fs.existsSync(servePath) ? servePath : path.resolve(BODYCAM_DIR, video.file_path);
+
       if (!filePath.startsWith(BODYCAM_DIR) || !fs.existsSync(filePath)) {
         res.status(404).json({ error: 'Video file not found on disk' });
         return;
@@ -2193,6 +2227,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       const stat = fs.statSync(filePath);
       const fileSize = stat.size;
+      const mimeType = filePath.endsWith('.mp4') ? 'video/mp4' : (video.mime_type || 'video/mp4');
       const range = req.headers.range;
 
       if (range) {
@@ -2205,20 +2240,84 @@ export function mountScheduleRoutes(parentRouter: Router): void {
           'Content-Range': `bytes ${start}-${end}/${fileSize}`,
           'Accept-Ranges': 'bytes',
           'Content-Length': chunkSize,
-          'Content-Type': video.mime_type || 'video/mp4',
+          'Content-Type': mimeType,
         });
 
         fs.createReadStream(filePath, { start, end }).pipe(res);
       } else {
         res.writeHead(200, {
           'Content-Length': fileSize,
-          'Content-Type': video.mime_type || 'video/mp4',
+          'Content-Type': mimeType,
         });
 
         fs.createReadStream(filePath).pipe(res);
       }
     } catch (error: any) {
       console.error('Stream bodycam video error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // POST /api/personnel/bodycam-videos/:videoId/reprocess - Re-queue overlay processing (admin)
+  parentRouter.post('/personnel/bodycam-videos/:videoId/reprocess', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const video = db.prepare(`
+        SELECT v.*, u.full_name as officer_name, u.badge_number, c.camera_id as camera_serial
+        FROM bodycam_videos v
+        LEFT JOIN users u ON v.officer_id = u.id
+        LEFT JOIN body_cameras c ON v.camera_id = c.id
+        WHERE v.id = ?
+      `).get(req.params.videoId) as any;
+
+      if (!video) {
+        res.status(404).json({ error: 'Video not found' });
+        return;
+      }
+
+      const inputPath = path.resolve(BODYCAM_DIR, video.file_path);
+      if (!fs.existsSync(inputPath)) {
+        res.status(404).json({ error: 'Original video file not found on disk' });
+        return;
+      }
+
+      const recordedAt = video.recorded_at ? new Date(video.recorded_at) : new Date();
+      const config: BodyCamOverlayConfig = {
+        type: 'bodycam',
+        officerName: video.officer_name || 'UNKNOWN',
+        badgeNumber: video.badge_number || '',
+        cameraSerial: video.camera_serial || '',
+        recordedAtUnix: Math.floor(recordedAt.getTime() / 1000),
+        caseNumber: video.case_number || '',
+        classification: (video.classification || 'routine').toUpperCase(),
+      };
+
+      queueOverlayProcessing(video.id, 'bodycam', inputPath, config);
+      res.json({ message: 'Overlay reprocessing queued', videoId: video.id });
+    } catch (error: any) {
+      console.error('Reprocess overlay error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/personnel/bodycam-videos/overlay-status - Overlay processing summary (admin)
+  parentRouter.get('/personnel/bodycam-videos/overlay-status', authenticateToken, requireRole('admin'), (_req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const stats = db.prepare(`
+        SELECT overlay_status, COUNT(*) as count
+        FROM bodycam_videos
+        GROUP BY overlay_status
+      `).all() as any[];
+
+      const summary: Record<string, number> = { pending: 0, processing: 0, complete: 0, error: 0 };
+      for (const row of stats) {
+        summary[row.overlay_status || 'pending'] = row.count;
+      }
+
+      res.json(summary);
+    } catch (error: any) {
+      console.error('Overlay status error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
