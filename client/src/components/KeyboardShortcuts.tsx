@@ -22,6 +22,23 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
     ],
   },
   {
+    title: 'Page Navigation',
+    shortcuts: [
+      { keys: ['F1'], description: 'Dashboard' },
+      { keys: ['F2'], description: 'Dispatch' },
+      { keys: ['F3'], description: 'Map' },
+      { keys: ['F4'], description: 'MDT' },
+      { keys: ['F5'], description: 'NCIC' },
+      { keys: ['F6'], description: 'Records' },
+      { keys: ['F7'], description: 'Enforcement' },
+      { keys: ['F8'], description: 'Personnel' },
+      { keys: ['F9'], description: 'Comms' },
+      { keys: ['F10'], description: 'Reports' },
+      { keys: ['F11'], description: 'Audit' },
+      { keys: ['F12'], description: 'Admin' },
+    ],
+  },
+  {
     title: 'Dispatch',
     shortcuts: [
       { keys: ['N'], description: 'New call for service' },

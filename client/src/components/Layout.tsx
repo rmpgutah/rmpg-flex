@@ -268,6 +268,55 @@ export default function Layout() {
     return () => document.removeEventListener('mousedown', handler);
   }, [openDropdown]);
 
+  // ── F-key page switching ────────────────────────────────────
+  // F1–F12 map to the first 12 top-level nav items (left-to-right).
+  // Only fires when user is NOT focused in an input field.
+  useEffect(() => {
+    const handleFKey = (e: KeyboardEvent) => {
+      // Skip if typing in an input
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        e.target instanceof HTMLSelectElement
+      ) return;
+
+      const match = e.key.match(/^F(\d+)$/);
+      if (!match) return;
+
+      const fNum = parseInt(match[1], 10);
+      if (fNum < 1 || fNum > 12) return;
+
+      // Build visible nav items (same filter as toolbar rendering)
+      const visibleNav = TOOLBAR_NAV.filter(item => {
+        if (item.adminOnly && !isAdmin) return false;
+        if (isContractManager && CONTRACT_MANAGER_BLOCKED_PATHS.has(item.path)) return false;
+        return true;
+      });
+
+      const idx = fNum - 1;
+      if (idx >= visibleNav.length) return;
+
+      const item = visibleNav[idx];
+      e.preventDefault();
+
+      // External links open in new tab
+      if (item.externalUrl) {
+        const token = localStorage.getItem('rmpg_token');
+        const url = token
+          ? `${item.externalUrl}?token=${encodeURIComponent(token)}`
+          : item.externalUrl;
+        window.open(url, '_blank', 'noopener');
+        return;
+      }
+
+      navigate(item.path);
+      setOpenDropdown(null);
+    };
+
+    window.addEventListener('keydown', handleFKey);
+    return () => window.removeEventListener('keydown', handleFKey);
+  }, [navigate, isAdmin, isContractManager]);
+
   // Mobile menu & responsive detection
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const isMobile = useIsMobile();
@@ -654,14 +703,14 @@ export default function Layout() {
       <div
         className="hidden md:flex items-center justify-between px-2"
         style={{
-          height: '28px',
+          height: '52px',
           background: 'linear-gradient(180deg, #2a2a2a 0%, #1e1e1e 100%)',
           borderBottom: '1px solid #303030',
           flexShrink: 0,
           overflow: 'visible',
         }}
       >
-        {/* Left — Nav toolbar buttons (with dropdown groups) */}
+        {/* Left — Nav toolbar buttons with icons + labels + F-key badges */}
         <div className="flex items-center gap-0 flex-shrink-0">
           {TOOLBAR_NAV.filter(item => {
             if (item.adminOnly && !isAdmin) return false;
@@ -672,6 +721,7 @@ export default function Layout() {
             const prevGroup = idx > 0 ? filtered[idx - 1].group : item.group;
             const showSep = idx > 0 && item.group !== prevGroup;
             const hasChildren = item.children && item.children.length > 0;
+            const fKey = idx < 12 ? `F${idx + 1}` : null;
 
             // Active state: for dropdown parents, active if any child matches
             const isActive = hasChildren
@@ -680,11 +730,28 @@ export default function Layout() {
                 ? location.pathname === '/'
                 : location.pathname.startsWith(item.path);
 
+            // Shared button content: icon on top, label below, F-key badge
+            const btnContent = (showChevron?: boolean) => (
+              <div className="flex flex-col items-center gap-0.5 relative py-0.5 px-1">
+                <Icon style={{ width: 16, height: 16 }} className={isActive ? 'text-brand-400' : ''} />
+                <div className="flex items-center gap-0.5">
+                  <span className="text-[9px] leading-none whitespace-nowrap">{item.label}</span>
+                  {showChevron && <ChevronDown style={{ width: 7, height: 7, opacity: 0.5 }} />}
+                </div>
+                {fKey && (
+                  <span
+                    className="absolute -top-0.5 -right-1 text-[7px] font-mono font-bold leading-none px-0.5 rounded-sm"
+                    style={{ color: '#666', background: 'rgba(255,255,255,0.06)' }}
+                  >{fKey}</span>
+                )}
+              </div>
+            );
+
             if (hasChildren) {
               const isOpen = openDropdown === item.label;
               return (
                 <React.Fragment key={item.label}>
-                  {showSep && <div className="toolbar-separator" />}
+                  {showSep && <div className="toolbar-separator" style={{ height: 36 }} />}
                   <div className="relative" data-nav-dropdown>
                     <button
                       onClick={() => setOpenDropdown(isOpen ? null : item.label)}
@@ -695,11 +762,10 @@ export default function Layout() {
                         }
                       }}
                       className={isActive ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'}
-                      title={item.label}
+                      title={`${item.label}${fKey ? ` (${fKey})` : ''}`}
+                      style={{ height: 44, padding: '2px 6px' }}
                     >
-                      <Icon style={{ width: 12, height: 12 }} />
-                      <span className="hidden lg:inline">{item.label}</span>
-                      <ChevronDown style={{ width: 8, height: 8, opacity: 0.5, marginLeft: -2 }} />
+                      {btnContent(true)}
                     </button>
                     {isOpen && (
                       <div
@@ -744,7 +810,7 @@ export default function Layout() {
             if (item.externalUrl) {
               return (
                 <React.Fragment key={item.path}>
-                  {showSep && <div className="toolbar-separator" />}
+                  {showSep && <div className="toolbar-separator" style={{ height: 36 }} />}
                   <button
                     onClick={() => {
                       setOpenDropdown(null);
@@ -756,10 +822,10 @@ export default function Layout() {
                     }}
                     onMouseEnter={() => { if (openDropdown) setOpenDropdown(null); }}
                     className="toolbar-btn"
-                    title={`Open ${item.label}`}
+                    title={`Open ${item.label}${fKey ? ` (${fKey})` : ''}`}
+                    style={{ height: 44, padding: '2px 6px' }}
                   >
-                    <Icon style={{ width: 12, height: 12 }} />
-                    <span className="hidden lg:inline">{item.label}</span>
+                    {btnContent()}
                   </button>
                 </React.Fragment>
               );
@@ -767,15 +833,15 @@ export default function Layout() {
 
             return (
               <React.Fragment key={item.path}>
-                {showSep && <div className="toolbar-separator" />}
+                {showSep && <div className="toolbar-separator" style={{ height: 36 }} />}
                 <button
                   onClick={() => { navigate(item.path); setOpenDropdown(null); }}
                   onMouseEnter={() => { if (openDropdown) setOpenDropdown(null); }}
                   className={isActive ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'}
-                  title={item.label}
+                  title={`${item.label}${fKey ? ` (${fKey})` : ''}`}
+                  style={{ height: 44, padding: '2px 6px' }}
                 >
-                  <Icon style={{ width: 12, height: 12 }} />
-                  <span className="hidden lg:inline">{item.label}</span>
+                  {btnContent()}
                 </button>
               </React.Fragment>
             );
