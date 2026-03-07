@@ -18,6 +18,12 @@ import { apiRateLimit } from './middleware/rateLimiter';
 import { liveBroadcast } from './middleware/liveBroadcast';
 import { startPatrolMonitor } from './utils/patrolMonitor';
 import { startDailyReportScheduler } from './utils/dailyReportGenerator';
+import { startClearPathGpsPoller } from './utils/clearPathGpsPoller';
+import { scheduleOfacSync, searchOfacLocal } from './utils/ofacScraper';
+import { scheduleUtahWarrantSync } from './utils/utahWarrantScraper';
+import { scheduleArrestSync } from './utils/arrestScraper';
+import { scheduleJailRosterSync } from './utils/jailRosterScraper';
+import { getDb } from './models/database';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -36,6 +42,8 @@ try {
 
 // Import routes
 import authRoutes from './routes/auth';
+import securityDashboardRoutes from './routes/securityDashboard';
+import webauthnRoutes from './routes/webauthn';
 import dispatchRoutes from './routes/dispatch';
 import incidentRoutes from './routes/incidents';
 import recordsRoutes from './routes/records';
@@ -67,6 +75,13 @@ import darRoutes from './routes/dar';
 import offenderRegistryRoutes from './routes/offenderRegistry';
 import offlineRoutes from './routes/offline';
 import companyDocumentsRoutes from './routes/companyDocuments';
+import arrestRoutes from './routes/arrests';
+import jailRosterRoutes from './routes/jailRoster';
+import clearPathGpsRoutes from './routes/clearpathgps';
+import dlRecordRoutes from './routes/dlRecords';
+import ipedRoutes from './routes/iped';
+import skiptracerRoutes from './routes/skiptracer';
+import dashcamVideoRoutes from './routes/dashcamVideos';
 
 const app = express();
 
@@ -138,6 +153,8 @@ app.use(liveBroadcast);
 
 // ─── API Routes ───────────────────────────────────────
 app.use('/api/auth', authRoutes);
+app.use('/api/auth/security', securityDashboardRoutes);
+app.use('/api/auth/webauthn', webauthnRoutes);
 app.use('/api/dispatch', dispatchRoutes);
 app.use('/api/incidents', incidentRoutes);
 app.use('/api/records', recordsRoutes);
@@ -170,6 +187,13 @@ app.use('/api/dar', darRoutes);
 app.use('/api/offender-registry', offenderRegistryRoutes);
 app.use('/api/offline', offlineRoutes);
 app.use('/api/company-documents', companyDocumentsRoutes);
+app.use('/api/arrests', arrestRoutes);
+app.use('/api/jail-roster', jailRosterRoutes);
+app.use('/api/clearpathgps', clearPathGpsRoutes);
+app.use('/api/dl-records', dlRecordRoutes);
+app.use('/api/iped', ipedRoutes);
+app.use('/api/skiptracer', skiptracerRoutes);
+app.use('/api/fleet/dashcam-videos', dashcamVideoRoutes);
 
 // Mount download page and file serving routes (outside /api)
 // Also mounts /updates/latest.yml, /updates/latest-mac.yml for electron-updater
@@ -202,9 +226,16 @@ app.use('/assets', express.static(path.join(clientDistPath, 'assets'), {
   immutable: true,
 }));
 
-// Everything else — short cache
+// Everything else — short cache, but NEVER cache index.html via this route
 app.use(express.static(clientDistPath, {
   maxAge: '5m',
+  setHeaders(res, filePath) {
+    // HTML files must always revalidate — the SW + Vite hashed imports
+    // ensure the browser loads the correct JS/CSS after a deploy.
+    if (filePath.endsWith('.html')) {
+      res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    }
+  },
 }));
 
 // SPA fallback: serve index.html for non-API, non-download routes
@@ -215,6 +246,7 @@ app.get('*', (req, res) => {
     // Already handled by download routes — if we get here, 404
     res.status(404).json({ error: 'Not found' });
   } else {
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.sendFile(path.join(clientDistPath, 'index.html'), (err) => {
       if (err) {
         res.status(404).json({ error: 'Not found' });
@@ -321,6 +353,10 @@ try {
     console.log('║    /api/citations  - Citations / Summons          ║');
     console.log('║    /api/invoices   - Invoice Management           ║');
     console.log('║    /api/servemanager - ServeManager               ║');
+    console.log('║    /api/arrests    - Arrest Records (JailBase)   ║');
+    console.log('║    /api/jail-roster - Jail Roster Scraper         ║');
+    console.log('║    /api/iped       - IPED Digital Forensics      ║');
+    console.log('║    /api/skiptracer - Skip Tracer (RapidAPI)      ║');
     console.log('║    /api/health     - Health Check                ║');
     console.log('╚══════════════════════════════════════════════════╝');
     console.log('');
@@ -330,6 +366,59 @@ try {
 
     // Start midnight daily patrol report scheduler
     startDailyReportScheduler();
+
+    // Start ClearPathGPS fleet tracking poller
+    startClearPathGpsPoller();
+
+    // Schedule jail roster sync
+    scheduleJailRosterSync();
+
+    // Start OFAC SDN data sync (downloads from U.S. Treasury, syncs daily)
+    scheduleOfacSync();
+
+    // Start Utah state warrant scraper (syncs daily at midnight from warrants.utah.gov)
+    scheduleUtahWarrantSync();
+
+    // Start JailBase arrest record sync (hourly from RapidAPI)
+    scheduleArrestSync();
+
+    // Auto-backfill OFAC screening for existing person records (runs 60s after boot
+    // to allow OFAC data sync to complete first)
+    setTimeout(() => {
+      try {
+        const db = getDb();
+        const unchecked = db.prepare(
+          'SELECT id, first_name, last_name FROM persons WHERE watchlist_checked_at IS NULL AND first_name IS NOT NULL AND last_name IS NOT NULL'
+        ).all() as { id: number; first_name: string; last_name: string }[];
+
+        if (unchecked.length > 0) {
+          console.log(`[OFAC Backfill] Screening ${unchecked.length} person record(s) that were never checked...`);
+          let matches = 0;
+          const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+          for (const p of unchecked) {
+            try {
+              const hits = searchOfacLocal(`${p.last_name}, ${p.first_name}`, { type: 'person' as const, firstName: p.first_name, lastName: p.last_name, limit: 3 });
+              const matchInfo = hits.length > 0
+                ? JSON.stringify(hits.map((h: any) => ({ name: h.sdn_name, program: h.program, list: h.source_list })))
+                : null;
+              db.prepare('UPDATE persons SET watchlist_match = ?, watchlist_checked_at = ? WHERE id = ?').run(matchInfo, now, p.id);
+              if (hits.length > 0) {
+                matches++;
+                try {
+                  db.prepare(`INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, created_at) VALUES ('system', 'high', ?, ?, 'person', ?, ?)`)
+                    .run(`OFAC WATCHLIST MATCH: ${p.first_name} ${p.last_name}`, `Person #${p.id} matches OFAC sanctions list`, p.id, now);
+                } catch { /* notifications table may not exist */ }
+              }
+            } catch { /* skip individual failures */ }
+          }
+          console.log(`[OFAC Backfill] Complete — ${unchecked.length} screened, ${matches} match(es) found`);
+        } else {
+          console.log('[OFAC Backfill] All person records already screened');
+        }
+      } catch (err) {
+        console.warn('[OFAC Backfill] Failed:', (err as Error).message);
+      }
+    }, 60_000); // 60s delay — after OFAC sync (15s) has time to complete
   });
 } catch (error) {
   console.error('Failed to start server:', error);

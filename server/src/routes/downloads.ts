@@ -258,7 +258,7 @@ export function mountDownloadFileRoute(app: any) {
   // electron-updater fetches files relative to the feed URL (/updates/)
   // while the download page uses /downloads/
   const serveInstallerFile = (req: Request, res: Response) => {
-    const { filename } = req.params;
+    const filename = req.params.filename as string;
 
     // Security: only allow specific file extensions
     const ext = path.extname(filename).toLowerCase();

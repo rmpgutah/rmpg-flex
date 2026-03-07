@@ -269,7 +269,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
           </div>
 
           {/* Stats row */}
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <div className="bg-surface-sunken p-2 rounded-sm">
               <div className="text-[10px] text-rmpg-400">Cached Jobs</div>
               <div className="text-lg font-bold font-mono text-rmpg-100">{status.cached_jobs}</div>
@@ -357,7 +357,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                   <XCircle className="w-4 h-4" />
                 </button>
               </div>
-              <div className="grid grid-cols-3 gap-2 text-[10px]">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[10px]">
                 <div><span className="text-rmpg-500">Recipient:</span> <span className="text-rmpg-200">{selectedJob.recipient_name || '—'}</span></div>
                 <div><span className="text-rmpg-500">Client:</span> <span className="text-rmpg-200">{selectedJob.client_company_name || '—'}</span></div>
                 <div><span className="text-rmpg-500">Status:</span> <span className="text-rmpg-200">{selectedJob.job_status || '—'}</span></div>

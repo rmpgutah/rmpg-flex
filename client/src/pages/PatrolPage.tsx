@@ -100,7 +100,7 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
         styles: DARK_MAP_STYLE,
         disableDefaultUI: true,
         zoomControl: true,
-        backgroundColor: '#0a0a0a',
+        backgroundColor: '#060c14',
         gestureHandling: 'greedy',
       });
       mapInstanceRef.current = map;
@@ -515,7 +515,7 @@ const PatrolPage: React.FC = () => {
       {!isMobile && (
         <div className="panel-beveled bg-surface-base overflow-hidden">
           <div className="flex items-center gap-4 px-4 py-2.5 relative">
-            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #6e0a0a, #bc1010 30%, #bc1010 70%, #6e0a0a)' }} />
+            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3359, #1a5a9e 30%, #1a5a9e 70%, #0e3359)' }} />
             <RmpgLogo height={64} />
             <div className="flex-1">
               <h1 className="text-sm font-bold tracking-wider uppercase text-rmpg-200">Patrol Operations</h1>
@@ -635,7 +635,7 @@ const PatrolPage: React.FC = () => {
                           className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-bold uppercase panel-beveled ${
                             checkpoint.is_active
                               ? 'bg-green-900/50 text-green-400 border border-green-700/50'
-                              : 'bg-gray-700/50 text-rmpg-400 border border-rmpg-600/50'
+                              : 'bg-rmpg-700/50 text-rmpg-400 border border-rmpg-600/50'
                           }`}
                         >
                           {checkpoint.is_active ? 'Active' : 'Inactive'}
@@ -965,7 +965,7 @@ const PatrolPage: React.FC = () => {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-rmpg-200 mb-1">
                     Latitude:
@@ -1000,7 +1000,7 @@ const PatrolPage: React.FC = () => {
                   id="is_active"
                   checked={formData.is_active}
                   onChange={(e) => setFormData(prev => ({ ...prev, is_active: e.target.checked }))}
-                  className="w-4 h-4 bg-gray-700 border-rmpg-600"
+                  className="w-4 h-4 bg-rmpg-700 border-rmpg-600"
                 />
                 <label htmlFor="is_active" className="text-sm text-rmpg-200">
                   Active

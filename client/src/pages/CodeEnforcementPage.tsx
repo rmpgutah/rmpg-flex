@@ -347,7 +347,7 @@ export default function CodeEnforcementPage() {
                   ))}
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {[
                   ['Location', selectedViolation.location],
                   ['Description', selectedViolation.description],
@@ -388,7 +388,7 @@ export default function CodeEnforcementPage() {
                   ))}
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {[
                   ['Vehicle', [selectedTow.vehicle_year, selectedTow.vehicle_color, selectedTow.vehicle_make, selectedTow.vehicle_model].filter(Boolean).join(' ')],
                   ['Plate', selectedTow.vehicle_plate || '—'],
@@ -425,35 +425,35 @@ export default function CodeEnforcementPage() {
               <button onClick={() => setVFormOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] font-mono text-rmpg-500 uppercase">Type</label>
+                  <label className="field-label">Type</label>
                   <select value={vFormData.violation_type} onChange={e => setVFormData(p => ({ ...p, violation_type: e.target.value as ViolationType }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">
                     {VIOLATION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] font-mono text-rmpg-500 uppercase">Severity</label>
+                  <label className="field-label">Severity</label>
                   <select value={vFormData.severity} onChange={e => setVFormData(p => ({ ...p, severity: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">
                     <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option>
                   </select>
                 </div>
               </div>
               <div>
-                <label className="text-[10px] font-mono text-rmpg-500 uppercase">Location *</label>
+                <label className="field-label">Location *</label>
                 <input value={vFormData.location} onChange={e => setVFormData(p => ({ ...p, location: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
               </div>
               <div>
-                <label className="text-[10px] font-mono text-rmpg-500 uppercase">Description *</label>
+                <label className="field-label">Description *</label>
                 <textarea value={vFormData.description} onChange={e => setVFormData(p => ({ ...p, description: e.target.value }))} rows={3} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] font-mono text-rmpg-500 uppercase">Code Section</label>
+                  <label className="field-label">Code Section</label>
                   <input value={vFormData.code_section} onChange={e => setVFormData(p => ({ ...p, code_section: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
                 </div>
                 <div>
-                  <label className="text-[10px] font-mono text-rmpg-500 uppercase">Fine Amount</label>
+                  <label className="field-label">Fine Amount</label>
                   <input value={vFormData.fine_amount} onChange={e => setVFormData(p => ({ ...p, fine_amount: e.target.value }))} type="number" className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
                 </div>
               </div>
@@ -477,20 +477,20 @@ export default function CodeEnforcementPage() {
               <button onClick={() => setTFormOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
-              <div className="grid grid-cols-4 gap-2">
-                <div><label className="text-[10px] font-mono text-rmpg-500">Year</label><input value={tFormData.vehicle_year} onChange={e => setTFormData(p => ({ ...p, vehicle_year: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
-                <div><label className="text-[10px] font-mono text-rmpg-500">Make *</label><input value={tFormData.vehicle_make} onChange={e => setTFormData(p => ({ ...p, vehicle_make: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
-                <div><label className="text-[10px] font-mono text-rmpg-500">Model</label><input value={tFormData.vehicle_model} onChange={e => setTFormData(p => ({ ...p, vehicle_model: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
-                <div><label className="text-[10px] font-mono text-rmpg-500">Color</label><input value={tFormData.vehicle_color} onChange={e => setTFormData(p => ({ ...p, vehicle_color: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div><label className="field-label">Year</label><input value={tFormData.vehicle_year} onChange={e => setTFormData(p => ({ ...p, vehicle_year: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
+                <div><label className="field-label">Make *</label><input value={tFormData.vehicle_make} onChange={e => setTFormData(p => ({ ...p, vehicle_make: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
+                <div><label className="field-label">Model</label><input value={tFormData.vehicle_model} onChange={e => setTFormData(p => ({ ...p, vehicle_model: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
+                <div><label className="field-label">Color</label><input value={tFormData.vehicle_color} onChange={e => setTFormData(p => ({ ...p, vehicle_color: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label className="text-[10px] font-mono text-rmpg-500">Plate</label><input value={tFormData.vehicle_plate} onChange={e => setTFormData(p => ({ ...p, vehicle_plate: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
-                <div><label className="text-[10px] font-mono text-rmpg-500">Reason</label><select value={tFormData.tow_reason} onChange={e => setTFormData(p => ({ ...p, tow_reason: e.target.value as TowReason }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">{TOW_REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}</select></div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div><label className="field-label">Plate</label><input value={tFormData.vehicle_plate} onChange={e => setTFormData(p => ({ ...p, vehicle_plate: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
+                <div><label className="field-label">Reason</label><select value={tFormData.tow_reason} onChange={e => setTFormData(p => ({ ...p, tow_reason: e.target.value as TowReason }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">{TOW_REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}</select></div>
               </div>
-              <div><label className="text-[10px] font-mono text-rmpg-500">Tow From *</label><input value={tFormData.tow_from} onChange={e => setTFormData(p => ({ ...p, tow_from: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label className="text-[10px] font-mono text-rmpg-500">Tow Company</label><input value={tFormData.tow_company} onChange={e => setTFormData(p => ({ ...p, tow_company: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
-                <div><label className="text-[10px] font-mono text-rmpg-500">Tow Fee ($)</label><input value={tFormData.tow_fee} onChange={e => setTFormData(p => ({ ...p, tow_fee: e.target.value }))} type="number" className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
+              <div><label className="field-label">Tow From *</label><input value={tFormData.tow_from} onChange={e => setTFormData(p => ({ ...p, tow_from: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div><label className="field-label">Tow Company</label><input value={tFormData.tow_company} onChange={e => setTFormData(p => ({ ...p, tow_company: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
+                <div><label className="field-label">Tow Fee ($)</label><input value={tFormData.tow_fee} onChange={e => setTFormData(p => ({ ...p, tow_fee: e.target.value }))} type="number" className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button onClick={() => setTFormOpen(false)} className="toolbar-btn">Cancel</button>

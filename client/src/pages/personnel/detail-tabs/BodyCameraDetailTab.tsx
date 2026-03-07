@@ -100,7 +100,7 @@ export default function BodyCameraDetailTab({
       </div>
 
       {/* Camera Status Overview */}
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <div className="panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-blue-500">
           <p className="text-lg font-bold text-blue-400 font-mono">{cameras.filter(c => c.status === 'assigned').length}</p>
           <p className="field-label">Assigned</p>
@@ -138,7 +138,7 @@ export default function BodyCameraDetailTab({
                 </div>
               </div>
 
-              <div className="grid grid-cols-4 gap-x-4 gap-y-1 mb-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1 mb-2">
                 <div>
                   <p className="field-label">Make / Model</p>
                   <p className="text-xs text-rmpg-100">{[cam.make, cam.model].filter(Boolean).join(' ') || '-'}</p>

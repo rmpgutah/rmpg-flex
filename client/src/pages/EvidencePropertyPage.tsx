@@ -457,7 +457,7 @@ export default function EvidencePropertyPage() {
                   {/* Item Info */}
                   <div className="panel-inset p-3">
                     <div className="text-[9px] font-mono text-rmpg-500 uppercase mb-2 tracking-wider">Item Information</div>
-                    <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
                       {[
                         ['Description', selected.description],
                         ['Evidence #', selected.evidence_number || `EV-${selected.id}`],
@@ -479,7 +479,7 @@ export default function EvidencePropertyPage() {
                   {/* Collection & Storage */}
                   <div className="panel-inset p-3">
                     <div className="text-[9px] font-mono text-rmpg-500 uppercase mb-2 tracking-wider">Collection & Storage</div>
-                    <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
                       {[
                         ['Collected By', selected.collected_by_name || (selected.collected_by ? `Officer #${selected.collected_by}` : '—')],
                         ['Collection Date', formatDate(selected.collected_date)],
@@ -722,7 +722,7 @@ export default function EvidencePropertyPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">Type <span className="text-red-400">*</span></label>
                   <select
@@ -745,7 +745,7 @@ export default function EvidencePropertyPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">Incident #</label>
                   <input
@@ -769,7 +769,7 @@ export default function EvidencePropertyPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="field-label">Serial #</label>
                   <input
@@ -799,7 +799,7 @@ export default function EvidencePropertyPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">Estimated Value</label>
                   <input

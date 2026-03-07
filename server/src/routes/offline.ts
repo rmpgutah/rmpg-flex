@@ -37,7 +37,7 @@ const SYNC_TABLES: Record<string, { columns: string; hasUpdatedAt: boolean; limi
     limit: 500,
   },
   units: {
-    columns: 'id, call_sign, officer_id, officer_name, status, latitude, longitude, current_call_id, last_status_change, capabilities',
+    columns: 'id, call_sign, officer_id, status, latitude, longitude, current_call_id, last_status_change, capabilities',
     hasUpdatedAt: false,
   },
   incidents: {
@@ -46,7 +46,7 @@ const SYNC_TABLES: Record<string, { columns: string; hasUpdatedAt: boolean; limi
     limit: 500,
   },
   time_entries: {
-    columns: 'id, officer_id, schedule_id, clock_in, clock_out, clock_in_latitude, clock_in_longitude, clock_out_latitude, clock_out_longitude, total_hours, break_minutes, status',
+    columns: 'id, officer_id, schedule_id, clock_in, clock_out, clock_in_latitude, clock_in_longitude, total_hours, break_minutes, status',
     hasUpdatedAt: false,
     limit: 200,
   },
@@ -218,13 +218,12 @@ function pushIncident(db: any, body: any, userId: number) {
 function pushTimeEntry(db: any, body: any) {
   const result = db.prepare(`
     INSERT INTO time_entries (officer_id, schedule_id, clock_in, clock_out,
-      clock_in_latitude, clock_in_longitude, clock_out_latitude, clock_out_longitude,
+      clock_in_latitude, clock_in_longitude,
       total_hours, break_minutes, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     body.officer_id, body.schedule_id, body.clock_in, body.clock_out,
     body.clock_in_latitude, body.clock_in_longitude,
-    body.clock_out_latitude, body.clock_out_longitude,
     body.total_hours, body.break_minutes || 0, body.status || 'active'
   );
 

@@ -92,6 +92,25 @@ if ! ssh -o ConnectTimeout=5 -o BatchMode=yes "$VPS_USER@$VPS_IP" "echo ok" >/de
 fi
 echo "    SSH connection OK"
 
+# ─── Pre-deploy Quality Gates ────────────────────────────
+echo ""
+echo ">>> Running pre-deploy quality gates..."
+
+echo "    [1/3] Client typecheck..."
+(cd "$PROJECT_DIR/client" && npx tsc --noEmit) || { echo "FAILED: Client typecheck errors — fix before deploying"; exit 1; }
+echo "          ✓ Client types OK"
+
+echo "    [2/3] Server tests..."
+(cd "$PROJECT_DIR/server" && npm test --silent) || { echo "FAILED: Server tests — fix before deploying"; exit 1; }
+echo "          ✓ Server tests pass"
+
+echo "    [3/3] Client tests..."
+(cd "$PROJECT_DIR/client" && npm test --silent) || { echo "FAILED: Client tests — fix before deploying"; exit 1; }
+echo "          ✓ Client tests pass"
+
+echo ""
+echo "    All quality gates passed ✓"
+
 # ─── Step 2: Version Bump (optional) ────────────────────
 if [ -n "$BUMP_TYPE" ]; then
   echo ""
@@ -191,10 +210,10 @@ echo "    Uploading code..."
 rsync -az --delete \
   --exclude='node_modules' \
   --exclude='.git' \
-  --exclude='server/data/*.db' \
-  --exclude='server/data/*.db-wal' \
-  --exclude='server/data/*.db-shm' \
+  --exclude='server/data' \
+  --exclude='server/certs' \
   --exclude='server/.env' \
+  --exclude='server/uploads' \
   --exclude='desktop' \
   --exclude='.DS_Store' \
   --exclude='.claude' \

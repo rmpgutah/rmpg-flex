@@ -5,11 +5,13 @@ import {
 } from 'lucide-react';
 import type { TrespassOrder, TrespassOrderType, TrespassOrderStatus } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
+import EmptyState from '../components/EmptyState';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import ExportButton from '../components/ExportButton';
 import { useToast } from '../components/ToastProvider';
+import { useFormValidation } from '../hooks/useFormValidation';
 
 const ORDER_TYPES: { value: TrespassOrderType; label: string }[] = [
   { value: 'trespass_warning', label: 'Trespass Warning' },
@@ -44,6 +46,7 @@ const EMPTY_FORM = {
 export default function TrespassOrdersPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
+  const { errors: formErrors, validate: validateForm, clearAllErrors } = useFormValidation();
 
   const [orders, setOrders] = useState<TrespassOrder[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<TrespassOrder | null>(null);
@@ -114,11 +117,13 @@ export default function TrespassOrdersPage() {
     setFormData({ ...EMPTY_FORM });
     setSelectedPerson(null);
     setPersonSearch('');
+    clearAllErrors();
     setFormOpen(true);
   };
 
   const handleEdit = (order: TrespassOrder) => {
     setEditingOrder(order);
+    clearAllErrors();
     setFormData({
       subject_first_name: order.subject_first_name,
       subject_last_name: order.subject_last_name,
@@ -140,6 +145,12 @@ export default function TrespassOrdersPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const isValid = validateForm(formData, {
+      subject_first_name: { required: true },
+      subject_last_name: { required: true },
+      location: { required: true },
+    });
+    if (!isValid) return;
     setSubmitting(true);
     try {
       const body = {
@@ -233,7 +244,7 @@ export default function TrespassOrdersPage() {
       </PanelTitleBar>
 
       {/* Toolbar */}
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-rmpg-700" style={{ background: '#1a1a1a' }}>
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-rmpg-700" style={{ background: '#141e2b' }}>
         <div className="relative flex-1 max-w-xs">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
           <input type="text" placeholder="Search orders..." className="input-dark pl-7 text-xs w-full"
@@ -259,7 +270,12 @@ export default function TrespassOrdersPage() {
           {loading && orders.length === 0 ? (
             <div className="flex items-center justify-center h-32 text-rmpg-400"><Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading...</div>
           ) : orders.length === 0 ? (
-            <div className="text-center py-12 text-rmpg-500 text-sm">No trespass orders found</div>
+            <EmptyState
+              icon={Ban}
+              title="No trespass orders found"
+              description="Create a new trespass order to get started."
+              action={{ label: 'New Order', onClick: handleOpenNew }}
+            />
           ) : (
             orders.map(order => (
               <div key={order.id} onClick={() => setSelectedOrder(order)}
@@ -340,7 +356,7 @@ export default function TrespassOrdersPage() {
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-xs">
               <div><span className="text-rmpg-500 text-[10px] uppercase">Subject</span><div className="text-white font-medium">{selectedOrder.subject_last_name}, {selectedOrder.subject_first_name}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">DOB</span><div className="text-white">{selectedOrder.subject_dob ? new Date(selectedOrder.subject_dob).toLocaleDateString() : '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Property</span><div className="text-white">{selectedOrder.property_name || '—'}</div></div>
@@ -385,14 +401,14 @@ export default function TrespassOrdersPage() {
       {formOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setFormOpen(false)}>
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700" style={{ background: '#1a1a1a' }}>
+            <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700" style={{ background: '#141e2b' }}>
               <span className="text-xs font-bold text-white uppercase">{editingOrder ? 'Edit' : 'New'} Trespass Order</span>
               <button onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white"><X style={{ width: 14, height: 14 }} /></button>
             </div>
             <form onSubmit={handleSubmit} className="p-4 space-y-3">
               {/* Person search */}
               <div>
-                <label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Link to Person Record (Optional)</label>
+                <label className="field-label">Link to Person Record (Optional)</label>
                 <div className="relative">
                   <input type="text" className="input-dark text-xs w-full" placeholder="Search person records..."
                     value={personSearch} onChange={e => setPersonSearch(e.target.value)} />
@@ -412,50 +428,53 @@ export default function TrespassOrdersPage() {
               </div>
 
               {/* Subject */}
-              <div className="grid grid-cols-3 gap-2">
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">First Name *</label>
-                  <input className="input-dark text-xs w-full" required value={formData.subject_first_name} onChange={e => update('subject_first_name', e.target.value)} /></div>
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Last Name *</label>
-                  <input className="input-dark text-xs w-full" required value={formData.subject_last_name} onChange={e => update('subject_last_name', e.target.value)} /></div>
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">DOB</label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div><label className="field-label">First Name *</label>
+                  <input className="input-dark text-xs w-full" value={formData.subject_first_name} onChange={e => update('subject_first_name', e.target.value)} />
+                  {formErrors.subject_first_name && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.subject_first_name}</p>}</div>
+                <div><label className="field-label">Last Name *</label>
+                  <input className="input-dark text-xs w-full" value={formData.subject_last_name} onChange={e => update('subject_last_name', e.target.value)} />
+                  {formErrors.subject_last_name && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.subject_last_name}</p>}</div>
+                <div><label className="field-label">DOB</label>
                   <input type="date" className="input-dark text-xs w-full" value={formData.subject_dob} onChange={e => update('subject_dob', e.target.value)} /></div>
               </div>
 
               {/* Property + Location */}
-              <div className="grid grid-cols-2 gap-2">
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Property</label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div><label className="field-label">Property</label>
                   <select className="select-dark text-xs w-full" value={formData.property_id} onChange={e => selectProperty(e.target.value)}>
                     <option value="">— Select Property —</option>
                     {properties.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select></div>
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Location *</label>
-                  <input className="input-dark text-xs w-full" required value={formData.location} onChange={e => update('location', e.target.value)} /></div>
+                <div><label className="field-label">Location *</label>
+                  <input className="input-dark text-xs w-full" value={formData.location} onChange={e => update('location', e.target.value)} />
+                  {formErrors.location && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.location}</p>}</div>
               </div>
 
               {/* Order details */}
-              <div className="grid grid-cols-3 gap-2">
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Order Type</label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div><label className="field-label">Order Type</label>
                   <select className="select-dark text-xs w-full" value={formData.order_type} onChange={e => update('order_type', e.target.value)}>
                     {ORDER_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select></div>
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Duration (days)</label>
+                <div><label className="field-label">Duration (days)</label>
                   <input type="number" className="input-dark text-xs w-full" placeholder="Empty = permanent" value={formData.duration_days} onChange={e => update('duration_days', e.target.value)} /></div>
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Authorized By</label>
+                <div><label className="field-label">Authorized By</label>
                   <input className="input-dark text-xs w-full" placeholder="Supervisor name" value={formData.authorized_by} onChange={e => update('authorized_by', e.target.value)} /></div>
               </div>
 
-              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Reason</label>
+              <div><label className="field-label">Reason</label>
                 <textarea className="input-dark text-xs w-full" rows={2} value={formData.reason} onChange={e => update('reason', e.target.value)} /></div>
 
-              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Conditions / Exceptions</label>
+              <div><label className="field-label">Conditions / Exceptions</label>
                 <textarea className="input-dark text-xs w-full" rows={2} value={formData.conditions} onChange={e => update('conditions', e.target.value)} /></div>
 
-              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Notes</label>
+              <div><label className="field-label">Notes</label>
                 <textarea className="input-dark text-xs w-full" rows={2} value={formData.notes} onChange={e => update('notes', e.target.value)} /></div>
 
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn">Cancel</button>
-                <button type="submit" disabled={submitting} className="toolbar-btn" style={{ background: 'rgba(188,16,16,0.3)', borderColor: 'rgba(188,16,16,0.5)' }}>
+                <button type="submit" disabled={submitting} className="toolbar-btn" style={{ background: 'rgba(26,90,158,0.3)', borderColor: 'rgba(26,90,158,0.5)' }}>
                   {submitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 10, height: 10 }} />}
                   {editingOrder ? 'Update' : 'Create'} Order
                 </button>

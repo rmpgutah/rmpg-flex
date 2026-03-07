@@ -77,7 +77,7 @@ export default function UnitRecommendationPanel({
       <div className="unit-rec-list">
         {ranked.map((item: RankedUnit) => {
           const isTopPick = item.rank === 1 && item.unit.status === 'available';
-          const statusColor = STATUS_COLORS[item.unit.status] || '#888';
+          const statusColor = STATUS_COLORS[item.unit.status] || '#8a9aaa';
 
           return (
             <div

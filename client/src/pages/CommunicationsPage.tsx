@@ -644,11 +644,11 @@ export default function CommunicationsPage() {
       {/* Portal Header */}
       <div className="panel-beveled bg-surface-base overflow-hidden">
         <div className="flex items-center gap-4 px-4 py-2.5 relative">
-          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #6e0a0a, #bc1010 30%, #bc1010 70%, #6e0a0a)' }} />
+          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3359, #1a5a9e 30%, #1a5a9e 70%, #0e3359)' }} />
           <RmpgLogo height={64} />
           <div className="flex-1">
             <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: '#d0d0d0' }}>Communications Center</h1>
-            <p className="text-[9px] tracking-wide" style={{ color: '#484848' }}>Rocky Mountain Protective Group, LLC</p>
+            <p className="text-[9px] tracking-wide" style={{ color: '#3a5070' }}>Rocky Mountain Protective Group, LLC</p>
           </div>
         </div>
       </div>
@@ -657,7 +657,7 @@ export default function CommunicationsPage() {
       <PanelTitleBar title="COMMUNICATIONS" icon={MessageSquare}>
         {activePanel === 'messages' && (
           <>
-            <div className="flex items-center gap-1 px-2 py-0.5 panel-inset" style={{ background: '#141414' }}>
+            <div className="flex items-center gap-1 px-2 py-0.5 panel-inset" style={{ background: '#0d1520' }}>
               <Search className="w-3 h-3 text-rmpg-500" />
               <input
                 type="text"
@@ -687,7 +687,7 @@ export default function CommunicationsPage() {
       </PanelTitleBar>
 
       {/* Panel Tabs */}
-      <div className="px-4 py-2 border-b border-rmpg-600 flex items-center gap-4" style={{ background: '#161616' }}>
+      <div className="px-4 py-2 border-b border-rmpg-600 flex items-center gap-4" style={{ background: '#0d1520' }}>
         <div className="flex gap-1">
           {panels.map((panel) => {
             const Icon = panel.icon;
@@ -698,7 +698,7 @@ export default function CommunicationsPage() {
                 className={`
                   flex items-center gap-2 px-3 py-1.5 text-xs font-medium transition-colors
                   ${activePanel === panel.id
-                    ? 'bg-gray-700 text-white border border-rmpg-600'
+                    ? 'bg-rmpg-700 text-white border border-rmpg-600'
                     : 'text-rmpg-300 hover:text-white hover:bg-rmpg-700/50'
                   }
                 `}
@@ -839,7 +839,7 @@ export default function CommunicationsPage() {
                 {selectedThread && (
                   <div className="flex-1 flex flex-col overflow-hidden animate-slide-in-right">
                     {/* Thread header */}
-                    <div className="flex items-center gap-3 px-4 py-2.5 border-b border-rmpg-600 flex-shrink-0" style={{ background: '#161616' }}>
+                    <div className="flex items-center gap-3 px-4 py-2.5 border-b border-rmpg-600 flex-shrink-0" style={{ background: '#0d1520' }}>
                       <button
                         onClick={() => setSelectedThreadId(null)}
                         className="p-1 hover:bg-rmpg-700 text-rmpg-400 transition-colors"
@@ -883,9 +883,9 @@ export default function CommunicationsPage() {
                                   <div
                                     className="w-6 h-6 flex items-center justify-center text-[9px] font-bold flex-shrink-0"
                                     style={{
-                                      background: isOwnMessage ? 'linear-gradient(135deg, #1e40af, #3b82f6)' : 'linear-gradient(135deg, #8a0c0c, #bc1010)',
+                                      background: isOwnMessage ? 'linear-gradient(135deg, #1e40af, #3b82f6)' : 'linear-gradient(135deg, #124070, #1a5a9e)',
                                       color: '#fff',
-                                      border: isOwnMessage ? '1px solid #60a5fa' : '1px solid #d93030',
+                                      border: isOwnMessage ? '1px solid #60a5fa' : '1px solid #3b8ad4',
                                       borderRadius: 2,
                                     }}
                                   >
@@ -926,7 +926,7 @@ export default function CommunicationsPage() {
                     </div>
 
                     {/* Reply compose area */}
-                    <div className="px-4 py-3 border-t border-rmpg-600 flex-shrink-0" style={{ background: '#161616' }}>
+                    <div className="px-4 py-3 border-t border-rmpg-600 flex-shrink-0" style={{ background: '#0d1520' }}>
                       <div className="flex items-center gap-2 mb-2">
                         <Reply className="w-3.5 h-3.5 text-rmpg-400" />
                         <span className="text-[10px] text-rmpg-400 font-medium">
@@ -987,7 +987,7 @@ export default function CommunicationsPage() {
                     <X className="w-4 h-4" />
                   </button>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Title:</label>
                     <input type="text" className="input-dark" placeholder="BOLO title" value={boloTitle} onChange={(e) => setBoloTitle(e.target.value)} required />
@@ -1023,7 +1023,7 @@ export default function CommunicationsPage() {
                   <div className="col-span-2">
                     <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Photo (optional):</label>
                     <div className="flex items-center gap-4">
-                      <input type="file" accept="image/*" className="text-xs text-rmpg-300 file:mr-3 file:py-1 file:px-3 file:border file:border-rmpg-600 file:bg-gray-700 file:text-rmpg-200 file:text-xs file:cursor-pointer hover:file:bg-gray-600" onChange={handleBoloPhotoChange} />
+                      <input type="file" accept="image/*" className="text-xs text-rmpg-300 file:mr-3 file:py-1 file:px-3 file:border file:border-rmpg-600 file:bg-rmpg-700 file:text-rmpg-200 file:text-xs file:cursor-pointer hover:file:bg-rmpg-600" onChange={handleBoloPhotoChange} />
                       {boloPhotoPreview && (
                         <div className="relative">
                           <img src={boloPhotoPreview} alt="Preview" className="w-16 h-16 object-cover border border-rmpg-600" />
@@ -1067,7 +1067,7 @@ export default function CommunicationsPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <StatusBadge status={bolo.priority} type="priority" size="sm" />
-                      <span className={`px-2 py-0.5 text-[10px] font-bold uppercase ${bolo.status === 'active' ? 'bg-red-900/50 text-red-400 border border-red-700/50' : 'bg-gray-700 text-rmpg-300'}`}>
+                      <span className={`px-2 py-0.5 text-[10px] font-bold uppercase ${bolo.status === 'active' ? 'bg-red-900/50 text-red-400 border border-red-700/50' : 'bg-rmpg-700 text-rmpg-300'}`}>
                         {toDisplayLabel(bolo.status)}
                       </span>
                     </div>
@@ -1078,7 +1078,7 @@ export default function CommunicationsPage() {
                       <img src={`/api/uploads/${bolo.photo_url}`} alt="BOLO Photo" className="max-w-[200px] max-h-[200px] object-cover border border-rmpg-600 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => window.open(`/api/uploads/${bolo.photo_url}`, '_blank')} />
                     </div>
                   )}
-                  <div className="grid grid-cols-3 gap-4 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
                     {bolo.subject_name && (
                       <div><label className="text-[10px] text-rmpg-400 uppercase">Subject:</label><p className="text-rmpg-200 font-medium">{bolo.subject_name}</p></div>
                     )}

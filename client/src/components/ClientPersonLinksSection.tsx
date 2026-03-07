@@ -408,7 +408,7 @@ function AddClientPersonLinkForm({ personId, clientId, onLinked, onCancel }: Add
       {/* Relationship & details */}
       {selectedId && (
         <>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
               <label className="text-[9px] text-rmpg-400 uppercase font-semibold">Relationship</label>
               <select className="select-dark mt-0.5 text-xs" value={relationship} onChange={(e) => setRelationship(e.target.value)}>

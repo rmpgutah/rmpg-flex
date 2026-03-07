@@ -165,7 +165,7 @@ export default function IncidentDetailWindow() {
           </div>
         </div>
 
-        <div className="grid grid-cols-4 gap-4 text-sm">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold block">Officer</label>
             <p className="text-rmpg-200">{incident.officer_name || 'N/A'}</p>
@@ -186,7 +186,7 @@ export default function IncidentDetailWindow() {
       </div>
 
       {/* Location & DateTime */}
-      <div className="grid grid-cols-2 gap-6 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
         <div className="bg-surface-base border border-rmpg-600 p-4">
           <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3 border-b border-rmpg-700 pb-2">Location</h3>
           <p className="text-sm text-white font-medium">{incident.location_address || 'N/A'}</p>
@@ -196,7 +196,7 @@ export default function IncidentDetailWindow() {
         </div>
         <div className="bg-surface-base border border-rmpg-600 p-4">
           <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3 border-b border-rmpg-700 pb-2">Date / Time</h3>
-          <div className="grid grid-cols-2 gap-3 text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
             <div>
               <label className="text-[10px] text-rmpg-500">Start</label>
               <p className="text-rmpg-200">{incident.occurred_date || 'N/A'} {incident.occurred_time || ''}</p>
@@ -213,7 +213,7 @@ export default function IncidentDetailWindow() {
       {(incident.weather_conditions || incident.lighting_conditions || incident.injuries || incident.damage_estimate || incident.weapons_involved) && (
         <div className="bg-surface-base border border-rmpg-600 p-4 mb-6">
           <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3 border-b border-rmpg-700 pb-2">Scene Details</h3>
-          <div className="grid grid-cols-3 gap-4 text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
             {incident.weather_conditions && (
               <div>
                 <label className="text-[10px] text-rmpg-500">Weather</label>
@@ -374,7 +374,7 @@ export default function IncidentDetailWindow() {
       {(incident.responding_le_agency || incident.le_case_number) && (
         <div className="bg-surface-base border border-rmpg-600 p-4 mb-6">
           <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3 border-b border-rmpg-700 pb-2">External Agency Coordination</h3>
-          <div className="grid grid-cols-2 gap-4 text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
             {incident.responding_le_agency && (
               <div>
                 <label className="text-[10px] text-rmpg-500">Responding Agency</label>

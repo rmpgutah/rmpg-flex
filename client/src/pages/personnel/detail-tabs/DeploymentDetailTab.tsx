@@ -79,7 +79,7 @@ export default function DeploymentDetailTab({ deployments, loading, onAddDeploym
             <span className="led-dot led-green" />
             <span className="text-[10px] font-bold uppercase text-green-400 tracking-wider">Current Assignment</span>
           </div>
-          <div className="grid grid-cols-2 gap-x-6 gap-y-1.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5">
             <div>
               <p className="field-label">Property</p>
               <p className="text-xs text-rmpg-100 font-semibold flex items-center gap-1">
@@ -138,7 +138,7 @@ export default function DeploymentDetailTab({ deployments, loading, onAddDeploym
                   {toDisplayLabel(dep.status)}
                 </span>
               </div>
-              <div className="grid grid-cols-3 gap-x-4 gap-y-1">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-1">
                 <div>
                   <p className="field-label">Client</p>
                   <p className="text-[11px] text-rmpg-300">{dep.client_name || '-'}</p>
@@ -165,7 +165,7 @@ export default function DeploymentDetailTab({ deployments, loading, onAddDeploym
       {/* Empty State */}
       {deployments.length === 0 && (
         <div className="text-center py-12">
-          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center" style={{ background: '#161616' }}>
+          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center" style={{ background: '#0d1520' }}>
             <MapPinned className="w-7 h-7 text-rmpg-600" />
           </div>
           <p className="text-xs text-rmpg-500">No deployment history for this officer.</p>

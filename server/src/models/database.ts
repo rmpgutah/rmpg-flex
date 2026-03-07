@@ -692,6 +692,83 @@ function createTables(): void {
     CREATE INDEX IF NOT EXISTS idx_officer_equipment_status ON officer_equipment(status);
     CREATE INDEX IF NOT EXISTS idx_officer_equipment_type ON officer_equipment(equipment_type);
 
+    -- ── Two-Factor Authentication ─────────────────────────
+    CREATE TABLE IF NOT EXISTS user_totp_secrets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL UNIQUE,
+      encrypted_secret TEXT NOT NULL,
+      encryption_iv TEXT NOT NULL,
+      encryption_tag TEXT NOT NULL,
+      is_verified INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS user_backup_codes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      code_hash TEXT NOT NULL,
+      is_used INTEGER NOT NULL DEFAULT 0,
+      used_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS trusted_devices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      device_fingerprint TEXT NOT NULL,
+      device_name TEXT,
+      ip_address TEXT,
+      trusted_until TEXT NOT NULL,
+      last_used_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS password_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      password_hash TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS security_notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      event_type TEXT NOT NULL CHECK(event_type IN (
+        'new_device_login','suspicious_login','password_changed',
+        '2fa_enabled','2fa_disabled','2fa_reset','device_revoked',
+        'session_revoked','password_expiring','failed_login_threshold',
+        'webauthn_registered','webauthn_removed'
+      )),
+      title TEXT NOT NULL,
+      details TEXT,
+      ip_address TEXT,
+      device_info TEXT,
+      is_read INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    -- ── WebAuthn / Security Key Credentials ─────────────
+    CREATE TABLE IF NOT EXISTS webauthn_credentials (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      credential_id TEXT NOT NULL UNIQUE,
+      public_key TEXT NOT NULL,
+      counter INTEGER NOT NULL DEFAULT 0,
+      device_type TEXT NOT NULL DEFAULT 'singleDevice',
+      backed_up INTEGER NOT NULL DEFAULT 0,
+      transports TEXT,
+      name TEXT NOT NULL DEFAULT 'Security Key',
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      last_used_at TEXT,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
     -- Body cameras — dedicated device tracking
     CREATE TABLE IF NOT EXISTS body_cameras (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -740,6 +817,79 @@ function createTables(): void {
     CREATE INDEX IF NOT EXISTS idx_bodycam_videos_camera ON bodycam_videos(camera_id);
     CREATE INDEX IF NOT EXISTS idx_bodycam_videos_officer ON bodycam_videos(officer_id);
     CREATE INDEX IF NOT EXISTS idx_bodycam_videos_case ON bodycam_videos(case_number);
+
+    -- Dash camera video footage (MVR / in-car video)
+    CREATE TABLE IF NOT EXISTS dashcam_videos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      vehicle_id INTEGER,
+      unit_id INTEGER,
+      title TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      file_size INTEGER NOT NULL DEFAULT 0,
+      duration_seconds INTEGER,
+      mime_type TEXT DEFAULT 'video/mp4',
+      recorded_at TEXT,
+      case_number TEXT,
+      classification TEXT DEFAULT 'routine',
+      speed_mph REAL,
+      latitude REAL,
+      longitude REAL,
+      address TEXT,
+      notes TEXT,
+      source TEXT DEFAULT 'upload',
+      uploaded_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id),
+      FOREIGN KEY (unit_id) REFERENCES units(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_dashcam_videos_vehicle ON dashcam_videos(vehicle_id);
+    CREATE INDEX IF NOT EXISTS idx_dashcam_videos_unit ON dashcam_videos(unit_id);
+    CREATE INDEX IF NOT EXISTS idx_dashcam_videos_case ON dashcam_videos(case_number);
+    CREATE INDEX IF NOT EXISTS idx_dashcam_videos_recorded ON dashcam_videos(recorded_at);
+
+    -- ClearPathGPS device-to-unit mappings
+    CREATE TABLE IF NOT EXISTS cpg_device_mappings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cpg_device_id TEXT NOT NULL,
+      cpg_display_name TEXT,
+      cpg_serial_number TEXT,
+      unit_id INTEGER NOT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      last_synced_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (unit_id) REFERENCES units(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_cpg_mappings_device ON cpg_device_mappings(cpg_device_id);
+    CREATE INDEX IF NOT EXISTS idx_cpg_mappings_unit ON cpg_device_mappings(unit_id);
+
+    -- ClearPathGPS dashcam events (hard brake, speeding, impact, etc.)
+    CREATE TABLE IF NOT EXISTS dashcam_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cpg_device_id TEXT,
+      unit_id INTEGER,
+      dashcam_id TEXT,
+      event_type TEXT NOT NULL,
+      event_timestamp TEXT NOT NULL,
+      speed_mph REAL,
+      latitude REAL,
+      longitude REAL,
+      address TEXT,
+      heading REAL,
+      device_name TEXT,
+      video_available INTEGER DEFAULT 0,
+      video_url TEXT,
+      raw_data TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (unit_id) REFERENCES units(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_dashcam_events_unit ON dashcam_events(unit_id);
+    CREATE INDEX IF NOT EXISTS idx_dashcam_events_type ON dashcam_events(event_type);
+    CREATE INDEX IF NOT EXISTS idx_dashcam_events_time ON dashcam_events(event_timestamp);
 
     -- Radio transmission transcripts — permanent log of PTT voice comms
     CREATE TABLE IF NOT EXISTS radio_transcripts (
@@ -1160,10 +1310,19 @@ function migrateSchema(): void {
   addCol('users', 'totp_enabled', 'INTEGER DEFAULT 0');    // 0 = disabled, 1 = enabled
   addCol('users', 'totp_backup_codes', 'TEXT');            // JSON array of bcrypt-hashed one-time codes
   addCol('users', 'totp_pending_secret', 'TEXT');          // Temp secret during enrollment (before verify)
+  addCol('users', 'totp_setup_required', 'INTEGER DEFAULT 1'); // New users must set up 2FA
+  addCol('users', 'password_expires_at', 'TEXT');          // ISO timestamp when password expires
+  addCol('users', 'force_password_change', 'INTEGER DEFAULT 0'); // Admin-forced password change
 
   // ── USERS — Password history & expiry ─────────────────
   addCol('users', 'password_history', 'TEXT');             // JSON array of previous bcrypt hashes
   addCol('users', 'password_changed_at', 'TEXT');          // ISO timestamp of last password change
+
+  // ── LOGIN_ATTEMPTS / SESSIONS — Device fingerprinting ──
+  addCol('login_attempts', 'user_agent', 'TEXT');
+  addCol('login_attempts', 'device_fingerprint', 'TEXT');
+  addCol('sessions', 'device_fingerprint', 'TEXT');
+  addCol('sessions', 'device_name', 'TEXT');
 
   // ── USERS — Digital Signature (PNG base64 data URL) ──
   addCol('users', 'digital_signature', 'TEXT');            // base64 data:image/png;base64,... stored per officer
@@ -2561,6 +2720,20 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_breadcrumbs_unit_time ON gps_breadcrumbs(unit_id, recorded_at);
     CREATE INDEX IF NOT EXISTS idx_breadcrumbs_officer ON gps_breadcrumbs(officer_id);
     CREATE INDEX IF NOT EXISTS idx_breadcrumbs_recorded ON gps_breadcrumbs(recorded_at);
+
+    -- 2FA / Security indexes
+    CREATE INDEX IF NOT EXISTS idx_totp_secrets_user ON user_totp_secrets(user_id);
+    CREATE INDEX IF NOT EXISTS idx_backup_codes_user ON user_backup_codes(user_id);
+    CREATE INDEX IF NOT EXISTS idx_backup_codes_unused ON user_backup_codes(user_id, is_used);
+    CREATE INDEX IF NOT EXISTS idx_trusted_devices_user ON trusted_devices(user_id);
+    CREATE INDEX IF NOT EXISTS idx_webauthn_creds_user ON webauthn_credentials(user_id);
+    CREATE INDEX IF NOT EXISTS idx_webauthn_creds_credid ON webauthn_credentials(credential_id);
+    CREATE INDEX IF NOT EXISTS idx_trusted_devices_fingerprint ON trusted_devices(device_fingerprint);
+    CREATE INDEX IF NOT EXISTS idx_trusted_devices_expiry ON trusted_devices(trusted_until);
+    CREATE INDEX IF NOT EXISTS idx_password_history_user ON password_history(user_id);
+    CREATE INDEX IF NOT EXISTS idx_security_notifs_user ON security_notifications(user_id);
+    CREATE INDEX IF NOT EXISTS idx_security_notifs_read ON security_notifications(user_id, is_read);
+    CREATE INDEX IF NOT EXISTS idx_security_notifs_created ON security_notifications(created_at);
 
     -- Cases indexes
     CREATE INDEX IF NOT EXISTS idx_cases_number ON cases(case_number);

@@ -4,10 +4,11 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Shield, Trash2, Monitor, Smartphone, Globe, RefreshCw } from 'lucide-react';
+import { Shield, Trash2, Monitor, Smartphone, Globe, RefreshCw, History } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { toDisplayLabel } from '../../utils/formatters';
+import LoginHistoryTable from '../../components/security/LoginHistoryTable';
 
 interface Session {
   id: number;
@@ -75,7 +76,7 @@ export default function AdminSessionsTab({ LoadingSpinner, error, setError }: Pr
   return (
     <div className="p-4">
       {/* Summary */}
-      <div className="grid grid-cols-3 gap-4 mb-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
         <div className="panel-beveled p-3">
           <div className="text-[20px] font-black text-green-400">{activeSessions.length}</div>
           <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Active Sessions</div>
@@ -102,7 +103,7 @@ export default function AdminSessionsTab({ LoadingSpinner, error, setError }: Pr
       </div>
       <table className="w-full text-[10px] mb-6">
         <thead>
-          <tr className="text-rmpg-500 text-[9px] uppercase tracking-wider" style={{ background: '#111' }}>
+          <tr className="text-rmpg-500 text-[9px] uppercase tracking-wider" style={{ background: '#0f1a28' }}>
             <th className="text-left px-3 py-1.5 font-bold">User</th>
             <th className="text-left px-3 py-1.5 font-bold">Role</th>
             <th className="text-left px-3 py-1.5 font-bold">Device</th>
@@ -150,6 +151,15 @@ export default function AdminSessionsTab({ LoadingSpinner, error, setError }: Pr
           )}
         </tbody>
       </table>
+
+      {/* Login History */}
+      <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-2 flex items-center gap-2">
+        <History style={{ width: 10, height: 10 }} />
+        Recent Login History
+      </div>
+      <div className="panel-surface mb-4">
+        <LoginHistoryTable />
+      </div>
     </div>
   );
 }

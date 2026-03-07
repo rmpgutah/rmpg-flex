@@ -54,7 +54,7 @@ function mapDbCall(raw: any): CallForService {
 const UNIT_STATUSES = [
   { label: 'AVAIL', status: 'available', color: '#22c55e' },
   { label: 'BUSY', status: 'busy', color: '#ef4444' },
-  { label: 'OFF', status: 'off_duty', color: '#6b7280' },
+  { label: 'OFF', status: 'off_duty', color: '#5a6e80' },
 ] as const;
 
 // ── MDT Messages Panel ────────────────────────────────────
@@ -130,7 +130,7 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
     return (
       <span
         className="text-[7px] font-black uppercase px-1 py-px"
-        style={{ background: colors[ch] || '#666', color: '#000' }}
+        style={{ background: colors[ch] || '#5a6e80', color: '#000' }}
       >
         {ch}
       </span>
@@ -192,7 +192,7 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
       </div>
 
       {/* Compose bar */}
-      <div className="flex-shrink-0 p-2 border-t border-rmpg-700/50" style={{ background: '#111' }}>
+      <div className="flex-shrink-0 p-2 border-t border-rmpg-700/50" style={{ background: '#0d1520' }}>
         <div className="flex items-center gap-1 mb-1">
           {(['dispatch', 'broadcast'] as const).map(ch => (
             <button
@@ -201,8 +201,8 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
               className="text-[8px] font-bold uppercase px-1.5 py-0.5 transition-colors"
               style={{
                 background: composeChannel === ch ? '#3b82f6' : 'transparent',
-                color: composeChannel === ch ? '#000' : '#666',
-                border: `1px solid ${composeChannel === ch ? '#3b82f6' : '#333'}`,
+                color: composeChannel === ch ? '#000' : '#5a6e80',
+                border: `1px solid ${composeChannel === ch ? '#3b82f6' : '#1e3048'}`,
               }}
             >
               {ch}
@@ -439,7 +439,7 @@ export default function MdtPage() {
       case 'P1': return '#ef4444';
       case 'P2': return '#f97316';
       case 'P3': return '#eab308';
-      default: return '#6b7280';
+      default: return '#5a6e80';
     }
   };
 
@@ -459,7 +459,7 @@ export default function MdtPage() {
       {/* ── TOP BAR: Unit Identity & Status ─────────────── */}
       <div
         className={`${isMobile ? 'flex flex-col gap-1.5 px-3 py-2' : 'flex items-center justify-between px-4 py-2'} flex-shrink-0`}
-        style={{ background: '#0c0c0c', borderBottom: '1px solid #222' }}
+        style={{ background: '#0d1520', borderBottom: '1px solid #1e3048' }}
       >
         <div className="flex items-center gap-3">
           <Monitor style={{ width: 16, height: 16, color: '#22c55e' }} />
@@ -572,15 +572,15 @@ export default function MdtPage() {
         {/* ── LEFT: Call List ── */}
         <div className={`${isMobile ? (selectedCall ? 'hidden' : 'w-full') : 'w-2/5'} flex flex-col border-r border-rmpg-700/50 overflow-hidden`}>
           {/* Tabs */}
-          <div className="flex border-b border-rmpg-700/50 flex-shrink-0 overflow-x-auto" style={{ background: '#111' }}>
+          <div className="flex border-b border-rmpg-700/50 flex-shrink-0 overflow-x-auto" style={{ background: '#0d1520' }}>
             {(['my-calls', 'pending', 'messages', 'ncic'] as const).map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
                 className="flex-1 px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider transition-colors whitespace-nowrap"
                 style={{
-                  background: activeTab === tab ? '#1a1a1a' : 'transparent',
-                  color: activeTab === tab ? (tab === 'ncic' ? '#22d3ee' : '#fff') : '#666',
+                  background: activeTab === tab ? '#141e2b' : 'transparent',
+                  color: activeTab === tab ? (tab === 'ncic' ? '#22d3ee' : '#fff') : '#5a6e80',
                   borderBottom: activeTab === tab ? `2px solid ${tab === 'ncic' ? '#22d3ee' : '#22c55e'}` : '2px solid transparent',
                 }}
               >
@@ -706,7 +706,7 @@ export default function MdtPage() {
               {/* Call header */}
               <div
                 className="px-4 py-2 flex items-center justify-between flex-shrink-0"
-                style={{ borderBottom: '1px solid #222', background: '#111' }}
+                style={{ borderBottom: '1px solid #1e3048', background: '#0d1520' }}
               >
                 <div>
                   {isMobile && (
@@ -755,7 +755,7 @@ export default function MdtPage() {
                   {selectedCall.status === 'onscene' && (
                     <button
                       onClick={() => handleCallStatus(selectedCall.id, 'cleared')}
-                      className="flex items-center gap-1 px-3 py-1.5 text-[9px] font-bold uppercase bg-gray-700/50 text-rmpg-300 border border-rmpg-600/50 hover:bg-gray-600/50 transition-colors"
+                      className="flex items-center gap-1 px-3 py-1.5 text-[9px] font-bold uppercase bg-rmpg-700/50 text-rmpg-300 border border-rmpg-600/50 hover:bg-rmpg-600/50 transition-colors"
                     >
                       <CheckCircle style={{ width: 10, height: 10 }} /> Clear
                     </button>
@@ -789,7 +789,7 @@ export default function MdtPage() {
                 {selectedCall.description && (
                   <div>
                     <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1">Description</div>
-                    <div className="text-[10px] text-rmpg-200 p-2" style={{ background: '#111', border: '1px solid #222' }}>
+                    <div className="text-[10px] text-rmpg-200 p-2" style={{ background: '#0d1520', border: '1px solid #1e3048' }}>
                       {selectedCall.description}
                     </div>
                   </div>
@@ -866,9 +866,9 @@ export default function MdtPage() {
                           key={u}
                           className="text-[9px] font-mono font-bold px-1.5 py-0.5"
                           style={{
-                            background: u === myUnit?.call_sign ? 'rgba(34,197,94,0.2)' : '#222',
-                            color: u === myUnit?.call_sign ? '#22c55e' : '#999',
-                            border: `1px solid ${u === myUnit?.call_sign ? '#16a34a' : '#333'}`,
+                            background: u === myUnit?.call_sign ? 'rgba(34,197,94,0.2)' : '#1a2636',
+                            color: u === myUnit?.call_sign ? '#22c55e' : '#8a9aaa',
+                            border: `1px solid ${u === myUnit?.call_sign ? '#16a34a' : '#1e3048'}`,
                           }}
                         >
                           {u}
@@ -887,7 +887,7 @@ export default function MdtPage() {
                     <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1">Notes</div>
                     <div className="space-y-1">
                       {selectedCall.notes.slice(-5).map((note, i) => (
-                        <div key={i} className="text-[9px] text-rmpg-300 px-2 py-1" style={{ background: '#111', borderLeft: '2px solid #333' }}>
+                        <div key={i} className="text-[9px] text-rmpg-300 px-2 py-1" style={{ background: '#0d1520', borderLeft: '2px solid #1e3048' }}>
                           <span className="text-rmpg-500">{new Date(note.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                           {' — '}
                           {note.text}

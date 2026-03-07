@@ -104,7 +104,7 @@ export default function TrainingFormModal({
           <label className="field-label">Course Name <span className="text-red-400">*</span></label>
           <input type="text" required value={form.course_name} onChange={e => set('course_name', e.target.value)} placeholder="e.g. Firearms Qualification" className="input-dark" />
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="field-label">Category</label>
             <select value={form.category} onChange={e => set('category', e.target.value)} className="select-dark">
@@ -130,7 +130,7 @@ export default function TrainingFormModal({
           <label className="field-label">Provider</label>
           <input type="text" value={form.provider} onChange={e => set('provider', e.target.value)} placeholder="Training provider or institution" className="input-dark" />
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="field-label">Completed Date</label>
             <input type="date" value={form.completed_date} onChange={e => set('completed_date', e.target.value)} className="input-dark" />
@@ -140,7 +140,7 @@ export default function TrainingFormModal({
             <input type="date" value={form.expiry_date} onChange={e => set('expiry_date', e.target.value)} className="input-dark" />
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <div>
             <label className="field-label">Hours</label>
             <input type="number" step="0.5" min="0" value={form.hours} onChange={e => set('hours', e.target.value)} placeholder="0" className="input-dark" />

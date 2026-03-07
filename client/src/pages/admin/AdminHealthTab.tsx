@@ -247,7 +247,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
       )}
 
       {/* Overview Cards */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <MetricCard
           icon={Server}
           label="Uptime"
@@ -290,7 +290,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
           </div>
 
           {/* Host Overview Row */}
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <div className="bg-surface-sunken p-2 rounded-sm">
               <div className="text-[9px] text-rmpg-500 uppercase">Platform</div>
               <div className="text-[11px] font-mono font-bold text-rmpg-200">{host.osType} {host.arch}</div>
@@ -324,7 +324,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
           </div>
 
           {/* RAM & Disk Bars */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <div className="flex items-center gap-1.5 text-[10px] text-rmpg-400">
                 <MemoryStick className="w-3 h-3" />
@@ -389,7 +389,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
           )}
 
           {/* Network & Process Info */}
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             {/* Network Interfaces */}
             {host.network && host.network.filter(n => !n.internal).length > 0 && (
               <div className="bg-surface-sunken p-2 rounded-sm col-span-1">
@@ -440,7 +440,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Node.js Memory Usage */}
         <div className="panel-beveled bg-surface-base p-3 space-y-2">
           <div className="flex items-center gap-2 text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">
@@ -464,7 +464,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
             <Shield className="w-3.5 h-3.5" />
             Login Activity (24h)
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div className="bg-surface-sunken p-2 rounded-sm">
               <div className="text-[10px] text-rmpg-400">Successful</div>
               <div className="text-lg font-bold font-mono text-green-400">{h.loginStats.successful24h}</div>
@@ -489,7 +489,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
           <Database className="w-3.5 h-3.5" />
           Database Table Sizes
         </div>
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {Object.entries(h.database.tables)
             .sort(([, a], [, b]) => b - a)
             .map(([table, count]) => (

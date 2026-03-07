@@ -293,7 +293,7 @@ export default function DailyActivityReportsPage() {
               )}
 
               {/* Auto-populated counts */}
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {[
                   ['Calls', parseJson(selected.calls_handled).length, 'text-blue-400'],
                   ['Incidents', parseJson(selected.incidents_created).length, 'text-red-400'],
@@ -308,7 +308,7 @@ export default function DailyActivityReportsPage() {
               </div>
 
               {/* Shift Info */}
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div><div className="text-[9px] font-mono text-rmpg-500">Shift Date</div><div className="text-xs text-white">{selected.shift_date ? new Date(selected.shift_date).toLocaleDateString() : '—'}</div></div>
                 <div><div className="text-[9px] font-mono text-rmpg-500">Start</div><div className="text-xs text-white">{selected.shift_start || '—'}</div></div>
                 <div><div className="text-[9px] font-mono text-rmpg-500">End</div><div className="text-xs text-white">{selected.shift_end || '—'}</div></div>
@@ -387,16 +387,16 @@ export default function DailyActivityReportsPage() {
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div>
-                <label className="text-[10px] font-mono text-rmpg-500 uppercase">Shift Date *</label>
+                <label className="field-label">Shift Date *</label>
                 <input type="date" value={newDarDate} onChange={e => setNewDarDate(e.target.value)} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] font-mono text-rmpg-500 uppercase">Shift Start</label>
+                  <label className="field-label">Shift Start</label>
                   <input type="time" value={newDarShiftStart} onChange={e => setNewDarShiftStart(e.target.value)} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
                 </div>
                 <div>
-                  <label className="text-[10px] font-mono text-rmpg-500 uppercase">Shift End</label>
+                  <label className="field-label">Shift End</label>
                   <input type="time" value={newDarShiftEnd} onChange={e => setNewDarShiftEnd(e.target.value)} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
                 </div>
               </div>

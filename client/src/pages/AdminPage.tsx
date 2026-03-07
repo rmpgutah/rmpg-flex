@@ -21,6 +21,10 @@ import {
   DatabaseZap,
   Lock,
   Palette,
+  Navigation,
+  Fingerprint,
+  Microscope,
+  Search,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -51,6 +55,10 @@ import AdminOfflineTab from './admin/AdminOfflineTab';
 import AdminMicrobiltTab from './admin/AdminMicrobiltTab';
 import AdminSecurityTab from './admin/AdminSecurityTab';
 import AdminBrandingTab from './admin/AdminBrandingTab';
+import AdminClearPathGpsTab from './admin/AdminClearPathGpsTab';
+import AdminArrestsTab from './admin/AdminArrestsTab';
+import AdminIPEDTab from './admin/AdminIPEDTab';
+import AdminSkipTracerTab from './admin/AdminSkipTracerTab';
 
 // ============================================================
 // Shared sub-components (module-level to avoid remounting)
@@ -133,7 +141,7 @@ function mapPersonnelToUser(row: PersonnelRow): User & { last_login_display?: st
   const last_name = row.last_name || (row.full_name || '').trim().split(/\s+/).slice(1).join(' ') || '';
 
   // Spread all server fields through so no data is lost (profile_image, notes, etc.)
-  const { status, full_name, last_login_at, ...rest } = row;
+  const { status, full_name, last_login_at, totp_enabled, totp_setup_required, password_expires_at, force_password_change, password_changed_at, ...rest } = row as PersonnelRow & Record<string, any>;
   return {
     ...rest,
     first_name,
@@ -142,6 +150,12 @@ function mapPersonnelToUser(row: PersonnelRow): User & { last_login_display?: st
     is_active: status === 'active',
     raw_status: status, // Preserve for admin UI (active/inactive/terminated)
     last_login: last_login_at || rest.last_login, // Map DB column to User type field
+    // Map snake_case security fields to camelCase for UI components
+    totpEnabled: totp_enabled === 1,
+    totpSetupRequired: totp_setup_required === 1,
+    passwordExpiresAt: password_expires_at || undefined,
+    forcePasswordChange: force_password_change === 1,
+    passwordChangedAt: password_changed_at || undefined,
   };
 }
 
@@ -209,7 +223,7 @@ function mapAuditRow(row: AuditRow): AuditEntry {
 // Constants
 // ============================================================
 
-type TabId = 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'sessions' | 'training' | 'radio' | 'offline' | 'security' | 'branding';
+type TabId = 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'iped' | 'skiptracer' | 'sessions' | 'training' | 'radio' | 'offline' | 'security' | 'branding';
 
 const LS_ADMIN_TAB = 'rmpg_admin_tab';
 
@@ -223,7 +237,7 @@ export default function AdminPage() {
   const clientEditPendingRef = useRef(false);
 
   // Restore active tab from URL ?tab= param or localStorage (default: 'users')
-  const VALID_TABS = ['users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'sessions', 'training', 'radio', 'offline', 'security', 'branding'];
+  const VALID_TABS = ['users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'iped', 'skiptracer', 'sessions', 'training', 'radio', 'offline', 'security', 'branding'];
   const [activeTab, setActiveTabState] = useState<TabId>(() => {
     try {
       // URL ?tab= param takes priority (used by Help → Training link)
@@ -632,6 +646,10 @@ export default function AdminPage() {
       tabs: [
         { id: 'servemanager', label: 'ServeManager', icon: Link2 },
         { id: 'microbilt', label: 'Microbilt', icon: DatabaseZap },
+        { id: 'clearpathgps', label: 'ClearPathGPS', icon: Navigation },
+        { id: 'arrests', label: 'Arrest Records', icon: Fingerprint },
+        { id: 'iped', label: 'IPED Forensics', icon: Microscope },
+        { id: 'skiptracer', label: 'Skip Tracer', icon: Search },
         { id: 'training', label: 'Training', icon: GraduationCap },
       ],
     },
@@ -654,11 +672,11 @@ export default function AdminPage() {
       {!isMobile && (
         <div className="panel-beveled bg-surface-base overflow-hidden">
           <div className="flex items-center gap-4 px-4 py-2.5 relative">
-            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #6e0a0a, #bc1010 30%, #bc1010 70%, #6e0a0a)' }} />
+            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3359, #1a5a9e 30%, #1a5a9e 70%, #0e3359)' }} />
             <RmpgLogo height={64} />
             <div className="flex-1">
               <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: '#d0d0d0' }}>System Administration</h1>
-              <p className="text-[9px] tracking-wide" style={{ color: '#484848' }}>Rocky Mountain Protective Group, LLC</p>
+              <p className="text-[9px] tracking-wide" style={{ color: '#3a5070' }}>Rocky Mountain Protective Group, LLC</p>
             </div>
           </div>
         </div>
@@ -674,7 +692,7 @@ export default function AdminPage() {
       {isMobile && (
         <div
           className="flex overflow-x-auto flex-shrink-0 gap-1 px-2 py-1.5"
-          style={{ background: '#141414', borderBottom: '1px solid #282828' }}
+          style={{ background: '#0d1520', borderBottom: '1px solid #162236' }}
         >
           {tabGroups.flatMap(g => g.tabs).map((tab) => {
             const Icon = tab.icon;
@@ -685,9 +703,9 @@ export default function AdminPage() {
                 onClick={() => setActiveTab(tab.id)}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold whitespace-nowrap shrink-0 transition-colors"
                 style={{
-                  color: isActive ? '#ffffff' : '#888888',
-                  background: isActive ? 'rgba(188, 16, 16, 0.15)' : 'transparent',
-                  border: isActive ? '1px solid rgba(188,16,16,0.4)' : '1px solid transparent',
+                  color: isActive ? '#ffffff' : '#8a9aaa',
+                  background: isActive ? 'rgba(26, 90, 158, 0.15)' : 'transparent',
+                  border: isActive ? '1px solid rgba(26,90,158,0.4)' : '1px solid transparent',
                 }}
               >
                 <Icon style={{ width: 12, height: 12 }} className={isActive ? 'text-brand-400' : 'text-rmpg-600'} />
@@ -706,15 +724,15 @@ export default function AdminPage() {
             className="flex-shrink-0 overflow-y-auto py-2"
             style={{
               width: 200,
-              background: '#141414',
-              borderRight: '1px solid #282828',
+              background: '#0d1520',
+              borderRight: '1px solid #162236',
             }}
           >
             {tabGroups.map((group) => (
               <div key={group.category} className="mb-1">
                 <div
                   className="px-3 py-1.5 text-[8px] font-bold uppercase tracking-[0.15em]"
-                  style={{ color: '#585858' }}
+                  style={{ color: '#5a6e80' }}
                 >
                   {group.category}
                 </div>
@@ -727,9 +745,9 @@ export default function AdminPage() {
                       onClick={() => setActiveTab(tab.id)}
                       className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[11px] transition-colors"
                       style={{
-                        color: isActive ? '#ffffff' : '#888888',
-                        background: isActive ? 'rgba(188, 16, 16, 0.12)' : 'transparent',
-                        borderLeft: isActive ? '2px solid #bc1010' : '2px solid transparent',
+                        color: isActive ? '#ffffff' : '#8a9aaa',
+                        background: isActive ? 'rgba(26, 90, 158, 0.12)' : 'transparent',
+                        borderLeft: isActive ? '2px solid #1a5a9e' : '2px solid transparent',
                       }}
                     >
                       <Icon style={{ width: 13, height: 13 }} className={isActive ? 'text-brand-400' : 'text-rmpg-600'} />
@@ -883,6 +901,38 @@ export default function AdminPage() {
 
         {activeTab === 'security' && (
           <AdminSecurityTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
+        {activeTab === 'clearpathgps' && (
+          <AdminClearPathGpsTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
+        {activeTab === 'arrests' && (
+          <AdminArrestsTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
+        {activeTab === 'iped' && (
+          <AdminIPEDTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
+        {activeTab === 'skiptracer' && (
+          <AdminSkipTracerTab
             LoadingSpinner={LoadingSpinner}
             error={error}
             setError={setError}

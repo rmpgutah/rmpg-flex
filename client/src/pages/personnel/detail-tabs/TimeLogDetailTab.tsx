@@ -110,7 +110,7 @@ export default function TimeLogDetailTab({
       </div>
 
       {/* Summary Stats */}
-      <div className="grid grid-cols-5 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
         <div className="panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-rmpg-500">
           <p className="text-lg font-bold text-rmpg-100 font-mono">{totalEntries}</p>
           <p className="field-label">Entries</p>

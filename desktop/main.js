@@ -34,8 +34,25 @@ let mainWindow = null;
 let splashWindow = null;
 let tray = null;
 let isQuitting = false;
+let appReady = false;
 const appUpdater = new AppUpdater();
 let connectivityMonitor = null;
+
+// ─── Single Instance Lock ────────────────────────────────────
+// Prevent multiple instances from racing and crashing with
+// "Cannot create BrowserWindow before app is ready".
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+}
 
 // These modules are loaded lazily after the local DB is initialized
 // (they require localDb to be ready)
@@ -274,7 +291,7 @@ function getOfflineHTML() {
 }
 
 // ─── Window Creation ────────────────────────────────────────
-function createMainWindow() {
+async function createMainWindow() {
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -311,6 +328,16 @@ function createMainWindow() {
       return false;
     }
   );
+
+  // Clear Chromium HTTP cache before loading — ensures deploys propagate
+  // immediately without requiring a manual hard-refresh in the desktop app.
+  // (Service workers, localStorage, and IndexedDB are NOT cleared.)
+  await mainWindow.webContents.session.clearCache();
+  console.log('[APP] HTTP cache cleared');
+
+  // Unregister stale service workers so the latest version installs fresh
+  await mainWindow.webContents.session.clearStorageData({ storages: ['serviceworkers'] });
+  console.log('[APP] Service workers cleared');
 
   // Load the remote web application
   console.log('[APP] Loading:', REMOTE_SERVER_URL);
@@ -564,6 +591,17 @@ function createMenu() {
           accelerator: 'CmdOrCtrl+R',
           click: () => mainWindow?.webContents.reload(),
         },
+        {
+          label: 'Clear Cache & Reload',
+          accelerator: 'CmdOrCtrl+Shift+R',
+          click: async () => {
+            if (mainWindow) {
+              await mainWindow.webContents.session.clearCache();
+              await mainWindow.webContents.session.clearStorageData({ storages: ['serviceworkers'] });
+              mainWindow.webContents.reload();
+            }
+          },
+        },
         { type: 'separator' },
         {
           label: isMac ? 'Close Window' : 'Quit',
@@ -672,6 +710,7 @@ function createTray() {
 
 // ─── App Lifecycle ──────────────────────────────────────────
 app.whenReady().then(async () => {
+  appReady = true;
   console.log('[APP] Starting RMPG Flex...');
   console.log('[APP] Mode:', DEV_MODE ? 'development' : 'production');
   console.log('[APP] Platform:', process.platform, process.arch);
@@ -692,7 +731,7 @@ app.whenReady().then(async () => {
     }
 
     createMenu();
-    createMainWindow();
+    await createMainWindow();
     createTray();
 
     // Initialize auto-updater
@@ -738,10 +777,13 @@ app.whenReady().then(async () => {
   }
 });
 
-app.on('activate', () => {
-  // macOS: re-create window when dock icon is clicked
+app.on('activate', async () => {
+  // macOS: re-create window when dock icon is clicked.
+  // Guard against activate firing before app is fully ready —
+  // BrowserWindow cannot be created until app.whenReady() resolves.
+  if (!appReady) return;
   if (mainWindow === null) {
-    createMainWindow();
+    await createMainWindow();
   } else {
     mainWindow.show();
   }

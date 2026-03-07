@@ -37,11 +37,36 @@ const CALL_SOURCES: { value: CallSource; label: string }[] = [
   { value: 'other', label: 'Other' },
 ];
 
-const PRIORITY_OPTIONS: { value: CallPriority; label: string; color: string; desc: string }[] = [
+export const PRIORITY_OPTIONS: { value: CallPriority; label: string; color: string; desc: string }[] = [
   { value: 'P1', label: 'P1', color: 'border-red-500 text-red-400 bg-red-900/30', desc: 'Emergency' },
   { value: 'P2', label: 'P2', color: 'border-amber-500 text-amber-400 bg-amber-900/30', desc: 'Urgent' },
   { value: 'P3', label: 'P3', color: 'border-brand-500 text-brand-400 bg-brand-900/30', desc: 'Routine' },
   { value: 'P4', label: 'P4', color: 'border-gray-500 text-rmpg-300 bg-rmpg-700/30', desc: 'Scheduled' },
+];
+
+export const PSO_SERVICE_TYPES: { value: string; label: string }[] = [
+  { value: '', label: '-- Select Service Type --' },
+  { value: 'patrol', label: 'Patrol Service' },
+  { value: 'standing_guard', label: 'Standing Guard' },
+  { value: 'event_security', label: 'Event Security' },
+  { value: 'escort', label: 'Escort Service' },
+  { value: 'process_service', label: 'Process Service' },
+  { value: 'investigation', label: 'Investigation' },
+  { value: 'surveillance', label: 'Surveillance' },
+  { value: 'alarm_response', label: 'Alarm Response' },
+  { value: 'other', label: 'Other' },
+];
+
+export const PROCESS_SERVICE_DOC_TYPES: { value: string; label: string }[] = [
+  { value: '', label: '-- Select Document Type --' },
+  { value: 'summons', label: 'Summons' },
+  { value: 'complaint', label: 'Complaint' },
+  { value: 'subpoena', label: 'Subpoena' },
+  { value: 'writ', label: 'Writ' },
+  { value: 'order', label: 'Court Order' },
+  { value: 'notice', label: 'Notice' },
+  { value: 'petition', label: 'Petition' },
+  { value: 'other', label: 'Other' },
 ];
 
 const CALLER_RELATIONSHIPS = [
@@ -251,7 +276,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
       {/* Modal - Blocky */}
       <div className="relative w-full max-w-2xl mx-4 bg-surface-base border border-rmpg-600 shadow-2xl animate-fade-in">
         {/* Header - Toolbar style */}
-        <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, #202020 0%, #1a1a1a 100%)' }}>
+        <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)' }}>
           <div className="flex items-center gap-2">
             {formData.is_historical ? <History className="w-4 h-4 text-amber-400" /> : <Phone className="w-4 h-4 text-brand-400" />}
             <h2 id={titleId} className="text-xs font-bold text-white uppercase tracking-wider">
@@ -269,7 +294,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
           {/* Row 1: Type + Source */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Incident Type</label>
               <select
@@ -305,7 +330,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           {formData.incident_type === 'pso_client_request' && (
             <div className="border border-purple-700/40 p-3 space-y-3" style={{ background: '#1a1525' }}>
               <div className="text-[9px] font-bold text-purple-400 uppercase tracking-wider mb-1">PSO Client Request Details</div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Contract ID</label>
                   <input type="text" className="input-dark" placeholder="PSO contract #" value={formData.contract_id} onChange={(e) => update('contract_id', e.target.value)} />
@@ -327,7 +352,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                   <input type="text" className="input-dark" placeholder="Auth or PO number" value={formData.pso_authorization || ''} onChange={(e) => update('pso_authorization', e.target.value)} />
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Requestor Name</label>
                   <input type="text" className="input-dark" placeholder="Client contact" value={formData.pso_requestor_name || ''} onChange={(e) => update('pso_requestor_name', e.target.value)} />
@@ -345,7 +370,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               {formData.pso_service_type === 'process_service' && (
                 <div className="border-t border-purple-700/30 pt-3 mt-2">
                   <div className="text-[9px] font-bold text-amber-400 uppercase tracking-wider mb-2">Process Service Details</div>
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                     <div>
                       <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Document Type</label>
                       <select className="select-dark" value={formData.process_service_type || ''} onChange={(e) => update('process_service_type', e.target.value)}>
@@ -375,7 +400,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           {/* Priority */}
           <div>
             <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-2">Priority</label>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {PRIORITY_OPTIONS.map((p) => (
                 <button
                   key={p.value}
@@ -397,7 +422,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           </div>
 
           {/* Caller Info */}
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div>
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Caller Name</label>
               <input
@@ -518,7 +543,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           )}
 
           {/* Location Details */}
-          <div className="grid grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
             <div>
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Cross Street</label>
               <input type="text" className="input-dark" placeholder="Nearest intersection" value={formData.cross_street} onChange={(e) => update('cross_street', e.target.value)} />
@@ -550,7 +575,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           </div>
 
           {/* Subject / Threat Info */}
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div>
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1"># Subjects</label>
               <input type="number" min="0" className="input-dark" placeholder="0" value={formData.num_subjects} onChange={(e) => update('num_subjects', e.target.value)} />
@@ -575,7 +600,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Subject Description</label>
               <input type="text" className="input-dark" placeholder="Male, 5'10, dark hoodie..." value={formData.subject_description} onChange={(e) => update('subject_description', e.target.value)} />
@@ -587,7 +612,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           </div>
 
           {/* Scene Conditions */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Scene Safety</label>
               <select className="select-dark" value={formData.scene_safety || ''} onChange={(e) => update('scene_safety', e.target.value)}>
@@ -612,7 +637,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           </div>
 
           {/* Damage Info */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Damage Estimate ($)</label>
               <input type="number" min="0" step="0.01" className="input-dark" placeholder="0.00" value={formData.damage_estimate} onChange={(e) => update('damage_estimate', e.target.value)} />
@@ -719,7 +744,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
 
           {/* LE Details (conditional) */}
           {formData.le_notified && (
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">LE Agency</label>
                 <select className="select-dark" value={formData.le_agency || ''} onChange={(e) => update('le_agency', e.target.value)}>
@@ -757,7 +782,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
             {formData.is_historical && (
               <div className="mt-3 space-y-3 pl-5 border-l-2 border-amber-700/50">
                 {/* Date/Time of original call */}
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-[10px] font-semibold text-rmpg-300 uppercase mb-1">Call Date *</label>
                     <input
@@ -811,7 +836,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                 {/* Status Timestamps (optional) */}
                 <div>
                   <label className="block text-[10px] font-semibold text-rmpg-300 uppercase mb-1">Status Timestamps <span className="text-rmpg-500 normal-case">(optional)</span></label>
-                  <div className="grid grid-cols-5 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
                     <div>
                       <label className="block text-[9px] text-rmpg-400 mb-0.5">Dispatched</label>
                       <input type="datetime-local" className="input-dark text-[10px]" value={formData.historical_dispatched_at} onChange={(e) => update('historical_dispatched_at', e.target.value)} />

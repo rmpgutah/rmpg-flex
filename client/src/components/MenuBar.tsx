@@ -75,7 +75,11 @@ import {
   Palette,
   Bug,
   Sparkles,
+  Mic,
+  MicOff,
+  Video,
 } from 'lucide-react';
+import { setVoiceAlertsEnabled, getVoiceAlertsEnabled, demoAllVoiceAlerts } from '../utils/voiceAlerts';
 
 // ============================================================
 // Types
@@ -154,6 +158,7 @@ export default function MenuBar({
   const [soundEnabled, setSoundEnabled] = useState(() => {
     return localStorage.getItem('rmpg-sound') !== 'false';
   });
+  const [voiceAlertsEnabled, setVoiceAlertsEnabledState] = useState(() => getVoiceAlertsEnabled());
   const [notificationsEnabled, setNotificationsEnabled] = useState(() => {
     return localStorage.getItem('rmpg-notifications') !== 'false';
   });
@@ -219,6 +224,12 @@ export default function MenuBar({
     setSoundEnabled(next);
     localStorage.setItem('rmpg-sound', String(next));
   }, [soundEnabled]);
+
+  const toggleVoiceAlerts = useCallback(() => {
+    const next = !voiceAlertsEnabled;
+    setVoiceAlertsEnabledState(next);
+    setVoiceAlertsEnabled(next);
+  }, [voiceAlertsEnabled]);
 
   const toggleNotifications = useCallback(() => {
     const next = !notificationsEnabled;
@@ -291,6 +302,8 @@ export default function MenuBar({
           { type: 'separator' },
           { type: 'action', label: 'Personnel', icon: Users, action: () => navigate('/personnel') },
           { type: 'action', label: 'Fleet', icon: Car, action: () => navigate('/fleet') },
+          { type: 'action', label: 'Body Cameras', icon: Video, action: () => navigate('/body-cameras') },
+          { type: 'action', label: 'Dash Cameras', icon: Video, action: () => navigate('/dash-cameras') },
           { type: 'action', label: 'Shift Plans', icon: CalendarDays, action: () => navigate('/shift-plans') },
           { type: 'separator' },
           { type: 'action', label: 'Communications', icon: MessageSquare, action: () => navigate('/communications') },
@@ -353,6 +366,8 @@ export default function MenuBar({
         items: [
           { type: 'toggle', label: 'Desktop Notifications', icon: notificationsEnabled ? Bell : BellOff, checked: notificationsEnabled, action: toggleNotifications },
           { type: 'toggle', label: 'Sound Effects', icon: soundEnabled ? Volume2 : VolumeX, checked: soundEnabled, action: toggleSound },
+          { type: 'toggle', label: 'Voice Alerts', icon: voiceAlertsEnabled ? Mic : MicOff, checked: voiceAlertsEnabled, action: toggleVoiceAlerts },
+          { type: 'action', label: 'Test Voice Alerts', icon: Sparkles, action: () => demoAllVoiceAlerts() },
         ],
       },
       { type: 'separator' },
@@ -608,10 +623,10 @@ export default function MenuBar({
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60" onClick={() => setShow10Codes(false)}>
           <div
             className="panel-beveled w-[700px] max-h-[80vh] overflow-hidden flex flex-col"
-            style={{ background: '#1a1a1a' }}
+            style={{ background: '#141e2b' }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: '#141414' }}>
+            <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: '#0d1520' }}>
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
                 <Radio className="w-4 h-4 text-brand-400" />
                 10-Codes Quick Reference
@@ -619,7 +634,7 @@ export default function MenuBar({
               <button onClick={() => setShow10Codes(false)} className="text-rmpg-400 hover:text-white text-xs">ESC</button>
             </div>
             <div className="flex-1 overflow-auto p-4">
-              <div className="grid grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 {/* General Codes */}
                 <div>
                   <h3 className="text-[10px] font-bold text-brand-400 uppercase tracking-wider mb-2 border-b border-rmpg-700 pb-1">General</h3>
@@ -754,7 +769,7 @@ export default function MenuBar({
                 </div>
               </div>
             </div>
-            <div className="p-2 border-t border-rmpg-700 text-center" style={{ background: '#141414' }}>
+            <div className="p-2 border-t border-rmpg-700 text-center" style={{ background: '#0d1520' }}>
               <span className="text-[9px] text-rmpg-500">Press <kbd className="px-1 py-0.5 bg-rmpg-800 border border-rmpg-600 text-rmpg-300 rounded text-[8px]">ESC</kbd> to close</span>
             </div>
           </div>

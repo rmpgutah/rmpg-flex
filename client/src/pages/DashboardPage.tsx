@@ -273,7 +273,7 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {Array.from({ length: 4 }).map((_, i) => <StatsCardSkeleton key={i} />)}
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
           {Array.from({ length: 4 }).map((_, i) => <CardSkeleton key={i} />)}
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -290,7 +290,7 @@ export default function DashboardPage() {
       <div className="panel-beveled bg-surface-base overflow-hidden">
         <div className={`flex items-center gap-4 ${isMobile ? 'px-3 py-2' : 'px-4 py-3'} relative`}>
           {/* Crimson accent line */}
-          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #6e0a0a, #bc1010 30%, #bc1010 70%, #6e0a0a)' }} />
+          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3359, #1a5a9e 30%, #1a5a9e 70%, #0e3359)' }} />
           {!isMobile && <RmpgLogo height={68} />}
           {isMobile && <RmpgLogo height={36} iconOnly />}
           <div className="flex-1">
@@ -377,7 +377,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Priority Breakdown — Clickable beveled panels with LED dots */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
         {[
           { key: 'P1', label: 'P1 Emergency', led: 'led-red', border: 'border-l-red-500', count: stats.calls_by_priority.P1 },
           { key: 'P2', label: 'P2 Urgent', led: 'led-amber', border: 'border-l-amber-500', count: stats.calls_by_priority.P2 },
@@ -431,22 +431,22 @@ export default function DashboardPage() {
           <div className="p-3">
           <ResponsiveContainer width="100%" height={isMobile ? 160 : 220}>
             <BarChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e3048" />
               <XAxis
                 dataKey="label"
-                tick={{ fill: '#9ca3af', fontSize: 10 }}
-                tickLine={{ stroke: '#4b5563' }}
+                tick={{ fill: '#8a9aaa', fontSize: 10 }}
+                tickLine={{ stroke: '#2a3e58' }}
                 interval={2}
               />
               <YAxis
-                tick={{ fill: '#9ca3af', fontSize: 10 }}
-                tickLine={{ stroke: '#4b5563' }}
+                tick={{ fill: '#8a9aaa', fontSize: 10 }}
+                tickLine={{ stroke: '#2a3e58' }}
                 allowDecimals={false}
               />
               <Tooltip
                 contentStyle={{
                   backgroundColor: 'var(--surface-base)',
-                  border: '1px solid #383838',
+                  border: '1px solid #2a3e58',
                   borderRadius: '0px',
                   color: '#e0e0e0',
                   fontSize: '11px',
@@ -693,7 +693,7 @@ export default function DashboardPage() {
           badge: o.badge_number || '',
           actions: o.action_count,
           role: o.role,
-          fill: ROLE_COLORS[o.role] || '#6b7280',
+          fill: ROLE_COLORS[o.role] || '#5a6e80',
         }));
 
         return (
@@ -711,18 +711,18 @@ export default function DashboardPage() {
               </div>
               <ResponsiveContainer width="100%" height={Math.max(180, chartRows.length * 32)}>
                 <BarChart data={chartRows} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" horizontal={false} />
-                  <XAxis type="number" tick={{ fill: '#9ca3af', fontSize: 10 }} allowDecimals={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e3048" horizontal={false} />
+                  <XAxis type="number" tick={{ fill: '#8a9aaa', fontSize: 10 }} allowDecimals={false} />
                   <YAxis
                     type="category"
                     dataKey="name"
                     width={140}
-                    tick={{ fill: '#d1d5db', fontSize: 10 }}
+                    tick={{ fill: '#b0bcc8', fontSize: 10 }}
                   />
                   <Tooltip
                     contentStyle={{
                       backgroundColor: 'var(--surface-base)',
-                      border: '1px solid #383838',
+                      border: '1px solid #2a3e58',
                       borderRadius: '0px',
                       color: '#e0e0e0',
                       fontSize: '11px',

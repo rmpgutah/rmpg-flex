@@ -13,11 +13,11 @@ import PinEntryModal from './PinEntryModal';
  * - Hidden: Online and not syncing
  *
  * Admin users always see green when offline (no PIN needed).
- * Only renders inside Electron.
+ * Renders in both Electron and browser when offline mode is initialized.
  */
 export default function OfflineStatusBar() {
   const {
-    isElectron,
+    isOfflineCapable,
     isOffline,
     isLocalAuthorized,
     pinCountdown,
@@ -32,8 +32,8 @@ export default function OfflineStatusBar() {
 
   const [pinModalOpen, setPinModalOpen] = useState(false);
 
-  // Only render in Electron when there's something to show
-  if (!isElectron) return null;
+  // Only render when offline mode is available and there's something to show
+  if (!isOfflineCapable) return null;
   if (!isOffline && !isSyncing && !syncComplete) return null;
 
   const isAdmin = userRole === 'admin';

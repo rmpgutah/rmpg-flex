@@ -31,6 +31,8 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import StatuteLookup, { OffenseLevelBadge } from '../components/StatuteLookup';
 import type { StatuteResult } from '../components/StatuteLookup';
+import { useFormValidation } from '../hooks/useFormValidation';
+import EmptyState from '../components/EmptyState';
 
 // ============================================================
 // Types
@@ -212,6 +214,7 @@ export default function WarrantsPage() {
     statute_citation: '',
   });
   const [submitting, setSubmitting] = useState(false);
+  const { errors: formErrors, validate: validateForm, clearAllErrors } = useFormValidation();
 
   // Serve modal
   const [serveModalOpen, setServeModalOpen] = useState(false);
@@ -294,6 +297,7 @@ export default function WarrantsPage() {
 
   const openNewForm = () => {
     setEditingWarrant(null);
+    clearAllErrors();
     setFormData({
       type: 'arrest',
       subject_person_id: '',
@@ -334,7 +338,11 @@ export default function WarrantsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.charge_description.trim()) return;
+    const isValid = validateForm(formData, {
+      charge_description: { required: true, minLength: 3 },
+      type: { required: true },
+    });
+    if (!isValid) return;
     setSubmitting(true);
     try {
       const body: Record<string, unknown> = {
@@ -522,13 +530,12 @@ export default function WarrantsPage() {
               <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading warrants...
             </div>
           ) : warrants.length === 0 ? (
-            <div className="flex items-center justify-center h-full text-rmpg-400">
-              <div className="text-center">
-                <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-rmpg-500" />
-                <p className="text-sm">{showArchived ? 'No archived warrants' : 'No warrants found'}</p>
-                {!showArchived && <p className="text-xs text-rmpg-500 mt-1">Create a new warrant to get started</p>}
-              </div>
-            </div>
+            <EmptyState
+              icon={Gavel}
+              title={showArchived ? 'No archived warrants' : 'No warrants found'}
+              description={!showArchived ? 'Create a new warrant to get started' : undefined}
+              action={!showArchived ? { label: 'New Warrant', onClick: openNewForm } : undefined}
+            />
           ) : (
             <table className="table-dark">
               <thead>
@@ -690,7 +697,7 @@ export default function WarrantsPage() {
               </div>
 
               {/* Dates row */}
-              <div className="grid grid-cols-3 gap-4 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
                 <div>
                   <span className="text-rmpg-400">Entered</span>
                   <div className="text-rmpg-200 mt-0.5">{formatDateTime(selectedWarrant.created_at)}</div>
@@ -786,7 +793,7 @@ export default function WarrantsPage() {
                 <h3 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider flex items-center gap-2 mb-3">
                   <Gavel className="w-4 h-4 text-brand-400" /> Court Information
                 </h3>
-                <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                   {selectedWarrant.issuing_court && (
                     <div>
                       <span className="text-rmpg-400">Issuing Court</span>
@@ -851,15 +858,15 @@ export default function WarrantsPage() {
             </div>
             <form onSubmit={handleSubmit} className="p-4 space-y-4">
               {/* Type + Offense Level */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase font-bold block mb-1">Warrant Type *</label>
+                  <label className="field-label">Warrant Type *</label>
                   <select className="select-dark text-xs w-full" value={formData.type} onChange={(e) => setFormData(prev => ({ ...prev, type: e.target.value }))}>
                     {WARRANT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase font-bold block mb-1">Offense Level</label>
+                  <label className="field-label">Offense Level</label>
                   <select className="select-dark text-xs w-full" value={formData.offense_level} onChange={(e) => setFormData(prev => ({ ...prev, offense_level: e.target.value }))}>
                     <option value="">-- Select --</option>
                     {OFFENSE_LEVELS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
@@ -869,7 +876,7 @@ export default function WarrantsPage() {
 
               {/* Subject person search */}
               <div className="relative">
-                <label className="text-[10px] text-rmpg-400 uppercase font-bold block mb-1">Subject Person</label>
+                <label className="field-label">Subject Person</label>
                 {selectedPersonName && formData.subject_person_id ? (
                   <div className="flex items-center gap-2 p-2 bg-rmpg-800 border border-rmpg-600 rounded text-xs">
                     <User className="w-3 h-3 text-brand-400" />
@@ -925,7 +932,7 @@ export default function WarrantsPage() {
 
               {/* Statute Lookup */}
               <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-bold block mb-1">Statute Reference</label>
+                <label className="field-label">Statute Reference</label>
                 <StatuteLookup
                   value={formData.statute_citation || undefined}
                   onSelect={(statute: StatuteResult) => {
@@ -943,7 +950,7 @@ export default function WarrantsPage() {
 
               {/* Charge Description */}
               <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-bold block mb-1">Charge Description *</label>
+                <label className="field-label">Charge Description *</label>
                 <textarea
                   className="input-dark text-xs w-full"
                   rows={3}
@@ -952,42 +959,45 @@ export default function WarrantsPage() {
                   placeholder="Enter charge description..."
                   required
                 />
+                {formErrors.charge_description && (
+                  <p className="text-red-400 text-[10px] mt-0.5">{formErrors.charge_description}</p>
+                )}
               </div>
 
               {/* Court + Judge */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase font-bold block mb-1">Issuing Court</label>
+                  <label className="field-label">Issuing Court</label>
                   <input type="text" className="input-dark text-xs w-full" value={formData.issuing_court} onChange={(e) => setFormData(prev => ({ ...prev, issuing_court: e.target.value }))} placeholder="e.g. 3rd District Court" />
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase font-bold block mb-1">Issuing Judge</label>
+                  <label className="field-label">Issuing Judge</label>
                   <input type="text" className="input-dark text-xs w-full" value={formData.issuing_judge} onChange={(e) => setFormData(prev => ({ ...prev, issuing_judge: e.target.value }))} placeholder="e.g. Hon. Smith" />
                 </div>
               </div>
 
               {/* Bail + Expires */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase font-bold block mb-1">Bail Amount</label>
+                  <label className="field-label">Bail Amount</label>
                   <input type="number" step="0.01" className="input-dark text-xs w-full" value={formData.bail_amount} onChange={(e) => setFormData(prev => ({ ...prev, bail_amount: e.target.value }))} placeholder="0.00" />
                 </div>
                 <div>
-                  <label className="text-[10px] text-rmpg-400 uppercase font-bold block mb-1">Expires</label>
+                  <label className="field-label">Expires</label>
                   <input type="date" className="input-dark text-xs w-full" value={formData.expires_at} onChange={(e) => setFormData(prev => ({ ...prev, expires_at: e.target.value }))} />
                 </div>
               </div>
 
               {/* Notes */}
               <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-bold block mb-1">Notes</label>
+                <label className="field-label">Notes</label>
                 <textarea className="input-dark text-xs w-full" rows={2} value={formData.notes} onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))} placeholder="Additional notes..." />
               </div>
 
               {/* Actions */}
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-600">
                 <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn text-xs">Cancel</button>
-                <button type="submit" disabled={submitting || !formData.charge_description.trim()} className="toolbar-btn toolbar-btn-primary text-xs">
+                <button type="submit" disabled={submitting} className="toolbar-btn toolbar-btn-primary text-xs">
                   {submitting ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
                   {editingWarrant ? 'Update Warrant' : 'Create Warrant'}
                 </button>
@@ -1010,7 +1020,7 @@ export default function WarrantsPage() {
                 Mark warrant <span className="font-bold text-white font-mono">{selectedWarrant.warrant_number}</span> as served?
               </p>
               <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-bold block mb-1">Location Served (optional)</label>
+                <label className="field-label">Location Served (optional)</label>
                 <input
                   type="text"
                   className="input-dark text-xs w-full"

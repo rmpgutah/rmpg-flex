@@ -3,6 +3,7 @@ import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { broadcast } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
+import { searchUtahWarrants, searchUtahWarrantsCache, getUtahWarrantSyncStatus } from '../utils/utahWarrantScraper';
 
 const router = Router();
 
@@ -554,6 +555,67 @@ router.post('/:id/unarchive', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Unarchive warrant error:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── Utah State Warrants (real-time search from warrants.utah.gov) ───────────
+
+// GET /api/warrants/utah — Search Utah state warrants (live from warrants.utah.gov)
+router.get('/utah', async (req: Request, res: Response) => {
+  try {
+    const { search } = req.query;
+
+    // Require a search term (API needs both first + last name)
+    if (!search || typeof search !== 'string' || search.trim().length < 2) {
+      // Return cached results if no search
+      const cached = searchUtahWarrantsCache('', { limit: 50 });
+      return res.json({
+        data: cached,
+        pagination: { page: 1, per_page: 50, total: cached.length, totalPages: 1 },
+        source: 'cache',
+      });
+    }
+
+    // Live search warrants.utah.gov
+    const results = await searchUtahWarrants(search.trim());
+
+    res.json({
+      data: results,
+      pagination: { page: 1, per_page: results.length, total: results.length, totalPages: 1 },
+      source: results.length > 0 && results[0].source === 'UTAH_STATE' ? 'live' : 'cache',
+    });
+  } catch (error: any) {
+    console.error('Utah warrants search error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/warrants/utah/count — Cached warrant count for tab badge
+router.get('/utah/count', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const row = db.prepare('SELECT COUNT(*) as count FROM utah_warrants').get() as any;
+    res.json({ count: row.count });
+  } catch {
+    res.json({ count: 0 });
+  }
+});
+
+// GET /api/warrants/utah/sync-status — Status info for UI
+router.get('/utah/sync-status', (req: Request, res: Response) => {
+  try {
+    const status = getUtahWarrantSyncStatus();
+    res.json({
+      lastSync: status.lastSync,
+      status: status.status,
+      personsFound: 0,
+      warrantsFound: status.warrantCount,
+      durationMs: 0,
+      lastError: status.lastError,
+      currentCount: status.warrantCount,
+    });
+  } catch {
+    res.json({ lastSync: null, status: 'ready', currentCount: 0 });
   }
 });
 

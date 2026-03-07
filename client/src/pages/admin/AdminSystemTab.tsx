@@ -2087,7 +2087,7 @@ export default function AdminSystemTab({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-3">
                     <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1">Brand Colors</div>
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div>
                         <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Primary</label>
                         <div className="flex items-center gap-2">

@@ -220,7 +220,7 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
             onClick={() => setActiveTab(tab.id)}
             className={`px-4 py-1.5 text-xs font-medium transition-colors ${
               activeTab === tab.id
-                ? 'bg-gray-700 text-white border border-rmpg-600 border-b-gray-700'
+                ? 'bg-rmpg-700 text-white border border-rmpg-600 border-b-rmpg-700'
                 : 'text-rmpg-300 hover:text-white hover:bg-rmpg-700/50'
             }`}
           >
@@ -232,7 +232,7 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
       {/* Basic Info Tab */}
       {activeTab === 'basic' && (
         <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">
                 Evidence Type <span className="text-red-400">*</span>
@@ -268,7 +268,7 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Date Collected</label>
               <input type="date" className="input-dark text-xs" value={form.collected_date} onChange={(e) => updateField('collected_date', e.target.value)} />
@@ -306,7 +306,7 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
       {/* Item Details Tab */}
       {activeTab === 'details' && (
         <div className="space-y-3">
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Serial Number</label>
               <input type="text" className="input-dark text-xs" placeholder="S/N" value={form.serial_number} onChange={(e) => updateField('serial_number', e.target.value)} />
@@ -321,7 +321,7 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Estimated Value ($)</label>
               <input type="number" min="0" step="0.01" className="input-dark text-xs" placeholder="0.00" value={form.estimated_value} onChange={(e) => updateField('estimated_value', e.target.value)} />
@@ -350,7 +350,7 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
               </label>
             </div>
             {form.lab_submitted && (
-              <div className="grid grid-cols-2 gap-3 mt-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
                 <div>
                   <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Lab Name</label>
                   <input type="text" className="input-dark text-xs" placeholder="Lab name" value={form.lab_name} onChange={(e) => updateField('lab_name', e.target.value)} />
@@ -365,7 +365,7 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
 
           <div className="panel-beveled p-3">
             <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-2 block">Disposal Information</label>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Disposal Method</label>
                 <select className="select-dark text-xs" value={form.disposal_method} onChange={(e) => updateField('disposal_method', e.target.value)}>

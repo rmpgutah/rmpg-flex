@@ -176,7 +176,7 @@ router.put('/events/:id', (req: Request, res: Response) => {
     }
     params.push(req.params.id);
     db.prepare(`UPDATE court_events SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-    res.json({ data: { id: parseInt(req.params.id) } });
+    res.json({ data: { id: parseInt(req.params.id as string) } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -196,7 +196,7 @@ router.put('/events/:id/outcome', (req: Request, res: Response) => {
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
       VALUES (?, 'outcome', 'court_event', ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ outcome }), now);
 
-    res.json({ data: { id: parseInt(req.params.id), outcome } });
+    res.json({ data: { id: parseInt(req.params.id as string), outcome } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
