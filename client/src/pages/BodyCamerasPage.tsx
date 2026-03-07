@@ -297,6 +297,20 @@ export default function BodyCamerasPage() {
           if (token) headers['Authorization'] = `Bearer ${token}`;
           return headers;
         }}
+        onClassify={canManage ? async (videoId, classification) => {
+          try {
+            await apiFetch(`/personnel/bodycam-videos/${videoId}`, {
+              method: 'PUT',
+              body: JSON.stringify({ classification }),
+            });
+            await refreshBodyCameras();
+            // Update the playing video's classification in-place
+            setPlayingVideo(prev => prev ? { ...prev, classification } : null);
+            addToast(`Video reclassified to ${classification}`, 'success');
+          } catch {
+            addToast('Failed to reclassify video', 'error');
+          }
+        } : undefined}
       />
     </div>
   );

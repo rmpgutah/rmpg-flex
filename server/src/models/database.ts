@@ -2274,6 +2274,130 @@ function migrateSchema(): void {
     `);
   } catch { /* table already exists */ }
 
+  // ── FORENSIC LAB CASES — lab management for evidence analysis ──
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS forensic_cases (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        lab_case_number TEXT UNIQUE NOT NULL,
+        title TEXT NOT NULL,
+        case_type TEXT DEFAULT 'digital' CHECK(case_type IN (
+          'digital','biological','chemical','ballistics','latent_prints',
+          'questioned_documents','trace','toxicology','dna','firearms','other'
+        )),
+        status TEXT DEFAULT 'submitted' CHECK(status IN (
+          'submitted','intake','assigned','in_progress','analysis_complete',
+          'report_draft','report_final','closed','cancelled'
+        )),
+        priority TEXT DEFAULT 'routine' CHECK(priority IN ('routine','expedited','urgent','rush')),
+        incident_id INTEGER,
+        evidence_ids TEXT DEFAULT '[]',
+        requesting_officer_id INTEGER,
+        requesting_officer_name TEXT,
+        assigned_examiner_id INTEGER,
+        assigned_examiner_name TEXT,
+        lab_location TEXT,
+        synopsis TEXT,
+        findings TEXT,
+        conclusion TEXT,
+        methodology TEXT,
+        received_date TEXT DEFAULT (datetime('now','localtime')),
+        due_date TEXT,
+        started_date TEXT,
+        completed_date TEXT,
+        report_date TEXT,
+        turnaround_days INTEGER,
+        notes TEXT,
+        created_by INTEGER NOT NULL,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        updated_at TEXT DEFAULT (datetime('now','localtime')),
+        archived_at TEXT,
+        FOREIGN KEY (incident_id) REFERENCES incidents(id),
+        FOREIGN KEY (requesting_officer_id) REFERENCES users(id),
+        FOREIGN KEY (assigned_examiner_id) REFERENCES users(id),
+        FOREIGN KEY (created_by) REFERENCES users(id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_forensic_cases_status ON forensic_cases(status);
+      CREATE INDEX IF NOT EXISTS idx_forensic_cases_examiner ON forensic_cases(assigned_examiner_id);
+      CREATE INDEX IF NOT EXISTS idx_forensic_cases_number ON forensic_cases(lab_case_number);
+    `);
+  } catch { /* table already exists */ }
+
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS forensic_exhibits (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        forensic_case_id INTEGER NOT NULL,
+        exhibit_number TEXT NOT NULL,
+        evidence_id INTEGER,
+        description TEXT NOT NULL,
+        item_type TEXT,
+        condition_received TEXT,
+        examination_requested TEXT,
+        examination_performed TEXT,
+        results TEXT,
+        status TEXT DEFAULT 'received' CHECK(status IN ('received','examining','complete','returned','disposed')),
+        received_date TEXT DEFAULT (datetime('now','localtime')),
+        returned_date TEXT,
+        photos TEXT DEFAULT '[]',
+        notes TEXT,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        updated_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (forensic_case_id) REFERENCES forensic_cases(id) ON DELETE CASCADE,
+        FOREIGN KEY (evidence_id) REFERENCES evidence(id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_forensic_exhibits_case ON forensic_exhibits(forensic_case_id);
+    `);
+  } catch { /* table already exists */ }
+
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS forensic_analyses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        forensic_case_id INTEGER NOT NULL,
+        exhibit_id INTEGER,
+        analysis_type TEXT NOT NULL CHECK(analysis_type IN (
+          'dna','fingerprint','drug_analysis','digital_extraction','ballistics',
+          'document_analysis','trace_analysis','toxicology','tool_marks',
+          'blood_spatter','fire_debris','serology','microscopy','photography','other'
+        )),
+        examiner_id INTEGER,
+        examiner_name TEXT,
+        status TEXT DEFAULT 'pending' CHECK(status IN ('pending','in_progress','complete','inconclusive','cancelled')),
+        methodology TEXT,
+        instruments_used TEXT,
+        results TEXT,
+        conclusion TEXT,
+        started_at TEXT,
+        completed_at TEXT,
+        notes TEXT,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        updated_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (forensic_case_id) REFERENCES forensic_cases(id) ON DELETE CASCADE,
+        FOREIGN KEY (exhibit_id) REFERENCES forensic_exhibits(id),
+        FOREIGN KEY (examiner_id) REFERENCES users(id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_forensic_analyses_case ON forensic_analyses(forensic_case_id);
+    `);
+  } catch { /* table already exists */ }
+
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS forensic_timeline (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        forensic_case_id INTEGER NOT NULL,
+        action TEXT NOT NULL,
+        description TEXT,
+        performed_by INTEGER,
+        performed_by_name TEXT,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (forensic_case_id) REFERENCES forensic_cases(id) ON DELETE CASCADE,
+        FOREIGN KEY (performed_by) REFERENCES users(id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_forensic_timeline_case ON forensic_timeline(forensic_case_id);
+    `);
+  } catch { /* table already exists */ }
+
   // ── CODE VIOLATIONS — municipal code enforcement ──
   try {
     db.exec(`
@@ -2998,6 +3122,45 @@ function migrateSchema(): void {
   addCol('dashcam_videos', 'processed_file_path', 'TEXT');
   addCol('dashcam_videos', 'overlay_error', 'TEXT');
 
+  // ── DIGITAL EVIDENCE HASHES — link to forensic cases/exhibits ──
+  addCol('digital_evidence_hashes', 'forensic_case_id', 'INTEGER');
+  addCol('digital_evidence_hashes', 'exhibit_id', 'INTEGER');
+  addCol('digital_evidence_hashes', 'notes', 'TEXT');
+  addCol('digital_evidence_hashes', 'updated_at', "TEXT");
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_deh_forensic_case ON digital_evidence_hashes(forensic_case_id)'); } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_deh_exhibit ON digital_evidence_hashes(exhibit_id)'); } catch {}
+
+  // ── FORENSIC CASE LINKS — universal cross-module evidence linkage ──
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS forensic_case_links (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        forensic_case_id INTEGER NOT NULL,
+        linked_type TEXT NOT NULL CHECK(linked_type IN (
+          'bodycam_video','dashcam_video','evidence','attachment',
+          'incident','supplemental_report','case','radio_transcript',
+          'field_interview','citation','daily_activity_report'
+        )),
+        linked_id INTEGER NOT NULL,
+        relationship TEXT DEFAULT 'associated' CHECK(relationship IN (
+          'associated','primary_evidence','supporting','reference',
+          'chain_of_custody','suspect_device','victim_device','witness_statement',
+          'forensic_source','comparison_sample'
+        )),
+        relevance TEXT DEFAULT 'standard' CHECK(relevance IN ('critical','high','standard','low','reference_only')),
+        notes TEXT,
+        linked_by INTEGER NOT NULL,
+        linked_by_name TEXT,
+        linked_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (forensic_case_id) REFERENCES forensic_cases(id) ON DELETE CASCADE,
+        FOREIGN KEY (linked_by) REFERENCES users(id),
+        UNIQUE(forensic_case_id, linked_type, linked_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_fcl_case ON forensic_case_links(forensic_case_id);
+      CREATE INDEX IF NOT EXISTS idx_fcl_type_id ON forensic_case_links(linked_type, linked_id);
+    `);
+  } catch { /* table already exists */ }
+
   console.log('Schema migration completed.');
 }
 
@@ -3379,6 +3542,9 @@ function seedData(): void {
   evidenceLocations.forEach(([name, desc], i) => {
     insertConfig.run(name, JSON.stringify({ description: desc }), 'evidence_location', i, now, now);
   });
+
+  // Video overlay agency name (configurable in Admin)
+  insertConfig.run('video_overlay_agency_name', 'ROCKY MOUNTAIN PROTECTIVE GROUP', 'video_overlay', 0, now, now);
 
   console.log('Seed data initialized (admin user + system config).');
 }

@@ -268,9 +268,9 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
     // Build list of pending actions
     const pendingActions: string[] = [];
     const needsPasswordChange = user.force_password_change === 1 || user.must_change_password === 1 || isPasswordExpired(user);
-    // 2FA is mandatory for ALL users regardless of account age or role.
-    // Any user without an active, verified TOTP secret must complete setup.
-    const needs2FASetup = user.totp_setup_required === 1 || user.totp_enabled !== 1;
+    // 2FA setup is required only when an admin explicitly flags the account.
+    // Users who haven't been flagged can log in without 2FA (they can opt-in later).
+    const needs2FASetup = user.totp_setup_required === 1;
     const has2FA = user.totp_enabled === 1 && user.totp_setup_required !== 1;
 
     // Also check WebAuthn

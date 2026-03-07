@@ -82,6 +82,7 @@ import offenderRegistryRoutes from './routes/offenderRegistry';
 import offlineRoutes from './routes/offline';
 import companyDocumentsRoutes from './routes/companyDocuments';
 import ipedRoutes from './routes/iped';
+import forensicsRoutes from './routes/forensics';
 import skiptracerRoutes from './routes/skiptracer';
 
 const app = express();
@@ -254,6 +255,7 @@ app.use('/api/offender-registry', offenderRegistryRoutes);
 app.use('/api/offline', offlineRoutes);
 app.use('/api/company-documents', companyDocumentsRoutes);
 app.use('/api/iped', ipedRoutes);
+app.use('/api/forensics', forensicsRoutes);
 app.use('/api/skiptracer', skiptracerRoutes);
 
 // Mount download page and file serving routes (outside /api)

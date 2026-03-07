@@ -96,7 +96,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/dar': 'Daily Activity Reports',
   '/offender-registry': 'Offender Registry',
   '/reports': 'Reports',
-  '/forensics': 'Digital Forensics',
+  '/forensics': 'Forensic Lab',
+  '/dash-cameras': 'Dash Cameras',
   '/audit': 'Audit Log',
   '/admin': 'Admin',
 };
@@ -110,6 +111,7 @@ interface NavItem {
   group: string;
   adminOnly?: boolean;
   children?: NavChild[];
+  externalUrl?: string; // Opens external URL with SSO token
 }
 
 const TOOLBAR_NAV: NavItem[] = [
@@ -126,6 +128,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/dl-search', icon: CreditCard, label: 'DL Search' },
     { path: '/skip-tracer', icon: Search, label: 'Skip Tracer' },
     { path: '/evidence', icon: Package, label: 'Evidence / Property' },
+    { path: '/forensics', icon: Microscope, label: 'Forensic Lab' },
     { path: '/cases', icon: Briefcase, label: 'Case Management' },
   ]},
   { path: '/warrants', icon: AlertTriangle, label: 'Enforcement', group: 'records', children: [
@@ -140,6 +143,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/personnel', icon: Users, label: 'Personnel' },
     { path: '/fleet', icon: Car, label: 'Fleet' },
     { path: '/body-cameras', icon: Video, label: 'Body Cameras' },
+    { path: '/dash-cameras', icon: Car, label: 'Dash Cameras' },
   ]},
   { path: '/communications', icon: MessageSquare, label: 'Comms', group: 'comms', children: [
     { path: '/communications', icon: MessageSquare, label: 'Comms' },
@@ -154,9 +158,10 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/crime-analysis', icon: TrendingUp, label: 'Crime Analysis' },
     { path: '/dar', icon: ClipboardCheck, label: 'Daily Activity' },
   ]},
-  { path: '/forensics', icon: Microscope, label: 'Forensics', group: 'analysis', adminOnly: true },
   { path: '/audit', icon: ScrollText, label: 'Audit', group: 'system', adminOnly: true },
   { path: '/admin', icon: Settings, label: 'Admin', group: 'system', adminOnly: true },
+  { path: '/crm', icon: Landmark, label: 'CRM', group: 'crm',
+    externalUrl: import.meta.env.DEV ? 'http://localhost:3002/sso' : 'https://crm.rmpgutah.us/sso' },
 ];
 
 // Paths that contract_manager role is NOT allowed to see
@@ -731,6 +736,31 @@ export default function Layout() {
                       </div>
                     )}
                   </div>
+                </React.Fragment>
+              );
+            }
+
+            // External link (e.g. CRM) — opens in new tab with SSO token
+            if (item.externalUrl) {
+              return (
+                <React.Fragment key={item.path}>
+                  {showSep && <div className="toolbar-separator" />}
+                  <button
+                    onClick={() => {
+                      setOpenDropdown(null);
+                      const token = localStorage.getItem('rmpg_token');
+                      const url = token
+                        ? `${item.externalUrl}?token=${encodeURIComponent(token)}`
+                        : item.externalUrl!;
+                      window.open(url, '_blank', 'noopener');
+                    }}
+                    onMouseEnter={() => { if (openDropdown) setOpenDropdown(null); }}
+                    className="toolbar-btn"
+                    title={`Open ${item.label}`}
+                  >
+                    <Icon style={{ width: 12, height: 12 }} />
+                    <span className="hidden lg:inline">{item.label}</span>
+                  </button>
                 </React.Fragment>
               );
             }
