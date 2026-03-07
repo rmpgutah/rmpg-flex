@@ -285,7 +285,8 @@ router.get('/analytics', (req: Request, res: Response) => {
 router.get('/:id', (req: Request, res: Response) => {
   try {
     // Avoid matching sub-routes that are handled by other route definitions
-    if (['maintenance', 'analytics'].includes(req.params.id as string)) {
+    const reservedPaths = ['maintenance', 'analytics', 'dashcam-videos', 'import', 'fuel', 'inspections'];
+    if (reservedPaths.includes(req.params.id as string)) {
       res.status(404).json({ error: 'Not found' });
       return;
     }
