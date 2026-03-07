@@ -287,7 +287,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
                   placeholder="Announcement message..."
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Type</label>
                   <select
@@ -315,7 +315,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Starts At</label>
                   <input

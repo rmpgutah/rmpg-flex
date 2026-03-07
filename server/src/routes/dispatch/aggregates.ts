@@ -1,0 +1,522 @@
+import { Router, Request, Response } from 'express';
+import { getDb } from '../../models/database';
+import { authenticateToken } from '../../middleware/auth';
+import { broadcastDispatchUpdate, broadcastUnitUpdate, broadcastPanic } from '../../utils/websocket';
+import { generateCallNumber } from '../../utils/caseNumbers';
+import { localNow } from '../../utils/timeUtils';
+import { reverseGeocodeAddress } from '../../utils/geocode';
+import { identifyBeat } from '../../utils/geofence';
+
+const router = Router();
+
+// GET /api/dispatch/heatmap - Aggregated call locations for heat map display
+router.get('/heatmap', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = parseInt(req.query.days as string) || 30;
+
+    // Use SQLite datetime() for consistent format comparison
+    const points = db.prepare(`
+      SELECT
+        ROUND(latitude, 3) as latitude,
+        ROUND(longitude, 3) as longitude,
+        COUNT(*) as count
+      FROM calls_for_service
+      WHERE latitude IS NOT NULL
+        AND longitude IS NOT NULL
+        AND created_at >= datetime('now', 'localtime', '-' || ? || ' days')
+      GROUP BY ROUND(latitude, 3), ROUND(longitude, 3)
+      ORDER BY count DESC
+      LIMIT 200
+    `).all(days);
+
+    res.json(points);
+  } catch (error: any) {
+    console.error('Heatmap error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/dispatch/queue - Active dispatch queue
+router.get('/queue', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const calls = db.prepare(`
+      SELECT c.*, p.name as property_name, u.full_name as dispatcher_name
+      FROM calls_for_service c
+      LEFT JOIN properties p ON c.property_id = p.id
+      LEFT JOIN users u ON c.dispatcher_id = u.id
+      WHERE c.status IN ('pending', 'dispatched', 'enroute', 'onscene')
+      ORDER BY
+        CASE c.priority WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 END,
+        c.created_at ASC
+    `).all();
+
+    res.json(calls);
+  } catch (error: any) {
+    console.error('Get queue error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/dispatch/stats - Current dispatch statistics
+router.get('/stats', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    const callsByStatus = db.prepare(`
+      SELECT status, COUNT(*) as count FROM calls_for_service
+      WHERE DATE(created_at) = DATE('now')
+      GROUP BY status
+    `).all();
+
+    const callsByPriority = db.prepare(`
+      SELECT priority, COUNT(*) as count FROM calls_for_service
+      WHERE DATE(created_at) = DATE('now')
+      GROUP BY priority
+    `).all();
+
+    const unitsByStatus = db.prepare(`
+      SELECT status, COUNT(*) as count FROM units GROUP BY status
+    `).all();
+
+    const activeCalls = db.prepare(`
+      SELECT COUNT(*) as count FROM calls_for_service
+      WHERE status IN ('pending', 'dispatched', 'enroute', 'onscene')
+    `).get() as any;
+
+    const todayTotal = db.prepare(`
+      SELECT COUNT(*) as count FROM calls_for_service
+      WHERE DATE(created_at) = DATE('now')
+    `).get() as any;
+
+    const avgResponseTime = db.prepare(`
+      SELECT AVG(
+        (julianday(onscene_at) - julianday(created_at)) * 24 * 60
+      ) as avg_minutes
+      FROM calls_for_service
+      WHERE onscene_at IS NOT NULL AND DATE(created_at) = DATE('now')
+    `).get() as any;
+
+    res.json({
+      activeCalls: activeCalls.count,
+      todayTotal: todayTotal.count,
+      avgResponseMinutes: avgResponseTime.avg_minutes ? Math.round(avgResponseTime.avg_minutes * 10) / 10 : null,
+      callsByStatus,
+      callsByPriority,
+      unitsByStatus,
+    });
+  } catch (error: any) {
+    console.error('Get stats error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/dispatch/panic - Emergency PANIC button
+// Broadcasts audible alert to all connected users
+router.post('/panic', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { latitude, longitude, message } = req.body;
+
+    const user = db.prepare('SELECT id, full_name, badge_number, role FROM users WHERE id = ?')
+      .get(req.user!.userId) as any;
+
+    if (!user) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    const now = localNow();
+
+    // Log the panic alert to activity log
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'panic_alert', 'user', ?, ?, ?)
+    `).run(
+      user.id,
+      user.id,
+      `PANIC ALERT triggered by ${user.full_name} (${user.badge_number || 'N/A'})${message ? ': ' + message : ''}`,
+      req.ip || 'unknown'
+    );
+
+    // ── Reverse-geocode officer GPS → address (with fallback) ──
+    let locationAddress = latitude && longitude
+      ? `GPS: ${Number(latitude).toFixed(5)}, ${Number(longitude).toFixed(5)}`
+      : 'Unknown location';
+
+    if (latitude && longitude) {
+      try {
+        const addr = await reverseGeocodeAddress(Number(latitude), Number(longitude));
+        if (addr) locationAddress = addr;
+      } catch { /* keep GPS fallback */ }
+    }
+
+    // ── Auto-create "Officer Assist — Panic Alarm" dispatch call ──
+    const callNumber = generateCallNumber(db);
+    const description = `PANIC ALARM — Officer ${user.full_name} (Badge: ${user.badge_number || 'N/A'}) triggered emergency alert.${message ? ' Message: ' + message : ''}`;
+
+    const callResult = db.prepare(`
+      INSERT INTO calls_for_service (
+        call_number, incident_type, priority, status,
+        caller_name, location_address, latitude, longitude,
+        description, source, dispatcher_id,
+        weapons_involved, created_at, dispatched_at
+      ) VALUES (?, 'officer_assist', 'P1', 'dispatched',
+        ?, ?, ?, ?,
+        ?, 'panic', ?,
+        'unknown', ?, ?)
+    `).run(
+      callNumber,
+      user.full_name,
+      locationAddress,
+      latitude || null,
+      longitude || null,
+      description,
+      user.id,
+      now,
+      now,
+    );
+
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?')
+      .get(callResult.lastInsertRowid) as any;
+
+    // ── Auto-assign officer's unit to the call ──
+    const unit = db.prepare('SELECT id, call_sign FROM units WHERE officer_id = ?')
+      .get(user.id) as any;
+
+    if (unit) {
+      db.prepare('UPDATE units SET status = ?, current_call_id = ?, last_status_change = ? WHERE id = ?')
+        .run('dispatched', call.id, now, unit.id);
+
+      // Update call's assigned_unit_ids JSON array
+      const unitIds = JSON.stringify([String(unit.id)]);
+      db.prepare('UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?')
+        .run(unitIds, call.id);
+
+      broadcastUnitUpdate({ action: 'unit_status_changed', unit: { ...unit, status: 'dispatched', current_call_id: call.id } });
+    }
+
+    // Log call creation
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'call_created', 'call', ?, ?, ?)
+    `).run(user.id, call.id, `PANIC auto-created ${callNumber}: officer_assist`, req.ip || 'unknown');
+
+    // ── Broadcast panic alert to ALL clients (with call info) ──
+    broadcastPanic({
+      user_id: user.id,
+      user_name: user.full_name,
+      badge_number: user.badge_number,
+      role: user.role,
+      message: message || null,
+      latitude: latitude || null,
+      longitude: longitude || null,
+      triggered_at: now,
+      call_number: callNumber,
+      call_id: call.id,
+      location_address: locationAddress,
+      unit_call_sign: unit?.call_sign || null,
+    });
+
+    // ── Broadcast dispatch update so Dispatch page picks up the new call ──
+    const enrichedCall = db.prepare(`
+      SELECT c.*, u.full_name as dispatcher_name
+      FROM calls_for_service c
+      LEFT JOIN users u ON c.dispatcher_id = u.id
+      WHERE c.id = ?
+    `).get(call.id);
+
+    broadcastDispatchUpdate({ action: 'call_created', call: enrichedCall || call });
+
+    res.json({
+      success: true,
+      message: 'Panic alert sent — dispatch call created',
+      call_number: callNumber,
+      call_id: call.id,
+    });
+  } catch (error: any) {
+    console.error('Panic alert error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/dispatch/premise-history - Premise history lookup
+// Returns prior calls at or near a given address.
+router.get('/premise-history', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { address } = req.query;
+
+    if (!address || (address as string).length < 3) {
+      res.status(400).json({ error: 'Address must be at least 3 characters' });
+      return;
+    }
+
+    const searchTerm = `%${address}%`;
+
+    // Find prior calls at this address (fuzzy match on location_address)
+    const calls = db.prepare(`
+      SELECT c.id, c.call_number, c.incident_type, c.priority, c.status, c.disposition,
+        c.location_address, c.created_at, c.cleared_at,
+        c.weapons_involved, c.domestic_violence, c.injuries_reported,
+        c.alcohol_involved, c.drugs_involved, c.description
+      FROM calls_for_service c
+      WHERE c.location_address LIKE ?
+      ORDER BY c.created_at DESC
+      LIMIT 20
+    `).all(searchTerm) as any[];
+
+    // Determine if there are hazardous warnings
+    const warningTypes: string[] = [];
+    for (const call of calls) {
+      if (call.weapons_involved && !warningTypes.includes('ARMED'))
+        warningTypes.push('ARMED');
+      if (call.domestic_violence && !warningTypes.includes('DV'))
+        warningTypes.push('DV');
+      if (call.injuries_reported && !warningTypes.includes('INJURIES'))
+        warningTypes.push('INJURIES');
+      if (call.alcohol_involved && !warningTypes.includes('ALCOHOL'))
+        warningTypes.push('ALCOHOL');
+      if (call.drugs_involved && !warningTypes.includes('DRUGS'))
+        warningTypes.push('DRUGS');
+    }
+
+    // Check for high-risk incident types in history
+    const highRiskTypes = ['shooting', 'shots_fired', 'armed', 'barricade', 'hostage', 'hazmat', 'officer_assist'];
+    for (const call of calls) {
+      const itype = (call.incident_type || '').toLowerCase();
+      if (highRiskTypes.some(t => itype.includes(t)) && !warningTypes.includes('HIGH_RISK_HISTORY'))
+        warningTypes.push('HIGH_RISK_HISTORY');
+    }
+
+    // Also check property hazard notes if we can match a property
+    let propertyHazard: string | null = null;
+    try {
+      const prop = db.prepare(`
+        SELECT hazard_notes FROM properties WHERE address LIKE ? AND hazard_notes IS NOT NULL LIMIT 1
+      `).get(searchTerm) as any;
+      if (prop?.hazard_notes) {
+        propertyHazard = prop.hazard_notes;
+        if (!warningTypes.includes('PROPERTY_HAZARD')) warningTypes.push('PROPERTY_HAZARD');
+      }
+    } catch { /* properties table may not have hazard_notes */ }
+
+    res.json({
+      calls,
+      total: calls.length,
+      hasWarnings: warningTypes.length > 0,
+      warningTypes,
+      propertyHazard,
+    });
+  } catch (error: any) {
+    console.error('Premise history error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/dispatch/safety-screen - Officer Safety Auto-Screening
+// Searches persons and warrants by name to detect active warrants, caution flags, criminal history.
+router.get('/safety-screen', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { name } = req.query;
+
+    if (!name || typeof name !== 'string' || name.trim().length < 2) {
+      return res.json({ persons: [], directWarrantHits: [], hasWarnings: false });
+    }
+
+    const searchName = name.trim();
+
+    // Split into possible first/last name parts
+    const parts = searchName.split(/[\s,]+/).filter(Boolean);
+
+    // ── Search persons table ──
+    let personRows: any[] = [];
+    if (parts.length >= 2) {
+      // Try both orderings: "first last" and "last, first"
+      personRows = db.prepare(`
+        SELECT * FROM persons
+        WHERE (first_name LIKE ? AND last_name LIKE ?)
+           OR (first_name LIKE ? AND last_name LIKE ?)
+           OR (first_name || ' ' || last_name LIKE ?)
+        LIMIT 10
+      `).all(
+        `%${parts[0]}%`, `%${parts[1]}%`,
+        `%${parts[1]}%`, `%${parts[0]}%`,
+        `%${searchName}%`
+      );
+    } else {
+      personRows = db.prepare(`
+        SELECT * FROM persons
+        WHERE first_name LIKE ? OR last_name LIKE ?
+        LIMIT 10
+      `).all(`%${parts[0]}%`, `%${parts[0]}%`);
+    }
+
+    // Enrich each person with warrants and criminal history
+    const persons = personRows.map((person: any) => {
+      const warrants = db.prepare(`
+        SELECT * FROM warrants
+        WHERE status = 'active'
+          AND subject_first_name LIKE ? AND subject_last_name LIKE ?
+      `).all(`%${person.first_name}%`, `%${person.last_name}%`);
+
+      const criminalHistory = db.prepare(`
+        SELECT * FROM criminal_history WHERE person_id = ? ORDER BY charge_date DESC LIMIT 10
+      `).all(person.id);
+
+      return { person, warrants, criminalHistory };
+    });
+
+    // ── Search warrants directly by subject name (via persons join) ──
+    let directWarrantHits: any[] = [];
+    if (parts.length >= 2) {
+      directWarrantHits = db.prepare(`
+        SELECT w.*, p.first_name AS subject_first_name, p.last_name AS subject_last_name
+        FROM warrants w
+        LEFT JOIN persons p ON w.subject_person_id = p.id
+        WHERE w.status = 'active'
+          AND ((p.first_name LIKE ? AND p.last_name LIKE ?)
+            OR (p.first_name LIKE ? AND p.last_name LIKE ?))
+        LIMIT 10
+      `).all(
+        `%${parts[0]}%`, `%${parts[1]}%`,
+        `%${parts[1]}%`, `%${parts[0]}%`
+      );
+    } else {
+      directWarrantHits = db.prepare(`
+        SELECT w.*, p.first_name AS subject_first_name, p.last_name AS subject_last_name
+        FROM warrants w
+        LEFT JOIN persons p ON w.subject_person_id = p.id
+        WHERE w.status = 'active'
+          AND (p.first_name LIKE ? OR p.last_name LIKE ?)
+        LIMIT 10
+      `).all(`%${parts[0]}%`, `%${parts[0]}%`);
+    }
+
+    // Deduplicate warrant hits (already found via person enrichment)
+    const personWarrantIds = new Set(
+      persons.flatMap(p => p.warrants.map((w: any) => w.id))
+    );
+    const uniqueDirectWarrants = directWarrantHits.filter(
+      (w: any) => !personWarrantIds.has(w.id)
+    );
+
+    // Determine if any warnings exist
+    const hasWarnings =
+      persons.some(p =>
+        p.warrants.length > 0 ||
+        p.person.caution_flags ||
+        p.person.is_sex_offender ||
+        p.person.has_criminal_history
+      ) ||
+      uniqueDirectWarrants.length > 0;
+
+    res.json({
+      persons,
+      directWarrantHits: uniqueDirectWarrants,
+      hasWarnings,
+    });
+  } catch (error: any) {
+    console.error('Safety screen error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/dispatch/districts - List all 3-tier dispatch districts
+router.get('/districts', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const districts = db.prepare('SELECT * FROM dispatch_districts ORDER BY section_id, zone_id, beat_id').all();
+    res.json(districts);
+  } catch (error: any) {
+    console.error('Districts list error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/dispatch/districts/lookup - Lookup 3-tier by zone_id + beat_id
+router.get('/districts/lookup', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { zone_id, beat_id } = req.query;
+
+    if (!zone_id) {
+      res.status(400).json({ error: 'zone_id is required' });
+      return;
+    }
+
+    let district: any;
+    if (beat_id) {
+      district = db.prepare(
+        'SELECT * FROM dispatch_districts WHERE zone_id = ? AND beat_id = ?'
+      ).get(zone_id, beat_id);
+    } else {
+      // Return first matching zone entry
+      district = db.prepare(
+        'SELECT * FROM dispatch_districts WHERE zone_id = ? LIMIT 1'
+      ).get(zone_id);
+    }
+
+    if (!district) {
+      res.json({ found: false });
+      return;
+    }
+
+    res.json({ found: true, district });
+  } catch (error: any) {
+    console.error('District lookup error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/dispatch/districts/identify - Identify district from GPS coordinates
+router.get('/districts/identify', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { lat, lng } = req.query;
+    if (!lat || !lng) {
+      res.status(400).json({ error: 'lat and lng are required' });
+      return;
+    }
+
+    const beat = identifyBeat(Number(lat), Number(lng));
+    if (!beat) {
+      res.json({ found: false });
+      return;
+    }
+
+    // Lookup dispatch_districts table for rich names
+    const district = db.prepare(
+      'SELECT * FROM dispatch_districts WHERE zone_id = ? AND beat_id = ?'
+    ).get(beat.city_code, beat.district_letter) as any;
+
+    if (district) {
+      res.json({
+        found: true,
+        section_id: district.section_id,
+        zone_id: district.zone_name,
+        beat_id: `${district.beat_name} — ${district.beat_descriptor || ''}`.trim(),
+        dispatch_code: district.dispatch_code,
+        section_name: district.section_name,
+        zone_name: district.zone_name,
+        beat_name: district.beat_name,
+        beat_descriptor: district.beat_descriptor,
+      });
+    } else {
+      // Fallback to raw geofence data
+      res.json({
+        found: true,
+        section_id: beat.district_letter,
+        zone_id: `${beat.city} ${beat.district_letter}${beat.beat_number}`,
+        beat_id: beat.beat_id,
+      });
+    }
+  } catch (error: any) {
+    console.error('District identify error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+export default router;

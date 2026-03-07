@@ -132,7 +132,7 @@ router.post('/', (req: Request, res: Response) => {
     );
 
     const created = db.prepare('SELECT * FROM field_interviews WHERE id = ?').get(result.lastInsertRowid);
-    broadcast('alerts', { type: 'fi_created', data: created });
+    broadcast('alerts', 'fi_created', created);
     res.status(201).json(created);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -170,7 +170,7 @@ router.put('/:id', (req: Request, res: Response) => {
     db.prepare(`UPDATE field_interviews SET ${setClauses.join(', ')} WHERE id = ?`).run(...params);
 
     const updated = db.prepare('SELECT * FROM field_interviews WHERE id = ?').get(req.params.id);
-    broadcast('alerts', { type: 'fi_updated', data: updated });
+    broadcast('alerts', 'fi_updated', updated);
     res.json(updated);
   } catch (err: any) {
     res.status(500).json({ error: err.message });

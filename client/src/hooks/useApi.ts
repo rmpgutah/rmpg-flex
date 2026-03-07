@@ -1,4 +1,7 @@
 import { useState, useCallback } from 'react';
+import { isOfflineDbReady } from '../services/offlineDb';
+import { handle as browserOfflineHandle, isOfflineCapableEndpoint } from '../services/offlineRouter';
+import { hasActiveSession } from '../services/offlinePin';
 
 // ─── Offline Error Classes ───────────────────────────────────
 // Thrown when an offline write is attempted without PIN authorization.
@@ -169,11 +172,12 @@ async function tryRefreshToken(): Promise<string | null> {
       }
 
       // Refresh failed — clear tokens and redirect to login
-      // (but NOT if we're offline in Electron — stay on current page)
+      // (but NOT if we're offline — stay on current page)
+      if (!navigator.onLine) return null; // Don't redirect when offline (browser or Electron)
       if (electron?.getOfflineState) {
         try {
           const state = await electron.getOfflineState();
-          if (!state.isOnline) return null; // Don't redirect when offline
+          if (!state.isOnline) return null;
         } catch { /* fall through */ }
       }
       localStorage.removeItem('rmpg_token');
@@ -227,6 +231,35 @@ export async function apiFetch<T>(
       // Re-throw OfflineUnauthorizedError (for PIN modal trigger)
       if (err instanceof OfflineUnauthorizedError) throw err;
       // For other errors during offline check, fall through to normal fetch
+    }
+  }
+
+  // ─── Browser offline interception ──────────────────────
+  if (!navigator.onLine && isOfflineDbReady() && isOfflineCapableEndpoint(method, url)) {
+    try {
+      const session = await hasActiveSession();
+      // Write operations require PIN authorization (admin always authorized)
+      if (method !== 'GET' && !session.active) {
+        throw new OfflineUnauthorizedError();
+      }
+
+      const body = options?.body ? JSON.parse(options.body as string) : undefined;
+      const result = await browserOfflineHandle(method, url, body);
+
+      if (result.status >= 400) {
+        throw new Error(result.error || `Offline request failed: ${result.status}`);
+      }
+
+      return result.data as T;
+    } catch (err) {
+      if (err instanceof OfflineUnauthorizedError) throw err;
+      // If truly offline and offline router failed, surface the error
+      // rather than silently falling through to a guaranteed network failure
+      if (!navigator.onLine) {
+        console.warn('[OFFLINE] Browser offline router failed:', err);
+        throw new Error('Offline data unavailable for this request');
+      }
+      // Fall through to normal fetch for non-offline errors
     }
   }
 

@@ -387,7 +387,7 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
 
         {/* ── Property Details ────────────────── */}
         <CollapsibleSection title="Property Details" icon={Building2} defaultOpen>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {renderInfoRow('Gate Code', selectedProperty.gate_code, Shield)}
             {renderInfoRow('Alarm Code', selectedProperty.alarm_code, Shield)}
             {renderInfoRow('Emergency Contact', selectedProperty.emergency_contact, Phone)}
@@ -421,7 +421,7 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
 
         {/* ── Record Info ─────────────────────── */}
         <CollapsibleSection title="Record Info" icon={Calendar} defaultOpen={false}>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {renderInfoRow('Created', selectedProperty.created_at ? new Date(selectedProperty.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : null, Calendar)}
             {renderInfoRow('Updated', selectedProperty.updated_at ? new Date(selectedProperty.updated_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : null, Calendar)}
           </div>

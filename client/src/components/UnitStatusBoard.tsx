@@ -77,7 +77,7 @@ export default React.memo(function UnitStatusBoard({
             onDragEnd={handleDragEnd}
             onClick={() => onUnitClick?.(unit)}
             className={`flex items-center gap-2 p-1.5 panel-beveled cursor-pointer hover:bg-surface-raised transition-colors ${isDraggable(unit) ? 'cursor-grab active:cursor-grabbing' : ''}`}
-            style={{ background: '#1a1a1a' }}
+            style={{ background: '#141e2b' }}
           >
             <span className={STATUS_LED_CLASSES[unit.status]} />
             <div className="min-w-0">

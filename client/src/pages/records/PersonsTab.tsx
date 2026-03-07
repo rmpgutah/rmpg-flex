@@ -524,7 +524,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
 
         {/* ── Physical Description ─────────────────── */}
         <CollapsibleSection title="Physical Description" icon={Eye} defaultOpen>
-          <div className="grid grid-cols-3 gap-1.5 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 text-xs">
             {(selectedPerson.height_feet != null || selectedPerson.height) && <div><span className="text-rmpg-400">Height:</span> <span className="text-rmpg-200">{selectedPerson.height_feet != null ? `${selectedPerson.height_feet}'${String(selectedPerson.height_inches ?? 0).padStart(2, '0')}"` : selectedPerson.height}</span></div>}
             {selectedPerson.weight && <div><span className="text-rmpg-400">Weight:</span> <span className="text-rmpg-200">{selectedPerson.weight}</span></div>}
             {selectedPerson.build && <div><span className="text-rmpg-400">Build:</span> <span className="text-rmpg-200">{selectedPerson.build}</span></div>}
@@ -551,7 +551,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
 
         {/* ── Contact & Address ────────────────────── */}
         <CollapsibleSection title="Contact & Address" icon={Phone} defaultOpen>
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
             {renderInfoRow('Phone', selectedPerson.phone, Phone)}
             {renderInfoRow('Phone 2', selectedPerson.phone_secondary, Phone)}
             {renderInfoRow('Email', selectedPerson.email, Mail)}
@@ -596,7 +596,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
               )}
               <div className="flex-1 space-y-1.5">
                 {selectedPerson.dl_number && (
-                  <div className="grid grid-cols-2 gap-1.5 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs">
                     <div><span className="text-rmpg-400">DL:</span> <span className="text-rmpg-200 font-mono">{selectedPerson.dl_number}</span></div>
                     {selectedPerson.dl_state && <div><span className="text-rmpg-400">State:</span> <span className="text-rmpg-200">{selectedPerson.dl_state}</span></div>}
                     {selectedPerson.dl_class && <div><span className="text-rmpg-400">Class:</span> <span className="text-rmpg-200">{selectedPerson.dl_class}</span></div>}
@@ -604,7 +604,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
                   </div>
                 )}
                 {selectedPerson.id_number && (
-                  <div className="grid grid-cols-2 gap-1.5 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs">
                     <div>
                       <span className="text-rmpg-400">{selectedPerson.id_type ? selectedPerson.id_type.replace(/_/g, ' ').toUpperCase() : 'ID'}:</span>{' '}
                       <span className="text-rmpg-200 font-mono">{selectedPerson.id_number}</span>
@@ -650,7 +650,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
         {/* ── Legal & Associations (conditional) ──── */}
         {(selectedPerson.probation_parole || selectedPerson.known_associates) && (
           <CollapsibleSection title="Legal & Associations" icon={Shield}>
-            <div className="grid grid-cols-2 gap-1.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
               {renderInfoRow('Probation/Parole', selectedPerson.probation_parole)}
               {renderInfoRow('P.O. / Officer', selectedPerson.probation_parole_officer)}
             </div>
@@ -663,7 +663,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
         {/* ── Emergency Contact (conditional) ─────── */}
         {selectedPerson.emergency_contact_name && (
           <CollapsibleSection title="Emergency Contact" icon={AlertTriangle}>
-            <div className="grid grid-cols-3 gap-1.5">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
               {renderInfoRow('Name', selectedPerson.emergency_contact_name)}
               {renderInfoRow('Phone', selectedPerson.emergency_contact_phone, Phone)}
               {renderInfoRow('Relationship', selectedPerson.emergency_contact_relationship)}

@@ -243,7 +243,7 @@ export default function UserFormModal({
       {/* ── Account Tab (create only) ── */}
       {activeSection === 'account' && !isEdit && (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={labelCls}>Username <span className="text-red-400">*</span></label>
               <input type="text" required value={form.username} onChange={e => set('username', e.target.value)} placeholder="e.g. jsmith" className={inputCls} />
@@ -253,7 +253,7 @@ export default function UserFormModal({
               <input type="password" required value={form.password} onChange={e => set('password', e.target.value)} placeholder="Initial password" className={inputCls} />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={labelCls}>Full Name <span className="text-red-400">*</span></label>
               <input type="text" required value={form.full_name} onChange={e => set('full_name', e.target.value)} placeholder="Display name" className={inputCls} />
@@ -271,7 +271,7 @@ export default function UserFormModal({
       {/* ── Personal Tab ── */}
       {activeSection === 'personal' && (
         <div className="space-y-4">
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <label className={labelCls}>First Name <span className="text-red-400">*</span></label>
               <input type="text" required value={form.first_name} onChange={e => set('first_name', e.target.value)} className={inputCls} />
@@ -326,7 +326,7 @@ export default function UserFormModal({
       {/* ── Professional Tab ── */}
       {activeSection === 'professional' && (
         <div className="space-y-4">
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <label className={labelCls}>Badge Number</label>
               <input type="text" value={form.badge_number} onChange={e => set('badge_number', e.target.value)} placeholder="O-101" className={inputCls} />
@@ -342,7 +342,7 @@ export default function UserFormModal({
               <input type="text" value={form.employee_id} onChange={e => set('employee_id', e.target.value)} placeholder="EMP-001" className={inputCls} />
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <label className={labelCls}>Department</label>
               <input type="text" value={form.department} onChange={e => set('department', e.target.value)} placeholder="Patrol, Dispatch, etc." className={inputCls} />
@@ -358,7 +358,7 @@ export default function UserFormModal({
               </select>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={labelCls}>Termination Date</label>
               <input type="date" value={form.termination_date} onChange={e => set('termination_date', e.target.value)} className={inputCls} />
@@ -370,7 +370,7 @@ export default function UserFormModal({
       {/* ── Contact Tab ── */}
       {activeSection === 'contact' && (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={labelCls}>Email</label>
               <input type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="user@rmpgsecurity.com" className={inputCls} />
@@ -398,7 +398,7 @@ export default function UserFormModal({
               }}
             />
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <label className={labelCls}>City</label>
               <input type="text" value={form.city} onChange={e => set('city', e.target.value)} placeholder="Salt Lake City" className={inputCls} />
@@ -418,7 +418,7 @@ export default function UserFormModal({
       {/* ── Emergency Contact Tab ── */}
       {activeSection === 'emergency' && (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={labelCls}>Contact Name</label>
               <input type="text" value={form.emergency_contact_name} onChange={e => set('emergency_contact_name', e.target.value)} className={inputCls} />
@@ -438,7 +438,7 @@ export default function UserFormModal({
       {/* ── Medical / Safety Tab ── */}
       {activeSection === 'medical' && (
         <div className="space-y-4">
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <label className={labelCls}>Blood Type</label>
               <select value={form.blood_type} onChange={e => set('blood_type', e.target.value)} className={inputCls}>
@@ -462,7 +462,7 @@ export default function UserFormModal({
       {/* ── Driver's License Tab ── */}
       {activeSection === 'license' && (
         <div className="space-y-4">
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <label className={labelCls}>DL Number</label>
               <input type="text" value={form.dl_number} onChange={e => set('dl_number', e.target.value)} className={inputCls} />

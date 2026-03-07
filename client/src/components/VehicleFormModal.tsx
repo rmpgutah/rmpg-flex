@@ -230,7 +230,7 @@ export default function VehicleFormModal({
       {activeSection === 'vehicle' && (
         <>
           {/* Plate / State */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Plate Number</label>
               <input name="plate_number" type="text" className="input-dark mt-1" value={form.plate_number} onChange={handleChange} />
@@ -244,7 +244,7 @@ export default function VehicleFormModal({
           </div>
 
           {/* Make / Model / Year / Body */}
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Make</label>
               <select name="make" className="select-dark mt-1" value={form.make} onChange={handleChange}>
@@ -270,7 +270,7 @@ export default function VehicleFormModal({
           </div>
 
           {/* Color / Secondary Color / Doors */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Primary Color</label>
               <select name="color" className="select-dark mt-1" value={form.color} onChange={handleChange}>
@@ -307,7 +307,7 @@ export default function VehicleFormModal({
 
       {activeSection === 'mechanical' && (
         <>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Trim / Package</label>
               <input name="trim" type="text" className="input-dark mt-1" placeholder="e.g. LX, Sport, Limited" value={form.trim} onChange={handleChange} />
@@ -327,7 +327,7 @@ export default function VehicleFormModal({
               </select>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Transmission</label>
               <select name="transmission" className="select-dark mt-1" value={form.transmission} onChange={handleChange}>
@@ -352,7 +352,7 @@ export default function VehicleFormModal({
 
       {activeSection === 'registration' && (
         <>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Plate Type</label>
               <select name="plate_type" className="select-dark mt-1" value={form.plate_type} onChange={handleChange}>
@@ -370,7 +370,7 @@ export default function VehicleFormModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Insurance Company</label>
               <input name="insurance_company" type="text" className="input-dark mt-1" value={form.insurance_company} onChange={handleChange} />
@@ -383,7 +383,7 @@ export default function VehicleFormModal({
 
           <div className="border-t border-rmpg-700 pt-3">
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold mb-2 block">Owner Information</label>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Owner Address</label>
                 <AddressAutocomplete
@@ -403,7 +403,7 @@ export default function VehicleFormModal({
 
           <div className="border-t border-rmpg-700 pt-3">
             <label className="text-[10px] text-red-400 uppercase font-semibold mb-2 block">Stolen / Tow Status</label>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Stolen Status</label>
                 <select name="stolen_status" className="select-dark mt-1" value={form.stolen_status} onChange={handleChange}>
@@ -421,7 +421,7 @@ export default function VehicleFormModal({
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-4 mt-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mt-3">
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Tow Status</label>
                 <select name="tow_status" className="select-dark mt-1" value={form.tow_status} onChange={handleChange}>

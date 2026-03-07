@@ -72,8 +72,8 @@ export default function PinGeneratorModal({ isOpen, onClose, users }: PinGenerat
     }).catch(() => { /* silent */ });
   }, [generatedPin]);
 
-  // Filter to non-admin employees
-  const employees = users.filter(u => u.role !== 'admin' && u.is_active);
+  // Filter to non-admin employees (API returns status='active', not is_active boolean)
+  const employees = users.filter(u => u.role !== 'admin' && (u.is_active || u.status === 'active'));
 
   // Format expiry for display
   let expiryDisplay = '';
@@ -106,8 +106,8 @@ export default function PinGeneratorModal({ isOpen, onClose, users }: PinGenerat
       <div
         className="w-full max-w-md mx-4"
         style={{
-          background: '#1a1a1a',
-          border: '1px solid #303030',
+          background: '#141e2b',
+          border: '1px solid #1e3048',
           borderTop: '3px solid #d97706',
         }}
       >
@@ -216,9 +216,9 @@ export default function PinGeneratorModal({ isOpen, onClose, users }: PinGenerat
                 onClick={handleCopy}
                 className="flex items-center gap-2 mx-auto px-3 py-1.5 text-xs transition-colors"
                 style={{
-                  background: copied ? 'rgba(34, 197, 94, 0.15)' : '#252525',
-                  border: `1px solid ${copied ? '#22c55e' : '#383838'}`,
-                  color: copied ? '#22c55e' : '#888',
+                  background: copied ? 'rgba(34, 197, 94, 0.15)' : '#1a2636',
+                  border: `1px solid ${copied ? '#22c55e' : '#2a3e58'}`,
+                  color: copied ? '#22c55e' : '#8a9aaa',
                 }}
               >
                 {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}

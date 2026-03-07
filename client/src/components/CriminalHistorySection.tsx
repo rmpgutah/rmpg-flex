@@ -258,7 +258,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                 </button>
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
                   <label className="text-[9px] text-rmpg-400 uppercase font-bold">Record Type</label>
                   <select
@@ -301,7 +301,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                 />
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
                   <label className="text-[9px] text-rmpg-400 uppercase font-bold">Statute / Code</label>
                   <input
@@ -333,7 +333,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
                   <label className="text-[9px] text-rmpg-400 uppercase font-bold">Jurisdiction</label>
                   <input
@@ -365,7 +365,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
                   <label className="text-[9px] text-rmpg-400 uppercase font-bold">Sentence</label>
                   <input

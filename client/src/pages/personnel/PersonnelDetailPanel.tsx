@@ -334,7 +334,7 @@ export default function PersonnelDetailPanel({
       </div>
 
       {/* Quick Stats Row */}
-      <div className="grid grid-cols-5 gap-2 px-4 py-2 border-b border-rmpg-700">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 px-4 py-2 border-b border-rmpg-700">
         <div className={`panel-beveled p-2 text-center border-t-2 ${officer.status === 'on_duty' ? 'border-t-green-500' : 'border-t-rmpg-600'}`}>
           <p className="field-label">Status</p>
           <p className={`text-base font-bold font-mono ${officer.status === 'on_duty' ? 'text-green-400' : 'text-rmpg-400'}`}>

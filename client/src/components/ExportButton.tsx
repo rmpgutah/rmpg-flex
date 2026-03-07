@@ -122,8 +122,8 @@ export default function ExportButton({
             top: '100%',
             right: 0,
             minWidth: '160px',
-            background: '#252525',
-            border: '1px solid #484848',
+            background: '#1a2636',
+            border: '1px solid #3a5070',
             borderRadius: 0,
             boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)',
           }}
@@ -141,7 +141,7 @@ export default function ExportButton({
               borderRadius: 0,
             }}
             onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.background = '#383838';
+              (e.currentTarget as HTMLElement).style.background = '#2a3e58';
               (e.currentTarget as HTMLElement).style.color = '#ffffff';
             }}
             onMouseLeave={(e) => {
@@ -156,7 +156,7 @@ export default function ExportButton({
           </button>
 
           {/* Divider */}
-          <div style={{ height: '1px', background: '#484848', margin: '0 8px' }} />
+          <div style={{ height: '1px', background: '#3a5070', margin: '0 8px' }} />
 
           {/* Print View */}
           <button
@@ -171,7 +171,7 @@ export default function ExportButton({
               borderRadius: 0,
             }}
             onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.background = '#383838';
+              (e.currentTarget as HTMLElement).style.background = '#2a3e58';
               (e.currentTarget as HTMLElement).style.color = '#ffffff';
             }}
             onMouseLeave={(e) => {

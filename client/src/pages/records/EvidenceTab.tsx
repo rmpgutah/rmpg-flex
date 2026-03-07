@@ -380,7 +380,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
 
         {/* ── Collection & Storage ──────────── */}
         <CollapsibleSection title="Collection & Storage" icon={Warehouse} defaultOpen>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             {renderInfoRow('Collected By', selectedEvidence.collected_by_name)}
             {renderInfoRow('Date Collected', selectedEvidence.collected_date, Calendar)}
             {renderInfoRow('Storage Location', selectedEvidence.storage_location, MapPin)}
@@ -393,7 +393,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
         {/* ── Item Details (conditional) ──────── */}
         {(selectedEvidence.serial_number || selectedEvidence.brand || selectedEvidence.estimated_value || selectedEvidence.dimensions || selectedEvidence.weight) && (
           <CollapsibleSection title="Item Details" icon={Package} defaultOpen>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {selectedEvidence.serial_number && (
                 <div className="text-xs"><span className="text-rmpg-400">Serial #:</span> <span className="text-rmpg-200 font-mono">{selectedEvidence.serial_number}</span></div>
               )}
@@ -419,7 +419,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
         {/* ── Lab / Analysis (conditional) ────── */}
         {selectedEvidence.lab_submitted && (
           <CollapsibleSection title="Lab / Analysis" icon={FlaskConical}>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {renderInfoRow('Lab Name', selectedEvidence.lab_name)}
               {renderInfoRow('Lab Case #', selectedEvidence.lab_case_number, Hash)}
             </div>
@@ -429,7 +429,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
         {/* ── Disposal (conditional) ──────────── */}
         {selectedEvidence.disposal_method && (
           <CollapsibleSection title="Disposal" icon={Trash2}>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {renderInfoRow('Method', selectedEvidence.disposal_method)}
               {renderInfoRow('Date', selectedEvidence.disposal_date, Calendar)}
               {renderInfoRow('Authorized By', selectedEvidence.disposal_authorized_by)}
@@ -488,7 +488,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
 
         {/* ── Record Info ─────────────────────── */}
         <CollapsibleSection title="Record Info" icon={Calendar} defaultOpen={false}>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {renderInfoRow('Created', selectedEvidence.created_at ? new Date(selectedEvidence.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : null, Calendar)}
             {renderInfoRow('Updated', selectedEvidence.updated_at ? new Date(selectedEvidence.updated_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : null, Calendar)}
           </div>

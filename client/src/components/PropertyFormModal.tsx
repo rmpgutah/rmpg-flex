@@ -176,7 +176,7 @@ export default function PropertyFormModal({
       </div>
 
       {/* Row 3: City, State, Zip */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
         <div>
           <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">City</label>
           <input
@@ -206,7 +206,7 @@ export default function PropertyFormModal({
       </div>
 
       {/* Row 4: Client, Property Type */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Client</label>
           <select name="client_id" className="select-dark w-full text-xs" value={form.client_id} onChange={handleChange}>
@@ -226,7 +226,7 @@ export default function PropertyFormModal({
       </div>
 
       {/* Row 5: Gate Code, Alarm Code, Emergency Contact */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
         <div>
           <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Gate Code</label>
           <input
@@ -263,7 +263,7 @@ export default function PropertyFormModal({
       </div>
 
       {/* Row 6: Latitude, Longitude */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Latitude</label>
           <input

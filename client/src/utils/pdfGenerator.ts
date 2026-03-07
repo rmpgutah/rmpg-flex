@@ -32,7 +32,7 @@ export interface PdfBranding {
 export const DEFAULT_PDF_BRANDING: PdfBranding = {
   report_header_text: 'RMPG SECURITY SERVICES',
   report_subheader_text: 'PRIVATE SECURITY',
-  primary_color: '#bc1010',
+  primary_color: '#1a5a9e',
   accent_color: '#8a8e9c',
   header_bg_color: '#f0f1f4',
 };
@@ -71,7 +71,7 @@ export const CLASSIFICATION_BAR_HEIGHT = LAYOUT.CLASSIF_BAR_H;
 
 // Priority color mapping
 export const PRIORITY_COLORS: Record<string, { bg: [number, number, number]; text: [number, number, number]; label: string }> = {
-  critical: { bg: [188, 16, 16], text: [255, 255, 255], label: 'PRIORITY: CRITICAL' },
+  critical: { bg: [220, 38, 38], text: [255, 255, 255], label: 'PRIORITY: CRITICAL' },
   high: { bg: [220, 80, 20], text: [255, 255, 255], label: 'PRIORITY: HIGH' },
   medium: { bg: [212, 160, 23], text: [0, 0, 0], label: 'PRIORITY: MEDIUM' },
   low: { bg: [60, 130, 80], text: [255, 255, 255], label: 'PRIORITY: LOW' },

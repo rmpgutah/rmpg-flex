@@ -103,7 +103,43 @@ export type AuditAction =
   // Invoices
   | 'invoice_created'
   | 'invoice_updated'
-  | 'payment_recorded';
+  | 'payment_recorded'
+  // Arrests & Jail
+  | 'arrest_created'
+  | 'arrest_updated'
+  | 'arrest_deleted'
+  | 'arrest_imported'
+  | 'arrest_linked'
+  | 'arrest_unlinked'
+  | 'jail_roster_config_updated'
+  | 'jail_roster_sync_triggered'
+  | 'jail_roster_errors_reset'
+  // DL Records
+  | 'dl_record_created'
+  | 'dl_record_deleted'
+  // Skip Tracer
+  | 'skiptracer_search'
+  | 'skiptracer_config_updated'
+  | 'skiptracer_config_cleared'
+  // IPED Digital Forensics
+  | 'iped_job_created'
+  | 'iped_job_cancelled'
+  | 'iped_config_updated'
+  | 'iped_config_cleared'
+  | 'iped_hash_computed'
+  | 'iped_hashset_imported'
+  | 'iped_hashset_removed'
+  // ClearPathGPS
+  | 'clearpathgps_credentials_updated'
+  | 'clearpathgps_credentials_cleared'
+  | 'clearpathgps_toggled'
+  | 'clearpathgps_mapping_created'
+  | 'clearpathgps_mapping_removed'
+  | 'clearpathgps_settings_updated'
+  // Dash Camera Videos
+  | 'dashcam_uploaded'
+  | 'dashcam_updated'
+  | 'dashcam_deleted';
 
 export type AuditEntityType =
   | 'user'
@@ -134,7 +170,15 @@ export type AuditEntityType =
   | 'checkpoint'
   | 'patrol_scan'
   | 'invoice'
-  | 'payment';
+  | 'payment'
+  | 'arrest_record'
+  | 'dl_record'
+  | 'skiptracer'
+  | 'iped_job'
+  | 'iped_hashset'
+  | 'jail_roster'
+  | 'integration'
+  | 'dashcam_video';
 
 /**
  * Log an action to the activity_log table.

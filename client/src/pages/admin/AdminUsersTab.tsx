@@ -10,7 +10,11 @@ import {
   Settings,
   Ban,
   UserCheck,
+  Shield,
   ShieldOff,
+  KeyRound,
+  AlertTriangle,
+  RefreshCw,
 } from 'lucide-react';
 import type { User, UserRole } from '../../types';
 import type { UserFormData } from '../../components/UserFormModal';
@@ -90,7 +94,33 @@ export default function AdminUsersTab({
   LoadingSpinner,
 }: AdminUsersTabProps) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [userDetailTab, setUserDetailTab] = useState<'profile' | 'personal' | 'credentials' | 'activity' | 'email'>('profile');
+  const [userDetailTab, setUserDetailTab] = useState<'profile' | 'personal' | 'credentials' | 'security' | 'activity' | 'email'>('profile');
+  const [securityActionLoading, setSecurityActionLoading] = useState<string | null>(null);
+  const [securityMsg, setSecurityMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const handleReset2FA = async (userId: string) => {
+    setSecurityActionLoading('reset-2fa');
+    setSecurityMsg(null);
+    try {
+      await apiFetch(`/admin/users/${userId}/reset-2fa`, { method: 'POST' });
+      setSecurityMsg({ type: 'success', text: '2FA has been reset. User will be prompted to set up 2FA on next login.' });
+    } catch (err: any) {
+      setSecurityMsg({ type: 'error', text: err.message || 'Failed to reset 2FA' });
+    }
+    setSecurityActionLoading(null);
+  };
+
+  const handleForcePasswordChange = async (userId: string) => {
+    setSecurityActionLoading('force-pw');
+    setSecurityMsg(null);
+    try {
+      await apiFetch(`/admin/users/${userId}/force-password-change`, { method: 'POST' });
+      setSecurityMsg({ type: 'success', text: 'User will be required to change their password on next login.' });
+    } catch (err: any) {
+      setSecurityMsg({ type: 'error', text: err.message || 'Failed to force password change' });
+    }
+    setSecurityActionLoading(null);
+  };
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -150,6 +180,15 @@ export default function AdminUsersTab({
                         <span className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-semibold uppercase border ${ROLE_COLORS[user.role]}`}>
                           {toDisplayLabel(user.role)}
                         </span>
+                        {(user as any).totpEnabled ? (
+                          <span className="inline-flex items-center gap-0.5 px-1 py-0.5 text-[8px] font-bold uppercase bg-green-900/40 text-green-400 border border-green-700/40">
+                            <Shield className="w-2 h-2" />2FA
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-0.5 px-1 py-0.5 text-[8px] font-bold uppercase bg-red-900/30 text-red-400 border border-red-700/30">
+                            <ShieldOff className="w-2 h-2" />NO 2FA
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-3 mt-0.5 text-[10px] text-rmpg-400">
                         <span className="font-mono">@{user.username}</span>
@@ -282,6 +321,7 @@ export default function AdminUsersTab({
               { id: 'profile' as const, label: 'Profile' },
               { id: 'personal' as const, label: 'Personal' },
               { id: 'credentials' as const, label: 'Credentials' },
+              { id: 'security' as const, label: 'Security' },
               { id: 'activity' as const, label: 'Activity Log' },
               { id: 'email' as const, label: 'Email Integration' },
             ]).map((tab) => (
@@ -306,7 +346,7 @@ export default function AdminUsersTab({
               <>
                 <div className="panel-beveled p-3 bg-surface-base">
                   <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Employment Information</h3>
-                  <div className="grid grid-cols-3 gap-3 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                     <div><span className="text-rmpg-400">Department:</span> <span className="text-rmpg-200 ml-1">{selectedUser.department || '--'}</span></div>
                     <div><span className="text-rmpg-400">Rank:</span> <span className="text-rmpg-200 ml-1">{selectedUser.rank || '--'}</span></div>
                     <div><span className="text-rmpg-400">Badge #:</span> <span className="text-rmpg-200 font-mono ml-1">{selectedUser.badge_number || '--'}</span></div>
@@ -324,7 +364,7 @@ export default function AdminUsersTab({
 
                 <div className="panel-beveled p-3 bg-surface-base">
                   <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Contact Information</h3>
-                  <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                     <div><span className="text-rmpg-400">Email:</span> <span className="text-rmpg-200 ml-1">{selectedUser.email || '--'}</span></div>
                     <div><span className="text-rmpg-400">Phone:</span> <span className="text-rmpg-200 ml-1">{selectedUser.phone || '--'}</span></div>
                     <div className="col-span-2"><span className="text-rmpg-400">Address:</span> <span className="text-rmpg-200 ml-1">{[selectedUser.address, selectedUser.city, selectedUser.state, selectedUser.zip].filter(Boolean).join(', ') || '--'}</span></div>
@@ -333,7 +373,7 @@ export default function AdminUsersTab({
 
                 <div className="panel-beveled p-3 bg-surface-base">
                   <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Account Statistics</h3>
-                  <div className="grid grid-cols-3 gap-3 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                     <div><span className="text-rmpg-400">Last Login:</span> <span className="text-rmpg-200 ml-1">{selectedUser.last_login || selectedUser.last_login_display || '--'}</span></div>
                     <div><span className="text-rmpg-400">Login Count:</span> <span className="text-rmpg-200 ml-1">{selectedUser.login_count ?? '--'}</span></div>
                     <div><span className="text-rmpg-400">Created:</span> <span className="text-rmpg-200 ml-1">{selectedUser.created_at ? new Date(selectedUser.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '--'}</span></div>
@@ -354,7 +394,7 @@ export default function AdminUsersTab({
               <>
                 <div className="panel-beveled p-3 bg-surface-base">
                   <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Personal Information</h3>
-                  <div className="grid grid-cols-3 gap-3 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                     <div><span className="text-rmpg-400">Date of Birth:</span> <span className="text-rmpg-200 ml-1">{selectedUser.date_of_birth || '--'}</span></div>
                     <div><span className="text-rmpg-400">Blood Type:</span> <span className="text-rmpg-200 ml-1">{selectedUser.blood_type || '--'}</span></div>
                     <div><span className="text-rmpg-400">Allergies:</span> <span className="text-rmpg-200 ml-1">{selectedUser.allergies || '--'}</span></div>
@@ -364,7 +404,7 @@ export default function AdminUsersTab({
 
                 <div className="panel-beveled p-3 bg-surface-base">
                   <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Driver License</h3>
-                  <div className="grid grid-cols-3 gap-3 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                     <div><span className="text-rmpg-400">DL #:</span> <span className="text-rmpg-200 font-mono ml-1">{selectedUser.dl_number || '--'}</span></div>
                     <div><span className="text-rmpg-400">State:</span> <span className="text-rmpg-200 ml-1">{selectedUser.dl_state || '--'}</span></div>
                     <div><span className="text-rmpg-400">Expiry:</span> <span className="text-rmpg-200 ml-1">{selectedUser.dl_expiry || '--'}</span></div>
@@ -373,7 +413,7 @@ export default function AdminUsersTab({
 
                 <div className="panel-beveled p-3 border-l-2 border-l-red-600 bg-surface-base">
                   <h3 className="text-[10px] text-red-400 uppercase font-bold tracking-wider mb-3">Emergency Contact</h3>
-                  <div className="grid grid-cols-3 gap-3 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                     <div><span className="text-rmpg-400">Name:</span> <span className="text-rmpg-200 ml-1">{selectedUser.emergency_contact_name || '--'}</span></div>
                     <div><span className="text-rmpg-400">Phone:</span> <span className="text-rmpg-200 ml-1">{selectedUser.emergency_contact_phone || '--'}</span></div>
                     <div><span className="text-rmpg-400">Relationship:</span> <span className="text-rmpg-200 ml-1">{selectedUser.emergency_contact_relationship || '--'}</span></div>
@@ -402,10 +442,115 @@ export default function AdminUsersTab({
 
                 <div className="panel-beveled p-3 bg-surface-base">
                   <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Password</h3>
-                  <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                     <div><span className="text-rmpg-400">Last Changed:</span> <span className="text-rmpg-200 ml-1">{selectedUser.last_password_change || '--'}</span></div>
                   </div>
                 </div>
+              </>
+            )}
+
+            {/* Security Tab */}
+            {userDetailTab === 'security' && (
+              <>
+                {/* 2FA Status */}
+                <div className="panel-beveled p-3 bg-surface-base">
+                  <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Two-Factor Authentication</h3>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {(selectedUser as any).totpEnabled ? (
+                        <>
+                          <span className="led-dot led-green" />
+                          <span className="text-xs text-green-400 font-semibold">Enabled</span>
+                        </>
+                      ) : (selectedUser as any).totpSetupRequired ? (
+                        <>
+                          <span className="led-dot led-amber" />
+                          <span className="text-xs text-amber-400 font-semibold">Setup Required</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="led-dot led-red" />
+                          <span className="text-xs text-red-400 font-semibold">Not Configured</span>
+                        </>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => handleReset2FA(selectedUser.id)}
+                      disabled={securityActionLoading === 'reset-2fa'}
+                      className="toolbar-btn text-[9px] flex items-center gap-1"
+                    >
+                      {securityActionLoading === 'reset-2fa' ? (
+                        <RefreshCw className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <ShieldOff className="w-3 h-3" />
+                      )}
+                      Reset 2FA
+                    </button>
+                  </div>
+                  <p className="text-[9px] mt-2" style={{ color: '#4b5563' }}>
+                    Resetting 2FA will delete the user's TOTP secret, backup codes, and trusted devices.
+                    They will be required to set up 2FA again on their next login.
+                  </p>
+                </div>
+
+                {/* Password Security */}
+                <div className="panel-beveled p-3 bg-surface-base">
+                  <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Password Security</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs mb-3">
+                    <div>
+                      <span className="text-rmpg-400">Last Changed:</span>
+                      <span className="text-rmpg-200 ml-1">
+                        {(selectedUser as any).passwordChangedAt
+                          ? new Date((selectedUser as any).passwordChangedAt).toLocaleDateString()
+                          : selectedUser.last_password_change || '--'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-rmpg-400">Expires:</span>
+                      <span className={`ml-1 font-semibold ${
+                        (selectedUser as any).passwordExpiringSoon ? 'text-amber-400' : 'text-rmpg-200'
+                      }`}>
+                        {(selectedUser as any).passwordExpiresAt
+                          ? new Date((selectedUser as any).passwordExpiresAt).toLocaleDateString()
+                          : 'No expiry set'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-rmpg-400">Force Change:</span>
+                      <span className={`ml-1 font-semibold ${(selectedUser as any).forcePasswordChange ? 'text-amber-400' : 'text-rmpg-200'}`}>
+                        {(selectedUser as any).forcePasswordChange ? 'Yes \u2014 on next login' : 'No'}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleForcePasswordChange(selectedUser.id)}
+                    disabled={securityActionLoading === 'force-pw'}
+                    className="toolbar-btn text-[9px] flex items-center gap-1"
+                  >
+                    {securityActionLoading === 'force-pw' ? (
+                      <RefreshCw className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <KeyRound className="w-3 h-3" />
+                    )}
+                    Force Password Change
+                  </button>
+                </div>
+
+                {/* Action result message */}
+                {securityMsg && (
+                  <div className={`flex items-center gap-2 px-3 py-2 text-xs ${
+                    securityMsg.type === 'success'
+                      ? 'text-green-400 bg-green-900/20 border border-green-800/40'
+                      : 'text-red-400 bg-red-900/20 border border-red-800/40'
+                  }`}>
+                    {securityMsg.type === 'success' ? (
+                      <CheckCircle className="w-3 h-3 flex-shrink-0" />
+                    ) : (
+                      <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                    )}
+                    {securityMsg.text}
+                  </div>
+                )}
               </>
             )}
 

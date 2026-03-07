@@ -25,13 +25,13 @@ interface AdminInvoiceTabProps {
 // ============================================================
 
 const STATUS_BADGE: Record<string, string> = {
-  draft: 'bg-gray-700/50 text-rmpg-300 border-rmpg-600/50',
+  draft: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
   sent: 'bg-blue-900/50 text-blue-300 border-blue-700/50',
   paid: 'bg-green-900/50 text-green-300 border-green-700/50',
   partial: 'bg-amber-900/50 text-amber-300 border-amber-700/50',
   overdue: 'bg-red-900/60 text-red-300 border-red-700/50',
-  void: 'bg-gray-800/50 text-rmpg-500 border-rmpg-700/50 line-through',
-  cancelled: 'bg-gray-800/50 text-rmpg-500 border-rmpg-700/50',
+  void: 'bg-rmpg-800/50 text-rmpg-500 border-rmpg-700/50 line-through',
+  cancelled: 'bg-rmpg-800/50 text-rmpg-500 border-rmpg-700/50',
 };
 
 const TYPE_ICON: Record<string, React.ReactNode> = {
@@ -246,10 +246,10 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
     if (!stats) return null;
     return (
       <div className="flex items-center gap-3 mb-3 flex-wrap text-[10px]">
-        <span className="inline-flex items-center gap-1.5 px-2 py-1 font-bold uppercase border panel-beveled bg-gray-700/30 text-rmpg-300 border-rmpg-600/50">
+        <span className="inline-flex items-center gap-1.5 px-2 py-1 font-bold uppercase border panel-beveled bg-rmpg-700/30 text-rmpg-300 border-rmpg-600/50">
           <Hash className="w-3 h-3" /> Total: {stats.total_invoices}
         </span>
-        <span className="inline-flex items-center gap-1.5 px-2 py-1 font-bold uppercase border panel-beveled bg-gray-700/30 text-rmpg-400 border-rmpg-600/50">
+        <span className="inline-flex items-center gap-1.5 px-2 py-1 font-bold uppercase border panel-beveled bg-rmpg-700/30 text-rmpg-400 border-rmpg-600/50">
           <FileText className="w-3 h-3" /> Draft: {stats.draft_count}
         </span>
         <span className="inline-flex items-center gap-1.5 px-2 py-1 font-bold uppercase border panel-beveled bg-red-900/30 text-red-300 border-red-700/50">
@@ -354,7 +354,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
 
       <div className="bg-surface-raised border border-rmpg-700 rounded p-3 space-y-3">
         <div className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2">Billing Period</div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Period Start</label>
             <input
@@ -458,7 +458,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
 
         {/* Invoice Info */}
         <div className="bg-surface-raised border border-rmpg-700 rounded p-3 mb-3">
-          <div className="grid grid-cols-3 gap-3 text-[10px]">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[10px]">
             <div>
               <span className="text-rmpg-500 uppercase block">Client</span>
               <span className="text-white font-bold">{inv.client_name || clientName}</span>
@@ -501,7 +501,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
 
           {showAddItem && inv.status === 'draft' && (
             <div className="bg-surface-base border border-rmpg-700 rounded p-2 mb-2">
-              <div className="grid grid-cols-4 gap-2 text-[10px]">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px]">
                 <div>
                   <label className="text-rmpg-500 uppercase block mb-0.5">Type</label>
                   <select className="select-dark w-full text-[10px]" value={itemForm.line_type} onChange={e => setItemForm(f => ({ ...f, line_type: e.target.value }))}>
@@ -602,7 +602,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         {showPayment && (
           <div className="bg-surface-raised border border-green-700/50 rounded p-3 mb-3">
             <div className="text-[10px] uppercase tracking-wider text-green-400 font-bold mb-2">Record Payment</div>
-            <div className="grid grid-cols-3 gap-2 text-[10px]">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[10px]">
               <div>
                 <label className="text-rmpg-500 uppercase block mb-0.5">Amount</label>
                 <input type="number" step="0.01" className="input-dark w-full text-[10px]" value={payForm.amount} onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))} placeholder="0.00" />

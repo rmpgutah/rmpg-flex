@@ -76,9 +76,9 @@ export default function DispositionPrompt({
           disabled={!selected}
           className="flex items-center gap-1 px-3 py-1 text-[10px] font-bold uppercase tracking-wider"
           style={{
-            background: selected ? '#16a34a' : '#333',
-            color: selected ? '#fff' : '#666',
-            border: `1px solid ${selected ? '#16a34a' : '#444'}`,
+            background: selected ? '#16a34a' : '#1e3048',
+            color: selected ? '#fff' : '#5a6e80',
+            border: `1px solid ${selected ? '#16a34a' : '#2a3e58'}`,
             cursor: selected ? 'pointer' : 'not-allowed',
           }}
         >

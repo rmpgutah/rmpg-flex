@@ -49,10 +49,65 @@ export interface User {
   requires_2fa_setup?: boolean;
   /** PNG base64 data URL of officer's digital signature */
   digital_signature?: string | null;
+  /** Server returns status='active'|'inactive'|'terminated' */
+  status?: string;
   is_active: boolean;
   last_login?: string;
   created_at: string;
   updated_at: string;
+  // Security fields (camelCase aliases returned by security dashboard)
+  totpEnabled?: boolean;
+  totpSetupRequired?: boolean;
+  passwordExpiresAt?: string;
+  passwordExpiringSoon?: boolean;
+  forcePasswordChange?: boolean;
+  passwordChangedAt?: string;
+}
+
+// --- Security Types ---
+
+export interface TrustedDevice {
+  id: number;
+  device_name: string;
+  ip_address: string;
+  trusted_until: string;
+  last_used_at: string;
+  created_at: string;
+}
+
+export interface LoginHistoryEntry {
+  id: number;
+  ip_address: string;
+  user_agent: string;
+  device_fingerprint: string;
+  success: number;
+  failure_reason: string | null;
+  created_at: string;
+}
+
+export interface SecurityNotification {
+  id: number;
+  event_type: string;
+  title: string;
+  details: string | null;
+  ip_address: string | null;
+  device_info: string | null;
+  is_read: number;
+  created_at: string;
+}
+
+export interface SecurityStatus {
+  totpEnabled: boolean;
+  totpSetupRequired: boolean;
+  backupCodesRemaining: number;
+  activeSessions: number;
+  trustedDevices: number;
+  passwordExpiresAt: string | null;
+  passwordExpiringSoon: boolean;
+  passwordExpired: boolean;
+  passwordChangedAt: string | null;
+  forcePasswordChange: boolean;
+  unreadSecurityNotifications: number;
 }
 
 // --- Clients & Properties ---
@@ -684,8 +739,39 @@ export interface BodyCamVideo {
   uploaded_by: string;
   created_at: string;
   updated_at: string;
+  overlay_status?: string;
   officer_name?: string;
   camera_serial?: string;
+}
+
+// --- Dash Cam Videos ---
+
+export interface DashCamVideo {
+  id: number;
+  vehicle_id?: number;
+  vehicle_number?: string;
+  vehicle_make?: string;
+  vehicle_model?: string;
+  vehicle_year?: number;
+  unit_call_sign?: string;
+  title: string;
+  file_path: string;
+  file_size: number;
+  duration_seconds?: number;
+  mime_type?: string;
+  recorded_at?: string;
+  case_number?: string;
+  classification: VideoClassification;
+  speed_mph?: number;
+  latitude?: number;
+  longitude?: number;
+  address?: string;
+  overlay_status?: string;
+  overlay_error?: string;
+  notes?: string;
+  uploaded_by?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 // --- Equipment ---
@@ -1850,4 +1936,39 @@ export interface CompanyDocument {
   file_name?: string;
   file_size?: number;
   mime_type?: string;
+}
+
+// --- Dash Camera (ClearPathGPS) ---
+
+export interface DashcamEvent {
+  id: number | string;
+  device_id?: string;
+  device_name?: string;
+  officer_id?: string;
+  officer_name?: string;
+  call_sign?: string;
+  event_type: string;
+  event_timestamp: string;
+  speed_mph?: number;
+  latitude?: number;
+  longitude?: number;
+  address?: string;
+  video_available: boolean;
+  video_url?: string;
+  created_at?: string;
+}
+
+export interface CpgDeviceMapping {
+  id: number | string;
+  cpg_device_id?: string;
+  cpg_display_name?: string;
+  cpg_serial_number?: string;
+  officer_id?: string;
+  officer_name?: string;
+  call_sign?: string;
+  vehicle_id?: string;
+  is_active: boolean;
+  last_synced_at?: string;
+  created_at?: string;
+  updated_at?: string;
 }

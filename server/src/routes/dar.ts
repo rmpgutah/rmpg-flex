@@ -206,7 +206,7 @@ router.put('/:id', (req: Request, res: Response) => {
     }
     params.push(req.params.id);
     db.prepare(`UPDATE daily_activity_reports SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-    res.json({ data: { id: parseInt(req.params.id) } });
+    res.json({ data: { id: parseInt(req.params.id as string) } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -221,7 +221,7 @@ router.put('/:id/submit', (req: Request, res: Response) => {
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
       VALUES (?, 'submit', 'dar', ?, '{}', ?)`).run(req.user!.userId, req.params.id, now);
 
-    res.json({ data: { id: parseInt(req.params.id), status: 'submitted' } });
+    res.json({ data: { id: parseInt(req.params.id as string), status: 'submitted' } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -239,7 +239,7 @@ router.put('/:id/approve', (req: Request, res: Response) => {
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
       VALUES (?, 'approve', 'dar', ?, '{}', ?)`).run(req.user!.userId, req.params.id, now);
 
-    res.json({ data: { id: parseInt(req.params.id), status: 'approved' } });
+    res.json({ data: { id: parseInt(req.params.id as string), status: 'approved' } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -256,7 +256,7 @@ router.put('/:id/return', (req: Request, res: Response) => {
       reviewed_by_name = ?, reviewed_at = ?, review_notes = ?, updated_at = ? WHERE id = ?`)
       .run(req.user!.userId, user?.full_name || '', now, review_notes, now, req.params.id);
 
-    res.json({ data: { id: parseInt(req.params.id), status: 'returned' } });
+    res.json({ data: { id: parseInt(req.params.id as string), status: 'returned' } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 

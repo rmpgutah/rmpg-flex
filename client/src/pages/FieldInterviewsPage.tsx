@@ -6,12 +6,14 @@ import {
 import type { FieldInterview, FIContactReason, FIContactType, FIActionTaken } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
 import StatusBadge from '../components/StatusBadge';
+import EmptyState from '../components/EmptyState';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import ExportButton from '../components/ExportButton';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/ToastProvider';
+import { useFormValidation } from '../hooks/useFormValidation';
 
 const CONTACT_REASONS: { value: FIContactReason; label: string }[] = [
   { value: 'suspicious_activity', label: 'Suspicious Activity' },
@@ -65,6 +67,7 @@ const EMPTY_FORM = {
 export default function FieldInterviewsPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
+  const { errors: formErrors, validate: validateForm, clearAllErrors } = useFormValidation();
 
   // Data state
   const [fis, setFis] = useState<FieldInterview[]>([]);
@@ -139,11 +142,13 @@ export default function FieldInterviewsPage() {
     setFormData({ ...EMPTY_FORM });
     setSelectedPerson(null);
     setPersonSearch('');
+    clearAllErrors();
     setFormOpen(true);
   };
 
   const handleEdit = (fi: FieldInterview) => {
     setEditingFi(fi);
+    clearAllErrors();
     setFormData({
       subject_first_name: fi.subject_first_name || '',
       subject_last_name: fi.subject_last_name || '',
@@ -170,6 +175,11 @@ export default function FieldInterviewsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const isValid = validateForm(formData, {
+      location: { required: true },
+      subject_last_name: { required: true },
+    });
+    if (!isValid) return;
     setSubmitting(true);
     try {
       const body = {
@@ -244,7 +254,7 @@ export default function FieldInterviewsPage() {
       </PanelTitleBar>
 
       {/* Toolbar */}
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-rmpg-700" style={{ background: '#1a1a1a' }}>
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-rmpg-700" style={{ background: '#141e2b' }}>
         <div className="relative flex-1 max-w-xs">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
           <input
@@ -271,7 +281,12 @@ export default function FieldInterviewsPage() {
               <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading...
             </div>
           ) : fis.length === 0 ? (
-            <div className="text-center py-12 text-rmpg-500 text-sm">No field interviews found</div>
+            <EmptyState
+              icon={ClipboardList}
+              title="No field interviews found"
+              description="Create a new FI card to get started."
+              action={{ label: 'New FI Card', onClick: handleOpenNew }}
+            />
           ) : (
             fis.map(fi => (
               <div
@@ -343,7 +358,7 @@ export default function FieldInterviewsPage() {
             </div>
 
             {/* Detail grid */}
-            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-xs">
               <div><span className="text-rmpg-500 text-[10px] uppercase">Subject</span><div className="text-white font-medium">{selectedFi.subject_last_name}, {selectedFi.subject_first_name}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">DOB</span><div className="text-white">{selectedFi.subject_dob ? new Date(selectedFi.subject_dob).toLocaleDateString() : '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Gender / Race</span><div className="text-white">{[selectedFi.subject_gender, selectedFi.subject_race].filter(Boolean).join(' / ') || '—'}</div></div>
@@ -373,14 +388,14 @@ export default function FieldInterviewsPage() {
       {formOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setFormOpen(false)}>
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700" style={{ background: '#1a1a1a' }}>
+            <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700" style={{ background: '#141e2b' }}>
               <span className="text-xs font-bold text-white uppercase">{editingFi ? 'Edit' : 'New'} Field Interview</span>
               <button onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white"><X style={{ width: 14, height: 14 }} /></button>
             </div>
             <form onSubmit={handleSubmit} className="p-4 space-y-3">
               {/* Person search */}
               <div>
-                <label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Link to Person Record (Optional)</label>
+                <label className="field-label">Link to Person Record (Optional)</label>
                 <div className="relative">
                   <input type="text" className="input-dark text-xs w-full" placeholder="Search person records..."
                     value={personSearch} onChange={e => setPersonSearch(e.target.value)} />
@@ -400,72 +415,74 @@ export default function FieldInterviewsPage() {
               </div>
 
               {/* Subject info */}
-              <div className="grid grid-cols-3 gap-2">
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">First Name</label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div><label className="field-label">First Name</label>
                   <input className="input-dark text-xs w-full" value={formData.subject_first_name} onChange={e => update('subject_first_name', e.target.value)} /></div>
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Last Name</label>
-                  <input className="input-dark text-xs w-full" value={formData.subject_last_name} onChange={e => update('subject_last_name', e.target.value)} /></div>
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">DOB</label>
+                <div><label className="field-label">Last Name *</label>
+                  <input className="input-dark text-xs w-full" value={formData.subject_last_name} onChange={e => update('subject_last_name', e.target.value)} />
+                  {formErrors.subject_last_name && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.subject_last_name}</p>}</div>
+                <div><label className="field-label">DOB</label>
                   <input type="date" className="input-dark text-xs w-full" value={formData.subject_dob} onChange={e => update('subject_dob', e.target.value)} /></div>
               </div>
 
-              <div className="grid grid-cols-4 gap-2">
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Gender</label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div><label className="field-label">Gender</label>
                   <select className="select-dark text-xs w-full" value={formData.subject_gender} onChange={e => update('subject_gender', e.target.value)}>
                     <option value="">—</option><option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option>
                   </select></div>
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Race</label>
+                <div><label className="field-label">Race</label>
                   <input className="input-dark text-xs w-full" value={formData.subject_race} onChange={e => update('subject_race', e.target.value)} /></div>
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Height</label>
+                <div><label className="field-label">Height</label>
                   <input className="input-dark text-xs w-full" placeholder="5'10&quot;" value={formData.subject_height} onChange={e => update('subject_height', e.target.value)} /></div>
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Weight</label>
+                <div><label className="field-label">Weight</label>
                   <input className="input-dark text-xs w-full" placeholder="180" value={formData.subject_weight} onChange={e => update('subject_weight', e.target.value)} /></div>
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Hair</label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div><label className="field-label">Hair</label>
                   <input className="input-dark text-xs w-full" value={formData.subject_hair} onChange={e => update('subject_hair', e.target.value)} /></div>
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Eyes</label>
+                <div><label className="field-label">Eyes</label>
                   <input className="input-dark text-xs w-full" value={formData.subject_eye} onChange={e => update('subject_eye', e.target.value)} /></div>
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Clothing</label>
+                <div><label className="field-label">Clothing</label>
                   <input className="input-dark text-xs w-full" placeholder="Dark hoodie, jeans" value={formData.subject_clothing} onChange={e => update('subject_clothing', e.target.value)} /></div>
               </div>
 
               {/* Location + reason */}
-              <div className="grid grid-cols-2 gap-2">
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Location *</label>
-                  <input className="input-dark text-xs w-full" required value={formData.location} onChange={e => update('location', e.target.value)} /></div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Reason</label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div><label className="field-label">Location *</label>
+                  <input className="input-dark text-xs w-full" value={formData.location} onChange={e => update('location', e.target.value)} />
+                  {formErrors.location && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.location}</p>}</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div><label className="field-label">Reason</label>
                     <select className="select-dark text-xs w-full" value={formData.contact_reason} onChange={e => update('contact_reason', e.target.value)}>
                       {CONTACT_REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                     </select></div>
-                  <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Type</label>
+                  <div><label className="field-label">Type</label>
                     <select className="select-dark text-xs w-full" value={formData.contact_type} onChange={e => update('contact_type', e.target.value)}>
                       {CONTACT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </select></div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Action Taken</label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div><label className="field-label">Action Taken</label>
                   <select className="select-dark text-xs w-full" value={formData.action_taken} onChange={e => update('action_taken', e.target.value)}>
                     {ACTIONS_TAKEN.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
                   </select></div>
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Vehicle Plate</label>
+                <div><label className="field-label">Vehicle Plate</label>
                   <input className="input-dark text-xs w-full" value={formData.vehicle_plate} onChange={e => update('vehicle_plate', e.target.value)} /></div>
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Vehicle Desc.</label>
+                <div><label className="field-label">Vehicle Desc.</label>
                   <input className="input-dark text-xs w-full" value={formData.vehicle_description} onChange={e => update('vehicle_description', e.target.value)} /></div>
               </div>
 
               {/* Narrative */}
-              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Narrative</label>
+              <div><label className="field-label">Narrative</label>
                 <textarea className="input-dark text-xs w-full" rows={4} value={formData.narrative} onChange={e => update('narrative', e.target.value)} /></div>
 
               {/* Actions */}
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn">Cancel</button>
-                <button type="submit" disabled={submitting} className="toolbar-btn" style={{ background: 'rgba(188,16,16,0.3)', borderColor: 'rgba(188,16,16,0.5)' }}>
+                <button type="submit" disabled={submitting} className="toolbar-btn" style={{ background: 'rgba(26,90,158,0.3)', borderColor: 'rgba(26,90,158,0.5)' }}>
                   {submitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 10, height: 10 }} />}
                   {editingFi ? 'Update' : 'Create'} FI Card
                 </button>

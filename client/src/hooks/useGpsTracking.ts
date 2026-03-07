@@ -54,14 +54,20 @@ interface UseGpsTrackingOptions {
 }
 
 // ─── Constants ──────────────────────────────────────────────
-/** How often to batch-send collected points to the server (15 seconds).
- *  Increased from 5s to reduce bandwidth on mobile WiFi / vehicle networks
- *  while still providing timely breadcrumb updates. */
-const DEFAULT_BATCH_INTERVAL = 15000;
+/** How often to batch-send collected points to the server (10 seconds).
+ *  Reduced from 15s for better breadcrumb resolution while driving. */
+const DEFAULT_BATCH_INTERVAL = 10000;
+
+/** Whether the current device is likely a desktop/laptop (no GPS hardware).
+ *  Used to relax accuracy thresholds — WiFi positioning on desktops in moving
+ *  vehicles typically returns 100–500m accuracy. */
+const IS_DESKTOP = typeof window !== 'undefined' && !/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+
 /** Reject GPS readings less accurate than this (meters).
- *  Set to 200 to accept WiFi-based positioning on mobile/vehicle networks
- *  (typically 80–150m accuracy, occasionally worse in parking structures). */
-const DEFAULT_MAX_ACCURACY = 200;
+ *  Mobile (GPS hardware): 200m — rejects junk while accepting all valid fixes.
+ *  Desktop (WiFi only):   1000m — WiFi triangulation in moving vehicles gives
+ *  100–500m typically, but can spike to 800m+ between WiFi clusters. */
+const DEFAULT_MAX_ACCURACY = IS_DESKTOP ? 1000 : 200;
 /** Reject points that imply movement faster than this (m/s). 100 m/s ≈ 224 mph */
 const DEFAULT_MAX_SPEED = 100;
 
@@ -89,6 +95,18 @@ function haversineMeters(
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// ─── Compute Bearing (degrees) ──────────────────────────────
+/** Calculate initial bearing from point A to point B (0–360°). */
+function computeBearing(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const toDeg = (rad: number) => (rad * 180) / Math.PI;
+  const dLng = toRad(lng2 - lng1);
+  const y = Math.sin(dLng) * Math.cos(toRad(lat2));
+  const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
+    Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLng);
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
 }
 
 // ─── localStorage GPS Failover Queue ─────────────────────
@@ -195,36 +213,60 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   // ─── Batch send ───────────────────────────────────────────
   // Drains the queue and POSTs all collected points to the server.
   // On failure, persists points to localStorage so they survive page reloads.
+  const isSendingRef = useRef(false);
   const sendBatch = useCallback(async () => {
-    // Merge any previously failed points from localStorage
-    const failoverPoints = loadFailoverQueue();
-    const currentPoints = queueRef.current;
-    const allPoints = [...failoverPoints, ...currentPoints];
-    if (allPoints.length === 0) return;
-
-    // Snapshot and clear — if the send fails, persist to localStorage
-    queueRef.current = [];
+    // Guard against concurrent sends (interval can fire while await is pending)
+    if (isSendingRef.current) return;
+    isSendingRef.current = true;
 
     try {
-      await apiFetch('/dispatch/gps', {
-        method: 'POST',
-        body: JSON.stringify({ points: allPoints }),
-      });
-      // Success — clear the failover queue
-      clearFailoverQueue();
-      setState((prev) => ({
-        ...prev,
-        lastSentAt: new Date().toISOString(),
-        error: null,
-      }));
-    } catch (err) {
-      // Re-enqueue current points in memory, persist all to localStorage
-      queueRef.current = [...currentPoints, ...queueRef.current];
-      saveFailoverQueue(allPoints.slice(-LS_MAX_QUEUED_POINTS));
-      setState((prev) => ({
-        ...prev,
-        error: err instanceof Error ? err.message : 'Failed to send GPS position',
-      }));
+      // Merge any previously failed points from localStorage
+      const failoverPoints = loadFailoverQueue();
+      const currentPoints = [...queueRef.current]; // snapshot copy, not reference
+      const allPoints = [...failoverPoints, ...currentPoints];
+      if (allPoints.length === 0) return;
+
+      // Clear — new points arriving during await go into fresh array
+      queueRef.current = [];
+
+      try {
+        await apiFetch('/dispatch/gps', {
+          method: 'POST',
+          body: JSON.stringify({ points: allPoints }),
+        });
+        // Success — clear the failover queue
+        clearFailoverQueue();
+        setState((prev) => {
+          // If we didn't have a unit before, the server may have auto-created one.
+          // Re-fetch unit info so the status bar shows the call sign.
+          if (!prev.unitId) {
+            apiFetch<{ id: number; call_sign: string; status: string } | null>('/dispatch/gps/my-unit')
+              .then((unit) => {
+                if (unit) {
+                  setState((p) => ({ ...p, unitCallSign: unit.call_sign, unitId: unit.id }));
+                }
+              })
+              .catch(() => {});
+          }
+          return {
+            ...prev,
+            lastSentAt: new Date().toISOString(),
+            error: null,
+          };
+        });
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : 'Failed to send GPS position';
+        console.warn(`[GPS] Batch send failed (${allPoints.length} pts):`, errMsg);
+        // Re-enqueue failed points in front of any new arrivals
+        queueRef.current = [...currentPoints, ...queueRef.current];
+        saveFailoverQueue(allPoints.slice(-LS_MAX_QUEUED_POINTS));
+        setState((prev) => ({
+          ...prev,
+          error: errMsg,
+        }));
+      }
+    } finally {
+      isSendingRef.current = false;
     }
   }, []);
 
@@ -298,17 +340,32 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         permissionPending: false,
       }));
 
-      // Queue the point for batch send
+      // Queue the point for batch send.
+      // IP geolocation is low-accuracy (~1-5km) but it's the only option when
+      // navigator.geolocation fails on desktop. Cap reported accuracy at 5000m.
+      const ipAccuracy = Math.min(loc.accuracy || 5000, 5000);
       const point: QueuedPoint = {
         lat: loc.latitude,
         lng: loc.longitude,
-        accuracy: loc.accuracy || 5000,
+        accuracy: ipAccuracy,
         heading: null,
         speed: null,
         timestamp: new Date().toISOString(),
       };
 
-      if (shouldAcceptPoint(loc.latitude, loc.longitude, loc.accuracy || 5000)) {
+      // IP fallback uses a relaxed accuracy gate — it's low-quality but better
+      // than no position data at all. Jump detection still applies.
+      const last = lastAcceptedRef.current;
+      let acceptIp = true;
+      if (last) {
+        const dtSeconds = (Date.now() - last.time) / 1000;
+        if (dtSeconds > 0) {
+          const distance = haversineMeters(last.lat, last.lng, loc.latitude, loc.longitude);
+          if (distance / dtSeconds > maxSpeedMs) acceptIp = false;
+        }
+      }
+
+      if (acceptIp) {
         lastAcceptedRef.current = { lat: loc.latitude, lng: loc.longitude, time: Date.now() };
         latestPositionRef.current = point;
         queueRef.current.push(point);
@@ -322,7 +379,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     } catch {
       // IP fallback failed — degrade gracefully
     }
-  }, [shouldAcceptPoint, sendImmediate]);
+  }, [maxSpeedMs, sendImmediate]);
 
   // Starts the periodic IP fallback poller (Electron desktop only)
   const startIpFallbackPoller = useCallback(() => {
@@ -331,6 +388,36 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     tryIpFallback(); // Immediate first attempt
     ipFallbackIntervalRef.current = setInterval(tryIpFallback, DEFAULT_BATCH_INTERVAL);
   }, [tryIpFallback]);
+
+  // ─── Internal cleanup ──────────────────────────────────────
+  // Shared by stopTracking and startTracking's error handlers.
+  // Defined BEFORE both so there's no temporal dead zone issue.
+  const cleanupTracking = useCallback((flush = true) => {
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+    if (batchIntervalRef.current !== null) {
+      clearInterval(batchIntervalRef.current);
+      batchIntervalRef.current = null;
+    }
+    if (retryTimeoutRef.current !== null) {
+      clearTimeout(retryTimeoutRef.current);
+      retryTimeoutRef.current = null;
+    }
+    if (heartbeatRef.current !== null) {
+      clearInterval(heartbeatRef.current);
+      heartbeatRef.current = null;
+    }
+    if (ipFallbackIntervalRef.current !== null) {
+      clearInterval(ipFallbackIntervalRef.current);
+      ipFallbackIntervalRef.current = null;
+    }
+    // Flush any remaining points before stopping
+    if (flush && queueRef.current.length > 0) {
+      sendBatch();
+    }
+  }, [sendBatch]);
 
   // Start tracking
   const startTracking = useCallback(() => {
@@ -372,12 +459,26 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
           return;
         }
 
+        // WiFi positioning doesn't provide heading/speed — compute from movement
+        let effectiveHeading = heading;
+        let effectiveSpeed = speed;
+        const lastPt = lastAcceptedRef.current;
+        if (lastPt && (heading == null || speed == null)) {
+          const dtSec = (Date.now() - lastPt.time) / 1000;
+          const dist = haversineMeters(lastPt.lat, lastPt.lng, latitude, longitude);
+          // Only compute if we've moved a meaningful distance (avoid jitter)
+          if (dist > 5 && dtSec > 0) {
+            if (heading == null) effectiveHeading = computeBearing(lastPt.lat, lastPt.lng, latitude, longitude);
+            if (speed == null) effectiveSpeed = dist / dtSec;
+          }
+        }
+
         const point: QueuedPoint = {
           lat: latitude,
           lng: longitude,
           accuracy,
-          heading,
-          speed,
+          heading: effectiveHeading,
+          speed: effectiveSpeed,
           timestamp: new Date().toISOString(),
         };
 
@@ -427,13 +528,13 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
             navigator.geolocation.getCurrentPosition(
               () => {
                 // Permission restored — restart tracking
-                stopTracking();
+                cleanupTracking(false);
                 startTracking();
               },
               () => {
                 // Still denied — keep retrying
                 retryTimeoutRef.current = setTimeout(() => {
-                  stopTracking();
+                  cleanupTracking(false);
                   startTracking();
                 }, 15000);
               },
@@ -470,42 +571,19 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         // Clear the stale watch and restart
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
-        stopTracking();
+        cleanupTracking(false);
         startTracking();
       }
     }, HEARTBEAT_INTERVAL);
 
     setIsTracking(true);
-  }, [batchIntervalMs, highAccuracy, sendBatch, sendImmediate, shouldAcceptPoint, startIpFallbackPoller]);
+  }, [batchIntervalMs, highAccuracy, sendBatch, sendImmediate, shouldAcceptPoint, startIpFallbackPoller, cleanupTracking]);
 
   // Stop tracking (internal use only — users cannot call this)
   const stopTracking = useCallback(() => {
-    if (watchIdRef.current !== null) {
-      navigator.geolocation.clearWatch(watchIdRef.current);
-      watchIdRef.current = null;
-    }
-    if (batchIntervalRef.current !== null) {
-      clearInterval(batchIntervalRef.current);
-      batchIntervalRef.current = null;
-    }
-    if (retryTimeoutRef.current !== null) {
-      clearTimeout(retryTimeoutRef.current);
-      retryTimeoutRef.current = null;
-    }
-    if (heartbeatRef.current !== null) {
-      clearInterval(heartbeatRef.current);
-      heartbeatRef.current = null;
-    }
-    if (ipFallbackIntervalRef.current !== null) {
-      clearInterval(ipFallbackIntervalRef.current);
-      ipFallbackIntervalRef.current = null;
-    }
-    // Flush any remaining points before stopping
-    if (queueRef.current.length > 0) {
-      sendBatch();
-    }
+    cleanupTracking(true); // flush queue
     setIsTracking(false);
-  }, [sendBatch]);
+  }, [cleanupTracking]);
 
   // Toggle is now a no-op — GPS is mandatory, but we keep the function
   // for backward compatibility (the button in the toolbar is now just a status indicator)
@@ -521,27 +599,8 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   useEffect(() => {
     startTracking();
     return () => {
-      // Cleanup on unmount
-      if (watchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-        watchIdRef.current = null;
-      }
-      if (batchIntervalRef.current !== null) {
-        clearInterval(batchIntervalRef.current);
-        batchIntervalRef.current = null;
-      }
-      if (retryTimeoutRef.current !== null) {
-        clearTimeout(retryTimeoutRef.current);
-        retryTimeoutRef.current = null;
-      }
-      if (heartbeatRef.current !== null) {
-        clearInterval(heartbeatRef.current);
-        heartbeatRef.current = null;
-      }
-      if (ipFallbackIntervalRef.current !== null) {
-        clearInterval(ipFallbackIntervalRef.current);
-        ipFallbackIntervalRef.current = null;
-      }
+      // Flush remaining points and clean up all timers/watchers
+      cleanupTracking(true);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

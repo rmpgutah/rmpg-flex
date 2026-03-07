@@ -96,7 +96,7 @@ export default function BodyCameraFormModal({
     >
       {/* Assignment */}
       <div className="panel-inset p-3 space-y-3">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="field-label">Officer <span className="text-red-400">*</span></label>
             <select required value={form.officer_id} onChange={e => set('officer_id', e.target.value)} className="select-dark">
@@ -109,7 +109,7 @@ export default function BodyCameraFormModal({
             <input type="text" required value={form.camera_id} onChange={e => set('camera_id', e.target.value)} placeholder="e.g. BC-001" className="input-dark" />
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="field-label">Status</label>
             <select value={form.status} onChange={e => set('status', e.target.value)} className="select-dark">
@@ -131,7 +131,7 @@ export default function BodyCameraFormModal({
         <div className="flex-1 h-px bg-rmpg-700" />
       </div>
       <div className="panel-inset p-3 space-y-3">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="field-label">Make</label>
             <input type="text" value={form.make} onChange={e => set('make', e.target.value)} placeholder="e.g. Axon" className="input-dark" />
@@ -141,7 +141,7 @@ export default function BodyCameraFormModal({
             <input type="text" value={form.model} onChange={e => set('model', e.target.value)} placeholder="e.g. Body 4" className="input-dark" />
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="field-label">Firmware Version</label>
             <input type="text" value={form.firmware_version} onChange={e => set('firmware_version', e.target.value)} placeholder="e.g. v3.2.1" className="input-dark" />
@@ -159,7 +159,7 @@ export default function BodyCameraFormModal({
         <div className="flex-1 h-px bg-rmpg-700" />
       </div>
       <div className="panel-inset p-3 space-y-3">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="field-label">Assigned Date</label>
             <input type="date" value={form.assigned_at} onChange={e => set('assigned_at', e.target.value)} className="input-dark" />

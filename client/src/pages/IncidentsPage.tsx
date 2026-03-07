@@ -719,7 +719,7 @@ export default function IncidentsPage() {
 
       {/* Quick Stats Bar */}
       {!showArchived && !loading && (
-        <div className="px-4 py-1.5 border-b border-rmpg-700/50 flex items-center gap-4 text-[10px] font-mono flex-shrink-0" style={{ background: '#161616' }}>
+        <div className="px-4 py-1.5 border-b border-rmpg-700/50 flex items-center gap-4 text-[10px] font-mono flex-shrink-0" style={{ background: '#0d1520' }}>
           <div className="flex items-center gap-1">
             <div className="w-2 h-2 rounded-full bg-amber-500" />
             <span className="text-rmpg-400">Draft:</span>
@@ -1028,7 +1028,7 @@ export default function IncidentsPage() {
             <label className="field-label">Title:</label>
             <p className="text-sm text-white font-medium">{selectedIncident.title}</p>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="field-label">Type:</label>
               <p className="text-sm text-brand-400">{formatIncidentType(selectedIncident.type)}</p>
@@ -1103,7 +1103,7 @@ export default function IncidentsPage() {
         {/* Scene Details */}
         {((selectedIncident as any).weather_conditions || (selectedIncident as any).lighting_conditions || (selectedIncident as any).injuries || (selectedIncident as any).damage_estimate || (selectedIncident as any).weapons_involved) && (
           <CollapsibleSection title="Scene Details" icon={MapPin} defaultOpen>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {(selectedIncident as any).weather_conditions && (
                 <div>
                   <label className="field-label">Weather:</label>
@@ -1141,7 +1141,7 @@ export default function IncidentsPage() {
         {/* LE Coordination */}
         {((selectedIncident as any).responding_le_agency || (selectedIncident as any).le_case_number) && (
           <CollapsibleSection title="LE Coordination" icon={Shield} defaultOpen={false}>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {(selectedIncident as any).responding_le_agency && (
                 <div>
                   <label className="field-label">Responding Agency:</label>
@@ -1490,7 +1490,7 @@ export default function IncidentsPage() {
       {/* Sticky Action Bar */}
       <div
         className="flex-shrink-0 px-4 py-2.5 border-t border-rmpg-600 flex items-center gap-2"
-        style={{ background: 'linear-gradient(180deg, #1a1a1a 0%, #141414 100%)' }}
+        style={{ background: 'linear-gradient(180deg, #141e2b 0%, #0d1520 100%)' }}
       >
         {!isEditing ? (
           <>

@@ -34,6 +34,10 @@ export const COLOR = {
   AMOUNT_CREDIT:   [0, 120, 60]     as const,
   AMOUNT_DEBIT:    [180, 0, 0]      as const,
 
+  // Form grid
+  BORDER_FORM_GRID: [180, 180, 180] as const,  // Form grid cell borders
+  BG_SIDEBAR_TAB:   [240, 240, 240] as const,  // Sidebar tab background
+
   // Watermark
   WATERMARK:       [120, 120, 120]  as const,
 } as const;
@@ -65,6 +69,9 @@ export const FONT = {
   SIZE_SUBHEADER:         6.5,   // Subheader text in report header
   SIZE_REPORT_TYPE:       7,     // Report type label in header
   SIZE_CASE_NUMBER:       9,     // Case number value (courier bold)
+  SIZE_FORM_CELL_LABEL:   6,     // Form cell label (same as field label)
+  SIZE_FORM_CELL_VALUE:   8.5,   // Form cell value (same as field value)
+  SIZE_SIDEBAR_TAB:       7,     // Sidebar tab rotated text
 } as const;
 
 // ── Border / Line Width Tokens ───────────────────────────────
@@ -83,6 +90,9 @@ export const BORDER = {
   CASE_BOX:         1.0,   // White border inside case number box
   BANNER:           0.8,   // Banner borders
   DIAGRAM_GRID:     0.1,   // Accident diagram grid lines
+  FORM_CELL:        0.25,  // Form cell borders (subtle grid)
+  SIDEBAR_TAB:      0.25,  // Sidebar tab border
+  FORM_GRID_OUTER:  0.5,   // Bold outer border around form grid
 } as const;
 
 // ── Spacing Tokens (tighter throughout) ──────────────────────
@@ -106,6 +116,10 @@ export const SPACING = {
   SIGNATURE_BOX_H:    28,    // Signature block total height
   SIGNATURE_ROLE_H:   4.5,   // Role label header bar height
   SIGNATURE_SUB_GAP:  5,     // Gap between sig line and sub-fields
+
+  FORM_CELL_PAD:      1,     // Padding inside form cells
+  FORM_CELL_LABEL_H:  3.5,   // Form cell label height
+  FORM_CELL_H:        7,     // Form cell total height
 } as const;
 
 // ── Layout Tokens ────────────────────────────────────────────
@@ -121,6 +135,7 @@ export const LAYOUT = {
   CASE_BOX_W:        42,     // Case number box width
   LINE_HEIGHT:       3.2,    // Base line height for wrapped text
   DIAGRAM_GRID_STEP: 10,     // Grid spacing in accident diagram
+  SIDEBAR_TAB_W:     18,     // Sidebar tab width
 } as const;
 
 // ── Computed Layout Helpers ──────────────────────────────────
@@ -128,6 +143,16 @@ export const LAYOUT = {
 /** Page content width = pageWidth - 2 * PAGE_MARGIN */
 export function getContentWidth(doc: jsPDF): number {
   return doc.internal.pageSize.getWidth() - 2 * LAYOUT.PAGE_MARGIN;
+}
+
+/** Grid start X: right edge of sidebar tab */
+export function getGridStartX(): number {
+  return LAYOUT.PAGE_MARGIN + LAYOUT.SIDEBAR_TAB_W;
+}
+
+/** Grid content width: page width minus margins minus sidebar tab */
+export function getGridContentWidth(doc: jsPDF): number {
+  return doc.internal.pageSize.getWidth() - 2 * LAYOUT.PAGE_MARGIN - LAYOUT.SIDEBAR_TAB_W;
 }
 
 /** Half-column width for 2-column layouts (with 3mm gap) */

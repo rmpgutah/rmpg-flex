@@ -39,6 +39,9 @@ import {
   UserX,
   Gavel,
   Terminal,
+  ExternalLink,
+  CreditCard,
+  Microscope,
 } from 'lucide-react';
 import { Navigation2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -62,6 +65,7 @@ import MobileHeader from './mobile/MobileHeader';
 import MobileDrawer from './mobile/MobileDrawer';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { toDisplayLabel } from '../utils/formatters';
+import { openPageWindow, POPOUT_PAGES } from '../utils/windowManager';
 import LocationGate from './LocationGate';
 
 const PAGE_TITLES: Record<string, string> = {
@@ -81,6 +85,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/trespass-orders': 'Trespass Orders',
   '/mdt': 'MDT',
   '/ncic': 'NCIC Terminal',
+  '/dl-search': 'DL Search',
   '/shift-plans': 'Shift Plans',
   '/statute-analytics': 'Statute Analytics',
   '/reports/custom': 'Report Builder',
@@ -93,6 +98,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/dar': 'Daily Activity Reports',
   '/offender-registry': 'Offender Registry',
   '/reports': 'Reports',
+  '/forensics': 'Digital Forensics',
   '/audit': 'Audit Log',
   '/admin': 'Admin',
 };
@@ -104,25 +110,28 @@ interface NavItem {
   icon: React.ElementType;
   label: string;
   group: string;
+  shortcut?: string;
   adminOnly?: boolean;
   children?: NavChild[];
 }
 
 const TOOLBAR_NAV: NavItem[] = [
-  { path: '/', icon: LayoutDashboard, label: 'Dashboard', group: 'ops' },
-  { path: '/dispatch', icon: Radio, label: 'Dispatch', group: 'ops' },
-  { path: '/map', icon: Map, label: 'Map', group: 'ops' },
-  { path: '/mdt', icon: Monitor, label: 'MDT', group: 'ops' },
-  { path: '/ncic', icon: Terminal, label: 'NCIC', group: 'ops' },
-  { path: '/records', icon: Database, label: 'Records', group: 'records', children: [
+  { path: '/', icon: LayoutDashboard, label: 'Dashboard', group: 'ops', shortcut: 'F1' },
+  { path: '/dispatch', icon: Radio, label: 'Dispatch', group: 'ops', shortcut: 'F2' },
+  { path: '/map', icon: Map, label: 'Map', group: 'ops', shortcut: 'F3' },
+  { path: '/mdt', icon: Monitor, label: 'MDT', group: 'ops', shortcut: 'F4' },
+  { path: '/ncic', icon: Terminal, label: 'NCIC', group: 'ops', shortcut: 'F5' },
+  { path: '/records', icon: Database, label: 'Records', group: 'records', shortcut: 'F6', children: [
     { path: '/incidents', icon: FileText, label: 'Incidents' },
     { path: '/records', icon: Database, label: 'Records' },
     { path: '/field-interviews', icon: ClipboardList, label: 'Field Interviews' },
     { path: '/criminal-history', icon: Search, label: 'Criminal History' },
+    { path: '/dl-search', icon: CreditCard, label: 'DL Search' },
+    { path: '/skip-tracer', icon: Search, label: 'Skip Tracer' },
     { path: '/evidence', icon: Package, label: 'Evidence / Property' },
     { path: '/cases', icon: Briefcase, label: 'Case Management' },
   ]},
-  { path: '/warrants', icon: AlertTriangle, label: 'Enforcement', group: 'records', children: [
+  { path: '/warrants', icon: AlertTriangle, label: 'Enforce', group: 'records', shortcut: 'F7', children: [
     { path: '/warrants', icon: AlertTriangle, label: 'Warrants' },
     { path: '/citations', icon: FileWarning, label: 'Citations' },
     { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders' },
@@ -130,17 +139,17 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/court', icon: Gavel, label: 'Court Tracker' },
     { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
   ]},
-  { path: '/personnel', icon: Users, label: 'Personnel', group: 'records', children: [
+  { path: '/personnel', icon: Users, label: 'Personnel', group: 'records', shortcut: 'F8', children: [
     { path: '/personnel', icon: Users, label: 'Personnel' },
     { path: '/fleet', icon: Car, label: 'Fleet' },
     { path: '/body-cameras', icon: Video, label: 'Body Cameras' },
   ]},
-  { path: '/communications', icon: MessageSquare, label: 'Comms', group: 'comms', children: [
+  { path: '/communications', icon: MessageSquare, label: 'Comms', group: 'comms', shortcut: 'F9', children: [
     { path: '/communications', icon: MessageSquare, label: 'Comms' },
     { path: '/radio', icon: Radio, label: 'Radio' },
     { path: '/patrol', icon: QrCode, label: 'Patrol' },
   ]},
-  { path: '/reports', icon: BarChart3, label: 'Reports', group: 'analysis', children: [
+  { path: '/reports', icon: BarChart3, label: 'Reports', group: 'analysis', shortcut: 'F10', children: [
     { path: '/reports', icon: BarChart3, label: 'Reports' },
     { path: '/shift-plans', icon: Calendar, label: 'Shift Plans' },
     { path: '/statute-analytics', icon: BarChart3, label: 'Statute Analytics' },
@@ -148,8 +157,9 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/crime-analysis', icon: TrendingUp, label: 'Crime Analysis' },
     { path: '/dar', icon: ClipboardCheck, label: 'Daily Activity' },
   ]},
-  { path: '/audit', icon: ScrollText, label: 'Audit', group: 'system', adminOnly: true },
-  { path: '/admin', icon: Settings, label: 'Admin', group: 'system', adminOnly: true },
+  { path: '/forensics', icon: Microscope, label: 'Forensics', group: 'analysis', adminOnly: true },
+  { path: '/audit', icon: ScrollText, label: 'Audit', group: 'system', shortcut: 'F11', adminOnly: true },
+  { path: '/admin', icon: Settings, label: 'Admin', group: 'system', shortcut: 'F12', adminOnly: true },
 ];
 
 // Paths that contract_manager role is NOT allowed to see
@@ -263,6 +273,29 @@ export default function Layout() {
   // Close mobile menu on route change
   useEffect(() => { setMobileMenuOpen(false); }, [location.pathname]);
 
+  // F-key shortcut navigation (Spillman Flex style)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Don't handle if user is typing in an input
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+      const fKey = e.key.match(/^F(\d+)$/);
+      if (!fKey) return;
+
+      const matchItem = TOOLBAR_NAV.find(item => item.shortcut === e.key);
+      if (matchItem) {
+        // Check permissions
+        if (matchItem.adminOnly && !isAdmin) return;
+        if (isContractManager && CONTRACT_MANAGER_BLOCKED_PATHS.has(matchItem.path)) return;
+        e.preventDefault();
+        navigate(matchItem.path);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [navigate, isAdmin, isContractManager]);
+
   // Profile dropdown & modal
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
@@ -330,12 +363,12 @@ export default function Layout() {
   const isMacElectron = isElectron && (window as any).electron?.platform === 'darwin';
 
   return (
-    <div className="flex flex-col h-screen text-white overflow-hidden" style={{ background: '#1a1a1a' }}>
+    <div className="flex flex-col h-screen text-white overflow-hidden" style={{ background: '#141e2b' }}>
       {/* Auto-Update Banner (Electron only) */}
       {isElectron && <UpdateBanner />}
 
-      {/* Offline Status Bar (Electron only — shows when offline or syncing) */}
-      {isElectron && <OfflineStatusBar />}
+      {/* Offline Status Bar (shows when offline or syncing — Electron and browser) */}
+      <OfflineStatusBar />
 
       {/* GPS tracking runs silently — no blocking gate */}
 
@@ -350,9 +383,9 @@ export default function Layout() {
           <div
             className="w-full max-w-sm mx-4 p-6 space-y-4"
             style={{
-              background: '#1a1a1a',
-              border: '1px solid #303030',
-              borderTop: '3px solid #bc1010',
+              background: '#141e2b',
+              border: '1px solid #1e3048',
+              borderTop: '3px solid #1a5a9e',
               WebkitAppRegion: 'no-drag',
             } as React.CSSProperties}
           >
@@ -363,7 +396,7 @@ export default function Layout() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="field-label">First Name <span className="text-red-500">*</span></label>
                 <input
@@ -441,26 +474,41 @@ export default function Layout() {
             height: '52px',
             paddingLeft: isMacElectron ? '78px' : '12px',
             paddingRight: '12px',
-            background: 'linear-gradient(180deg, #252525 0%, #1a1a1a 100%)',
-            borderBottom: '1px solid #303030',
+            background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)',
+            borderBottom: '1px solid #1e3048',
             flexShrink: 0,
             WebkitAppRegion: isElectron ? 'drag' : undefined,
           } as React.CSSProperties}
         >
-          {/* Crimson accent at very top */}
-          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #6e0a0a, #bc1010, #6e0a0a)', zIndex: 1 }} />
+          {/* Blue accent at very top */}
+          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3359, #1a5a9e, #0e3359)', zIndex: 1 }} />
 
-          {/* Left — Logo */}
+          {/* Left — Logo + FLEX branding */}
           <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-            <div onClick={() => navigate('/')} className="cursor-pointer" title="Rocky Mountain Protective Group — Dashboard">
+            <div onClick={() => navigate('/')} className="cursor-pointer flex items-center gap-2" title="Rocky Mountain Protective Group — Dashboard">
               <RmpgLogo height={44} />
+              <div className="flex flex-col">
+                <span className="text-[14px] font-bold tracking-wider text-white leading-none">RMPG</span>
+                <span className="text-[10px] font-bold tracking-[0.2em] leading-none" style={{ color: '#3b8ad4' }}>FLEX</span>
+              </div>
             </div>
             {/* Page title */}
             <div className="flex items-center gap-1.5">
-              <div className="w-px h-6" style={{ background: '#383838' }} />
-              <span className="text-[11px] font-mono font-bold tracking-wider text-rmpg-500">
+              <div className="w-px h-6" style={{ background: '#2a3e58' }} />
+              <span className="text-[11px] font-mono font-bold tracking-wider text-rmpg-400">
                 {pageTitle.toUpperCase()}
               </span>
+              {/* Pop-out button — opens current page in a new window */}
+              {POPOUT_PAGES[location.pathname] && (
+                <button
+                  onClick={() => openPageWindow(location.pathname)}
+                  className="toolbar-btn ml-1"
+                  title="Open in new window"
+                  style={{ padding: '2px 4px' }}
+                >
+                  <ExternalLink className="w-3 h-3" style={{ color: '#5a6e80' }} />
+                </button>
+              )}
             </div>
           </div>
 
@@ -470,7 +518,7 @@ export default function Layout() {
             <PanicButton latitude={gps.latitude} longitude={gps.longitude} />
 
             {/* Vertical separator */}
-            <div className="w-px h-7" style={{ background: '#383838' }} />
+            <div className="w-px h-7" style={{ background: '#2a3e58' }} />
 
             {/* Profile Menu */}
             <div className="relative" ref={profileDropdownRef}>
@@ -488,15 +536,15 @@ export default function Layout() {
                     src={user.profile_image}
                     alt={user.first_name}
                     className="w-8 h-8 object-cover"
-                    style={{ border: '2px solid #484848', borderRadius: '50%' }}
+                    style={{ border: '2px solid #3a5070', borderRadius: '50%' }}
                   />
                 ) : (
                   <div
                     className="w-8 h-8 flex items-center justify-center text-[11px] font-bold"
                     style={{
-                      background: 'linear-gradient(135deg, #8a0c0c, #bc1010)',
+                      background: 'linear-gradient(135deg, #124070, #1a5a9e)',
                       color: '#fff',
-                      border: '2px solid #d93030',
+                      border: '2px solid #3b8ad4',
                       borderRadius: '50%',
                     }}
                   >
@@ -508,7 +556,7 @@ export default function Layout() {
                   style={{
                     width: 10,
                     height: 10,
-                    color: '#707070',
+                    color: '#5a6e80',
                     transform: profileDropdownOpen ? 'rotate(180deg)' : undefined,
                     transition: 'transform 0.15s',
                   }}
@@ -564,8 +612,8 @@ export default function Layout() {
                   <div className="menu-separator" />
 
                   <button onClick={() => { setProfileDropdownOpen(false); logout(); }} className="menu-item w-full">
-                    <span className="menu-item-icon"><LogOut style={{ width: 12, height: 12, color: '#d93030' }} /></span>
-                    <span className="menu-item-label" style={{ color: '#d93030' }}>Sign Out</span>
+                    <span className="menu-item-icon"><LogOut style={{ width: 12, height: 12, color: '#ef4444' }} /></span>
+                    <span className="menu-item-label" style={{ color: '#ef4444' }}>Sign Out</span>
                   </button>
                 </div>
               )}
@@ -580,7 +628,7 @@ export default function Layout() {
           className="flex items-center justify-center gap-2 px-4"
           style={{
             height: '22px',
-            background: 'linear-gradient(90deg, #1a1a1a, #1e2a1e, #1a1a1a)',
+            background: 'linear-gradient(90deg, #141e2b, #1e2a1e, #141e2b)',
             borderBottom: '1px solid #2a3a2a',
             flexShrink: 0,
           }}
@@ -601,8 +649,8 @@ export default function Layout() {
         className="hidden md:flex items-center justify-between px-2"
         style={{
           height: '22px',
-          background: 'linear-gradient(180deg, #303030 0%, #252525 100%)',
-          borderBottom: '1px solid #202020',
+          background: 'linear-gradient(180deg, #1e3048 0%, #1a2636 100%)',
+          borderBottom: '1px solid #141e2b',
           flexShrink: 0,
         }}
       >
@@ -625,14 +673,15 @@ export default function Layout() {
       </div>
 
       {/* ============================================================ */}
-      {/* TOOLBAR ROW 2 — Action Bar (Spillman Flex style) HIDDEN ON MOBILE */}
+      {/* TOOLBAR ROW 2 — Icon Toolbar (Spillman Flex style) HIDDEN ON MOBILE */}
       {/* ============================================================ */}
       <div
-        className="hidden md:flex items-center justify-between px-2"
+        className="hidden md:flex items-center justify-between px-1"
         style={{
-          height: '28px',
-          background: 'linear-gradient(180deg, #2a2a2a 0%, #1e1e1e 100%)',
-          borderBottom: '1px solid #303030',
+          height: '46px',
+          background: 'linear-gradient(180deg, var(--toolbar-gradient-end) 0%, var(--toolbar-gradient-start) 50%, #124070 100%)',
+          borderBottom: '1px solid #0e3359',
+          borderTop: '1px solid #3b8ad4',
           flexShrink: 0,
           overflow: 'visible',
         }}
@@ -660,7 +709,7 @@ export default function Layout() {
               const isOpen = openDropdown === item.label;
               return (
                 <React.Fragment key={item.label}>
-                  {showSep && <div className="toolbar-separator" />}
+                  {showSep && <div className="toolbar-separator" style={{ height: 32 }} />}
                   <div className="relative" data-nav-dropdown>
                     <button
                       onClick={() => setOpenDropdown(isOpen ? null : item.label)}
@@ -670,19 +719,29 @@ export default function Layout() {
                           setOpenDropdown(item.label);
                         }
                       }}
-                      className={isActive ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'}
-                      title={item.label}
+                      className={`flex flex-col items-center justify-center gap-0 px-2 py-0.5 cursor-pointer transition-all border ${
+                        isActive
+                          ? 'bg-white/15 border-white/20 text-white'
+                          : 'bg-transparent border-transparent hover:bg-white/10 hover:border-white/10 text-white/80'
+                      }`}
+                      style={{ minWidth: 52, height: 40, borderRadius: 2 }}
+                      title={`${item.label} (${item.shortcut})`}
                     >
-                      <Icon style={{ width: 12, height: 12 }} />
-                      <span className="hidden lg:inline">{item.label}</span>
-                      <ChevronDown style={{ width: 8, height: 8, opacity: 0.5, marginLeft: -2 }} />
+                      <Icon style={{ width: 18, height: 18 }} />
+                      <span className="text-[8px] font-bold uppercase tracking-wide leading-none mt-0.5 flex items-center gap-0.5">
+                        {item.label}
+                        <ChevronDown style={{ width: 6, height: 6, opacity: 0.5 }} />
+                      </span>
+                      {item.shortcut && (
+                        <span className="text-[7px] font-mono opacity-50 leading-none">{item.shortcut}</span>
+                      )}
                     </button>
                     {isOpen && (
                       <div
                         className="absolute top-full left-0 z-50 min-w-[160px] py-1"
                         style={{
-                          background: '#1e1e1e',
-                          border: '1px solid #383838',
+                          background: '#1a2636',
+                          border: '1px solid #2a3e58',
                           boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
                           marginTop: 1,
                         }}
@@ -718,15 +777,25 @@ export default function Layout() {
 
             return (
               <React.Fragment key={item.path}>
-                {showSep && <div className="toolbar-separator" />}
+                {showSep && <div className="toolbar-separator" style={{ height: 32 }} />}
                 <button
                   onClick={() => { navigate(item.path); setOpenDropdown(null); }}
                   onMouseEnter={() => { if (openDropdown) setOpenDropdown(null); }}
-                  className={isActive ? 'toolbar-btn toolbar-btn-primary' : 'toolbar-btn'}
-                  title={item.label}
+                  className={`flex flex-col items-center justify-center gap-0 px-2 py-0.5 cursor-pointer transition-all border ${
+                    isActive
+                      ? 'bg-white/15 border-white/20 text-white'
+                      : 'bg-transparent border-transparent hover:bg-white/10 hover:border-white/10 text-white/80'
+                  }`}
+                  style={{ minWidth: 52, height: 40, borderRadius: 2 }}
+                  title={`${item.label} (${item.shortcut})`}
                 >
-                  <Icon style={{ width: 12, height: 12 }} />
-                  <span className="hidden lg:inline">{item.label}</span>
+                  <Icon style={{ width: 18, height: 18 }} />
+                  <span className="text-[8px] font-bold uppercase tracking-wide leading-none mt-0.5">
+                    {item.label}
+                  </span>
+                  {item.shortcut && (
+                    <span className="text-[7px] font-mono opacity-50 leading-none">{item.shortcut}</span>
+                  )}
                 </button>
               </React.Fragment>
             );
@@ -750,7 +819,7 @@ export default function Layout() {
             <button
               onClick={() => navigate('/communications')}
               className="flex items-center gap-1.5 px-2 py-0.5 cursor-pointer"
-              style={{ background: 'rgba(188, 16, 16, 0.25)', border: '1px solid #a00e0e' }}
+              style={{ background: 'rgba(220, 38, 38, 0.25)', border: '1px solid #991b1b' }}
             >
               <span className="led-dot led-red animate-led-blink" />
               <span className="text-[10px] font-mono font-bold" style={{ color: '#ef7a7a' }}>
@@ -765,7 +834,7 @@ export default function Layout() {
           {/* GPS Status Indicator (Mandatory — always on) */}
           <div
             className="flex items-center gap-1 px-2 py-0.5 panel-inset transition-colors"
-            style={{ background: gps.isTracking ? 'rgba(34, 197, 94, 0.1)' : gps.permissionDenied ? 'rgba(188, 16, 16, 0.15)' : '#141414' }}
+            style={{ background: gps.isTracking ? 'rgba(34, 197, 94, 0.1)' : gps.permissionDenied ? 'rgba(220, 38, 38, 0.15)' : '#0d1520' }}
             title={
               gps.isTracking
                 ? `GPS ON (Mandatory) — ${gps.unitCallSign || 'no unit'} — ${gps.accuracy ? Math.round(gps.accuracy) + 'm accuracy' : 'acquiring...'}`
@@ -778,12 +847,12 @@ export default function Layout() {
               style={{
                 width: 10,
                 height: 10,
-                color: gps.isTracking ? '#22c55e' : gps.permissionDenied ? '#d93030' : '#707070',
+                color: gps.isTracking ? '#22c55e' : gps.permissionDenied ? '#ef4444' : '#5a6e80',
                 transform: gps.heading != null ? `rotate(${gps.heading}deg)` : undefined,
                 transition: 'transform 0.3s ease, color 0.2s',
               }}
             />
-            <span className="text-[9px] font-mono font-bold" style={{ color: gps.isTracking ? '#22c55e' : gps.permissionDenied ? '#d93030' : '#707070' }}>
+            <span className="text-[9px] font-mono font-bold" style={{ color: gps.isTracking ? '#22c55e' : gps.permissionDenied ? '#ef4444' : '#5a6e80' }}>
               GPS
             </span>
             {gps.isTracking && (
@@ -822,7 +891,7 @@ export default function Layout() {
         </div>
 
         {/* Right — Page title in brackets */}
-        <div className="text-[10px] font-mono font-bold tracking-wider md:hidden" style={{ color: '#707070' }}>
+        <div className="text-[10px] font-mono font-bold tracking-wider md:hidden" style={{ color: '#5a6e80' }}>
           [{pageTitle.toUpperCase()}]
         </div>
       </div>
@@ -836,7 +905,7 @@ export default function Layout() {
       />
 
       {/* Page Content (recessed panel — charcoal bg matching borders) */}
-      <main className="flex-1 overflow-auto min-h-0 panel-inset" style={{ background: '#1e1e1e' }}>
+      <main className="flex-1 overflow-auto min-h-0 panel-inset" style={{ background: '#1a2636' }}>
         <ErrorBoundary>
           <Outlet />
         </ErrorBoundary>

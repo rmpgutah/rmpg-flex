@@ -367,7 +367,7 @@ export default function AdminClientsTab({
                 {clientSaving && <div className="text-[9px] text-brand-400 flex items-center gap-1 mb-1"><Loader2 className="w-3 h-3 animate-spin" /> Saving...</div>}
                 <div className="panel-beveled p-3 bg-surface-base">
                   <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Contact Information</h3>
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Contact Name</label>
                       <input className="input-dark text-xs w-full" value={clientEdit.contact_name || ''} onChange={(e) => setClientField('contact_name', e.target.value)} placeholder="Contact name" />
@@ -389,7 +389,7 @@ export default function AdminClientsTab({
 
                 <div className="panel-beveled p-3 bg-surface-base">
                   <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Contract Details</h3>
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Type</label>
                       <select className="select-dark text-xs w-full" value={clientEdit.contract_type || ''} onChange={(e) => setClientField('contract_type', e.target.value)}>
@@ -440,7 +440,7 @@ export default function AdminClientsTab({
                 </div>
 
                 {/* Quick Stats */}
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="panel-beveled p-3 text-center bg-surface-base">
                     <div className="text-2xl font-bold text-brand-400">{clientProperties.length}</div>
                     <div className="text-[10px] text-rmpg-400 uppercase mt-1">Properties</div>
@@ -471,7 +471,7 @@ export default function AdminClientsTab({
                 {clientSaving && <div className="text-[9px] text-brand-400 flex items-center gap-1 mb-1"><Loader2 className="w-3 h-3 animate-spin" /> Saving...</div>}
                 <div className="panel-beveled p-3 bg-surface-base">
                   <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Billing Information</h3>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Billing Email</label>
                       <input className="input-dark text-xs w-full" value={clientEdit.billing_email || ''} onChange={(e) => setClientField('billing_email', e.target.value)} placeholder="billing@example.com" />
@@ -513,7 +513,7 @@ export default function AdminClientsTab({
 
                 <div className="panel-beveled p-3 bg-surface-base">
                   <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Activity Summary</h3>
-                  <div className="grid grid-cols-3 gap-3 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                     <div><span className="text-rmpg-400">Total Incidents:</span> <span className="text-rmpg-200 font-bold ml-1">{clientBilling?.incident_count ?? 0}</span></div>
                     <div><span className="text-rmpg-400">Total CFS:</span> <span className="text-rmpg-200 font-bold ml-1">{clientBilling?.call_count ?? 0}</span></div>
                     <div><span className="text-rmpg-400">Properties:</span> <span className="text-rmpg-200 font-bold ml-1">{clientBilling?.property_count ?? 0}</span></div>
@@ -522,7 +522,7 @@ export default function AdminClientsTab({
 
                 <div className="panel-beveled p-3 bg-surface-base">
                   <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Billing Rates</h3>
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Rate per Hour ($)</label>
                       <input type="number" min="0" step="0.01" className="input-dark text-xs w-full" value={clientEdit.rate_per_hour || ''} onChange={(e) => setClientField('rate_per_hour', e.target.value)} placeholder="0.00" />
@@ -541,7 +541,7 @@ export default function AdminClientsTab({
 
                 <div className="panel-beveled p-3 bg-surface-base">
                   <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Invoice Summary</h3>
-                  <div className="grid grid-cols-3 gap-3 text-xs mb-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs mb-3">
                     <div><span className="text-rmpg-400">Total Invoiced:</span> <span className="text-white font-bold ml-1">${(clientBilling?.total_invoiced || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></div>
                     <div><span className="text-rmpg-400">Total Paid:</span> <span className="text-green-400 font-bold ml-1">${(clientBilling?.total_paid || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></div>
                     <div><span className="text-rmpg-400">Outstanding:</span> <span className="text-amber-400 font-bold ml-1">${(clientBilling?.outstanding_balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></div>

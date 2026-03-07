@@ -268,7 +268,7 @@ export default function OffenderRegistryPage() {
               {/* Person card */}
               <div className="panel-beveled p-3">
                 <div className="text-[9px] font-mono text-rmpg-500 uppercase mb-2">Person Information</div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div><span className="text-[9px] text-rmpg-500">Name:</span> <span className="text-xs text-white font-bold">{selected.person_name || '—'}</span></div>
                   <div><span className="text-[9px] text-rmpg-500">DOB:</span> <span className="text-xs text-white">{selected.dob ? new Date(selected.dob).toLocaleDateString() : '—'}</span></div>
                   {selected.is_sex_offender && (
@@ -281,7 +281,7 @@ export default function OffenderRegistryPage() {
               </div>
 
               {/* Alert details */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {[
                   ['Description', selected.description],
                   ['Effective Date', selected.effective_date ? new Date(selected.effective_date).toLocaleDateString() : '—'],
@@ -324,7 +324,7 @@ export default function OffenderRegistryPage() {
             <div className="p-4 space-y-3">
               {/* Person search */}
               <div>
-                <label className="text-[10px] font-mono text-rmpg-500 uppercase">Person *</label>
+                <label className="field-label">Person *</label>
                 {selectedPerson ? (
                   <div className="mt-1 flex items-center gap-2 px-2 py-1.5 bg-surface-sunken border border-rmpg-700">
                     <User style={{ width: 12, height: 12 }} className="text-rmpg-500" />
@@ -353,15 +353,15 @@ export default function OffenderRegistryPage() {
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] font-mono text-rmpg-500 uppercase">Alert Type</label>
+                  <label className="field-label">Alert Type</label>
                   <select value={formData.alert_type} onChange={e => setFormData(p => ({ ...p, alert_type: e.target.value as OffenderAlertType }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">
                     {ALERT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] font-mono text-rmpg-500 uppercase">Severity</label>
+                  <label className="field-label">Severity</label>
                   <select value={formData.severity} onChange={e => setFormData(p => ({ ...p, severity: e.target.value as AlertSeverity }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">
                     <option value="info">Info</option><option value="caution">Caution</option><option value="warning">Warning</option><option value="danger">Danger</option>
                   </select>
@@ -369,12 +369,12 @@ export default function OffenderRegistryPage() {
               </div>
 
               <div>
-                <label className="text-[10px] font-mono text-rmpg-500 uppercase">Description *</label>
+                <label className="field-label">Description *</label>
                 <textarea value={formData.description} onChange={e => setFormData(p => ({ ...p, description: e.target.value }))} rows={3} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
               </div>
 
               <div>
-                <label className="text-[10px] font-mono text-rmpg-500 uppercase">Expiration Date</label>
+                <label className="field-label">Expiration Date</label>
                 <input type="date" value={formData.expiration_date} onChange={e => setFormData(p => ({ ...p, expiration_date: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
               </div>
 

@@ -1,6 +1,16 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { User } from '../types';
 
+export type LoginStep =
+  | 'username'
+  | 'password'
+  | 'verify_2fa'
+  | 'setup_2fa'
+  | 'confirm_setup_2fa'
+  | 'show_backup_codes'
+  | 'password_change'
+  | 'complete';
+
 interface LoginResult {
   requires2FA: boolean;
   success: boolean;
@@ -14,12 +24,27 @@ interface AuthContextType {
   loginBusy: boolean;
   login: (username: string, password: string) => Promise<LoginResult>;
   verify2FA: (code: string) => Promise<void>;
+  verifyBackupCode: (code: string) => Promise<void>;
+  /** Verify 2FA using a WebAuthn security key (YubiKey / Touch ID) */
+  verifyWebAuthn: () => Promise<void>;
+  setup2FA: () => Promise<{ qrCodeDataUri: string; manualKey: string }>;
+  confirmSetup2FA: (code: string) => Promise<{ backupCodes: string[] }>;
+  changePasswordDuringLogin: (newPassword: string) => Promise<void>;
   pending2FA: boolean;
+  /** Expose temp token for WebAuthn authenticate-options flow */
+  tempToken: string | null;
   cancel2FA: () => void;
   logout: () => void;
   refreshUser: () => Promise<void>;
   error: string | null;
   clearError: () => void;
+  // Multi-step login state
+  loginStep: LoginStep;
+  setLoginStep: (step: LoginStep) => void;
+  loginUsername: string;
+  setLoginUsername: (u: string) => void;
+  pendingBackupCodes: string[] | null;
+  requiresPasswordChange: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -52,6 +77,32 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = AU
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
+// Generate a device fingerprint hash for trusted device recognition
+async function getDeviceFingerprint(): Promise<string> {
+  const raw = [
+    navigator.userAgent,
+    navigator.language,
+    screen.width + 'x' + screen.height,
+    Intl.DateTimeFormat().resolvedOptions().timeZone,
+  ].join('|');
+
+  try {
+    const buffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw));
+    return Array.from(new Uint8Array(buffer))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+  } catch {
+    // Fallback for environments without SubtleCrypto
+    let hash = 0;
+    for (let i = 0; i < raw.length; i++) {
+      const char = raw.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash |= 0;
+    }
+    return Math.abs(hash).toString(16);
+  }
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -261,6 +312,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // and would show the full-screen "Initializing…" overlay).
   const [loginBusy, setLoginBusy] = useState(false);
 
+  // ── Multi-step login state ────────────────────────────
+  const [loginStep, setLoginStep] = useState<LoginStep>('username');
+  const [loginUsername, setLoginUsername] = useState('');
+  const [pendingBackupCodes, setPendingBackupCodes] = useState<string[] | null>(null);
+  const [requiresPasswordChange, setRequiresPasswordChange] = useState(false);
+  const deviceFingerprintRef = useRef<string | null>(null);
+
+  // Initialize device fingerprint
+  useEffect(() => {
+    getDeviceFingerprint().then(fp => { deviceFingerprintRef.current = fp; });
+  }, []);
+
   // ── Two-Factor Authentication state ───────────────────
   const [pending2FA, setPending2FA] = useState(false);
   const [tempToken, setTempToken] = useState<string | null>(null);
@@ -269,6 +332,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setPending2FA(false);
     setTempToken(null);
     setError(null);
+    setLoginStep('password');
   }, []);
 
   const verify2FA = useCallback(async (code: string) => {
@@ -280,11 +344,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const res = await fetch('/api/auth/verify-2fa', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tempToken, code }),
+        body: JSON.stringify({ tempToken, code, deviceFingerprint: deviceFingerprintRef.current }),
       });
 
       if (res.ok) {
         const data = await res.json();
+
+        // Server may require a password change after 2FA verification
+        if (data.step === 'password_change') {
+          setTempToken(data.tempToken);
+          setRequiresPasswordChange(true);
+          setLoginStep('password_change');
+          return;
+        }
+
         localStorage.setItem(TOKEN_KEY, data.token);
         if (data.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
         if (data.sessionId) localStorage.setItem(SESSION_ID_KEY, data.sessionId);
@@ -295,12 +368,97 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setTempToken(null);
         setIsLoading(false);
         scheduleRefresh(data.token);
+        setLoginStep('complete');
       } else {
         const errData = await res.json().catch(() => ({}));
+        if (errData.code === 'MFA_EXPIRED') {
+          setLoginStep('password');
+          setPending2FA(false);
+          throw new Error('Verification expired. Please enter your password again.');
+        }
         const message = errData.error || 'Invalid verification code';
         setError(message);
         throw new Error(message);
       }
+    } finally {
+      setLoginBusy(false);
+    }
+  }, [tempToken, scheduleRefresh]);
+
+  // ── WebAuthn / Security Key 2FA verification ─────────
+  const verifyWebAuthn = useCallback(async () => {
+    if (!tempToken) throw new Error('No pending 2FA session');
+    setLoginBusy(true);
+    setError(null);
+
+    try {
+      // 1. Get authentication options from server
+      const optionsRes = await fetch('/api/auth/webauthn/authenticate-options', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tempToken }),
+      });
+
+      if (!optionsRes.ok) {
+        const errData = await optionsRes.json().catch(() => ({}));
+        throw new Error(errData.error || 'Failed to get security key options');
+      }
+
+      const { options, challengeId } = await optionsRes.json();
+
+      // 2. Prompt the user's security key (browser native WebAuthn dialog)
+      const { startAuthentication } = await import('@simplewebauthn/browser');
+      const authResponse = await startAuthentication({ optionsJSON: options });
+
+      // 3. Verify with server
+      const verifyRes = await fetch('/api/auth/webauthn/authenticate-verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ challengeId, tempToken, response: authResponse }),
+      });
+
+      if (verifyRes.ok) {
+        const data = await verifyRes.json();
+
+        if (data.step === 'password_change') {
+          setTempToken(data.tempToken);
+          setRequiresPasswordChange(true);
+          setLoginStep('password_change');
+          return;
+        }
+
+        localStorage.setItem(TOKEN_KEY, data.token);
+        if (data.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
+        if (data.sessionId) localStorage.setItem(SESSION_ID_KEY, data.sessionId);
+
+        setUser(data.user);
+        setToken(data.token);
+        setPending2FA(false);
+        setTempToken(null);
+        setIsLoading(false);
+        scheduleRefresh(data.token);
+        setLoginStep('complete');
+      } else {
+        const errData = await verifyRes.json().catch(() => ({}));
+        const message = errData.error || 'Security key verification failed';
+        setError(message);
+        throw new Error(message);
+      }
+    } catch (err: any) {
+      console.warn('[WEBAUTHN] Auth error:', err?.name, err?.code, err?.message);
+      // Handle WebAuthn-specific errors with clear messages
+      if (err?.name === 'NotAllowedError') {
+        setError('Security key verification was cancelled or timed out. Try again.');
+      } else if (err?.name === 'SecurityError') {
+        setError('Security key not available on this domain.');
+      } else if (err?.message?.includes('not supported')) {
+        setError('WebAuthn is not supported in this browser.');
+      } else if (err?.message?.includes('No security keys registered')) {
+        setError('No security keys are registered. Set up a key in Profile → Security.');
+      } else {
+        setError(err?.message || 'Security key verification failed');
+      }
+      throw err;
     } finally {
       setLoginBusy(false);
     }
@@ -311,20 +469,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setError(null);
 
     try {
+      const deviceFingerprint = deviceFingerprintRef.current;
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, password, deviceFingerprint }),
       });
 
       if (res.ok) {
         const data = await res.json();
 
         // ── Two-Factor Authentication required ──────────
-        if (data.requires2FA) {
+        if (data.requires2FA || data.step === 'verify_2fa') {
           setTempToken(data.tempToken);
           setPending2FA(true);
+          setRequiresPasswordChange(!!data.requiresPasswordChange);
+          setLoginStep('verify_2fa');
           return { requires2FA: true, success: false };
+        }
+
+        // ── 2FA Setup required ──────────────────────────
+        if (data.step === 'setup_2fa') {
+          setTempToken(data.tempToken);
+          setRequiresPasswordChange(!!data.requiresPasswordChange);
+          setLoginStep('setup_2fa');
+          return { requires2FA: false, success: false };
+        }
+
+        // ── Password change required ────────────────────
+        if (data.step === 'password_change') {
+          setTempToken(data.tempToken);
+          setRequiresPasswordChange(true);
+          setLoginStep('password_change');
+          return { requires2FA: false, success: false };
         }
 
         localStorage.setItem(TOKEN_KEY, data.token);
@@ -344,6 +521,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setToken(data.token);
         setIsLoading(false);
         scheduleRefresh(data.token);
+        setLoginStep('complete');
 
         // Trigger offline sync to seed local DB (fire-and-forget)
         if (electron?.triggerSync) {
@@ -384,6 +562,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         setToken(mockToken);
         setIsLoading(false);
+        setLoginStep('complete');
         return { requires2FA: false, success: true };
       } else {
         const message = err instanceof Error ? err.message : 'Login failed';
@@ -395,6 +574,173 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [scheduleRefresh]);
 
+  // ─── Verify Backup Code ──────────────────────────
+  const verifyBackupCode = useCallback(async (code: string) => {
+    if (!tempToken) throw new Error('No pending 2FA session');
+    setLoginBusy(true);
+    setError(null);
+
+    try {
+      const res = await fetch('/api/auth/login/verify-backup-code', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${tempToken}`,
+        },
+        body: JSON.stringify({ code, deviceFingerprint: deviceFingerprintRef.current }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+
+        if (data.step === 'password_change') {
+          setTempToken(data.tempToken);
+          setRequiresPasswordChange(true);
+          setLoginStep('password_change');
+          return;
+        }
+
+        localStorage.setItem(TOKEN_KEY, data.token);
+        if (data.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
+        if (data.sessionId) localStorage.setItem(SESSION_ID_KEY, data.sessionId);
+        setUser(data.user);
+        setToken(data.token);
+        setPending2FA(false);
+        setTempToken(null);
+        setIsLoading(false);
+        scheduleRefresh(data.token);
+        setLoginStep('complete');
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Invalid backup code');
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Verification failed';
+      setError(message);
+      throw err;
+    } finally {
+      setLoginBusy(false);
+    }
+  }, [tempToken, scheduleRefresh]);
+
+  // ─── Setup 2FA (get QR code) ─────────────────────
+  const setup2FA = useCallback(async (): Promise<{ qrCodeDataUri: string; manualKey: string }> => {
+    if (loginBusy) throw new Error('Setup already in progress');
+    setLoginBusy(true);
+    setError(null);
+
+    try {
+      const res = await fetch('/api/auth/2fa/setup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${tempToken}`,
+        },
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Failed to start 2FA setup');
+      }
+
+      const data = await res.json();
+      return { qrCodeDataUri: data.qrCodeDataUri, manualKey: data.manualKey };
+    } finally {
+      setLoginBusy(false);
+    }
+  }, [tempToken, loginBusy]);
+
+  // ─── Confirm 2FA Setup (verify first code) ───────
+  const confirmSetup2FA = useCallback(async (code: string) => {
+    setLoginBusy(true);
+    setError(null);
+
+    try {
+      const res = await fetch('/api/auth/2fa/setup/verify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${tempToken}`,
+        },
+        body: JSON.stringify({ code, deviceFingerprint: deviceFingerprintRef.current }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Invalid code');
+      }
+
+      const data = await res.json();
+      setPendingBackupCodes(data.backupCodes);
+
+      if (data.requiresPasswordChange && data.tempToken) {
+        setTempToken(data.tempToken);
+        setRequiresPasswordChange(true);
+        setLoginStep('show_backup_codes');
+        return { backupCodes: data.backupCodes };
+      }
+
+      if (data.token) {
+        localStorage.setItem(TOKEN_KEY, data.token);
+        if (data.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
+        if (data.sessionId) localStorage.setItem(SESSION_ID_KEY, data.sessionId);
+        // Update React state so the app recognizes the authenticated session
+        setToken(data.token);
+        if (data.user) setUser(data.user);
+        scheduleRefresh(data.token);
+      }
+
+      setLoginStep('show_backup_codes');
+      return { backupCodes: data.backupCodes };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Setup verification failed';
+      setError(message);
+      throw err;
+    } finally {
+      setLoginBusy(false);
+    }
+  }, [tempToken, scheduleRefresh]);
+
+  // ─── Change Password During Login ────────────────
+  const changePasswordDuringLogin = useCallback(async (newPassword: string) => {
+    setLoginBusy(true);
+    setError(null);
+
+    try {
+      const res = await fetch('/api/auth/login/change-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${tempToken}`,
+        },
+        body: JSON.stringify({ newPassword, deviceFingerprint: deviceFingerprintRef.current }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Password change failed');
+      }
+
+      const data = await res.json();
+      localStorage.setItem(TOKEN_KEY, data.token);
+      if (data.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
+      if (data.sessionId) localStorage.setItem(SESSION_ID_KEY, data.sessionId);
+      setUser(data.user);
+      setToken(data.token);
+      setIsLoading(false);
+      scheduleRefresh(data.token);
+      setLoginStep('complete');
+      setTempToken(null);
+      setRequiresPasswordChange(false);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Password change failed';
+      setError(message);
+      throw err;
+    } finally {
+      setLoginBusy(false);
+    }
+  }, [tempToken, scheduleRefresh]);
+
   const logout = useCallback(() => {
     const currentToken = localStorage.getItem(TOKEN_KEY);
     const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
@@ -403,6 +749,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     clearTokens();
     setToken(null);
     setUser(null);
+    setLoginStep('username');
+    setTempToken(null);
+    setPendingBackupCodes(null);
+    setRequiresPasswordChange(false);
 
     // Best-effort notify server
     if (currentToken) {
@@ -450,13 +800,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loginBusy,
     login,
     verify2FA,
+    verifyBackupCode,
+    verifyWebAuthn,
+    setup2FA,
+    confirmSetup2FA,
+    changePasswordDuringLogin,
     pending2FA,
+    tempToken,
     cancel2FA,
     logout,
     refreshUser,
     error,
     clearError,
-  }), [user, token, isLoading, loginBusy, login, verify2FA, pending2FA, cancel2FA, logout, refreshUser, error, clearError]);
+    loginStep,
+    setLoginStep,
+    loginUsername,
+    setLoginUsername,
+    pendingBackupCodes,
+    requiresPasswordChange,
+  }), [user, token, isLoading, loginBusy, login, verify2FA, verifyBackupCode, verifyWebAuthn, setup2FA, confirmSetup2FA, changePasswordDuringLogin, pending2FA, tempToken, cancel2FA, logout, refreshUser, error, clearError, loginStep, loginUsername, pendingBackupCodes, requiresPasswordChange]);
 
   return (
     <AuthContext.Provider value={contextValue}>

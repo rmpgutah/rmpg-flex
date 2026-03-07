@@ -135,9 +135,9 @@ const STATUS_BADGE: Record<string, string> = {
   issued: 'bg-blue-900/50 text-blue-300 border-blue-700/50',
   paid: 'bg-green-900/50 text-green-300 border-green-700/50',
   contested: 'bg-amber-900/50 text-amber-300 border-amber-700/50',
-  dismissed: 'bg-gray-700/50 text-rmpg-300 border-rmpg-600/50',
+  dismissed: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
   warrant_issued: 'bg-red-900/60 text-red-300 border-red-700/50',
-  voided: 'bg-gray-800/50 text-rmpg-500 border-rmpg-700/50',
+  voided: 'bg-rmpg-800/50 text-rmpg-500 border-rmpg-700/50',
 };
 
 const TYPE_BADGE: Record<string, string> = {
@@ -870,7 +870,7 @@ export default function CitationsPage() {
           </h3>
           <div className="space-y-3">
             <div>
-              <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Statute Search</label>
+              <label className="field-label">Statute Search</label>
               <StatuteLookup
                 onSelect={handleStatuteSelect}
                 value={form.statute_citation || undefined}
@@ -879,18 +879,18 @@ export default function CitationsPage() {
                 placeholder="Search statute code or description..."
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Statute Citation</label>
+                <label className="field-label">Statute Citation</label>
                 <input type="text" value={form.statute_citation} onChange={e => updateField('statute_citation', e.target.value)} placeholder="e.g. 41-6a-601" className="input-dark w-full py-2 text-xs font-mono" />
               </div>
               <div>
-                <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Offense Level</label>
+                <label className="field-label">Offense Level</label>
                 <input type="text" value={form.offense_level} onChange={e => updateField('offense_level', e.target.value)} placeholder="e.g. infraction" className="input-dark w-full py-2 text-xs capitalize" />
               </div>
             </div>
             <div>
-              <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Violation Description *</label>
+              <label className="field-label">Violation Description *</label>
               <input
                 type="text"
                 value={form.violation_description}
@@ -901,7 +901,7 @@ export default function CitationsPage() {
               {formErrors.violation_description && <p className="text-red-400 text-[10px] mt-1">{formErrors.violation_description}</p>}
             </div>
             <div>
-              <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Fine Amount ($)</label>
+              <label className="field-label">Fine Amount ($)</label>
               <div className="relative">
                 <DollarSign size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-rmpg-400" />
                 <input type="number" step="0.01" min="0" value={form.fine_amount} onChange={e => updateField('fine_amount', e.target.value)} placeholder="0.00" className="input-dark w-full py-2 pl-8 text-xs" />
@@ -917,7 +917,7 @@ export default function CitationsPage() {
           </h3>
           <div className="space-y-3">
             <div ref={personDropdownRef} className="relative">
-              <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Search Existing Person</label>
+              <label className="field-label">Search Existing Person</label>
               <div className="relative">
                 <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-rmpg-400" />
                 <input
@@ -960,7 +960,7 @@ export default function CitationsPage() {
             )}
 
             <div>
-              <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Full Name *</label>
+              <label className="field-label">Full Name *</label>
               <input
                 type="text"
                 value={form.person_name}
@@ -971,19 +971,19 @@ export default function CitationsPage() {
               {formErrors.person_name && <p className="text-red-400 text-[10px] mt-1">{formErrors.person_name}</p>}
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Date of Birth</label>
+                <label className="field-label">Date of Birth</label>
                 <input type="date" value={form.person_dob} onChange={e => updateField('person_dob', e.target.value)} className="input-dark w-full py-2 text-xs" />
               </div>
               <div>
-                <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Driver License #</label>
+                <label className="field-label">Driver License #</label>
                 <input type="text" value={form.person_dl} onChange={e => updateField('person_dl', e.target.value)} placeholder="DL number" className="input-dark w-full py-2 text-xs font-mono" />
               </div>
             </div>
 
             <div>
-              <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Address</label>
+              <label className="field-label">Address</label>
               <input type="text" value={form.person_address} onChange={e => updateField('person_address', e.target.value)} placeholder="Street, City, State ZIP" className="input-dark w-full py-2 text-xs" />
             </div>
           </div>
@@ -997,16 +997,16 @@ export default function CitationsPage() {
             </h3>
             <div className="space-y-3">
               <div>
-                <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Vehicle Description</label>
+                <label className="field-label">Vehicle Description</label>
                 <input type="text" value={form.vehicle_description} onChange={e => updateField('vehicle_description', e.target.value)} placeholder="Year Make Model Color" className="input-dark w-full py-2 text-xs" />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] uppercase text-rmpg-500 mb-1">License Plate</label>
+                  <label className="field-label">License Plate</label>
                   <input type="text" value={form.vehicle_plate} onChange={e => updateField('vehicle_plate', e.target.value.toUpperCase())} placeholder="ABC1234" className="input-dark w-full py-2 text-xs font-mono uppercase" />
                 </div>
                 <div>
-                  <label className="block text-[10px] uppercase text-rmpg-500 mb-1">State</label>
+                  <label className="field-label">State</label>
                   <select value={form.vehicle_state} onChange={e => updateField('vehicle_state', e.target.value)} className="input-dark w-full py-2 text-xs">
                     {US_STATES.map(st => <option key={st} value={st}>{st}</option>)}
                   </select>
@@ -1022,9 +1022,9 @@ export default function CitationsPage() {
             <Calendar size={12} /> Location & Time
           </h3>
           <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Violation Date *</label>
+                <label className="field-label">Violation Date *</label>
                 <input
                   type="date"
                   value={form.violation_date}
@@ -1034,12 +1034,12 @@ export default function CitationsPage() {
                 {formErrors.violation_date && <p className="text-red-400 text-[10px] mt-1">{formErrors.violation_date}</p>}
               </div>
               <div>
-                <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Violation Time</label>
+                <label className="field-label">Violation Time</label>
                 <input type="time" value={form.violation_time} onChange={e => updateField('violation_time', e.target.value)} className="input-dark w-full py-2 text-xs" />
               </div>
             </div>
             <div>
-              <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Location</label>
+              <label className="field-label">Location</label>
               <input type="text" value={form.location} onChange={e => updateField('location', e.target.value)} placeholder="Address or intersection" className="input-dark w-full py-2 text-xs" />
             </div>
           </div>
@@ -1050,13 +1050,13 @@ export default function CitationsPage() {
           <h3 className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2 flex items-center gap-1.5">
             <User size={12} /> Issuing Officer
           </h3>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Officer Name</label>
+              <label className="field-label">Officer Name</label>
               <input type="text" value={form.issuing_officer_name} onChange={e => updateField('issuing_officer_name', e.target.value)} className="input-dark w-full py-2 text-xs" />
             </div>
             <div>
-              <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Badge #</label>
+              <label className="field-label">Badge #</label>
               <input type="text" value={form.badge_number} onChange={e => updateField('badge_number', e.target.value)} className="input-dark w-full py-2 text-xs font-mono" />
             </div>
           </div>
@@ -1069,15 +1069,15 @@ export default function CitationsPage() {
           </h3>
           <div className="space-y-3">
             <div>
-              <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Court Date</label>
+              <label className="field-label">Court Date</label>
               <input type="date" value={form.court_date} onChange={e => updateField('court_date', e.target.value)} className="input-dark w-full py-2 text-xs" />
             </div>
             <div>
-              <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Court Name</label>
+              <label className="field-label">Court Name</label>
               <input type="text" value={form.court_name} onChange={e => updateField('court_name', e.target.value)} placeholder="e.g. Provo Justice Court" className="input-dark w-full py-2 text-xs" />
             </div>
             <div>
-              <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Court Address</label>
+              <label className="field-label">Court Address</label>
               <input type="text" value={form.court_address} onChange={e => updateField('court_address', e.target.value)} placeholder="Street, City, State ZIP" className="input-dark w-full py-2 text-xs" />
             </div>
           </div>

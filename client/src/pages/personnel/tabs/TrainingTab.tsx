@@ -90,7 +90,7 @@ export default function TrainingTab({ training, requirements, officers, loading,
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
       {/* Summary Cards */}
-      <div className="grid grid-cols-5 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
         <div className="panel-beveled p-2.5 text-center bg-surface-base border-t-2 border-t-rmpg-500">
           <p className="text-lg font-bold font-mono text-rmpg-100">{training.length}</p>
           <p className="text-[8px] uppercase text-rmpg-400 font-bold tracking-wider">Total Records</p>

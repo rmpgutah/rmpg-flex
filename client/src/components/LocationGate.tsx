@@ -24,24 +24,24 @@ export default function LocationGate({ permissionDenied, onRetry }: LocationGate
   if (permissionDenied) {
     return (
       <div style={{
-        background: 'rgba(188, 16, 16, 0.12)',
-        borderBottom: '1px solid #5a1010',
+        background: 'rgba(220, 38, 38, 0.12)',
+        borderBottom: '1px solid #991b1b',
         padding: '8px 16px',
         display: 'flex',
         alignItems: 'center',
         gap: 10,
         fontSize: 11,
       }}>
-        <AlertTriangle size={14} color="#d93030" style={{ flexShrink: 0 }} />
+        <AlertTriangle size={14} color="#ef4444" style={{ flexShrink: 0 }} />
         <span style={{ color: '#ccc', flex: 1 }}>
-          <strong style={{ color: '#d93030' }}>Location disabled</strong>
+          <strong style={{ color: '#ef4444' }}>Location disabled</strong>
           {' — '}GPS tracking is not active. Enable location access in your browser or device settings for full functionality.
         </span>
         <button
           onClick={onRetry}
           style={{
             padding: '3px 10px',
-            background: '#bc1010',
+            background: '#dc2626',
             color: '#fff',
             border: 'none',
             fontSize: 10,
@@ -59,7 +59,7 @@ export default function LocationGate({ permissionDenied, onRetry }: LocationGate
           style={{
             background: 'none',
             border: 'none',
-            color: '#666',
+            color: '#5a6e80',
             cursor: 'pointer',
             padding: 2,
             display: 'flex',

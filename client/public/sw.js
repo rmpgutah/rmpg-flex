@@ -3,14 +3,22 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v45: Offline tile layer caching (CartoDB dark_matter Z7-15).
+//      Pre-downloads 1,738 tiles (~11 MB) for Utah operational
+//      area so maps work on vehicle WiFi dead zones.
 // ============================================================
 
-const CACHE_NAME = 'rmpg-flex-v41';
+const CACHE_NAME = 'rmpg-flex-v45';
+const TILE_CACHE_NAME = 'rmpg-flex-tiles-v1';
 const STATIC_ASSETS = [
   '/',
   '/manifest.json',
   '/favicon.png',
   '/rmpg flex.png',
+  '/maps/utah-z7.png',
+  '/maps/utah-slc-z11.png',
+  '/maps/utah-slc-z13.png',
+  '/tiles/manifest.json',
 ];
 
 // Install — pre-cache core shell, immediately activate
@@ -22,15 +30,14 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
-// Activate — clean ALL old caches, claim clients, notify of update
+// Activate — clean old caches, claim clients, notify, then start tile pre-cache
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
-      // Delete every cache that isn't the current version
-      const oldKeys = keys.filter((k) => k !== CACHE_NAME);
+      // Delete old caches (but preserve the current tile cache)
+      const oldKeys = keys.filter((k) => k !== CACHE_NAME && k !== TILE_CACHE_NAME);
       return Promise.all(oldKeys.map((k) => caches.delete(k))).then(() => {
         if (oldKeys.length > 0) {
-          // Notify all clients that an update was applied
           self.clients.matchAll({ type: 'window' }).then((clients) => {
             clients.forEach((client) => {
               client.postMessage({ type: 'SW_UPDATED', cacheName: CACHE_NAME });
@@ -39,25 +46,116 @@ self.addEventListener('activate', (event) => {
         }
       });
     })
+    .then(() => self.clients.claim())
+    .then(() => {
+      // Kick off background tile pre-caching (non-blocking)
+      precacheTiles();
+    })
   );
-  // Take control of all open tabs immediately
-  self.clients.claim();
 });
 
-// Fetch — network-first for code/pages, cache-first only for images
+// ── Background Tile Pre-Caching ────────────────────────────
+// Reads the tile manifest and caches tiles in batches of 50.
+// Runs after activation so it doesn't block SW install.
+// If the user revisits, already-cached tiles are skipped.
+async function precacheTiles() {
+  try {
+    const resp = await fetch('/tiles/manifest.json');
+    if (!resp.ok) return;
+    const tilePaths = await resp.json();
+    if (!Array.isArray(tilePaths) || tilePaths.length === 0) return;
+
+    const tileCache = await caches.open(TILE_CACHE_NAME);
+
+    // Check which tiles are already cached
+    const uncached = [];
+    for (const path of tilePaths) {
+      const existing = await tileCache.match(path);
+      if (!existing) uncached.push(path);
+    }
+
+    if (uncached.length === 0) return;
+
+    // Cache in batches of 50
+    const BATCH = 50;
+    let done = 0;
+    for (let i = 0; i < uncached.length; i += BATCH) {
+      const batch = uncached.slice(i, i + BATCH);
+      await Promise.all(
+        batch.map((path) =>
+          fetch(path)
+            .then((r) => {
+              if (r.ok) return tileCache.put(path, r);
+            })
+            .catch(() => { /* skip failed tiles — will be retried on next activation */ })
+        )
+      );
+      done += batch.length;
+
+      // Notify clients of progress
+      self.clients.matchAll({ type: 'window' }).then((clients) => {
+        clients.forEach((c) => {
+          c.postMessage({
+            type: 'TILE_PRECACHE_PROGRESS',
+            done,
+            total: uncached.length,
+          });
+        });
+      });
+    }
+
+    // Notify completion
+    self.clients.matchAll({ type: 'window' }).then((clients) => {
+      clients.forEach((c) => {
+        c.postMessage({ type: 'TILE_PRECACHE_COMPLETE', count: uncached.length });
+      });
+    });
+  } catch (err) {
+    // Non-fatal — tiles will be cached on-demand via fetch handler
+  }
+}
+
+// Fetch — network-first for code/pages, cache-first for images and tiles
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
   // Never cache API calls, WebSocket, POST requests, or external map tiles
-  // Map tiles from Google must bypass the SW entirely — cache-first fails
-  // silently on slow/intermittent connections (vehicle WiFi), causing a
-  // black screen since tiles never reach the map renderer.
   if (
     url.pathname.startsWith('/api') ||
     url.pathname.startsWith('/ws') ||
     event.request.method !== 'GET' ||
     url.origin !== self.location.origin
   ) {
+    return;
+  }
+
+  // ── Offline map tiles — cache-first from tile cache ──
+  // These are pre-downloaded CartoDB dark_matter tiles in /tiles/{z}/{x}/{y}.png
+  // Cache-first is correct because tiles are static and never change.
+  if (url.pathname.startsWith('/tiles/')) {
+    event.respondWith(
+      caches.open(TILE_CACHE_NAME).then((tileCache) =>
+        tileCache.match(event.request).then((cached) => {
+          if (cached) return cached;
+          // Not in tile cache — try main cache, then network
+          return caches.match(event.request).then((mainCached) => {
+            if (mainCached) return mainCached;
+            return fetch(event.request).then((response) => {
+              if (response.ok) {
+                tileCache.put(event.request, response.clone());
+              }
+              return response;
+            }).catch(() => {
+              // Tile unavailable offline — return transparent 1x1 PNG
+              return new Response(
+                Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='), c => c.charCodeAt(0)),
+                { status: 200, headers: { 'Content-Type': 'image/png' } }
+              );
+            });
+          });
+        })
+      )
+    );
     return;
   }
 
@@ -76,8 +174,6 @@ self.addEventListener('fetch', (event) => {
   }
 
   // JS and CSS files — NETWORK FIRST, cache fallback
-  // Even though Vite hashes filenames, same hash can have different content
-  // across deploys (e.g. build config changes, define replacements)
   if (url.pathname.match(/\.(js|css)$/)) {
     event.respondWith(
       fetch(event.request)
@@ -108,6 +204,19 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
+// ─── Background Sync ────────────────────────────────────────
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'offline-sync-push') {
+    event.waitUntil(
+      self.clients.matchAll({ type: 'window' }).then((clients) => {
+        clients.forEach((client) => {
+          client.postMessage({ type: 'SYNC_PUSH_REQUESTED' });
+        });
+      })
+    );
+  }
+});
+
 // Listen for messages from the client
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
@@ -115,5 +224,14 @@ self.addEventListener('message', (event) => {
   }
   if (event.data && event.data.type === 'CHECK_UPDATE') {
     self.registration.update();
+  }
+  if (event.data && event.data.type === 'REGISTER_SYNC') {
+    if (self.registration.sync) {
+      self.registration.sync.register('offline-sync-push').catch(() => {});
+    }
+  }
+  // Allow manual trigger of tile pre-caching
+  if (event.data && event.data.type === 'PRECACHE_TILES') {
+    precacheTiles();
   }
 });

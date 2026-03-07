@@ -42,7 +42,7 @@ interface BrandingConfig {
 const DEFAULT_BRANDING: BrandingConfig = {
   report_header_text: 'RMPG SECURITY SERVICES',
   report_subheader_text: 'PRIVATE SECURITY',
-  primary_color: '#bc1010',
+  primary_color: '#1a5a9e',
   accent_color: '#d4a017',
   header_bg_color: '#000000',
   report_footer_text: 'This document is the property of RMPG Security Services. Unauthorized distribution is prohibited.',
@@ -144,7 +144,7 @@ export default function AdminBrandingTab({ LoadingSpinner, error, setError }: Ad
           <h3 className="text-xs font-bold text-rmpg-200 uppercase tracking-wider">Brand Colors</h3>
         </div>
 
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Primary Color</label>
             <div className="flex items-center gap-2">

@@ -78,7 +78,7 @@ export default function DeploymentTab({ deployments, coverageGaps, officers, loa
             <AlertTriangle className="w-4 h-4 text-red-400" />
             <span className="text-xs font-bold text-red-400 uppercase tracking-wider">Coverage Gaps Detected</span>
           </div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             {gapsWithDeficit.map((gap) => (
               <div
                 key={`${gap.property_id}-${gap.shift_type}`}
@@ -99,7 +99,7 @@ export default function DeploymentTab({ deployments, coverageGaps, officers, loa
       )}
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <div className="panel-beveled p-2.5 text-center bg-surface-base border-t-2 border-t-rmpg-500">
           <p className="text-lg font-bold font-mono text-rmpg-100">{deployments.length}</p>
           <p className="text-[8px] uppercase text-rmpg-400 font-bold tracking-wider">Total Deployments</p>

@@ -117,25 +117,25 @@ function formatType(type: string): string {
 const OFFENSE_LEVEL_CLASSES: Record<string, string> = {
   felony: 'bg-red-900/60 text-red-300 border-red-700/50',
   misdemeanor: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
-  infraction: 'bg-gray-700/50 text-rmpg-300 border-rmpg-600/50',
+  infraction: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
   civil: 'bg-brand-900/50 text-brand-400 border-brand-700/50',
 };
 
 const WARRANT_STATUS_CLASSES: Record<string, string> = {
   active: 'bg-red-900/60 text-red-300 border-red-600/60',
   served: 'bg-green-900/50 text-green-400 border-green-700/50',
-  recalled: 'bg-gray-700/50 text-rmpg-300 border-rmpg-600/50',
-  expired: 'bg-gray-700/50 text-rmpg-400 border-rmpg-600/50',
-  quashed: 'bg-gray-700/50 text-rmpg-400 border-rmpg-600/50',
+  recalled: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
+  expired: 'bg-rmpg-700/50 text-rmpg-400 border-rmpg-600/50',
+  quashed: 'bg-rmpg-700/50 text-rmpg-400 border-rmpg-600/50',
 };
 
 const CITATION_STATUS_CLASSES: Record<string, string> = {
   issued: 'bg-blue-900/60 text-blue-300 border-blue-600/60',
   paid: 'bg-green-900/50 text-green-400 border-green-700/50',
   contested: 'bg-amber-900/50 text-amber-300 border-amber-700/50',
-  dismissed: 'bg-gray-700/50 text-rmpg-300 border-rmpg-600/50',
+  dismissed: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
   warrant_issued: 'bg-red-900/60 text-red-300 border-red-600/60',
-  voided: 'bg-gray-700/50 text-rmpg-400 border-rmpg-600/50 line-through',
+  voided: 'bg-rmpg-700/50 text-rmpg-400 border-rmpg-600/50 line-through',
 };
 
 const CITATION_TYPE_CLASSES: Record<string, string> = {
@@ -306,7 +306,7 @@ export default function PersonHistoryPanel({
                     </span>
                     <span
                       className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold uppercase border panel-beveled ${
-                        WARRANT_STATUS_CLASSES[w.status] || 'bg-gray-700 text-rmpg-300 border-rmpg-600'
+                        WARRANT_STATUS_CLASSES[w.status] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'
                       }`}
                     >
                       {toDisplayLabel(w.status)}
@@ -317,7 +317,7 @@ export default function PersonHistoryPanel({
                     {w.offense_level && (
                       <span
                         className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold uppercase border panel-beveled ${
-                          OFFENSE_LEVEL_CLASSES[w.offense_level] || 'bg-gray-700 text-rmpg-300 border-rmpg-600'
+                          OFFENSE_LEVEL_CLASSES[w.offense_level] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'
                         }`}
                       >
                         {toDisplayLabel(w.offense_level)}
@@ -374,7 +374,7 @@ export default function PersonHistoryPanel({
                   <span className="text-white font-mono font-bold text-[11px]">{c.citation_number}</span>
                   <span
                     className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold uppercase border panel-beveled ${
-                      CITATION_STATUS_CLASSES[c.status] || 'bg-gray-700 text-rmpg-300 border-rmpg-600'
+                      CITATION_STATUS_CLASSES[c.status] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'
                     }`}
                   >
                     {c.status.replace(/_/g, ' ')}
@@ -389,7 +389,7 @@ export default function PersonHistoryPanel({
                   {c.offense_level && (
                     <span
                       className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold uppercase border panel-beveled ${
-                        OFFENSE_LEVEL_CLASSES[c.offense_level] || 'bg-gray-700 text-rmpg-300 border-rmpg-600'
+                        OFFENSE_LEVEL_CLASSES[c.offense_level] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'
                       }`}
                     >
                       {toDisplayLabel(c.offense_level)}

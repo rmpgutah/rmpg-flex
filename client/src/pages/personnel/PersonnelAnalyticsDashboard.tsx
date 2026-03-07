@@ -39,7 +39,7 @@ export default function PersonnelAnalyticsDashboard({ officers, credentials, tim
       </h3>
 
       {/* Summary Stats */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="panel-beveled p-3 text-center bg-surface-base border-t-2 border-t-brand-500">
           <Users className="w-4 h-4 mx-auto text-brand-400 mb-1" />
           <p className="text-xl font-bold font-mono text-white">{officers.length}</p>
@@ -83,7 +83,7 @@ export default function PersonnelAnalyticsDashboard({ officers, credentials, tim
             </div>
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="panel-inset p-2 text-center">
             <p className="text-lg font-bold text-green-400 font-mono">{validCreds}</p>
             <p className="field-label">Valid</p>
@@ -127,7 +127,7 @@ export default function PersonnelAnalyticsDashboard({ officers, credentials, tim
         <h4 className="field-label text-brand-400 mb-3 flex items-center gap-1.5">
           <GraduationCap className="w-3 h-3" /> Training Status
         </h4>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="panel-inset p-2 text-center">
             <p className="text-lg font-bold text-white font-mono">{training.length}</p>
             <p className="field-label">Total Records</p>

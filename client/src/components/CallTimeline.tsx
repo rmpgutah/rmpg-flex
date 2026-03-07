@@ -69,7 +69,7 @@ export default function CallTimeline({ entries, className = '' }: CallTimelinePr
         style={{
           left: '3.5px',
           width: '1px',
-          background: '#383838',
+          background: '#2a3e58',
         }}
       />
 

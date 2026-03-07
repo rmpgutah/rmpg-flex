@@ -3,12 +3,17 @@
 // Lightweight embeddable Google Maps panel showing the selected
 // call location and assigned unit positions. Used inline in the
 // Dispatch right column.
+//
+// When Google Maps fails to load (vehicle WiFi dead zones), falls
+// back to a compact Leaflet map using pre-cached offline tiles.
 // ============================================================
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Maximize2, MapPin, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { loadGoogleMaps, DARK_MAP_STYLE, registerMapInstance, unregisterMapInstance, onOnlineRetryMaps } from '../utils/googleMapsLoader';
+import { loadGoogleMaps, DARK_MAP_STYLE, registerMapInstance, unregisterMapInstance, onOnlineRetryMaps, monitorTileLoading, addOfflineTileLayer } from '../utils/googleMapsLoader';
+import { useMapRouting } from '../hooks/useMapRouting';
+import OfflineMapFallback from './OfflineMapFallback';
 import type { CallForService, Unit } from '../types';
 
 interface DispatchMiniMapProps {
@@ -17,6 +22,8 @@ interface DispatchMiniMapProps {
   onClose?: () => void;
   /** When true, fills parent container height instead of fixed 180px */
   fullHeight?: boolean;
+  /** Called when route ETA changes (for parent to display inline) */
+  onRouteUpdate?: (info: { unitCallSign: string; callNumber: string; eta: string; distance: string } | null) => void;
 }
 
 const DEFAULT_CENTER = { lat: 40.7608, lng: -111.891 }; // Salt Lake City fallback
@@ -52,13 +59,26 @@ function buildUnitMarker(callSign: string): HTMLElement {
   return el;
 }
 
-export default function DispatchMiniMap({ call, units, onClose, fullHeight }: DispatchMiniMapProps) {
+export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRouteUpdate }: DispatchMiniMapProps) {
   const navigate = useNavigate();
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<any[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tilesStalled, setTilesStalled] = useState(false);
+  const [retryingGmaps, setRetryingGmaps] = useState(false);
+  const [gmapsRetry, setGmapsRetry] = useState(0);
+  const tileMonitorRef = useRef<(() => void) | null>(null);
+  const offlineTileCleanupRef = useRef<(() => void) | null>(null);
+
+  // Classify error: auth/config vs connectivity
+  const isAuthError = error != null && (error.includes('key') || error.includes('configured'));
+  const showLeafletFallback = error != null && !isAuthError;
+
+  // Routing (auto-route when a single assigned unit has GPS)
+  const { activeRoute, showRoute, clearRoute, updateOrigin } = useMapRouting({ map: mapRef.current });
+  const lastAutoRouteRef = useRef<string>(''); // track last auto-routed unit+call combo
 
   // Load Google Maps script with retry + online auto-recovery
   useEffect(() => {
@@ -69,11 +89,12 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight }: Di
     }
 
     let cancelled = false;
+    setError(null);
 
     function attemptLoad(attempt: number) {
       if (cancelled) return;
       loadGoogleMaps(apiKey)
-        .then(() => { if (!cancelled) setLoaded(true); })
+        .then(() => { if (!cancelled) { setLoaded(true); setError(null); } })
         .catch(() => {
           if (cancelled) return;
           if (attempt < 3) {
@@ -91,7 +112,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight }: Di
     });
 
     return () => { cancelled = true; unsubOnline(); };
-  }, []);
+  }, [gmapsRetry]);
 
   // Initialize or update map
   useEffect(() => {
@@ -113,6 +134,19 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight }: Di
       });
       mapRef.current = map;
       registerMapInstance(map);
+
+      // Attach offline tile layer — pre-downloaded dark tiles show through
+      // when Google tiles fail on vehicle WiFi
+      if (offlineTileCleanupRef.current) offlineTileCleanupRef.current();
+      offlineTileCleanupRef.current = addOfflineTileLayer(map);
+
+      // Monitor tile loading for vehicle WiFi resilience
+      if (tileMonitorRef.current) tileMonitorRef.current();
+      tileMonitorRef.current = monitorTileLoading(map, {
+        onStalled: () => setTilesStalled(true),
+        onLoaded: () => setTilesStalled(false),
+        onRecovering: () => {},
+      });
     } else {
       mapRef.current.setCenter(center);
     }
@@ -170,23 +204,148 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight }: Di
     }
   }, [loaded, call?.id, call?.latitude, call?.longitude, units]);
 
-  // Cleanup: unregister map instance on unmount
+  // Auto-route: show driving route when exactly 1 assigned unit has GPS
+  useEffect(() => {
+    if (!loaded || !mapRef.current || !call?.latitude || !call?.longitude) {
+      if (activeRoute) clearRoute();
+      return;
+    }
+
+    const assignedWithGps = units.filter(u =>
+      call.assigned_units?.includes(u.call_sign) && u.latitude && u.longitude
+    );
+
+    if (assignedWithGps.length === 1) {
+      const u = assignedWithGps[0];
+      const combo = `${u.call_sign}:${call.call_number}`;
+
+      // Only re-show if the assignment changed
+      if (combo !== lastAutoRouteRef.current) {
+        lastAutoRouteRef.current = combo;
+        showRoute(u.call_sign, call.call_number || 'CALL', u.latitude!, u.longitude!, call.latitude, call.longitude);
+      } else {
+        // Same unit+call — just update GPS origin for re-routing
+        updateOrigin(u.latitude!, u.longitude!);
+      }
+    } else {
+      // Multiple or zero assigned units — clear route
+      if (activeRoute) {
+        clearRoute();
+        lastAutoRouteRef.current = '';
+      }
+    }
+  }, [loaded, call?.id, call?.latitude, call?.longitude, call?.assigned_units, units, activeRoute, showRoute, clearRoute, updateOrigin]);
+
+  // Notify parent of route changes
+  useEffect(() => {
+    if (onRouteUpdate) {
+      onRouteUpdate(activeRoute ? {
+        unitCallSign: activeRoute.unitCallSign,
+        callNumber: activeRoute.callNumber,
+        eta: activeRoute.eta,
+        distance: activeRoute.distance,
+      } : null);
+    }
+  }, [activeRoute, onRouteUpdate]);
+
+  // Cleanup: unregister map instance + tile monitor on unmount
   useEffect(() => {
     return () => {
+      if (tileMonitorRef.current) { tileMonitorRef.current(); tileMonitorRef.current = null; }
+      if (offlineTileCleanupRef.current) { offlineTileCleanupRef.current(); offlineTileCleanupRef.current = null; }
       if (mapRef.current) unregisterMapInstance(mapRef.current);
     };
   }, []);
 
-  if (error) {
+  // ── Leaflet fallback when Google Maps fails (connectivity) ──
+  if (showLeafletFallback) {
+    // Build assigned unit positions for the fallback
+    const assignedUnits = units
+      .filter(u => call?.assigned_units?.includes(u.call_sign) && u.latitude != null && u.longitude != null)
+      .map(u => ({
+        call_sign: u.call_sign,
+        lat: u.latitude!,
+        lng: u.longitude!,
+        status: u.status,
+      }));
+
+    // Build active call for the fallback
+    const fallbackCalls = call?.latitude != null && call?.longitude != null
+      ? [{
+          id: String(call.id),
+          call_number: call.call_number || 'CALL',
+          incident_type: call.incident_type || '',
+          location_address: call.location || '',
+          latitude: call.latitude,
+          longitude: call.longitude,
+          priority: call.priority || 'P3',
+        }]
+      : [];
+
     return (
-      <div className="dispatch-minimap-container" style={{ height: fullHeight ? '100%' : 180, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid #141e2b' }}>
+        {/* Toolbar (same as online mode) */}
+        <div style={{
+          position: 'absolute', top: 4, left: 4, right: 4, zIndex: 1001,
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          pointerEvents: 'none',
+        }}>
+          <span className="text-[8px] font-bold text-rmpg-400 uppercase tracking-wider px-1 py-0.5"
+            style={{ background: 'rgba(0,0,0,0.7)', pointerEvents: 'auto' }}>
+            <MapPin style={{ width: 8, height: 8, display: 'inline', marginRight: 3 }} />
+            Mini-Map
+          </span>
+          <div style={{ display: 'flex', gap: 2, pointerEvents: 'auto' }}>
+            <button
+              onClick={() => navigate('/map')}
+              className="text-rmpg-400 hover:text-white"
+              style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
+              title="Open full map"
+            >
+              <Maximize2 style={{ width: 10, height: 10 }} />
+            </button>
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="text-rmpg-400 hover:text-white"
+                style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
+                title="Close mini-map"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </div>
+
+        <OfflineMapFallback
+          className="absolute inset-0"
+          compact
+          unitPositions={assignedUnits}
+          activeCalls={fallbackCalls}
+          onRetry={() => {
+            setRetryingGmaps(true);
+            setError(null);
+            setLoaded(false);
+            setGmapsRetry(n => n + 1);
+            setTimeout(() => setRetryingGmaps(false), 5000);
+          }}
+          retrying={retryingGmaps}
+        />
+      </div>
+    );
+  }
+
+  // ── Auth error (config problem, not connectivity) ──
+  if (isAuthError) {
+    return (
+      <div className="dispatch-minimap-container" style={{ height: fullHeight ? '100%' : 180, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#060c14' }}>
         <span className="text-[9px] text-rmpg-500">{error}</span>
       </div>
     );
   }
 
   return (
-    <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid #1a1a1a' }}>
+    <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid #141e2b' }}>
       {/* Toolbar */}
       <div style={{
         position: 'absolute', top: 4, left: 4, right: 4, zIndex: 10,
@@ -220,6 +379,21 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight }: Di
         </div>
       </div>
 
+      {/* Route ETA badge (bottom-left) */}
+      {activeRoute && (
+        <div style={{
+          position: 'absolute', bottom: 4, left: 4, zIndex: 10,
+          background: 'rgba(0,0,0,0.9)', border: '1px solid #3b82f650',
+          padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
+        }}>
+          <span style={{ fontSize: 8, color: '#60a5fa', fontWeight: 900, fontFamily: "'JetBrains Mono', monospace" }}>
+            {activeRoute.unitCallSign}→{activeRoute.callNumber}
+          </span>
+          <span style={{ fontSize: 9, color: '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
+          <span style={{ fontSize: 8, color: '#6b7280' }}>{activeRoute.distance}</span>
+        </div>
+      )}
+
       {/* Map container */}
       <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
 
@@ -227,9 +401,27 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight }: Di
       {!loaded && !error && (
         <div style={{
           position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: '#0a0a0a',
+          background: '#060c14',
         }}>
-          <RefreshCw style={{ width: 14, height: 14, color: '#555' }} className="animate-spin" />
+          <RefreshCw style={{ width: 14, height: 14, color: '#3a5070' }} className="animate-spin" />
+        </div>
+      )}
+
+      {/* Tile stall badge */}
+      {loaded && tilesStalled && (
+        <div style={{
+          position: 'absolute', bottom: activeRoute ? 28 : 4, right: 4, zIndex: 10,
+          pointerEvents: 'none',
+        }}>
+          <div style={{
+            background: 'rgba(0,0,0,0.85)', border: '1px solid #f59e0b40',
+            padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
+          }}>
+            <RefreshCw style={{ width: 8, height: 8, color: '#f59e0b' }} className="animate-spin" />
+            <span style={{ fontSize: 8, color: '#f59e0b', fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
+              OFFLINE
+            </span>
+          </div>
         </div>
       )}
     </div>

@@ -235,7 +235,7 @@ export default function VideoUploadModal({
               <label className="field-label">Title <span className="text-red-400">*</span></label>
               <input type="text" value={title} onChange={e => setTitle(e.target.value)} required placeholder="Video title" className="input-dark" />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="field-label">Camera <span className="text-red-400">*</span></label>
                 <select value={cameraId} onChange={e => setCameraId(e.target.value)} required className="select-dark">
@@ -250,7 +250,7 @@ export default function VideoUploadModal({
                 </select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="field-label">Recorded Date</label>
                 <input type="datetime-local" value={recordedAt} onChange={e => setRecordedAt(e.target.value)} className="input-dark" />

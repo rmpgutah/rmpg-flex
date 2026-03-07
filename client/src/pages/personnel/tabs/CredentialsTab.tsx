@@ -98,7 +98,7 @@ export default function CredentialsTab({ credentials, onAddCredential, onEditCre
       )}
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {SUMMARY_CARDS.map((card) => (
           <div
             key={card.label}
