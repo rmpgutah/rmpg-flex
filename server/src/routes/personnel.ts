@@ -499,6 +499,41 @@ router.get('/bodycam-videos/:videoId/stream', (req: Request, res: Response) => {
   }
 });
 
+// ── GET /api/personnel/bodycam-videos/:videoId/download — Force-download with overlay ──
+router.get('/bodycam-videos/:videoId/download', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const video = db.prepare('SELECT * FROM bodycam_videos WHERE id = ?').get(req.params.videoId) as any;
+    if (!video) {
+      res.status(404).json({ error: 'Video not found' });
+      return;
+    }
+
+    const servePath = (video.overlay_status === 'complete' && video.processed_file_path)
+      ? path.resolve(BODYCAM_DIR, video.processed_file_path)
+      : path.resolve(BODYCAM_DIR, video.file_path);
+
+    const filePath = fs.existsSync(servePath) ? servePath : path.resolve(BODYCAM_DIR, video.file_path);
+
+    if (!filePath.startsWith(BODYCAM_DIR) || !fs.existsSync(filePath)) {
+      res.status(404).json({ error: 'Video file not found on disk' });
+      return;
+    }
+
+    const stat = fs.statSync(filePath);
+    const safeTitle = (video.title || `bodycam_${video.id}`).replace(/[^a-zA-Z0-9_\-. ]/g, '_');
+    res.writeHead(200, {
+      'Content-Type': 'video/mp4',
+      'Content-Length': stat.size,
+      'Content-Disposition': `attachment; filename="BWC_${safeTitle}.mp4"`,
+    });
+    fs.createReadStream(filePath).pipe(res);
+  } catch (error: any) {
+    console.error('Download bodycam video error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ─── SCHEDULES / TIME / CREDENTIALS ──────────────────
 // These routes are handled via mountScheduleRoutes() in index.ts
 // to avoid /:id route conflicts in this sub-router.

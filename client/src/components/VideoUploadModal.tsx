@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { useState, useRef } from 'react';
-import { Upload, X, Video, Loader2 } from 'lucide-react';
+import { Upload, X, Video, Loader2, Radio } from 'lucide-react';
 import type { BodyCamera, VideoClassification } from '../types';
 
 interface Props {
@@ -23,6 +23,12 @@ const CLASSIFICATIONS: { value: VideoClassification; label: string }[] = [
   { value: 'restricted', label: 'Restricted' },
 ];
 
+const ACTIVATION_TYPES = [
+  { value: 'MANUAL', label: 'Manual Activation' },
+  { value: 'ACTIVATED', label: 'Auto-Activated' },
+  { value: 'PRE-EVENT', label: 'Pre-Event Buffer' },
+];
+
 export default function VideoUploadModal({
   isOpen, onClose, onUploaded, cameras, officerId, apiBase, getAuthHeaders,
 }: Props) {
@@ -32,6 +38,7 @@ export default function VideoUploadModal({
   const [recordedAt, setRecordedAt] = useState('');
   const [caseNumber, setCaseNumber] = useState('');
   const [classification, setClassification] = useState<VideoClassification>('routine');
+  const [eventType, setEventType] = useState('MANUAL');
   const [notes, setNotes] = useState('');
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -48,6 +55,7 @@ export default function VideoUploadModal({
     setRecordedAt('');
     setCaseNumber('');
     setClassification('routine');
+    setEventType('MANUAL');
     setNotes('');
     setProgress(0);
     setError('');
@@ -110,6 +118,7 @@ export default function VideoUploadModal({
     if (duration != null) formData.append('duration_seconds', String(duration));
     if (recordedAt) formData.append('recorded_at', recordedAt);
     if (caseNumber) formData.append('case_number', caseNumber);
+    if (eventType) formData.append('event_type', eventType);
     if (notes) formData.append('notes', notes);
 
     const xhr = new XMLHttpRequest();
@@ -259,6 +268,12 @@ export default function VideoUploadModal({
                 <label className="field-label">Case Number</label>
                 <input type="text" value={caseNumber} onChange={e => setCaseNumber(e.target.value)} placeholder="e.g. 2026-0001" className="input-dark" />
               </div>
+            </div>
+            <div>
+              <label className="field-label flex items-center gap-1"><Radio className="w-2.5 h-2.5" /> Activation Type</label>
+              <select value={eventType} onChange={e => setEventType(e.target.value)} className="select-dark">
+                {ACTIVATION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
             </div>
             <div>
               <label className="field-label">Notes</label>

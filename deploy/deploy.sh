@@ -211,13 +211,12 @@ ssh "$VPS_USER@$VPS_IP" bash << 'REMOTEEOF'
   fi
 
   # ── Create/update systemd service ──
+  # Flex runs behind nginx on port 3001 (nginx handles SSL on 80/443)
   echo ">>> Configuring systemd service..."
-  if [ "$HAS_SSL" = true ]; then
-    # SSL mode: listen on 443, redirect HTTP 80→HTTPS
-    cat > /etc/systemd/system/rmpg-flex.service << 'SVCEOF'
+  cat > /etc/systemd/system/rmpg-flex.service << 'SVCEOF'
 [Unit]
 Description=RMPG Flex CAD/RMS Server
-After=network.target
+After=network.target nginx.service
 Wants=network-online.target
 
 [Service]
@@ -225,9 +224,7 @@ Type=simple
 User=root
 WorkingDirectory=/opt/rmpg-flex
 Environment=NODE_ENV=production
-Environment=PORT=443
-Environment=SSL_HTTP_REDIRECT=true
-Environment=SSL_HTTP_REDIRECT_PORT=80
+Environment=PORT=3001
 ExecStart=/usr/bin/npx tsx server/src/index.ts
 Restart=always
 RestartSec=5
@@ -235,42 +232,10 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=rmpg-flex
 
-# Allow binding to privileged ports (80, 443)
-AmbientCapabilities=CAP_NET_BIND_SERVICE
-
 [Install]
 WantedBy=multi-user.target
 SVCEOF
-    echo "    Service configured for HTTPS (port 443 + HTTP redirect on 80)"
-  else
-    # No SSL: listen on port 80
-    cat > /etc/systemd/system/rmpg-flex.service << 'SVCEOF'
-[Unit]
-Description=RMPG Flex CAD/RMS Server
-After=network.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=/opt/rmpg-flex
-Environment=NODE_ENV=production
-Environment=PORT=80
-ExecStart=/usr/bin/npx tsx server/src/index.ts
-Restart=always
-RestartSec=5
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=rmpg-flex
-
-# Allow binding to privileged ports (80, 443)
-AmbientCapabilities=CAP_NET_BIND_SERVICE
-
-[Install]
-WantedBy=multi-user.target
-SVCEOF
-    echo "    Service configured for HTTP (port 80)"
-  fi
+    echo "    Service configured: port 3001 behind nginx"
   systemctl daemon-reload
   systemctl enable rmpg-flex
 
@@ -292,17 +257,13 @@ SVCEOF
     echo ">>> Generating production .env..."
     JWT_SECRET=$(openssl rand -hex 64)
 
-    if [ "$HAS_SSL" = true ]; then
-      PROTOCOL="https"
-    else
-      PROTOCOL="http"
-    fi
-
     cat > server/.env << ENVEOF
 JWT_SECRET=${JWT_SECRET}
 JWT_ACCESS_EXPIRY=15m
 JWT_REFRESH_EXPIRY=7d
 NODE_ENV=production
+PORT=3001
+SSL_HTTP_REDIRECT=false
 PRIMARY_DOMAIN=${DOMAIN}
 MAX_LOGIN_ATTEMPTS=5
 LOCKOUT_DURATION_MINUTES=15
@@ -314,22 +275,21 @@ PASSWORD_REQUIRE_LOWERCASE=true
 PASSWORD_REQUIRE_NUMBER=true
 PASSWORD_REQUIRE_SPECIAL=false
 SESSION_MAX_PER_USER=5
-CORS_ORIGINS=${PROTOCOL}://${DOMAIN},${PROTOCOL}://www.${DOMAIN},http://localhost:5173,http://localhost:3001
-UPDATE_SERVER_URL=${PROTOCOL}://${DOMAIN}
+CORS_ORIGINS=https://${DOMAIN},https://www.${DOMAIN},https://crm.rmpgutah.us,http://localhost:5173,http://localhost:3001
+UPDATE_SERVER_URL=https://${DOMAIN}
 SERVER_TIMEZONE=America/Denver
 ENVEOF
-    echo "    Generated .env (protocol: $PROTOCOL)"
+    echo "    Generated .env with port 3001 (behind nginx)"
   else
     echo ">>> .env already exists — keeping current config"
-    # Update UPDATE_SERVER_URL and CORS_ORIGINS if SSL was just enabled
-    if [ "$HAS_SSL" = true ]; then
-      if grep -q "http://194.113.64.90" server/.env 2>/dev/null; then
-        echo ">>> Updating .env URLs to HTTPS..."
-        sed -i "s|UPDATE_SERVER_URL=http://194.113.64.90|UPDATE_SERVER_URL=https://${DOMAIN}|g" server/.env
-        sed -i "s|CORS_ORIGINS=http://${DOMAIN},http://194.113.64.90|CORS_ORIGINS=https://${DOMAIN},https://www.${DOMAIN}|g" server/.env
-        echo "    Updated .env URLs to HTTPS"
-      fi
+    # Ensure CORS includes CRM domain
+    if ! grep -q "crm.rmpgutah.us" server/.env 2>/dev/null; then
+      echo ">>> Adding crm.rmpgutah.us to CORS_ORIGINS..."
+      sed -i "s|CORS_ORIGINS=\(.*\)|CORS_ORIGINS=\1,https://crm.rmpgutah.us|g" server/.env
     fi
+    # Ensure port is 3001
+    grep -q '^PORT=' server/.env && sed -i 's/^PORT=.*/PORT=3001/' server/.env || echo 'PORT=3001' >> server/.env
+    grep -q '^SSL_HTTP_REDIRECT=' server/.env && sed -i 's/^SSL_HTTP_REDIRECT=.*/SSL_HTTP_REDIRECT=false/' server/.env || echo 'SSL_HTTP_REDIRECT=false' >> server/.env
   fi
 
   # ── Restart service ──
