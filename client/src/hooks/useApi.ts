@@ -32,6 +32,81 @@ function isOfflineCapable(method: string, path: string): boolean {
 // Access window.electron safely (only present in Electron desktop app)
 const electron = typeof window !== 'undefined' ? (window as any).electron : null;
 
+// ─── Mutation deduplication (prevent rapid double-click) ────
+const inflightMutations = new Map<string, { promise: Promise<Response>; ts: number }>();
+const DEDUP_WINDOW_MS = 500; // 500ms dedup window
+
+// ─── Retry config for 502/503 (server restart recovery) ────
+// When nginx returns 502/503 during a deploy restart, the request never
+// reached Express. Safe to retry ALL methods (including POST/PUT/DELETE)
+// because the server never processed the original request.
+const RETRY_STATUS_CODES = [502, 503];
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 2000; // 2 seconds between retries
+
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  retries = MAX_RETRIES,
+): Promise<Response> {
+  // Skip retries for large bodies (file uploads) — re-sending large payloads is wasteful
+  const bodySize = init.body instanceof Blob ? init.body.size
+    : init.body instanceof FormData ? Infinity  // FormData is always large-ish
+    : typeof init.body === 'string' ? init.body.length
+    : 0;
+  if (bodySize > 1_000_000) retries = 0; // 1MB threshold
+
+  // Mutation deduplication — return existing in-flight promise for same URL+method
+  const method = init.method || 'GET';
+  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method.toUpperCase())) {
+    const dedupKey = `${method}:${url}`;
+    const existing = inflightMutations.get(dedupKey);
+    if (existing && Date.now() - existing.ts < DEDUP_WINDOW_MS) {
+      return existing.promise;
+    }
+  }
+
+  // Track in-flight mutations for deduplication
+  const isMutation = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(method.toUpperCase());
+  const dedupKey = isMutation ? `${method}:${url}` : '';
+
+  const doFetch = async (): Promise<Response> => {
+    let lastError: Error | null = null;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const res = await fetch(url, init);
+        if (RETRY_STATUS_CODES.includes(res.status) && attempt < retries) {
+          // Server is restarting — wait with exponential backoff and retry
+          const delay = RETRY_DELAY_MS * Math.pow(2, attempt); // 2s → 4s → 8s
+          console.warn(`[API] ${init.method || 'GET'} ${url} → ${res.status}, retrying in ${delay / 1000}s (${attempt + 1}/${retries})...`);
+          await new Promise(r => setTimeout(r, delay));
+          continue;
+        }
+        return res;
+      } catch (err) {
+        // Don't retry intentional aborts (component unmount, navigation, etc.)
+        if (err instanceof DOMException && err.name === 'AbortError') throw err;
+        // Network error (connection refused / failed to fetch) — retry with backoff
+        lastError = err instanceof Error ? err : new Error(String(err));
+        if (attempt < retries) {
+          const delay = RETRY_DELAY_MS * Math.pow(2, attempt);
+          console.warn(`[API] ${init.method || 'GET'} ${url} → network error, retrying in ${delay / 1000}s (${attempt + 1}/${retries})...`);
+          await new Promise(r => setTimeout(r, delay));
+          continue;
+        }
+      }
+    }
+    throw lastError || new Error('Server temporarily unavailable. Please try again.');
+  };
+
+  const promise = doFetch();
+  if (isMutation) {
+    inflightMutations.set(dedupKey, { promise, ts: Date.now() });
+    promise.finally(() => inflightMutations.delete(dedupKey));
+  }
+  return promise;
+}
+
 interface UseApiOptions {
   baseUrl?: string;
 }
@@ -73,22 +148,19 @@ export function useApi<T = unknown>(options?: UseApiOptions) {
 
       try {
         const url = endpoint.startsWith('/') ? `${baseUrl}${endpoint}` : `${baseUrl}/${endpoint}`;
-        let res = await fetch(url, {
+        const fetchInit: RequestInit = {
           method,
           headers,
           body: body ? JSON.stringify(body) : undefined,
-        });
+        };
+        let res = await fetchWithRetry(url, fetchInit);
 
         // On 401, attempt a transparent token refresh and retry once
         if (res.status === 401) {
           const newToken = await tryRefreshToken();
           if (newToken) {
             headers['Authorization'] = `Bearer ${newToken}`;
-            res = await fetch(url, {
-              method,
-              headers,
-              body: body ? JSON.stringify(body) : undefined,
-            });
+            res = await fetchWithRetry(url, { ...fetchInit, headers });
           }
         }
 
@@ -148,6 +220,7 @@ export function useApi<T = unknown>(options?: UseApiOptions) {
 
 // ─── Token-refresh lock (shared across concurrent apiFetch calls) ────
 let _refreshPromise: Promise<string | null> | null = null;
+const REFRESH_TIMEOUT_MS = 15_000; // 15s — prevent infinite lock if refresh hangs
 
 async function tryRefreshToken(): Promise<string | null> {
   // If a refresh is already in-flight, wait for it
@@ -158,11 +231,16 @@ async function tryRefreshToken(): Promise<string | null> {
       const refreshToken = localStorage.getItem('rmpg_refresh_token');
       if (!refreshToken) return null;
 
+      // AbortController timeout prevents infinite lock on hung requests
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), REFRESH_TIMEOUT_MS);
+
       const res = await fetch('/api/auth/refresh', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refreshToken }),
-      });
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timeout));
 
       if (res.ok) {
         const data = await res.json();
@@ -274,14 +352,15 @@ export async function apiFetch<T>(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const res = await fetch(url, { ...options, headers });
+  const fetchInit: RequestInit = { ...options, headers };
+  const res = await fetchWithRetry(url, fetchInit);
 
   // On 401, attempt a transparent token refresh and retry once
   if (res.status === 401) {
     const newToken = await tryRefreshToken();
     if (newToken) {
       headers['Authorization'] = `Bearer ${newToken}`;
-      const retryRes = await fetch(url, { ...options, headers });
+      const retryRes = await fetchWithRetry(url, { ...fetchInit, headers });
       if (!retryRes.ok) {
         const errData = await retryRes.json().catch(() => ({}));
         throw new Error(errData.error || errData.message || `Request failed with status ${retryRes.status}`);
@@ -320,7 +399,7 @@ export async function apiUploadFiles(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const res = await fetch('/api/uploads', {
+  const res = await fetchWithRetry('/api/uploads', {
     method: 'POST',
     headers,
     body: formData,

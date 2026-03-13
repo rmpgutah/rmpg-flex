@@ -18,6 +18,9 @@ import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
+import { useFormValidation } from '../hooks/useFormValidation';
+import { isValidDate } from '../utils/validate';
+import { formatDate } from '../utils/dateUtils';
 
 const EVENT_TYPES: { value: CourtEventType; label: string }[] = [
   { value: 'arraignment', label: 'Arraignment' }, { value: 'hearing', label: 'Hearing' },
@@ -63,6 +66,7 @@ const EMPTY_FORM = {
 export default function CourtTrackerPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
+  const { errors: formErrors, validate: validateForm, clearAllErrors } = useFormValidation();
 
   const [activeView, setActiveView] = useState<'list' | 'upcoming'>('upcoming');
   const [events, setEvents] = useState<CourtEvent[]>([]);
@@ -114,7 +118,11 @@ export default function CourtTrackerPage() {
   useLiveSync('records', () => { fetchEvents({ silent: true }); fetchUpcoming(); });
 
   const handleCreate = async () => {
-    if (!formData.event_date || !formData.court_name) { addToast('Date and court required', 'error'); return; }
+    const isValid = validateForm(formData, {
+      event_date: { required: true, custom: isValidDate, customMessage: 'Valid date required (YYYY-MM-DD)' },
+      court_name: { required: true, minLength: 2 },
+    });
+    if (!isValid) return;
     setSubmitting(true);
     try {
       await apiFetch('/court/events', { method: 'POST', body: JSON.stringify(formData) });
@@ -158,7 +166,7 @@ export default function CourtTrackerPage() {
       {/* ── Left Panel ── */}
       <div className={`flex flex-col ${isMobile ? 'h-1/2' : 'w-[400px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Court / Legal Tracker" icon={Gavel}>
-          <button onClick={() => { setFormOpen(true); setFormData({ ...EMPTY_FORM }); }} className="toolbar-btn toolbar-btn-primary">
+          <button onClick={() => { clearAllErrors(); setFormOpen(true); setFormData({ ...EMPTY_FORM }); }} className="toolbar-btn toolbar-btn-primary">
             <Plus style={{ width: 11, height: 11 }} /> New
           </button>
         </PanelTitleBar>
@@ -202,7 +210,7 @@ export default function CourtTrackerPage() {
               icon={Scale}
               title="No events found"
               description="Create a new court event to get started."
-              action={{ label: 'New Event', onClick: () => { setFormOpen(true); setFormData({ ...EMPTY_FORM }); } }}
+              action={{ label: 'New Event', onClick: () => { clearAllErrors(); setFormOpen(true); setFormData({ ...EMPTY_FORM }); } }}
             />
           ) : (
             displayEvents.map(evt => {
@@ -230,7 +238,7 @@ export default function CourtTrackerPage() {
                   </div>
                   <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-500">
                     <Calendar style={{ width: 9, height: 9 }} />
-                    {evt.event_date ? new Date(evt.event_date).toLocaleDateString() : '—'}
+                    {evt.event_date ? formatDate(evt.event_date) : '—'}
                     {evt.event_time && <span>{evt.event_time}</span>}
                     {evt.courtroom && <span>Rm {evt.courtroom}</span>}
                   </div>
@@ -272,7 +280,7 @@ export default function CourtTrackerPage() {
               {/* Detail Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {[
-                  ['Event Date', selected.event_date ? new Date(selected.event_date).toLocaleDateString() : '—'],
+                  ['Event Date', selected.event_date ? formatDate(selected.event_date) : '—'],
                   ['Time', selected.event_time || '—'],
                   ['Court', selected.court_name],
                   ['Courtroom', selected.courtroom || '—'],
@@ -335,7 +343,8 @@ export default function CourtTrackerPage() {
                 </div>
                 <div>
                   <label className="field-label">Date *</label>
-                  <input type="date" value={formData.event_date} onChange={e => setFormData(p => ({ ...p, event_date: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                  <input type="date" value={formData.event_date} onChange={e => setFormData(p => ({ ...p, event_date: e.target.value }))} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none ${formErrors.event_date ? 'border-red-500' : 'border-rmpg-700'}`} />
+                  {formErrors.event_date && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.event_date}</p>}
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
@@ -345,7 +354,8 @@ export default function CourtTrackerPage() {
                 </div>
                 <div>
                   <label className="field-label">Court *</label>
-                  <input value={formData.court_name} onChange={e => setFormData(p => ({ ...p, court_name: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                  <input value={formData.court_name} onChange={e => setFormData(p => ({ ...p, court_name: e.target.value }))} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none ${formErrors.court_name ? 'border-red-500' : 'border-rmpg-700'}`} />
+                  {formErrors.court_name && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.court_name}</p>}
                 </div>
                 <div>
                   <label className="field-label">Courtroom</label>

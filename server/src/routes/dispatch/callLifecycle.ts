@@ -9,7 +9,7 @@ const router = Router();
 
 // POST /api/dispatch/calls/archive-bulk - Archive multiple cleared/closed/cancelled calls at once
 // NOTE: This route MUST come before /calls/:id/archive to avoid Express matching "archive-bulk" as :id
-router.post('/calls/archive-bulk', (req: Request, res: Response) => {
+router.post('/calls/archive-bulk', requireRole('admin', 'manager', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { call_ids, statuses } = req.body;
@@ -74,7 +74,7 @@ router.post('/calls/archive-bulk', (req: Request, res: Response) => {
 });
 
 // POST /api/dispatch/calls/:id/archive - Archive a closed/cleared call
-router.post('/calls/:id/archive', (req: Request, res: Response) => {
+router.post('/calls/:id/archive', requireRole('admin', 'manager', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -89,23 +89,28 @@ router.post('/calls/:id/archive', (req: Request, res: Response) => {
     }
 
     const now = localNow();
-    db.prepare('UPDATE calls_for_service SET status = ?, archived_at = ? WHERE id = ?')
-      .run('archived', now, call.id);
 
-    // Free up any assigned units when archiving
-    let unitIds: number[] = [];
-    try {
-      unitIds = JSON.parse(call.assigned_unit_ids || '[]');
-    } catch { /* ignore */ }
-    for (const unitId of unitIds) {
-      db.prepare(`UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = ? WHERE id = ? AND current_call_id = ?`)
-        .run(now, unitId, call.id);
-    }
+    // Transaction: archive call + free units + log activity atomically
+    const archiveTx = db.transaction(() => {
+      db.prepare('UPDATE calls_for_service SET status = ?, archived_at = ? WHERE id = ?')
+        .run('archived', now, call.id);
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'call_archived', 'call', ?, ?, ?)
-    `).run(req.user!.userId, call.id, `${call.call_number} archived`, req.ip || 'unknown');
+      // Free up any assigned units when archiving
+      let unitIds: number[] = [];
+      try {
+        unitIds = JSON.parse(call.assigned_unit_ids || '[]');
+      } catch { /* ignore */ }
+      for (const unitId of unitIds) {
+        db.prepare(`UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = ? WHERE id = ? AND current_call_id = ?`)
+          .run(now, unitId, call.id);
+      }
+
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'call_archived', 'call', ?, ?, ?)
+      `).run(req.user!.userId, call.id, `${call.call_number} archived`, req.ip || 'unknown');
+    });
+    archiveTx();
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
     broadcastDispatchUpdate({ action: 'call_archived', call: updated });
@@ -117,7 +122,7 @@ router.post('/calls/:id/archive', (req: Request, res: Response) => {
 });
 
 // POST /api/dispatch/calls/:id/unarchive - Restore archived call back to closed
-router.post('/calls/:id/unarchive', (req: Request, res: Response) => {
+router.post('/calls/:id/unarchive', requireRole('admin', 'manager', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -131,12 +136,14 @@ router.post('/calls/:id/unarchive', (req: Request, res: Response) => {
       return;
     }
 
-    db.prepare('UPDATE calls_for_service SET status = ? WHERE id = ?').run('closed', call.id);
-
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'call_unarchived', 'call', ?, ?, ?)
-    `).run(req.user!.userId, call.id, `${call.call_number} restored from archive`, req.ip || 'unknown');
+    const unarchiveTx = db.transaction(() => {
+      db.prepare('UPDATE calls_for_service SET status = ? WHERE id = ?').run('closed', call.id);
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'call_unarchived', 'call', ?, ?, ?)
+      `).run(req.user!.userId, call.id, `${call.call_number} restored from archive`, req.ip || 'unknown');
+    });
+    unarchiveTx();
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
     broadcastDispatchUpdate({ action: 'call_unarchived', call: updated });
@@ -154,30 +161,34 @@ router.delete('/calls/:id', requireRole('admin', 'manager'), (req: Request, res:
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
 
-    // If call has active units assigned, free them first
-    let unitIds: number[] = [];
-    try { unitIds = JSON.parse(call.assigned_unit_ids || '[]'); } catch { /* ignore */ }
     const now = localNow();
-    for (const unitId of unitIds) {
-      db.prepare(`
-        UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = ? WHERE id = ? AND current_call_id = ?
-      `).run(now, unitId, call.id);
-    }
 
-    // Nullify FK references in related tables before deleting the call
-    try { db.prepare('UPDATE incidents SET call_id = NULL WHERE call_id = ?').run(call.id); } catch { /* ignore */ }
-    try { db.prepare('UPDATE units SET current_call_id = NULL WHERE current_call_id = ?').run(call.id); } catch { /* ignore */ }
-    try { db.prepare('DELETE FROM record_links WHERE (source_type = ? AND source_id = ?) OR (target_type = ? AND target_id = ?)').run('call', String(call.id), 'call', String(call.id)); } catch { /* ignore */ }
+    // Transaction: free units, nullify FKs, delete call atomically
+    const deleteTx = db.transaction(() => {
+      // If call has active units assigned, free them first
+      let unitIds: number[] = [];
+      try { unitIds = JSON.parse(call.assigned_unit_ids || '[]'); } catch { /* ignore */ }
+      for (const unitId of unitIds) {
+        db.prepare(`
+          UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = ? WHERE id = ? AND current_call_id = ?
+        `).run(now, unitId, call.id);
+      }
 
-    // Delete related records
-    try { db.prepare('DELETE FROM activity_log WHERE entity_type = ? AND entity_id = ?').run('call', call.id); } catch { /* ignore */ }
-    try { db.prepare("DELETE FROM activity_log WHERE entity_type = 'call' AND entity_id = ?").run(String(call.id)); } catch { /* ignore */ }
+      // Nullify FK references in related tables before deleting the call
+      try { db.prepare('UPDATE incidents SET call_id = NULL WHERE call_id = ?').run(call.id); } catch { /* ignore */ }
+      try { db.prepare('UPDATE units SET current_call_id = NULL WHERE current_call_id = ?').run(call.id); } catch { /* ignore */ }
+      try { db.prepare('DELETE FROM record_links WHERE (source_type = ? AND source_id = ?) OR (target_type = ? AND target_id = ?)').run('call', String(call.id), 'call', String(call.id)); } catch { /* ignore */ }
 
-    db.prepare('DELETE FROM calls_for_service WHERE id = ?').run(call.id);
+      // Delete related activity log entries
+      try { db.prepare('DELETE FROM activity_log WHERE entity_type = ? AND entity_id = ?').run('call', call.id); } catch { /* ignore */ }
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'call_deleted', 'call', ?, ?, ?)`).run(
-      req.user!.userId, call.id, `Deleted call ${call.call_number}`, req.ip || 'unknown');
+      db.prepare('DELETE FROM calls_for_service WHERE id = ?').run(call.id);
+
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'call_deleted', 'call', ?, ?, ?)`).run(
+        req.user!.userId, call.id, `Deleted call ${call.call_number}`, req.ip || 'unknown');
+    });
+    deleteTx();
 
     broadcastDispatchUpdate({ action: 'call_deleted', call_id: call.id });
     res.json({ success: true, id: req.params.id });
@@ -191,7 +202,7 @@ router.delete('/calls/:id', requireRole('admin', 'manager'), (req: Request, res:
 });
 
 // POST /api/dispatch/calls/:id/generate-incident - Generate incident report from a cleared/closed call
-router.post('/calls/:id/generate-incident', (req: Request, res: Response) => {
+router.post('/calls/:id/generate-incident', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare(`
@@ -281,7 +292,7 @@ router.post('/calls/:id/generate-incident', (req: Request, res: Response) => {
 });
 
 // PUT /api/dispatch/calls/:id/timeline/:entryId - Edit a timeline/activity entry
-router.put('/calls/:id/timeline/:entryId', (req: Request, res: Response) => {
+router.put('/calls/:id/timeline/:entryId', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const entry = db.prepare('SELECT * FROM activity_log WHERE id = ? AND entity_type = ? AND entity_id = ?')
@@ -291,11 +302,11 @@ router.put('/calls/:id/timeline/:entryId', (req: Request, res: Response) => {
       return;
     }
 
-    const { details, created_at } = req.body;
+    const { details } = req.body;
+    // Note: created_at is intentionally NOT editable — audit log timestamps are immutable
     const updates: string[] = [];
     const params: any[] = [];
     if (details !== undefined) { updates.push('details = ?'); params.push(details); }
-    if (created_at !== undefined) { updates.push('created_at = ?'); params.push(created_at); }
 
     if (updates.length === 0) {
       res.status(400).json({ error: 'No fields to update' });
@@ -314,7 +325,7 @@ router.put('/calls/:id/timeline/:entryId', (req: Request, res: Response) => {
 });
 
 // DELETE /api/dispatch/calls/:id/timeline/:entryId - Delete a timeline/activity entry
-router.delete('/calls/:id/timeline/:entryId', (req: Request, res: Response) => {
+router.delete('/calls/:id/timeline/:entryId', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const entry = db.prepare('SELECT * FROM activity_log WHERE id = ? AND entity_type = ? AND entity_id = ?')
@@ -333,7 +344,7 @@ router.delete('/calls/:id/timeline/:entryId', (req: Request, res: Response) => {
 });
 
 // POST /api/dispatch/calls/:id/timeline - Add a manual timeline entry
-router.post('/calls/:id/timeline', (req: Request, res: Response) => {
+router.post('/calls/:id/timeline', requireRole('admin', 'manager', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -375,7 +386,7 @@ router.get('/calls/:id/warnings', (req: Request, res: Response) => {
     const warnings: Array<{ type: string; label: string; severity: 'critical' | 'high' | 'medium'; source: string }> = [];
 
     // Check call flags
-    if (call.weapons_involved) {
+    if (call.weapons_involved && call.weapons_involved !== 'None') {
       warnings.push({ type: 'ARMED', label: 'ARMED / WEAPONS', severity: 'critical', source: 'call' });
     }
     if (call.domestic_violence) {
@@ -487,7 +498,7 @@ router.get('/calls/:id/warnings', (req: Request, res: Response) => {
 });
 
 // PUT /api/dispatch/calls/:id/mileage - Update starting/ending mileage
-router.put('/calls/:id/mileage', (req: Request, res: Response) => {
+router.put('/calls/:id/mileage', requireRole('admin', 'manager', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;

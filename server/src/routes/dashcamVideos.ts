@@ -65,21 +65,25 @@ router.get('/', authenticateToken, (req: Request, res: Response) => {
 
     let query = `
       SELECT v.*,
-        fv.vehicle_number, fv.make as vehicle_make, fv.model as vehicle_model, fv.year as vehicle_year,
+        COALESCE(fv.vehicle_number, fv_unit.vehicle_number) as vehicle_number,
+        COALESCE(fv.make, fv_unit.make) as vehicle_make,
+        COALESCE(fv.model, fv_unit.model) as vehicle_model,
+        COALESCE(fv.year, fv_unit.year) as vehicle_year,
         u.call_sign as unit_call_sign
       FROM dashcam_videos v
       LEFT JOIN fleet_vehicles fv ON v.vehicle_id = fv.id
       LEFT JOIN units u ON v.unit_id = u.id
+      LEFT JOIN fleet_vehicles fv_unit ON fv_unit.assigned_unit_id = v.unit_id AND v.vehicle_id IS NULL
       WHERE 1=1
     `;
     const params: any[] = [];
 
-    if (vehicle_id) { query += ' AND v.vehicle_id = ?'; params.push(vehicle_id); }
+    if (vehicle_id) { query += ' AND (v.vehicle_id = ? OR fv_unit.id = ?)'; params.push(vehicle_id, vehicle_id); }
     if (unit_id) { query += ' AND v.unit_id = ?'; params.push(unit_id); }
     if (case_number) { query += ' AND v.case_number = ?'; params.push(case_number); }
     if (search) {
       const q = `%${String(search)}%`;
-      query += ' AND (v.title LIKE ? OR v.case_number LIKE ? OR v.address LIKE ? OR fv.vehicle_number LIKE ? OR u.call_sign LIKE ?)';
+      query += ' AND (v.title LIKE ? OR v.case_number LIKE ? OR v.address LIKE ? OR COALESCE(fv.vehicle_number, fv_unit.vehicle_number) LIKE ? OR u.call_sign LIKE ?)';
       params.push(q, q, q, q, q);
     }
 
@@ -104,11 +108,15 @@ router.get('/:id', authenticateToken, (req: Request, res: Response) => {
     const db = getDb();
     const video = db.prepare(`
       SELECT v.*,
-        fv.vehicle_number, fv.make as vehicle_make, fv.model as vehicle_model, fv.year as vehicle_year,
+        COALESCE(fv.vehicle_number, fv_unit.vehicle_number) as vehicle_number,
+        COALESCE(fv.make, fv_unit.make) as vehicle_make,
+        COALESCE(fv.model, fv_unit.model) as vehicle_model,
+        COALESCE(fv.year, fv_unit.year) as vehicle_year,
         u.call_sign as unit_call_sign
       FROM dashcam_videos v
       LEFT JOIN fleet_vehicles fv ON v.vehicle_id = fv.id
       LEFT JOIN units u ON v.unit_id = u.id
+      LEFT JOIN fleet_vehicles fv_unit ON fv_unit.assigned_unit_id = v.unit_id AND v.vehicle_id IS NULL
       WHERE v.id = ?
     `).get(req.params.id);
 
@@ -148,6 +156,13 @@ router.post('/', authenticateToken, requireRole('admin', 'manager', 'supervisor'
       return;
     }
 
+    // Auto-resolve vehicle_id from unit's assigned fleet vehicle if not provided
+    let resolvedVehicleId = vehicle_id || null;
+    if (!resolvedVehicleId && unit_id) {
+      const fv = db.prepare('SELECT id FROM fleet_vehicles WHERE assigned_unit_id = ?').get(unit_id) as any;
+      if (fv) resolvedVehicleId = fv.id;
+    }
+
     const user = (req as any).user;
 
     const result = db.prepare(`
@@ -157,7 +172,7 @@ router.post('/', authenticateToken, requireRole('admin', 'manager', 'supervisor'
          notes, source, uploaded_by, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'upload', ?, ?, ?)
     `).run(
-      vehicle_id || null,
+      resolvedVehicleId,
       unit_id || null,
       title,
       req.file.filename,
@@ -336,6 +351,105 @@ router.get('/:id/stream', (req: Request, res: Response, next) => {
 });
 
 // ============================================================
+// GET /api/fleet/dashcam-videos/:id/links — List linked entities
+// ============================================================
+router.get('/:id/links', authenticateToken, (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const videoId = parseInt(String(req.params.id), 10);
+
+    const links = db.prepare(`
+      SELECT * FROM dashcam_video_links WHERE video_id = ? ORDER BY created_at DESC
+    `).all(videoId);
+
+    res.json(links);
+  } catch (error: any) {
+    console.error('List dashcam video links error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// POST /api/fleet/dashcam-videos/:id/links — Link video to entity
+// ============================================================
+router.post('/:id/links', authenticateToken, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const videoId = parseInt(String(req.params.id), 10);
+    const { entity_type, entity_id, notes } = req.body;
+    const user = (req as any).user;
+
+    if (!entity_type || !entity_id) {
+      res.status(400).json({ error: 'entity_type and entity_id are required' });
+      return;
+    }
+
+    const validTypes = ['call', 'incident', 'case', 'warrant', 'citation'];
+    if (!validTypes.includes(entity_type)) {
+      res.status(400).json({ error: `entity_type must be one of: ${validTypes.join(', ')}` });
+      return;
+    }
+
+    // Check video exists
+    const video = db.prepare('SELECT id, title FROM dashcam_videos WHERE id = ?').get(videoId) as any;
+    if (!video) {
+      res.status(404).json({ error: 'Video not found' });
+      return;
+    }
+
+    // Check duplicate
+    const existing = db.prepare(
+      'SELECT id FROM dashcam_video_links WHERE video_id = ? AND entity_type = ? AND entity_id = ?'
+    ).get(videoId, entity_type, entity_id);
+    if (existing) {
+      res.status(409).json({ error: 'This link already exists' });
+      return;
+    }
+
+    const result = db.prepare(`
+      INSERT INTO dashcam_video_links (video_id, entity_type, entity_id, linked_by, notes, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(videoId, entity_type, entity_id, user?.username || 'unknown', notes || null, localNow());
+
+    auditLog(req, 'dashcam_linked', 'dashcam_video_link', Number(result.lastInsertRowid),
+      `Linked video "${video.title}" to ${entity_type} #${entity_id}`);
+    broadcast('fleet', 'dashcam_linked', { video_id: videoId, entity_type, entity_id });
+
+    res.json({ success: true, id: result.lastInsertRowid });
+  } catch (error: any) {
+    console.error('Link dashcam video error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// DELETE /api/fleet/dashcam-videos/:id/links/:linkId — Remove link
+// ============================================================
+router.delete('/:id/links/:linkId', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const linkId = parseInt(String(req.params.linkId), 10);
+
+    const link = db.prepare('SELECT * FROM dashcam_video_links WHERE id = ?').get(linkId) as any;
+    if (!link) {
+      res.status(404).json({ error: 'Link not found' });
+      return;
+    }
+
+    db.prepare('DELETE FROM dashcam_video_links WHERE id = ?').run(linkId);
+
+    auditLog(req, 'dashcam_unlinked', 'dashcam_video_link', linkId,
+      `Removed ${link.entity_type} #${link.entity_id} link from video #${link.video_id}`);
+    broadcast('fleet', 'dashcam_unlinked', { video_id: link.video_id, entity_type: link.entity_type, entity_id: link.entity_id });
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Unlink dashcam video error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
 // POST /api/fleet/dashcam-videos/webhook/clearpathgps
 // ClearPathGPS video event webhook — accepts video file uploads
 // triggered by ClearPath GPS camera events (hard brake, impact, etc.)
@@ -344,14 +458,17 @@ router.post('/webhook/clearpathgps', upload.single('video'), (req: Request, res:
   try {
     const db = getDb();
 
-    // Validate webhook secret if configured
+    // Validate webhook secret (required — reject if not configured)
     const webhookSecret = process.env.CLEARPATHGPS_WEBHOOK_SECRET;
-    if (webhookSecret) {
-      const providedSecret = req.headers['x-webhook-secret'] || req.body?.webhook_secret;
-      if (providedSecret !== webhookSecret) {
-        res.status(401).json({ error: 'Invalid webhook secret' });
-        return;
-      }
+    if (!webhookSecret) {
+      console.error('[DASHCAM] Webhook rejected: CLEARPATHGPS_WEBHOOK_SECRET not configured');
+      res.status(503).json({ error: 'Webhook not configured' });
+      return;
+    }
+    const providedSecret = req.headers['x-webhook-secret'] || req.body?.webhook_secret;
+    if (!providedSecret || providedSecret !== webhookSecret) {
+      res.status(401).json({ error: 'Invalid webhook secret' });
+      return;
     }
 
     const {
@@ -380,11 +497,9 @@ router.post('/webhook/clearpathgps', upload.single('video'), (req: Request, res:
       const vehicle = db.prepare('SELECT id FROM fleet_vehicles WHERE vehicle_number = ?').get(vehicle_number) as any;
       if (vehicle) vehicleId = vehicle.id;
     } else if (unitId) {
-      // Try to find vehicle assigned to this unit
-      const assignment = db.prepare(
-        'SELECT vehicle_id FROM fleet_assignments WHERE unit_id = ? AND status = ? ORDER BY assigned_at DESC LIMIT 1'
-      ).get(unitId, 'active') as any;
-      if (assignment) vehicleId = assignment.vehicle_id;
+      // Resolve vehicle from fleet_vehicles assigned to this unit
+      const fv = db.prepare('SELECT id FROM fleet_vehicles WHERE assigned_unit_id = ?').get(unitId) as any;
+      if (fv) vehicleId = fv.id;
     }
 
     const now = localNow();

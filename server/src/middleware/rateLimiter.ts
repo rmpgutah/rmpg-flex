@@ -4,11 +4,14 @@ import config from '../config';
 interface RateLimitEntry {
   count: number;
   resetAt: number;
+  lastAccess: number;
 }
 
 const store = new Map<string, RateLimitEntry>();
+const MAX_STORE_SIZE = 10_000; // Prevent unbounded memory growth from IP flooding
 
 // Clean up expired entries every 5 minutes
+// .unref() so this timer doesn't prevent graceful Node.js shutdown
 setInterval(() => {
   const now = Date.now();
   for (const [key, entry] of store) {
@@ -16,7 +19,7 @@ setInterval(() => {
       store.delete(key);
     }
   }
-}, 5 * 60 * 1000);
+}, 5 * 60 * 1000).unref();
 
 export interface RateLimitOptions {
   windowMs?: number;
@@ -43,11 +46,26 @@ export function rateLimit(options: RateLimitOptions = {}) {
     let entry = store.get(key);
 
     if (!entry || now > entry.resetAt) {
-      entry = { count: 0, resetAt: now + windowMs };
+      // Enforce size cap before adding new entries — evict expired first, then LRU
+      if (!entry && store.size >= MAX_STORE_SIZE) {
+        for (const [k, e] of store) {
+          if (now > e.resetAt) store.delete(k);
+        }
+        // If still over cap after purging expired, evict least-recently-accessed 20%
+        if (store.size >= MAX_STORE_SIZE) {
+          const sorted = [...store.entries()].sort((a, b) => a[1].lastAccess - b[1].lastAccess);
+          const evictCount = Math.ceil(MAX_STORE_SIZE * 0.2);
+          for (let i = 0; i < evictCount && i < sorted.length; i++) {
+            store.delete(sorted[i][0]);
+          }
+        }
+      }
+      entry = { count: 0, resetAt: now + windowMs, lastAccess: now };
       store.set(key, entry);
     }
 
     entry.count++;
+    entry.lastAccess = now;
 
     // Set rate limit headers
     const remaining = Math.max(0, maxRequests - entry.count);
@@ -66,12 +84,36 @@ export function rateLimit(options: RateLimitOptions = {}) {
   };
 }
 
-// Stricter rate limiter for auth endpoints
+// Stricter rate limiter for auth endpoints (login)
 export const authRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   maxRequests: 10,           // 10 attempts per window
   keyGenerator: (req) => `auth:${req.ip || 'unknown'}`,
   message: 'Too many authentication attempts. Please try again in 15 minutes.',
+});
+
+// Rate limiter for 2FA verification — prevent brute-forcing TOTP codes
+export const mfaRateLimit = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  maxRequests: 8,           // 8 attempts per window
+  keyGenerator: (req) => `mfa:${req.ip || 'unknown'}`,
+  message: 'Too many verification attempts. Please wait before trying again.',
+});
+
+// Rate limiter for token refresh — prevent token grinding
+export const refreshRateLimit = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  maxRequests: 15,          // 15 refreshes per minute (generous for normal use)
+  keyGenerator: (req) => `refresh:${req.ip || 'unknown'}`,
+  message: 'Too many refresh requests. Please try again shortly.',
+});
+
+// Rate limiter for password change — prevent brute-forcing current password
+export const passwordRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  maxRequests: 5,            // 5 attempts per window
+  keyGenerator: (req) => `pwd:${req.ip || 'unknown'}`,
+  message: 'Too many password change attempts. Please try again later.',
 });
 
 // General API rate limiter

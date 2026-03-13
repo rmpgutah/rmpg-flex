@@ -9,30 +9,108 @@ import { identifyBeat } from '../../utils/geofence';
 
 const router = Router();
 
+// All routes require authentication
+router.use(authenticateToken);
+
 // GET /api/dispatch/heatmap - Aggregated call locations for heat map display
+// Query params: days (int), mode ('all'|'risk'|'type'), type (incident_type filter)
 router.get('/heatmap', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const days = parseInt(req.query.days as string) || 30;
+    const mode = (req.query.mode as string) || 'all';
+    const typeFilter = req.query.type as string | undefined;
 
-    // Use SQLite datetime() for consistent format comparison
+    const cutoff = `-${days}`;
+
+    if (mode === 'risk') {
+      // Risk-weighted: only calls with risk flags, weighted by severity
+      const points = db.prepare(`
+        SELECT
+          ROUND(latitude, 3) as latitude,
+          ROUND(longitude, 3) as longitude,
+          COUNT(*) as count,
+          SUM(CASE WHEN weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0' THEN 3 ELSE 0 END
+            + CASE WHEN domestic_violence = 1 THEN 2 ELSE 0 END
+            + CASE WHEN injuries_reported = 1 THEN 2 ELSE 0 END
+            + CASE WHEN alcohol_involved = 1 THEN 1 ELSE 0 END
+            + CASE WHEN drugs_involved = 1 THEN 1 ELSE 0 END
+          ) as risk_weight,
+          SUM(CASE WHEN weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0' THEN 1 ELSE 0 END) as weapons_count,
+          SUM(CASE WHEN domestic_violence = 1 THEN 1 ELSE 0 END) as dv_count,
+          SUM(CASE WHEN injuries_reported = 1 THEN 1 ELSE 0 END) as injuries_count
+        FROM calls_for_service
+        WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+          AND created_at >= datetime('now', 'localtime', ? || ' days')
+          AND (weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0'
+               OR domestic_violence = 1 OR injuries_reported = 1
+               OR alcohol_involved = 1 OR drugs_involved = 1)
+        GROUP BY ROUND(latitude, 3), ROUND(longitude, 3)
+        ORDER BY risk_weight DESC
+        LIMIT 300
+      `).all(cutoff);
+      return res.json(points);
+    }
+
+    if (mode === 'type' && typeFilter) {
+      // Filtered by specific incident type
+      const points = db.prepare(`
+        SELECT
+          ROUND(latitude, 3) as latitude,
+          ROUND(longitude, 3) as longitude,
+          COUNT(*) as count
+        FROM calls_for_service
+        WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+          AND created_at >= datetime('now', 'localtime', ? || ' days')
+          AND incident_type = ?
+        GROUP BY ROUND(latitude, 3), ROUND(longitude, 3)
+        ORDER BY count DESC
+        LIMIT 200
+      `).all(cutoff, typeFilter);
+      return res.json(points);
+    }
+
+    // Default: all calls with enriched metadata for click info
     const points = db.prepare(`
       SELECT
         ROUND(latitude, 3) as latitude,
         ROUND(longitude, 3) as longitude,
-        COUNT(*) as count
+        COUNT(*) as count,
+        GROUP_CONCAT(DISTINCT incident_type) as incident_types,
+        SUM(CASE WHEN priority = 'P1' THEN 1 ELSE 0 END) as p1_count,
+        SUM(CASE WHEN weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0' THEN 1 ELSE 0 END) as weapons_count,
+        SUM(CASE WHEN domestic_violence = 1 THEN 1 ELSE 0 END) as dv_count,
+        SUM(CASE WHEN injuries_reported = 1 THEN 1 ELSE 0 END) as injuries_count
       FROM calls_for_service
-      WHERE latitude IS NOT NULL
-        AND longitude IS NOT NULL
-        AND created_at >= datetime('now', 'localtime', '-' || ? || ' days')
+      WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+        AND created_at >= datetime('now', 'localtime', ? || ' days')
       GROUP BY ROUND(latitude, 3), ROUND(longitude, 3)
       ORDER BY count DESC
       LIMIT 200
-    `).all(days);
+    `).all(cutoff);
 
     res.json(points);
   } catch (error: any) {
     console.error('Heatmap error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/dispatch/heatmap/types - Available incident types for heatmap filter
+router.get('/heatmap/types', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const types = db.prepare(`
+      SELECT incident_type, COUNT(*) as count
+      FROM calls_for_service
+      WHERE incident_type IS NOT NULL AND incident_type != ''
+        AND created_at >= datetime('now', 'localtime', '-90 days')
+      GROUP BY incident_type
+      ORDER BY count DESC
+      LIMIT 50
+    `).all();
+    res.json(types);
+  } catch (error: any) {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -66,13 +144,13 @@ router.get('/stats', (req: Request, res: Response) => {
 
     const callsByStatus = db.prepare(`
       SELECT status, COUNT(*) as count FROM calls_for_service
-      WHERE DATE(created_at) = DATE('now')
+      WHERE DATE(created_at) = DATE('now', 'localtime')
       GROUP BY status
     `).all();
 
     const callsByPriority = db.prepare(`
       SELECT priority, COUNT(*) as count FROM calls_for_service
-      WHERE DATE(created_at) = DATE('now')
+      WHERE DATE(created_at) = DATE('now', 'localtime')
       GROUP BY priority
     `).all();
 
@@ -87,7 +165,7 @@ router.get('/stats', (req: Request, res: Response) => {
 
     const todayTotal = db.prepare(`
       SELECT COUNT(*) as count FROM calls_for_service
-      WHERE DATE(created_at) = DATE('now')
+      WHERE DATE(created_at) = DATE('now', 'localtime')
     `).get() as any;
 
     const avgResponseTime = db.prepare(`
@@ -95,7 +173,7 @@ router.get('/stats', (req: Request, res: Response) => {
         (julianday(onscene_at) - julianday(created_at)) * 24 * 60
       ) as avg_minutes
       FROM calls_for_service
-      WHERE onscene_at IS NOT NULL AND DATE(created_at) = DATE('now')
+      WHERE onscene_at IS NOT NULL AND DATE(created_at) = DATE('now', 'localtime')
     `).get() as any;
 
     res.json({
@@ -114,7 +192,7 @@ router.get('/stats', (req: Request, res: Response) => {
 
 // POST /api/dispatch/panic - Emergency PANIC button
 // Broadcasts audible alert to all connected users
-router.post('/panic', authenticateToken, async (req: Request, res: Response) => {
+router.post('/panic', async (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { latitude, longitude, message } = req.body;
@@ -129,18 +207,8 @@ router.post('/panic', authenticateToken, async (req: Request, res: Response) => 
 
     const now = localNow();
 
-    // Log the panic alert to activity log
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'panic_alert', 'user', ?, ?, ?)
-    `).run(
-      user.id,
-      user.id,
-      `PANIC ALERT triggered by ${user.full_name} (${user.badge_number || 'N/A'})${message ? ': ' + message : ''}`,
-      req.ip || 'unknown'
-    );
-
     // ── Reverse-geocode officer GPS → address (with fallback) ──
+    // Must happen BEFORE the transaction since it's async
     let locationAddress = latitude && longitude
       ? `GPS: ${Number(latitude).toFixed(5)}, ${Number(longitude).toFixed(5)}`
       : 'Unknown location';
@@ -152,58 +220,77 @@ router.post('/panic', authenticateToken, async (req: Request, res: Response) => 
       } catch { /* keep GPS fallback */ }
     }
 
-    // ── Auto-create "Officer Assist — Panic Alarm" dispatch call ──
+    // ── All DB writes in a single transaction for atomicity ──
     const callNumber = generateCallNumber(db);
     const description = `PANIC ALARM — Officer ${user.full_name} (Badge: ${user.badge_number || 'N/A'}) triggered emergency alert.${message ? ' Message: ' + message : ''}`;
 
-    const callResult = db.prepare(`
-      INSERT INTO calls_for_service (
-        call_number, incident_type, priority, status,
-        caller_name, location_address, latitude, longitude,
-        description, source, dispatcher_id,
-        weapons_involved, created_at, dispatched_at
-      ) VALUES (?, 'officer_assist', 'P1', 'dispatched',
-        ?, ?, ?, ?,
-        ?, 'panic', ?,
-        'unknown', ?, ?)
-    `).run(
-      callNumber,
-      user.full_name,
-      locationAddress,
-      latitude || null,
-      longitude || null,
-      description,
-      user.id,
-      now,
-      now,
-    );
+    const panicTx = db.transaction(() => {
+      // Log the panic alert to activity log
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'panic_alert', 'user', ?, ?, ?)
+      `).run(
+        user.id,
+        user.id,
+        `PANIC ALERT triggered by ${user.full_name} (${user.badge_number || 'N/A'})${message ? ': ' + message : ''}`,
+        req.ip || 'unknown'
+      );
 
-    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?')
-      .get(callResult.lastInsertRowid) as any;
+      // Auto-create "Officer Assist — Panic Alarm" dispatch call
+      const callResult = db.prepare(`
+        INSERT INTO calls_for_service (
+          call_number, incident_type, priority, status,
+          caller_name, location_address, latitude, longitude,
+          description, source, dispatcher_id,
+          weapons_involved, created_at, dispatched_at
+        ) VALUES (?, 'officer_assist', 'P1', 'dispatched',
+          ?, ?, ?, ?,
+          ?, 'panic', ?,
+          'unknown', ?, ?)
+      `).run(
+        callNumber,
+        user.full_name,
+        locationAddress,
+        latitude || null,
+        longitude || null,
+        description,
+        user.id,
+        now,
+        now,
+      );
 
-    // ── Auto-assign officer's unit to the call ──
-    const unit = db.prepare('SELECT id, call_sign FROM units WHERE officer_id = ?')
-      .get(user.id) as any;
+      const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?')
+        .get(callResult.lastInsertRowid) as any;
 
+      // Auto-assign officer's unit to the call
+      const unit = db.prepare('SELECT id, call_sign FROM units WHERE officer_id = ?')
+        .get(user.id) as any;
+
+      if (unit) {
+        db.prepare('UPDATE units SET status = ?, current_call_id = ?, last_status_change = ? WHERE id = ?')
+          .run('dispatched', call.id, now, unit.id);
+
+        const unitIds = JSON.stringify([unit.id]);
+        db.prepare('UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?')
+          .run(unitIds, call.id);
+      }
+
+      // Log call creation
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'call_created', 'call', ?, ?, ?)
+      `).run(user.id, call.id, `PANIC auto-created ${callNumber}: officer_assist`, req.ip || 'unknown');
+
+      return { call, unit };
+    });
+
+    const { call, unit } = panicTx();
+
+    // ── Broadcasts happen AFTER transaction commits ──
     if (unit) {
-      db.prepare('UPDATE units SET status = ?, current_call_id = ?, last_status_change = ? WHERE id = ?')
-        .run('dispatched', call.id, now, unit.id);
-
-      // Update call's assigned_unit_ids JSON array
-      const unitIds = JSON.stringify([String(unit.id)]);
-      db.prepare('UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?')
-        .run(unitIds, call.id);
-
       broadcastUnitUpdate({ action: 'unit_status_changed', unit: { ...unit, status: 'dispatched', current_call_id: call.id } });
     }
 
-    // Log call creation
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'call_created', 'call', ?, ?, ?)
-    `).run(user.id, call.id, `PANIC auto-created ${callNumber}: officer_assist`, req.ip || 'unknown');
-
-    // ── Broadcast panic alert to ALL clients (with call info) ──
     broadcastPanic({
       user_id: user.id,
       user_name: user.full_name,
@@ -219,7 +306,6 @@ router.post('/panic', authenticateToken, async (req: Request, res: Response) => 
       unit_call_sign: unit?.call_sign || null,
     });
 
-    // ── Broadcast dispatch update so Dispatch page picks up the new call ──
     const enrichedCall = db.prepare(`
       SELECT c.*, u.full_name as dispatcher_name
       FROM calls_for_service c
@@ -270,7 +356,7 @@ router.get('/premise-history', (req: Request, res: Response) => {
     // Determine if there are hazardous warnings
     const warningTypes: string[] = [];
     for (const call of calls) {
-      if (call.weapons_involved && !warningTypes.includes('ARMED'))
+      if (call.weapons_involved && call.weapons_involved !== 'None' && !warningTypes.includes('ARMED'))
         warningTypes.push('ARMED');
       if (call.domestic_violence && !warningTypes.includes('DV'))
         warningTypes.push('DV');
@@ -357,10 +443,10 @@ router.get('/safety-screen', (req: Request, res: Response) => {
     // Enrich each person with warrants and criminal history
     const persons = personRows.map((person: any) => {
       const warrants = db.prepare(`
-        SELECT * FROM warrants
-        WHERE status = 'active'
-          AND subject_first_name LIKE ? AND subject_last_name LIKE ?
-      `).all(`%${person.first_name}%`, `%${person.last_name}%`);
+        SELECT w.* FROM warrants w
+        WHERE w.status = 'active'
+          AND w.subject_person_id = ?
+      `).all(person.id);
 
       const criminalHistory = db.prepare(`
         SELECT * FROM criminal_history WHERE person_id = ? ORDER BY charge_date DESC LIMIT 10

@@ -10,6 +10,7 @@ interface QuickPsoModalProps {
   onClose: () => void;
   onSubmit: (call: Partial<CallForService> & Record<string, any>) => void | Promise<void>;
   onExpandToFullForm: (data: Record<string, any>) => void;
+  clients?: { id: string; name: string; contact_name?: string; contact_phone?: string; address?: string }[];
 }
 
 const DEFAULT_PSO_DATA = {
@@ -17,6 +18,7 @@ const DEFAULT_PSO_DATA = {
   source: 'phone' as CallSource,
   priority: 'P3' as CallPriority,
   pso_service_type: '',
+  client_id: '',
   location: '',
   latitude: null as number | null,
   longitude: null as number | null,
@@ -32,7 +34,7 @@ const DEFAULT_PSO_DATA = {
   process_served_address: '',
 };
 
-export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFullForm }: QuickPsoModalProps) {
+export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFullForm, clients = [] }: QuickPsoModalProps) {
   const [formData, setFormData] = useState({ ...DEFAULT_PSO_DATA });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const titleId = useId();
@@ -136,6 +138,62 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-5 space-y-3 max-h-[70vh] overflow-y-auto">
+          {/* Client / Requestor dropdown — auto-fills name, phone, address */}
+          {clients.length > 0 && (
+            <div>
+              <label className="block text-xs font-semibold text-brand-gold-500 uppercase mb-1">Client / Requestor</label>
+              <select
+                className="select-dark w-full"
+                value={formData.client_id || ''}
+                onChange={(e) => {
+                  const selectedId = e.target.value;
+                  const client = clients.find((c) => c.id === selectedId);
+                  if (client) {
+                    setFormData((prev) => ({
+                      ...prev,
+                      client_id: client.id,
+                      pso_requestor_name: client.contact_name || prev.pso_requestor_name,
+                      pso_requestor_phone: client.contact_phone || prev.pso_requestor_phone,
+                      location: client.address || prev.location,
+                    }));
+                    try {
+                      const recent = JSON.parse(localStorage.getItem('rmpg_recent_pso_clients') || '[]') as string[];
+                      const updated = [selectedId, ...recent.filter((id: string) => id !== selectedId)].slice(0, 5);
+                      localStorage.setItem('rmpg_recent_pso_clients', JSON.stringify(updated));
+                    } catch { /* localStorage unavailable */ }
+                  } else {
+                    update('client_id', '');
+                  }
+                }}
+                style={{ borderColor: '#6b21a8' }}
+              >
+                <option value="">-- Select Client --</option>
+                {(() => {
+                  let recentIds: string[] = [];
+                  try { recentIds = JSON.parse(localStorage.getItem('rmpg_recent_pso_clients') || '[]'); } catch { /* ignore */ }
+                  const recentClients = recentIds.map((id: string) => clients.find((c) => c.id === id)).filter(Boolean) as typeof clients;
+                  const otherClients = clients.filter((c) => !recentIds.includes(c.id));
+                  return (
+                    <>
+                      {recentClients.length > 0 && (
+                        <optgroup label="Recent">
+                          {recentClients.map((c) => (
+                            <option key={`recent-${c.id}`} value={c.id}>{c.name}{c.contact_name ? ` (${c.contact_name})` : ''}</option>
+                          ))}
+                        </optgroup>
+                      )}
+                      <optgroup label={recentClients.length > 0 ? 'All Clients' : 'Clients'}>
+                        {otherClients.map((c) => (
+                          <option key={c.id} value={c.id}>{c.name}{c.contact_name ? ` (${c.contact_name})` : ''}</option>
+                        ))}
+                      </optgroup>
+                    </>
+                  );
+                })()}
+              </select>
+            </div>
+          )}
+
           {/* Service Type */}
           <div>
             <label className="block text-xs font-semibold text-purple-300 uppercase mb-1">Service Type</label>
@@ -256,9 +314,9 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
 
           {/* Process Service sub-section (conditional) */}
           {formData.pso_service_type === 'process_service' && (
-            <div className="border-t border-amber-700/30 pt-3">
+            <div className="panel-inset border border-amber-700/30 p-3">
               <div className="text-[9px] font-bold text-amber-400 uppercase tracking-wider mb-2">Process Service Details</div>
-              <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                 <div>
                   <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Document Type</label>
                   <select
@@ -271,28 +329,26 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
                     ))}
                   </select>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Serve To (Name)</label>
-                    <input
-                      type="text"
-                      className="input-dark"
-                      placeholder="Person to be served"
-                      value={formData.process_served_to}
-                      onChange={(e) => update('process_served_to', e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Service Address</label>
-                    <input
-                      type="text"
-                      className="input-dark"
-                      placeholder="Address for service"
-                      value={formData.process_served_address}
-                      onChange={(e) => update('process_served_address', e.target.value)}
-                    />
-                  </div>
+                <div>
+                  <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Serve To (Name)</label>
+                  <input
+                    type="text"
+                    className="input-dark"
+                    placeholder="Person to be served"
+                    value={formData.process_served_to}
+                    onChange={(e) => update('process_served_to', e.target.value)}
+                  />
                 </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Service Address</label>
+                <input
+                  type="text"
+                  className="input-dark w-full"
+                  placeholder="Address for service"
+                  value={formData.process_served_address}
+                  onChange={(e) => update('process_served_address', e.target.value)}
+                />
               </div>
             </div>
           )}

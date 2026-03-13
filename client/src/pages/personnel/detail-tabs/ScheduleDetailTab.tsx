@@ -110,7 +110,7 @@ export default function ScheduleDetailTab({
                     {/* Status badge */}
                     <div className="flex items-center gap-2">
                       <span className={`text-[9px] px-1.5 py-0.5 font-bold uppercase ${statusClass}`}>
-                        {sched.status.replace('_', ' ')}
+                        {sched.status.replace(/_/g, ' ')}
                       </span>
                     </div>
 

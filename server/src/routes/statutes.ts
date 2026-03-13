@@ -1,8 +1,8 @@
 // ============================================================
-// RMPG Flex — Utah Statute Routes
+// RMPG Flex — Multi-State Statute Routes
 // ============================================================
-// API endpoints for searching, browsing, and linking Utah
-// Criminal Code (Title 76) and Vehicle Code (Title 41) statutes.
+// API endpoints for searching, browsing, and linking statutes
+// across all supported states (UT, CO, WY, ID, NV, AZ, NM).
 // ============================================================
 
 import { Router, Request, Response } from 'express';
@@ -16,21 +16,45 @@ router.use(authenticateToken);
 
 // ─── SEARCH / LIST STATUTES ────────────────────────────────
 
-// GET /api/statutes — Search or list statutes
+// GET /api/statutes/states — Get list of states with statute counts
+router.get('/states', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const states = db.prepare(`
+      SELECT state, state_name, COUNT(*) as count
+      FROM utah_statutes
+      WHERE is_active = 1
+      GROUP BY state, state_name
+      ORDER BY state_name
+    `).all();
+
+    res.json({ data: states });
+  } catch (error: any) {
+    console.error('List states error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/statutes — Search or list statutes (with state filter)
 router.get('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { q, category, title, offense_level, subcategory, limit = '50', offset = '0' } = req.query;
+    const { q, category, title, offense_level, subcategory, state, limit = '50', offset = '0' } = req.query;
     const limitNum = Math.min(parseInt(limit as string, 10) || 50, 200);
     const offsetNum = parseInt(offset as string, 10) || 0;
 
     let where = 'WHERE is_active = 1';
     const params: any[] = [];
 
+    if (state) {
+      where += ' AND state = ?';
+      params.push((state as string).toUpperCase());
+    }
+
     if (q) {
-      where += ' AND (citation LIKE ? OR short_title LIKE ? OR description LIKE ?)';
+      where += ' AND (citation LIKE ? OR short_title LIKE ? OR description LIKE ? OR definition LIKE ?)';
       const searchTerm = `%${q}%`;
-      params.push(searchTerm, searchTerm, searchTerm);
+      params.push(searchTerm, searchTerm, searchTerm, searchTerm);
     }
 
     if (category) {
@@ -58,14 +82,20 @@ router.get('/', (req: Request, res: Response) => {
     const statutes = db.prepare(`
       SELECT * FROM utah_statutes
       ${where}
-      ORDER BY title, chapter, section
+      ORDER BY state, title, chapter, section
       LIMIT ? OFFSET ?
     `).all(...params, limitNum, offsetNum);
 
-    // Get distinct subcategories for filtering
+    // Get distinct subcategories for filtering (within selected state or all)
+    let subWhere = 'WHERE is_active = 1';
+    const subParams: any[] = [];
+    if (state) {
+      subWhere += ' AND state = ?';
+      subParams.push((state as string).toUpperCase());
+    }
     const subcategories = db.prepare(`
-      SELECT DISTINCT subcategory FROM utah_statutes WHERE is_active = 1 ORDER BY subcategory
-    `).all() as { subcategory: string }[];
+      SELECT DISTINCT subcategory FROM utah_statutes ${subWhere} ORDER BY subcategory
+    `).all(...subParams) as { subcategory: string }[];
 
     res.json({
       data: statutes,
@@ -82,7 +112,7 @@ router.get('/', (req: Request, res: Response) => {
 router.get('/search', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { q, category, limit = '20' } = req.query;
+    const { q, category, state, limit = '20' } = req.query;
     const limitNum = Math.min(parseInt(limit as string, 10) || 20, 50);
 
     if (!q || (q as string).length < 2) {
@@ -94,18 +124,23 @@ router.get('/search', (req: Request, res: Response) => {
     const searchTerm = `%${q}%`;
     const params: any[] = [searchTerm, searchTerm];
 
+    if (state) {
+      where += ' AND state = ?';
+      params.push((state as string).toUpperCase());
+    }
+
     if (category) {
       where += ' AND category = ?';
       params.push(category);
     }
 
     const statutes = db.prepare(`
-      SELECT id, citation, short_title, description, offense_level, category, subcategory, citation_fine
+      SELECT id, state, state_name, citation, short_title, description, definition, offense_level, category, subcategory, citation_fine
       FROM utah_statutes
       ${where}
       ORDER BY
         CASE WHEN citation LIKE ? THEN 0 ELSE 1 END,
-        title, chapter, section
+        state, title, chapter, section
       LIMIT ?
     `).all(...params, `${q}%`, limitNum);
 
@@ -136,7 +171,7 @@ router.get('/:id', (req: Request, res: Response) => {
 router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { title, chapter, section, subsection, citation, short_title, description, offense_level, category, subcategory } = req.body;
+    const { state: stateCode, state_name: stateName, title, chapter, section, subsection, citation, short_title, description, definition, offense_level, category, subcategory } = req.body;
 
     if (!citation || !short_title || !category) {
       res.status(400).json({ error: 'citation, short_title, and category are required' });
@@ -144,9 +179,9 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
     }
 
     const result = db.prepare(`
-      INSERT INTO utah_statutes (title, chapter, section, subsection, citation, short_title, description, offense_level, category, subcategory)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(title || 0, chapter || null, section || '', subsection || null, citation, short_title, description || null, offense_level || null, category, subcategory || null);
+      INSERT INTO utah_statutes (state, state_name, title, chapter, section, subsection, citation, short_title, description, definition, offense_level, category, subcategory)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(stateCode || 'UT', stateName || 'Utah', title || 0, chapter || null, section || '', subsection || null, citation, short_title, description || null, definition || null, offense_level || null, category, subcategory || null);
 
     const statute = db.prepare('SELECT * FROM utah_statutes WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json(statute);
@@ -160,7 +195,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
 router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { citation, short_title, description, offense_level, category, subcategory, is_active } = req.body;
+    const { citation, short_title, description, definition, offense_level, category, subcategory, is_active } = req.body;
 
     const fields: string[] = [];
     const params: any[] = [];
@@ -168,6 +203,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
     if (citation !== undefined) { fields.push('citation = ?'); params.push(citation); }
     if (short_title !== undefined) { fields.push('short_title = ?'); params.push(short_title); }
     if (description !== undefined) { fields.push('description = ?'); params.push(description); }
+    if (definition !== undefined) { fields.push('definition = ?'); params.push(definition); }
     if (offense_level !== undefined) { fields.push('offense_level = ?'); params.push(offense_level); }
     if (category !== undefined) { fields.push('category = ?'); params.push(category); }
     if (subcategory !== undefined) { fields.push('subcategory = ?'); params.push(subcategory); }
@@ -210,11 +246,11 @@ router.get('/entity/:type/:id', (req: Request, res: Response) => {
     const { type, id } = req.params;
 
     const links = db.prepare(`
-      SELECT es.*, s.citation, s.short_title, s.offense_level, s.category, s.subcategory, s.description
+      SELECT es.*, s.state, s.state_name, s.citation, s.short_title, s.offense_level, s.category, s.subcategory, s.description, s.definition
       FROM entity_statutes es
       JOIN utah_statutes s ON es.statute_id = s.id
       WHERE es.entity_type = ? AND es.entity_id = ?
-      ORDER BY s.citation
+      ORDER BY s.state, s.citation
     `).all(type, id);
 
     res.json({ data: links });
@@ -246,7 +282,7 @@ router.post('/entity', (req: Request, res: Response) => {
     }
 
     const link = db.prepare(`
-      SELECT es.*, s.citation, s.short_title, s.offense_level, s.category, s.subcategory
+      SELECT es.*, s.state, s.state_name, s.citation, s.short_title, s.offense_level, s.category, s.subcategory
       FROM entity_statutes es
       JOIN utah_statutes s ON es.statute_id = s.id
       WHERE es.id = ?

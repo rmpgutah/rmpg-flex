@@ -4,6 +4,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
 import { getConnectedClientCount } from '../utils/websocket';
 import { createNotification } from './notifications';
+import { sendNotificationEmail } from '../utils/emailSender';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -14,6 +15,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const router = Router();
+
+// Allowed table names for retention policy operations (SQL injection prevention)
+const RETENTION_ALLOWED_TABLES = new Set([
+  'calls_for_service', 'incidents', 'persons', 'vehicles', 'warrants',
+  'evidence', 'arrests', 'citations', 'audit_log', 'activity_log',
+  'fleet_vehicles', 'fleet_fuel_logs', 'fleet_maintenance_logs',
+  'attachments', 'notifications', 'patrol_breadcrumbs',
+]);
 
 // All routes require authentication
 router.use(authenticateToken);
@@ -84,6 +93,39 @@ function initTables(): void {
       FOREIGN KEY (created_by) REFERENCES users(id)
     );
   `);
+
+  // ── Seed default notification rules (idempotent — skips existing trigger events) ──
+  const adminId = (db.prepare("SELECT id FROM users WHERE role = 'admin' LIMIT 1").get() as any)?.id || 1;
+  const now = localNow();
+  const existingEvents = new Set(
+    (db.prepare('SELECT trigger_event FROM notification_rules').all() as any[]).map(r => r.trigger_event)
+  );
+  const seed = db.prepare(`
+    INSERT INTO notification_rules (name, description, trigger_event, target_roles, notification_type, is_active, created_by, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)
+  `);
+  const rules = [
+    ['New Call for Service', 'Notify dispatch/supervisors when a new call is created', 'dispatch.call_created', '["admin","manager","supervisor","dispatcher"]', 'in_app'],
+    ['P1 Emergency Call', 'Critical alert for P1 emergency calls', 'dispatch.call_priority_p1', '["admin","manager","supervisor","officer","dispatcher"]', 'both'],
+    ['Unit Dispatched', 'Notify officer when dispatched to a call', 'dispatch.unit_dispatched', '["officer"]', 'in_app'],
+    ['Call Cleared', 'Notify supervisors when a call is cleared', 'dispatch.call_cleared', '["admin","manager","supervisor"]', 'in_app'],
+    ['Warrant Created', 'Alert sworn personnel of new warrants', 'warrant.created', '["admin","manager","supervisor","officer"]', 'in_app'],
+    ['Warrant Served', 'Notify supervisors when a warrant is served', 'warrant.served', '["admin","manager","supervisor"]', 'in_app'],
+    ['Incident Created', 'Notify supervisors of new incident reports', 'incident.created', '["admin","manager","supervisor"]', 'in_app'],
+    ['Citation Issued', 'Notify supervisors of citations issued', 'citation.issued', '["admin","manager","supervisor"]', 'in_app'],
+    ['Trespass Order Issued', 'Notify supervisors of new trespass orders', 'trespass.created', '["admin","manager","supervisor"]', 'in_app'],
+    ['Field Interview Recorded', 'Notify supervisors of new field interviews', 'fi.created', '["admin","manager","supervisor"]', 'in_app'],
+    ['New IP Login', 'Alert user when login from unrecognized IP', 'auth.new_ip_login', '["admin","manager","supervisor","officer","dispatcher"]', 'both'],
+    ['Patrol Checkpoint Missed', 'Alert when a patrol checkpoint scan is overdue', 'patrol.checkpoint_missed', '["admin","manager","supervisor","officer"]', 'both'],
+  ];
+  let seeded = 0;
+  for (const [name, desc, event, roles, type] of rules) {
+    if (!existingEvents.has(event)) {
+      seed.run(name, desc, event, roles, type, adminId, now, now);
+      seeded++;
+    }
+  }
+  if (seeded > 0) console.log(`[AdminSystems] Seeded ${seeded} new notification rules`);
 }
 
 // Run table init on import (may fail if DB not yet initialized)
@@ -612,6 +654,16 @@ router.post('/retention/run', requireRole('admin'), (req: Request, res: Response
     for (const policy of policies) {
       let totalAffected = 0;
 
+      // Validate table name against whitelist (prevent SQL injection)
+      if (!RETENTION_ALLOWED_TABLES.has(policy.entity_type)) {
+        results.push({
+          entity_type: policy.entity_type,
+          action: 'error: table not in allowed list',
+          records_affected: 0,
+        });
+        continue;
+      }
+
       try {
         if (policy.auto_archive) {
           // Try to archive records — table must have an archived_at column
@@ -694,6 +746,9 @@ router.get('/retention/preview', requireRole('admin', 'manager'), (req: Request,
     for (const policy of policies) {
       let archiveCount = 0;
       let deleteCount = 0;
+
+      // Validate table name against whitelist (prevent SQL injection)
+      if (!RETENTION_ALLOWED_TABLES.has(policy.entity_type)) continue;
 
       try {
         if (policy.auto_archive) {
@@ -1100,6 +1155,9 @@ router.post('/notification-rules/:id/test', requireRole('admin', 'manager'), (re
 
     // Send test notification to each target user
     let sentCount = 0;
+    let emailSentCount = 0;
+    const shouldEmail = rule.notification_type === 'email' || rule.notification_type === 'both';
+
     for (const userId of targetUserIds) {
       try {
         createNotification(
@@ -1110,8 +1168,19 @@ router.post('/notification-rules/:id/test', requireRole('admin', 'manager'), (re
           'notification_rule',
           rule.id,
           'normal',
+          rule.trigger_event,
         );
         sentCount++;
+
+        // Also send test email when rule includes email delivery
+        if (shouldEmail) {
+          sendNotificationEmail(
+            userId,
+            `[TEST] ${rule.name}`,
+            `Test notification for rule: ${rule.name} (trigger: ${rule.trigger_event})`,
+          ).then(() => { emailSentCount++; })
+           .catch(err => console.error(`[AdminSystems] Test email failed for user ${userId}:`, err.message));
+        }
       } catch { /* skip failed sends */ }
     }
 

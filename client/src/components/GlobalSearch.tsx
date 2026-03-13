@@ -160,7 +160,7 @@ export const GlobalSearch: React.FC = () => {
         const searchPromises = [
           apiFetch<any[]>(`/records/persons?search=${encodeURIComponent(query)}`)
             .then((data) =>
-              data.map((item) => ({
+              (Array.isArray(data) ? data : []).map((item) => ({
                 id: item.id,
                 type: 'person' as EntityType,
                 primaryText: `${item.firstName} ${item.lastName}`,
@@ -170,7 +170,7 @@ export const GlobalSearch: React.FC = () => {
             .catch(() => []),
           apiFetch<any[]>(`/records/vehicles?search=${encodeURIComponent(query)}`)
             .then((data) =>
-              data.map((item) => ({
+              (Array.isArray(data) ? data : []).map((item) => ({
                 id: item.id,
                 type: 'vehicle' as EntityType,
                 primaryText: item.plate || 'No Plate',
@@ -180,7 +180,7 @@ export const GlobalSearch: React.FC = () => {
             .catch(() => []),
           apiFetch<any[]>(`/incidents?search=${encodeURIComponent(query)}`)
             .then((data) =>
-              data.map((item) => ({
+              (Array.isArray(data) ? data : []).map((item) => ({
                 id: item.id,
                 type: 'incident' as EntityType,
                 primaryText: item.incidentNumber || `Incident #${item.id}`,
@@ -190,7 +190,7 @@ export const GlobalSearch: React.FC = () => {
             .catch(() => []),
           apiFetch<any[]>(`/dispatch/calls?search=${encodeURIComponent(query)}`)
             .then((data) =>
-              data.map((item) => ({
+              (Array.isArray(data) ? data : []).map((item) => ({
                 id: item.id,
                 type: 'call' as EntityType,
                 primaryText: item.callNumber || `Call #${item.id}`,
@@ -200,7 +200,7 @@ export const GlobalSearch: React.FC = () => {
             .catch(() => []),
           apiFetch<any[]>(`/comms/bolos?search=${encodeURIComponent(query)}`)
             .then((data) =>
-              data.map((item) => ({
+              (Array.isArray(data) ? data : []).map((item) => ({
                 id: item.id,
                 type: 'bolo' as EntityType,
                 primaryText: item.subject || 'BOLO',

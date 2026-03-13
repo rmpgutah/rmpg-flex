@@ -8,19 +8,27 @@
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 
 const router = Router();
 router.use(authenticateToken);
 
+// Whitelist of valid table/column pairs to prevent SQL injection via interpolation
+const SEQUENCE_TARGETS: Record<string, string> = {
+  'code_violations:violation_number': 'SELECT violation_number FROM code_violations WHERE violation_number LIKE ? ORDER BY id DESC LIMIT 1',
+  'vehicle_tows:tow_number': 'SELECT tow_number FROM vehicle_tows WHERE tow_number LIKE ? ORDER BY id DESC LIMIT 1',
+};
+
 function nextNumber(table: string, prefix: string, col: string): string {
   const db = getDb();
+  const key = `${table}:${col}`;
+  const sql = SEQUENCE_TARGETS[key];
+  if (!sql) throw new Error(`nextNumber: invalid table/column pair "${key}"`);
+
   const yr = new Date().getFullYear();
   const pfx = `${prefix}-${yr}-`;
-  const last = db.prepare(
-    `SELECT ${col} FROM ${table} WHERE ${col} LIKE ? ORDER BY id DESC LIMIT 1`
-  ).get(`${pfx}%`) as any;
+  const last = db.prepare(sql).get(`${pfx}%`) as any;
   const seq = last ? parseInt(last[col].replace(pfx, ''), 10) + 1 : 1;
   return `${pfx}${String(seq).padStart(4, '0')}`;
 }
@@ -89,7 +97,7 @@ router.get('/violations/:id', (req: Request, res: Response) => {
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.post('/violations', (req: Request, res: Response) => {
+router.post('/violations', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -120,7 +128,7 @@ router.post('/violations', (req: Request, res: Response) => {
   }
 });
 
-router.put('/violations/:id', (req: Request, res: Response) => {
+router.put('/violations/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -138,7 +146,7 @@ router.put('/violations/:id', (req: Request, res: Response) => {
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.put('/violations/:id/status', (req: Request, res: Response) => {
+router.put('/violations/:id/status', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -195,7 +203,7 @@ router.get('/tows/:id', (req: Request, res: Response) => {
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.post('/tows', (req: Request, res: Response) => {
+router.post('/tows', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -233,7 +241,7 @@ router.post('/tows', (req: Request, res: Response) => {
   }
 });
 
-router.put('/tows/:id', (req: Request, res: Response) => {
+router.put('/tows/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -252,7 +260,7 @@ router.put('/tows/:id', (req: Request, res: Response) => {
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.put('/tows/:id/status', (req: Request, res: Response) => {
+router.put('/tows/:id/status', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();

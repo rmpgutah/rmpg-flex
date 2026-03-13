@@ -56,6 +56,16 @@ export default function PrintRecordButton({
   const [savedSignature, setSavedSignature] = useState<string | null>(null);
   const [signatureChecked, setSignatureChecked] = useState(false);
 
+  // Escape key to close sign modal
+  useEffect(() => {
+    if (!signModalOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSignModalOpen(false);
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [signModalOpen]);
+
   // Clean up blob URL on unmount
   useEffect(() => {
     return () => {
@@ -113,6 +123,16 @@ export default function PrintRecordButton({
         }
       } catch (err) {
         console.warn('[PrintRecordButton] System history fetch failed, proceeding without history:', err);
+      }
+
+      // Also fetch criminal history records (arrests, convictions, charges, bookings, etc.)
+      try {
+        const criminal = await apiFetch<any[]>(`/records/persons/${data.id}/criminal-history`);
+        if (criminal && criminal.length > 0) {
+          enriched.criminal_records = criminal;
+        }
+      } catch (err) {
+        console.warn('[PrintRecordButton] Criminal history fetch failed, proceeding without:', err);
       }
     }
 

@@ -409,7 +409,7 @@ router.get('/scans', (req: Request, res: Response) => {
       ${whereClause}
       ORDER BY ps.scanned_at DESC
       LIMIT ?
-    `).all(...params, parseInt(limit as string));
+    `).all(...params, parseInt(limit as string) || 50);
 
     res.json(scans);
   } catch (error) {
@@ -438,7 +438,7 @@ router.get('/compliance', (req: Request, res: Response) => {
         SELECT COUNT(*) as count
         FROM patrol_scans
         WHERE checkpoint_id = ?
-        AND date(scanned_at) = date('now')
+        AND date(scanned_at) = date('now', 'localtime')
       `).get(checkpoint.id) as any;
 
       const lastScan = db.prepare(`
@@ -455,8 +455,8 @@ router.get('/compliance', (req: Request, res: Response) => {
           SUM(CASE WHEN status = 'on_time' THEN 1 ELSE 0 END) as on_time_scans
         FROM patrol_scans
         WHERE checkpoint_id = ?
-        AND scanned_at >= ?
-      `).get(checkpoint.id, new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()) as any;
+        AND scanned_at >= datetime('now', 'localtime', '-30 days')
+      `).get(checkpoint.id) as any;
 
       const complianceRate = complianceStats.total_scans > 0
         ? (complianceStats.on_time_scans / complianceStats.total_scans) * 100

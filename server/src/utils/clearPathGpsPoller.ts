@@ -134,7 +134,7 @@ async function pollFleetPositions(): Promise<void> {
   let updatedCount = 0;
 
   const updateUnit = db.prepare(`
-    UPDATE units SET latitude = ?, longitude = ?, gps_source = 'clearpathgps'
+    UPDATE units SET latitude = ?, longitude = ?, gps_source = 'clearpathgps', gps_updated_at = ?
     WHERE id = ?
   `);
 
@@ -161,7 +161,7 @@ async function pollFleetPositions(): Promise<void> {
   `);
 
   const insertDashcamEvent = db.prepare(`
-    INSERT INTO dashcam_events (cpg_device_id, unit_id, dashcam_id, event_type, event_timestamp,
+    INSERT OR IGNORE INTO dashcam_events (cpg_device_id, unit_id, dashcam_id, event_type, event_timestamp,
       latitude, longitude, heading, speed_mph, address, status_code, status_code_text, video_available)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
@@ -187,7 +187,7 @@ async function pollFleetPositions(): Promise<void> {
       if (lat == null || lng == null || lat === 0 || lng === 0) continue;
 
       // Update unit position (always use latest)
-      updateUnit.run(lat, lng, mapping.unit_id);
+      updateUnit.run(lat, lng, now, mapping.unit_id);
 
       // Get full unit info for breadcrumb + broadcast
       const unit = getUnitFull.get(mapping.unit_id) as any;
@@ -199,7 +199,7 @@ async function pollFleetPositions(): Promise<void> {
       insertBreadcrumb.run(
         mapping.unit_id, unit.officer_id || null,
         lat, lng,
-        ed.heading ?? null, ed.speedMph ?? null,
+        ed.heading ?? null, ed.speedMph != null ? ed.speedMph * 0.44704 : null, // Convert MPH → m/s to match browser GPS convention
         unit.status, unit.call_sign,
         unit.officer_name || null, unit.badge_number || null,
         unit.current_call_id || null, unit.call_number || null, unit.current_call_type || null,
@@ -293,15 +293,20 @@ async function backfillHistory(
 
   for (const mapping of mappings) {
     const lastSync = mapping.last_synced_at;
-    if (!lastSync) continue; // No previous sync — skip first time, next poll will backfill
 
     // Convert last_synced_at to ISO for API call
     let fromISO: string;
-    try {
-      // last_synced_at is stored as "YYYY-MM-DD HH:MM:SS" (local time)
-      fromISO = new Date(lastSync.replace(' ', 'T') + 'Z').toISOString();
-    } catch {
-      continue;
+    if (!lastSync) {
+      // No previous sync — look back 30 minutes to capture initial history
+      fromISO = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+    } else {
+      try {
+        // last_synced_at may be ISO with offset ("2025-01-15T14:30:00-07:00")
+        // or legacy format ("YYYY-MM-DD HH:MM:SS") — Date() handles both correctly
+        fromISO = new Date(lastSync).toISOString();
+      } catch {
+        continue;
+      }
     }
 
     try {
@@ -334,7 +339,7 @@ async function backfillHistory(
             insertBreadcrumb.run(
               mapping.unit_id, unit.officer_id || null,
               lat, lng,
-              ed.heading ?? null, ed.speedMph ?? null,
+              ed.heading ?? null, ed.speedMph != null ? ed.speedMph * 0.44704 : null, // Convert MPH → m/s to match browser GPS convention
               unit.status, unit.call_sign,
               unit.officer_name || null, unit.badge_number || null,
               unit.current_call_id || null, unit.call_number || null, unit.current_call_type || null,

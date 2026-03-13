@@ -127,7 +127,7 @@ export default function FormModal({
             </button>
           </div>
         </div>
-        <form onSubmit={onSubmit} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+        <form onSubmit={onSubmit} noValidate className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
           {children}
           <div className="flex items-center justify-end gap-2 pt-4" style={{ borderTop: '1px solid #1e3048' }}>
             <button type="button" onClick={guardedClose} className="toolbar-btn" disabled={isSubmitting}>

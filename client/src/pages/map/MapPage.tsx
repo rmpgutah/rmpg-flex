@@ -34,6 +34,10 @@ import {
   Copy,
   Save,
   Play,
+  Pause,
+  SkipForward,
+  Gauge,
+  Palette,
   PanelLeftClose,
   PanelLeftOpen,
   Loader2,
@@ -48,8 +52,9 @@ import { useGpsTracking } from '../../hooks/useGpsTracking';
 import { formatIncidentType } from '../../utils/caseNumbers';
 import { generatePatrolTrackingPdf } from '../../utils/patrolTrackingPdfGenerator';
 import { escapeHtml } from '../../utils/sanitize';
+import { useToast } from '../../components/ToastProvider';
 import { localToday, dateToLocalYMD } from '../../utils/dateUtils';
-import { useGeoJsonLayers, GEO_LAYER_CONFIGS } from '../../hooks/useGeoJsonLayers';
+import { useGeoJsonLayers, GEO_LAYER_CONFIGS, getSectionColor, type BeatDistrictEntry } from '../../hooks/useGeoJsonLayers';
 import { useEventPlanning, PLAN_COLORS, PLAN_TYPE_LABELS, type PlanItemType } from '../../hooks/useEventPlanning';
 import { useShiftPlanning, SHIFT_TYPES, type ShiftType } from '../../hooks/useShiftPlanning';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -61,18 +66,49 @@ import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, MAP_STYLE_LABE
 import { buildUnitMarkerContent, buildIncidentMarkerContent, buildPropertyMarkerContent, buildSelfPositionMarker, getOverlayMarkerClass, injectKeyframes, type OverlayMarker } from './utils/mapMarkerBuilders';
 
 // ============================================================
+// Constants
+// ============================================================
+
+// Unit colors for breadcrumb trails — cycle through distinct colors per unit
+const TRAIL_COLORS = ['#22d3ee', '#a78bfa', '#f472b6', '#34d399', '#fbbf24', '#f87171', '#60a5fa', '#c084fc'];
+
+// Speed-to-color mapping for breadcrumb speed mode (m/s → mph thresholds)
+const speedToColor = (mps: number | null): string => {
+  if (mps == null || mps < 0.5) return '#6b7280';    // Stationary — gray
+  const mph = mps * 2.237;
+  if (mph < 15) return '#22c55e';   // Slow — green
+  if (mph < 35) return '#eab308';   // City — yellow
+  if (mph < 55) return '#f97316';   // Arterial — orange
+  return '#ef4444';                 // Highway/pursuit — red
+};
+
+// Unit status to color for breadcrumb status mode
+const statusToColor = (status: string): string => {
+  switch (status) {
+    case 'dispatched': return '#f59e0b';  // amber
+    case 'enroute':    return '#3b82f6';  // blue
+    case 'onscene':    return '#ef4444';  // red
+    case 'available':  return '#22c55e';  // green
+    case 'busy':       return '#8b5cf6';  // purple
+    case 'off_duty':   return '#6b7280';  // gray
+    default:           return '#5a6e80';
+  }
+};
+
+// ============================================================
 // Main Component
 // ============================================================
 
 export default function MapPage() {
   const isMobile = useIsMobile();
+  const { addToast } = useToast();
   const [mobileLayersOpen, setMobileLayersOpen] = useState(false);
   const [mobileSheetTab, setMobileSheetTab] = useState<'layers' | 'units' | 'calls'>('layers');
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<any[]>([]); // AdvancedMarkerElement or OverlayView
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
-  const heatmapCirclesRef = useRef<google.maps.Circle[]>([]);
+  const heatmapLayerRef = useRef<google.maps.visualization.HeatmapLayer | null>(null);
   const trackingLinesRef = useRef<google.maps.Polyline[]>([]);
   const useAdvancedMarkersRef = useRef(false); // whether AdvancedMarkerElement is available
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -102,12 +138,25 @@ export default function MapPage() {
   const [showTrackingLines, setShowTrackingLines] = useState(true);
   const [heatmapData, setHeatmapData] = useState<any[]>([]);
   const [heatmapDays, setHeatmapDays] = useState(30);
+  const [heatmapMode, setHeatmapMode] = useState<'all' | 'risk' | 'type'>('all');
+  const [heatmapTypeFilter, setHeatmapTypeFilter] = useState('');
+  const [heatmapTypes, setHeatmapTypes] = useState<{ incident_type: string; count: number }[]>([]);
 
   // Breadcrumb trail state
   const [showBreadcrumbs, setShowBreadcrumbs] = useState(true);
   const [breadcrumbHours, setBreadcrumbHours] = useState(8);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [breadcrumbColorMode, setBreadcrumbColorMode] = useState<'unit' | 'speed' | 'status'>('unit');
   const breadcrumbLinesRef = useRef<google.maps.Polyline[]>([]);
+
+  // Trail playback state
+  const [playbackTrails, setPlaybackTrails] = useState<any[]>([]);
+  const [playbackUnit, setPlaybackUnit] = useState<number | null>(null);
+  const [playbackIdx, setPlaybackIdx] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState(2);
+  const playbackMarkerRef = useRef<any>(null);
+  const playbackAnimRef = useRef<number | null>(null);
 
   // Layers panel (left) collapsed/expanded
   const [layersPanelOpen, setLayersPanelOpen] = useState(true);
@@ -150,6 +199,35 @@ export default function MapPage() {
   const [assignUnitIds, setAssignUnitIds] = useState<string[]>([]);
   const [assignNotes, setAssignNotes] = useState('');
 
+  // District enrichment data for beat map coloring
+  const [beatDistrictMap, setBeatDistrictMap] = useState<Map<string, Map<string, BeatDistrictEntry>> | undefined>(undefined);
+  const [districtSections, setDistrictSections] = useState<{ id: string; name: string }[]>([]);
+  const [showDistrictLegend, setShowDistrictLegend] = useState(false);
+
+  useEffect(() => {
+    apiFetch<any[]>('/dispatch/districts').then((districts) => {
+      if (!districts) return;
+      const map = new Map<string, Map<string, BeatDistrictEntry>>();
+      const sectionSet = new Map<string, string>();
+      for (const d of districts) {
+        if (!map.has(d.zone_id)) map.set(d.zone_id, new Map());
+        map.get(d.zone_id)!.set(d.beat_id, {
+          sectionId: d.section_id,
+          sectionName: d.section_name,
+          zoneId: d.zone_id,
+          zoneName: d.zone_name,
+          beatId: d.beat_id,
+          beatName: d.beat_name,
+          beatDescriptor: d.beat_descriptor || '',
+          dispatchCode: d.dispatch_code,
+        });
+        sectionSet.set(d.section_id, d.section_name);
+      }
+      setBeatDistrictMap(map);
+      setDistrictSections(Array.from(sectionSet.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.id.localeCompare(b.id)));
+    }).catch(() => {});
+  }, []);
+
   // GeoJSON spatial layers (with shift planning selection integration)
   const { layerStates: geoLayerStates, toggleGeoLayer, ensureLayerLoaded, configs: geoConfigs } = useGeoJsonLayers({
     map: mapInstanceRef.current,
@@ -158,6 +236,7 @@ export default function MapPage() {
     onFeatureClick: shiftPlanning.handleFeatureClick,
     selectedFeatures: shiftPlanning.selectedAreas,
     assignedFeatures: shiftPlanning.assignedFeatures,
+    beatDistrictMap,
   });
   const [showGeoPanel, setShowGeoPanel] = useState(false);
 
@@ -228,10 +307,13 @@ export default function MapPage() {
   // ============================================================
 
   useEffect(() => {
-    if (!isConnected) return;
-
-    const unsubscribeUnit = subscribe('unit_update', (data: any) => {
-      if (data && data.unit) {
+    const unsubscribeUnit = subscribe('unit_update', (msg: any) => {
+      const data = msg.data || msg;
+      if (data?.action === 'unit_deleted' && data.unit_id) {
+        setUnits((prev) => prev.filter((u) => u.id !== data.unit_id));
+        return;
+      }
+      if (data?.unit) {
         setUnits((prev) => {
           const index = prev.findIndex((u) => u.id === data.unit.id);
           if (index >= 0) {
@@ -245,6 +327,8 @@ export default function MapPage() {
     });
 
     // Server broadcasts 'dispatch_update' type for call events
+    // Unit state is now fully handled by 'unit_update' events (enriched with call details),
+    // so no need to re-fetch all units on every dispatch event.
     const unsubscribeCall = subscribe('dispatch_update', (msg: any) => {
       const evtData = msg.data || msg;
       if (evtData && evtData.call) {
@@ -263,12 +347,11 @@ export default function MapPage() {
           }
           return prev;
         });
-        fetchUnits();
       }
     });
 
     return () => { unsubscribeUnit(); unsubscribeCall(); };
-  }, [isConnected, subscribe, fetchUnits]);
+  }, [subscribe]);
 
   // ============================================================
   // Heat Map Data
@@ -276,10 +359,20 @@ export default function MapPage() {
 
   useEffect(() => {
     if (!showHeatmap) { setHeatmapData([]); return; }
-    apiFetch<any[]>(`/dispatch/heatmap?days=${heatmapDays}`)
+    let url = `/dispatch/heatmap?days=${heatmapDays}&mode=${heatmapMode}`;
+    if (heatmapMode === 'type' && heatmapTypeFilter) url += `&type=${encodeURIComponent(heatmapTypeFilter)}`;
+    apiFetch<any[]>(url)
       .then((data) => setHeatmapData(data || []))
       .catch(() => setHeatmapData([]));
-  }, [showHeatmap, heatmapDays]);
+  }, [showHeatmap, heatmapDays, heatmapMode, heatmapTypeFilter]);
+
+  // Fetch available incident types for heatmap type filter
+  useEffect(() => {
+    if (!showHeatmap) return;
+    apiFetch<{ incident_type: string; count: number }[]>('/dispatch/heatmap/types')
+      .then((data) => setHeatmapTypes(data || []))
+      .catch(() => {});
+  }, [showHeatmap]);
 
   // ============================================================
   // Google Maps Initialization
@@ -603,7 +696,7 @@ export default function MapPage() {
                   <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #1e3048;">
                     <div style="width:10px;height:10px;border-radius:50%;background:${statusColor};box-shadow:0 0 8px ${statusColor}80;"></div>
                     <span style="font-weight:900;font-size:15px;color:${statusColor};letter-spacing:-0.5px;">${escapeHtml(unit.call_sign)}</span>
-                    <span style="margin-left:auto;font-size:9px;text-transform:uppercase;color:${statusColor};font-weight:800;letter-spacing:1px;padding:1px 6px;background:${statusColor}20;border:1px solid ${statusColor}30;border-radius:2px;">${escapeHtml(unit.status.replace('_', ' '))}</span>
+                    <span style="margin-left:auto;font-size:9px;text-transform:uppercase;color:${statusColor};font-weight:800;letter-spacing:1px;padding:1px 6px;background:${statusColor}20;border:1px solid ${statusColor}30;border-radius:2px;">${escapeHtml(unit.status.replace(/_/g, ' '))}</span>
                   </div>
                   <div style="font-size:11px;color:#d1d5db;margin-bottom:2px;">${escapeHtml(unit.officer_name)}</div>
                   ${unit.vehicle ? `<div style="font-size:10px;color:#5a6e80;margin-bottom:6px;">Vehicle: ${escapeHtml(unit.vehicle)}</div>` : ''}
@@ -765,30 +858,59 @@ export default function MapPage() {
     const map = mapInstanceRef.current;
     if (!map || !mapLoaded) return;
 
-    heatmapCirclesRef.current.forEach((c) => c.setMap(null));
-    heatmapCirclesRef.current = [];
-
-    if (showHeatmap && heatmapData.length > 0) {
-      heatmapData.forEach((point: any) => {
-        if (point.latitude != null && point.longitude != null) {
-          const intensity = Math.min((point.count ?? 1) / 10, 1);
-          const radius = 200 + (point.count ?? 1) * 40;
-          const circle = new google.maps.Circle({
-            map,
-            center: { lat: point.latitude, lng: point.longitude },
-            radius: Math.min(radius, 800),
-            fillColor: '#ef4444',
-            fillOpacity: 0.15 + intensity * 0.4,
-            strokeColor: '#ef4444',
-            strokeOpacity: 0.3 + intensity * 0.3,
-            strokeWeight: 1,
-            clickable: false,
-          });
-          heatmapCirclesRef.current.push(circle);
-        }
-      });
+    // Remove existing heatmap layer
+    if (heatmapLayerRef.current) {
+      heatmapLayerRef.current.setMap(null);
+      heatmapLayerRef.current = null;
     }
-  }, [showHeatmap, heatmapData, mapLoaded]);
+
+    if (!showHeatmap || heatmapData.length === 0) return;
+
+    // Build weighted data points for HeatmapLayer
+    const weightedData = heatmapData
+      .filter((p: any) => p.latitude != null && p.longitude != null)
+      .map((point: any) => ({
+        location: new google.maps.LatLng(point.latitude, point.longitude),
+        weight: heatmapMode === 'risk' ? (point.risk_weight || point.count || 1) : (point.count || 1),
+      }));
+
+    // Choose gradient based on mode
+    const gradient = heatmapMode === 'risk'
+      ? [
+          'rgba(0,0,0,0)',        // transparent
+          'rgba(255,165,0,0.3)',  // orange low
+          'rgba(255,100,0,0.5)',  // deep orange
+          'rgba(255,50,0,0.7)',   // red-orange
+          'rgba(255,0,0,0.85)',   // red
+          'rgba(200,0,0,1)',      // dark red
+        ]
+      : [
+          'rgba(0,0,0,0)',
+          'rgba(0,128,255,0.2)',  // blue low
+          'rgba(0,200,100,0.4)', // green
+          'rgba(200,200,0,0.6)', // yellow
+          'rgba(255,140,0,0.8)', // orange
+          'rgba(255,50,0,0.95)', // red high
+        ];
+
+    const heatmap = new google.maps.visualization.HeatmapLayer({
+      data: weightedData,
+      map,
+      radius: 30,
+      opacity: 0.7,
+      gradient,
+      dissipating: true,
+    });
+
+    heatmapLayerRef.current = heatmap;
+
+    return () => {
+      if (heatmapLayerRef.current) {
+        heatmapLayerRef.current.setMap(null);
+        heatmapLayerRef.current = null;
+      }
+    };
+  }, [showHeatmap, heatmapData, heatmapMode, mapLoaded]);
 
   // ============================================================
   // Unit-to-Call Tracking Lines
@@ -839,45 +961,40 @@ export default function MapPage() {
   }, [units, calls, showTrackingLines, mapLoaded]);
 
   // ============================================================
-  // GPS Breadcrumb Trails
+  // GPS Breadcrumb Trails (enhanced: color modes, arrows, road names, playback)
   // ============================================================
 
-  // Unit colors for breadcrumb trails — cycle through distinct colors per unit
-  const TRAIL_COLORS = ['#22d3ee', '#a78bfa', '#f472b6', '#34d399', '#fbbf24', '#f87171', '#60a5fa', '#c084fc'];
   const breadcrumbMarkersRef = useRef<google.maps.Circle[]>([]);
+  const breadcrumbArrowsRef = useRef<google.maps.Marker[]>([]);
   const breadcrumbInfoRef = useRef<google.maps.InfoWindow | null>(null);
 
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !mapLoaded) return;
 
-    // Clear existing breadcrumb lines and dot markers
+    // Clear existing breadcrumb visuals
     breadcrumbLinesRef.current.forEach((line) => line.setMap(null));
     breadcrumbLinesRef.current = [];
     breadcrumbMarkersRef.current.forEach((m) => m.setMap(null));
     breadcrumbMarkersRef.current = [];
+    breadcrumbArrowsRef.current.forEach((a) => a.setMap(null));
+    breadcrumbArrowsRef.current = [];
 
-    if (!showBreadcrumbs) return;
+    if (!showBreadcrumbs) { setPlaybackTrails([]); return; }
 
     const token = localStorage.getItem('rmpg_token');
     if (!token) return;
 
-    // Shared info window for breadcrumb dot popups
     if (!breadcrumbInfoRef.current) {
       breadcrumbInfoRef.current = new google.maps.InfoWindow();
     }
 
-    const formatSpeed = (mps: number | null) => {
-      if (mps == null) return '—';
-      return `${(mps * 2.237).toFixed(0)} mph`;
-    };
-
-    const formatHeading = (deg: number | null) => {
+    const formatSpeedMph = (mps: number | null) => mps == null ? '—' : `${(mps * 2.237).toFixed(0)} mph`;
+    const formatHeadingDir = (deg: number | null) => {
       if (deg == null) return '—';
       const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
       return dirs[Math.round(deg / 45) % 8] + ` (${Math.round(deg)}°)`;
     };
-
     const STATUS_LABELS: Record<string, string> = {
       available: 'AVAILABLE', dispatched: 'DISPATCHED', enroute: 'ENROUTE',
       onscene: 'ON SCENE', busy: 'BUSY', off_duty: 'OFF DUTY',
@@ -887,43 +1004,53 @@ export default function MapPage() {
       lat: number; lng: number; accuracy: number | null; heading: number | null;
       speed: number | null; status: string; call_number: string | null;
       call_type: string | null; time: string;
+      road_name: string | null; intersection: string | null;
     }
     interface Trail {
       unit_id: number; call_sign: string; officer_name: string;
       badge_number: string; points: TrailPoint[];
     }
 
+    let retryTimeout: ReturnType<typeof setTimeout>;
+
     const fetchTrails = async () => {
-      // Clear previous
       breadcrumbLinesRef.current.forEach((l) => l.setMap(null));
       breadcrumbLinesRef.current = [];
       breadcrumbMarkersRef.current.forEach((m) => m.setMap(null));
       breadcrumbMarkersRef.current = [];
+      breadcrumbArrowsRef.current.forEach((a) => a.setMap(null));
+      breadcrumbArrowsRef.current = [];
 
       try {
-        const res = await fetch(`/api/dispatch/gps/trails?hours=${breadcrumbHours}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) return;
-        const trails: Trail[] = await res.json();
+        const trails = await apiFetch<Trail[]>(`/dispatch/gps/trails?hours=${breadcrumbHours}`);
+        if (!trails) return;
+        setPlaybackTrails(trails);
 
         trails.forEach((trail, idx) => {
           if (trail.points.length === 0) return;
 
-          const color = TRAIL_COLORS[idx % TRAIL_COLORS.length];
+          const unitColor = TRAIL_COLORS[idx % TRAIL_COLORS.length];
 
-          // Draw segments color-coded by status
+          // Draw segments with color mode
           for (let i = 0; i < trail.points.length - 1; i++) {
             const p1 = trail.points[i];
             const p2 = trail.points[i + 1];
-            // Freshness: 0 for oldest segment, 1 for newest — newer = brighter
             const freshness = (i + 1) / trail.points.length;
-            const opacity = 0.2 + freshness * 0.6;
+            const opacity = 0.25 + freshness * 0.6;
+
+            let segColor: string;
+            if (breadcrumbColorMode === 'speed') {
+              segColor = speedToColor(p1.speed);
+            } else if (breadcrumbColorMode === 'status') {
+              segColor = statusToColor(p1.status);
+            } else {
+              segColor = unitColor;
+            }
 
             const seg = new google.maps.Polyline({
               path: [{ lat: p1.lat, lng: p1.lng }, { lat: p2.lat, lng: p2.lng }],
               geodesic: true,
-              strokeColor: color,
+              strokeColor: segColor,
               strokeOpacity: opacity,
               strokeWeight: 3,
               map,
@@ -931,15 +1058,44 @@ export default function MapPage() {
             breadcrumbLinesRef.current.push(seg);
           }
 
-          // Place dot markers at each breadcrumb point (every point for interaction)
+          // Directional arrows every 8th point
           trail.points.forEach((pt, ptIdx) => {
+            if (ptIdx % 8 !== 4 || pt.heading == null) return;
+            const freshness = (ptIdx + 1) / trail.points.length;
+            const arrow = new google.maps.Marker({
+              position: { lat: pt.lat, lng: pt.lng },
+              map,
+              icon: {
+                path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                scale: 2.5,
+                rotation: pt.heading,
+                fillColor: breadcrumbColorMode === 'speed' ? speedToColor(pt.speed) : unitColor,
+                fillOpacity: 0.3 + freshness * 0.5,
+                strokeColor: '#fff',
+                strokeWeight: 0.5,
+                strokeOpacity: 0.6,
+              },
+              clickable: false,
+              zIndex: 1,
+            });
+            breadcrumbArrowsRef.current.push(arrow);
+          });
+
+          // Dot markers at each breadcrumb point
+          trail.points.forEach((pt, ptIdx) => {
+            const isLast = ptIdx === trail.points.length - 1;
+            let dotColor: string;
+            if (breadcrumbColorMode === 'speed') dotColor = speedToColor(pt.speed);
+            else if (breadcrumbColorMode === 'status') dotColor = statusToColor(pt.status);
+            else dotColor = unitColor;
+
             const dot = new google.maps.Circle({
               center: { lat: pt.lat, lng: pt.lng },
               radius: 4,
-              fillColor: color,
-              fillOpacity: ptIdx === trail.points.length - 1 ? 1 : 0.6,
+              fillColor: dotColor,
+              fillOpacity: isLast ? 1 : 0.6,
               strokeColor: '#fff',
-              strokeWeight: ptIdx === trail.points.length - 1 ? 2 : 0.5,
+              strokeWeight: isLast ? 2 : 0.5,
               strokeOpacity: 0.8,
               map,
               clickable: true,
@@ -948,17 +1104,21 @@ export default function MapPage() {
 
             dot.addListener('click', () => {
               const time = new Date(pt.time).toLocaleString();
+              const locationRow = pt.road_name
+                ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Road</td><td style="color:#e0e0e0">${pt.road_name}${pt.intersection ? ` @ ${pt.intersection}` : ''}</td></tr>`
+                : '';
               const html = `
-                <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:200px;line-height:1.6;background:#0a0e14;padding:10px 12px;border-radius:6px;border:1px solid #1e2a3a">
-                  <div style="font-weight:bold;font-size:13px;margin-bottom:4px;color:#ff4444">
+                <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:220px;line-height:1.6;background:#0a0e14;padding:10px 12px;border-radius:6px;border:1px solid #1e2a3a">
+                  <div style="font-weight:bold;font-size:13px;margin-bottom:4px;color:${unitColor}">
                     ${trail.call_sign} — ${trail.officer_name || 'Unknown'}
                   </div>
                   <div style="color:#8899aa;font-size:10px;margin-bottom:6px">${trail.badge_number || ''}</div>
                   <table style="width:100%;font-size:11px;border-collapse:collapse">
                     <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Time</td><td style="font-weight:bold;color:#fff">${time}</td></tr>
-                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Status</td><td style="font-weight:bold;color:#4fc3f7">${STATUS_LABELS[pt.status] || pt.status}</td></tr>
-                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Speed</td><td style="color:#e0e0e0">${formatSpeed(pt.speed)}</td></tr>
-                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Heading</td><td style="color:#e0e0e0">${formatHeading(pt.heading)}</td></tr>
+                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Status</td><td style="font-weight:bold;color:${statusToColor(pt.status)}">${STATUS_LABELS[pt.status] || pt.status}</td></tr>
+                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Speed</td><td style="color:${speedToColor(pt.speed)};font-weight:bold">${formatSpeedMph(pt.speed)}</td></tr>
+                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Heading</td><td style="color:#e0e0e0">${formatHeadingDir(pt.heading)}</td></tr>
+                    ${locationRow}
                     <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Accuracy</td><td style="color:#e0e0e0">${pt.accuracy != null ? `±${Math.round(pt.accuracy)}m` : '—'}</td></tr>
                     <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Position</td><td style="font-size:10px;color:#e0e0e0">${pt.lat.toFixed(6)}, ${pt.lng.toFixed(6)}</td></tr>
                     ${pt.call_number ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Call</td><td style="font-weight:bold;color:#4fc3f7">${pt.call_number} — ${pt.call_type || ''}</td></tr>` : ''}
@@ -974,17 +1134,95 @@ export default function MapPage() {
           });
         });
       } catch {
-        // Retry once after a short delay on network failure (vehicle WiFi)
-        setTimeout(fetchTrails, 5000);
+        retryTimeout = setTimeout(fetchTrails, 5000);
       }
     };
 
     fetchTrails();
-
-    // Refresh trails every 15 seconds to match GPS batch interval
     const interval = setInterval(fetchTrails, 15000);
-    return () => clearInterval(interval);
-  }, [showBreadcrumbs, breadcrumbHours, mapLoaded]);
+    return () => { clearInterval(interval); clearTimeout(retryTimeout); };
+  }, [showBreadcrumbs, breadcrumbHours, breadcrumbColorMode, mapLoaded]);
+
+  // ============================================================
+  // Trail Playback Animation
+  // ============================================================
+
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapLoaded || !isPlaying || playbackUnit == null) return;
+
+    const trail = playbackTrails.find((t: any) => t.unit_id === playbackUnit);
+    if (!trail || trail.points.length === 0) { setIsPlaying(false); return; }
+
+    // Create or update playback marker
+    if (!playbackMarkerRef.current) {
+      const pt = trail.points[playbackIdx] || trail.points[0];
+      playbackMarkerRef.current = new google.maps.Marker({
+        position: { lat: pt.lat, lng: pt.lng },
+        map,
+        icon: {
+          path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+          scale: 5,
+          rotation: pt.heading || 0,
+          fillColor: '#00ff88',
+          fillOpacity: 1,
+          strokeColor: '#fff',
+          strokeWeight: 2,
+        },
+        zIndex: 9999,
+        title: `${trail.call_sign} — Playback`,
+      });
+    }
+
+    let currentIdx = playbackIdx;
+    const step = () => {
+      if (currentIdx >= trail.points.length) {
+        setIsPlaying(false);
+        setPlaybackIdx(trail.points.length - 1);
+        return;
+      }
+
+      const pt = trail.points[currentIdx];
+      if (playbackMarkerRef.current) {
+        playbackMarkerRef.current.setPosition({ lat: pt.lat, lng: pt.lng });
+        playbackMarkerRef.current.setIcon({
+          path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+          scale: 5,
+          rotation: pt.heading || 0,
+          fillColor: '#00ff88',
+          fillOpacity: 1,
+          strokeColor: '#fff',
+          strokeWeight: 2,
+        });
+      }
+
+      setPlaybackIdx(currentIdx);
+      currentIdx++;
+
+      // Speed: base 200ms per point, divided by playback speed multiplier
+      const delay = 200 / playbackSpeed;
+      playbackAnimRef.current = window.setTimeout(step, delay) as unknown as number;
+    };
+
+    step();
+
+    return () => {
+      if (playbackAnimRef.current != null) {
+        clearTimeout(playbackAnimRef.current);
+        playbackAnimRef.current = null;
+      }
+    };
+  }, [isPlaying, playbackUnit, playbackSpeed, mapLoaded]);
+
+  // Cleanup playback marker when playback unit changes or stops
+  useEffect(() => {
+    if (playbackUnit == null) {
+      if (playbackMarkerRef.current) {
+        playbackMarkerRef.current.setMap(null);
+        playbackMarkerRef.current = null;
+      }
+    }
+  }, [playbackUnit]);
 
   // ============================================================
   // GPS Self-Position Marker
@@ -1081,8 +1319,9 @@ export default function MapPage() {
       await Promise.all([fetchCalls(), fetchUnits()]);
     } catch (err) {
       console.error('Failed to update call status from map:', err);
+      addToast('Failed to update call status', 'error');
     }
-  }, [fetchCalls, fetchUnits]);
+  }, [fetchCalls, fetchUnits, addToast]);
 
   // Address search with Google Places Autocomplete
   const handleAddressSearch = useCallback((query: string) => {
@@ -1247,11 +1486,11 @@ export default function MapPage() {
         {/* API key / auth error dialog (only for configuration problems, not connectivity) */}
         {isAuthError && (
           <div className="absolute inset-0 z-[2000] flex items-center justify-center bg-black/80 backdrop-blur-sm">
-            <div className="bg-surface-overlay/95 border border-red-600 p-8 shadow-xl max-w-lg text-center" style={{ borderRadius: 4 }}>
+            <div className="bg-surface-overlay/95 border border-red-600 p-8 shadow-xl max-w-lg text-center" style={{ borderRadius: 2 }}>
               <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-3" />
               <h3 className="text-white text-sm font-bold mb-2">Map Configuration Required</h3>
               <pre className="text-rmpg-300 text-xs leading-relaxed mb-4 whitespace-pre-wrap text-left">{mapError}</pre>
-              <div className="bg-surface-deep border border-rmpg-600 p-3 text-left mb-4" style={{ borderRadius: 4 }}>
+              <div className="bg-surface-deep border border-rmpg-600 p-3 text-left mb-4" style={{ borderRadius: 2 }}>
                 <p className="text-[10px] text-rmpg-400 font-mono leading-relaxed">
                   <span className="text-amber-400 font-bold">Checklist:</span><br/>
                   1. Go to <span className="text-blue-400">console.cloud.google.com/apis/library</span><br/>
@@ -1268,14 +1507,14 @@ export default function MapPage() {
                 <button
                   onClick={() => setMapRetry((n) => n + 1)}
                   className="px-4 py-1.5 bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold uppercase tracking-wider transition-colors"
-                  style={{ borderRadius: 4 }}
+                  style={{ borderRadius: 2 }}
                 >
                   Retry
                 </button>
                 <button
                   onClick={() => window.location.reload()}
                   className="px-4 py-1.5 bg-surface-deep hover:bg-surface-overlay text-rmpg-300 text-xs font-bold uppercase tracking-wider border border-rmpg-600 transition-colors"
-                  style={{ borderRadius: 4 }}
+                  style={{ borderRadius: 2 }}
                 >
                   Hard Reload
                 </button>
@@ -1287,7 +1526,7 @@ export default function MapPage() {
         {/* Loading Overlay */}
         {loading && !mapError && (
           <div className="absolute inset-0 z-[2000] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-            <div className="bg-surface-overlay/95 border border-rmpg-600 p-6 shadow-xl" style={{ borderRadius: 4 }}>
+            <div className="bg-surface-overlay/95 border border-rmpg-600 p-6 shadow-xl" style={{ borderRadius: 2 }}>
               <div className="flex items-center gap-3">
                 <div className="w-5 h-5 border-2 border-brand-400 border-t-transparent rounded-full animate-spin" />
                 <span className="text-white text-sm font-mono">Initializing tactical map...</span>
@@ -1299,7 +1538,7 @@ export default function MapPage() {
         {/* Error Banner */}
         {error && !loading && (
           <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-[1000]">
-            <div className="bg-red-900/95 border border-red-600 px-4 py-2 backdrop-blur-sm shadow-xl" style={{ borderRadius: 4 }}>
+            <div className="bg-red-900/95 border border-red-600 px-4 py-2 backdrop-blur-sm shadow-xl" style={{ borderRadius: 2 }}>
               <span className="text-white text-sm">{error}</span>
             </div>
           </div>
@@ -1325,7 +1564,7 @@ export default function MapPage() {
                   }}
                   placeholder="Search address..."
                   className="bg-black/30 border border-white/15 text-[11px] text-white placeholder:text-white/40 pl-8 pr-8 py-1.5 w-[240px] focus:border-white/40 focus:bg-black/50 focus:outline-none backdrop-blur-md shadow-lg font-mono transition-colors"
-                  style={{ borderRadius: 4 }}
+                  style={{ borderRadius: 2 }}
                 />
                 {addressSearch && (
                   <button
@@ -1345,7 +1584,7 @@ export default function MapPage() {
                 )}
               </div>
               {showAddressResults && addressResults.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-black/80 border border-white/15 shadow-2xl backdrop-blur-md overflow-hidden" style={{ borderRadius: 4 }}>
+                <div className="absolute top-full left-0 right-0 mt-1 bg-black/80 border border-white/15 shadow-2xl backdrop-blur-md overflow-hidden" style={{ borderRadius: 2 }}>
                   {addressResults.map((r) => (
                     <button
                       key={r.place_id}
@@ -1361,14 +1600,14 @@ export default function MapPage() {
               )}
             </div>
             {/* Zoom +/- controls */}
-            <div className="flex flex-col" style={{ borderRadius: 4, overflow: 'hidden' }}>
+            <div className="flex flex-col" style={{ borderRadius: 2, overflow: 'hidden' }}>
               <button
                 onClick={() => {
                   const map = mapInstanceRef.current;
                   if (map) map.setZoom((map.getZoom() || 12) + 1);
                 }}
                 className="bg-black/30 border border-white/15 border-b-0 backdrop-blur-md px-2 py-1.5 hover:bg-black/50 transition-colors"
-                style={{ borderRadius: '4px 4px 0 0' }}
+                style={{ borderRadius: '2px 2px 0 0' }}
                 title="Zoom in"
               >
                 <Plus className="w-3.5 h-3.5 text-white/70" />
@@ -1379,7 +1618,7 @@ export default function MapPage() {
                   if (map) map.setZoom((map.getZoom() || 12) - 1);
                 }}
                 className="bg-black/30 border border-white/15 backdrop-blur-md px-2 py-1.5 hover:bg-black/50 transition-colors"
-                style={{ borderRadius: '0 0 4px 4px' }}
+                style={{ borderRadius: '0 0 2px 2px' }}
                 title="Zoom out"
               >
                 <Minus className="w-3.5 h-3.5 text-white/70" />
@@ -1394,13 +1633,13 @@ export default function MapPage() {
             <button
               onClick={() => setLayersPanelOpen(true)}
               className="bg-black/30 border border-white/15 backdrop-blur-md p-2 hover:bg-black/50 transition-colors shadow-lg"
-              style={{ borderRadius: 4 }}
+              style={{ borderRadius: 2 }}
               title="Show layers"
             >
               <PanelLeftOpen className="w-4 h-4 text-white/70" />
             </button>
           ) : (
-          <div className="bg-surface-deep/95 border border-rmpg-600 backdrop-blur-sm shadow-2xl" style={{ width: 'clamp(160px, 14vw, 200px)', borderRadius: 4 }}>
+          <div className="bg-surface-deep/95 border border-rmpg-600 backdrop-blur-sm shadow-2xl" style={{ width: 'clamp(160px, 14vw, 200px)', borderRadius: 2 }}>
             <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700">
               <Layers className="w-3.5 h-3.5 text-brand-400" />
               <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-widest flex-1">Layers</span>
@@ -1434,6 +1673,7 @@ export default function MapPage() {
                 </button>
               ))}
 
+              {/* ── Heat Map ── */}
               <button
                 onClick={() => setShowHeatmap(!showHeatmap)}
                 className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors rounded ${
@@ -1448,23 +1688,60 @@ export default function MapPage() {
                 )}
               </button>
               {showHeatmap && (
-                <div className="flex items-center gap-1 px-3 py-1">
-                  {[7, 14, 30, 90].map((days) => (
-                    <button
-                      key={days}
-                      onClick={() => setHeatmapDays(days)}
-                      className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded transition-colors ${
-                        heatmapDays === days
-                          ? 'bg-red-900/50 text-red-400 border border-red-700/50'
-                          : 'text-rmpg-500 hover:text-rmpg-300'
-                      }`}
+                <div className="px-3 py-1 space-y-1">
+                  {/* Days selector */}
+                  <div className="flex items-center gap-1">
+                    {[7, 14, 30, 90].map((days) => (
+                      <button
+                        key={days}
+                        onClick={() => setHeatmapDays(days)}
+                        className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded transition-colors ${
+                          heatmapDays === days
+                            ? 'bg-red-900/50 text-red-400 border border-red-700/50'
+                            : 'text-rmpg-500 hover:text-rmpg-300'
+                        }`}
+                      >
+                        {days}d
+                      </button>
+                    ))}
+                  </div>
+                  {/* Mode selector */}
+                  <div className="flex items-center gap-1">
+                    {([['all', 'All'], ['risk', 'Risk'], ['type', 'Type']] as const).map(([mode, label]) => (
+                      <button
+                        key={mode}
+                        onClick={() => { setHeatmapMode(mode); if (mode !== 'type') setHeatmapTypeFilter(''); }}
+                        className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded transition-colors ${
+                          heatmapMode === mode
+                            ? mode === 'risk' ? 'bg-orange-900/50 text-orange-400 border border-orange-700/50'
+                            : 'bg-red-900/50 text-red-400 border border-red-700/50'
+                            : 'text-rmpg-500 hover:text-rmpg-300'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {/* Type filter dropdown */}
+                  {heatmapMode === 'type' && (
+                    <select
+                      value={heatmapTypeFilter}
+                      onChange={(e) => setHeatmapTypeFilter(e.target.value)}
+                      className="w-full bg-surface-deep border border-rmpg-600 text-[9px] text-rmpg-200 px-1.5 py-0.5 font-mono focus:outline-none focus:border-red-600"
+                      style={{ borderRadius: 2 }}
                     >
-                      {days}d
-                    </button>
-                  ))}
+                      <option value="">Select type...</option>
+                      {heatmapTypes.map((t) => (
+                        <option key={t.incident_type} value={t.incident_type}>
+                          {formatIncidentType(t.incident_type)} ({t.count})
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
               )}
 
+              {/* ── Tracking Lines ── */}
               <button
                 onClick={() => setShowTrackingLines(!showTrackingLines)}
                 className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors rounded ${
@@ -1476,6 +1753,7 @@ export default function MapPage() {
                 <span className="text-[10px] text-rmpg-200 flex-1">Tracking Lines</span>
               </button>
 
+              {/* ── Breadcrumbs ── */}
               <button
                 onClick={() => setShowBreadcrumbs(!showBreadcrumbs)}
                 className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors rounded ${
@@ -1487,43 +1765,163 @@ export default function MapPage() {
                 <span className="text-[10px] text-rmpg-200 flex-1">Breadcrumbs</span>
               </button>
               {showBreadcrumbs && (
-                <div className="flex items-center gap-1 px-3 py-1">
-                  {[2, 4, 8, 12, 24].map((h) => (
+                <div className="px-3 py-1 space-y-1">
+                  {/* Hours selector */}
+                  <div className="flex items-center gap-1">
+                    {[2, 4, 8, 12, 24].map((h) => (
+                      <button
+                        key={h}
+                        onClick={() => setBreadcrumbHours(h)}
+                        className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded transition-colors ${
+                          breadcrumbHours === h
+                            ? 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50'
+                            : 'text-rmpg-500 hover:text-rmpg-300'
+                        }`}
+                      >
+                        {h}h
+                      </button>
+                    ))}
                     <button
-                      key={h}
-                      onClick={() => setBreadcrumbHours(h)}
-                      className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded transition-colors ${
-                        breadcrumbHours === h
-                          ? 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50'
-                          : 'text-rmpg-500 hover:text-rmpg-300'
-                      }`}
+                      onClick={async () => {
+                        setExportingPdf(true);
+                        try {
+                          const data = await apiFetch<any>(`/reports/patrol-tracking?hours=${breadcrumbHours}&geocode=true`);
+                          if (!data?.trails?.length) { alert('No tracking data for this period.'); return; }
+                          await generatePatrolTrackingPdf(data);
+                        } catch (err: any) {
+                          alert(err?.message || 'Failed to export PDF');
+                        } finally { setExportingPdf(false); }
+                      }}
+                      disabled={exportingPdf}
+                      className="px-1.5 py-0.5 text-[8px] font-mono font-bold rounded transition-colors text-brand-400 hover:bg-brand-900/30 ml-1 flex items-center gap-0.5"
+                      title="Export patrol tracking PDF"
                     >
-                      {h}h
+                      {exportingPdf ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <FileText className="w-2.5 h-2.5" />}
+                      PDF
                     </button>
-                  ))}
-                  <button
-                    onClick={async () => {
-                      setExportingPdf(true);
-                      try {
-                        const data = await apiFetch<any>(`/reports/patrol-tracking?hours=${breadcrumbHours}&geocode=true`);
-                        if (!data?.trails?.length) {
-                          alert('No tracking data for this period.');
-                          return;
-                        }
-                        await generatePatrolTrackingPdf(data);
-                      } catch (err: any) {
-                        alert(err?.message || 'Failed to export PDF');
-                      } finally {
-                        setExportingPdf(false);
-                      }
-                    }}
-                    disabled={exportingPdf}
-                    className="px-1.5 py-0.5 text-[8px] font-mono font-bold rounded transition-colors text-brand-400 hover:bg-brand-900/30 ml-1 flex items-center gap-0.5"
-                    title="Export patrol tracking PDF"
-                  >
-                    {exportingPdf ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <FileText className="w-2.5 h-2.5" />}
-                    PDF
-                  </button>
+                  </div>
+                  {/* Color mode selector */}
+                  <div className="flex items-center gap-1">
+                    <Palette className="w-2.5 h-2.5 text-rmpg-400" />
+                    {([['unit', 'Unit'], ['speed', 'Speed'], ['status', 'Status']] as const).map(([mode, label]) => (
+                      <button
+                        key={mode}
+                        onClick={() => setBreadcrumbColorMode(mode)}
+                        className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded transition-colors ${
+                          breadcrumbColorMode === mode
+                            ? 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50'
+                            : 'text-rmpg-500 hover:text-rmpg-300'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {/* Speed color legend */}
+                  {breadcrumbColorMode === 'speed' && (
+                    <div className="flex items-center gap-1.5 pl-1">
+                      {[['#22c55e', '<15'], ['#eab308', '15-35'], ['#f97316', '35-55'], ['#ef4444', '55+']].map(([color, label]) => (
+                        <span key={label} className="flex items-center gap-0.5">
+                          <span className="w-2 h-2 rounded-full" style={{ background: color }} />
+                          <span className="text-[7px] text-rmpg-400 font-mono">{label}</span>
+                        </span>
+                      ))}
+                      <span className="text-[7px] text-rmpg-500 font-mono">mph</span>
+                    </div>
+                  )}
+                  {/* Playback controls */}
+                  {playbackTrails.length > 0 && (
+                    <div className="space-y-1 pt-0.5">
+                      <div className="flex items-center gap-1">
+                        <Play className="w-2.5 h-2.5 text-green-400" />
+                        <select
+                          value={playbackUnit ?? ''}
+                          onChange={(e) => {
+                            const val = e.target.value ? Number(e.target.value) : null;
+                            setPlaybackUnit(val);
+                            setPlaybackIdx(0);
+                            setIsPlaying(false);
+                          }}
+                          className="flex-1 bg-surface-deep border border-rmpg-600 text-[9px] text-rmpg-200 px-1 py-0.5 font-mono focus:outline-none focus:border-cyan-600"
+                          style={{ borderRadius: 2 }}
+                        >
+                          <option value="">Replay trail...</option>
+                          {playbackTrails.map((t: any) => (
+                            <option key={t.unit_id} value={t.unit_id}>
+                              {t.call_sign} ({t.points.length} pts)
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      {playbackUnit != null && (() => {
+                        const activeTrail = playbackTrails.find((t: any) => t.unit_id === playbackUnit);
+                        const totalPts = activeTrail?.points?.length || 0;
+                        const currentPt = activeTrail?.points?.[playbackIdx];
+                        return (
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => {
+                                  if (isPlaying) {
+                                    setIsPlaying(false);
+                                    if (playbackAnimRef.current) { clearTimeout(playbackAnimRef.current); playbackAnimRef.current = null; }
+                                  } else {
+                                    if (playbackIdx >= totalPts - 1) setPlaybackIdx(0);
+                                    setIsPlaying(true);
+                                  }
+                                }}
+                                className="p-0.5 rounded hover:bg-cyan-900/40 transition-colors"
+                                title={isPlaying ? 'Pause' : 'Play'}
+                              >
+                                {isPlaying ? <Pause className="w-3 h-3 text-amber-400" /> : <Play className="w-3 h-3 text-green-400" />}
+                              </button>
+                              <input
+                                type="range"
+                                min={0}
+                                max={Math.max(totalPts - 1, 0)}
+                                value={playbackIdx}
+                                onChange={(e) => {
+                                  const idx = Number(e.target.value);
+                                  setPlaybackIdx(idx);
+                                  setIsPlaying(false);
+                                  if (playbackAnimRef.current) { clearTimeout(playbackAnimRef.current); playbackAnimRef.current = null; }
+                                  const pt = activeTrail?.points?.[idx];
+                                  if (pt && playbackMarkerRef.current) {
+                                    playbackMarkerRef.current.setPosition({ lat: pt.lat, lng: pt.lng });
+                                  }
+                                }}
+                                className="flex-1 h-1 accent-cyan-400"
+                              />
+                              <span className="text-[8px] font-mono text-rmpg-400 w-12 text-right">
+                                {playbackIdx + 1}/{totalPts}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Gauge className="w-2.5 h-2.5 text-rmpg-400" />
+                              {[1, 2, 5, 10].map((spd) => (
+                                <button
+                                  key={spd}
+                                  onClick={() => setPlaybackSpeed(spd)}
+                                  className={`px-1 py-0 text-[7px] font-mono font-bold rounded transition-colors ${
+                                    playbackSpeed === spd
+                                      ? 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50'
+                                      : 'text-rmpg-500 hover:text-rmpg-300'
+                                  }`}
+                                >
+                                  {spd}x
+                                </button>
+                              ))}
+                              {currentPt && (
+                                <span className="text-[7px] font-mono text-rmpg-400 ml-auto">
+                                  {currentPt.speed != null ? `${(currentPt.speed * 2.237).toFixed(0)} mph` : ''}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1593,6 +1991,36 @@ export default function MapPage() {
                 </div>
               )}
             </div>
+
+            {/* ── District Legend Section ── */}
+            {geoLayerStates.beat?.visible && districtSections.length > 0 && (
+              <div className="border-t border-rmpg-700 p-1.5">
+                <button
+                  onClick={() => setShowDistrictLegend(!showDistrictLegend)}
+                  className="flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors rounded hover:bg-rmpg-700/30"
+                >
+                  <Shield className="w-3 h-3 text-brand-400" />
+                  <span className="text-[10px] text-rmpg-300 flex-1">District Legend</span>
+                  <span className="text-[9px] text-rmpg-500">{districtSections.length} sections</span>
+                  {showDistrictLegend ? <ChevronUp className="w-2.5 h-2.5 text-rmpg-500" /> : <ChevronDown className="w-2.5 h-2.5 text-rmpg-500" />}
+                </button>
+                {showDistrictLegend && (
+                  <div className="mt-1 space-y-0.5 max-h-[200px] overflow-y-auto">
+                    {districtSections.map((sec) => (
+                      <div key={sec.id} className="flex items-center gap-2 px-2 py-0.5">
+                        <div className="w-3 h-2 rounded-sm" style={{ backgroundColor: getSectionColor(sec.id), opacity: 0.8 }} />
+                        <span className="text-[9px] font-mono font-bold" style={{ color: getSectionColor(sec.id) }}>{sec.id}</span>
+                        <span className="text-[8px] text-rmpg-300 truncate flex-1">{sec.name}</span>
+                      </div>
+                    ))}
+                    <div className="px-2 pt-1 border-t border-rmpg-700/50">
+                      <div className="text-[7px] text-rmpg-500 uppercase tracking-widest">Format: SEC-ZONE/BEAT</div>
+                      <div className="text-[8px] text-rmpg-400 font-mono mt-0.5">e.g. SL1-SLC/A</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* ── Shift Planning Section ── */}
             <div className="border-t border-rmpg-700 p-1.5">
@@ -1896,7 +2324,7 @@ export default function MapPage() {
                             <div className="flex items-center gap-1">
                               <button
                                 onClick={() => {
-                                  try { shiftPlanning.savePlanToServer(shiftPlanning.activePlanId!); } catch {}
+                                  try { shiftPlanning.savePlanToServer(shiftPlanning.activePlanId!); } catch { addToast('Failed to save shift plan', 'error'); }
                                 }}
                                 className="text-rmpg-500 hover:text-emerald-400 transition-colors" title="Save to server"
                               >
@@ -2167,7 +2595,7 @@ export default function MapPage() {
 
         {/* ── Status Legend - Bottom Left (desktop only, wraps on narrow) ── */}
         {!isMobile && <div className="absolute bottom-2 left-2 z-[1000] max-w-[calc(100vw-16rem)]">
-          <div className="bg-surface-deep/95 border border-rmpg-600 px-2 py-1.5 backdrop-blur-sm shadow-xl" style={{ borderRadius: 4 }}>
+          <div className="bg-surface-deep/95 border border-rmpg-600 px-2 py-1.5 backdrop-blur-sm shadow-xl" style={{ borderRadius: 2 }}>
             <span className="text-[8px] font-bold text-rmpg-400 uppercase tracking-widest">Legend</span>
             <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
               {(Object.entries(UNIT_STATUS_COLORS) as [UnitStatus, string][])
@@ -2187,7 +2615,7 @@ export default function MapPage() {
           className="absolute top-2 z-[1000] transition-all"
           style={{ left: layersPanelOpen ? 'calc(clamp(160px, 14vw, 200px) + 24px)' : 52 }}
         >
-          <div className="bg-surface-deep/95 border border-rmpg-600 px-3 py-1.5 backdrop-blur-sm shadow-xl" style={{ borderRadius: 4 }}>
+          <div className="bg-surface-deep/95 border border-rmpg-600 px-3 py-1.5 backdrop-blur-sm shadow-xl" style={{ borderRadius: 2 }}>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-mono">
               <div className="flex items-center gap-1.5">
                 <Siren className="w-3 h-3 text-red-400 shrink-0" />
@@ -2303,7 +2731,7 @@ export default function MapPage() {
                 }
               }}
               className="bg-surface-deep/95 border border-blue-500/50 p-2 backdrop-blur-sm shadow-xl hover:bg-blue-900/30 transition-colors"
-              style={{ borderRadius: 4 }}
+              style={{ borderRadius: 2 }}
               title={`Center on my position${gps.unitCallSign ? ` (${gps.unitCallSign})` : ''}`}
             >
               <Navigation2 className="w-4 h-4 text-blue-400" />
@@ -2316,7 +2744,7 @@ export default function MapPage() {
               mapInstanceRef.current?.setZoom(12);
             }}
             className="bg-surface-deep/95 border border-rmpg-600 p-2 backdrop-blur-sm shadow-xl hover:bg-rmpg-700/40 transition-colors"
-            style={{ borderRadius: 4 }}
+            style={{ borderRadius: 2 }}
             title="Reset view"
           >
             <Crosshair className="w-4 h-4 text-rmpg-300" />
@@ -2606,22 +3034,39 @@ export default function MapPage() {
                   <span className="text-sm text-rmpg-200 flex-1">Breadcrumbs</span>
                 </button>
 
-                {/* Breadcrumb time range selector */}
+                {/* Breadcrumb time range + color mode */}
                 {showBreadcrumbs && (
-                  <div className="flex gap-1 px-3 py-2" style={{ background: '#0d1520', border: '1px solid #1e3048' }}>
-                    {[2, 4, 8, 12, 24].map((h) => (
-                      <button
-                        key={h}
-                        onClick={() => setBreadcrumbHours(h)}
-                        className={`flex-1 py-2 text-xs font-bold rounded ${
-                          breadcrumbHours === h
-                            ? 'bg-cyan-600 text-white'
-                            : 'bg-rmpg-800 text-rmpg-400 hover:bg-rmpg-700'
-                        }`}
-                      >
-                        {h}h
-                      </button>
-                    ))}
+                  <div className="px-3 py-2 space-y-2" style={{ background: '#0d1520', border: '1px solid #1e3048' }}>
+                    <div className="flex gap-1">
+                      {[2, 4, 8, 12, 24].map((h) => (
+                        <button
+                          key={h}
+                          onClick={() => setBreadcrumbHours(h)}
+                          className={`flex-1 py-2 text-xs font-bold rounded ${
+                            breadcrumbHours === h
+                              ? 'bg-cyan-600 text-white'
+                              : 'bg-rmpg-800 text-rmpg-400 hover:bg-rmpg-700'
+                          }`}
+                        >
+                          {h}h
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex gap-1">
+                      {([['unit', 'Unit'], ['speed', 'Speed'], ['status', 'Status']] as const).map(([mode, label]) => (
+                        <button
+                          key={mode}
+                          onClick={() => setBreadcrumbColorMode(mode)}
+                          className={`flex-1 py-1.5 text-[10px] font-bold rounded ${
+                            breadcrumbColorMode === mode
+                              ? 'bg-cyan-600 text-white'
+                              : 'bg-rmpg-800 text-rmpg-400 hover:bg-rmpg-700'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
 

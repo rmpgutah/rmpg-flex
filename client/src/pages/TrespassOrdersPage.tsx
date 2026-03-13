@@ -285,7 +285,7 @@ export default function TrespassOrdersPage() {
                   <span className="text-[11px] font-bold font-mono text-brand-400">{order.order_number}</span>
                   <div className="flex items-center gap-1">
                     <span className={`text-[8px] font-bold px-1.5 py-0 border ${TYPE_COLORS[order.order_type] || TYPE_COLORS.trespass_warning}`}>
-                      {order.order_type.replace('_', ' ').toUpperCase()}
+                      {order.order_type.replace(/_/g, ' ').toUpperCase()}
                     </span>
                     <span className={`text-[8px] font-bold px-1.5 py-0 border ${STATUS_COLORS[order.status]}`}>
                       {order.status.toUpperCase()}
@@ -361,7 +361,7 @@ export default function TrespassOrdersPage() {
               <div><span className="text-rmpg-500 text-[10px] uppercase">DOB</span><div className="text-white">{selectedOrder.subject_dob ? new Date(selectedOrder.subject_dob).toLocaleDateString() : '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Property</span><div className="text-white">{selectedOrder.property_name || '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Location</span><div className="text-white">{selectedOrder.location}</div></div>
-              <div><span className="text-rmpg-500 text-[10px] uppercase">Order Type</span><div className="text-white capitalize">{selectedOrder.order_type.replace('_', ' ')}</div></div>
+              <div><span className="text-rmpg-500 text-[10px] uppercase">Order Type</span><div className="text-white capitalize">{selectedOrder.order_type.replace(/_/g, ' ')}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Status</span><div className="text-white capitalize">{selectedOrder.status}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Effective</span><div className="text-white">{selectedOrder.effective_date ? new Date(selectedOrder.effective_date).toLocaleDateString() : '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Expires</span><div className="text-white">{selectedOrder.expiration_date ? new Date(selectedOrder.expiration_date).toLocaleDateString() : 'Permanent'}</div></div>

@@ -8,7 +8,7 @@
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 
 const router = Router();
@@ -148,7 +148,7 @@ router.post('/auto-populate', (req: Request, res: Response) => {
 });
 
 // ─── POST / ──────────────────────────────────────────────
-router.post('/', (req: Request, res: Response) => {
+router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -188,7 +188,7 @@ router.post('/', (req: Request, res: Response) => {
 });
 
 // ─── PUT /:id ────────────────────────────────────────────
-router.put('/:id', (req: Request, res: Response) => {
+router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -211,7 +211,7 @@ router.put('/:id', (req: Request, res: Response) => {
 });
 
 // ─── PUT /:id/submit ────────────────────────────────────
-router.put('/:id/submit', (req: Request, res: Response) => {
+router.put('/:id/submit', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -226,7 +226,7 @@ router.put('/:id/submit', (req: Request, res: Response) => {
 });
 
 // ─── PUT /:id/approve ───────────────────────────────────
-router.put('/:id/approve', (req: Request, res: Response) => {
+router.put('/:id/approve', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -244,7 +244,7 @@ router.put('/:id/approve', (req: Request, res: Response) => {
 });
 
 // ─── PUT /:id/return ────────────────────────────────────
-router.put('/:id/return', (req: Request, res: Response) => {
+router.put('/:id/return', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();

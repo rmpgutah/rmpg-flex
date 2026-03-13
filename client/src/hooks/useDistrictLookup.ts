@@ -44,7 +44,7 @@ export function useDistrictOptions() {
       .then((data) => {
         if (!cancelled && data) setDistricts(data);
       })
-      .catch(() => {})
+      .catch((err) => { console.warn('[useDistrictOptions] Failed to load districts:', err); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);
@@ -83,7 +83,8 @@ export function useDistrictIdentify() {
     setIdentifying(true);
     try {
       const result = await apiFetch<{ found: boolean } & DistrictInfo>(
-        `/dispatch/districts/identify?lat=${lat}&lng=${lng}`
+        `/dispatch/districts/identify?lat=${lat}&lng=${lng}`,
+        { signal: controller.signal }
       );
       if (result && result.found) {
         return {

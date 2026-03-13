@@ -166,7 +166,7 @@ router.post('/manual', requireRole('admin', 'manager', 'officer', 'supervisor'),
       b.date_of_birth || null, b.booking_date || now, b.release_date || null,
       charges, b.county || '', b.status || 'active', b.booking_number || null, b.agency || null,
       b.gender || null, b.race || null, b.height || null, b.weight || null, b.hair_color || null, b.eye_color || null,
-      b.address || null, b.bail_amount != null ? parseFloat(b.bail_amount) : null, b.hold_reason || null, b.notes || null,
+      b.address || null, b.bail_amount != null && !isNaN(parseFloat(b.bail_amount)) ? parseFloat(b.bail_amount) : null, b.hold_reason || null, b.notes || null,
       user?.id || null, now, now,
     );
 
@@ -174,14 +174,14 @@ router.post('/manual', requireRole('admin', 'manager', 'officer', 'supervisor'),
 
     auditLog(req, 'arrest_created', 'arrest_record', newId,
       `Manual booking: ${fullName}`);
-    broadcastRecordUpdate({ type: 'arrest_created', id: newId, full_name: fullName });
+    broadcastRecordUpdate({ type: 'arrest_created', id: newId });
 
     // Run cross-linking for the new record
     try { crossLinkArrests(); } catch { /* non-critical */ }
 
     res.json({ success: true, id: newId, message: 'Booking record created' });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error(err); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -218,7 +218,7 @@ router.put('/manual/:id', requireRole('admin', 'manager', 'officer', 'supervisor
 
     if (b.bail_amount !== undefined) {
       updates.push('bail_amount = ?');
-      params.push(b.bail_amount != null ? parseFloat(b.bail_amount) : null);
+      params.push(b.bail_amount != null && !isNaN(parseFloat(b.bail_amount)) ? parseFloat(b.bail_amount) : null);
     }
 
     if (b.charges !== undefined) {
@@ -248,7 +248,7 @@ router.put('/manual/:id', requireRole('admin', 'manager', 'officer', 'supervisor
 
     res.json({ success: true, message: 'Record updated' });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error(err); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -271,7 +271,7 @@ router.delete('/manual/:id', requireRole('admin', 'manager'), (req: Request, res
 
     res.json({ success: true, message: 'Record deleted' });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error(err); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -296,7 +296,7 @@ router.get('/manual/:id', (req: Request, res: Response) => {
 
     res.json({ ...record, cross_links: links });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error(err); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -417,7 +417,7 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
       res.json({ success: true, imported, skipped, total: records.length, errors: errors.length > 0 ? errors : undefined });
     }
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error(err); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -459,7 +459,7 @@ router.get('/status', (_req: Request, res: Response) => {
       apiOffline,
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error(err); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -476,7 +476,7 @@ router.put('/credentials', requireRole('admin', 'manager'), (req: Request, res: 
     }
     res.json({ success: true, message: 'API key saved and encrypted' });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error(err); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -487,7 +487,7 @@ router.delete('/credentials', requireRole('admin', 'manager'), (_req: Request, r
     setConfigValue(CONFIG_KEYS.enabled, 'false');
     res.json({ success: true, message: 'API key removed' });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error(err); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -498,7 +498,7 @@ router.put('/toggle', requireRole('admin', 'manager'), (req: Request, res: Respo
     setConfigValue(CONFIG_KEYS.enabled, enabled ? 'true' : 'false');
     res.json({ success: true, enabled: !!enabled });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error(err); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -538,7 +538,7 @@ router.get('/search', async (req: Request, res: Response) => {
     const result = await searchArrests(name);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error(err); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -557,8 +557,10 @@ router.get('/recent', (req: Request, res: Response) => {
     const params: any[] = [];
 
     const sourceId = (req.query.source_id as string || '').trim(); // county key: weber, davis, etc.
+    const stateFilter = (req.query.state as string || '').trim().toUpperCase();
     if (county) { conditions.push('ar.county = ?'); params.push(county); }
     if (sourceId) { conditions.push('ar.source_id = ?'); params.push(sourceId); }
+    if (stateFilter) { conditions.push('ar.state = ?'); params.push(stateFilter); }
     if (source === 'manual') { conditions.push("ar.entry_source = 'manual'"); }
     else if (source === 'csv') { conditions.push("ar.entry_source = 'csv'"); }
     else if (source === 'scraper') { conditions.push("ar.entry_source = 'scraper'"); }
@@ -589,20 +591,20 @@ router.get('/recent', (req: Request, res: Response) => {
 
     res.json({ records: parsed, total, page, limit, totalPages: Math.ceil(total / limit) });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error(err); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ── GET /sync-status ────────────────────────────────────────
 router.get('/sync-status', (_req: Request, res: Response) => {
   try { res.json(getArrestSyncStatus()); }
-  catch (err: any) { res.status(500).json({ error: err.message }); }
+  catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── GET /usage ──────────────────────────────────────────────
 router.get('/usage', (_req: Request, res: Response) => {
   try { res.json(getArrestUsageStats()); }
-  catch (err: any) { res.status(500).json({ error: err.message }); }
+  catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── POST /sync — Manual API sync ────────────────────────────
@@ -610,7 +612,21 @@ router.post('/sync', requireRole('admin', 'manager'), async (_req: Request, res:
   try {
     const result = await syncArrestData();
     res.json({ success: true, ...result });
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
+  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ── GET /states — Record counts by state ────────────────────
+router.get('/states', (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const states = db.prepare(`
+      SELECT COALESCE(state, 'UT') as state, COUNT(*) as count
+      FROM arrest_records
+      GROUP BY COALESCE(state, 'UT')
+      ORDER BY count DESC
+    `).all() as { state: string; count: number }[];
+    res.json({ states });
+  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── GET /counties ───────────────────────────────────────────
@@ -631,7 +647,7 @@ router.get('/counties', async (req: Request, res: Response) => {
       enabled: enabled.length === 0 || enabled.includes(c.sourceId),
     }));
     res.json({ sources, discovered: false });
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
+  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── PUT /counties ───────────────────────────────────────────
@@ -641,7 +657,7 @@ router.put('/counties', requireRole('admin', 'manager'), (req: Request, res: Res
     if (!Array.isArray(counties)) return res.status(400).json({ error: 'counties must be an array' });
     setConfigValue(CONFIG_KEYS.enabledCounties, JSON.stringify(counties));
     res.json({ success: true, enabledCounties: counties });
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
+  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── GET /:id/cross-links ────────────────────────────────────
@@ -654,7 +670,7 @@ router.get('/:id/cross-links', (req: Request, res: Response) => {
       'SELECT linked_type, linked_id, match_type, match_confidence, created_at FROM arrest_cross_links WHERE arrest_record_id = ?'
     ).all(id) as any[];
     res.json({ arrestRecordId: id, links });
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
+  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── PUT /:id/link-person ────────────────────────────────────
@@ -690,7 +706,7 @@ router.put('/:id/link-person', requireRole('admin', 'manager', 'officer', 'super
     broadcastRecordUpdate({ type: 'arrest_linked', arrestId: id, personId: person_id });
 
     res.json({ success: true, person: { id: person.id, name: `${person.last_name}, ${person.first_name}` } });
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
+  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── DELETE /:id/link-person ─────────────────────────────────
@@ -719,7 +735,7 @@ router.delete('/:id/link-person', requireRole('admin', 'manager', 'officer', 'su
     broadcastRecordUpdate({ type: 'arrest_unlinked', arrestId: id });
 
     res.json({ success: true });
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
+  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 export default router;

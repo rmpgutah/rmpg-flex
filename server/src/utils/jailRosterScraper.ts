@@ -1,16 +1,23 @@
 // ============================================================
-// Utah County Jail Roster Scraper
+// Multi-State County Jail Roster Scraper
 // ============================================================
-// Scrapes inmate roster data directly from Utah county jail
-// websites (HTML pages and PDF documents), stores records in
-// the existing arrest_records table with entry_source='scraper'.
+// Scrapes inmate roster data from county jail websites across
+// Utah and surrounding states (CO, WY, ID, NV, AZ, NM), stores
+// records in arrest_records with entry_source='scraper'.
 //
-// Supported counties:
-//   HTML: Weber, Davis, Iron
-//   PDF:  Uinta, Summit
+// Supported formats:
+//   HTML: Weber, Davis, Salt Lake, Beaver, Carbon, Tooele (UT)
+//   JSON: Iron, Utah County (UT); JailTracker counties (multi-state)
+//   PDF:  Uinta, Summit (UT)
+//
+// JailTracker (public-safety-cloud.com):
+//   Generic parser handles ~50 counties across 6 states using
+//   the same JSON API pattern. County-specific URL parameters
+//   are stored in jail_roster_config.
 //
 // Design:
 //   - Per-county parsers implement CountyParser interface
+//   - JailTracker generic parser handles many counties at once
 //   - Polite scraping: 1.5s between detail fetches, circuit breaker
 //   - Release detection: inmates gone from roster → status='released'
 //   - Cross-linking: warrants, court events, persons (reuses arrestScraper)
@@ -74,6 +81,7 @@ interface CountyConfig {
   scrape_interval_minutes: number;
   last_scrape_at: string | null;
   consecutive_errors: number;
+  state: string;
 }
 
 // ── Scheduler state ─────────────────────────────────────────
@@ -780,8 +788,669 @@ async function fetchDavisRoster(): Promise<string> {
   return allHtml.join('\n');
 }
 
+// ════════════════════════════════════════════════════════════
+//  JAILTRACKER GENERIC PARSER (multi-state)
+// ════════════════════════════════════════════════════════════
+// JailTracker (public-safety-cloud.com) is used by ~50+ counties
+// across CO, WY, ID, NV, AZ, NM. All share the same JSON API
+// pattern — only the county-specific session/parameters differ.
+//
+// The parser dynamically creates sessions per county and fetches
+// the /Inmates/InmatesJSON endpoint which returns structured data.
+//
+// JailTracker county name mappings (API county parameter values):
+const JAILTRACKER_COUNTY_NAMES: Record<string, string> = {
+  // Colorado
+  co_mesa: 'Mesa County', co_pueblo: 'Pueblo County', co_larimer: 'Larimer County',
+  co_weld: 'Weld County', co_arapahoe: 'Arapahoe County', co_adams: 'Adams County',
+  co_jefferson: 'Jefferson County', co_denver: 'Denver County', co_douglas: 'Douglas County',
+  co_boulder: 'Boulder County', co_garfield: 'Garfield County',
+  // Wyoming
+  wy_natrona: 'Natrona County', wy_laramie: 'Laramie County', wy_sweetwater: 'Sweetwater County',
+  wy_fremont: 'Fremont County', wy_campbell: 'Campbell County', wy_albany: 'Albany County',
+  wy_uinta: 'Uinta County', wy_lincoln: 'Lincoln County', wy_teton: 'Teton County',
+  // Idaho
+  id_canyon: 'Canyon County', id_bannock: 'Bannock County', id_bonneville: 'Bonneville County',
+  id_twin_falls: 'Twin Falls County', id_kootenai: 'Kootenai County', id_bingham: 'Bingham County',
+  id_madison: 'Madison County',
+  // Nevada
+  nv_washoe: 'Washoe County', nv_elko: 'Elko County', nv_lyon: 'Lyon County',
+  nv_nye: 'Nye County', nv_carson: 'Carson City', nv_churchill: 'Churchill County',
+  nv_white_pine: 'White Pine County',
+  // Arizona
+  az_pima: 'Pima County', az_yavapai: 'Yavapai County', az_mohave: 'Mohave County',
+  az_coconino: 'Coconino County', az_yuma: 'Yuma County', az_navajo: 'Navajo County',
+  az_apache: 'Apache County', az_cochise: 'Cochise County',
+  // New Mexico
+  nm_dona_ana: 'Dona Ana County', nm_san_juan: 'San Juan County', nm_sandoval: 'Sandoval County',
+  nm_santa_fe: 'Santa Fe County', nm_lea: 'Lea County', nm_chaves: 'Chaves County',
+  nm_otero: 'Otero County',
+};
+
+/**
+ * Create a JailTracker parser for a specific county.
+ * All JailTracker deployments use the same API shape — the county
+ * name is passed as a parameter to the API endpoint.
+ */
+function createJailTrackerParser(countyKey: string): CountyParser {
+  return {
+    county: countyKey,
+
+    parseRoster(content: string): RosterEntry[] {
+      const entries: RosterEntry[] = [];
+
+      try {
+        const data = JSON.parse(content);
+        // JailTracker JSON shape: { Inmates: [{ ArrestNo, LastName, FirstName, MiddleName,
+        //   Gender, DateOfBirth, BookingDate, TotalBond, Charges: "charge1\ncharge2" }] }
+        const inmates = data.Inmates || data.inmates || data.data || [];
+
+        for (const inmate of inmates) {
+          const lastName = (inmate.LastName || inmate.lastName || inmate.last_name || '').trim();
+          const firstName = (inmate.FirstName || inmate.firstName || inmate.first_name || '').trim();
+          const middleName = (inmate.MiddleName || inmate.middleName || inmate.middle_name || '').trim();
+          const fullName = middleName
+            ? `${lastName}, ${firstName} ${middleName}`
+            : `${lastName}, ${firstName}`;
+
+          if (!lastName && !firstName) continue;
+
+          const rosterId = inmate.ArrestNo || inmate.arrestNo || inmate.BookingNo
+            || inmate.bookingNo || inmate.InmateID || inmate.inmateId
+            || `${lastName}-${firstName}-${Date.now()}`;
+
+          const gender = (inmate.Gender || inmate.gender || '').charAt(0).toUpperCase();
+
+          const bookingDate = inmate.BookingDate || inmate.bookingDate
+            || inmate.booking_date || inmate.ArrestDate || '';
+
+          const chargesRaw = inmate.Charges || inmate.charges || inmate.ChargeDescription || '';
+          const charges = typeof chargesRaw === 'string'
+            ? chargesRaw.split(/[\n;|]+/).map((c: string) => c.trim()).filter(Boolean)
+            : Array.isArray(chargesRaw)
+              ? chargesRaw.map((c: any) => typeof c === 'string' ? c : c.Description || c.description || '')
+              : [];
+
+          const bail = inmate.TotalBond || inmate.totalBond || inmate.BondAmount
+            || inmate.bondAmount || inmate.BailAmount || '';
+
+          entries.push({
+            roster_id: String(rosterId),
+            full_name: fullName,
+            first_name: firstName,
+            last_name: lastName,
+            middle_name: middleName,
+            gender,
+            age: inmate.Age || inmate.age || null,
+            booking_date: bookingDate,
+            charges,
+            bail_amount: String(bail || ''),
+            detail_url: '',
+          });
+        }
+      } catch (err) {
+        console.error(`[JailTracker] Parse error for ${countyKey}:`, (err as Error).message);
+      }
+
+      return entries;
+    },
+  };
+}
+
+/**
+ * Fetch inmate data from a JailTracker deployment.
+ * First acquires a session, then queries the InmatesJSON endpoint.
+ */
+async function fetchJailTrackerRoster(countyKey: string): Promise<string> {
+  const countyName = JAILTRACKER_COUNTY_NAMES[countyKey] || countyKey;
+
+  // Step 1: Get a session by hitting the main page
+  const sessionRes = await fetch('https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/', {
+    method: 'GET',
+    headers: { 'User-Agent': USER_AGENT },
+    redirect: 'follow',
+  });
+
+  // Extract session ID from redirect URL or Set-Cookie
+  const sessionUrl = sessionRes.url;
+  const sessionMatch = sessionUrl.match(/\(S\(([^)]+)\)\)/);
+  const sessionId = sessionMatch ? sessionMatch[1] : '';
+
+  if (!sessionId) {
+    // Try without session — some deployments don't require it
+    const directUrl = `https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON?approvedOfficerOnly=false&approvedFacility=${encodeURIComponent(countyName)}&approvedCounty=${encodeURIComponent(countyName)}`;
+    const directRes = await fetch(directUrl, {
+      headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+    });
+    if (!directRes.ok) throw new Error(`JailTracker HTTP ${directRes.status} for ${countyKey}`);
+    return await directRes.text();
+  }
+
+  // Step 2: Fetch inmates JSON with session
+  const inmatesUrl = `https://omsweb.public-safety-cloud.com/jtclientweb/(S(${sessionId}))/JTClientWeb/Inmates/InmatesJSON?approvedOfficerOnly=false&approvedFacility=${encodeURIComponent(countyName)}&approvedCounty=${encodeURIComponent(countyName)}`;
+
+  const res = await fetch(inmatesUrl, {
+    headers: {
+      'User-Agent': USER_AGENT,
+      Accept: 'application/json',
+      Referer: `https://omsweb.public-safety-cloud.com/jtclientweb/(S(${sessionId}))/JTClientWeb/Inmates/`,
+    },
+  });
+
+  if (!res.ok) throw new Error(`JailTracker HTTP ${res.status} for ${countyKey}`);
+  return await res.text();
+}
+
+// ════════════════════════════════════════════════════════════
+//  ADDITIONAL UTAH COUNTY PARSERS
+// ════════════════════════════════════════════════════════════
+
+// ── Beaver County (HTML) ──────────────────────────────────
+// Server-rendered page at beavercountyut.cleanwebdesign.com.
+// One <table> per inmate; name in <b>, booking # after "Number:",
+// arrest date after "Arrest Date:", charges in <a> tags inside
+// div.charge elements. "IN CUSTODY" flag indicates current inmates.
+
+const beaverParser: CountyParser = {
+  county: 'ut_beaver',
+
+  parseRoster(html: string): RosterEntry[] {
+    const entries: RosterEntry[] = [];
+
+    // Split on <hr> which separates each inmate's table block
+    const blocks = html.split(/<tr><td colspan="2"><hr><\/td><\/tr>\s*<\/table>/i);
+
+    for (const block of blocks) {
+      // Name: inside <b>NAME</b>
+      const nameMatch = block.match(/<b>([^<]+)<\/b>/);
+      if (!nameMatch) continue;
+      const rawName = nameMatch[1].trim();
+      if (!rawName || rawName.length < 3) continue;
+
+      const { first, middle, last } = splitName(rawName);
+
+      // Booking number: "Number: 12345"
+      const numMatch = block.match(/Number:\s*(\d+)/);
+      const bookingNumber = numMatch ? numMatch[1].trim() : '';
+
+      // Arrest date: "Arrest Date: HH:MM:SS MM/DD/YY"
+      const dateMatch = block.match(/Arrest Date:\s*([\d:]+)\s+(\d{2}\/\d{2}\/\d{2,4})/);
+      let bookingDate = '';
+      if (dateMatch) {
+        const [, time, date] = dateMatch;
+        // Convert MM/DD/YY to ISO-ish
+        const parts = date.split('/');
+        if (parts.length === 3) {
+          const year = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
+          bookingDate = `${year}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')} ${time}`;
+        }
+      }
+
+      // Charges: text inside <a> tags within div.charge
+      const charges: string[] = [];
+      const chargeRegex = /class="charge"[^>]*>[\s\S]*?<a[^>]*>([^<]+)<\/a>/gi;
+      let chargeMatch: RegExpExecArray | null;
+      while ((chargeMatch = chargeRegex.exec(block)) !== null) {
+        const charge = chargeMatch[1].trim();
+        if (charge) charges.push(charge);
+      }
+
+      entries.push({
+        roster_id: bookingNumber || `beaver-${last}-${first}`,
+        full_name: rawName,
+        first_name: first,
+        last_name: last,
+        middle_name: middle,
+        gender: '',
+        age: null,
+        booking_date: bookingDate,
+        charges,
+        bail_amount: '',
+        detail_url: '',
+      });
+    }
+
+    return entries;
+  },
+};
+
+// ── Utah County (JSON API) ─────────────────────────────────
+// JSON API at sheriff.utahcounty.gov/api/search/name/{letter}
+// Returns array of { name, id, status, date_in, dob, person_ptr }
+// Status: "A" = active (in custody), "O" = out/released
+// We search A-Z and collect all active inmates.
+
+const utahCountyParser: CountyParser = {
+  county: 'ut_utah',
+
+  parseRoster(content: string): RosterEntry[] {
+    const entries: RosterEntry[] = [];
+
+    try {
+      const inmates = JSON.parse(content);
+      if (!Array.isArray(inmates)) return entries;
+
+      for (const inmate of inmates) {
+        // Only include active inmates
+        if (inmate.status !== 'A') continue;
+
+        const rawName = (inmate.name || '').trim();
+        if (!rawName) continue;
+        const { first, middle, last } = splitName(rawName);
+
+        // Parse date_in ISO date
+        let bookingDate = '';
+        if (inmate.date_in) {
+          const d = new Date(inmate.date_in);
+          if (!isNaN(d.getTime())) {
+            bookingDate = d.toISOString().split('T')[0];
+          }
+        }
+
+        entries.push({
+          roster_id: String(inmate.id || inmate.zid || `utah-${last}-${first}`),
+          full_name: rawName,
+          first_name: first,
+          last_name: last,
+          middle_name: middle,
+          gender: '',
+          age: null,
+          booking_date: bookingDate,
+          charges: [],
+          bail_amount: '',
+          detail_url: '',
+        });
+      }
+    } catch (err) {
+      console.error('[Jail Roster] Utah County parse error:', (err as Error).message);
+    }
+
+    return entries;
+  },
+};
+
+/**
+ * Utah County uses a JSON API — fetch all active inmates by querying
+ * each letter A-Z and aggregating results. Only "A" (active) status inmates
+ * are included.
+ */
+async function fetchUtahCountyRoster(): Promise<string> {
+  const letters = 'abcdefghijklmnopqrstuvwxyz'.split('');
+  const allInmates: any[] = [];
+  const seen = new Set<number>();
+
+  for (const letter of letters) {
+    try {
+      const url = `https://sheriff.utahcounty.gov/api/search/name/${encodeURIComponent(letter)}`;
+      const res = await fetch(url, {
+        headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+      });
+
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (!Array.isArray(data)) continue;
+
+      for (const inmate of data) {
+        // Only active inmates, and deduplicate by ID
+        if (inmate.status === 'A' && inmate.id && !seen.has(inmate.id)) {
+          seen.add(inmate.id);
+          allInmates.push(inmate);
+        }
+      }
+    } catch (err) {
+      console.error(`[Jail Roster] Utah County letter ${letter} error:`, (err as Error).message);
+    }
+
+    // Polite delay between letter queries
+    await sleep(500);
+  }
+
+  console.log(`[Jail Roster] Utah County: aggregated ${allInmates.length} active inmates from A-Z search`);
+  return JSON.stringify(allInmates);
+}
+
+// ── Tooele County (HTML POST → DataTable) ─────────────────
+// POST to /Roster/Search with empty last/first returns full roster.
+// HTML table rows with: <a id="NUM"> link, last name, first name, middle.
+// Detail via GET /roster/viewinmate?num={id}.
+
+const tooeleParser: CountyParser = {
+  county: 'ut_tooele',
+
+  parseRoster(html: string): RosterEntry[] {
+    const entries: RosterEntry[] = [];
+
+    // Each row: <tr>  <td><a id="12345" ...>icon</a></td>  <td>LAST</td>  <td>FIRST</td>  <td>MIDDLE</td>  </tr>
+    const rowRegex = /<tr>\s*<td[^>]*>\s*<a\s+id="(\d+)"[^>]*>[\s\S]*?<\/a>\s*<\/td>\s*<td>([^<]*)<\/td>\s*<td>([^<]*)<\/td>\s*<td>([^<]*)<\/td>/gi;
+    let match: RegExpExecArray | null;
+
+    while ((match = rowRegex.exec(html)) !== null) {
+      const inmateId = match[1];
+      const lastName = match[2].trim();
+      const firstName = match[3].trim();
+      const middleName = match[4].trim();
+
+      if (!lastName && !firstName) continue;
+
+      const fullName = middleName
+        ? `${lastName}, ${firstName} ${middleName}`
+        : `${lastName}, ${firstName}`;
+
+      entries.push({
+        roster_id: inmateId,
+        full_name: fullName,
+        first_name: firstName,
+        last_name: lastName,
+        middle_name: middleName,
+        gender: '',
+        age: null,
+        booking_date: '',
+        charges: [],
+        bail_amount: '',
+        detail_url: `https://inmate.tooelecountysheriff.org/roster/viewinmate?num=${inmateId}`,
+      });
+    }
+
+    return entries;
+  },
+
+  parseDetail(html: string): DetailFields {
+    const fields: DetailFields = {
+      height: '', weight: '', hair_color: '', eye_color: '',
+      charges: [], case_number: '', bail_type: '',
+    };
+
+    // Tooele detail modal typically has structured content
+    // Extract charges from table rows
+    const chargeRegex = /<td[^>]*>([^<]*(?:FELONY|MISDEMEANOR|INFRACTION|DUI|ASSAULT|THEFT|DRUG|BURGLARY)[^<]*)<\/td>/gi;
+    let chargeMatch: RegExpExecArray | null;
+    while ((chargeMatch = chargeRegex.exec(html)) !== null) {
+      const charge = chargeMatch[1].trim();
+      if (charge) fields.charges.push(charge);
+    }
+
+    return fields;
+  },
+
+  buildDetailUrl(rosterId: string): string {
+    return `https://inmate.tooelecountysheriff.org/roster/viewinmate?num=${rosterId}`;
+  },
+};
+
+/**
+ * Tooele County requires a POST to /Roster/Search with empty fields
+ * to get the full roster. Also needs the antiforgery token.
+ */
+async function fetchTooeleRoster(): Promise<string> {
+  // Step 1: GET the search page to extract the antiforgery token
+  const searchPage = await fetchPage('https://inmate.tooelecountysheriff.org/roster/search');
+  const tokenMatch = searchPage.match(/name="__RequestVerificationToken"\s+(?:type="hidden"\s+)?value="([^"]+)"/);
+  const token = tokenMatch ? tokenMatch[1] : '';
+
+  // Step 2: POST with empty search to get all inmates
+  const body = new URLSearchParams({
+    last: '',
+    first: '',
+  });
+  if (token) {
+    body.set('__RequestVerificationToken', token);
+  }
+
+  const res = await fetch('https://inmate.tooelecountysheriff.org/Roster/Search', {
+    method: 'POST',
+    headers: {
+      'User-Agent': USER_AGENT,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: body.toString(),
+  });
+
+  if (!res.ok) throw new Error(`Tooele roster HTTP ${res.status}`);
+  return await res.text();
+}
+
+// ── Carbon County (wpDataTable AJAX) ──────────────────────
+// WordPress site with wpDataTable plugin at carbon.utah.gov.
+// Table has: LAST_NAME, FIRST_NAME, BookingNo, Arrival, HOLDS1-3.
+// Data loaded via admin-ajax.php — we try direct HTML fetch first.
+
+const carbonParser: CountyParser = {
+  county: 'ut_carbon',
+
+  parseRoster(html: string): RosterEntry[] {
+    const entries: RosterEntry[] = [];
+
+    // wpDataTable renders <table> with <tr> rows after AJAX load.
+    // If we got the page HTML, it may have pre-rendered data in some cases,
+    // or we may get the AJAX response directly.
+
+    // Try JSON parse first (in case we got AJAX response)
+    try {
+      const data = JSON.parse(html);
+      // wpDataTable AJAX returns { draw, recordsTotal, recordsFiltered, data: [[col1, col2, ...], ...] }
+      if (data.data && Array.isArray(data.data)) {
+        for (const row of data.data) {
+          const lastName = (row[0] || '').replace(/<[^>]+>/g, '').trim();
+          const firstName = (row[1] || '').replace(/<[^>]+>/g, '').trim();
+          const bookingNo = (row[2] || '').replace(/<[^>]+>/g, '').trim();
+          const arrival = (row[3] || '').replace(/<[^>]+>/g, '').trim();
+          const holds1 = (row[4] || '').replace(/<[^>]+>/g, '').trim();
+          const holds2 = (row[5] || '').replace(/<[^>]+>/g, '').trim();
+          const holds3 = (row[6] || '').replace(/<[^>]+>/g, '').trim();
+
+          if (!lastName && !firstName) continue;
+
+          const fullName = `${lastName}, ${firstName}`;
+          const charges = [holds1, holds2, holds3].filter(Boolean);
+
+          entries.push({
+            roster_id: bookingNo || `carbon-${lastName}-${firstName}`,
+            full_name: fullName,
+            first_name: firstName,
+            last_name: lastName,
+            middle_name: '',
+            gender: '',
+            age: null,
+            booking_date: arrival,
+            charges,
+            bail_amount: '',
+            detail_url: '',
+          });
+        }
+        return entries;
+      }
+    } catch { /* not JSON, try HTML */ }
+
+    // Fallback: parse HTML table rows
+    const rowRegex = /<tr[^>]*>\s*<td[^>]*>([^<]*)<\/td>\s*<td[^>]*>([^<]*)<\/td>\s*<td[^>]*>([^<]*)<\/td>\s*<td[^>]*>([^<]*)<\/td>\s*<td[^>]*>([^<]*)<\/td>\s*<td[^>]*>([^<]*)<\/td>\s*<td[^>]*>([^<]*)<\/td>/gi;
+    let match: RegExpExecArray | null;
+
+    while ((match = rowRegex.exec(html)) !== null) {
+      const lastName = match[1].trim();
+      const firstName = match[2].trim();
+      const bookingNo = match[3].trim();
+      const arrival = match[4].trim();
+      const holds1 = match[5].trim();
+      const holds2 = match[6].trim();
+      const holds3 = match[7].trim();
+
+      // Skip header row
+      if (lastName === 'LAST_NAME') continue;
+      if (!lastName && !firstName) continue;
+
+      const fullName = `${lastName}, ${firstName}`;
+      const charges = [holds1, holds2, holds3].filter(Boolean);
+
+      entries.push({
+        roster_id: bookingNo || `carbon-${lastName}-${firstName}`,
+        full_name: fullName,
+        first_name: firstName,
+        last_name: lastName,
+        middle_name: '',
+        gender: '',
+        age: null,
+        booking_date: arrival,
+        charges,
+        bail_amount: '',
+        detail_url: '',
+      });
+    }
+
+    return entries;
+  },
+};
+
+// ── Utah State Prison (UDC — Utah Dept of Corrections) ──────
+// Searches the UDC offender search by letter A-Z and aggregates
+// results. This is similar to the Utah County A-Z search pattern.
+
+const utStatePrisonParser: CountyParser = {
+  county: 'ut_state_prison',
+
+  parseRoster(content: string): RosterEntry[] {
+    const entries: RosterEntry[] = [];
+    try {
+      const inmates = JSON.parse(content);
+      if (!Array.isArray(inmates)) return entries;
+
+      for (const inmate of inmates) {
+        // API returns offenderName in "LAST, FIRST MIDDLE" format
+        const rawName = (inmate.offenderName || '').trim();
+        if (!rawName) continue;
+
+        const offenderId = String(inmate.offenderNumber || '');
+        if (!offenderId) continue;
+
+        // Parse "LAST, FIRST MIDDLE" → first, middle, last
+        let first = '', middle = '', last = '';
+        const commaIdx = rawName.indexOf(',');
+        if (commaIdx > 0) {
+          last = rawName.substring(0, commaIdx).trim();
+          const rest = rawName.substring(commaIdx + 1).trim().split(/\s+/);
+          first = rest[0] || '';
+          middle = rest.slice(1).join(' ');
+        } else {
+          // Fallback to splitName if no comma
+          const parsed = splitName(rawName);
+          first = parsed.first;
+          middle = parsed.middle;
+          last = parsed.last;
+        }
+
+        // Reconstruct as "FIRST MIDDLE LAST" for display
+        const displayName = [first, middle, last].filter(Boolean).join(' ');
+
+        // Parse DOB — API returns "YYYY-MM-DD"
+        const dob = inmate.dateOfBirth || '';
+
+        // Location from detail fetch (if available)
+        const location = inmate.location || '';
+
+        entries.push({
+          roster_id: offenderId,
+          full_name: displayName || rawName,
+          first_name: first,
+          last_name: last,
+          middle_name: middle,
+          gender: '',
+          age: null,
+          booking_date: dob, // UDC doesn't expose admission date in public API — use DOB for reference
+          charges: [],
+          bail_amount: '',
+          detail_url: location ? `Facility: ${location}` : '',
+        });
+      }
+    } catch (err) {
+      console.error('[Jail Roster] UT State Prison parse error:', (err as Error).message);
+    }
+
+    return entries;
+  },
+};
+
+/**
+ * Utah Department of Corrections (UDC) offender search via api.utah.gov.
+ *
+ * API endpoints discovered from corrections.utah.gov/inmate-services/offender-search/:
+ *   Search: GET https://api.utah.gov/udc/v1/public/rest/offenders/name?first={f}&last={l}&index={i}&pageCount=100
+ *   Detail: GET https://api.utah.gov/udc/v1/public/rest/offenders/{offenderNumber}
+ *
+ * The search API returns { results: [{offenderNumber, offenderName, dateOfBirth}], totalCount }.
+ * Name matching is broad (contains, not starts-with), so searching A-Z last names
+ * with first=a provides near-complete coverage. We paginate each letter up to 10 pages
+ * (1,000 results per letter) to balance coverage vs. API load.
+ */
+async function fetchUtStatePrisonRoster(): Promise<string> {
+  const UDC_API = 'https://api.utah.gov/udc/v1/public/rest/offenders/name';
+  const PAGE_SIZE = 100;
+  const MAX_PAGES_PER_LETTER = 10; // Cap at 1,000 results per letter search
+  const letters = 'abcdefghijklmnopqrstuvwxyz'.split('');
+  const allInmates: any[] = [];
+  const seen = new Set<number>();
+  let successCount = 0;
+
+  for (const letter of letters) {
+    let index = 0;
+    let pages = 0;
+
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      if (pages >= MAX_PAGES_PER_LETTER) break;
+
+      try {
+        const url = `${UDC_API}?first=a&last=${letter}&index=${index}&pageCount=${PAGE_SIZE}`;
+        const res = await fetch(url, {
+          headers: {
+            'User-Agent': USER_AGENT,
+            Accept: 'application/json',
+          },
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        });
+
+        if (!res.ok) break;
+
+        const data = await res.json();
+        const results = Array.isArray(data?.results) ? data.results : [];
+
+        if (results.length === 0) break;
+
+        for (const inmate of results) {
+          const id = inmate.offenderNumber;
+          if (id != null && !seen.has(id)) {
+            seen.add(id);
+            allInmates.push(inmate);
+          }
+        }
+
+        successCount++;
+        pages++;
+        index += PAGE_SIZE;
+
+        // If we got fewer than a full page, no more results
+        if (results.length < PAGE_SIZE) break;
+        // If totalCount tells us we've fetched everything
+        if (data.totalCount && index >= data.totalCount) break;
+      } catch {
+        break; // Network/timeout error — move to next letter
+      }
+
+      await sleep(500); // Polite delay between pages
+    }
+
+    await sleep(300); // Brief delay between letters
+  }
+
+  if (successCount === 0) {
+    console.warn('[Jail Roster] UT State Prison: no API responses received. Check api.utah.gov endpoint.');
+  }
+
+  console.log(`[Jail Roster] UT State Prison: aggregated ${allInmates.length} offenders from ${successCount} API pages`);
+  return JSON.stringify(allInmates);
+}
+
 // ── Parser registry ─────────────────────────────────────────
 
+// Start with Utah-specific parsers
 const COUNTY_PARSERS: Record<string, CountyParser> = {
   weber: weberParser,
   davis: davisParser,
@@ -789,7 +1458,17 @@ const COUNTY_PARSERS: Record<string, CountyParser> = {
   uinta: uintaParser,
   summit: summitParser,
   salt_lake: saltLakeParser,
+  ut_beaver: beaverParser,
+  ut_utah: utahCountyParser,
+  ut_tooele: tooeleParser,
+  ut_carbon: carbonParser,
+  ut_state_prison: utStatePrisonParser,
 };
+
+// Register JailTracker parsers for all configured counties
+for (const countyKey of Object.keys(JAILTRACKER_COUNTY_NAMES)) {
+  COUNTY_PARSERS[countyKey] = createJailTrackerParser(countyKey);
+}
 
 // ════════════════════════════════════════════════════════════
 //  SCRAPE ENGINE
@@ -812,22 +1491,23 @@ function upsertRosterRecords(county: string, entries: RosterEntry[]): { inserted
   let inserted = 0;
   let updated = 0;
 
-  const displayName = COUNTY_PARSERS[county]?.county
-    ? `${county.charAt(0).toUpperCase() + county.slice(1)} County Jail`
-    : `${county} County Jail`;
+  // Get display name from config, falling back to formatted county key
+  const config = getCountyConfig(county);
+  const displayName = config?.display_name || `${county.replace(/_/g, ' ')} Jail`;
+  const state = config?.state || 'UT';
 
   const upsert = db.prepare(`
     INSERT INTO arrest_records (
       jailbase_id, source_id, source_name,
       full_name, first_name, last_name, middle_name,
       booking_date, charges, gender, bail_amount,
-      county, status, entry_source, detail_fetched,
+      county, state, status, entry_source, detail_fetched,
       created_at, updated_at
     ) VALUES (
       @jailbase_id, @source_id, @source_name,
       @full_name, @first_name, @last_name, @middle_name,
       @booking_date, @charges, @gender, @bail_amount,
-      @county, 'active', 'scraper', 0,
+      @county, @state, 'active', 'scraper', 0,
       @now, @now
     )
     ON CONFLICT(jailbase_id, source_id) DO UPDATE SET
@@ -836,6 +1516,7 @@ function upsertRosterRecords(county: string, entries: RosterEntry[]): { inserted
       charges = @charges,
       gender = @gender,
       bail_amount = @bail_amount,
+      state = @state,
       status = 'active',
       updated_at = @now
   `);
@@ -862,6 +1543,7 @@ function upsertRosterRecords(county: string, entries: RosterEntry[]): { inserted
         gender: entry.gender,
         bail_amount: entry.bail_amount ? parseFloat(entry.bail_amount.replace(/[$,]/g, '')) || 0 : 0,
         county: county,
+        state,
         now,
       });
 
@@ -979,7 +1661,10 @@ async function scrapeCounty(county: string): Promise<{
   const config = getCountyConfig(county);
   if (!config) throw new Error(`No config for county: ${county}`);
   if (config.consecutive_errors >= CIRCUIT_BREAKER_THRESHOLD) {
-    throw new Error(`Circuit breaker active for ${county} (${config.consecutive_errors} errors)`);
+    // Mark as circuit-broken error type so syncCounty doesn't re-increment
+    const err = new Error(`Circuit breaker active for ${county} (${config.consecutive_errors} errors)`);
+    (err as any).circuitBreaker = true;
+    throw err;
   }
 
   const parser = COUNTY_PARSERS[county];
@@ -993,6 +1678,18 @@ async function scrapeCounty(county: string): Promise<{
   } else if (county === 'davis') {
     // Davis County has paginated HTML (29 pages)
     content = await fetchDavisRoster();
+  } else if (county === 'ut_utah') {
+    // Utah County uses a JSON API — search A-Z and aggregate
+    content = await fetchUtahCountyRoster();
+  } else if (county === 'ut_tooele') {
+    // Tooele County requires POST with antiforgery token
+    content = await fetchTooeleRoster();
+  } else if (county === 'ut_state_prison') {
+    // Utah State Prison (UDC) uses A-Z offender search API
+    content = await fetchUtStatePrisonRoster();
+  } else if (config.roster_type === 'jailtracker') {
+    // JailTracker (public-safety-cloud.com) — session-based JSON API
+    content = await fetchJailTrackerRoster(county);
   } else if (config.roster_type === 'pdf') {
     content = await parsePdfText(config.roster_url);
   } else {
@@ -1046,6 +1743,9 @@ async function syncCounty(county: string): Promise<void> {
     console.log(`[Jail Roster] ${county}: ${result.records_found} found, ${result.records_new} new, ${result.records_updated} updated, ${result.records_released} released, ${result.details_fetched} details (${duration}ms)`);
 
   } catch (err) {
+    // If circuit breaker threw, don't re-increment or spam logs
+    if ((err as any).circuitBreaker) return;
+
     const duration = Date.now() - startTime;
     const errorMsg = (err as Error).message;
 
@@ -1060,9 +1760,9 @@ async function syncCounty(county: string): Promise<void> {
       UPDATE jail_roster_config SET consecutive_errors = consecutive_errors + 1, updated_at = ? WHERE county = ?
     `).run(localNow(), county);
 
-    const config = getCountyConfig(county);
-    if (config && config.consecutive_errors + 1 >= CIRCUIT_BREAKER_THRESHOLD) {
-      console.error(`[Jail Roster] CIRCUIT BREAKER: ${county} paused after ${config.consecutive_errors + 1} consecutive errors`);
+    const currentConfig = getCountyConfig(county);
+    if (currentConfig && currentConfig.consecutive_errors >= CIRCUIT_BREAKER_THRESHOLD) {
+      console.error(`[Jail Roster] CIRCUIT BREAKER: ${county} paused after ${currentConfig.consecutive_errors} consecutive errors`);
     }
 
     console.error(`[Jail Roster] Error scraping ${county}:`, errorMsg);
@@ -1086,19 +1786,47 @@ export function scheduleJailRosterSync(): void {
       return;
     }
 
-    console.log(`[Jail Roster] Starting scheduler for ${enabled.length} counties: ${enabled.map(c => c.county).join(', ')}`);
+    // Group by state for organized logging
+    const byState = new Map<string, CountyConfig[]>();
+    for (const c of enabled) {
+      const state = c.state || 'UT';
+      if (!byState.has(state)) byState.set(state, []);
+      byState.get(state)!.push(c);
+    }
 
-    // Stagger start times so counties don't all scrape at once
-    enabled.forEach((config, idx) => {
-      const staggerDelay = idx * 10_000; // 10s stagger between counties
+    const stateList = [...byState.entries()].map(([s, cs]) => `${s}:${cs.length}`).join(', ');
+    console.log(`[Jail Roster] Starting scheduler for ${enabled.length} counties (${stateList})`);
+
+    // Stagger start times — 5s between counties (5min total for ~60 counties)
+    let staggerIdx = 0;
+    enabled.forEach((config) => {
       const intervalMs = (config.scrape_interval_minutes || 30) * 60_000;
+
+      // Skip counties already circuit-broken (they'll resume after manual reset)
+      if (config.consecutive_errors >= CIRCUIT_BREAKER_THRESHOLD) {
+        console.log(`[Jail Roster] ${config.county}: circuit breaker active (${config.consecutive_errors} errors) — skipping until manual reset`);
+        return;
+      }
+
+      const staggerDelay = staggerIdx * 5_000; // 5s stagger between counties
+      staggerIdx++;
 
       // Initial scrape after stagger
       setTimeout(() => {
         syncCounty(config.county);
 
-        // Then on interval
-        const handle = setInterval(() => syncCounty(config.county), intervalMs);
+        // Then on interval — check circuit breaker before each attempt
+        const handle = setInterval(() => {
+          const current = getCountyConfig(config.county);
+          if (current && current.consecutive_errors >= CIRCUIT_BREAKER_THRESHOLD) {
+            console.log(`[Jail Roster] ${config.county}: circuit breaker tripped — stopping interval`);
+            const h = countyIntervals.get(config.county);
+            if (h) clearInterval(h);
+            countyIntervals.delete(config.county);
+            return;
+          }
+          syncCounty(config.county);
+        }, intervalMs);
         countyIntervals.set(config.county, handle);
       }, staggerDelay);
     });
@@ -1318,7 +2046,7 @@ export function getJailRosterStatistics(): {
       SUM(records_released) AS releases_today
     FROM jail_roster_sync_log
     WHERE status = 'success'
-      AND DATE(synced_at) = DATE('now')
+      AND DATE(synced_at) = DATE('now', 'localtime')
   `).get() as any;
 
   // ── Gender breakdown across all counties ────────────────

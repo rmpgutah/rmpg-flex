@@ -120,7 +120,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
   // ----------------------------------------------------------
   useEffect(() => {
     const unsubscribe = subscribe('notification', (message) => {
-      const incoming = message.payload as Notification;
+      const incoming = message.data as Notification;
       setNotifications((prev) => [incoming, ...prev]);
       if (!incoming.is_read) {
         setUnreadCount((prev) => prev + 1);

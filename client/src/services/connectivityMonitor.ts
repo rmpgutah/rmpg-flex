@@ -25,9 +25,10 @@ class BrowserConnectivityMonitor {
   isOnline: boolean = false;
   private consecutiveState: number = 0;
   private pendingState: boolean = false;
-  private timer: ReturnType<typeof setInterval> | null = null;
+  private timer: ReturnType<typeof setTimeout> | null = null; // changed to setTimeout for adaptive polling
   private onTransition: ConnectivityCallback | null = null;
   private listeners: Set<ConnectivityCallback> = new Set();
+  private consecutiveFailures: number = 0;      // track offline streaks for adaptive backoff
 
   // Browser event handlers (stored for cleanup)
   private handleOnline: () => void;
@@ -67,19 +68,36 @@ class BrowserConnectivityMonitor {
     // Immediate health check
     this.check();
 
-    // Start polling
-    this.timer = setInterval(() => {
+    // Start adaptive polling (uses setTimeout chain instead of fixed setInterval
+    // so we can increase the interval during extended outages to save bandwidth)
+    this.scheduleNextPoll();
+
+    console.log(`[CONNECTIVITY] Monitoring started (base poll every ${this.pollInterval / 1000}s)`);
+  }
+
+  private scheduleNextPoll(): void {
+    if (this.timer) clearTimeout(this.timer);
+
+    // Adaptive interval: during extended offline, slow down to save bandwidth on patrol vehicles.
+    // Normal: 10s. After 6 consecutive failures (~1 min): 20s. After 18 (~5 min): 30s.
+    let interval = this.pollInterval;
+    if (this.consecutiveFailures > 18) {
+      interval = Math.min(this.pollInterval * 3, 30_000); // cap at 30s
+    } else if (this.consecutiveFailures > 6) {
+      interval = this.pollInterval * 2;
+    }
+
+    this.timer = setTimeout(() => {
       if (document.visibilityState === 'visible') {
         this.check();
       }
-    }, this.pollInterval);
-
-    console.log(`[CONNECTIVITY] Monitoring started (poll every ${this.pollInterval / 1000}s)`);
+      this.scheduleNextPoll();
+    }, interval);
   }
 
   stop(): void {
     if (this.timer) {
-      clearInterval(this.timer);
+      clearTimeout(this.timer);
       this.timer = null;
     }
 
@@ -105,8 +123,22 @@ class BrowserConnectivityMonitor {
 
   private onBrowserOnline(): void {
     console.log('[CONNECTIVITY] Browser online event');
-    // Trigger an immediate check to confirm
-    this.check();
+    // Trigger rapid sequential checks to confirm connectivity quickly.
+    // Officers returning from dead zones need fast online transition
+    // rather than waiting for stableCount * pollInterval (30s default).
+    this.rapidCheck(0);
+  }
+
+  private rapidCheck(count: number): void {
+    if (count >= this.stableCount) return; // enough checks done
+    if (this.isOnline) return; // already transitioned
+
+    this.check().then(() => {
+      if (!this.isOnline && count < this.stableCount - 1) {
+        // Schedule next rapid check after 1s instead of full pollInterval
+        setTimeout(() => this.rapidCheck(count + 1), 1000);
+      }
+    });
   }
 
   private onBrowserOffline(): void {
@@ -123,13 +155,23 @@ class BrowserConnectivityMonitor {
 
   private onVisibilityChange(): void {
     if (document.visibilityState === 'visible') {
-      // Tab became visible — do an immediate check
+      // Tab became visible — reset backoff and check immediately.
+      // Officer returning to the app should get instant connectivity status.
+      this.consecutiveFailures = 0;
       this.check();
+      this.scheduleNextPoll(); // restart with base interval
     }
   }
 
   private async check(): Promise<void> {
     const reachable = await this.doHealthCheck();
+
+    // Track consecutive failures for adaptive backoff
+    if (reachable) {
+      this.consecutiveFailures = 0;
+    } else {
+      this.consecutiveFailures++;
+    }
 
     if (reachable === this.pendingState) {
       this.consecutiveState++;

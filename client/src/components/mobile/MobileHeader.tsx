@@ -5,7 +5,7 @@
 // ============================================================
 
 import React from 'react';
-import { Menu, ChevronDown } from 'lucide-react';
+import { Menu, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import RmpgLogo from '../RmpgLogo';
 import PanicButton from '../PanicButton';
 
@@ -22,6 +22,10 @@ interface MobileHeaderProps {
   onProfileTap: () => void;
   gpsLatitude?: number | null;
   gpsLongitude?: number | null;
+  canGoBack?: boolean;
+  canGoForward?: boolean;
+  onNavBack?: () => void;
+  onNavForward?: () => void;
 }
 
 export default function MobileHeader({
@@ -31,6 +35,10 @@ export default function MobileHeader({
   onProfileTap,
   gpsLatitude,
   gpsLongitude,
+  canGoBack,
+  canGoForward,
+  onNavBack,
+  onNavForward,
 }: MobileHeaderProps) {
   const initials = user
     ? `${(user.first_name || 'U')[0]}${(user.last_name || '')[0] || ''}`.toUpperCase()
@@ -67,6 +75,26 @@ export default function MobileHeader({
           aria-label="Open navigation"
         >
           <Menu style={{ width: 22, height: 22 }} />
+        </button>
+
+        {/* Back / Forward */}
+        <button
+          onClick={onNavBack}
+          disabled={!canGoBack}
+          className="flex items-center justify-center w-8 h-8"
+          style={{ color: canGoBack ? '#b0bcc8' : '#3a4a5a', transition: 'color 0.15s' }}
+          aria-label="Go back"
+        >
+          <ChevronLeft style={{ width: 18, height: 18 }} />
+        </button>
+        <button
+          onClick={onNavForward}
+          disabled={!canGoForward}
+          className="flex items-center justify-center w-8 h-8"
+          style={{ color: canGoForward ? '#b0bcc8' : '#3a4a5a', transition: 'color 0.15s' }}
+          aria-label="Go forward"
+        >
+          <ChevronRight style={{ width: 18, height: 18 }} />
         </button>
 
         {/* Logo */}

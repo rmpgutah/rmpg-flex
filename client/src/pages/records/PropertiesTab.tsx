@@ -110,6 +110,7 @@ export interface PropertiesTabState {
   openLinkModal: (type: RecordEntityType, id: string) => void;
   clients: { id: string; name: string; status: string }[];
   properties: Property[];
+  propertySubmitError: string | null;
 }
 
 // ════════════════════════════════════════════════════
@@ -128,6 +129,7 @@ export function usePropertiesTab(props: PropertiesTabProps): PropertiesTabState 
   const [editingProperty, setEditingProperty] = useState<Property | undefined>(undefined);
   const [propertySubmitting, setPropertySubmitting] = useState(false);
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
+  const [propertySubmitError, setPropertySubmitError] = useState<string | null>(null);
 
   useEffect(() => {
     if (openNewTrigger && openNewTrigger > 0) {
@@ -161,15 +163,17 @@ export function usePropertiesTab(props: PropertiesTabProps): PropertiesTabState 
       setEditingProperty(undefined);
       await fetchProperties();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save property');
+      const msg = err instanceof Error ? err.message : 'Failed to save property';
+      setPropertySubmitError(msg);
+      setError(msg);
     } finally {
       setPropertySubmitting(false);
     }
   };
 
-  const openEditProperty = (p: Property) => { setEditingProperty(p); setPropertyModalOpen(true); };
-  const openNewProperty = () => { setEditingProperty(undefined); setPropertyModalOpen(true); };
-  const closeModal = () => { setPropertyModalOpen(false); setEditingProperty(undefined); };
+  const openEditProperty = (p: Property) => { setPropertySubmitError(null); setEditingProperty(p); setPropertyModalOpen(true); };
+  const openNewProperty = () => { setPropertySubmitError(null); setEditingProperty(undefined); setPropertyModalOpen(true); };
+  const closeModal = () => { setPropertySubmitError(null); setPropertyModalOpen(false); setEditingProperty(undefined); };
 
   const handleArchive = async (type: 'persons' | 'vehicles' | 'properties' | 'evidence', id: string) => {
     setSelectedProperty(null);
@@ -197,7 +201,7 @@ export function usePropertiesTab(props: PropertiesTabProps): PropertiesTabState 
     filteredProperties, handleArchive, handleUnarchive,
     searchQuery, setSearchQuery, showArchived,
     setDeleteTarget, linkRefreshKey, openLinkModal,
-    clients, properties,
+    clients, properties, propertySubmitError,
   };
 }
 
@@ -211,6 +215,7 @@ export function PropertiesTabList({ state }: { state: PropertiesTabState }) {
     searchQuery, setSearchQuery, showArchived,
     openEditProperty, setDeleteTarget, handleArchive, handleUnarchive,
     propertyModalOpen, editingProperty, propertySubmitting, handlePropertySubmit, closeModal, clients,
+    propertySubmitError,
   } = state;
 
   return (
@@ -311,6 +316,7 @@ export function PropertiesTabList({ state }: { state: PropertiesTabState }) {
         isSubmitting={propertySubmitting}
         editingProperty={editingProperty}
         clients={clients}
+        submitError={propertySubmitError}
       />
     </div>
   );

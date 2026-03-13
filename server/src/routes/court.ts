@@ -7,7 +7,7 @@
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 
 const router = Router();
@@ -121,7 +121,7 @@ router.get('/events/:id', (req: Request, res: Response) => {
 });
 
 // ─── POST /events ────────────────────────────────────────
-router.post('/events', (req: Request, res: Response) => {
+router.post('/events', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -158,7 +158,7 @@ router.post('/events', (req: Request, res: Response) => {
 });
 
 // ─── PUT /events/:id ─────────────────────────────────────
-router.put('/events/:id', (req: Request, res: Response) => {
+router.put('/events/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -181,7 +181,7 @@ router.put('/events/:id', (req: Request, res: Response) => {
 });
 
 // ─── PUT /events/:id/outcome ─────────────────────────────
-router.put('/events/:id/outcome', (req: Request, res: Response) => {
+router.put('/events/:id/outcome', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();

@@ -90,7 +90,7 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
         onClick={e => e.stopPropagation()}
       >
         {/* Compact header */}
-        <div className="flex items-center justify-between px-3 py-1.5 bg-[#0a0a0a] border-b border-rmpg-800">
+        <div className="flex items-center justify-between px-3 py-1.5 bg-surface-deep border-b border-rmpg-800">
           <div className="flex items-center gap-2 min-w-0">
             <Video className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
             <span className="text-[10px] font-mono font-bold text-rmpg-200 uppercase tracking-wider truncate">
@@ -175,7 +175,7 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
         </div>
 
         {/* Compact Metadata Bar */}
-        <div className="px-3 py-2 bg-[#0a0a0a] border-t border-rmpg-800">
+        <div className="px-3 py-2 bg-surface-deep border-t border-rmpg-800">
           <div className="flex items-center justify-between text-[10px] font-mono text-rmpg-400 gap-4">
             <span className="flex items-center gap-1">
               <Shield className="w-2.5 h-2.5 text-brand-400" />

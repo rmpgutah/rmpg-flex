@@ -1,10 +1,22 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { validateEnum } from '../middleware/sanitize';
 import { broadcastNewMessage, broadcastAlert, sendToUser } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+
+const __comms_filename = fileURLToPath(import.meta.url);
+const __comms_dirname = path.dirname(__comms_filename);
 
 const router = Router();
+
+// ─── Allowed enum values ─────────────────────────────────
+const VALID_BOLO_TYPES = ['person', 'vehicle', 'property'] as const;
+const VALID_BOLO_PRIORITIES = ['P1', 'P2', 'P3', 'P4'] as const;
+const VALID_MSG_PRIORITIES = ['routine', 'urgent', 'emergency'] as const;
 
 router.use(authenticateToken);
 
@@ -40,6 +52,14 @@ router.post('/messages', (req: Request, res: Response) => {
       return;
     }
 
+    // Validate message priority (emergency triggers system-wide broadcastAlert)
+    try {
+      if (priority) validateEnum(priority, VALID_MSG_PRIORITIES, 'priority');
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+
     // Threading: compute thread_id from parent message
     let threadId: number | null = null;
     if (parent_id) {
@@ -60,6 +80,7 @@ router.post('/messages', (req: Request, res: Response) => {
       LEFT JOIN users u ON m.from_user_id = u.id
       WHERE m.id = ?
     `).get(result.lastInsertRowid) as any;
+    if (!message) { res.status(500).json({ error: 'Failed to retrieve created message' }); return; }
 
     // Send via WebSocket
     if (msgChannel === 'direct' && to_user_id) {
@@ -89,7 +110,7 @@ router.get('/messages', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { channel, unreadOnly, thread_id, limit = '50' } = req.query;
-    const limitNum = parseInt(limit as string, 10);
+    const limitNum = Math.min(Math.max(parseInt(limit as string, 10) || 50, 1), 200);
 
     let whereClause = 'WHERE (m.to_user_id = ? OR m.to_user_id IS NULL OR m.from_user_id = ?)';
     const params: any[] = [req.user!.userId, req.user!.userId];
@@ -362,6 +383,15 @@ router.post('/bolos', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       return;
     }
 
+    // Validate BOLO enum fields
+    try {
+      validateEnum(type, VALID_BOLO_TYPES, 'type');
+      if (priority) validateEnum(priority, VALID_BOLO_PRIORITIES, 'priority');
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+
     // Generate BOLO number
     const lastBolo = db.prepare(`SELECT bolo_number FROM bolos ORDER BY id DESC LIMIT 1`).get() as any;
     let nextNum = 1;
@@ -385,12 +415,17 @@ router.post('/bolos', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       SELECT b.*, u.full_name as issued_by_name
       FROM bolos b LEFT JOIN users u ON b.issued_by = u.id
       WHERE b.id = ?
-    `).get(result.lastInsertRowid);
+    `).get(result.lastInsertRowid) as any;
+    if (!bolo) { res.status(500).json({ error: 'Failed to retrieve created BOLO' }); return; }
 
-    // Broadcast alert for new BOLO
+    // Broadcast minimal BOLO alert — full subject/vehicle descriptions are PII
+    // that should only be accessed via authenticated API with role checks
     broadcastAlert({
       type: 'new_bolo',
-      bolo,
+      id: bolo.id,
+      bolo_number: bolo.bolo_number,
+      title: bolo.title,
+      priority: bolo.priority,
     });
 
     db.prepare(`
@@ -539,8 +574,8 @@ router.get('/activity-feed', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { limit = '50', offset = '0', entityType } = req.query;
-    const limitNum = parseInt(limit as string, 10);
-    const offsetNum = parseInt(offset as string, 10);
+    const limitNum = Math.min(Math.max(parseInt(limit as string, 10) || 50, 1), 200);
+    const offsetNum = Math.max(parseInt(offset as string, 10) || 0, 0);
 
     let whereClause = '';
     const params: any[] = [];
@@ -661,6 +696,43 @@ router.get('/radio-channels', (req: Request, res: Response) => {
     }
   } catch (error: any) {
     console.error('Get radio channels error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── RADIO AUDIO FILE ─────────────────────────────────
+
+// GET /api/comms/radio/audio/:id — Stream a saved radio recording
+router.get('/radio/audio/:id', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const row = db.prepare('SELECT audio_file, file_size FROM radio_transcripts WHERE id = ?').get(req.params.id) as any;
+
+    if (!row || !row.audio_file) {
+      return res.status(404).json({ error: 'Audio recording not found' });
+    }
+
+    const uploadsDir = path.resolve(__comms_dirname, '../../uploads');
+    const filePath = path.join(uploadsDir, row.audio_file);
+
+    // Security: ensure resolved path is within uploads directory
+    if (!filePath.startsWith(uploadsDir)) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Audio file missing from disk' });
+    }
+
+    const stat = fs.statSync(filePath);
+    res.set({
+      'Content-Type': 'audio/webm',
+      'Content-Length': stat.size.toString(),
+      'Cache-Control': 'public, max-age=86400',
+    });
+    fs.createReadStream(filePath).pipe(res);
+  } catch (error: any) {
+    console.error('Get radio audio error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -258,7 +258,7 @@ Environment=PORT=3001
 Environment=DISABLE_SSL=true
 ExecStart=/usr/bin/npx tsx server/src/index.ts
 Restart=always
-RestartSec=5
+RestartSec=1
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=rmpg-flex
@@ -285,7 +285,7 @@ Environment=SSL_HTTP_REDIRECT=true
 Environment=SSL_HTTP_REDIRECT_PORT=80
 ExecStart=/usr/bin/npx tsx server/src/index.ts
 Restart=always
-RestartSec=5
+RestartSec=1
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=rmpg-flex
@@ -313,7 +313,7 @@ Environment=NODE_ENV=production
 Environment=PORT=80
 ExecStart=/usr/bin/npx tsx server/src/index.ts
 Restart=always
-RestartSec=5
+RestartSec=1
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=rmpg-flex

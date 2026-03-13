@@ -228,6 +228,13 @@ export function clearVoiceQueue(): void {
   isSpeaking = false;
 }
 
+/** Full reset — clear queue, dedup cache, and cached voice. Call on logout/shift change. */
+export function resetVoiceState(): void {
+  clearVoiceQueue();
+  announcedCache.clear();
+  cachedVoice = null;
+}
+
 // ─── Phrase Builders ────────────────────────────────────────
 
 /**
@@ -308,7 +315,7 @@ function buildCallPhrases(call: CallFlags): VoicePhrase[] {
   const phrases: VoicePhrase[] = [];
 
   // Critical
-  if (call.weapons_involved) phrases.push({ text: 'ARMED SUBJECT' });
+  if (call.weapons_involved && call.weapons_involved !== 'None') phrases.push({ text: 'ARMED SUBJECT' });
   if (call.felony_in_progress) phrases.push({ text: 'FELONY IN PROGRESS' });
   if (call.officer_safety_caution) phrases.push({ text: 'OFFICER SAFETY CAUTION' });
   if (call.vehicle_pursuit) phrases.push({ text: 'VEHICLE PURSUIT' });
@@ -401,6 +408,78 @@ export async function announcePanicAlert(officerName?: string): Promise<void> {
   if (officerName) {
     phrases.push({ text: officerName });
   }
+  enqueuePhrases(phrases);
+}
+
+/**
+ * Announce a dispatch event: "DISPATCH — [CALL NUMBER] — [INCIDENT TYPE] — [LOCATION]"
+ * plus any safety flags on the call. Triggered on call_status_changed to 'dispatched'.
+ */
+export async function announceDispatchEvent(call: CallFlags & {
+  call_number?: string;
+  incident_type?: string;
+  location?: string;
+  priority?: string;
+}): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `dispatch:${call.id || 'unknown'}:${call.call_number || ''}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  // Play info tone for dispatch confirmation
+  await playToneAsync('info');
+  await delay(TONE_GAP_MS);
+
+  const phrases: VoicePhrase[] = [{ text: 'DISPATCH' }];
+  if (call.call_number) phrases.push({ text: `CALL ${call.call_number}` });
+  if (call.incident_type) {
+    const type = call.incident_type.replace(/_/g, ' ').toUpperCase();
+    phrases.push({ text: type });
+  }
+  if (call.priority === 'P1') phrases.push({ text: 'PRIORITY ONE' });
+  else if (call.priority === 'P2') phrases.push({ text: 'PRIORITY TWO' });
+  if (call.location) phrases.push({ text: `AT ${call.location}` });
+
+  // Append safety flags
+  const safetyPhrases = buildCallPhrases(call);
+  if (safetyPhrases.length > 0) phrases.push(...safetyPhrases);
+
+  enqueuePhrases(phrases);
+}
+
+/**
+ * Announce a new call arrival: "NEW CALL — [CALL NUMBER] — [INCIDENT TYPE]"
+ * Plays a tone and announces call details. Used on call_created events.
+ */
+export async function announceNewCall(call: CallFlags & {
+  call_number?: string;
+  incident_type?: string;
+  priority?: string;
+}): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `newcall:${call.id || 'unknown'}:${call.call_number || ''}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  // Play caution tone for new calls
+  await playToneAsync('caution');
+  await delay(TONE_GAP_MS);
+
+  const phrases: VoicePhrase[] = [{ text: 'NEW CALL' }];
+  if (call.call_number) phrases.push({ text: `CALL ${call.call_number}` });
+  if (call.incident_type) {
+    const type = call.incident_type.replace(/_/g, ' ').toUpperCase();
+    phrases.push({ text: type });
+  }
+  if (call.priority === 'P1') phrases.push({ text: 'PRIORITY ONE' });
+  else if (call.priority === 'P2') phrases.push({ text: 'PRIORITY TWO' });
+
+  // Append safety flags
+  const safetyPhrases = buildCallPhrases(call);
+  if (safetyPhrases.length > 0) phrases.push(...safetyPhrases);
+
   enqueuePhrases(phrases);
 }
 

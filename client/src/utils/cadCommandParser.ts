@@ -29,6 +29,8 @@ export type CommandAction =
   | { type: 'hold_call'; callNumber: string; resume?: boolean }
   | { type: 'promote_incident'; callNumber: string }
   | { type: 'le_notify'; callNumber: string; agency?: string }
+  | { type: 'select_call'; callId: string; callNumber: string }
+  | { type: 'set_mileage'; callSign: string; mileageType: 'start' | 'end'; value: number }
   | { type: 'show_help' }
   | { type: 'none' };
 
@@ -59,12 +61,14 @@ const STATUS_MAP: Record<string, string> = {
 
 const COMMANDS: Record<string, { usage: string; desc: string }> = {
   NC:   { usage: 'NC <type> <location>',      desc: 'New Call — opens call form pre-filled' },
+  CI:   { usage: 'CI <call#>',               desc: 'Call Info — select/focus a call by number' },
   AS:   { usage: 'AS <unit> <call#>',          desc: 'Assign unit to call' },
   DU:   { usage: 'DU <call#> <unit1> [unit2]', desc: 'Dispatch units to call (multi-assign)' },
   ST:   { usage: 'ST <unit> <status>',         desc: 'Set unit status (AVL/ENR/ONS/BSY)' },
   US:   { usage: 'US [unit]',                  desc: 'Unit status check (all or specific)' },
   CL:   { usage: 'CL <call#> [disp]',          desc: 'Clear call with optional disposition' },
   HD:   { usage: 'HD <call#> [R]',             desc: 'Hold call (HD call# R to resume)' },
+  ML:   { usage: 'ML <unit> <start|end> <mi>', desc: 'Log mileage for unit (start or end)' },
   NT:   { usage: 'NT <call#> <note text>',     desc: 'Add note/narrative to call' },
   PRI:  { usage: 'PRI <call#> <P1-P4>',       desc: 'Change call priority' },
   QP:   { usage: 'QP <name>',                 desc: 'Query person (NCIC)' },
@@ -85,6 +89,81 @@ const COMMANDS: Record<string, { usage: string; desc: string }> = {
 export interface CadContext {
   units: Array<{ id: string; call_sign: string; status: string; current_call_id?: string }>;
   calls: Array<{ id: string; call_number: string; status: string }>;
+}
+
+// ─── Fuzzy Matching ──────────────────────────────────────────
+
+/** Simple Levenshtein distance for short strings */
+function levenshtein(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, (_, i) =>
+    Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
+  );
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      dp[i][j] = a[i - 1] === b[j - 1]
+        ? dp[i - 1][j - 1]
+        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+  return dp[m][n];
+}
+
+/** Find best-matching unit by call_sign using prefix match then Levenshtein */
+function fuzzyFindUnit(query: string, units: CadContext['units']): CadContext['units'][0] | null {
+  const q = query.toUpperCase();
+  // Exact match first
+  const exact = units.find(u => u.call_sign.toUpperCase() === q);
+  if (exact) return exact;
+  // Prefix match
+  const prefixed = units.filter(u => u.call_sign.toUpperCase().startsWith(q));
+  if (prefixed.length === 1) return prefixed[0];
+  // Levenshtein within threshold of 2
+  let best: CadContext['units'][0] | null = null;
+  let bestDist = 3;
+  for (const u of units) {
+    const d = levenshtein(q, u.call_sign.toUpperCase());
+    if (d < bestDist) { bestDist = d; best = u; }
+  }
+  return best;
+}
+
+/** Find best-matching call by call_number using prefix match then Levenshtein */
+function fuzzyFindCall(query: string, calls: CadContext['calls']): CadContext['calls'][0] | null {
+  const q = query.toUpperCase();
+  // Exact match first
+  const exact = calls.find(c => c.call_number.toUpperCase() === q);
+  if (exact) return exact;
+  // Suffix match (allow typing just the numeric part, e.g., "123" matches "CFS-2026-00123")
+  const suffixed = calls.filter(c => c.call_number.toUpperCase().endsWith(q));
+  if (suffixed.length === 1) return suffixed[0];
+  // Prefix match
+  const prefixed = calls.filter(c => c.call_number.toUpperCase().startsWith(q));
+  if (prefixed.length === 1) return prefixed[0];
+  // Levenshtein within threshold of 3
+  let best: CadContext['calls'][0] | null = null;
+  let bestDist = 4;
+  for (const c of calls) {
+    const d = levenshtein(q, c.call_number.toUpperCase());
+    if (d < bestDist) { bestDist = d; best = c; }
+  }
+  return best;
+}
+
+// ─── Command History Persistence ─────────────────────────────
+
+const HISTORY_KEY = 'rmpg_cad_history';
+const HISTORY_MAX = 100;
+
+export function loadCommandHistory(): string[] {
+  try {
+    const stored = localStorage.getItem(HISTORY_KEY);
+    return stored ? JSON.parse(stored) : [];
+  } catch { return []; }
+}
+
+export function saveCommandHistory(history: string[]): void {
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, HISTORY_MAX)));
+  } catch { /* localStorage full or unavailable */ }
 }
 
 // ─── Parser ─────────────────────────────────────────────────
@@ -117,27 +196,71 @@ export async function executeCommand(
       };
     }
 
+    // ── Call Info / Select ──
+    case 'CI': {
+      if (args.length < 1) {
+        return { success: false, message: 'Usage: CI <call_number>', action: { type: 'none' } };
+      }
+      const callQuery = args[0].toUpperCase();
+      const call = fuzzyFindCall(callQuery, ctx.calls);
+      if (!call) {
+        return { success: false, message: `Call "${callQuery}" not found`, action: { type: 'none' } };
+      }
+      return {
+        success: true,
+        message: `Selected call ${call.call_number}`,
+        action: { type: 'select_call', callId: call.id, callNumber: call.call_number },
+      };
+    }
+
+    // ── Mileage Log ──
+    case 'ML': {
+      if (args.length < 3) {
+        return { success: false, message: 'Usage: ML <unit> <start|end> <mileage>', action: { type: 'none' } };
+      }
+      const unitQuery = args[0].toUpperCase();
+      const mileageType = args[1].toUpperCase() === 'END' ? 'end' as const : 'start' as const;
+      const mileageVal = parseInt(args[2], 10);
+
+      if (isNaN(mileageVal)) {
+        return { success: false, message: `Invalid mileage value "${args[2]}"`, action: { type: 'none' } };
+      }
+
+      const unit = fuzzyFindUnit(unitQuery, ctx.units);
+      if (!unit) {
+        return { success: false, message: `Unit "${unitQuery}" not found`, action: { type: 'none' } };
+      }
+
+      try {
+        await apiFetch(`/dispatch/units/${unit.id}/mileage`, {
+          method: 'POST',
+          body: JSON.stringify({ type: mileageType, mileage: mileageVal }),
+        });
+        return {
+          success: true,
+          message: `${unit.call_sign} mileage ${mileageType}: ${mileageVal.toLocaleString()} mi`,
+          action: { type: 'set_mileage', callSign: unit.call_sign, mileageType, value: mileageVal },
+        };
+      } catch (err: any) {
+        return { success: false, message: `Failed: ${err.message}`, action: { type: 'none' } };
+      }
+    }
+
     // ── Assign Unit ──
     case 'AS': {
       if (args.length < 2) {
         return { success: false, message: 'Usage: AS <unit_call_sign> <call_number>', action: { type: 'none' } };
       }
-      const callSign = args[0].toUpperCase();
-      const callNumber = args[1].toUpperCase();
-
-      // Find unit
-      const unit = ctx.units.find(u => u.call_sign.toUpperCase() === callSign);
+      const unit = fuzzyFindUnit(args[0], ctx.units);
       if (!unit) {
-        return { success: false, message: `Unit "${callSign}" not found`, action: { type: 'none' } };
+        return { success: false, message: `Unit "${args[0]}" not found`, action: { type: 'none' } };
       }
 
-      // Find call
-      const call = ctx.calls.find(c => c.call_number.toUpperCase() === callNumber);
+      const call = fuzzyFindCall(args[1], ctx.calls);
       if (!call) {
-        return { success: false, message: `Call "${callNumber}" not found`, action: { type: 'none' } };
+        return { success: false, message: `Call "${args[1]}" not found`, action: { type: 'none' } };
       }
 
-      // Execute via API
       try {
         await apiFetch(`/dispatch/calls/${call.id}/assign-unit`, {
           method: 'POST',
@@ -145,8 +268,8 @@ export async function executeCommand(
         });
         return {
           success: true,
-          message: `${callSign} assigned to ${callNumber}`,
-          action: { type: 'assign_unit', callSign, callNumber },
+          message: `${unit.call_sign} assigned to ${call.call_number}`,
+          action: { type: 'assign_unit', callSign: unit.call_sign, callNumber: call.call_number },
         };
       } catch (err: any) {
         return { success: false, message: `Failed: ${err.message}`, action: { type: 'none' } };
@@ -158,7 +281,6 @@ export async function executeCommand(
       if (args.length < 2) {
         return { success: false, message: 'Usage: ST <unit_call_sign> <status> (AVL/ENR/ONS/BSY/OOD)', action: { type: 'none' } };
       }
-      const callSign = args[0].toUpperCase();
       const statusCode = args[1].toUpperCase();
       const status = STATUS_MAP[statusCode];
 
@@ -170,9 +292,9 @@ export async function executeCommand(
         };
       }
 
-      const unit = ctx.units.find(u => u.call_sign.toUpperCase() === callSign);
+      const unit = fuzzyFindUnit(args[0], ctx.units);
       if (!unit) {
-        return { success: false, message: `Unit "${callSign}" not found`, action: { type: 'none' } };
+        return { success: false, message: `Unit "${args[0]}" not found`, action: { type: 'none' } };
       }
 
       try {
@@ -182,8 +304,8 @@ export async function executeCommand(
         });
         return {
           success: true,
-          message: `${callSign} → ${status.toUpperCase()}`,
-          action: { type: 'set_status', callSign, status },
+          message: `${unit.call_sign} → ${status.toUpperCase()}`,
+          action: { type: 'set_status', callSign: unit.call_sign, status },
         };
       } catch (err: any) {
         return { success: false, message: `Failed: ${err.message}`, action: { type: 'none' } };
@@ -195,12 +317,11 @@ export async function executeCommand(
       if (args.length < 1) {
         return { success: false, message: 'Usage: CL <call#> [disposition]', action: { type: 'none' } };
       }
-      const callNumber = args[0].toUpperCase();
       const disposition = args.length > 1 ? args.slice(1).join(' ').toUpperCase() : undefined;
-      const call = ctx.calls.find(c => c.call_number.toUpperCase() === callNumber);
+      const call = fuzzyFindCall(args[0], ctx.calls);
 
       if (!call) {
-        return { success: false, message: `Call "${callNumber}" not found`, action: { type: 'none' } };
+        return { success: false, message: `Call "${args[0]}" not found`, action: { type: 'none' } };
       }
 
       try {
@@ -210,8 +331,8 @@ export async function executeCommand(
         });
         return {
           success: true,
-          message: `${callNumber} CLEARED${disposition ? ` — ${disposition}` : ''}`,
-          action: { type: 'clear_call', callNumber },
+          message: `${call.call_number} CLEARED${disposition ? ` — ${disposition}` : ''}`,
+          action: { type: 'clear_call', callNumber: call.call_number },
         };
       } catch (err: any) {
         return { success: false, message: `Failed: ${err.message}`, action: { type: 'none' } };
@@ -224,12 +345,11 @@ export async function executeCommand(
       if (args.length < 1) {
         return { success: false, message: 'Usage: HD <call#> [R to resume]', action: { type: 'none' } };
       }
-      const hdCallNum = args[0].toUpperCase();
       const isResume = args.length > 1 && args[1].toUpperCase() === 'R';
-      const hdCall = ctx.calls.find(c => c.call_number.toUpperCase() === hdCallNum);
+      const hdCall = fuzzyFindCall(args[0], ctx.calls);
 
       if (!hdCall) {
-        return { success: false, message: `Call "${hdCallNum}" not found`, action: { type: 'none' } };
+        return { success: false, message: `Call "${args[0]}" not found`, action: { type: 'none' } };
       }
 
       try {
@@ -237,8 +357,8 @@ export async function executeCommand(
         await apiFetch(`/dispatch/calls/${hdCall.id}/${endpoint}`, { method: 'POST' });
         return {
           success: true,
-          message: isResume ? `${hdCallNum} RESUMED` : `${hdCallNum} ON HOLD`,
-          action: { type: 'hold_call', callNumber: hdCallNum, resume: isResume },
+          message: isResume ? `${hdCall.call_number} RESUMED` : `${hdCall.call_number} ON HOLD`,
+          action: { type: 'hold_call', callNumber: hdCall.call_number, resume: isResume },
         };
       } catch (err: any) {
         return { success: false, message: `Failed: ${err.message}`, action: { type: 'none' } };
@@ -303,39 +423,39 @@ export async function executeCommand(
       if (args.length < 2) {
         return { success: false, message: 'Usage: DU <call#> <unit1> [unit2] [unit3]', action: { type: 'none' } };
       }
-      const callNumber = args[0].toUpperCase();
-      const unitSigns = args.slice(1).map(u => u.toUpperCase());
-
-      const call = ctx.calls.find(c => c.call_number.toUpperCase() === callNumber);
+      const call = fuzzyFindCall(args[0], ctx.calls);
       if (!call) {
-        return { success: false, message: `Call "${callNumber}" not found`, action: { type: 'none' } };
+        return { success: false, message: `Call "${args[0]}" not found`, action: { type: 'none' } };
       }
 
+      const unitArgs = args.slice(1);
       const results: string[] = [];
       let anyFailed = false;
-      for (const sign of unitSigns) {
-        const unit = ctx.units.find(u => u.call_sign.toUpperCase() === sign);
+      const assignedSigns: string[] = [];
+      for (const sign of unitArgs) {
+        const unit = fuzzyFindUnit(sign, ctx.units);
         if (!unit) {
           results.push(`${sign}: NOT FOUND`);
           anyFailed = true;
           continue;
         }
+        assignedSigns.push(unit.call_sign);
         try {
           await apiFetch(`/dispatch/calls/${call.id}/assign-unit`, {
             method: 'POST',
             body: JSON.stringify({ unit_id: Number(unit.id) }),
           });
-          results.push(`${sign}: ASSIGNED`);
+          results.push(`${unit.call_sign}: ASSIGNED`);
         } catch (err: any) {
-          results.push(`${sign}: FAILED (${err.message})`);
+          results.push(`${unit.call_sign}: FAILED (${err.message})`);
           anyFailed = true;
         }
       }
 
       return {
         success: !anyFailed,
-        message: `Dispatch ${callNumber}:\n${results.join('\n')}`,
-        action: { type: 'dispatch_units', callNumber, unitCallSigns: unitSigns },
+        message: `Dispatch ${call.call_number}:\n${results.join('\n')}`,
+        action: { type: 'dispatch_units', callNumber: call.call_number, unitCallSigns: assignedSigns },
       };
     }
 
@@ -344,12 +464,10 @@ export async function executeCommand(
       if (args.length < 2) {
         return { success: false, message: 'Usage: NT <call#> <note text>', action: { type: 'none' } };
       }
-      const callNumber = args[0].toUpperCase();
       const noteText = args.slice(1).join(' ');
-
-      const call = ctx.calls.find(c => c.call_number.toUpperCase() === callNumber);
+      const call = fuzzyFindCall(args[0], ctx.calls);
       if (!call) {
-        return { success: false, message: `Call "${callNumber}" not found`, action: { type: 'none' } };
+        return { success: false, message: `Call "${args[0]}" not found`, action: { type: 'none' } };
       }
 
       try {
@@ -359,8 +477,8 @@ export async function executeCommand(
         });
         return {
           success: true,
-          message: `Note added to ${callNumber}: "${noteText}"`,
-          action: { type: 'add_note', callNumber, note: noteText },
+          message: `Note added to ${call.call_number}: "${noteText}"`,
+          action: { type: 'add_note', callNumber: call.call_number, note: noteText },
         };
       } catch (err: any) {
         return { success: false, message: `Failed: ${err.message}`, action: { type: 'none' } };
@@ -372,16 +490,15 @@ export async function executeCommand(
       if (args.length < 2) {
         return { success: false, message: 'Usage: PRI <call#> <P1|P2|P3|P4>', action: { type: 'none' } };
       }
-      const callNumber = args[0].toUpperCase();
       const priority = args[1].toUpperCase();
 
       if (!['P1', 'P2', 'P3', 'P4'].includes(priority)) {
         return { success: false, message: `Invalid priority "${priority}". Use P1, P2, P3, or P4.`, action: { type: 'none' } };
       }
 
-      const call = ctx.calls.find(c => c.call_number.toUpperCase() === callNumber);
+      const call = fuzzyFindCall(args[0], ctx.calls);
       if (!call) {
-        return { success: false, message: `Call "${callNumber}" not found`, action: { type: 'none' } };
+        return { success: false, message: `Call "${args[0]}" not found`, action: { type: 'none' } };
       }
 
       try {
@@ -391,8 +508,8 @@ export async function executeCommand(
         });
         return {
           success: true,
-          message: `${callNumber} priority → ${priority}`,
-          action: { type: 'change_priority', callNumber, priority },
+          message: `${call.call_number} priority → ${priority}`,
+          action: { type: 'change_priority', callNumber: call.call_number, priority },
         };
       } catch (err: any) {
         return { success: false, message: `Failed: ${err.message}`, action: { type: 'none' } };
@@ -419,15 +536,14 @@ export async function executeCommand(
         };
       }
 
-      const callSign = args[0].toUpperCase();
-      const unit = ctx.units.find(u => u.call_sign.toUpperCase() === callSign);
+      const unit = fuzzyFindUnit(args[0], ctx.units);
       if (!unit) {
-        return { success: false, message: `Unit "${callSign}" not found`, action: { type: 'none' } };
+        return { success: false, message: `Unit "${args[0]}" not found`, action: { type: 'none' } };
       }
       return {
         success: true,
         message: `${unit.call_sign}: ${unit.status.toUpperCase()}${unit.current_call_id ? ' [ON CALL]' : ''}`,
-        action: { type: 'unit_status_check', callSign },
+        action: { type: 'unit_status_check', callSign: unit.call_sign },
       };
     }
 
@@ -495,18 +611,17 @@ export async function executeCommand(
       if (args.length < 1) {
         return { success: false, message: 'Usage: PI <call#>', action: { type: 'none' } };
       }
-      const callNumber = args[0].toUpperCase();
-      const call = ctx.calls.find(c => c.call_number.toUpperCase() === callNumber);
+      const call = fuzzyFindCall(args[0], ctx.calls);
       if (!call) {
-        return { success: false, message: `Call "${callNumber}" not found`, action: { type: 'none' } };
+        return { success: false, message: `Call "${args[0]}" not found`, action: { type: 'none' } };
       }
 
       try {
         await apiFetch(`/dispatch/calls/${call.id}/promote-to-incident`, { method: 'POST' });
         return {
           success: true,
-          message: `${callNumber} PROMOTED → Incident report created`,
-          action: { type: 'promote_incident', callNumber },
+          message: `${call.call_number} PROMOTED → Incident report created`,
+          action: { type: 'promote_incident', callNumber: call.call_number },
         };
       } catch (err: any) {
         return { success: false, message: `Failed: ${err.message}`, action: { type: 'none' } };
@@ -518,11 +633,10 @@ export async function executeCommand(
       if (args.length < 1) {
         return { success: false, message: 'Usage: LE <call#> [agency]', action: { type: 'none' } };
       }
-      const callNumber = args[0].toUpperCase();
       const agency = args.length > 1 ? args.slice(1).join(' ') : undefined;
-      const call = ctx.calls.find(c => c.call_number.toUpperCase() === callNumber);
+      const call = fuzzyFindCall(args[0], ctx.calls);
       if (!call) {
-        return { success: false, message: `Call "${callNumber}" not found`, action: { type: 'none' } };
+        return { success: false, message: `Call "${args[0]}" not found`, action: { type: 'none' } };
       }
 
       try {
@@ -532,8 +646,8 @@ export async function executeCommand(
         });
         return {
           success: true,
-          message: `${callNumber} → LE NOTIFIED${agency ? ` (${agency})` : ''}`,
-          action: { type: 'le_notify', callNumber, agency },
+          message: `${call.call_number} → LE NOTIFIED${agency ? ` (${agency})` : ''}`,
+          action: { type: 'le_notify', callNumber: call.call_number, agency },
         };
       } catch (err: any) {
         return { success: false, message: `Failed: ${err.message}`, action: { type: 'none' } };

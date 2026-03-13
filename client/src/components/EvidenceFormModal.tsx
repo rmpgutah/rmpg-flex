@@ -5,6 +5,7 @@ import { useFormDirty } from '../hooks/useFormDirty';
 import { apiFetch } from '../hooks/useApi';
 import type { Evidence } from '../types';
 import { localToday } from '../utils/dateUtils';
+import { useFormValidation } from '../hooks/useFormValidation';
 
 interface EvidenceFormModalProps {
   isOpen: boolean;
@@ -87,12 +88,14 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
   const [activeTab, setActiveTab] = useState<'basic' | 'details' | 'lab'>('basic');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const { errors: formErrors, validate: validateForm, clearAllErrors } = useFormValidation();
 
   useEffect(() => {
     if (!isOpen) {
       setForm({ ...EMPTY_FORM });
       setActiveTab('basic');
       setError('');
+      clearAllErrors();
     } else if (editingEvidence) {
       const initial: EvidenceFormData = {
         evidence_type: editingEvidence.type || 'physical',
@@ -130,8 +133,13 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!form.description.trim()) {
-      setError('Description is required');
+    const isValid = validateForm(form, {
+      description: { required: true, minLength: 3 },
+      storage_location: { required: true },
+    });
+    if (!isValid) {
+      // Switch to basic tab if errors are there
+      if (formErrors.description || formErrors.storage_location) setActiveTab('basic');
       return;
     }
 
@@ -259,13 +267,14 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
               Description <span className="text-red-400">*</span>
             </label>
             <textarea
-              className="textarea-dark text-xs"
+              className={`textarea-dark text-xs ${formErrors.description ? '!border-red-500' : ''}`}
               rows={3}
               placeholder="Describe the evidence item in detail..."
               value={form.description}
               onChange={(e) => updateField('description', e.target.value)}
               autoFocus
             />
+            {formErrors.description && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.description}</p>}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -274,8 +283,9 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
               <input type="date" className="input-dark text-xs" value={form.collected_date} onChange={(e) => updateField('collected_date', e.target.value)} />
             </div>
             <div>
-              <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Storage Location</label>
-              <input type="text" className="input-dark text-xs" placeholder="e.g., Evidence Locker A-12" value={form.storage_location} onChange={(e) => updateField('storage_location', e.target.value)} />
+              <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Storage Location *</label>
+              <input type="text" className={`input-dark text-xs ${formErrors.storage_location ? '!border-red-500' : ''}`} placeholder="e.g., Evidence Locker A-12" value={form.storage_location} onChange={(e) => updateField('storage_location', e.target.value)} />
+              {formErrors.storage_location && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.storage_location}</p>}
             </div>
           </div>
 

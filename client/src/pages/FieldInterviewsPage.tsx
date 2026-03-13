@@ -14,6 +14,8 @@ import ExportButton from '../components/ExportButton';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/ToastProvider';
 import { useFormValidation } from '../hooks/useFormValidation';
+import { isValidPlate, isValidDate } from '../utils/validate';
+import { formatDate, formatDateTime } from '../utils/dateUtils';
 
 const CONTACT_REASONS: { value: FIContactReason; label: string }[] = [
   { value: 'suspicious_activity', label: 'Suspicious Activity' },
@@ -178,6 +180,8 @@ export default function FieldInterviewsPage() {
     const isValid = validateForm(formData, {
       location: { required: true },
       subject_last_name: { required: true },
+      subject_dob: { custom: (v) => !v || isValidDate(v), customMessage: 'Invalid date format (YYYY-MM-DD)' },
+      vehicle_plate: { custom: (v) => !v || isValidPlate(v), customMessage: 'Invalid plate format (2–8 alphanumeric)' },
     });
     if (!isValid) return;
     setSubmitting(true);
@@ -272,6 +276,14 @@ export default function FieldInterviewsPage() {
         </label>
       </div>
 
+      {/* Error Banner */}
+      {error && (
+        <div className="px-3 py-2 bg-red-900/40 border-b border-red-700 text-red-300 text-xs flex items-center justify-between">
+          <span>Failed to load field interviews: {error}</span>
+          <button onClick={() => fetchFis()} className="text-red-200 hover:text-white underline text-[10px]">Retry</button>
+        </div>
+      )}
+
       {/* Content */}
       <div className="flex flex-1 overflow-hidden">
         {/* List */}
@@ -298,7 +310,7 @@ export default function FieldInterviewsPage() {
                   <span className="text-[11px] font-bold font-mono text-brand-400">{fi.fi_number}</span>
                   <div className="flex items-center gap-1">
                     <span className={`text-[8px] font-bold px-1.5 py-0 border ${REASON_COLORS[fi.contact_reason] || REASON_COLORS.other}`}>
-                      {fi.contact_reason.replace('_', ' ').toUpperCase()}
+                      {fi.contact_reason.replace(/_/g, ' ').toUpperCase()}
                     </span>
                     <span className={`text-[8px] font-bold px-1.5 py-0 border ${STATUS_COLORS[fi.status]}`}>
                       {fi.status.toUpperCase()}
@@ -315,7 +327,7 @@ export default function FieldInterviewsPage() {
                 <div className="flex items-center gap-2 text-[10px] text-rmpg-500 mt-0.5">
                   <span>{fi.officer_name || fi.officer_display_name || 'Unknown Officer'}</span>
                   <span>•</span>
-                  <span>{new Date(fi.created_at).toLocaleDateString()}</span>
+                  <span>{formatDate(fi.created_at)}</span>
                 </div>
               </div>
             ))
@@ -336,7 +348,7 @@ export default function FieldInterviewsPage() {
             <div className="flex items-center justify-between mb-3">
               <div>
                 <h2 className="text-sm font-bold text-white font-mono">{selectedFi.fi_number}</h2>
-                <span className="text-[10px] text-rmpg-400">Created {new Date(selectedFi.created_at).toLocaleString()}</span>
+                <span className="text-[10px] text-rmpg-400">Created {formatDateTime(selectedFi.created_at)}</span>
               </div>
               <div className="flex items-center gap-1">
                 <button onClick={() => handleEdit(selectedFi)} className="toolbar-btn" style={{ fontSize: '10px' }}>
@@ -360,13 +372,13 @@ export default function FieldInterviewsPage() {
             {/* Detail grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-xs">
               <div><span className="text-rmpg-500 text-[10px] uppercase">Subject</span><div className="text-white font-medium">{selectedFi.subject_last_name}, {selectedFi.subject_first_name}</div></div>
-              <div><span className="text-rmpg-500 text-[10px] uppercase">DOB</span><div className="text-white">{selectedFi.subject_dob ? new Date(selectedFi.subject_dob).toLocaleDateString() : '—'}</div></div>
+              <div><span className="text-rmpg-500 text-[10px] uppercase">DOB</span><div className="text-white">{selectedFi.subject_dob ? formatDate(selectedFi.subject_dob) : '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Gender / Race</span><div className="text-white">{[selectedFi.subject_gender, selectedFi.subject_race].filter(Boolean).join(' / ') || '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Build</span><div className="text-white">{[selectedFi.subject_height, selectedFi.subject_weight ? `${selectedFi.subject_weight} lbs` : ''].filter(Boolean).join(', ') || '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Hair / Eyes</span><div className="text-white">{[selectedFi.subject_hair, selectedFi.subject_eye].filter(Boolean).join(' / ') || '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Clothing</span><div className="text-white">{selectedFi.subject_clothing || '—'}</div></div>
               <div className="col-span-2"><span className="text-rmpg-500 text-[10px] uppercase">Location</span><div className="text-white">{selectedFi.location}</div></div>
-              <div><span className="text-rmpg-500 text-[10px] uppercase">Contact Reason</span><div className="text-white capitalize">{selectedFi.contact_reason.replace('_', ' ')}</div></div>
+              <div><span className="text-rmpg-500 text-[10px] uppercase">Contact Reason</span><div className="text-white capitalize">{selectedFi.contact_reason.replace(/_/g, ' ')}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Contact Type</span><div className="text-white capitalize">{selectedFi.contact_type}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Action Taken</span><div className="text-white capitalize">{selectedFi.action_taken}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Officer</span><div className="text-white">{selectedFi.officer_name || selectedFi.officer_display_name || '—'}</div></div>
@@ -405,7 +417,7 @@ export default function FieldInterviewsPage() {
                         <button key={p.id} type="button" onClick={() => selectPerson(p)}
                           className="w-full text-left px-3 py-1.5 text-xs text-white hover:bg-rmpg-700 flex items-center gap-2">
                           <User className="w-3 h-3 text-rmpg-400" />
-                          {p.last_name}, {p.first_name} {p.date_of_birth ? `— DOB: ${new Date(p.date_of_birth).toLocaleDateString()}` : ''}
+                          {p.last_name}, {p.first_name} {p.date_of_birth ? `— DOB: ${formatDate(p.date_of_birth)}` : ''}
                         </button>
                       ))}
                     </div>
@@ -470,7 +482,8 @@ export default function FieldInterviewsPage() {
                     {ACTIONS_TAKEN.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
                   </select></div>
                 <div><label className="field-label">Vehicle Plate</label>
-                  <input className="input-dark text-xs w-full" value={formData.vehicle_plate} onChange={e => update('vehicle_plate', e.target.value)} /></div>
+                  <input className={`input-dark text-xs w-full ${formErrors.vehicle_plate ? '!border-red-500' : ''}`} value={formData.vehicle_plate} onChange={e => update('vehicle_plate', e.target.value)} />
+                  {formErrors.vehicle_plate && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.vehicle_plate}</p>}</div>
                 <div><label className="field-label">Vehicle Desc.</label>
                   <input className="input-dark text-xs w-full" value={formData.vehicle_description} onChange={e => update('vehicle_description', e.target.value)} /></div>
               </div>

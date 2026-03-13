@@ -18,7 +18,7 @@
 //   STREET ADDRESS   (bottom)
 // ============================================================
 
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 import fs from 'fs';
@@ -26,7 +26,7 @@ import { fileURLToPath } from 'url';
 import { getDb } from '../models/database';
 import { localNow } from './timeUtils';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -166,23 +166,23 @@ export async function processVideoOverlay(
     ? buildBodyCamFilterGraph(config)
     : buildDashCamFilterGraph(config);
 
-  const cmd = [
-    'ffmpeg',
-    '-i', `"${inputPath}"`,
-    '-vf', `"${filterGraph}"`,
+  // Use execFile (no shell) to prevent command injection via file paths
+  const args = [
+    '-i', inputPath,
+    '-vf', filterGraph,
     '-c:v', 'libx264',
     '-preset', 'fast',
     '-crf', '23',
     '-c:a', 'copy',
     '-movflags', '+faststart',
     '-y',
-    `"${outputPath}"`,
-  ].join(' ');
+    outputPath,
+  ];
 
   console.log(`[Video Overlay] Processing: ${path.basename(inputPath)} → ${path.basename(outputPath)}`);
 
   try {
-    await execAsync(cmd, { timeout: FFMPEG_TIMEOUT_MS });
+    await execFileAsync('ffmpeg', args, { timeout: FFMPEG_TIMEOUT_MS });
     console.log(`[Video Overlay] Complete: ${path.basename(outputPath)}`);
   } catch (err: any) {
     // Extract useful error info from stderr

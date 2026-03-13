@@ -23,8 +23,8 @@ import {
   Palette,
   Navigation,
   Fingerprint,
-  Microscope,
   Search,
+  Mail,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -57,8 +57,8 @@ import AdminSecurityTab from './admin/AdminSecurityTab';
 import AdminBrandingTab from './admin/AdminBrandingTab';
 import AdminClearPathGpsTab from './admin/AdminClearPathGpsTab';
 import AdminArrestsTab from './admin/AdminArrestsTab';
-import AdminIPEDTab from './admin/AdminIPEDTab';
 import AdminSkipTracerTab from './admin/AdminSkipTracerTab';
+import AdminEmailTab from './admin/AdminEmailTab';
 
 // ============================================================
 // Shared sub-components (module-level to avoid remounting)
@@ -223,7 +223,7 @@ function mapAuditRow(row: AuditRow): AuditEntry {
 // Constants
 // ============================================================
 
-type TabId = 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'iped' | 'skiptracer' | 'sessions' | 'training' | 'radio' | 'offline' | 'security' | 'branding';
+type TabId = 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'skiptracer' | 'sessions' | 'training' | 'radio' | 'offline' | 'security' | 'branding' | 'email';
 
 const LS_ADMIN_TAB = 'rmpg_admin_tab';
 
@@ -237,7 +237,7 @@ export default function AdminPage() {
   const clientEditPendingRef = useRef(false);
 
   // Restore active tab from URL ?tab= param or localStorage (default: 'users')
-  const VALID_TABS = ['users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'iped', 'skiptracer', 'sessions', 'training', 'radio', 'offline', 'security', 'branding'];
+  const VALID_TABS = ['users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'skiptracer', 'sessions', 'training', 'radio', 'offline', 'security', 'branding', 'email'];
   const [activeTab, setActiveTabState] = useState<TabId>(() => {
     try {
       // URL ?tab= param takes priority (used by Help → Training link)
@@ -648,8 +648,8 @@ export default function AdminPage() {
         { id: 'microbilt', label: 'Microbilt', icon: DatabaseZap },
         { id: 'clearpathgps', label: 'ClearPathGPS', icon: Navigation },
         { id: 'arrests', label: 'Arrest Records', icon: Fingerprint },
-        { id: 'iped', label: 'IPED Forensics', icon: Microscope },
         { id: 'skiptracer', label: 'Skip Tracer', icon: Search },
+        { id: 'email', label: 'Microsoft Email', icon: Mail },
         { id: 'training', label: 'Training', icon: GraduationCap },
       ],
     },
@@ -923,14 +923,6 @@ export default function AdminPage() {
           />
         )}
 
-        {activeTab === 'iped' && (
-          <AdminIPEDTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
         {activeTab === 'skiptracer' && (
           <AdminSkipTracerTab
             LoadingSpinner={LoadingSpinner}
@@ -941,6 +933,14 @@ export default function AdminPage() {
 
         {activeTab === 'branding' && (
           <AdminBrandingTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
+        {activeTab === 'email' && (
+          <AdminEmailTab
             LoadingSpinner={LoadingSpinner}
             error={error}
             setError={setError}

@@ -3,6 +3,7 @@ import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
 import { createSecurityNotification, parseDeviceName } from '../utils/deviceFingerprint';
+import { sendNotificationEmail } from '../utils/emailSender';
 
 const router = Router();
 
@@ -889,6 +890,13 @@ router.post('/users/:id/reset-2fa', requireRole('admin'), (req: Request, res: Re
       parseDeviceName(userAgent)
     );
 
+    // Email alert for 2FA reset
+    sendNotificationEmail(
+      userId,
+      'Two-Factor Authentication Reset',
+      `Your RMPG Flex two-factor authentication has been reset by an administrator.\n\nYou will be required to set up 2FA again on your next login.\n\nTime: ${localNow()}\n\nIf you did not request this, contact your administrator immediately.`
+    ).catch(() => {});
+
     res.json({ message: `2FA reset for ${user.full_name}. They will be prompted to set up 2FA on next login.` });
   } catch (error: any) {
     console.error('Reset 2FA error:', error);
@@ -937,6 +945,151 @@ router.post('/users/:id/force-password-change', requireRole('admin'), (req: Requ
 
 
 // ═══════════════════════════════════════════════════════
+// POST /api/admin/users/:id/revoke-sessions — Revoke all sessions for a user
+// ═══════════════════════════════════════════════════════
+router.post('/users/:id/revoke-sessions', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = parseInt(req.params.id as string);
+    const ip = String(req.ip || 'unknown');
+
+    const user = db.prepare('SELECT id, username, full_name FROM users WHERE id = ?').get(userId) as any;
+    if (!user) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    const result = db.prepare('UPDATE sessions SET is_active = 0 WHERE user_id = ?').run(userId);
+
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'admin_revoke_sessions', 'user', ?, ?, ?)
+    `).run(req.user!.userId, userId, `Admin revoked ${result.changes} sessions for ${user.username}`, ip);
+
+    createSecurityNotification(
+      userId,
+      'all_sessions_revoked',
+      'Sessions Terminated',
+      'An administrator has terminated all your active sessions. Please log in again.',
+      ip
+    );
+
+    res.json({ message: `Revoked ${result.changes} session(s) for ${user.full_name}.`, count: result.changes });
+  } catch (error: any) {
+    console.error('Admin revoke sessions error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════
+// PUT /api/admin/users/:id/role — Change a user's role
+// ═══════════════════════════════════════════════════════
+router.put('/users/:id/role', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = parseInt(req.params.id as string);
+    const { role } = req.body;
+    const ip = String(req.ip || 'unknown');
+
+    const validRoles = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'];
+    if (!role || !validRoles.includes(role)) {
+      res.status(400).json({ error: `Invalid role. Must be one of: ${validRoles.join(', ')}` });
+      return;
+    }
+
+    const user = db.prepare('SELECT id, username, full_name, role FROM users WHERE id = ?').get(userId) as any;
+    if (!user) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    // Prevent self-demotion
+    if (userId === req.user!.userId && role !== 'admin') {
+      res.status(400).json({ error: 'Cannot change your own role' });
+      return;
+    }
+
+    const oldRole = user.role;
+    db.prepare('UPDATE users SET role = ?, updated_at = ? WHERE id = ?')
+      .run(role, localNow(), userId);
+
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'role_changed', 'user', ?, ?, ?)
+    `).run(req.user!.userId, userId, `Role changed: ${oldRole} → ${role} for ${user.username}`, ip);
+
+    createSecurityNotification(
+      userId,
+      'role_changed',
+      'Role Changed',
+      `Your role has been changed from ${oldRole} to ${role} by an administrator.`,
+      ip
+    );
+
+    // Email alert for role change
+    sendNotificationEmail(
+      userId,
+      'Role Changed',
+      `Your RMPG Flex role has been changed from ${oldRole} to ${role} by an administrator.\n\nTime: ${localNow()}\n\nIf you believe this is an error, contact your administrator.`
+    ).catch(() => {});
+
+    res.json({ message: `${user.full_name}'s role changed from ${oldRole} to ${role}.`, oldRole, newRole: role });
+  } catch (error: any) {
+    console.error('Change role error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════
+// PUT /api/admin/users/:id/status — Change a user's status
+// ═══════════════════════════════════════════════════════
+router.put('/users/:id/status', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = parseInt(req.params.id as string);
+    const { status } = req.body;
+    const ip = String(req.ip || 'unknown');
+
+    const validStatuses = ['active', 'inactive', 'terminated'];
+    if (!status || !validStatuses.includes(status)) {
+      res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
+      return;
+    }
+
+    const user = db.prepare('SELECT id, username, full_name, status FROM users WHERE id = ?').get(userId) as any;
+    if (!user) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    // Prevent self-deactivation
+    if (userId === req.user!.userId && status !== 'active') {
+      res.status(400).json({ error: 'Cannot deactivate your own account' });
+      return;
+    }
+
+    const oldStatus = user.status;
+    db.prepare('UPDATE users SET status = ?, updated_at = ? WHERE id = ?')
+      .run(status, localNow(), userId);
+
+    // If deactivating/terminating, also revoke all sessions
+    if (status !== 'active') {
+      db.prepare('UPDATE sessions SET is_active = 0 WHERE user_id = ?').run(userId);
+    }
+
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'status_changed', 'user', ?, ?, ?)
+    `).run(req.user!.userId, userId, `Status changed: ${oldStatus} → ${status} for ${user.username}`, ip);
+
+    res.json({ message: `${user.full_name}'s status changed from ${oldStatus} to ${status}.`, oldStatus, newStatus: status });
+  } catch (error: any) {
+    console.error('Change status error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════
 // GET /api/admin/security/overview — System-wide security metrics
 // ═══════════════════════════════════════════════════════
 router.get('/security/overview', requireRole('admin'), (_req: Request, res: Response) => {
@@ -948,7 +1101,7 @@ router.get('/security/overview', requireRole('admin'), (_req: Request, res: Resp
     const pendingSetup = db.prepare("SELECT COUNT(*) as count FROM users WHERE status = 'active' AND totp_setup_required = 1").get() as { count: number };
     const lockedAccounts = db.prepare(`
       SELECT COUNT(DISTINCT username) as count FROM login_attempts
-      WHERE success = 0 AND created_at > datetime('now', '-15 minutes')
+      WHERE success = 0 AND created_at > datetime('now', 'localtime', '-15 minutes')
       GROUP BY username HAVING COUNT(*) >= 5
     `).all().length;
     const activeSessions = db.prepare("SELECT COUNT(*) as count FROM sessions WHERE is_active = 1").get() as { count: number };
@@ -957,7 +1110,7 @@ router.get('/security/overview', requireRole('admin'), (_req: Request, res: Resp
     // Recent failed login attempts (last 24h)
     const recentFailures = db.prepare(`
       SELECT COUNT(*) as count FROM login_attempts
-      WHERE success = 0 AND created_at > datetime('now', '-1 day', 'localtime')
+      WHERE success = 0 AND created_at > datetime('now', 'localtime', '-1 day')
     `).get() as { count: number };
 
     res.json({

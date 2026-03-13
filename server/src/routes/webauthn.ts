@@ -18,8 +18,9 @@ import type {
 } from '@simplewebauthn/server';
 import { isoBase64URL } from '@simplewebauthn/server/helpers';
 import { getDb } from '../models/database';
-import { authenticateToken, generateAccessToken, generateRefreshToken, JwtPayload } from '../middleware/auth';
-import { createSecurityNotification } from '../utils/deviceFingerprint';
+import { authenticateToken, generateAccessToken, generateRefreshToken, generateTempToken, JwtPayload } from '../middleware/auth';
+import { createSecurityNotification, trustDevice, hashDeviceFingerprint, parseDeviceName } from '../utils/deviceFingerprint';
+import { isPasswordExpired } from '../middleware/validatePassword';
 import config from '../config';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
@@ -32,12 +33,13 @@ const challengeStore = new Map<string, { challenge: string; userId: number; expi
 const MAX_CHALLENGES = 500; // Prevent unbounded memory growth from DoS
 
 // Clean stale challenges every 5 minutes
+// .unref() so this timer doesn't prevent graceful Node.js shutdown
 setInterval(() => {
   const now = Date.now();
   for (const [key, val] of challengeStore) {
     if (val.expiresAt < now) challengeStore.delete(key);
   }
-}, 300_000);
+}, 300_000).unref();
 
 function storeChallengeWithCap(key: string, value: { challenge: string; userId: number; expiresAt: number }) {
   // Evict oldest entries if at capacity
@@ -191,6 +193,7 @@ router.post('/register-verify', authenticateToken, async (req: Request, res: Res
       expectedChallenge: stored.challenge,
       expectedOrigin: config.webauthn.origin,
       expectedRPID: config.webauthn.rpID,
+      requireUserVerification: false, // UV is 'preferred', not required — some keys skip it
     });
 
     challengeStore.delete(challengeId);
@@ -239,7 +242,7 @@ router.post('/register-verify', authenticateToken, async (req: Request, res: Res
     res.json({
       success: true,
       credential: {
-        id: db.prepare('SELECT last_insert_rowid() as id').get() as { id: number },
+        id: (db.prepare('SELECT last_insert_rowid() as id').get() as { id: number }).id,
         name: credName,
         deviceType: credentialDeviceType,
         backedUp: credentialBackedUp,
@@ -372,10 +375,12 @@ router.post('/authenticate-options', async (req: Request, res: Response) => {
 // Verify authentication response — completes 2FA via security key
 router.post('/authenticate-verify', async (req: Request, res: Response) => {
   try {
-    const { challengeId, tempToken, response: authResponse } = req.body as {
+    const { challengeId, tempToken, response: authResponse, trustDevice: shouldTrust, deviceFingerprint } = req.body as {
       challengeId: string;
       tempToken: string;
       response: AuthenticationResponseJSON;
+      trustDevice?: boolean;
+      deviceFingerprint?: string;
     };
 
     if (!challengeId || !tempToken || !authResponse) {
@@ -433,6 +438,7 @@ router.post('/authenticate-verify', async (req: Request, res: Response) => {
       expectedChallenge: stored.challenge,
       expectedOrigin: config.webauthn.origin,
       expectedRPID: config.webauthn.rpID,
+      requireUserVerification: false, // UV is 'preferred', not required
       credential: {
         id: cred.credential_id,
         publicKey: isoBase64URL.toBuffer(cred.public_key),
@@ -454,11 +460,16 @@ router.post('/authenticate-verify', async (req: Request, res: Response) => {
 
     // 2FA verified — issue full tokens (same as TOTP verify flow)
     const user = db.prepare(
-      'SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, avatar_url, status, must_change_password FROM users WHERE id = ?'
+      'SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, avatar_url, status, must_change_password, password_changed_at, force_password_change FROM users WHERE id = ?'
     ).get(decoded.userId) as any;
 
     if (!user) {
       res.status(401).json({ error: 'User not found' });
+      return;
+    }
+
+    if (user.status !== 'active') {
+      res.status(403).json({ error: 'Account is disabled or suspended' });
       return;
     }
 
@@ -471,6 +482,28 @@ router.post('/authenticate-verify', async (req: Request, res: Response) => {
       role: user.role,
       fullName: user.full_name,
     };
+
+    // ── Check if password change is required before issuing final tokens ──
+    const needsPasswordChange = user.must_change_password === 1
+      || user.force_password_change === 1
+      || isPasswordExpired(user.password_changed_at);
+
+    if (needsPasswordChange) {
+      const pwTempToken = generateTempToken(payload, ['password_change']);
+      res.json({
+        step: 'password_change',
+        requiresPasswordChange: true,
+        tempToken: pwTempToken,
+      });
+      return;
+    }
+
+    // Trust this device if requested
+    if (shouldTrust && deviceFingerprint) {
+      const ip = req.ip || 'unknown';
+      const userAgent = req.headers['user-agent'] || 'unknown';
+      trustDevice(user.id, deviceFingerprint, ip, userAgent);
+    }
 
     const refreshToken = generateRefreshToken(payload);
 
@@ -512,7 +545,7 @@ router.post('/authenticate-verify', async (req: Request, res: Response) => {
         phone: user.phone,
         avatar_url: user.avatar_url,
         status: user.status,
-        must_change_password: !!user.must_change_password,
+        must_change_password: false,
         totp_enabled: true,
       },
     });

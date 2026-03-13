@@ -125,7 +125,7 @@ router.post('/', requireRole('admin', 'manager', 'officer'), (req: Request, res:
     auditLog(req, 'dl_record_created', 'dl_record', recordId,
       `Manual DL entry: ${body.dl_number} (${body.dl_state}) — ${body.last_name}, ${body.first_name}`);
 
-    broadcastRecordUpdate({ type: 'dl_record_created', id: recordId, dl_number: body.dl_number, dl_state: body.dl_state });
+    broadcastRecordUpdate({ type: 'dl_record_created', id: recordId });
 
     res.json({ success: true, recordId, message: 'DL record saved' });
   } catch (error: any) {

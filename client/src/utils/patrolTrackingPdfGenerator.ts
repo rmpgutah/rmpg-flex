@@ -164,7 +164,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
       doc.text(branding.report_header_text, textX, 6);
       doc.setFontSize(6.5);
       doc.setFont('helvetica', 'normal');
-      doc.text('PROCESS SERVICE DEPARTMENT', textX, 10);
+      doc.text('PATROL DIVISION', textX, 10);
       doc.setFontSize(7);
       doc.text(`PATROL TRACKING REPORT  |  ${formNum}  |  ${FORM_REVISION}`, pageW - margin, 9, { align: 'right' });
 

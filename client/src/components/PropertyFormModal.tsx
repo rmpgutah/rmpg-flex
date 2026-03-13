@@ -12,6 +12,7 @@ interface PropertyFormModalProps {
   isSubmitting: boolean;
   editingProperty?: Property;
   clients?: { id: string; name: string; status: string }[];
+  submitError?: string | null;
 }
 
 export interface PropertyFormData {
@@ -72,6 +73,7 @@ export default function PropertyFormModal({
   isSubmitting,
   editingProperty,
   clients = [],
+  submitError,
 }: PropertyFormModalProps) {
   const [form, setForm] = useState<PropertyFormData>(EMPTY_FORM);
   const { isDirty, snapshot } = useFormDirty(form, isOpen);
@@ -133,6 +135,13 @@ export default function PropertyFormModal({
       maxWidth="max-w-3xl"
       isDirty={isDirty}
     >
+      {/* Submit Error */}
+      {submitError && (
+        <div className="px-3 py-2 -mt-2 mb-2 bg-red-900/30 border border-red-700 text-red-400 text-xs">
+          {submitError}
+        </div>
+      )}
+
       {/* Row 1: Name */}
       <div>
         <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">

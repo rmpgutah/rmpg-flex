@@ -161,7 +161,7 @@ export default function Force2FASetupModal() {
               Open Google Authenticator and scan this QR code to add your account.
             </p>
 
-            <div className="flex justify-center py-2" style={{ background: '#fff', borderRadius: 4 }}>
+            <div className="flex justify-center py-2" style={{ background: '#fff', borderRadius: 2 }}>
               {qrDataUrl && (
                 <img
                   src={qrDataUrl}

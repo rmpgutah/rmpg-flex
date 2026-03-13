@@ -485,6 +485,12 @@ export function isEnabled(): boolean {
   return getConfigValue(CONFIG_KEYS.enabled) === 'true';
 }
 
+/** Get a valid auth token for use by other modules (e.g. v3.0 media client).
+ *  Reuses the cached token, refreshes if expired, or re-authenticates. */
+export async function getAuthToken(): Promise<string> {
+  return ensureAuth();
+}
+
 /** Clear cached auth token (used when credentials change). */
 export function clearCachedAuth(): void {
   cachedAuth = null;

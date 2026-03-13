@@ -12,6 +12,7 @@ interface PersonFormModalProps {
   onSubmit: (data: PersonFormData) => void;
   isSubmitting: boolean;
   editingPerson?: Person;
+  submitError?: string | null;
 }
 
 export interface PersonFormData {
@@ -163,6 +164,7 @@ export default function PersonFormModal({
   onSubmit,
   isSubmitting,
   editingPerson,
+  submitError,
 }: PersonFormModalProps) {
   const [form, setForm] = useState<PersonFormData>(EMPTY_FORM);
   const { isDirty, snapshot } = useFormDirty(form, isOpen);
@@ -339,6 +341,13 @@ export default function PersonFormModal({
       maxWidth="max-w-4xl"
       isDirty={isDirty}
     >
+      {/* Submit Error */}
+      {submitError && (
+        <div className="px-3 py-2 -mt-2 mb-2 bg-red-900/30 border border-red-700 text-red-400 text-xs">
+          {submitError}
+        </div>
+      )}
+
       {/* Section Tabs */}
       <div className="flex gap-1 -mt-2 mb-3 border-b border-rmpg-700 pb-2">
         {sections.map((s) => (

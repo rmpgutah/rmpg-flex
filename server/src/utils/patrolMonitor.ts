@@ -95,7 +95,8 @@ function checkOverdueScans(): void {
           body,
           'patrol_checkpoint',
           cp.id,
-          'high'
+          'high',
+          'patrol.checkpoint_missed',
         );
       }
 
@@ -113,7 +114,8 @@ function checkOverdueScans(): void {
             body,
             'patrol_checkpoint',
             cp.id,
-            'high'
+            'high',
+            'patrol.checkpoint_missed',
           );
         }
       }

@@ -34,7 +34,9 @@ let serverUrl = '';
 let authToken: string | null = null;
 let pullTimers: Record<string, ReturnType<typeof setInterval>> = {};
 let isSyncing = false;
+let syncStartedAt: number | null = null;
 let lastPushAt: string | null = null;
+const SYNC_LOCK_TIMEOUT = 60_000; // force-release stale lock after 60s
 
 const eventListeners: Map<SyncEventType, Set<SyncEventCallback>> = new Map();
 
@@ -68,6 +70,24 @@ function emit(event: SyncEventType, data: any): void {
   });
 }
 
+// ─── Sync Lock (with stale detection) ───────────────────────
+
+function acquireSyncLock(): boolean {
+  if (isSyncing && syncStartedAt && (Date.now() - syncStartedAt > SYNC_LOCK_TIMEOUT)) {
+    console.warn('[SYNC] Force-releasing stale sync lock');
+    isSyncing = false;
+  }
+  if (isSyncing) return false;
+  isSyncing = true;
+  syncStartedAt = Date.now();
+  return true;
+}
+
+function releaseSyncLock(): void {
+  isSyncing = false;
+  syncStartedAt = null;
+}
+
 // ─── Public API ─────────────────────────────────────────────
 
 export function startSyncSchedule(url: string, token?: string): void {
@@ -85,8 +105,9 @@ export function startSyncSchedule(url: string, token?: string): void {
   // Set up recurring timers per table
   for (const [table, interval] of Object.entries(PULL_INTERVALS)) {
     pullTimers[table] = setInterval(() => {
-      // Only poll when page is visible
-      if (document.visibilityState === 'visible') {
+      // Only poll when page is visible AND browser is online
+      // Skipping when offline prevents wasted fetch attempts on metered connections
+      if (document.visibilityState === 'visible' && navigator.onLine) {
         pullTable(table).catch(err => {
           console.error(`[SYNC] Pull ${table} failed:`, err.message);
         });
@@ -117,8 +138,7 @@ export function updateAuthToken(token: string): void {
 }
 
 export async function pullAll(): Promise<void> {
-  if (isSyncing) return;
-  isSyncing = true;
+  if (!acquireSyncLock()) return;
 
   try {
     const tables = Object.keys(PULL_INTERVALS);
@@ -134,18 +154,18 @@ export async function pullAll(): Promise<void> {
     emit('sync-complete', { pulled: i, pushed: 0, errors: 0 });
     console.log('[SYNC] Pull all complete');
   } finally {
-    isSyncing = false;
+    releaseSyncLock();
   }
 }
 
 export async function pushAll(): Promise<void> {
-  if (isSyncing) return;
-  isSyncing = true;
+  if (!acquireSyncLock()) return;
 
   try {
     const queueDepthCount = await getQueueDepth();
     if (queueDepthCount === 0) {
       await pushGpsBreadcrumbs();
+      releaseSyncLock();
       return;
     }
 
@@ -230,7 +250,7 @@ export async function pushAll(): Promise<void> {
     emit('sync-complete', { pulled: 0, pushed, errors });
     console.log(`[SYNC] Push complete: ${pushed} synced, ${errors} errors`);
   } finally {
-    isSyncing = false;
+    releaseSyncLock();
   }
 }
 
@@ -244,8 +264,8 @@ export function getSyncState() {
 // ─── Internal Helpers ───────────────────────────────────────
 
 function handleVisibilityChange(): void {
-  if (document.visibilityState === 'visible') {
-    // Tab became visible — catch up
+  if (document.visibilityState === 'visible' && navigator.onLine) {
+    // Tab became visible and online — catch up on missed data
     pullAll().catch(err => console.warn('[SYNC] Visibility pull failed:', err.message));
   }
 }

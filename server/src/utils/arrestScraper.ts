@@ -40,7 +40,11 @@ const REQUEST_TIMEOUT_MS = 15_000;
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 3_000;
 
-let syncIntervalHandle: ReturnType<typeof setInterval> | null = null;
+let syncIntervalHandle: ReturnType<typeof setTimeout> | null = null;
+let consecutiveFailures = 0;
+// Backoff: 1h → 2h → 4h → 8h → 24h max. After 24 consecutive failures (~3 days), switch to once-daily.
+const MAX_BACKOFF_MS = 24 * 60 * 60 * 1000;
+const DAILY_CHECK_THRESHOLD = 24;  // After this many failures, only check once per day
 
 // ── Encryption (same as microbilt.ts) ───────────────────────
 
@@ -770,49 +774,130 @@ export function getCountyRecordCounts(): { sourceId: string; name: string; count
   return rows.map(r => ({ sourceId: r.source_id, name: r.source_name, count: r.count }));
 }
 
-// ── Scheduler ───────────────────────────────────────────────
+// ── Scheduler (with exponential backoff) ─────────────────────
+
+function getBackoffMs(): number {
+  if (consecutiveFailures === 0) return SYNC_INTERVAL_MS;
+  // Exponential: 1h, 2h, 4h, 8h, capped at 24h
+  const backoff = SYNC_INTERVAL_MS * Math.pow(2, Math.min(consecutiveFailures - 1, 5));
+  return Math.min(backoff, MAX_BACKOFF_MS);
+}
+
+function formatInterval(ms: number): string {
+  const hours = ms / (60 * 60 * 1000);
+  if (hours >= 24) return '24h';
+  if (hours >= 1) return `${hours.toFixed(0)}h`;
+  return `${(ms / 60000).toFixed(0)}m`;
+}
+
+function scheduleNextSync(): void {
+  const delay = getBackoffMs();
+  syncIntervalHandle = setTimeout(async () => {
+    try {
+      if (!isEnabled() || !getApiKey()) {
+        scheduleNextSync(); // Keep checking but don't sync
+        return;
+      }
+
+      // Suppress verbose logging after many failures — only log every 24th attempt
+      const isQuiet = consecutiveFailures >= DAILY_CHECK_THRESHOLD;
+      if (!isQuiet) {
+        console.log('[Arrest Sync] Scheduled sync...');
+      }
+
+      await syncArrestData();
+
+      // Success — reset backoff
+      if (consecutiveFailures > 0) {
+        console.log(`[Arrest Sync] Recovered after ${consecutiveFailures} consecutive failure(s)`);
+      }
+      consecutiveFailures = 0;
+    } catch (err) {
+      consecutiveFailures++;
+      const nextDelay = getBackoffMs();
+
+      if (consecutiveFailures <= 3) {
+        // First few failures: log normally
+        console.error('[Arrest Sync] Scheduled sync failed:', (err as Error).message);
+        console.log(`[Arrest Sync] Next retry in ${formatInterval(nextDelay)} (failure #${consecutiveFailures})`);
+      } else if (consecutiveFailures === DAILY_CHECK_THRESHOLD) {
+        // Threshold: log once that we're switching to daily checks
+        console.warn(
+          `[Arrest Sync] ${consecutiveFailures} consecutive failures — switching to daily checks. ` +
+          'Upstream API appears offline. Cached records remain searchable.'
+        );
+      }
+      // After threshold: silent (no logging on every attempt)
+    }
+
+    // Schedule the next run
+    if (syncIntervalHandle !== null) {
+      scheduleNextSync();
+    }
+  }, delay);
+}
 
 export function scheduleArrestSync(): void {
   if (syncIntervalHandle) return; // Already running
 
-  console.log('[Arrest Sync] Scheduler starting — will sync hourly');
+  // Restore backoff state from DB so server restarts don't reset the counter
+  try {
+    const db = getDb();
+    const recentFails = db.prepare(
+      "SELECT COUNT(*) as c FROM arrest_sync_log WHERE status = 'error' AND id > COALESCE((SELECT MAX(id) FROM arrest_sync_log WHERE status = 'success'), 0)"
+    ).get() as { c: number };
+    if (recentFails.c > 0) {
+      consecutiveFailures = recentFails.c;
+    }
+  } catch { /* DB not ready yet — start fresh */ }
+
+  if (consecutiveFailures >= DAILY_CHECK_THRESHOLD) {
+    console.log(`[Arrest Sync] Scheduler starting — upstream API offline (${consecutiveFailures} failures), checking daily`);
+  } else if (consecutiveFailures > 0) {
+    console.log(`[Arrest Sync] Scheduler starting — resuming backoff (${consecutiveFailures} prior failures, next in ${formatInterval(getBackoffMs())})`);
+  } else {
+    console.log('[Arrest Sync] Scheduler starting — will sync hourly (with backoff on failures)');
+  }
 
   // Check on startup if data is stale (wait 20s to avoid blocking startup)
   setTimeout(async () => {
     try {
       if (!isEnabled() || !getApiKey()) {
         console.log('[Arrest Sync] Not configured — skipping initial sync (configure in Admin > Integrations > Arrest Records)');
+        scheduleNextSync();
+        return;
+      }
+
+      // If already in deep backoff, skip the initial sync attempt
+      if (consecutiveFailures >= DAILY_CHECK_THRESHOLD) {
+        const status = getArrestSyncStatus();
+        console.log(`[Arrest Sync] Skipping initial sync — upstream offline. Cached: ${status.recordsCount} records`);
+        scheduleNextSync();
         return;
       }
 
       if (isArrestDataStale()) {
         console.log('[Arrest Sync] Data is stale or missing — triggering initial sync...');
         await syncArrestData();
+        consecutiveFailures = 0;
       } else {
         const status = getArrestSyncStatus();
         console.log(`[Arrest Sync] Data is current (${status.recordsCount} records, last sync: ${status.lastSync})`);
       }
     } catch (err) {
-      console.error('[Arrest Sync] Initial sync failed — will retry in 1h:', (err as Error).message);
+      consecutiveFailures++;
+      console.error(`[Arrest Sync] Initial sync failed — next retry in ${formatInterval(getBackoffMs())}:`, (err as Error).message);
     }
-  }, 20_000);
 
-  // Hourly sync
-  syncIntervalHandle = setInterval(async () => {
-    try {
-      if (!isEnabled() || !getApiKey()) return; // Skip if not configured
-      console.log('[Arrest Sync] Hourly scheduled sync...');
-      await syncArrestData();
-    } catch (err) {
-      console.error('[Arrest Sync] Scheduled sync failed:', (err as Error).message);
-    }
-  }, SYNC_INTERVAL_MS);
+    scheduleNextSync();
+  }, 20_000);
 }
 
 export function stopArrestSync(): void {
   if (syncIntervalHandle) {
-    clearInterval(syncIntervalHandle);
+    clearTimeout(syncIntervalHandle);
     syncIntervalHandle = null;
+    consecutiveFailures = 0;
     console.log('[Arrest Sync] Scheduler stopped');
   }
 }

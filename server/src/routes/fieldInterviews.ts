@@ -1,8 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
 import { broadcast } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
+import { createNotificationForRoles } from './notifications';
 
 const router = Router();
 router.use(authenticateToken);
@@ -45,8 +46,8 @@ router.get('/', (req: Request, res: Response) => {
       where += ' AND fi.archived_at IS NULL';
     }
 
-    const pageNum = parseInt(page as string, 10);
-    const perPage = parseInt(per_page as string, 10);
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 25));
     const offset = (pageNum - 1) * perPage;
 
     const countRow = db.prepare(`SELECT COUNT(*) as total FROM field_interviews fi ${where}`).get(...params) as any;
@@ -66,7 +67,7 @@ router.get('/', (req: Request, res: Response) => {
       pagination: { page: pageNum, per_page: perPage, total: countRow.total, totalPages: Math.ceil(countRow.total / perPage) },
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -85,7 +86,7 @@ router.get('/:id', (req: Request, res: Response) => {
     if (!row) return res.status(404).json({ error: 'Field interview not found' });
     res.json(row);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -128,14 +129,30 @@ router.post('/', (req: Request, res: Response) => {
       contact_reason, contact_type, action_taken,
       narrative, vehicle_plate, vehicle_description, vehicle_id || null,
       associated_call_id || null, associated_incident_id || null,
-      user.id, user.full_name, now
+      user.userId, user.fullName, now
     );
 
-    const created = db.prepare('SELECT * FROM field_interviews WHERE id = ?').get(result.lastInsertRowid);
-    broadcast('alerts', 'fi_created', created);
+    const created = db.prepare('SELECT * FROM field_interviews WHERE id = ?').get(result.lastInsertRowid) as any;
+    // Broadcast minimal payload — no subject PII over WebSocket
+    broadcast('alerts', 'fi_created', {
+      id: created.id,
+      fi_number: created.fi_number,
+      officer_id: created.officer_id,
+      location: created.location,
+      status: created.status,
+    });
+
+    // Notify supervisors of new field interview
+    createNotificationForRoles(
+      ['admin', 'manager', 'supervisor'],
+      'field_interview', `Field Interview: ${created.fi_number}`,
+      `FI recorded at ${created.location || 'unknown location'}`,
+      'field_interview', created.id, 'normal', 'fi.created', req.user!.userId,
+    );
+
     res.status(201).json(created);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -154,6 +171,7 @@ router.put('/:id', (req: Request, res: Response) => {
       'contact_reason', 'contact_type', 'action_taken',
       'narrative', 'vehicle_plate', 'vehicle_description', 'vehicle_id',
       'associated_call_id', 'associated_incident_id',
+      'status',
     ];
 
     const setClauses: string[] = [];
@@ -169,44 +187,51 @@ router.put('/:id', (req: Request, res: Response) => {
     params.push(req.params.id);
     db.prepare(`UPDATE field_interviews SET ${setClauses.join(', ')} WHERE id = ?`).run(...params);
 
-    const updated = db.prepare('SELECT * FROM field_interviews WHERE id = ?').get(req.params.id);
-    broadcast('alerts', 'fi_updated', updated);
+    const updated = db.prepare('SELECT * FROM field_interviews WHERE id = ?').get(req.params.id) as any;
+    // Broadcast minimal payload — no subject PII over WebSocket
+    broadcast('alerts', 'fi_updated', {
+      id: updated.id,
+      fi_number: updated.fi_number,
+      officer_id: updated.officer_id,
+      location: updated.location,
+      status: updated.status,
+    });
     res.json(updated);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // POST /:id/archive
-router.post('/:id/archive', (req: Request, res: Response) => {
+router.post('/:id/archive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     db.prepare(`UPDATE field_interviews SET status = 'archived', archived_at = ? WHERE id = ?`).run(localNow(), req.params.id);
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // POST /:id/unarchive
-router.post('/:id/unarchive', (req: Request, res: Response) => {
+router.post('/:id/unarchive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     db.prepare(`UPDATE field_interviews SET status = 'active', archived_at = NULL WHERE id = ?`).run(req.params.id);
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // DELETE /:id — Soft delete (archive)
-router.delete('/:id', (req: Request, res: Response) => {
+router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     db.prepare(`UPDATE field_interviews SET status = 'archived', archived_at = ? WHERE id = ?`).run(localNow(), req.params.id);
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

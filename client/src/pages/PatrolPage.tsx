@@ -794,7 +794,7 @@ const PatrolPage: React.FC = () => {
                         <td>
                           <div className={`flex items-center gap-2 text-xs ${getStatusColor(scan.status)}`}>
                             {getStatusIcon(scan.status)}
-                            <span className="capitalize">{scan.status.replace('_', ' ')}</span>
+                            <span className="capitalize">{scan.status.replace(/_/g, ' ')}</span>
                           </div>
                         </td>
                         <td className="text-xs text-rmpg-200 max-w-[200px] truncate">{scan.notes || '-'}</td>

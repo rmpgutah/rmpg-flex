@@ -276,4 +276,75 @@ router.put('/products', requireRole('admin'), (req: Request, res: Response) => {
   }
 });
 
+// ============================================================
+// OFAC / SDN Watchlist Search (local sanctions database)
+// ============================================================
+// Searches the locally-synced U.S. Treasury sanctions list.
+// Data is synced daily by ofacScraper.ts from treasury.gov.
+
+router.post('/ofac/search', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { fullName, firstName, lastName } = req.body;
+
+    let searchName = '';
+    if (fullName) {
+      searchName = fullName.trim();
+    } else if (lastName) {
+      searchName = firstName ? `${lastName}, ${firstName}`.trim() : lastName.trim();
+    }
+
+    if (!searchName || searchName.length < 2) {
+      res.status(400).json({ error: 'Name required (min 2 chars)' });
+      return;
+    }
+
+    const searchTerm = `%${searchName}%`;
+
+    // Search SDN entries by name
+    const entries = db.prepare(`
+      SELECT e.*,
+        GROUP_CONCAT(DISTINCT a.alias_name) as alias_list,
+        GROUP_CONCAT(DISTINCT addr.address || ', ' || COALESCE(addr.city,'') || ' ' || COALESCE(addr.country,'')) as address_list
+      FROM ofac_sdn_entries e
+      LEFT JOIN ofac_sdn_aliases a ON e.ent_num = a.ent_num
+      LEFT JOIN ofac_sdn_addresses addr ON e.ent_num = addr.ent_num
+      WHERE e.sdn_name LIKE ? OR a.alias_name LIKE ?
+      GROUP BY e.id
+      ORDER BY e.sdn_name
+      LIMIT 10
+    `).all(searchTerm, searchTerm) as any[];
+
+    // Map to NcicOfacSubject format expected by client
+    const subjects = entries.map(e => ({
+      name: e.sdn_name,
+      type: e.sdn_type || 'Individual',
+      program: e.program,
+      source_list: e.source_list || 'SDN',
+      title: e.title,
+      remarks: e.remarks,
+      match_source: 'LOCAL_OFAC_DB',
+      aliases: e.alias_list
+        ? e.alias_list.split(',').map((a: string) => ({ name: a.trim(), type: 'AKA' }))
+        : [],
+      addresses: e.address_list
+        ? e.address_list.split(',').map((a: string) => {
+            const parts = a.trim().split(', ');
+            return { address: parts[0] || '', city: parts[1] || '', country: parts[2] || '' };
+          })
+        : [],
+    }));
+
+    res.json({
+      hit: subjects.length > 0,
+      sources: ['US_TREASURY_SDN'],
+      subjects,
+      resultCount: subjects.length,
+    });
+  } catch (error: any) {
+    console.error('OFAC search error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

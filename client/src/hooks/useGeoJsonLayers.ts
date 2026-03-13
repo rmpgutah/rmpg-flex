@@ -7,7 +7,7 @@
 // and interactive selection mode for shift planning.
 // ============================================================
 
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 
 // ── Layer Configuration ──────────────────────────────────────
 
@@ -126,6 +126,42 @@ const ASSIGNED_STYLE = {
   strokeWeight: 2,
 };
 
+// ── Section color palette (12 distinct hues for beat sections) ──
+
+export const SECTION_COLORS: Record<string, string> = {
+  SL1: '#22c55e', SL2: '#3b82f6', SL3: '#a855f7', SL4: '#f59e0b', SL5: '#ef4444', SL6: '#06b6d4',
+  DV1: '#ec4899', DV2: '#14b8a6', DV3: '#f97316',
+  WB1: '#8b5cf6', WB2: '#10b981',
+  UC1: '#6366f1', UC2: '#eab308', UC3: '#f43f5e',
+};
+const SECTION_COLOR_FALLBACKS = ['#64748b', '#78716c', '#a3a3a3', '#71717a', '#737373', '#6b7280'];
+
+export function getSectionColor(sectionId: string): string {
+  if (SECTION_COLORS[sectionId]) return SECTION_COLORS[sectionId];
+  let hash = 0;
+  for (let i = 0; i < sectionId.length; i++) hash = ((hash << 5) - hash + sectionId.charCodeAt(i)) | 0;
+  return SECTION_COLOR_FALLBACKS[Math.abs(hash) % SECTION_COLOR_FALLBACKS.length];
+}
+
+// ── Beat-District enrichment data ────────────────────────────
+
+export interface BeatDistrictEntry {
+  sectionId: string;
+  sectionName: string;
+  zoneId: string;
+  zoneName: string;
+  beatId: string;
+  beatName: string;
+  beatDescriptor: string;
+  dispatchCode: string;
+}
+
+/** Pre-computed style for a beat polygon, keyed by "city_code::district_letter" */
+interface BeatStyleEntry {
+  style: GeoLayerConfig['style'];
+  entry: BeatDistrictEntry;
+}
+
 // ── Exported Feature Info type ───────────────────────────────
 
 export interface GeoFeatureInfo {
@@ -148,12 +184,43 @@ interface UseGeoJsonLayersOptions {
   selectedFeatures?: Set<string>;
   /** Set of "layerId::featureKey" strings that have been assigned */
   assignedFeatures?: Set<string>;
+  /** Beat-district enrichment: Map<city_code, Map<district_letter, BeatDistrictEntry>> */
+  beatDistrictMap?: Map<string, Map<string, BeatDistrictEntry>>;
 }
 
 export interface GeoLayerState {
   visible: boolean;
   loaded: boolean;
   featureCount: number;
+}
+
+// ── Shared district lookup helper ────────────────────────────
+
+function lookupBeatDistrict(
+  beatDistrictMap: Map<string, Map<string, BeatDistrictEntry>> | undefined,
+  cityCode: string | undefined,
+  distLetter: string | undefined,
+): BeatDistrictEntry | undefined {
+  if (!beatDistrictMap || !cityCode) return undefined;
+  const zoneMap = beatDistrictMap.get(cityCode);
+  if (!zoneMap) return undefined;
+  return distLetter ? zoneMap.get(distLetter) : undefined;
+}
+
+// ── Default info window HTML builder ─────────────────────────
+
+function buildDefaultInfoHtml(name: string, cfg: GeoLayerConfig, props: Record<string, any>): string {
+  let html = `<div style="font-weight:bold;font-size:12px;color:#fff;margin-bottom:4px;border-bottom:1px solid #444;padding-bottom:3px;">${escapeForHtml(String(name))}</div>`;
+  html += `<div style="color:#888;font-size:9px;text-transform:uppercase;margin-bottom:4px;">${cfg.label}</div>`;
+  if (cfg.detailProps) {
+    for (const p of cfg.detailProps) {
+      if (props[p] !== undefined && props[p] !== null && props[p] !== '') {
+        const label = p.replace(/_/g, ' ').replace(/^(POP_CURRESTIMATE|POPLASTESTIMATE)$/i, 'Population');
+        html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">${escapeForHtml(label)}:</span> ${escapeForHtml(String(props[p]))}</div>`;
+      }
+    }
+  }
+  return html;
 }
 
 export function useGeoJsonLayers({
@@ -163,6 +230,7 @@ export function useGeoJsonLayers({
   onFeatureClick,
   selectedFeatures,
   assignedFeatures,
+  beatDistrictMap,
 }: UseGeoJsonLayersOptions) {
   // Per-layer visibility state
   const [layerStates, setLayerStates] = useState<Record<string, GeoLayerState>>(() => {
@@ -190,6 +258,32 @@ export function useGeoJsonLayers({
   useEffect(() => { onFeatureClickRef.current = onFeatureClick; }, [onFeatureClick]);
   useEffect(() => { selectedFeaturesRef.current = selectedFeatures; }, [selectedFeatures]);
   useEffect(() => { assignedFeaturesRef.current = assignedFeatures; }, [assignedFeatures]);
+
+  // Beat-district enrichment ref
+  const beatDistrictMapRef = useRef(beatDistrictMap);
+  useEffect(() => { beatDistrictMapRef.current = beatDistrictMap; }, [beatDistrictMap]);
+
+  // Pre-compute flat beat style lookup: "city_code::district_letter" → BeatStyleEntry
+  // This avoids per-feature Map traversal + object spread in the hot-path setStyle callback
+  const beatStyleLookup = useMemo(() => {
+    if (!beatDistrictMap) return undefined;
+    const beatCfg = GEO_LAYER_CONFIGS.find(c => c.id === 'beat');
+    if (!beatCfg) return undefined;
+    const lookup = new Map<string, BeatStyleEntry>();
+    for (const [cityCode, zoneMap] of beatDistrictMap) {
+      for (const [distLetter, entry] of zoneMap) {
+        const sColor = getSectionColor(entry.sectionId);
+        lookup.set(`${cityCode}::${distLetter}`, {
+          style: { ...beatCfg.style, fillColor: sColor, strokeColor: sColor, fillOpacity: 0.12, strokeOpacity: 0.6 },
+          entry,
+        });
+      }
+    }
+    return lookup;
+  }, [beatDistrictMap]);
+
+  const beatStyleLookupRef = useRef(beatStyleLookup);
+  useEffect(() => { beatStyleLookupRef.current = beatStyleLookup; }, [beatStyleLookup]);
 
   // ── Build feature key from a Data.Feature ──────────────────
 
@@ -234,7 +328,18 @@ export function useGeoJsonLayers({
           };
         }
 
-        const activeStyle = isSelected ? SELECTION_STYLE : isAssigned ? ASSIGNED_STYLE : cfg.style;
+        // For beat layer: use pre-computed section-based style (O(1) lookup, no object spread)
+        let baseStyle = cfg.style;
+        if (cfg.id === 'beat' && beatStyleLookupRef.current && !isSelected && !isAssigned) {
+          const cityCode = feature.getProperty('city_code') as string;
+          const distLetter = feature.getProperty('district_letter') as string;
+          if (cityCode && distLetter) {
+            const cached = beatStyleLookupRef.current.get(`${cityCode}::${distLetter}`);
+            if (cached) baseStyle = cached.style;
+          }
+        }
+
+        const activeStyle = isSelected ? SELECTION_STYLE : isAssigned ? ASSIGNED_STYLE : baseStyle;
 
         return {
           fillColor: isLine ? 'transparent' : activeStyle.fillColor,
@@ -250,9 +355,15 @@ export function useGeoJsonLayers({
   }, [getFeatureKey]);
 
   // Re-style when selection/assigned sets change
+  // Note: beatDistrictMap is static after initial load — restyleLayers reads it via ref
   useEffect(() => {
     restyleLayers();
   }, [selectedFeatures, assignedFeatures, selectionMode, restyleLayers]);
+
+  // Re-style once when beat district data arrives (static, fires only once)
+  useEffect(() => {
+    if (beatStyleLookup) restyleLayers();
+  }, [beatStyleLookup, restyleLayers]);
 
   // ── Load a single GeoJSON layer onto the map ───────────────
 
@@ -309,16 +420,21 @@ export function useGeoJsonLayers({
       // Normal mode — show info window
       if (!infoWindow) return;
       let html = `<div style="font-family:'Courier New',monospace;color:#d4d4d4;font-size:11px;min-width:140px;">`;
-      html += `<div style="font-weight:bold;font-size:12px;color:#fff;margin-bottom:4px;border-bottom:1px solid #444;padding-bottom:3px;">${escapeForHtml(String(name))}</div>`;
-      html += `<div style="color:#888;font-size:9px;text-transform:uppercase;margin-bottom:4px;">${cfg.label}</div>`;
 
-      if (cfg.detailProps) {
-        for (const p of cfg.detailProps) {
-          if (props[p] !== undefined && props[p] !== null && props[p] !== '') {
-            const label = p.replace(/_/g, ' ').replace(/^(POP_CURRESTIMATE|POPLASTESTIMATE)$/i, 'Population');
-            html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">${escapeForHtml(label)}:</span> ${escapeForHtml(String(props[p]))}</div>`;
-          }
-        }
+      // Enhanced beat info window with district data
+      const entry = cfg.id === 'beat'
+        ? lookupBeatDistrict(beatDistrictMapRef.current, props.city_code, props.district_letter)
+        : undefined;
+
+      if (entry) {
+        const sColor = getSectionColor(entry.sectionId);
+        html += `<div style="font-weight:bold;font-size:13px;color:${sColor};margin-bottom:2px;letter-spacing:1px;">${escapeForHtml(entry.dispatchCode)}</div>`;
+        html += `<div style="color:#fff;font-size:11px;margin-bottom:6px;border-bottom:1px solid #444;padding-bottom:4px;">${escapeForHtml(entry.beatName)}${entry.beatDescriptor ? ' — ' + escapeForHtml(entry.beatDescriptor) : ''}</div>`;
+        html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:${sColor};">Section:</span> <span style="color:#ddd;">${escapeForHtml(entry.sectionId)} — ${escapeForHtml(entry.sectionName)}</span></div>`;
+        html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">Zone:</span> <span style="color:#ddd;">${escapeForHtml(entry.zoneId)} — ${escapeForHtml(entry.zoneName)}</span></div>`;
+        html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">Beat:</span> <span style="color:#ddd;">${escapeForHtml(entry.beatId)}</span></div>`;
+      } else {
+        html += buildDefaultInfoHtml(name, cfg, props);
       }
 
       // Show assigned officer info if available

@@ -1,12 +1,33 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
 import { sendCsv } from '../utils/csvExport';
 import { localNow, localToday } from '../utils/timeUtils';
+import { searchUtahWarrants } from '../utils/utahWarrantScraper';
 
 const router = Router();
 
 router.use(authenticateToken);
+
+// ─── Safe Column Lists (exclude ssn_full from all responses) ────
+// ssn_full should NEVER be returned in API responses — only ssn_last4 for display
+const PERSON_COLUMNS = `id, first_name, last_name, middle_name, alias_nickname, dob, gender, race,
+  height, height_feet, height_inches, weight, build, complexion, hair_color, eye_color, scars_marks_tattoos,
+  clothing_description, address, city, state, zip, phone, email,
+  dl_number, dl_state, dl_expiry, dl_class, ssn_last4,
+  id_image_url, id_type, id_number, id_state, id_expiry,
+  employer, occupation, emergency_contact_name, emergency_contact_phone,
+  gang_affiliation, is_sex_offender, is_veteran, language,
+  place_of_birth, citizenship, marital_status,
+  hair_length, hair_style, facial_hair, glasses, shoe_size, blood_type,
+  phone_secondary, social_media,
+  probation_parole, probation_parole_officer, known_associates,
+  emergency_contact_relationship, caution_flags,
+  photo_url, flags, notes, created_at, updated_at, archived_at`;
+
+const PERSON_LIST_COLUMNS = `id, first_name, last_name, middle_name, alias_nickname, dob, gender, race,
+  address, city, state, zip, phone, email, dl_number, dl_state, ssn_last4,
+  photo_url, flags, caution_flags, created_at, updated_at, archived_at`;
 
 // ─── PERSONS ──────────────────────────────────────────
 
@@ -15,8 +36,8 @@ router.get('/persons', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { page = '1', limit = '50', flags, archived } = req.query;
-    const pageNum = parseInt(page as string, 10);
-    const limitNum = parseInt(limit as string, 10);
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
     let whereClause = 'WHERE 1=1';
@@ -37,7 +58,7 @@ router.get('/persons', (req: Request, res: Response) => {
     const countRow = db.prepare(`SELECT COUNT(*) as total FROM persons ${whereClause}`).get(...params) as any;
 
     const persons = db.prepare(`
-      SELECT * FROM persons ${whereClause}
+      SELECT ${PERSON_LIST_COLUMNS} FROM persons ${whereClause}
       ORDER BY last_name, first_name
       LIMIT ? OFFSET ?
     `).all(...params, limitNum, offset);
@@ -71,7 +92,7 @@ router.get('/persons/search', (req: Request, res: Response) => {
     const searchTerm = `%${q}%`;
 
     const persons = db.prepare(`
-      SELECT * FROM persons
+      SELECT ${PERSON_LIST_COLUMNS} FROM persons
       WHERE first_name LIKE ? OR last_name LIKE ? OR phone LIKE ? OR email LIKE ?
         OR address LIKE ? OR (first_name || ' ' || last_name) LIKE ?
       ORDER BY last_name, first_name
@@ -127,7 +148,7 @@ router.get('/persons/export', (req: Request, res: Response) => {
 router.get('/persons/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id) as any;
+    const person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id) as any;
 
     if (!person) {
       res.status(404).json({ error: 'Person not found' });
@@ -160,7 +181,7 @@ router.get('/persons/:id', (req: Request, res: Response) => {
 router.get('/persons/:id/history', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id) as any;
+    const person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id) as any;
     if (!person) {
       res.status(404).json({ error: 'Person not found' });
       return;
@@ -199,7 +220,7 @@ router.get('/persons/:id/history', (req: Request, res: Response) => {
 router.get('/persons/:id/system-history', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id) as any;
+    const person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id) as any;
     if (!person) {
       res.status(404).json({ error: 'Person not found' });
       return;
@@ -310,7 +331,7 @@ router.get('/persons/:id/system-history', (req: Request, res: Response) => {
 });
 
 // POST /api/records/persons - Create person
-router.post('/persons', (req: Request, res: Response) => {
+router.post('/persons', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const {
@@ -369,7 +390,7 @@ router.post('/persons', (req: Request, res: Response) => {
       photo_url || null, JSON.stringify(flags || []), notes || null,
     );
 
-    const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(result.lastInsertRowid);
+    const person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(result.lastInsertRowid);
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
@@ -384,10 +405,10 @@ router.post('/persons', (req: Request, res: Response) => {
 });
 
 // PUT /api/records/persons/:id - Update person
-router.put('/persons/:id', (req: Request, res: Response) => {
+router.put('/persons/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id) as any;
+    const person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id) as any;
     if (!person) {
       res.status(404).json({ error: 'Person not found' });
       return;
@@ -472,7 +493,7 @@ router.put('/persons/:id', (req: Request, res: Response) => {
       VALUES (?, 'person_updated', 'person', ?, ?, ?)
     `).run(req.user!.userId, req.params.id, `Updated person record: ${person.first_name} ${person.last_name}`, req.ip || 'unknown');
 
-    const updated = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id);
+    const updated = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id);
     res.json(updated);
   } catch (error: any) {
     console.error('Update person error:', error);
@@ -481,10 +502,10 @@ router.put('/persons/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/persons/:id - Delete person
-router.delete('/persons/:id', (req: Request, res: Response) => {
+router.delete('/persons/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id) as any;
+    const person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id) as any;
     if (!person) {
       res.status(404).json({ error: 'Person not found' });
       return;
@@ -509,31 +530,31 @@ router.delete('/persons/:id', (req: Request, res: Response) => {
 });
 
 // POST /api/records/persons/:id/archive
-router.post('/persons/:id/archive', (req: Request, res: Response) => {
+router.post('/persons/:id/archive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id) as any;
+    const person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id) as any;
     if (!person) { res.status(404).json({ error: 'Person not found' }); return; }
     if (person.archived_at) { res.status(400).json({ error: 'Person is already archived' }); return; }
     const now = localNow();
     db.prepare('UPDATE persons SET archived_at = ? WHERE id = ?').run(now, person.id);
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'person_archived', 'person', ?, ?, ?)`).run(req.user!.userId, person.id, `Archived person: ${person.first_name} ${person.last_name}`, req.ip || 'unknown');
-    res.json(db.prepare('SELECT * FROM persons WHERE id = ?').get(person.id));
+    res.json(db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(person.id));
   } catch (error: any) { console.error('Archive person error:', error); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/records/persons/:id/unarchive
-router.post('/persons/:id/unarchive', (req: Request, res: Response) => {
+router.post('/persons/:id/unarchive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id) as any;
+    const person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id) as any;
     if (!person) { res.status(404).json({ error: 'Person not found' }); return; }
     if (!person.archived_at) { res.status(400).json({ error: 'Person is not archived' }); return; }
     db.prepare('UPDATE persons SET archived_at = NULL WHERE id = ?').run(person.id);
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'person_unarchived', 'person', ?, ?, ?)`).run(req.user!.userId, person.id, `Restored person: ${person.first_name} ${person.last_name}`, req.ip || 'unknown');
-    res.json(db.prepare('SELECT * FROM persons WHERE id = ?').get(person.id));
+    res.json(db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(person.id));
   } catch (error: any) { console.error('Unarchive person error:', error); res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -544,8 +565,8 @@ router.get('/vehicles', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { page = '1', limit = '50', archived } = req.query;
-    const pageNum = parseInt(page as string, 10);
-    const limitNum = parseInt(limit as string, 10);
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
     let whereClause = 'WHERE 1=1';
@@ -665,7 +686,7 @@ router.get('/vehicles/:id', (req: Request, res: Response) => {
 });
 
 // POST /api/records/vehicles - Create vehicle
-router.post('/vehicles', (req: Request, res: Response) => {
+router.post('/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const {
@@ -722,7 +743,7 @@ router.post('/vehicles', (req: Request, res: Response) => {
 });
 
 // PUT /api/records/vehicles/:id - Update vehicle
-router.put('/vehicles/:id', (req: Request, res: Response) => {
+router.put('/vehicles/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
@@ -801,7 +822,7 @@ router.put('/vehicles/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/vehicles/:id - Delete vehicle
-router.delete('/vehicles/:id', (req: Request, res: Response) => {
+router.delete('/vehicles/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
@@ -827,7 +848,7 @@ router.delete('/vehicles/:id', (req: Request, res: Response) => {
 });
 
 // POST /api/records/vehicles/:id/archive
-router.post('/vehicles/:id/archive', (req: Request, res: Response) => {
+router.post('/vehicles/:id/archive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const v = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
@@ -842,7 +863,7 @@ router.post('/vehicles/:id/archive', (req: Request, res: Response) => {
 });
 
 // POST /api/records/vehicles/:id/unarchive
-router.post('/vehicles/:id/unarchive', (req: Request, res: Response) => {
+router.post('/vehicles/:id/unarchive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const v = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
@@ -946,7 +967,7 @@ router.get('/properties/:id', (req: Request, res: Response) => {
 });
 
 // POST /api/records/properties - Create property
-router.post('/properties', (req: Request, res: Response) => {
+router.post('/properties', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const {
@@ -1001,7 +1022,7 @@ router.post('/properties', (req: Request, res: Response) => {
 router.get('/persons/:id/incidents', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id) as any;
+    const person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id) as any;
     if (!person) {
       res.status(404).json({ error: 'Person not found' });
       return;
@@ -1058,8 +1079,8 @@ router.get('/evidence', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { page = '1', limit = '50', archived } = req.query;
-    const pageNum = parseInt(page as string, 10);
-    const limitNum = parseInt(limit as string, 10);
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
     let whereClause = 'WHERE 1=1';
@@ -1098,7 +1119,7 @@ router.get('/evidence', (req: Request, res: Response) => {
 });
 
 // PUT /api/records/evidence/:id - Update evidence
-router.put('/evidence/:id', (req: Request, res: Response) => {
+router.put('/evidence/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
@@ -1159,7 +1180,7 @@ router.put('/evidence/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/evidence/:id - Delete evidence
-router.delete('/evidence/:id', (req: Request, res: Response) => {
+router.delete('/evidence/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
@@ -1184,7 +1205,7 @@ router.delete('/evidence/:id', (req: Request, res: Response) => {
 });
 
 // POST /api/records/evidence/:id/archive
-router.post('/evidence/:id/archive', (req: Request, res: Response) => {
+router.post('/evidence/:id/archive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
@@ -1207,7 +1228,7 @@ router.post('/evidence/:id/archive', (req: Request, res: Response) => {
 });
 
 // POST /api/records/evidence/:id/unarchive
-router.post('/evidence/:id/unarchive', (req: Request, res: Response) => {
+router.post('/evidence/:id/unarchive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
@@ -1229,7 +1250,7 @@ router.post('/evidence/:id/unarchive', (req: Request, res: Response) => {
 });
 
 // POST /api/records/evidence/:id/custody - Add chain of custody entry
-router.post('/evidence/:id/custody', (req: Request, res: Response) => {
+router.post('/evidence/:id/custody', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
@@ -1330,7 +1351,7 @@ router.get('/evidence/locations', (req: Request, res: Response) => {
 });
 
 // POST /api/records/evidence/:id/chain-action — Enhanced chain-of-custody action
-router.post('/evidence/:id/chain-action', (req: Request, res: Response) => {
+router.post('/evidence/:id/chain-action', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
@@ -1365,9 +1386,9 @@ router.post('/evidence/:id/chain-action', (req: Request, res: Response) => {
     db.prepare(`UPDATE evidence SET chain_of_custody = ?, status = ?, storage_location = ?, updated_at = ? WHERE id = ?`)
       .run(JSON.stringify(chain), newStatus, storageLocation, localNow(), evidence.id);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
-      VALUES (?, ?, 'evidence', ?, ?, ?)`).run(
-      req.user!.userId, `evidence_${action}`, evidence.id, JSON.stringify({ action, to_location }), localNow());
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, ?, 'evidence', ?, ?, ?, ?)`).run(
+      req.user!.userId, `evidence_${action}`, evidence.id, JSON.stringify({ action, to_location }), req.ip || 'unknown', localNow());
 
     res.json({ data: { id: evidence.id, status: newStatus, chain_of_custody: chain } });
   } catch (error: any) {
@@ -1377,7 +1398,7 @@ router.post('/evidence/:id/chain-action', (req: Request, res: Response) => {
 });
 
 // PUT /api/records/properties/:id - Update property
-router.put('/properties/:id', (req: Request, res: Response) => {
+router.put('/properties/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const property = db.prepare('SELECT * FROM properties WHERE id = ?').get(req.params.id) as any;
@@ -1437,7 +1458,7 @@ router.put('/properties/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/properties/:id - Delete property
-router.delete('/properties/:id', (req: Request, res: Response) => {
+router.delete('/properties/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const property = db.prepare('SELECT * FROM properties WHERE id = ?').get(req.params.id) as any;
@@ -1471,7 +1492,7 @@ router.delete('/properties/:id', (req: Request, res: Response) => {
 });
 
 // POST /api/records/properties/:id/archive
-router.post('/properties/:id/archive', (req: Request, res: Response) => {
+router.post('/properties/:id/archive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const prop = db.prepare('SELECT * FROM properties WHERE id = ?').get(req.params.id) as any;
@@ -1486,7 +1507,7 @@ router.post('/properties/:id/archive', (req: Request, res: Response) => {
 });
 
 // POST /api/records/properties/:id/unarchive
-router.post('/properties/:id/unarchive', (req: Request, res: Response) => {
+router.post('/properties/:id/unarchive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const prop = db.prepare('SELECT * FROM properties WHERE id = ?').get(req.params.id) as any;
@@ -1502,7 +1523,7 @@ router.post('/properties/:id/unarchive', (req: Request, res: Response) => {
 // ─── STANDALONE EVIDENCE CREATION ────────────────────
 
 // POST /api/records/evidence - Create standalone evidence (no incident required)
-router.post('/evidence', (req: Request, res: Response) => {
+router.post('/evidence', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const {
@@ -1592,6 +1613,14 @@ function getRecordLabel(db: any, type: string, id: number): string {
         const e = db.prepare('SELECT evidence_number, description FROM evidence WHERE id = ?').get(id) as any;
         return e ? `${e.evidence_number || ''} ${e.description || ''}`.trim() : `Evidence #${id}`;
       }
+      case 'case': {
+        const c = db.prepare('SELECT case_number, title FROM cases WHERE id = ?').get(id) as any;
+        return c ? `${c.case_number} - ${c.title}` : `Case #${id}`;
+      }
+      case 'incident': {
+        const i = db.prepare('SELECT incident_number, incident_type FROM incidents WHERE id = ?').get(id) as any;
+        return i ? `${i.incident_number || ''} ${i.incident_type}`.trim() : `Incident #${id}`;
+      }
       default:
         return `${type} #${id}`;
     }
@@ -1641,7 +1670,7 @@ router.get('/links', (req: Request, res: Response) => {
 });
 
 // POST /api/records/links - Create a record link
-router.post('/links', (req: Request, res: Response) => {
+router.post('/links', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { source_type, source_id, target_type, target_id, relationship, notes } = req.body;
@@ -1688,7 +1717,7 @@ router.post('/links', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/links/:id - Remove a record link
-router.delete('/links/:id', (req: Request, res: Response) => {
+router.delete('/links/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const link = db.prepare('SELECT * FROM record_links WHERE id = ?').get(req.params.id) as any;
@@ -1825,7 +1854,7 @@ router.get('/persons/:id/criminal-history', (req: Request, res: Response) => {
 });
 
 // POST /api/records/persons/:id/criminal-history
-router.post('/persons/:id/criminal-history', (req: Request, res: Response) => {
+router.post('/persons/:id/criminal-history', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -1864,7 +1893,7 @@ router.post('/persons/:id/criminal-history', (req: Request, res: Response) => {
 });
 
 // PUT /api/records/criminal-history/:id
-router.put('/criminal-history/:id', (req: Request, res: Response) => {
+router.put('/criminal-history/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const {
@@ -1906,7 +1935,7 @@ router.put('/criminal-history/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/criminal-history/:id
-router.delete('/criminal-history/:id', (req: Request, res: Response) => {
+router.delete('/criminal-history/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     db.prepare('DELETE FROM criminal_history WHERE id = ?').run(req.params.id);
@@ -1964,7 +1993,7 @@ router.get('/clients/:id/persons', (req: Request, res: Response) => {
 });
 
 // POST /api/records/client-persons - Link a person to a client
-router.post('/client-persons', (req: Request, res: Response) => {
+router.post('/client-persons', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -2020,7 +2049,7 @@ router.post('/client-persons', (req: Request, res: Response) => {
 });
 
 // PUT /api/records/client-persons/:id - Update link details
-router.put('/client-persons/:id', (req: Request, res: Response) => {
+router.put('/client-persons/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const link = db.prepare('SELECT * FROM client_persons WHERE id = ?').get(req.params.id) as any;
@@ -2059,7 +2088,7 @@ router.put('/client-persons/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/client-persons/:id - Remove link
-router.delete('/client-persons/:id', (req: Request, res: Response) => {
+router.delete('/client-persons/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const link = db.prepare(`
@@ -2152,7 +2181,7 @@ router.get('/persons/:id/invoice-summary', (req: Request, res: Response) => {
 // ─── GET /api/records/ncic-query ─────────────────────────────
 // NCIC/NLETS query simulation — searches local database and returns
 // raw record data for client-side NCIC formatting.
-router.get('/ncic-query', (req: Request, res: Response) => {
+router.get('/ncic-query', async (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { type, query: q } = req.query;
@@ -2168,7 +2197,7 @@ router.get('/ncic-query', (req: Request, res: Response) => {
       case 'person': {
         // Search persons by name
         const persons = db.prepare(`
-          SELECT * FROM persons
+          SELECT ${PERSON_LIST_COLUMNS} FROM persons
           WHERE first_name LIKE ? OR last_name LIKE ?
             OR (first_name || ' ' || last_name) LIKE ?
             OR (last_name || ', ' || first_name) LIKE ?
@@ -2235,12 +2264,126 @@ router.get('/ncic-query', (req: Request, res: Response) => {
           LIMIT 10
         `).all(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
 
-        res.json({ type: 'warrant', results: warrants, query: q });
+        // Also search Utah state warrants (live scraper + local cache)
+        let utahResults: any[] = [];
+        try {
+          utahResults = await searchUtahWarrants(q as string);
+        } catch (err) {
+          console.warn('[NCIC] Utah warrant search failed:', err);
+        }
+
+        res.json({ type: 'warrant', results: warrants, utahResults, query: q });
+        break;
+      }
+
+      case 'phone': {
+        // Search persons by phone number
+        const phoneTerm = (q as string).replace(/[^\d]/g, ''); // strip non-digits
+        const phoneSearch = `%${phoneTerm}%`;
+        const persons = db.prepare(`
+          SELECT ${PERSON_LIST_COLUMNS} FROM persons
+          WHERE REPLACE(REPLACE(REPLACE(REPLACE(phone, '-', ''), '(', ''), ')', ''), ' ', '') LIKE ?
+          ORDER BY last_name, first_name
+          LIMIT 5
+        `).all(phoneSearch) as any[];
+
+        if (persons.length === 0) {
+          res.json({ type: 'phone', results: [], query: q });
+          return;
+        }
+
+        const results = persons.map(p => {
+          const criminalHistory = db.prepare(
+            'SELECT * FROM criminal_history WHERE person_id = ? ORDER BY offense_date DESC'
+          ).all(p.id);
+          let warrants: any[] = [];
+          try {
+            warrants = db.prepare(
+              "SELECT * FROM warrants WHERE subject_person_id = ? AND status = 'active' ORDER BY issue_date DESC"
+            ).all(p.id);
+          } catch { /* warrants table may not exist */ }
+          return { person: p, criminalHistory, warrants };
+        });
+
+        res.json({ type: 'phone', results, query: q });
+        break;
+      }
+
+      case 'address': {
+        // Address lookup — persons, calls for service, properties, trespass orders
+        const addrSearch = searchTerm;
+
+        // Persons at this address
+        const addrPersons = db.prepare(`
+          SELECT ${PERSON_LIST_COLUMNS} FROM persons
+          WHERE address LIKE ? OR (address || ' ' || COALESCE(city,'') || ' ' || COALESCE(state,'') || ' ' || COALESCE(zip,'')) LIKE ?
+          ORDER BY last_name, first_name
+          LIMIT 10
+        `).all(addrSearch, addrSearch) as any[];
+
+        // Add active warrant count per person
+        const personsWithWarrants = addrPersons.map(p => {
+          let active_warrants = 0;
+          try {
+            const row = db.prepare(
+              "SELECT COUNT(*) as cnt FROM warrants WHERE subject_person_id = ? AND status = 'active'"
+            ).get(p.id) as any;
+            active_warrants = row?.cnt || 0;
+          } catch { /* warrants table may not exist */ }
+          return { ...p, active_warrants };
+        });
+
+        // Recent calls at this address
+        let calls: any[] = [];
+        try {
+          calls = db.prepare(`
+            SELECT call_number, incident_type, priority, disposition, created_at,
+              weapons_involved, domestic_violence
+            FROM calls_for_service
+            WHERE location_address LIKE ?
+            ORDER BY created_at DESC
+            LIMIT 5
+          `).all(addrSearch);
+        } catch { /* calls table may not exist */ }
+
+        // Properties matching address
+        let properties: any[] = [];
+        try {
+          properties = db.prepare(`
+            SELECT name, address, gate_code, alarm_code, post_orders, hazard_notes
+            FROM properties
+            WHERE address LIKE ? OR name LIKE ?
+            LIMIT 5
+          `).all(addrSearch, addrSearch);
+        } catch { /* properties table may not exist */ }
+
+        // Active trespass orders at this address
+        let trespassOrders: any[] = [];
+        try {
+          trespassOrders = db.prepare(`
+            SELECT order_number, status,
+              (subject_first_name || ' ' || subject_last_name) as subject_name,
+              expiration_date
+            FROM trespass_orders
+            WHERE location LIKE ? AND status = 'active'
+            ORDER BY created_at DESC
+            LIMIT 10
+          `).all(addrSearch);
+        } catch { /* trespass table may not exist */ }
+
+        res.json({
+          type: 'address',
+          persons: personsWithWarrants,
+          calls,
+          properties,
+          trespassOrders,
+          query: q,
+        });
         break;
       }
 
       default:
-        res.status(400).json({ error: 'Invalid type. Use: person, vehicle, warrant' });
+        res.status(400).json({ error: 'Invalid type. Use: person, vehicle, warrant, phone, address' });
     }
   } catch (error: any) {
     console.error('NCIC query error:', error);

@@ -18,6 +18,8 @@ import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
+import { useFormValidation } from '../hooks/useFormValidation';
+import { isValidVIN, isValidPlate } from '../utils/validate';
 
 const VIOLATION_TYPES: { value: ViolationType; label: string }[] = [
   { value: 'noise', label: 'Noise' }, { value: 'property_maintenance', label: 'Property Maintenance' },
@@ -65,6 +67,8 @@ const EMPTY_TOW = {
 export default function CodeEnforcementPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
+  const { errors: vFormErrors, validate: validateVForm, clearAllErrors: clearVErrors } = useFormValidation();
+  const { errors: tFormErrors, validate: validateTForm, clearAllErrors: clearTErrors } = useFormValidation();
 
   const [activeTab, setActiveTab] = useState<'violations' | 'tows'>('violations');
 
@@ -140,7 +144,11 @@ export default function CodeEnforcementPage() {
   useLiveSync('records', () => { fetchViolations({ silent: true }); fetchTows({ silent: true }); fetchStats(); });
 
   const handleCreateViolation = async () => {
-    if (!vFormData.location || !vFormData.description) { addToast('Location and description required', 'error'); return; }
+    const isValid = validateVForm(vFormData, {
+      location: { required: true },
+      description: { required: true, minLength: 3 },
+    });
+    if (!isValid) return;
     setSubmitting(true);
     try {
       await apiFetch('/code-enforcement/violations', { method: 'POST', body: JSON.stringify(vFormData) });
@@ -153,7 +161,13 @@ export default function CodeEnforcementPage() {
   };
 
   const handleCreateTow = async () => {
-    if (!tFormData.tow_from || !tFormData.vehicle_make) { addToast('Vehicle make and tow-from location required', 'error'); return; }
+    const isValid = validateTForm(tFormData, {
+      vehicle_make: { required: true },
+      tow_from: { required: true },
+      vehicle_vin: { custom: (v) => !v || isValidVIN(v), customMessage: 'VIN must be 17 alphanumeric characters' },
+      vehicle_plate: { custom: (v) => !v || isValidPlate(v), customMessage: 'Invalid license plate format' },
+    });
+    if (!isValid) return;
     setSubmitting(true);
     try {
       await apiFetch('/code-enforcement/tows', { method: 'POST', body: JSON.stringify(tFormData) });
@@ -195,7 +209,7 @@ export default function CodeEnforcementPage() {
       <div className={`flex flex-col ${isMobile ? 'h-1/2' : 'w-[400px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Code Enforcement" icon={Construction}>
           <button
-            onClick={() => activeTab === 'violations' ? (setVFormOpen(true), setVFormData({ ...EMPTY_VIOLATION })) : (setTFormOpen(true), setTFormData({ ...EMPTY_TOW }))}
+            onClick={() => activeTab === 'violations' ? (clearVErrors(), setVFormOpen(true), setVFormData({ ...EMPTY_VIOLATION })) : (clearTErrors(), setTFormOpen(true), setTFormData({ ...EMPTY_TOW }))}
             className="toolbar-btn toolbar-btn-primary"
           >
             <Plus style={{ width: 11, height: 11 }} />
@@ -441,11 +455,13 @@ export default function CodeEnforcementPage() {
               </div>
               <div>
                 <label className="field-label">Location *</label>
-                <input value={vFormData.location} onChange={e => setVFormData(p => ({ ...p, location: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                <input value={vFormData.location} onChange={e => setVFormData(p => ({ ...p, location: e.target.value }))} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none ${vFormErrors.location ? 'border-red-500' : 'border-rmpg-700'}`} />
+                {vFormErrors.location && <p className="text-red-400 text-[10px] mt-0.5">{vFormErrors.location}</p>}
               </div>
               <div>
                 <label className="field-label">Description *</label>
-                <textarea value={vFormData.description} onChange={e => setVFormData(p => ({ ...p, description: e.target.value }))} rows={3} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
+                <textarea value={vFormData.description} onChange={e => setVFormData(p => ({ ...p, description: e.target.value }))} rows={3} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none resize-none ${vFormErrors.description ? 'border-red-500' : 'border-rmpg-700'}`} />
+                {vFormErrors.description && <p className="text-red-400 text-[10px] mt-0.5">{vFormErrors.description}</p>}
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -479,15 +495,15 @@ export default function CodeEnforcementPage() {
             <div className="p-4 space-y-3">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <div><label className="field-label">Year</label><input value={tFormData.vehicle_year} onChange={e => setTFormData(p => ({ ...p, vehicle_year: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
-                <div><label className="field-label">Make *</label><input value={tFormData.vehicle_make} onChange={e => setTFormData(p => ({ ...p, vehicle_make: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
+                <div><label className="field-label">Make *</label><input value={tFormData.vehicle_make} onChange={e => setTFormData(p => ({ ...p, vehicle_make: e.target.value }))} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none ${tFormErrors.vehicle_make ? 'border-red-500' : 'border-rmpg-700'}`} />{tFormErrors.vehicle_make && <p className="text-red-400 text-[10px] mt-0.5">{tFormErrors.vehicle_make}</p>}</div>
                 <div><label className="field-label">Model</label><input value={tFormData.vehicle_model} onChange={e => setTFormData(p => ({ ...p, vehicle_model: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
                 <div><label className="field-label">Color</label><input value={tFormData.vehicle_color} onChange={e => setTFormData(p => ({ ...p, vehicle_color: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div><label className="field-label">Plate</label><input value={tFormData.vehicle_plate} onChange={e => setTFormData(p => ({ ...p, vehicle_plate: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
+                <div><label className="field-label">Plate</label><input value={tFormData.vehicle_plate} onChange={e => setTFormData(p => ({ ...p, vehicle_plate: e.target.value }))} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none ${tFormErrors.vehicle_plate ? 'border-red-500' : 'border-rmpg-700'}`} />{tFormErrors.vehicle_plate && <p className="text-red-400 text-[10px] mt-0.5">{tFormErrors.vehicle_plate}</p>}</div>
                 <div><label className="field-label">Reason</label><select value={tFormData.tow_reason} onChange={e => setTFormData(p => ({ ...p, tow_reason: e.target.value as TowReason }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">{TOW_REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}</select></div>
               </div>
-              <div><label className="field-label">Tow From *</label><input value={tFormData.tow_from} onChange={e => setTFormData(p => ({ ...p, tow_from: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
+              <div><label className="field-label">Tow From *</label><input value={tFormData.tow_from} onChange={e => setTFormData(p => ({ ...p, tow_from: e.target.value }))} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none ${tFormErrors.tow_from ? 'border-red-500' : 'border-rmpg-700'}`} />{tFormErrors.tow_from && <p className="text-red-400 text-[10px] mt-0.5">{tFormErrors.tow_from}</p>}</div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div><label className="field-label">Tow Company</label><input value={tFormData.tow_company} onChange={e => setTFormData(p => ({ ...p, tow_company: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>
                 <div><label className="field-label">Tow Fee ($)</label><input value={tFormData.tow_fee} onChange={e => setTFormData(p => ({ ...p, tow_fee: e.target.value }))} type="number" className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" /></div>

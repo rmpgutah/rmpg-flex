@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../hooks/useApi';
 import { usePanicAudio } from '../hooks/usePanicAudio';
 import { playRadioTone } from '../utils/radioTones';
+import { useToast } from './ToastProvider';
 
 // ─── Panic Alarm — loops the unified panicWarble tone ────────────
 // Plays the Motorola APX emergency warble (960/1500Hz, 3s) in a
@@ -78,6 +79,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
   const { user } = useAuth();
   const { subscribe } = useWebSocket();
   const panicAudio = usePanicAudio();
+  const { addToast } = useToast();
   const [sending, setSending] = useState(false);
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [incomingAlert, setIncomingAlert] = useState<PanicAlert | null>(null);
@@ -92,10 +94,20 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
   const volumeUpPressTimesRef = useRef<number[]>([]);
   const volumeUpHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const volumeUpHeldRef = useRef(false);
+  const autoDismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sendingRef = useRef(false); // synchronous guard — React state is async and races
 
   const triggerHardwarePanic = useCallback(async () => {
-    // Skip if already sending or confirm visible
-    if (sending) return;
+    // Synchronous ref guard prevents double-fire from hold + rapid press race
+    if (sendingRef.current || sending) return;
+    sendingRef.current = true;
+    // Clear both trigger mechanisms so only one fires
+    if (volumeUpHoldTimerRef.current) {
+      clearTimeout(volumeUpHoldTimerRef.current);
+      volumeUpHoldTimerRef.current = null;
+    }
+    volumeUpPressTimesRef.current = [];
+    volumeUpHeldRef.current = false;
     // Directly trigger panic (no confirmation needed for hardware trigger)
     setSending(true);
     try {
@@ -111,10 +123,12 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
       panicAudio.startBroadcast();
     } catch (err) {
       console.error('Failed to send hardware panic alert:', err);
+      addToast('⚠️ PANIC ALERT FAILED — Retry or radio dispatch!', 'error', 15000);
     } finally {
       setSending(false);
+      sendingRef.current = false;
     }
-  }, [sending, latitude, longitude, panicAudio]);
+  }, [sending, latitude, longitude, panicAudio, addToast]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -122,6 +136,12 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
       if (e.key === 'AudioVolumeUp' || e.key === 'VolumeUp' || e.code === 'AudioVolumeUp') {
         // Prevent default volume change in the app
         e.preventDefault();
+
+        // Skip repeated keydown events (key held down fires keydown repeatedly)
+        if (e.repeat) return;
+
+        // Already sending — ignore further triggers
+        if (sendingRef.current) return;
 
         // Method 1: Long press (3 seconds)
         if (!volumeUpHeldRef.current) {
@@ -185,13 +205,17 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
       }
       // Play alarm
       alarmRef.current = playPanicAlarm(8000);
-      // Auto-dismiss after 30 seconds
-      setTimeout(() => {
+      // Auto-dismiss after 30 seconds (tracked for cleanup)
+      if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
+      autoDismissTimerRef.current = setTimeout(() => {
         setIncomingAlert(null);
         alarmRef.current?.stop();
       }, 30000);
     });
-    return unsub;
+    return () => {
+      unsub();
+      if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
+    };
   }, [subscribe, user?.id, panicAudio]);
 
   const dismissAlert = useCallback(() => {
@@ -224,6 +248,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
       panicAudio.startBroadcast();
     } catch (err) {
       console.error('Failed to send panic alert:', err);
+      addToast('⚠️ PANIC ALERT FAILED — Retry or radio dispatch!', 'error', 15000);
     } finally {
       setSending(false);
     }
@@ -292,7 +317,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
             {/* Header */}
             <div
               className="flex items-center gap-2 px-4 py-3"
-              style={{ background: 'linear-gradient(180deg, #8a0c0c, #6e0a0a)' }}
+              style={{ background: 'linear-gradient(180deg, #991b1b, #7f1d1d)' }}
             >
               <AlertTriangle className="animate-emergency-blink" style={{ width: 20, height: 20, color: '#ffffff' }} />
               <span className="text-sm font-bold uppercase tracking-widest text-white">

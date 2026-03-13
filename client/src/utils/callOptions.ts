@@ -70,8 +70,7 @@ export const LE_AGENCY_OPTIONS = [
 
 /** Scene safety assessment presets */
 export const SCENE_SAFETY_OPTIONS = [
-  '', 'Secure', 'Hazardous', 'Potentially Hazardous', 'Active Threat',
-  'Contained', 'Evacuated', 'Unknown',
+  '', 'Standard', 'Enhanced', 'Precaution',
 ] as const;
 
 /** Cardinal direction presets for direction of travel */

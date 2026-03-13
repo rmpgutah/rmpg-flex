@@ -131,8 +131,10 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         }),
       });
       // Auto-generate line items
-      const genRes = await apiFetch<{ data: InvoiceDetail }>(`/invoices/${res.data.id}/generate`, { method: 'POST' });
-      setSelectedInvoice(genRes.data);
+      const invoiceId = res?.data?.id ?? (res as any)?.id;
+      if (!invoiceId) throw new Error('Invoice creation returned no ID');
+      const genRes = await apiFetch<{ data: InvoiceDetail }>(`/invoices/${invoiceId}/generate`, { method: 'POST' });
+      setSelectedInvoice(genRes?.data ?? genRes as any);
       setView('detail');
       fetchInvoices();
       fetchStats();

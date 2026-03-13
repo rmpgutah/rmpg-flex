@@ -8,10 +8,17 @@
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { validateEnum, requireInt } from '../middleware/sanitize';
+import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
+import { createNotificationForRoles } from './notifications';
 
 const router = Router();
+
+// ─── Allowed enum values ─────────────────────────────────
+const VALID_CITATION_TYPES = ['traffic', 'criminal', 'parking', 'warning'] as const;
+const VALID_CITATION_STATUSES = ['issued', 'paid', 'contested', 'dismissed', 'warrant_issued', 'voided'] as const;
+const VALID_OFFENSE_LEVELS = ['infraction', 'misdemeanor', 'felony'] as const;
 router.use(authenticateToken);
 
 // ─── GET /api/citations/stats ─────────────────────────────
@@ -137,7 +144,7 @@ router.get('/', (req: Request, res: Response) => {
       date_to,
     } = req.query;
 
-    const pageNum = parseInt(page as string, 10);
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const limitNum = Math.min(parseInt(limit as string, 10) || 50, 200);
     const offset = (pageNum - 1) * limitNum;
 
@@ -222,7 +229,7 @@ router.get('/:id', (req: Request, res: Response) => {
 });
 
 // ─── POST /api/citations ─────────────────────────────────
-router.post('/', (req: Request, res: Response) => {
+router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
 
@@ -258,6 +265,16 @@ router.post('/', (req: Request, res: Response) => {
 
     if (!violation_date) {
       res.status(400).json({ error: 'violation_date is required' });
+      return;
+    }
+
+    // Validate enums
+    try {
+      validateEnum(type, VALID_CITATION_TYPES, 'type');
+      validateEnum(status, VALID_CITATION_STATUSES, 'status');
+      if (offense_level) validateEnum(offense_level, VALID_OFFENSE_LEVELS, 'offense_level');
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
       return;
     }
 
@@ -321,6 +338,15 @@ router.post('/', (req: Request, res: Response) => {
     );
 
     const created = db.prepare('SELECT * FROM citations WHERE id = ?').get(result.lastInsertRowid);
+
+    // Notify supervisors of citation issued
+    createNotificationForRoles(
+      ['admin', 'manager', 'supervisor'],
+      'citation', `Citation Issued: ${citation_number}`,
+      `${type} citation${person_name ? ` — ${person_name}` : ''}`,
+      'citation', Number(result.lastInsertRowid), 'normal', 'citation.issued', req.user!.userId,
+    );
+
     res.status(201).json({ data: created });
   } catch (error: any) {
     console.error('Create citation error:', error);
@@ -329,7 +355,7 @@ router.post('/', (req: Request, res: Response) => {
 });
 
 // ─── PUT /api/citations/:id ──────────────────────────────
-router.put('/:id', (req: Request, res: Response) => {
+router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const citation = db.prepare('SELECT * FROM citations WHERE id = ?').get(req.params.id) as any;
@@ -407,7 +433,7 @@ router.put('/:id', (req: Request, res: Response) => {
 
 // ─── DELETE /api/citations/:id ────────────────────────────
 // Soft-delete: sets status to 'voided'
-router.delete('/:id', (req: Request, res: Response) => {
+router.delete('/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const citation = db.prepare('SELECT * FROM citations WHERE id = ?').get(req.params.id) as any;

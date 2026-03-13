@@ -12,17 +12,21 @@ import { fileURLToPath } from 'url';
 import config from './config';
 import { initDatabase } from './models/database';
 import { initWebSocket, getConnectedUsers, getConnectedClientCount } from './utils/websocket';
+import { authenticateToken } from './middleware/auth';
 import { securityHeaders } from './middleware/securityHeaders';
 import { sanitizeInput } from './middleware/sanitize';
 import { apiRateLimit } from './middleware/rateLimiter';
 import { liveBroadcast } from './middleware/liveBroadcast';
-import { startPatrolMonitor } from './utils/patrolMonitor';
-import { startDailyReportScheduler } from './utils/dailyReportGenerator';
-import { startClearPathGpsPoller } from './utils/clearPathGpsPoller';
-import { scheduleOfacSync, searchOfacLocal } from './utils/ofacScraper';
-import { scheduleUtahWarrantSync } from './utils/utahWarrantScraper';
-import { scheduleArrestSync } from './utils/arrestScraper';
-import { scheduleJailRosterSync } from './utils/jailRosterScraper';
+import { startPatrolMonitor, stopPatrolMonitor } from './utils/patrolMonitor';
+import { startDailyReportScheduler, stopDailyReportScheduler } from './utils/dailyReportGenerator';
+import { startClearPathGpsPoller, stopClearPathGpsPoller } from './utils/clearPathGpsPoller';
+import { startClearPathGpsMediaPoller, stopClearPathGpsMediaPoller } from './utils/clearPathGpsMediaPoller';
+import { startEmailPoller, stopEmailPoller } from './utils/emailPoller';
+import { scheduleOfacSync, searchOfacLocal, stopOfacSync } from './utils/ofacScraper';
+import { scheduleUtahWarrantSync, stopUtahWarrantSync } from './utils/utahWarrantScraper';
+import { scheduleArrestSync, stopArrestSync } from './utils/arrestScraper';
+import { scheduleJailRosterSync, stopJailRosterSync } from './utils/jailRosterScraper';
+import { startServeManagerPoller, stopServeManagerPoller } from './utils/serveManagerPoller';
 import { getDb } from './models/database';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -79,9 +83,16 @@ import arrestRoutes from './routes/arrests';
 import jailRosterRoutes from './routes/jailRoster';
 import clearPathGpsRoutes from './routes/clearpathgps';
 import dlRecordRoutes from './routes/dlRecords';
-import ipedRoutes from './routes/iped';
+import connectionsRoutes from './routes/connections';
 import skiptracerRoutes from './routes/skiptracer';
 import dashcamVideoRoutes from './routes/dashcamVideos';
+import coloradoDocRoutes from './routes/coloradoDoc';
+import sexOffenderRegistryRoutes from './routes/sexOffenderRegistry';
+import emailRoutes from './routes/email';
+import crmRoutes from './routes/crm';
+import crmLeadsRoutes from './routes/crmLeads';
+import crmProposalsRoutes from './routes/crmProposals';
+import { scheduleLeadScrapers, stopLeadScrapers } from './utils/leadScraperBase';
 
 const app = express();
 
@@ -108,6 +119,15 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(sanitizeInput);
+
+// Request timeout — 30s default, skip for upload routes (large files)
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/uploads') || req.path.startsWith('/api/downloads')) return next();
+  req.setTimeout(30_000, () => {
+    if (!res.headersSent) res.status(408).json({ error: 'Request timeout' });
+  });
+  next();
+});
 
 // Apply rate limiting to API routes
 app.use('/api', apiRateLimit);
@@ -141,7 +161,8 @@ app.get('/api/health', (_req, res) => {
 });
 
 // ─── Presence Endpoint ───────────────────────────────
-app.get('/api/presence', (_req, res) => {
+// Requires auth — exposes online officer usernames/roles
+app.get('/api/presence', authenticateToken, (_req, res) => {
   const users = getConnectedUsers();
   res.json({ users, count: users.length, connections: getConnectedClientCount() });
 });
@@ -167,6 +188,7 @@ app.use('/api/admin', systemConfigRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/patrol', patrolRoutes);
 app.use('/api/warrants', warrantRoutes);
+app.use('/api/fleet/dashcam-videos', dashcamVideoRoutes);
 app.use('/api/fleet', fleetRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/statutes', statuteRoutes);
@@ -191,9 +213,14 @@ app.use('/api/arrests', arrestRoutes);
 app.use('/api/jail-roster', jailRosterRoutes);
 app.use('/api/clearpathgps', clearPathGpsRoutes);
 app.use('/api/dl-records', dlRecordRoutes);
-app.use('/api/iped', ipedRoutes);
+app.use('/api/connections', connectionsRoutes);
 app.use('/api/skiptracer', skiptracerRoutes);
-app.use('/api/fleet/dashcam-videos', dashcamVideoRoutes);
+app.use('/api/colorado-doc', coloradoDocRoutes);
+app.use('/api/sex-offender-registry', sexOffenderRegistryRoutes);
+app.use('/api/email', emailRoutes);
+app.use('/api/crm', crmRoutes);
+app.use('/api/crm', crmLeadsRoutes);
+app.use('/api/crm', crmProposalsRoutes);
 
 // Mount download page and file serving routes (outside /api)
 // Also mounts /updates/latest.yml, /updates/latest-mac.yml for electron-updater
@@ -265,13 +292,13 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 });
 
 // ─── Initialize and Start ─────────────────────────────
+// Declared outside try block so gracefulShutdown() can access it
+let primaryServer: http.Server | https.Server | null = null;
+
 try {
   // Initialize database
   initDatabase();
   console.log('Database initialized');
-
-  // Determine server type based on SSL availability
-  let primaryServer: http.Server | https.Server;
 
   if (config.ssl.enabled && config.ssl.cert && config.ssl.key) {
     // ─── HTTPS Mode ─────────────────────────────────
@@ -355,11 +382,22 @@ try {
     console.log('║    /api/servemanager - ServeManager               ║');
     console.log('║    /api/arrests    - Arrest Records (JailBase)   ║');
     console.log('║    /api/jail-roster - Jail Roster Scraper         ║');
-    console.log('║    /api/iped       - IPED Digital Forensics      ║');
+    console.log('║    /api/connections - Connection Analysis         ║');
+    console.log('║    /api/email      - Microsoft Email             ║');
     console.log('║    /api/skiptracer - Skip Tracer (RapidAPI)      ║');
     console.log('║    /api/health     - Health Check                ║');
     console.log('╚══════════════════════════════════════════════════╝');
     console.log('');
+
+    // Daily WAL checkpoint + ANALYZE for SQLite health
+    setInterval(() => {
+      try {
+        const db = getDb();
+        db.pragma('wal_checkpoint(PASSIVE)');
+        db.exec('ANALYZE');  // Update query planner statistics
+        console.log('[DB Maintenance] WAL checkpoint + ANALYZE completed');
+      } catch (e) { console.error('[DB Maintenance] Failed:', e); }
+    }, 24 * 60 * 60 * 1000).unref();
 
     // Start patrol monitor for missed scan alerts
     startPatrolMonitor(5 * 60 * 1000); // Check every 5 minutes
@@ -369,6 +407,15 @@ try {
 
     // Start ClearPathGPS fleet tracking poller
     startClearPathGpsPoller();
+
+    // Start ClearPathGPS media sync poller (dashcam video auto-download)
+    startClearPathGpsMediaPoller();
+
+    // Start Microsoft Email inbox sync poller
+    startEmailPoller();
+
+    // Start ServeManager auto-poller (syncs jobs → creates dispatch calls)
+    startServeManagerPoller();
 
     // Schedule jail roster sync
     scheduleJailRosterSync();
@@ -381,6 +428,9 @@ try {
 
     // Start JailBase arrest record sync (hourly from RapidAPI)
     scheduleArrestSync();
+
+    // Start CRM lead scrapers (Overwatch)
+    scheduleLeadScrapers();
 
     // Auto-backfill OFAC screening for existing person records (runs 60s after boot
     // to allow OFAC data sync to complete first)
@@ -425,17 +475,68 @@ try {
   process.exit(1);
 }
 
+// ─── Graceful shutdown ──────────────────────────────────────
+// Stop background pollers and schedulers before exit so resources are cleaned up.
+let isShuttingDown = false;
+
+function gracefulShutdown(signal: string) {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  console.log(`\n[Shutdown] ${signal} received — stopping background services...`);
+
+  // Force-exit after 10 seconds if graceful shutdown stalls
+  const forceTimer = setTimeout(() => {
+    console.error('[Shutdown] Timeout — forcing exit');
+    process.exit(1);
+  }, 10_000);
+  forceTimer.unref();
+
+  // Stop all background pollers/schedulers
+  try { stopPatrolMonitor(); } catch (e) { console.error('[Shutdown] stopPatrolMonitor:', e); }
+  try { stopClearPathGpsPoller(); } catch (e) { console.error('[Shutdown] stopClearPathGpsPoller:', e); }
+  try { stopClearPathGpsMediaPoller(); } catch (e) { console.error('[Shutdown] stopClearPathGpsMediaPoller:', e); }
+  try { stopEmailPoller(); } catch (e) { console.error('[Shutdown] stopEmailPoller:', e); }
+  try { stopServeManagerPoller(); } catch (e) { console.error('[Shutdown] stopServeManagerPoller:', e); }
+  try { stopOfacSync(); } catch (e) { console.error('[Shutdown] stopOfacSync:', e); }
+  try { stopUtahWarrantSync(); } catch (e) { console.error('[Shutdown] stopUtahWarrantSync:', e); }
+  try { stopArrestSync(); } catch (e) { console.error('[Shutdown] stopArrestSync:', e); }
+  try { stopJailRosterSync(); } catch (e) { console.error('[Shutdown] stopJailRosterSync:', e); }
+  try { stopLeadScrapers(); } catch (e) { console.error('[Shutdown] stopLeadScrapers:', e); }
+  try { stopDailyReportScheduler(); } catch (e) { console.error('[Shutdown] stopDailyReportScheduler:', e); }
+
+  // Final WAL checkpoint to flush pending writes
+  try {
+    const db = getDb();
+    db.pragma('wal_checkpoint(TRUNCATE)');
+    console.log('[Shutdown] WAL checkpoint completed');
+  } catch (e) { console.error('[Shutdown] WAL checkpoint failed:', e); }
+
+  // Close HTTP server to stop accepting new connections
+  if (primaryServer) {
+    primaryServer.close(() => {
+      console.log('[Shutdown] HTTP server closed. Exiting.');
+      process.exit(0);
+    });
+  } else {
+    console.log('[Shutdown] Background services stopped. Exiting.');
+    process.exit(0);
+  }
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
 // ─── Process-level crash protection ──────────────────────────
 // Log unhandled errors instead of dying silently.
 process.on('uncaughtException', (err) => {
   console.error('═══ UNCAUGHT EXCEPTION ═══');
-  console.error(err);
+  console.error(err.message || err);
   console.error('Server will continue running. Please investigate the above error.');
 });
 
-process.on('unhandledRejection', (reason, promise) => {
+process.on('unhandledRejection', (reason, _promise) => {
   console.error('═══ UNHANDLED PROMISE REJECTION ═══');
-  console.error('Reason:', reason);
+  console.error('Reason:', reason instanceof Error ? reason.message : reason);
   console.error('Server will continue running. Please investigate the above error.');
 });
 

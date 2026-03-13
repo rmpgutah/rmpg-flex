@@ -166,7 +166,7 @@ router.delete('/units/:id', requireRole('admin', 'manager'), (req: Request, res:
 });
 
 // PUT /api/dispatch/units/:id/status - Update unit status and location
-router.put('/units/:id/status', (req: Request, res: Response) => {
+router.put('/units/:id/status', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const unit = db.prepare('SELECT * FROM units WHERE id = ?').get(req.params.id) as any;
@@ -178,6 +178,13 @@ router.put('/units/:id/status', (req: Request, res: Response) => {
     const { status, latitude, longitude } = req.body;
     const now = localNow();
 
+    // Validate status value if provided
+    const VALID_UNIT_STATUSES = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service'];
+    if (status && !VALID_UNIT_STATUSES.includes(status)) {
+      res.status(400).json({ error: 'Invalid unit status', valid: VALID_UNIT_STATUSES });
+      return;
+    }
+
     const updates: string[] = [];
     const params: any[] = [];
 
@@ -186,6 +193,10 @@ router.put('/units/:id/status', (req: Request, res: Response) => {
       params.push(status);
       updates.push('last_status_change = ?');
       params.push(now);
+      // If going available or off duty, clear current call in the same UPDATE
+      if (status === 'available' || status === 'off_duty') {
+        updates.push('current_call_id = NULL');
+      }
     }
     if (latitude !== undefined) {
       updates.push('latitude = ?');
@@ -203,11 +214,6 @@ router.put('/units/:id/status', (req: Request, res: Response) => {
 
     params.push(unit.id);
     db.prepare(`UPDATE units SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-
-    // If unit going available, clear current call
-    if (status === 'available' || status === 'off_duty') {
-      db.prepare('UPDATE units SET current_call_id = NULL WHERE id = ?').run(unit.id);
-    }
 
     // Log activity
     db.prepare(`

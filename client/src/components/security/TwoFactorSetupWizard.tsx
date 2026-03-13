@@ -162,7 +162,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
 
           {/* QR code */}
           <div className="flex justify-center">
-            <div className="p-3" style={{ background: '#ffffff', borderRadius: 4 }}>
+            <div className="p-3" style={{ background: '#ffffff', borderRadius: 2 }}>
               {qrDataUri && <img src={qrDataUri} alt="2FA QR Code" width={180} height={180} />}
             </div>
           </div>

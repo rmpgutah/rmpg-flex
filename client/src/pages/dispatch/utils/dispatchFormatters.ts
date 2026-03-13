@@ -5,13 +5,25 @@
 import { toDisplayLabel } from '../../../utils/formatters';
 
 /** Filter tab type for the dispatch call queue. */
-export type FilterTab = 'all' | 'pending' | 'active' | 'cleared' | 'archived';
+export type FilterTab = 'all' | 'pending' | 'active' | 'cleared' | 'archived' | 'serve';
 
 /**
- * Format a date string to HH:MM:SS 24-hour time display.
+ * Format a date string to MM/DD/YYYY @ HH:MM:SS (12-hour with AM/PM).
+ * Example: 03/09/2026 @ 02:15:33 PM
  */
 export function formatTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '--';
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  let h = d.getHours();
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  const hh = String(h).padStart(2, '0');
+  const mi = String(d.getMinutes()).padStart(2, '0');
+  const ss = String(d.getSeconds()).padStart(2, '0');
+  return `${mm}/${dd}/${yyyy} @ ${hh}:${mi}:${ss} ${ampm}`;
 }
 
 /**

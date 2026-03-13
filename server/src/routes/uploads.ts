@@ -6,8 +6,16 @@ import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import jwt from 'jsonwebtoken';
 import { getDb } from '../models/database';
-import { authenticateToken, type JwtPayload } from '../middleware/auth';
+import { authenticateToken, requireRole, type JwtPayload } from '../middleware/auth';
 import config from '../config';
+
+/** Sanitize a filename for safe use in Content-Disposition headers.
+ *  Strips CRLF, null bytes, double quotes, and non-printable chars
+ *  to prevent header injection / response splitting attacks. */
+function safeContentDisposition(type: 'inline' | 'attachment', filename: string): string {
+  const safe = filename.replace(/[\r\n\0"]/g, '_').replace(/[^\x20-\x7E]/g, '_');
+  return `${type}; filename="${safe}"`;
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -83,7 +91,7 @@ const upload = multer({
 // without requiring a valid JWT session.  This prevents TOKEN_EXPIRED
 // errors when viewing photos/documents across sessions or computers.
 
-function signFileAccess(fileId: string, ttlSeconds = 31536000): { sig: string; exp: number } {
+function signFileAccess(fileId: string, ttlSeconds = 86400): { sig: string; exp: number } {
   const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
   const data = `file:${fileId}:${exp}`;
   const sig = crypto.createHmac('sha256', config.jwt.secret).update(data).digest('hex');
@@ -226,7 +234,7 @@ router.get('/:fileId', authenticateTokenOrQuery, (req: Request, res: Response) =
 
     // Set appropriate headers
     res.set('Content-Type', attachment.mime_type);
-    res.set('Content-Disposition', `inline; filename="${attachment.original_name}"`);
+    res.set('Content-Disposition', safeContentDisposition('inline', attachment.original_name));
     res.set('Content-Length', String(attachment.file_size));
     // Allow browser caching for 5 minutes
     res.set('Cache-Control', 'private, max-age=300');
@@ -257,7 +265,7 @@ router.get('/:fileId/download', authenticateTokenOrQuery, (req: Request, res: Re
     }
 
     res.set('Content-Type', 'application/octet-stream');
-    res.set('Content-Disposition', `attachment; filename="${attachment.original_name}"`);
+    res.set('Content-Disposition', safeContentDisposition('attachment', attachment.original_name));
     res.sendFile(filePath);
   } catch (error: any) {
     console.error('Download error:', error);
@@ -290,7 +298,7 @@ router.get('/:fileId/thumbnail', authenticateTokenOrQuery, (req: Request, res: R
     }
 
     res.set('Content-Type', attachment.mime_type);
-    res.set('Content-Disposition', `inline; filename="${attachment.original_name}"`);
+    res.set('Content-Disposition', safeContentDisposition('inline', attachment.original_name));
     res.set('Content-Length', String(attachment.file_size));
     res.set('Cache-Control', 'private, max-age=600');
 
@@ -366,7 +374,7 @@ router.post('/', upload.array('files', 10), (req: Request, res: Response) => {
 });
 
 // ─── PUT /api/uploads/:fileId/link ─── Link file to entity ───
-router.put('/:fileId/link', (req: Request, res: Response) => {
+router.put('/:fileId/link', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { entity_type, entity_id } = req.body;
@@ -404,9 +412,16 @@ router.delete('/:fileId', (req: Request, res: Response) => {
       return;
     }
 
-    // Delete file from disk
-    const filePath = path.join(UPLOAD_DIR, attachment.file_path);
-    if (fs.existsSync(filePath)) {
+    // Ownership check: only the uploader or admin/manager can delete files
+    const userRole = req.user!.role;
+    if (attachment.uploaded_by !== req.user!.userId && !['admin', 'manager'].includes(userRole)) {
+      res.status(403).json({ error: 'Not authorized to delete this file' });
+      return;
+    }
+
+    // Delete file from disk (validate path to prevent traversal)
+    const filePath = safeFilePath(attachment.file_path);
+    if (filePath && fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
     }
 

@@ -117,7 +117,7 @@ function doScriptLoad(
   };
 
   const script = document.createElement('script');
-  script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,marker&callback=${callbackName}&v=weekly`;
+  script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,marker,visualization&callback=${callbackName}&v=weekly`;
   script.async = true;
   script.defer = true;
   script.onerror = () => {

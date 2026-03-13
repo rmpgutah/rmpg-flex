@@ -46,6 +46,7 @@ export interface TransmissionEntry {
   startedAt: number;
   duration: number; // seconds
   transcript?: string;
+  hasAudio?: boolean;
 }
 
 export interface PanicRadioAlert {
@@ -192,10 +193,14 @@ export function useRadio() {
   const userIdRef = useRef<number>(0);
   useEffect(() => { userIdRef.current = Number(user?.id || 0); }, [user?.id]);
 
+  // Ref mirrors currentChannel for stale-closure-safe access in joinChannel
+  const currentChannelRef = useRef<string | null>(null);
+  useEffect(() => { currentChannelRef.current = state.currentChannel; }, [state.currentChannel]);
+
   // ─── Join a radio channel ───────────────────────────────────
   const joinChannel = useCallback((channelId: string) => {
-    // Leave current channel first (server handles this too, but be explicit)
-    if (state.currentChannel) {
+    // Leave current channel first (uses ref for stale-closure safety)
+    if (currentChannelRef.current) {
       send({ type: 'radio_channel_leave' });
     }
 
@@ -218,7 +223,7 @@ export function useRadio() {
 
     // APX channel-change confirmation tone
     playRadioTone('channelChange');
-  }, [send, state.currentChannel]);
+  }, [send]);
 
   // ─── Leave the current radio channel ────────────────────────
   const leaveChannel = useCallback(() => {
@@ -458,24 +463,34 @@ export function useRadio() {
     }
     const transcript = transcriptRef.current || undefined;
 
-    // Release mic
+    // Calculate duration (only valid because guard above ensures we started)
+    const duration = Math.max(0, Math.round((Date.now() - transmitStartTimeRef.current) / 1000));
+
+    // Helper: send the transmit_end signal to the server
+    const sendEnd = () => {
+      send({
+        type: 'radio_transmit_end',
+        data: { transcript, duration },
+      });
+    };
+
+    // Stop recorder — wait for final ondataavailable + FileReader before sending end
+    // The recorder's 'stop' event fires AFTER the final ondataavailable, then we
+    // add 150ms for the FileReader base64 conversion to complete and send the chunk.
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
+      const recorder = mediaRecorderRef.current;
+      recorder.addEventListener('stop', () => setTimeout(sendEnd, 150), { once: true });
+      recorder.stop();
+    } else {
+      sendEnd();
     }
+
+    // Release mic tracks
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     }
     mediaRecorderRef.current = null;
-
-    // Calculate duration (only valid because guard above ensures we started)
-    const duration = Math.max(0, Math.round((Date.now() - transmitStartTimeRef.current) / 1000));
-
-    // Tell server we're done — include transcript + duration for DB storage
-    send({
-      type: 'radio_transmit_end',
-      data: { transcript, duration },
-    });
 
     // APX roger beep — confirms transmission ended
     playRadioTone('rogerBeep');
@@ -498,6 +513,7 @@ export function useRadio() {
           startedAt: transmitStartTimeRef.current,
           duration,
           transcript,
+          hasAudio: true,
         },
         ...prev.transmissionLog,
       ].slice(0, MAX_LOG_ENTRIES),
@@ -640,6 +656,7 @@ export function useRadio() {
                 startedAt: Date.now(),
                 duration: data.duration || 0,
                 transcript: data.transcript || undefined,
+                hasAudio: data.hasAudio || false,
               },
               ...prev.transmissionLog,
             ].slice(0, MAX_LOG_ENTRIES),
@@ -678,6 +695,7 @@ export function useRadio() {
     // When a panic alert is broadcast, play the emergency warble
     // on the radio and log it as an EMERGENCY entry in the TX log.
     const panicPlayerRef: { current: StreamPlayer | null } = { current: null };
+    let panicDismissTimer: ReturnType<typeof setTimeout> | null = null;
 
     const unsubPanic = subscribe('panic_alert', (msg: any) => {
       const data = msg.data || msg;
@@ -711,8 +729,9 @@ export function useRadio() {
         ].slice(0, MAX_LOG_ENTRIES),
       }));
 
-      // Auto-dismiss panic banner after 30 seconds
-      setTimeout(() => {
+      // Auto-dismiss panic banner after 30 seconds (tracked for cleanup)
+      if (panicDismissTimer) clearTimeout(panicDismissTimer);
+      panicDismissTimer = setTimeout(() => {
         setState(prev => prev.panicAlert === alertData ? { ...prev, panicAlert: null } : prev);
       }, 30000);
     });
@@ -739,6 +758,7 @@ export function useRadio() {
       unsubPanic();
       unsubPanicAudio();
       panicPlayerRef.current?.destroy();
+      if (panicDismissTimer) clearTimeout(panicDismissTimer);
     };
   }, [subscribe, user?.id]);
 

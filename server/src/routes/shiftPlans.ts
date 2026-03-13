@@ -46,6 +46,8 @@ router.use((_req, _res, next) => {
       tablesInitialized = true;
     } catch (err) {
       console.error('shiftPlans initTables retry failed:', err);
+      _res.status(503).json({ error: 'Database tables not ready' });
+      return;
     }
   }
   next();

@@ -11,6 +11,7 @@ interface VehicleFormModalProps {
   onSubmit: (data: VehicleFormData) => void;
   isSubmitting: boolean;
   editingVehicle?: Vehicle;
+  submitError?: string | null;
 }
 
 export interface VehicleFormData {
@@ -124,6 +125,7 @@ export default function VehicleFormModal({
   onSubmit,
   isSubmitting,
   editingVehicle,
+  submitError,
 }: VehicleFormModalProps) {
   const [form, setForm] = useState<VehicleFormData>(EMPTY_FORM);
   const { isDirty, snapshot } = useFormDirty(form, isOpen);
@@ -204,6 +206,13 @@ export default function VehicleFormModal({
       maxWidth="max-w-3xl"
       isDirty={isDirty}
     >
+      {/* Submit Error */}
+      {submitError && (
+        <div className="px-3 py-2 -mt-2 mb-2 bg-red-900/30 border border-red-700 text-red-400 text-xs">
+          {submitError}
+        </div>
+      )}
+
       {/* Section Tabs */}
       <div className="flex gap-1 -mt-2 mb-3 border-b border-rmpg-700 pb-2">
         {[

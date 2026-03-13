@@ -41,7 +41,12 @@ import {
   Terminal,
   ExternalLink,
   CreditCard,
-  Microscope,
+  Network,
+  Camera,
+  ChevronLeft,
+  ChevronRight,
+  Mail,
+  GraduationCap,
 } from 'lucide-react';
 import { Navigation2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -52,6 +57,7 @@ import { usePresence } from '../hooks/usePresence';
 import RmpgLogo from './RmpgLogo';
 import StatusBar from './StatusBar';
 import MenuBar from './MenuBar';
+// Sidebar removed — navigation moved to top icon toolbar
 import ErrorBoundary from './ErrorBoundary';
 import NotificationCenter from './NotificationCenter';
 import PanicButton from './PanicButton';
@@ -77,6 +83,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/personnel': 'Personnel',
   '/communications': 'Communications',
   '/radio': 'Radio',
+  '/email': 'Email',
   '/patrol': 'Patrol',
   '/fleet': 'Fleet',
   '/warrants': 'Warrants',
@@ -97,14 +104,18 @@ const PAGE_TITLES: Record<string, string> = {
   '/court': 'Court Tracker',
   '/dar': 'Daily Activity Reports',
   '/offender-registry': 'Offender Registry',
+  '/sex-offender-registry': 'Sex Offender Registry',
   '/reports': 'Reports',
-  '/forensics': 'Digital Forensics',
+  '/forensics': 'Connection Analysis',
   '/audit': 'Audit Log',
+  '/crm': 'Overwatch',
+  '/training': 'Training Management',
+  '/training-docs': 'Training Documents',
   '/admin': 'Admin',
 };
 
 // Nav items — items with `children` render a dropdown menu in the toolbar
-interface NavChild { path: string; icon: React.ElementType; label: string; adminOnly?: boolean }
+interface NavChild { path: string; icon: React.ElementType; label: string; adminOnly?: boolean; newWindow?: boolean }
 interface NavItem {
   path: string;
   icon: React.ElementType;
@@ -112,6 +123,7 @@ interface NavItem {
   group: string;
   shortcut?: string;
   adminOnly?: boolean;
+  newWindow?: boolean;
   children?: NavChild[];
 }
 
@@ -131,22 +143,24 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/evidence', icon: Package, label: 'Evidence / Property' },
     { path: '/cases', icon: Briefcase, label: 'Case Management' },
   ]},
-  { path: '/warrants', icon: AlertTriangle, label: 'Enforce', group: 'records', shortcut: 'F7', children: [
-    { path: '/warrants', icon: AlertTriangle, label: 'Warrants' },
-    { path: '/citations', icon: FileWarning, label: 'Citations' },
-    { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders' },
-    { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement' },
-    { path: '/court', icon: Gavel, label: 'Court Tracker' },
-    { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
+  { path: '/warrants', icon: AlertTriangle, label: 'Enforce', group: 'records', shortcut: 'F7', newWindow: true, children: [
+    { path: '/warrants', icon: AlertTriangle, label: 'Warrants', newWindow: true },
+    { path: '/citations', icon: FileWarning, label: 'Citations', newWindow: true },
+    { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders', newWindow: true },
+    { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement', newWindow: true },
+    { path: '/court', icon: Gavel, label: 'Court Tracker', newWindow: true },
+    { path: '/offender-registry', icon: UserX, label: 'Offender Registry', newWindow: true },
   ]},
   { path: '/personnel', icon: Users, label: 'Personnel', group: 'records', shortcut: 'F8', children: [
     { path: '/personnel', icon: Users, label: 'Personnel' },
     { path: '/fleet', icon: Car, label: 'Fleet' },
     { path: '/body-cameras', icon: Video, label: 'Body Cameras' },
+    { path: '/dash-cameras', icon: Camera, label: 'Dash Cameras' },
   ]},
   { path: '/communications', icon: MessageSquare, label: 'Comms', group: 'comms', shortcut: 'F9', children: [
     { path: '/communications', icon: MessageSquare, label: 'Comms' },
     { path: '/radio', icon: Radio, label: 'Radio' },
+    { path: '/email', icon: Mail, label: 'Email' },
     { path: '/patrol', icon: QrCode, label: 'Patrol' },
   ]},
   { path: '/reports', icon: BarChart3, label: 'Reports', group: 'analysis', shortcut: 'F10', children: [
@@ -157,7 +171,9 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/crime-analysis', icon: TrendingUp, label: 'Crime Analysis' },
     { path: '/dar', icon: ClipboardCheck, label: 'Daily Activity' },
   ]},
-  { path: '/forensics', icon: Microscope, label: 'Forensics', group: 'analysis', adminOnly: true },
+  { path: '/crm', icon: Briefcase, label: 'Overwatch', group: 'analysis' },
+  { path: '/training', icon: GraduationCap, label: 'Training', group: 'analysis' },
+  { path: '/forensics', icon: Network, label: 'Connections', group: 'analysis', adminOnly: true },
   { path: '/audit', icon: ScrollText, label: 'Audit', group: 'system', shortcut: 'F11', adminOnly: true },
   { path: '/admin', icon: Settings, label: 'Admin', group: 'system', shortcut: 'F12', adminOnly: true },
 ];
@@ -180,6 +196,50 @@ export default function Layout() {
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
   const isContractManager = user?.role === 'contract_manager';
   const pageTitle = PAGE_TITLES[location.pathname] || 'Dashboard';
+
+  // ── Back / Forward navigation history tracking ──
+  // Uses state for canGoBack/canGoForward so buttons re-render properly.
+  // History array + index stored in refs to avoid infinite loops.
+  const navHistoryRef = useRef<string[]>([location.pathname]);
+  const navIndexRef = useRef(0);
+  const navSkipTrack = useRef(false);
+  const [canGoBack, setCanGoBack] = useState(false);
+  const [canGoForward, setCanGoForward] = useState(false);
+
+  useEffect(() => {
+    if (navSkipTrack.current) {
+      navSkipTrack.current = false;
+      // Still update button states after a back/forward navigation
+      setCanGoBack(navIndexRef.current > 0);
+      setCanGoForward(navIndexRef.current < navHistoryRef.current.length - 1);
+      return;
+    }
+    const idx = navIndexRef.current;
+    // Trim any forward entries when navigating to a new page
+    if (idx < navHistoryRef.current.length - 1) {
+      navHistoryRef.current = navHistoryRef.current.slice(0, idx + 1);
+    }
+    navHistoryRef.current.push(location.pathname);
+    navIndexRef.current = navHistoryRef.current.length - 1;
+    setCanGoBack(navIndexRef.current > 0);
+    setCanGoForward(false); // New navigation always clears forward
+  }, [location.pathname]);
+
+  const handleNavBack = useCallback(() => {
+    if (navIndexRef.current > 0) {
+      navIndexRef.current -= 1;
+      navSkipTrack.current = true;
+      navigate(navHistoryRef.current[navIndexRef.current]);
+    }
+  }, [navigate]);
+
+  const handleNavForward = useCallback(() => {
+    if (navIndexRef.current < navHistoryRef.current.length - 1) {
+      navIndexRef.current += 1;
+      navSkipTrack.current = true;
+      navigate(navHistoryRef.current[navIndexRef.current]);
+    }
+  }, [navigate]);
 
   // ── Offline PIN Modal (global catch for OfflineUnauthorizedError) ──
   const [offlinePinModalOpen, setOfflinePinModalOpen] = useState(false);
@@ -247,11 +307,10 @@ export default function Layout() {
   // Live header stats
   const [activeCallCount, setActiveCallCount] = useState(0);
   const [activeBOLOs, setActiveBOLOs] = useState(0);
+  const [emailUnreadCount, setEmailUnreadCount] = useState(0);
 
   // Toolbar nav dropdowns
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
-  const dropdownTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   // Close dropdown on route change
   useEffect(() => { setOpenDropdown(null); }, [location.pathname]);
 
@@ -273,12 +332,24 @@ export default function Layout() {
   // Close mobile menu on route change
   useEffect(() => { setMobileMenuOpen(false); }, [location.pathname]);
 
-  // F-key shortcut navigation (Spillman Flex style)
+  // F-key shortcut navigation (Spillman Flex style) + Alt+Arrow back/forward
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       // Don't handle if user is typing in an input
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+      // Alt+← = Back, Alt+→ = Forward
+      if (e.altKey && e.key === 'ArrowLeft') {
+        e.preventDefault();
+        handleNavBack();
+        return;
+      }
+      if (e.altKey && e.key === 'ArrowRight') {
+        e.preventDefault();
+        handleNavForward();
+        return;
+      }
 
       const fKey = e.key.match(/^F(\d+)$/);
       if (!fKey) return;
@@ -289,12 +360,16 @@ export default function Layout() {
         if (matchItem.adminOnly && !isAdmin) return;
         if (isContractManager && CONTRACT_MANAGER_BLOCKED_PATHS.has(matchItem.path)) return;
         e.preventDefault();
-        navigate(matchItem.path);
+        if (matchItem.newWindow) {
+          window.open(matchItem.path, '_blank');
+        } else {
+          navigate(matchItem.path);
+        }
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [navigate, isAdmin, isContractManager]);
+  }, [navigate, isAdmin, isContractManager, handleNavBack, handleNavForward]);
 
   // Profile dropdown & modal
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
@@ -311,6 +386,10 @@ export default function Layout() {
       const bolos = await apiFetch<any>('/comms/bolos/active');
       setActiveBOLOs(Array.isArray(bolos) ? bolos.length : 0);
     } catch { /* silent */ }
+    try {
+      const email = await apiFetch<{ count: number }>('/email/unread-count');
+      setEmailUnreadCount(email.count || 0);
+    } catch { /* silent — email may not be configured */ }
   }, []);
 
   // Fetch on mount and every 30 seconds
@@ -324,12 +403,18 @@ export default function Layout() {
   useEffect(() => {
     const unsub1 = subscribe('dispatch_update', () => fetchHeaderStats());
     const unsub2 = subscribe('bolo_alert', () => fetchHeaderStats());
-    return () => { unsub1(); unsub2(); };
+    const unsub3 = subscribe('email:new_messages' as any, () => {
+      apiFetch<{ count: number }>('/email/unread-count')
+        .then(r => setEmailUnreadCount(r.count || 0))
+        .catch(() => {});
+    });
+    return () => { unsub1(); unsub2(); unsub3(); };
   }, [subscribe, fetchHeaderStats]);
 
   // Refresh header user data when personnel/admin changes occur (e.g. admin edits user profile)
   useEffect(() => {
-    const unsub = subscribe('data_changed', (payload: any) => {
+    const unsub = subscribe('data_changed', (message: any) => {
+      const payload = message?.data;
       if (payload?.module === 'personnel' || payload?.module === 'admin' || payload?.module === 'auth') {
         refreshUser();
       }
@@ -449,6 +534,10 @@ export default function Layout() {
             onProfileTap={() => openProfileModal('profile')}
             gpsLatitude={gps.latitude}
             gpsLongitude={gps.longitude}
+            canGoBack={canGoBack}
+            canGoForward={canGoForward}
+            onNavBack={handleNavBack}
+            onNavForward={handleNavForward}
           />
           <MobileDrawer
             isOpen={mobileMenuOpen}
@@ -512,8 +601,68 @@ export default function Layout() {
             </div>
           </div>
 
-          {/* Right — PANIC + Profile */}
-          <div className="flex items-center gap-3" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          {/* Right — Status indicators + PANIC + Profile */}
+          <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+            {/* Status indicators — compact inline */}
+            <div className="hidden lg:flex items-center gap-1.5">
+              {/* Active Calls */}
+              <button
+                onClick={() => navigate('/dispatch')}
+                className="flex items-center gap-1 px-2 py-0.5 panel-inset cursor-pointer transition-colors bg-surface-sunken hover:bg-rmpg-800"
+              >
+                <Phone style={{ width: 9, height: 9 }} className="text-red-500" />
+                <span className="text-[9px] font-mono font-bold text-rmpg-400">CALLS:</span>
+                <span className="text-[9px] font-mono font-bold text-white">{activeCallCount}</span>
+              </button>
+
+              {/* BOLO Indicator */}
+              {activeBOLOs > 0 && (
+                <button
+                  onClick={() => navigate('/communications')}
+                  className="flex items-center gap-1 px-2 py-0.5 cursor-pointer"
+                  style={{ background: 'rgba(220, 38, 38, 0.25)', border: '1px solid #991b1b' }}
+                >
+                  <span className="led-dot led-red animate-led-blink" />
+                  <span className="text-[9px] font-mono font-bold" style={{ color: '#ef7a7a' }}>
+                    BOLO: {activeBOLOs}
+                  </span>
+                </button>
+              )}
+
+              {/* GPS */}
+              <div
+                className="flex items-center gap-1 px-1.5 py-0.5 panel-inset"
+                style={{ background: gps.isTracking ? 'rgba(34, 197, 94, 0.1)' : '#0d1520' }}
+                title={gps.isTracking ? `GPS ON — ${gps.unitCallSign || 'no unit'}` : 'GPS acquiring...'}
+              >
+                <Navigation2 style={{ width: 9, height: 9, color: gps.isTracking ? '#22c55e' : '#5a6e80', transform: gps.heading != null ? `rotate(${gps.heading}deg)` : undefined }} />
+                {gps.isTracking && <span className="led-dot led-green animate-led-blink" />}
+              </div>
+
+              {/* WS + Users */}
+              <div className="flex items-center gap-1 px-1.5 py-0.5 panel-inset bg-surface-sunken">
+                <span className={`led-dot ${isConnected ? 'led-green' : 'led-red animate-led-blink'}`} />
+                <Users style={{ width: 9, height: 9 }} className="text-rmpg-500" />
+                <span className="text-[9px] font-mono font-bold text-rmpg-300">{presence.count}</span>
+              </div>
+
+              {/* Notifications */}
+              <NotificationCenter />
+
+              {/* Search */}
+              <button
+                onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))}
+                className="toolbar-btn"
+                title="Search (Ctrl+K)"
+                style={{ padding: '2px 6px' }}
+              >
+                <Search style={{ width: 10, height: 10 }} />
+              </button>
+            </div>
+
+            {/* Separator */}
+            <div className="hidden lg:block w-px h-7" style={{ background: '#2a3e58' }} />
+
             {/* PANIC Button */}
             <PanicButton latitude={gps.latitude} longitude={gps.longitude} />
 
@@ -673,227 +822,215 @@ export default function Layout() {
       </div>
 
       {/* ============================================================ */}
-      {/* TOOLBAR ROW 2 — Icon Toolbar (Spillman Flex style) HIDDEN ON MOBILE */}
+      {/* TOOLBAR ROW 2 — Icon Navigation Toolbar (Spillman Flex style) */}
+      {/* Square buttons: icon above label, F-key badge, dropdown for children */}
       {/* ============================================================ */}
       <div
-        className="hidden md:flex items-center justify-between px-1"
+        className="hidden md:flex items-center gap-0 px-1 select-none"
         style={{
-          height: '46px',
-          background: 'linear-gradient(180deg, var(--toolbar-gradient-end) 0%, var(--toolbar-gradient-start) 50%, #124070 100%)',
-          borderBottom: '1px solid #0e3359',
-          borderTop: '1px solid #3b8ad4',
+          height: 46,
+          background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)',
+          borderBottom: '1px solid #1e3048',
           flexShrink: 0,
-          overflow: 'visible',
         }}
+        data-nav-dropdown
       >
-        {/* Left — Nav toolbar buttons (with dropdown groups) */}
-        <div className="flex items-center gap-0 flex-shrink-0">
-          {TOOLBAR_NAV.filter(item => {
+        {/* Back / Forward navigation buttons */}
+        <button
+          type="button"
+          onClick={handleNavBack}
+          disabled={!canGoBack}
+          className="toolbar-btn"
+          title="Back (Alt+←)"
+          style={{ height: 36, width: 30, padding: '2px 4px', opacity: canGoBack ? 1 : 0.3 }}
+        >
+          <ChevronLeft style={{ width: 16, height: 16 }} />
+        </button>
+        <button
+          type="button"
+          onClick={handleNavForward}
+          disabled={!canGoForward}
+          className="toolbar-btn"
+          title="Forward (Alt+→)"
+          style={{ height: 36, width: 30, padding: '2px 4px', opacity: canGoForward ? 1 : 0.3 }}
+        >
+          <ChevronRight style={{ width: 16, height: 16 }} />
+        </button>
+        <div
+          className="self-stretch mx-0.5"
+          style={{ width: 1, background: '#1e3048', margin: '6px 2px' }}
+        />
+
+        {(() => {
+          let lastGroup = '';
+          return TOOLBAR_NAV.filter(item => {
             if (item.adminOnly && !isAdmin) return false;
             if (isContractManager && CONTRACT_MANAGER_BLOCKED_PATHS.has(item.path)) return false;
             return true;
-          }).map((item, idx, filtered) => {
+          }).map((item) => {
             const Icon = item.icon;
-            const prevGroup = idx > 0 ? filtered[idx - 1].group : item.group;
-            const showSep = idx > 0 && item.group !== prevGroup;
+            const isActive = item.path === '/' ? location.pathname === '/' : location.pathname.startsWith(item.path);
             const hasChildren = item.children && item.children.length > 0;
-
-            // Active state: for dropdown parents, active if any child matches
-            const isActive = hasChildren
-              ? item.children!.some(c => location.pathname.startsWith(c.path))
-              : item.path === '/'
-                ? location.pathname === '/'
-                : location.pathname.startsWith(item.path);
-
-            if (hasChildren) {
-              const isOpen = openDropdown === item.label;
-              return (
-                <React.Fragment key={item.label}>
-                  {showSep && <div className="toolbar-separator" style={{ height: 32 }} />}
-                  <div className="relative" data-nav-dropdown>
-                    <button
-                      onClick={() => setOpenDropdown(isOpen ? null : item.label)}
-                      onMouseEnter={() => {
-                        if (openDropdown && openDropdown !== item.label) {
-                          if (dropdownTimeoutRef.current) clearTimeout(dropdownTimeoutRef.current);
-                          setOpenDropdown(item.label);
-                        }
-                      }}
-                      className={`flex flex-col items-center justify-center gap-0 px-2 py-0.5 cursor-pointer transition-all border ${
-                        isActive
-                          ? 'bg-white/15 border-white/20 text-white'
-                          : 'bg-transparent border-transparent hover:bg-white/10 hover:border-white/10 text-white/80'
-                      }`}
-                      style={{ minWidth: 52, height: 40, borderRadius: 2 }}
-                      title={`${item.label} (${item.shortcut})`}
-                    >
-                      <Icon style={{ width: 18, height: 18 }} />
-                      <span className="text-[8px] font-bold uppercase tracking-wide leading-none mt-0.5 flex items-center gap-0.5">
-                        {item.label}
-                        <ChevronDown style={{ width: 6, height: 6, opacity: 0.5 }} />
-                      </span>
-                      {item.shortcut && (
-                        <span className="text-[7px] font-mono opacity-50 leading-none">{item.shortcut}</span>
-                      )}
-                    </button>
-                    {isOpen && (
-                      <div
-                        className="absolute top-full left-0 z-50 min-w-[160px] py-1"
-                        style={{
-                          background: '#1a2636',
-                          border: '1px solid #2a3e58',
-                          boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
-                          marginTop: 1,
-                        }}
-                      >
-                        {item.children!.filter(c => {
-                          if (c.adminOnly && !isAdmin) return false;
-                          if (isContractManager && CONTRACT_MANAGER_BLOCKED_PATHS.has(c.path)) return false;
-                          return true;
-                        }).map((child) => {
-                          const ChildIcon = child.icon;
-                          const childActive = location.pathname.startsWith(child.path);
-                          return (
-                            <button
-                              key={child.path}
-                              onClick={() => { navigate(child.path); setOpenDropdown(null); }}
-                              className={`w-full flex items-center gap-2 px-3 py-1.5 text-left text-[10px] transition-colors ${
-                                childActive
-                                  ? 'bg-brand-900/30 text-white'
-                                  : 'text-rmpg-300 hover:bg-rmpg-700/40 hover:text-white'
-                              }`}
-                            >
-                              <ChildIcon style={{ width: 11, height: 11 }} className={childActive ? 'text-brand-400' : 'text-rmpg-500'} />
-                              <span>{child.label}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </React.Fragment>
-              );
-            }
+            const isDropdownOpen = openDropdown === item.path;
+            const showSep = lastGroup !== '' && item.group !== lastGroup;
+            lastGroup = item.group;
 
             return (
               <React.Fragment key={item.path}>
-                {showSep && <div className="toolbar-separator" style={{ height: 32 }} />}
-                <button
-                  onClick={() => { navigate(item.path); setOpenDropdown(null); }}
-                  onMouseEnter={() => { if (openDropdown) setOpenDropdown(null); }}
-                  className={`flex flex-col items-center justify-center gap-0 px-2 py-0.5 cursor-pointer transition-all border ${
-                    isActive
-                      ? 'bg-white/15 border-white/20 text-white'
-                      : 'bg-transparent border-transparent hover:bg-white/10 hover:border-white/10 text-white/80'
-                  }`}
-                  style={{ minWidth: 52, height: 40, borderRadius: 2 }}
-                  title={`${item.label} (${item.shortcut})`}
-                >
-                  <Icon style={{ width: 18, height: 18 }} />
-                  <span className="text-[8px] font-bold uppercase tracking-wide leading-none mt-0.5">
-                    {item.label}
-                  </span>
-                  {item.shortcut && (
-                    <span className="text-[7px] font-mono opacity-50 leading-none">{item.shortcut}</span>
+                {showSep && (
+                  <div
+                    className="self-stretch mx-0.5"
+                    style={{ width: 1, background: '#1e3048', margin: '6px 2px' }}
+                  />
+                )}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (hasChildren) {
+                        setOpenDropdown(isDropdownOpen ? null : item.path);
+                      } else {
+                        setOpenDropdown(null);
+                        if (item.newWindow) {
+                          window.open(item.path, '_blank');
+                        } else {
+                          navigate(item.path);
+                        }
+                      }
+                    }}
+                    className="flex flex-col items-center justify-center transition-all"
+                    style={{
+                      width: 52,
+                      height: 42,
+                      padding: '2px 4px',
+                      background: isActive
+                        ? 'linear-gradient(180deg, rgba(26,90,158,0.35) 0%, rgba(26,90,158,0.15) 100%)'
+                        : isDropdownOpen
+                          ? 'rgba(255,255,255,0.05)'
+                          : 'transparent',
+                      borderBottom: isActive ? '2px solid #3b8ad4' : '2px solid transparent',
+                      color: isActive ? '#ffffff' : '#8a9aaa',
+                      cursor: 'pointer',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isActive && !isDropdownOpen) {
+                        (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isActive && !isDropdownOpen) {
+                        (e.currentTarget as HTMLElement).style.background = 'transparent';
+                      }
+                    }}
+                    title={`${item.label}${item.shortcut ? ` (${item.shortcut})` : ''}`}
+                  >
+                    <Icon
+                      style={{
+                        width: 16,
+                        height: 16,
+                        color: isActive ? '#3b8ad4' : '#5a6e80',
+                        marginBottom: 1,
+                      }}
+                    />
+                    {/* Email unread badge on Comms toolbar button */}
+                    {item.path === '/communications' && emailUnreadCount > 0 && (
+                      <span
+                        className="absolute flex items-center justify-center font-bold"
+                        style={{
+                          top: 1, left: 30,
+                          minWidth: 14, height: 14, padding: '0 3px',
+                          fontSize: 8, lineHeight: 1,
+                          background: '#dc2626', color: '#fff',
+                          borderRadius: 7, border: '1px solid #141e2b',
+                        }}
+                      >
+                        {emailUnreadCount > 99 ? '99+' : emailUnreadCount}
+                      </span>
+                    )}
+                    <span
+                      className="font-medium leading-none"
+                      style={{ fontSize: 9, letterSpacing: '0.02em' }}
+                    >
+                      {item.label}
+                    </span>
+                    {item.shortcut && (
+                      <span
+                        className="absolute font-mono"
+                        style={{
+                          fontSize: 7,
+                          top: 2,
+                          right: 3,
+                          color: isActive ? '#3b8ad4' : '#3a4e60',
+                        }}
+                      >
+                        {item.shortcut}
+                      </span>
+                    )}
+                    {hasChildren && (
+                      <ChevronDown
+                        style={{
+                          width: 8,
+                          height: 8,
+                          position: 'absolute',
+                          bottom: 2,
+                          right: 2,
+                          color: '#3a4e60',
+                          transform: isDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                          transition: 'transform 0.15s',
+                        }}
+                      />
+                    )}
+                  </button>
+
+                  {/* Dropdown menu for items with children */}
+                  {hasChildren && isDropdownOpen && (
+                    <div
+                      className="absolute top-full left-0 z-50 py-1 animate-dropdown-appear"
+                      style={{
+                        minWidth: 200,
+                        background: '#1a2636',
+                        border: '1px solid #2a3e58',
+                        borderTop: '2px solid #1a5a9e',
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                      }}
+                    >
+                      {item.children!.filter(child => {
+                        if (child.adminOnly && !isAdmin) return false;
+                        if (isContractManager && CONTRACT_MANAGER_BLOCKED_PATHS.has(child.path)) return false;
+                        return true;
+                      }).map((child) => {
+                        const ChildIcon = child.icon;
+                        const childActive = child.path === '/' ? location.pathname === '/' : location.pathname.startsWith(child.path);
+                        return (
+                          <button
+                            key={child.path}
+                            type="button"
+                            onClick={() => {
+                              setOpenDropdown(null);
+                              if (child.newWindow || item.newWindow) {
+                                window.open(child.path, '_blank');
+                              } else {
+                                navigate(child.path);
+                              }
+                            }}
+                            className="flex items-center gap-2.5 w-full px-3 py-1.5 text-left transition-colors hover:bg-white/[0.06]"
+                            style={{
+                              color: childActive ? '#ffffff' : '#b0bcc8',
+                              background: childActive ? 'rgba(26,90,158,0.15)' : 'transparent',
+                            }}
+                          >
+                            <ChildIcon style={{ width: 14, height: 14, color: childActive ? '#3b8ad4' : '#5a6e80', flexShrink: 0 }} />
+                            <span className="text-[11px] font-medium">{child.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   )}
-                </button>
+                </div>
               </React.Fragment>
             );
-          })}
-        </div>
-
-        {/* Middle — Status indicators (scrollable on narrow screens) */}
-        <div className="flex items-center gap-1 lg:gap-2 flex-1 min-w-0 overflow-x-auto mx-2" style={{ scrollbarWidth: 'none' }}>
-          {/* Active Calls */}
-          <button
-            onClick={() => navigate('/dispatch')}
-            className="flex items-center gap-1.5 px-2 py-0.5 panel-inset cursor-pointer transition-colors bg-surface-sunken hover:bg-rmpg-800"
-          >
-            <Phone style={{ width: 10, height: 10 }} className="text-red-500" />
-            <span className="text-[10px] font-mono font-bold text-rmpg-400">CALLS:</span>
-            <span className="text-[10px] font-mono font-bold text-white">{activeCallCount}</span>
-          </button>
-
-          {/* BOLO Indicator */}
-          {activeBOLOs > 0 && (
-            <button
-              onClick={() => navigate('/communications')}
-              className="flex items-center gap-1.5 px-2 py-0.5 cursor-pointer"
-              style={{ background: 'rgba(220, 38, 38, 0.25)', border: '1px solid #991b1b' }}
-            >
-              <span className="led-dot led-red animate-led-blink" />
-              <span className="text-[10px] font-mono font-bold" style={{ color: '#ef7a7a' }}>
-                BOLO: {activeBOLOs}
-              </span>
-            </button>
-          )}
-
-          {/* Notification Center */}
-          <NotificationCenter />
-
-          {/* GPS Status Indicator (Mandatory — always on) */}
-          <div
-            className="flex items-center gap-1 px-2 py-0.5 panel-inset transition-colors"
-            style={{ background: gps.isTracking ? 'rgba(34, 197, 94, 0.1)' : gps.permissionDenied ? 'rgba(220, 38, 38, 0.15)' : '#0d1520' }}
-            title={
-              gps.isTracking
-                ? `GPS ON (Mandatory) — ${gps.unitCallSign || 'no unit'} — ${gps.accuracy ? Math.round(gps.accuracy) + 'm accuracy' : 'acquiring...'}`
-                : gps.permissionDenied
-                  ? 'GPS DENIED — Location sharing is mandatory'
-                  : 'GPS — Acquiring location...'
-            }
-          >
-            <Navigation2
-              style={{
-                width: 10,
-                height: 10,
-                color: gps.isTracking ? '#22c55e' : gps.permissionDenied ? '#ef4444' : '#5a6e80',
-                transform: gps.heading != null ? `rotate(${gps.heading}deg)` : undefined,
-                transition: 'transform 0.3s ease, color 0.2s',
-              }}
-            />
-            <span className="text-[9px] font-mono font-bold" style={{ color: gps.isTracking ? '#22c55e' : gps.permissionDenied ? '#ef4444' : '#5a6e80' }}>
-              GPS
-            </span>
-            {gps.isTracking && (
-              <span className="led-dot led-green animate-led-blink" />
-            )}
-            {gps.permissionDenied && (
-              <span className="led-dot led-red animate-led-blink" />
-            )}
-          </div>
-
-          {/* WebSocket Status LED */}
-          <div className="flex items-center gap-1 px-2 py-0.5 panel-inset bg-surface-sunken">
-            <span className={`led-dot ${isConnected ? 'led-green' : 'led-red animate-led-blink'}`} />
-            <span className={`text-[9px] font-mono font-bold ${isConnected ? 'text-green-400' : 'text-red-400'}`}>
-              {isConnected ? 'WS' : 'OFF'}
-            </span>
-          </div>
-
-          {/* Online Users Count */}
-          <div className="flex items-center gap-1 px-2 py-0.5 panel-inset bg-surface-sunken" title={presence.users.map(u => u.username).join(', ') || 'No users online'}>
-            <Users style={{ width: 10, height: 10 }} className="text-rmpg-500" />
-            <span className="text-[9px] font-mono font-bold text-rmpg-300">
-              {presence.count}
-            </span>
-          </div>
-
-          {/* Global Search */}
-          <button
-            onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))}
-            className="toolbar-btn"
-            title="Search (Ctrl+K)"
-          >
-            <Search style={{ width: 10, height: 10 }} />
-            <span className="text-[9px] font-mono text-rmpg-500">Ctrl+K</span>
-          </button>
-        </div>
-
-        {/* Right — Page title in brackets */}
-        <div className="text-[10px] font-mono font-bold tracking-wider md:hidden" style={{ color: '#5a6e80' }}>
-          [{pageTitle.toUpperCase()}]
-        </div>
+          });
+        })()}
       </div>
 
       {/* Mandatory Location Gate — blocks app if GPS permission denied */}
@@ -904,12 +1041,17 @@ export default function Layout() {
         onRetry={gps.startTracking}
       />
 
-      {/* Page Content (recessed panel — charcoal bg matching borders) */}
-      <main className="flex-1 overflow-auto min-h-0 panel-inset" style={{ background: '#1a2636' }}>
-        <ErrorBoundary>
-          <Outlet />
-        </ErrorBoundary>
-      </main>
+      {/* ============================================================ */}
+      {/* MAIN CONTENT AREA — Full width (no sidebar)                  */}
+      {/* ============================================================ */}
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        {/* Page Content (recessed panel) */}
+        <main className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter" key={location.pathname} style={{ background: '#1a2636' }}>
+          <ErrorBoundary>
+            <Outlet />
+          </ErrorBoundary>
+        </main>
+      </div>
 
       {/* Status Bar Footer — Desktop only (mobile status is in the drawer) */}
       {!isMobile && (

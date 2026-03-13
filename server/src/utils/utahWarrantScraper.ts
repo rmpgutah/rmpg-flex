@@ -310,11 +310,248 @@ export function getUtahWarrantSyncStatus(): {
   }
 }
 
-// ── Scheduler (no-op — live search doesn't need bulk sync) ───
+// ══════════════════════════════════════════════════════════════
+// WARRANT WATCH — Automated Bulk Scan
+// ══════════════════════════════════════════════════════════════
+// Runs every 12 hours (noon + midnight Mountain Time).
+// Iterates every person in the persons table, queries Utah
+// warrants API, logs NEW hits and CLEARED warrants.
+// ══════════════════════════════════════════════════════════════
+
+/** Delay between person searches to avoid rate-limiting (3 seconds) */
+const SCAN_DELAY_MS = 3000;
+
+/** Generate a unique run ID for each scan */
+function generateRunId(): string {
+  return `SCAN-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`;
+}
+
+/**
+ * Run a full warrant watch scan against all persons in the database.
+ * For each person with a first + last name, queries warrants.utah.gov
+ * and compares results against the previous scan to detect new warrants
+ * and cleared warrants.
+ */
+export async function runWarrantWatchScan(): Promise<{
+  personsChecked: number;
+  newWarrants: number;
+  clearedWarrants: number;
+  errors: number;
+}> {
+  const db = getDb();
+  const now = localNow();
+  const runId = generateRunId();
+
+  // Create scan run record
+  db.prepare(`
+    INSERT INTO warrant_watch_runs (run_id, started_at, status)
+    VALUES (?, ?, 'running')
+  `).run(runId, now);
+
+  console.log(`[Warrant Watch] ═══ Starting bulk scan ${runId} ═══`);
+
+  let personsChecked = 0;
+  let newWarrants = 0;
+  let clearedWarrants = 0;
+  let errors = 0;
+
+  try {
+    // Get all persons with first + last name (required by Utah API)
+    const persons = db.prepare(`
+      SELECT id, first_name, last_name
+      FROM persons
+      WHERE first_name IS NOT NULL AND first_name != ''
+        AND last_name IS NOT NULL AND last_name != ''
+        AND archived_at IS NULL
+      ORDER BY last_name, first_name
+    `).all() as { id: number; first_name: string; last_name: string }[];
+
+    console.log(`[Warrant Watch] Scanning ${persons.length} persons against warrants.utah.gov`);
+
+    // Get all currently-known warrant matches from previous scans
+    // (most recent warrant_found event per person that hasn't been cleared)
+    const previousHits = db.prepare(`
+      SELECT DISTINCT person_id, utah_warrant_id
+      FROM warrant_watch_log
+      WHERE event = 'warrant_found'
+        AND NOT EXISTS (
+          SELECT 1 FROM warrant_watch_log wl2
+          WHERE wl2.person_id = warrant_watch_log.person_id
+            AND wl2.utah_warrant_id = warrant_watch_log.utah_warrant_id
+            AND wl2.event = 'warrant_cleared'
+            AND wl2.created_at > warrant_watch_log.created_at
+        )
+    `).all() as { person_id: number; utah_warrant_id: string }[];
+
+    // Build a Set of "personId:warrantId" for fast lookup
+    const activeWarrantKeys = new Set(
+      previousHits.map(h => `${h.person_id}:${h.utah_warrant_id}`)
+    );
+
+    // Build a Map of personId → Set<warrantId> for cleared-warrant detection
+    const warrantsByPerson = new Map<number, Set<string>>();
+    for (const h of previousHits) {
+      if (!warrantsByPerson.has(h.person_id)) warrantsByPerson.set(h.person_id, new Set());
+      warrantsByPerson.get(h.person_id)!.add(h.utah_warrant_id);
+    }
+
+    // Prepared statements for logging
+    const insertLog = db.prepare(`
+      INSERT INTO warrant_watch_log
+        (person_id, person_name, event, utah_warrant_id, utah_person_id,
+         court_name, case_id, charges, issue_date, scan_run_id, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    for (const person of persons) {
+      try {
+        const results = await searchUtahWarrantsLive(person.first_name, person.last_name);
+        personsChecked++;
+
+        const personName = `${person.first_name} ${person.last_name}`;
+
+        // Track which warrants we found this scan for this person
+        const foundWarrantIds = new Set<string>();
+
+        for (const r of results) {
+          // Only match if name closely matches our person record
+          const nameMatch =
+            r.first_name.toUpperCase() === person.first_name.toUpperCase() &&
+            r.last_name.toUpperCase() === person.last_name.toUpperCase();
+
+          if (!nameMatch) continue;
+
+          foundWarrantIds.add(r.utah_warrant_id);
+
+          const key = `${person.id}:${r.utah_warrant_id}`;
+          if (!activeWarrantKeys.has(key)) {
+            // NEW warrant found
+            insertLog.run(
+              person.id, personName, 'warrant_found',
+              r.utah_warrant_id, r.utah_person_id,
+              r.court_name, r.case_id, r.charges, r.issue_date,
+              runId, now
+            );
+            activeWarrantKeys.add(key);
+            newWarrants++;
+            console.log(`[Warrant Watch] 🔴 NEW WARRANT: ${personName} — ${r.court_name} (${r.utah_warrant_id})`);
+          }
+        }
+
+        // Check for CLEARED warrants (previously active but no longer returned)
+        const previouslyKnown = warrantsByPerson.get(person.id);
+        if (previouslyKnown) {
+          for (const prevWarrantId of previouslyKnown) {
+            if (!foundWarrantIds.has(prevWarrantId)) {
+              // Warrant was cleared / no longer active
+              insertLog.run(
+                person.id, personName, 'warrant_cleared',
+                prevWarrantId, null,
+                null, null, null, null,
+                runId, now
+              );
+              clearedWarrants++;
+              console.log(`[Warrant Watch] 🟢 CLEARED: ${personName} — warrant ${prevWarrantId} no longer active`);
+            }
+          }
+        }
+
+        // Throttle to avoid rate-limiting
+        if (personsChecked < persons.length) {
+          await sleep(SCAN_DELAY_MS);
+        }
+      } catch (err: any) {
+        errors++;
+        console.warn(`[Warrant Watch] Error scanning ${person.first_name} ${person.last_name}: ${err.message}`);
+      }
+    }
+
+    // Update scan run record
+    db.prepare(`
+      UPDATE warrant_watch_runs
+      SET completed_at = ?, persons_checked = ?, new_warrants_found = ?,
+          warrants_cleared = ?, errors = ?, status = 'completed'
+      WHERE run_id = ?
+    `).run(localNow(), personsChecked, newWarrants, clearedWarrants, errors, runId);
+
+    console.log(`[Warrant Watch] ═══ Scan complete: ${personsChecked} checked, ${newWarrants} new, ${clearedWarrants} cleared, ${errors} errors ═══`);
+
+  } catch (err: any) {
+    console.error(`[Warrant Watch] Scan failed:`, err.message);
+    db.prepare(`
+      UPDATE warrant_watch_runs
+      SET completed_at = ?, persons_checked = ?, new_warrants_found = ?,
+          warrants_cleared = ?, errors = ?, status = 'failed', error_message = ?
+      WHERE run_id = ?
+    `).run(localNow(), personsChecked, newWarrants, clearedWarrants, errors, err.message, runId);
+  }
+
+  return { personsChecked, newWarrants, clearedWarrants, errors };
+}
+
+// ── Scheduler ────────────────────────────────────────────────
+// Runs warrant watch scan at noon and midnight Mountain Time.
+// Also cleans up stale cache entries every 6 hours.
+
+let schedulerTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Calculate ms until next noon or midnight in Mountain Time (America/Denver).
+ * Returns both the delay and the target time for logging.
+ */
+function msUntilNextScanTime(): { delayMs: number; targetTime: string } {
+  const nowUtc = Date.now();
+  const mtnNow = new Date(new Date(nowUtc).toLocaleString('en-US', { timeZone: 'America/Denver' }));
+  const hour = mtnNow.getHours();
+  const min = mtnNow.getMinutes();
+  const sec = mtnNow.getSeconds();
+
+  // Current Mountain Time as minutes since midnight
+  const currentMinutes = hour * 60 + min;
+
+  // Target times: midnight (0:00) and noon (12:00)
+  let nextTargetMinutes: number;
+  if (currentMinutes < 720) {
+    // Before noon → target is noon (720 min)
+    nextTargetMinutes = 720;
+  } else {
+    // After noon → target is midnight (1440 = next day 0:00)
+    nextTargetMinutes = 1440;
+  }
+
+  const minutesUntil = nextTargetMinutes - currentMinutes;
+  const delayMs = (minutesUntil * 60 - sec) * 1000;
+
+  const targetHour = nextTargetMinutes === 720 ? 12 : 0;
+  const targetDate = new Date(mtnNow);
+  targetDate.setHours(targetHour, 0, 0, 0);
+  if (nextTargetMinutes === 1440) targetDate.setDate(targetDate.getDate() + 1);
+
+  return {
+    delayMs: Math.max(delayMs, 1000), // at least 1 second
+    targetTime: targetDate.toLocaleString('en-US', { timeZone: 'America/Denver', hour12: true }),
+  };
+}
+
+function scheduleNextScan(): void {
+  const { delayMs, targetTime } = msUntilNextScanTime();
+  const hoursUntil = (delayMs / 3_600_000).toFixed(1);
+  console.log(`[Warrant Watch] Next scan at ${targetTime} Mountain (${hoursUntil}h from now)`);
+
+  schedulerTimer = setTimeout(async () => {
+    await runWarrantWatchScan();
+    scheduleNextScan(); // Schedule the next one
+  }, delayMs);
+
+  if (schedulerTimer.unref) schedulerTimer.unref();
+}
 
 export function scheduleUtahWarrantSync(): void {
-  console.log('[Utah Warrants] Real-time search mode — queries warrants.utah.gov live on demand');
-  console.log('[Utah Warrants] No bulk sync needed — results are always current');
+  console.log('[Utah Warrants] Live search mode active — queries warrants.utah.gov on demand');
+  console.log('[Warrant Watch] Automated bulk scan enabled — runs at noon & midnight Mountain Time');
+
+  // Schedule first scan
+  scheduleNextScan();
 
   // Clean up stale cache entries older than 7 days every 6 hours
   const cleanupInterval = setInterval(() => {
@@ -328,10 +565,12 @@ export function scheduleUtahWarrantSync(): void {
     } catch { /* ignore cleanup errors */ }
   }, 6 * 60 * 60 * 1000);
 
-  // Don't prevent process exit
   if (cleanupInterval.unref) cleanupInterval.unref();
 }
 
 export function stopUtahWarrantSync(): void {
-  // No-op for real-time mode
+  if (schedulerTimer) {
+    clearTimeout(schedulerTimer);
+    schedulerTimer = null;
+  }
 }

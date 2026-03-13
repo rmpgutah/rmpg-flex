@@ -490,7 +490,7 @@ export default function OfflineMapFallback({
         style={{
           background: 'rgba(6, 12, 20, 0.95)',
           border: '1px solid #f59e0b40',
-          borderRadius: 4,
+          borderRadius: 2,
           backdropFilter: 'blur(4px)',
         }}
       >
@@ -511,7 +511,7 @@ export default function OfflineMapFallback({
             style={{
               background: retrying ? '#1e3048' : '#1a5a9e',
               color: retrying ? '#5a6e80' : '#fff',
-              borderRadius: 3,
+              borderRadius: 2,
             }}
           >
             {retrying ? (
@@ -532,7 +532,7 @@ export default function OfflineMapFallback({
           style={{
             background: 'rgba(6, 12, 20, 0.95)',
             border: '1px solid #2a3e58',
-            borderRadius: 4,
+            borderRadius: 2,
           }}
           title="Center on your position"
         >
@@ -546,7 +546,7 @@ export default function OfflineMapFallback({
         style={{
           background: 'rgba(6, 12, 20, 0.92)',
           border: '1px solid #1e3048',
-          borderRadius: 3,
+          borderRadius: 2,
           padding: compact ? '3px 6px' : '4px 8px',
         }}
       >

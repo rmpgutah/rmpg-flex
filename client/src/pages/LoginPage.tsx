@@ -40,6 +40,7 @@ export default function LoginPage() {
   const [totpCode, setTotpCode] = useState('');
   const [useBackupCode, setUseBackupCode] = useState(false);
   const [backupCode, setBackupCode] = useState('');
+  const [trustThisDevice, setTrustThisDevice] = useState(false);
 
   // 2FA setup state
   const [qrCodeUri, setQrCodeUri] = useState('');
@@ -50,6 +51,17 @@ export default function LoginPage() {
   // Password change state
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+
+  // Idle logout message
+  const [showIdleMessage, setShowIdleMessage] = useState(false);
+  useEffect(() => {
+    if (sessionStorage.getItem('rmpg_idle_logout') === '1') {
+      setShowIdleMessage(true);
+      sessionStorage.removeItem('rmpg_idle_logout');
+      const t = setTimeout(() => setShowIdleMessage(false), 15000);
+      return () => clearTimeout(t);
+    }
+  }, []);
 
   const handleCredentialsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,7 +76,7 @@ export default function LoginPage() {
   const handleTotpSubmit = async (code: string) => {
     clearError();
     try {
-      await verify2FA(code);
+      await verify2FA(code, trustThisDevice);
     } catch {
       // Error handled by context — clear TOTP input for retry
       setTotpCode('');
@@ -74,7 +86,12 @@ export default function LoginPage() {
   const handleBackupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!backupCode.trim()) return;
-    await handleTotpSubmit(backupCode.trim());
+    clearError();
+    try {
+      await verifyBackupCode(backupCode.trim());
+    } catch {
+      setBackupCode('');
+    }
   };
 
   const handleBack = () => {
@@ -94,8 +111,9 @@ export default function LoginPage() {
       setQrCodeUri(result.qrCodeDataUri);
       setManualKey(result.manualKey);
       setLoginStep('confirm_setup_2fa');
-    } catch {
-      // Error handled by context
+    } catch (err: unknown) {
+      // Error is set in context by setup2FA — log for debugging
+      console.error('2FA setup failed:', err instanceof Error ? err.message : err);
     }
   };
 
@@ -125,7 +143,7 @@ export default function LoginPage() {
   const handleSecurityKeyAuth = async () => {
     clearError();
     try {
-      await verifyWebAuthn();
+      await verifyWebAuthn(trustThisDevice);
     } catch {
       // Error handled by context
     }
@@ -141,10 +159,13 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4" style={{ background: 'linear-gradient(180deg, #060c14 0%, #141e2b 100%)' }}>
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative" style={{ background: 'linear-gradient(180deg, #060c14 0%, #141e2b 100%)' }}>
+      {/* Animated grid background */}
+      <div className="login-grid-bg" />
+
       {/* ── Security Warning Banner ─────────────────── */}
       <div
-        className="w-full max-w-sm mb-2 sm:mb-3 px-3 sm:px-0"
+        className="w-full max-w-sm mb-2 sm:mb-3 px-3 sm:px-0 relative z-10"
         role="alert"
       >
         <div
@@ -182,7 +203,7 @@ export default function LoginPage() {
       </div>
 
       {/* ── Login Card ───────────────────────────────────── */}
-      <div className="relative w-full max-w-sm px-2 sm:px-0">
+      <div className="relative w-full max-w-sm px-2 sm:px-0 z-10">
         {/* Logo */}
         <div className="text-center mb-2">
           <div className="inline-flex items-center justify-center">
@@ -275,6 +296,17 @@ export default function LoginPage() {
           </div>
 
           <div className="p-4 sm:p-5">
+            {/* Idle timeout message */}
+            {showIdleMessage && (
+              <div className="mb-3 p-2.5 bg-amber-900/25 border border-amber-700/50 flex items-start gap-2">
+                <Lock className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-[10px] text-amber-300 font-semibold">Session Expired</p>
+                  <p className="text-[9px] text-amber-400/80">You were automatically logged out due to inactivity.</p>
+                </div>
+              </div>
+            )}
+
             {/* Step indicator — only for basic credentials + verify flow */}
             {loginStep !== 'setup_2fa' && loginStep !== 'confirm_setup_2fa' && loginStep !== 'show_backup_codes' && loginStep !== 'password_change' && (
             <div className="flex items-center justify-center gap-2 mb-3">
@@ -356,7 +388,7 @@ export default function LoginPage() {
                   <input
                     id="username"
                     type="text"
-                    className="input-dark h-9"
+                    className="input-dark login-input-glow h-9"
                     placeholder="Enter your username"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
@@ -378,7 +410,7 @@ export default function LoginPage() {
                     <input
                       id="password"
                       type={showPassword ? 'text' : 'password'}
-                      className="input-dark h-9 pr-8"
+                      className="input-dark login-input-glow h-9 pr-8"
                       placeholder="Enter your password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
@@ -429,7 +461,14 @@ export default function LoginPage() {
 
             {/* ── Step 2: TOTP Verification ────────────────── */}
             {pending2FA && !useBackupCode && (
-              <div className="space-y-4">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const trimmed = totpCode.replace(/\s/g, '');
+                  if (trimmed.length === 6 && !loginBusy) handleTotpSubmit(trimmed);
+                }}
+                className="space-y-4"
+              >
                 <div className="text-center mb-2">
                   <p
                     className="text-[10px] uppercase tracking-wide font-bold mb-1"
@@ -450,17 +489,37 @@ export default function LoginPage() {
                   error={!!error}
                 />
 
-                {loginBusy && (
-                  <div className="flex items-center justify-center gap-2 mt-2">
-                    <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    <span
-                      className="text-[10px] uppercase tracking-wide"
-                      style={{ color: '#8a9aaa' }}
-                    >
+                <button
+                  type="submit"
+                  disabled={loginBusy || totpCode.replace(/\s/g, '').length < 6}
+                  className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {loginBusy ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                       Verifying...
-                    </span>
-                  </div>
-                )}
+                    </>
+                  ) : (
+                    <>
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      VERIFY CODE
+                    </>
+                  )}
+                </button>
+
+                {/* Trust this device checkbox */}
+                <label className="flex items-center gap-2 cursor-pointer select-none py-1">
+                  <input
+                    type="checkbox"
+                    checked={trustThisDevice}
+                    onChange={(e) => setTrustThisDevice(e.target.checked)}
+                    className="w-3.5 h-3.5 rounded-sm accent-[#1a5a9e] cursor-pointer"
+                    style={{ accentColor: '#1a5a9e' }}
+                  />
+                  <span className="text-[10px]" style={{ color: '#8a9aaa' }}>
+                    Trust this device for 30 days
+                  </span>
+                </label>
 
                 {/* Alternative methods */}
                 <div className="flex items-center justify-between pt-2">
@@ -518,7 +577,7 @@ export default function LoginPage() {
                     </button>
                   </div>
                 </div>
-              </div>
+              </form>
             )}
 
             {/* ── Step 2 (alt): Backup Code ────────────────── */}
@@ -538,7 +597,7 @@ export default function LoginPage() {
 
                 <input
                   type="text"
-                  className="input-dark h-9 text-center font-mono tracking-widest uppercase"
+                  className="input-dark login-input-glow h-9 text-center font-mono tracking-widest uppercase"
                   placeholder="XXXX-XXXX"
                   value={backupCode}
                   onChange={(e) => setBackupCode(e.target.value)}
@@ -615,6 +674,7 @@ export default function LoginPage() {
                   </p>
                 </div>
                 <button
+                  type="button"
                   onClick={handleStartSetup}
                   disabled={loginBusy}
                   className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"

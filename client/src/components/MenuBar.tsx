@@ -80,6 +80,7 @@ import {
   Video,
 } from 'lucide-react';
 import { setVoiceAlertsEnabled, getVoiceAlertsEnabled, demoAllVoiceAlerts } from '../utils/voiceAlerts';
+import { apiFetch } from '../hooks/useApi';
 
 // ============================================================
 // Types
@@ -167,6 +168,7 @@ export default function MenuBar({
   });
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [show10Codes, setShow10Codes] = useState(false);
+  const [showLawBooks, setShowLawBooks] = useState(false);
 
   // Track fullscreen changes
   useEffect(() => {
@@ -272,7 +274,7 @@ export default function MenuBar({
           { type: 'separator' },
           { type: 'action', label: 'Field Interview', icon: Clipboard, action: () => navigate('/field-interviews') },
           { type: 'action', label: 'Citation', icon: FileWarning, action: () => navigate('/citations') },
-          { type: 'action', label: 'Warrant', icon: Gavel, action: () => navigate('/warrants') },
+          { type: 'action', label: 'Warrant', icon: Gavel, action: () => window.open('/warrants', '_blank') },
           { type: 'action', label: 'Trespass Order', icon: ShieldAlert, action: () => navigate('/trespass-orders') },
           { type: 'separator' },
           { type: 'action', label: 'BOLO Alert', icon: AlertTriangle, action: () => navigate('/communications') },
@@ -292,13 +294,14 @@ export default function MenuBar({
           { type: 'separator' },
           { type: 'action', label: 'Incidents', icon: FileText, action: () => navigate('/incidents') },
           { type: 'action', label: 'Records', icon: Database, action: () => navigate('/records') },
-          { type: 'action', label: 'Warrants', icon: Gavel, action: () => navigate('/warrants') },
+          { type: 'action', label: 'Warrants', icon: Gavel, action: () => window.open('/warrants', '_blank') },
           { type: 'action', label: 'Citations', icon: FileWarning, action: () => navigate('/citations') },
           { type: 'action', label: 'Evidence & Property', icon: Package, action: () => navigate('/evidence') },
           { type: 'separator' },
           { type: 'action', label: 'Case Management', icon: Briefcase, action: () => navigate('/cases') },
           { type: 'action', label: 'Criminal History', icon: FileSearch, action: () => navigate('/criminal-history') },
           { type: 'action', label: 'Offender Registry', icon: UserCheck, action: () => navigate('/offender-registry') },
+          { type: 'action', label: 'Sex Offender Registry', icon: ShieldAlert, action: () => navigate('/sex-offender-registry') },
           { type: 'separator' },
           { type: 'action', label: 'Personnel', icon: Users, action: () => navigate('/personnel') },
           { type: 'action', label: 'Fleet', icon: Car, action: () => navigate('/fleet') },
@@ -405,9 +408,11 @@ export default function MenuBar({
           { type: 'action', label: 'Vehicle Search', icon: Car, action: () => navigate('/records') },
           { type: 'action', label: 'Incident Lookup', icon: FileText, action: () => navigate('/incidents') },
           { type: 'separator' },
+          { type: 'action', label: 'Arrest Records', icon: Scale, action: () => navigate('/arrest-records') },
           { type: 'action', label: 'Criminal History', icon: FileSearch, action: () => navigate('/criminal-history') },
-          { type: 'action', label: 'Warrant Check', icon: Gavel, action: () => navigate('/warrants') },
+          { type: 'action', label: 'Warrant Check', icon: Gavel, action: () => window.open('/warrants', '_blank') },
           { type: 'action', label: 'Offender Registry', icon: UserCheck, action: () => navigate('/offender-registry') },
+          { type: 'action', label: 'Sex Offender Registry', icon: ShieldAlert, action: () => navigate('/sex-offender-registry') },
         ],
       },
       {
@@ -447,6 +452,7 @@ export default function MenuBar({
         ],
       },
       { type: 'separator' },
+      { type: 'action', label: 'Overwatch', icon: Briefcase, action: () => navigate('/crm') },
       {
         type: 'submenu',
         label: 'Administration',
@@ -459,7 +465,7 @@ export default function MenuBar({
           { type: 'action', label: 'Branding & Reports', icon: Palette, action: () => navigate('/admin') },
           { type: 'separator' },
           { type: 'action', label: 'Audit Trail', icon: ScrollText, action: () => navigate('/audit') },
-          { type: 'action', label: 'Training Management', icon: GraduationCap, action: () => navigate('/admin') },
+          { type: 'action', label: 'Training Management', icon: GraduationCap, action: () => navigate('/training') },
         ],
       },
     ],
@@ -480,6 +486,8 @@ export default function MenuBar({
           { type: 'action', label: 'Priority Levels', icon: Zap, action: () => { navigate('/admin'); } },
           { type: 'action', label: 'Disposition Codes', icon: Hash, action: () => { navigate('/admin'); } },
           { type: 'action', label: 'Incident Types', icon: FileText, action: () => { navigate('/admin'); } },
+          { type: 'separator' },
+          { type: 'action', label: 'Law Books', icon: Scale, action: () => { setShowLawBooks(true); } },
         ],
       },
       {
@@ -487,7 +495,8 @@ export default function MenuBar({
         label: 'Training & Docs',
         icon: GraduationCap,
         items: [
-          { type: 'action', label: 'Policies & Training Docs', icon: BookOpen, action: () => window.open('/admin?tab=training', '_blank') },
+          { type: 'action', label: 'Policies & Training Docs', icon: BookOpen, action: () => navigate('/training-docs') },
+          { type: 'action', label: 'Training Dashboard', icon: GraduationCap, action: () => navigate('/training') },
           { type: 'action', label: 'Field Operations Guide', icon: Clipboard, action: () => { setShow10Codes(true); } },
         ],
       },
@@ -775,6 +784,226 @@ export default function MenuBar({
           </div>
         </div>
       )}
+
+      {/* ── Law Books Reference Modal ── */}
+      {showLawBooks && <LawBooksModal onClose={() => setShowLawBooks(false)} />}
     </>
+  );
+}
+
+// ============================================================
+// Law Books Modal — Criminal & Vehicle Code Reference
+// ============================================================
+
+const LAW_STATE_CODES = ['ALL', 'UT', 'CO', 'WY', 'ID', 'NV', 'AZ', 'NM'] as const;
+const LAW_STATE_LABELS: Record<string, string> = {
+  ALL: 'All States', UT: 'Utah', CO: 'Colorado', WY: 'Wyoming',
+  ID: 'Idaho', NV: 'Nevada', AZ: 'Arizona', NM: 'New Mexico',
+};
+
+const OFFENSE_COLORS: Record<string, string> = {
+  capital_felony: 'bg-red-900/60 text-red-300 border-red-700/50',
+  first_degree_felony: 'bg-red-900/50 text-red-300 border-red-700/50',
+  second_degree_felony: 'bg-red-900/40 text-red-400 border-red-700/40',
+  third_degree_felony: 'bg-orange-900/40 text-orange-300 border-orange-700/40',
+  class_a_misdemeanor: 'bg-amber-900/40 text-amber-300 border-amber-700/40',
+  class_b_misdemeanor: 'bg-amber-900/30 text-amber-400 border-amber-700/30',
+  class_c_misdemeanor: 'bg-yellow-900/30 text-yellow-400 border-yellow-700/30',
+  infraction: 'bg-blue-900/30 text-blue-400 border-blue-700/30',
+  enhancement: 'bg-purple-900/30 text-purple-400 border-purple-700/30',
+};
+
+interface LawStatute {
+  id: number;
+  state: string;
+  citation: string;
+  short_title: string;
+  description?: string;
+  definition?: string | null;
+  offense_level: string | null;
+  category: string;
+  subcategory: string;
+  citation_fine?: number | null;
+}
+
+function LawBooksModal({ onClose }: { onClose: () => void }) {
+  const [activeState, setActiveState] = useState('ALL');
+  const [activeCategory, setActiveCategory] = useState<'all' | 'criminal' | 'vehicle'>('all');
+  const [search, setSearch] = useState('');
+  const [statutes, setStatutes] = useState<LawStatute[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ESC key handler
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [onClose]);
+
+  // Fetch statutes when filters change
+  const fetchStatutes = useCallback(async (q: string, st: string, cat: string) => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ limit: '200' });
+      if (st !== 'ALL') params.set('state', st);
+      if (cat !== 'all') params.set('category', cat);
+      if (q.length >= 2) params.set('q', q);
+      const res = await apiFetch<{ data: LawStatute[]; total: number }>(`/statutes?${params}`);
+      setStatutes(res.data || []);
+      setTotal(res.total || 0);
+    } catch { setStatutes([]); setTotal(0); }
+    finally { setLoading(false); }
+  }, []);
+
+  // Initial load
+  useEffect(() => { fetchStatutes('', activeState, activeCategory); }, []);
+
+  // Debounced search + immediate filter changes
+  useEffect(() => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => {
+      fetchStatutes(search, activeState, activeCategory);
+    }, search.length > 0 ? 300 : 0);
+    return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
+  }, [search, activeState, activeCategory, fetchStatutes]);
+
+  const formatOffense = (level: string | null) =>
+    level ? level.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '';
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60" onClick={onClose}>
+      <div
+        className="panel-beveled w-[800px] max-h-[85vh] overflow-hidden flex flex-col"
+        style={{ background: '#141e2b' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: '#0d1520' }}>
+          <h2 className="text-sm font-bold text-white flex items-center gap-2">
+            <Scale className="w-4 h-4 text-brand-400" />
+            Law Reference — Criminal & Vehicle Code
+          </h2>
+          <div className="flex items-center gap-2 text-[10px] text-rmpg-500">
+            <span>{total} statutes</span>
+            <button onClick={onClose} className="text-rmpg-400 hover:text-white text-xs">ESC</button>
+          </div>
+        </div>
+
+        {/* State Tabs */}
+        <div className="flex border-b border-rmpg-700 overflow-x-auto" style={{ background: '#0d1520' }}>
+          {LAW_STATE_CODES.map(st => (
+            <button
+              key={st}
+              onClick={() => setActiveState(st)}
+              className={`flex-shrink-0 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors ${
+                activeState === st
+                  ? 'text-brand-300 border-b-2 border-brand-500 bg-brand-900/20'
+                  : 'text-rmpg-500 hover:text-rmpg-200 hover:bg-rmpg-700/30'
+              }`}
+            >
+              {st === 'ALL' ? 'All States' : `${st} — ${LAW_STATE_LABELS[st]}`}
+            </button>
+          ))}
+        </div>
+
+        {/* Category + Search Row */}
+        <div className="flex items-center gap-2 px-3 py-1.5 border-b border-rmpg-700 bg-surface-base">
+          <div className="flex gap-0.5">
+            {(['all', 'criminal', 'vehicle'] as const).map(cat => (
+              <button
+                key={cat}
+                onClick={() => setActiveCategory(cat)}
+                className={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider transition-colors ${
+                  activeCategory === cat
+                    ? 'bg-brand-900/30 text-brand-300 border border-brand-700/50'
+                    : 'text-rmpg-500 hover:text-rmpg-200 border border-transparent'
+                }`}
+              >
+                {cat === 'all' ? 'All' : cat === 'criminal' ? 'Criminal' : 'Vehicle'}
+              </button>
+            ))}
+          </div>
+          <div className="flex-1 relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" />
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search by citation or keyword..."
+              className="w-full pl-7 pr-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 outline-none"
+            />
+          </div>
+        </div>
+
+        {/* Results */}
+        <div className="flex-1 overflow-y-auto">
+          {loading ? (
+            <div className="p-8 text-center text-xs text-rmpg-400">Loading statutes...</div>
+          ) : statutes.length === 0 ? (
+            <div className="p-8 text-center text-xs text-rmpg-500">
+              {search.length >= 2 ? 'No statutes match your search' : 'No statutes found for this filter'}
+            </div>
+          ) : (
+            statutes.map(s => (
+              <div key={s.id} className="border-b border-rmpg-700/30">
+                <button
+                  onClick={() => setExpandedId(expandedId === s.id ? null : s.id)}
+                  className="w-full text-left px-3 py-2 hover:bg-rmpg-700/20 transition-colors"
+                >
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="px-1 py-0 text-[8px] font-bold uppercase bg-rmpg-700/60 text-rmpg-300 border border-rmpg-600 leading-tight">
+                      {s.state}
+                    </span>
+                    <span className="text-xs font-mono text-brand-400 font-bold">{s.citation}</span>
+                    {s.offense_level && (
+                      <span className={`px-1.5 py-0.5 text-[9px] font-bold uppercase border ${
+                        OFFENSE_COLORS[s.offense_level] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'
+                      }`}>
+                        {formatOffense(s.offense_level)}
+                      </span>
+                    )}
+                    {s.citation_fine != null && s.citation_fine > 0 && (
+                      <span className="text-[9px] font-mono font-bold text-green-400 bg-green-900/30 border border-green-700/40 px-1 py-0">
+                        ${s.citation_fine}
+                      </span>
+                    )}
+                    {s.definition && (
+                      <BookOpen className={`w-3 h-3 ml-auto flex-shrink-0 ${expandedId === s.id ? 'text-brand-400' : 'text-rmpg-600'}`} />
+                    )}
+                  </div>
+                  <p className="text-xs text-rmpg-200 mt-0.5">{s.short_title}</p>
+                  {s.subcategory && (
+                    <span className="text-[10px] text-rmpg-500">{s.subcategory}</span>
+                  )}
+                </button>
+                {expandedId === s.id && s.definition && (
+                  <div className="px-3 pb-2">
+                    <div className="bg-rmpg-800/60 border border-rmpg-600/50 p-2.5 text-[11px] text-rmpg-300 leading-relaxed whitespace-pre-line">
+                      <div className="flex items-center gap-1 mb-1.5 text-brand-400 font-bold text-[9px] uppercase tracking-wider">
+                        <BookOpen className="w-3 h-3" />
+                        Law Reference — Elements & Definition
+                      </div>
+                      {s.definition}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-2 border-t border-rmpg-700 flex items-center justify-between" style={{ background: '#0d1520' }}>
+          <span className="text-[9px] text-rmpg-500">
+            {activeState !== 'ALL' && `${LAW_STATE_LABELS[activeState]} — `}
+            {statutes.length} of {total} statutes shown
+          </span>
+          <span className="text-[9px] text-rmpg-500">Press <kbd className="px-1 py-0.5 bg-rmpg-800 border border-rmpg-600 text-rmpg-300 rounded text-[8px]">ESC</kbd> to close</span>
+        </div>
+      </div>
+    </div>
   );
 }

@@ -184,8 +184,13 @@ export function getOverlayMarkerClass() {
     }
 
     onRemove() {
-      if (this.container?.parentElement) {
-        this.container.parentElement.removeChild(this.container);
+      if (this.container) {
+        if (this.clickCallback) {
+          this.container.removeEventListener('click', this.clickCallback);
+        }
+        if (this.container.parentElement) {
+          this.container.parentElement.removeChild(this.container);
+        }
       }
       this.container = null;
     }

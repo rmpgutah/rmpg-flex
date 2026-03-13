@@ -7,14 +7,15 @@
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
 
 const router = Router();
 router.use(authenticateToken);
 
 // ─── GET /stats ──────────────────────────────────────────
-router.get('/stats', (req: Request, res: Response) => {
+// Restricted: offender alerts contain criminal flags and PII
+router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const typeCounts = db.prepare(`
@@ -48,7 +49,7 @@ router.get('/stats', (req: Request, res: Response) => {
 });
 
 // ─── GET / ───────────────────────────────────────────────
-router.get('/', (req: Request, res: Response) => {
+router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { alert_type, severity, status = 'active', search, page = '1', limit = '50' } = req.query;
@@ -95,7 +96,7 @@ router.get('/', (req: Request, res: Response) => {
 
 // ─── GET /check/:personId ────────────────────────────────
 // Quick check: all active alerts for a specific person
-router.get('/check/:personId', (req: Request, res: Response) => {
+router.get('/check/:personId', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const alerts = db.prepare(`
@@ -107,7 +108,7 @@ router.get('/check/:personId', (req: Request, res: Response) => {
 });
 
 // ─── GET /:id ────────────────────────────────────────────
-router.get('/:id', (req: Request, res: Response) => {
+router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare(`
@@ -122,7 +123,7 @@ router.get('/:id', (req: Request, res: Response) => {
 });
 
 // ─── POST / ──────────────────────────────────────────────
-router.post('/', (req: Request, res: Response) => {
+router.post('/', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -155,7 +156,7 @@ router.post('/', (req: Request, res: Response) => {
 });
 
 // ─── PUT /:id ────────────────────────────────────────────
-router.put('/:id', (req: Request, res: Response) => {
+router.put('/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -181,7 +182,7 @@ router.put('/:id', (req: Request, res: Response) => {
 });
 
 // ─── PUT /:id/clear ──────────────────────────────────────
-router.put('/:id/clear', (req: Request, res: Response) => {
+router.put('/:id/clear', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();

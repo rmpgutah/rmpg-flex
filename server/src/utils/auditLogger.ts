@@ -136,10 +136,33 @@ export type AuditAction =
   | 'clearpathgps_mapping_created'
   | 'clearpathgps_mapping_removed'
   | 'clearpathgps_settings_updated'
+  | 'clearpathgps_media_settings_updated'
+  | 'clearpathgps_media_sync_triggered'
   // Dash Camera Videos
   | 'dashcam_uploaded'
   | 'dashcam_updated'
-  | 'dashcam_deleted';
+  | 'dashcam_deleted'
+  | 'dashcam_linked'
+  | 'dashcam_unlinked'
+  // Email
+  | 'SEND_EMAIL'
+  | 'REPLY_EMAIL'
+  | 'REPLY_ALL_EMAIL'
+  | 'FORWARD_EMAIL'
+  | 'DELETE_EMAIL'
+  | 'BATCH_EMAIL'
+  | 'MARK_ALL_READ'
+  | 'OAUTH_INITIATE'
+  // CRM
+  | 'crm_task_created'
+  | 'crm_task_updated'
+  | 'crm_task_deleted'
+  | 'crm_activity_logged'
+  // Generic CRUD (used by newer routes)
+  | 'CREATE'
+  | 'UPDATE'
+  | 'DELETE'
+  | 'SEARCH';
 
 export type AuditEntityType =
   | 'user'
@@ -178,7 +201,19 @@ export type AuditEntityType =
   | 'iped_hashset'
   | 'jail_roster'
   | 'integration'
-  | 'dashcam_video';
+  | 'dashcam_video'
+  | 'dashcam_video_link'
+  | 'email'
+  | 'email_folder'
+  | 'system_config'
+  | 'colorado_doc_offenders'
+  | 'crm_task'
+  | 'crm_activity'
+  | 'crm_leads'
+  | 'crm_lead_activity'
+  | 'crm_proposals'
+  | 'crm_proposal_templates'
+  | 'lead_scrape_sources';
 
 /**
  * Log an action to the activity_log table.

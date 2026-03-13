@@ -3,7 +3,8 @@ import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { broadcast } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
-import { searchUtahWarrants, searchUtahWarrantsCache, getUtahWarrantSyncStatus } from '../utils/utahWarrantScraper';
+import { searchUtahWarrants, searchUtahWarrantsCache, getUtahWarrantSyncStatus, runWarrantWatchScan } from '../utils/utahWarrantScraper';
+import { createNotificationForRoles } from './notifications';
 
 const router = Router();
 
@@ -46,8 +47,8 @@ router.get('/', (req: Request, res: Response) => {
       whereClause += ' AND w.archived_at IS NULL';
     }
 
-    const pageNum = parseInt(page as string, 10);
-    const perPageNum = parseInt(per_page as string, 10);
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const perPageNum = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 25));
     const offset = (pageNum - 1) * perPageNum;
 
     const countRow = db.prepare(`
@@ -154,6 +155,190 @@ router.get('/check/:personId', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Check warrants error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── Utah State Warrants (real-time search from warrants.utah.gov) ───────────
+// NOTE: These must be declared BEFORE /:id to avoid being caught by the param route
+
+// GET /api/warrants/utah — Search Utah state warrants (live from warrants.utah.gov)
+router.get('/utah', async (req: Request, res: Response) => {
+  try {
+    const { search } = req.query;
+
+    // Require a search term (API needs both first + last name)
+    if (!search || typeof search !== 'string' || search.trim().length < 2) {
+      // Return cached results if no search
+      const cached = searchUtahWarrantsCache('', { limit: 50 });
+      return res.json({
+        data: cached,
+        pagination: { page: 1, per_page: 50, total: cached.length, totalPages: 1 },
+        source: 'cache',
+      });
+    }
+
+    // Live search warrants.utah.gov
+    const results = await searchUtahWarrants(search.trim());
+
+    res.json({
+      data: results,
+      pagination: { page: 1, per_page: results.length, total: results.length, totalPages: 1 },
+      source: results.length > 0 && results[0].source === 'UTAH_STATE' ? 'live' : 'cache',
+    });
+  } catch (error: any) {
+    console.error('Utah warrants search error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/warrants/utah/count — Cached warrant count for tab badge
+router.get('/utah/count', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const row = db.prepare('SELECT COUNT(*) as count FROM utah_warrants').get() as any;
+    res.json({ count: row.count });
+  } catch {
+    res.json({ count: 0 });
+  }
+});
+
+// GET /api/warrants/utah/sync-status — Status info for UI
+router.get('/utah/sync-status', (req: Request, res: Response) => {
+  try {
+    const status = getUtahWarrantSyncStatus();
+    res.json({
+      lastSync: status.lastSync,
+      status: status.status,
+      personsFound: 0,
+      warrantsFound: status.warrantCount,
+      durationMs: 0,
+      lastError: status.lastError,
+      currentCount: status.warrantCount,
+    });
+  } catch {
+    res.json({ lastSync: null, status: 'ready', currentCount: 0 });
+  }
+});
+
+// ─── WARRANT WATCH — Automated scan log & controls ──────────────
+
+// GET /api/warrants/watch/log — View warrant watch event log
+router.get('/watch/log', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { event, person_id, page = '1', limit = '50' } = req.query;
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
+    const offset = (pageNum - 1) * limitNum;
+
+    let where = 'WHERE 1=1';
+    const params: any[] = [];
+
+    if (event === 'warrant_found' || event === 'warrant_cleared') {
+      where += ' AND wl.event = ?';
+      params.push(event);
+    }
+    if (person_id) {
+      where += ' AND wl.person_id = ?';
+      params.push(person_id);
+    }
+
+    const total = (db.prepare(`
+      SELECT COUNT(*) as count FROM warrant_watch_log wl ${where}
+    `).get(...params) as any).count;
+
+    const rows = db.prepare(`
+      SELECT wl.*,
+        p.photo_url, p.dob, p.caution_flags
+      FROM warrant_watch_log wl
+      LEFT JOIN persons p ON wl.person_id = p.id
+      ${where}
+      ORDER BY wl.created_at DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, limitNum, offset);
+
+    res.json({
+      data: rows,
+      pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) },
+    });
+  } catch (error: any) {
+    console.error('Get warrant watch log error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/warrants/watch/active — List persons with currently active warrants
+router.get('/watch/active', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    // For each person, find their most recent "warrant_found" that doesn't have
+    // a subsequent "warrant_cleared" for the same utah_warrant_id
+    const rows = db.prepare(`
+      SELECT DISTINCT
+        wl.person_id,
+        wl.person_name,
+        wl.utah_warrant_id,
+        wl.utah_person_id,
+        wl.court_name,
+        wl.case_id,
+        wl.charges,
+        wl.issue_date,
+        wl.created_at as first_detected,
+        p.photo_url, p.dob, p.caution_flags, p.address, p.city, p.state
+      FROM warrant_watch_log wl
+      LEFT JOIN persons p ON wl.person_id = p.id
+      WHERE wl.event = 'warrant_found'
+        AND NOT EXISTS (
+          SELECT 1 FROM warrant_watch_log wl2
+          WHERE wl2.person_id = wl.person_id
+            AND wl2.utah_warrant_id = wl.utah_warrant_id
+            AND wl2.event = 'warrant_cleared'
+            AND wl2.created_at > wl.created_at
+        )
+      ORDER BY wl.created_at DESC
+    `).all();
+
+    res.json({ data: rows, total: rows.length });
+  } catch (error: any) {
+    console.error('Get active warrant watch error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/warrants/watch/runs — View scan run history
+router.get('/watch/runs', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { limit = '20' } = req.query;
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 20));
+
+    const runs = db.prepare(`
+      SELECT * FROM warrant_watch_runs
+      ORDER BY started_at DESC
+      LIMIT ?
+    `).all(limitNum);
+
+    res.json({ data: runs });
+  } catch (error: any) {
+    console.error('Get warrant watch runs error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/warrants/watch/scan — Trigger an immediate manual scan
+router.post('/watch/scan', requireRole('admin', 'manager', 'supervisor'), async (req: Request, res: Response) => {
+  try {
+    // Start scan in background and return immediately
+    res.json({ message: 'Warrant watch scan started', status: 'running' });
+
+    // Run scan asynchronously (don't await in the response)
+    runWarrantWatchScan().catch(err => {
+      console.error('[Warrant Watch] Manual scan failed:', err.message);
+    });
+  } catch (error: any) {
+    console.error('Trigger warrant watch scan error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -302,11 +487,22 @@ router.post('/', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), (r
       req.ip || 'unknown',
     );
 
-    // Broadcast warrant event
+    // Broadcast warrant event (minimal payload — no subject PII over WebSocket)
     broadcast('alerts', 'warrant', {
       action: 'created',
-      warrant,
+      id: warrant.id,
+      warrant_number: warrant.warrant_number,
+      type: warrant.type,
+      status: warrant.status,
     });
+
+    // Notify all sworn personnel of new warrant
+    createNotificationForRoles(
+      ['admin', 'manager', 'supervisor', 'officer'],
+      'warrant', `New Warrant: ${warrant.warrant_number}`,
+      `${warrant.type} warrant — ${warrant.charge_description || 'No description'}`,
+      'warrant', warrant.id, 'high', 'warrant.created', req.user!.userId,
+    );
 
     res.status(201).json(warrant);
   } catch (error: any) {
@@ -405,7 +601,7 @@ router.put('/:id', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), 
 });
 
 // PUT /api/warrants/:id/serve - Serve a warrant
-router.put('/:id/serve', (req: Request, res: Response) => {
+router.put('/:id/serve', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
 
@@ -465,11 +661,22 @@ router.put('/:id/serve', (req: Request, res: Response) => {
       req.ip || 'unknown',
     );
 
-    // Broadcast warrant served event
+    // Broadcast warrant served event (minimal payload — no subject PII over WebSocket)
     broadcast('alerts', 'warrant', {
       action: 'served',
-      warrant: updated,
+      id: updated.id,
+      warrant_number: updated.warrant_number,
+      type: updated.type,
+      status: updated.status,
     });
+
+    // Notify supervisors warrant was served
+    createNotificationForRoles(
+      ['admin', 'manager', 'supervisor'],
+      'warrant', `Warrant Served: ${updated.warrant_number}`,
+      `${updated.type} warrant served${served_location ? ` at ${served_location}` : ''}`,
+      'warrant', updated.id, 'normal', 'warrant.served', req.user!.userId,
+    );
 
     res.json(updated);
   } catch (error: any) {
@@ -504,7 +711,7 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
 });
 
 // POST /api/warrants/:id/archive
-router.post('/:id/archive', (req: Request, res: Response) => {
+router.post('/:id/archive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const warrant = db.prepare('SELECT * FROM warrants WHERE id = ?').get(req.params.id) as any;
@@ -532,7 +739,7 @@ router.post('/:id/archive', (req: Request, res: Response) => {
 });
 
 // POST /api/warrants/:id/unarchive
-router.post('/:id/unarchive', (req: Request, res: Response) => {
+router.post('/:id/unarchive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const warrant = db.prepare('SELECT * FROM warrants WHERE id = ?').get(req.params.id) as any;
@@ -555,67 +762,6 @@ router.post('/:id/unarchive', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Unarchive warrant error:', error);
     res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ─── Utah State Warrants (real-time search from warrants.utah.gov) ───────────
-
-// GET /api/warrants/utah — Search Utah state warrants (live from warrants.utah.gov)
-router.get('/utah', async (req: Request, res: Response) => {
-  try {
-    const { search } = req.query;
-
-    // Require a search term (API needs both first + last name)
-    if (!search || typeof search !== 'string' || search.trim().length < 2) {
-      // Return cached results if no search
-      const cached = searchUtahWarrantsCache('', { limit: 50 });
-      return res.json({
-        data: cached,
-        pagination: { page: 1, per_page: 50, total: cached.length, totalPages: 1 },
-        source: 'cache',
-      });
-    }
-
-    // Live search warrants.utah.gov
-    const results = await searchUtahWarrants(search.trim());
-
-    res.json({
-      data: results,
-      pagination: { page: 1, per_page: results.length, total: results.length, totalPages: 1 },
-      source: results.length > 0 && results[0].source === 'UTAH_STATE' ? 'live' : 'cache',
-    });
-  } catch (error: any) {
-    console.error('Utah warrants search error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// GET /api/warrants/utah/count — Cached warrant count for tab badge
-router.get('/utah/count', (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const row = db.prepare('SELECT COUNT(*) as count FROM utah_warrants').get() as any;
-    res.json({ count: row.count });
-  } catch {
-    res.json({ count: 0 });
-  }
-});
-
-// GET /api/warrants/utah/sync-status — Status info for UI
-router.get('/utah/sync-status', (req: Request, res: Response) => {
-  try {
-    const status = getUtahWarrantSyncStatus();
-    res.json({
-      lastSync: status.lastSync,
-      status: status.status,
-      personsFound: 0,
-      warrantsFound: status.warrantCount,
-      durationMs: 0,
-      lastError: status.lastError,
-      currentCount: status.warrantCount,
-    });
-  } catch {
-    res.json({ lastSync: null, status: 'ready', currentCount: 0 });
   }
 });
 

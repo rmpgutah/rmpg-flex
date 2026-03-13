@@ -1,7 +1,18 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../../models/database';
+import { requireRole } from '../../middleware/auth';
 import { broadcastUnitUpdate } from '../../utils/websocket';
 import { reverseGeocodeDetailed } from '../../utils/geocode';
+import { localNow } from '../../utils/timeUtils';
+
+// GPS source priority — higher number wins
+const GPS_SOURCE_PRIORITY: Record<string, number> = {
+  browser_desktop: 1,
+  browser: 1,       // legacy fallback
+  browser_mobile: 2,
+  clearpathgps: 3,
+};
+const GPS_STALE_MS = 30_000; // 30 seconds — stale source can be overridden by lower priority
 
 const router = Router();
 
@@ -87,12 +98,30 @@ router.post('/gps', (req: Request, res: Response) => {
     // ── Use the LATEST point for live unit position and broadcast ──
     const latest = validPoints[validPoints.length - 1];
 
-    db.prepare(`
-      UPDATE units SET latitude = ?, longitude = ?
-      WHERE id = ?
-    `).run(latest.lat, latest.lng, unit.id);
+    // ── GPS Source Priority Check ──
+    // Determine incoming source: phone GPS > desktop WiFi
+    const deviceType = req.body.device_type || 'desktop';
+    const gpsSource = deviceType === 'mobile' ? 'browser_mobile' : 'browser_desktop';
+    const incomingPriority = GPS_SOURCE_PRIORITY[gpsSource] ?? 1;
 
-    // Fetch full unit info for broadcast
+    // Check current unit's GPS source and freshness
+    const currentGps = db.prepare('SELECT gps_source, gps_updated_at FROM units WHERE id = ?').get(unit.id) as any;
+    const currentPriority = GPS_SOURCE_PRIORITY[currentGps?.gps_source] ?? 0;
+    const currentAge = currentGps?.gps_updated_at
+      ? Date.now() - new Date(currentGps.gps_updated_at).getTime()
+      : Infinity; // no previous update → always accept
+
+    // Update live position only if: incoming priority >= current, OR current source is stale
+    const shouldUpdateLive = incomingPriority >= currentPriority || currentAge > GPS_STALE_MS;
+
+    if (shouldUpdateLive) {
+      db.prepare(`
+        UPDATE units SET latitude = ?, longitude = ?, gps_source = ?, gps_updated_at = ?
+        WHERE id = ?
+      `).run(latest.lat, latest.lng, gpsSource, localNow(), unit.id);
+    }
+
+    // Fetch full unit info for broadcast (always needed for breadcrumb metadata)
     const updated = db.prepare(`
       SELECT u.*, usr.full_name as officer_name, usr.badge_number,
         c.call_number, c.incident_type as current_call_type, c.location_address as current_call_location
@@ -103,12 +132,13 @@ router.post('/gps', (req: Request, res: Response) => {
     `).get(unit.id) as any;
 
     // ── Bulk-insert all breadcrumb points in a single transaction ──
+    // Breadcrumbs are ALWAYS recorded regardless of priority — both sessions contribute trail data
     const insertStmt = db.prepare(`
       INSERT INTO gps_breadcrumbs (unit_id, officer_id, latitude, longitude, accuracy, heading, speed,
         unit_status, call_sign, officer_name, badge_number, current_call_id, current_call_number, current_call_type,
-        road_name, nearest_intersection, recorded_at)
+        road_name, nearest_intersection, gps_source, recorded_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-        NULL, NULL,
+        NULL, NULL, ?,
         COALESCE(?, datetime('now','localtime')))
     `);
 
@@ -120,6 +150,7 @@ router.post('/gps', (req: Request, res: Response) => {
           updated?.status ?? unit.status, updated?.call_sign ?? unit.call_sign,
           updated?.officer_name ?? null, updated?.badge_number ?? null,
           updated?.current_call_id ?? null, updated?.call_number ?? null, updated?.current_call_type ?? null,
+          gpsSource,
           pt.timestamp ?? null,
         );
       }
@@ -127,8 +158,10 @@ router.post('/gps', (req: Request, res: Response) => {
 
     insertMany(validPoints);
 
-    // Broadcast ONLY the latest position (not every batch point)
-    broadcastUnitUpdate({ action: 'unit_position_update', unit: updated });
+    // Broadcast ONLY when live position was actually updated (avoids flickering on dispatch map)
+    if (shouldUpdateLive) {
+      broadcastUnitUpdate({ action: 'unit_position_update', unit: updated });
+    }
 
     res.json({ ok: true, unit_id: unit.id, call_sign: unit.call_sign, inserted: validPoints.length });
 
@@ -139,15 +172,19 @@ router.post('/gps', (req: Request, res: Response) => {
         const geo = await reverseGeocodeDetailed(latest.lat, latest.lng);
         if (!geo || (!geo.road_name && !geo.nearest_intersection)) return;
 
-        // Update all points in this batch that were just inserted (last N for this unit)
+        // Update all points in this batch that were just inserted (last N for this unit).
+        // Use subquery because better-sqlite3 doesn't compile with SQLITE_ENABLE_UPDATE_DELETE_LIMIT.
         db.prepare(`
           UPDATE gps_breadcrumbs
           SET road_name = ?, nearest_intersection = ?
-          WHERE unit_id = ? AND road_name IS NULL
-          ORDER BY id DESC LIMIT ?
+          WHERE id IN (
+            SELECT id FROM gps_breadcrumbs
+            WHERE unit_id = ? AND road_name IS NULL
+            ORDER BY id DESC LIMIT ?
+          )
         `).run(geo.road_name, geo.nearest_intersection, unit.id, validPoints.length);
       } catch (err) {
-        // Non-critical — don't log excessively
+        console.error('[GPS] Geocode backfill error:', err instanceof Error ? err.message : err);
       }
     })();
   } catch (error: any) {
@@ -178,7 +215,8 @@ router.get('/gps/trail/:unitId', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const unitId = parseInt(req.params.unitId as string);
-    const hours = parseInt(req.query.hours as string) || 8;
+    if (isNaN(unitId)) { res.status(400).json({ error: 'Invalid unit ID' }); return; }
+    const hours = Math.min(Math.max(parseInt(req.query.hours as string) || 8, 1), 72);
 
     const rows = db.prepare(`
       SELECT latitude, longitude, accuracy, heading, speed,
@@ -261,7 +299,8 @@ router.get('/gps/trails', (req: Request, res: Response) => {
     const rows = db.prepare(`
       SELECT b.unit_id, b.call_sign, b.latitude, b.longitude, b.accuracy,
         b.heading, b.speed, b.unit_status, b.officer_name, b.badge_number,
-        b.current_call_number, b.current_call_type, b.recorded_at
+        b.current_call_number, b.current_call_type, b.recorded_at,
+        b.road_name, b.nearest_intersection
       FROM gps_breadcrumbs b
       JOIN units u ON b.unit_id = u.id
       WHERE b.recorded_at >= datetime('now', 'localtime', '-' || ? || ' hours')
@@ -269,13 +308,13 @@ router.get('/gps/trails', (req: Request, res: Response) => {
     `).all(hours) as any[];
 
     // ── Group by unit, then filter each trail to remove starburst artifacts ──
-    // Two filters applied per-unit:
-    //   1. Accuracy gate: skip points with accuracy > 150 m (WiFi triangulation)
-    //   2. Jump detection: skip points implying > 80 m/s (~180 mph) from last accepted point
-    //      This catches WiFi "teleportation" back to a router's estimated position.
-    const MAX_ACCURACY = 250;   // meters — accept WiFi/cell-tower positioning
-    const MAX_SPEED    = 100;   // m/s (~224 mph) — reject impossible jumps
-    const MIN_DISTANCE = 2;     // meters — collapse stationary duplicates
+    // Three filters applied per-unit:
+    //   1. Accuracy gate: skip points with accuracy > 150m (WiFi triangulation)
+    //   2. Distance collapse: skip points <3m from last accepted (GPS drift)
+    //   3. Jump detection: skip points implying > 80 m/s (~179 mph) — WiFi teleportation
+    const MAX_ACCURACY = 150;   // meters — reject WiFi-triangulated junk
+    const MAX_SPEED    = 80;    // m/s (~179 mph) — reject impossible jumps
+    const MIN_DISTANCE = 3;     // meters — collapse stationary GPS drift
 
     const trails: Record<number, { unit_id: number; call_sign: string; officer_name: string; badge_number: string; points: any[] }> = {};
 
@@ -303,6 +342,8 @@ router.get('/gps/trails', (req: Request, res: Response) => {
         call_number: row.current_call_number,
         call_type: row.current_call_type,
         time: row.recorded_at,
+        road_name: row.road_name || null,
+        intersection: row.nearest_intersection || null,
       };
 
       const trailPts = trails[row.unit_id].points;
@@ -336,10 +377,10 @@ router.get('/gps/trails', (req: Request, res: Response) => {
 });
 
 // DELETE /api/dispatch/gps/breadcrumbs/cleanup - Purge old breadcrumb data
-router.delete('/gps/breadcrumbs/cleanup', (req: Request, res: Response) => {
+router.delete('/gps/breadcrumbs/cleanup', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const days = parseInt(req.query.days as string) || 7;
+    const days = Math.max(1, parseInt(req.query.days as string) || 7);
 
     // Use SQLite datetime() to match the stored format (datetime('now','localtime'))
     const result = db.prepare(

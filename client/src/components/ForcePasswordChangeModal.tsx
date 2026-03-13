@@ -5,7 +5,7 @@
 // Cannot be closed or dismissed.
 // ============================================================
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Shield, Eye, EyeOff, Check, AlertCircle } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
@@ -28,6 +28,17 @@ export default function ForcePasswordChangeModal() {
   const [policyRules, setPolicyRules] = useState<string[]>([]);
   const [minLength, setMinLength] = useState(12);
   const [requireSpecial, setRequireSpecial] = useState(true);
+  const logoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clean up logout timer on unmount
+  useEffect(() => {
+    return () => {
+      if (logoutTimerRef.current) {
+        clearTimeout(logoutTimerRef.current);
+        logoutTimerRef.current = null;
+      }
+    };
+  }, []);
 
   // Fetch password policy on mount
   useEffect(() => {
@@ -69,7 +80,8 @@ export default function ForcePasswordChangeModal() {
 
       // The server invalidates all sessions on password change,
       // so we log out after a brief delay to let the user read the message.
-      setTimeout(() => {
+      logoutTimerRef.current = setTimeout(() => {
+        logoutTimerRef.current = null;
         logout();
       }, 2000);
     } catch (err: any) {

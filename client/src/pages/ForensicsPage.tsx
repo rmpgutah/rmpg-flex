@@ -1,1160 +1,933 @@
-import React, { useState, useEffect, useCallback } from 'react';
+// ============================================================
+// RMPG Flex — Connection Analysis Page
+// ============================================================
+// Interactive spider-web graph visualization of relationships
+// between persons, vehicles, properties, cases, incidents,
+// and evidence. Uses react-force-graph-2d for Canvas rendering.
+// ============================================================
+
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import ForceGraph2D from 'react-force-graph-2d';
 import {
-  Microscope, FolderOpen, Loader2, CheckCircle2, XCircle,
-  Trash2, AlertTriangle, ExternalLink, ToggleLeft, ToggleRight,
-  Shield, Download, HardDrive, Hash, Database, Activity,
-  FileSearch, RefreshCw, Server, Settings, Play, Square,
-  Eye, Upload, Clock, FileText, Search, ChevronDown, ChevronRight,
+  Search, Loader2, Network, X, User, Car, Building2,
+  Briefcase, FileText, Package, ChevronDown, ChevronRight,
+  ZoomIn, ZoomOut, RotateCcw, Maximize2, Minus, Plus, Eye, EyeOff,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import SplitPanel from '../components/SplitPanel';
+import type { GraphNode, GraphEdge, ConnectionGraph } from '../types';
 
-// ── Types ────────────────────────────────────────────────────
+// ── Constants ────────────────────────────────────────────────
 
-interface IpedStatus {
-  configured: boolean;
-  installed: boolean;
-  installPath: string | null;
-  javaHome: string | null;
-  webApiUrl: string | null;
-  webApiPort: string | null;
-  defaultProfile: string;
-  photodnaEnabled: boolean;
-  autoHashOnUpload: boolean;
-  hashSetsPath: string | null;
-  totalJobs: number;
-  completedJobs: number;
-  runningJobs: number;
-  failedJobs: number;
-  totalHashes: number;
-  flaggedHashes: number;
-  hashSetCount: number;
-}
+const NODE_PALETTE: Record<string, { primary: string; glow: string; dark: string }> = {
+  person:   { primary: '#4a9eff', glow: '#2979ff', dark: '#1a3a6e' },
+  vehicle:  { primary: '#ffb74d', glow: '#ff9800', dark: '#6e4a1a' },
+  property: { primary: '#4dd0a0', glow: '#00c853', dark: '#1a6e4a' },
+  case:     { primary: '#ff6b6b', glow: '#ff1744', dark: '#6e1a1a' },
+  incident: { primary: '#ce93d8', glow: '#aa00ff', dark: '#4a1a6e' },
+  evidence: { primary: '#90a4ae', glow: '#607d8b', dark: '#2a3840' },
+};
 
-interface ValidationResult {
-  valid: boolean;
-  ipedFound: boolean;
-  javaFound: boolean;
-  ipedVersion: string | null;
-  javaVersion: string | null;
-  platform: string;
-  errors: string[];
-}
+// Backward-compatible flat color map (used in sidebar UI, filters, search dropdown)
+const NODE_COLORS: Record<string, string> = Object.fromEntries(
+  Object.entries(NODE_PALETTE).map(([k, v]) => [k, v.primary])
+);
 
-interface DownloadInfo {
-  available: boolean;
-  bundles: {
-    mac?: { filename: string; version: string; size: number };
-    win?: { filename: string; version: string; size: number };
-    linux?: { filename: string; version: string; size: number };
-  };
-  downloadUrl: string;
-  githubUrl: string;
-}
+// ── Relationship Edge Colors & Weights ──────────────────────
 
-interface HashSetInfo {
-  name: string;
-  category: string;
-  count: number;
-}
+const RELATIONSHIP_COLORS: Record<string, string> = {
+  suspect: '#ff5252', suspect_vehicle: '#ff5252',
+  owner: '#4fc3f7',
+  victim: '#ffab40', victim_vehicle: '#ffab40',
+  witness: '#80cbc4', witness_vehicle: '#80cbc4',
+  reporting_party: '#b39ddb',
+  location: '#4dd0a0',
+  collected_from: '#90a4ae',
+  linked: '#546e7a', associated: '#455a64',
+  involved: '#37474f', evidence: '#607d8b', other: '#37474f',
+};
 
-interface IpedJob {
+const RELATIONSHIP_WEIGHT: Record<string, number> = {
+  suspect: 3, suspect_vehicle: 3,
+  owner: 2.5,
+  victim: 2.5, victim_vehicle: 2.5,
+  witness: 1.8, witness_vehicle: 1.8,
+  reporting_party: 1.8,
+  location: 1.5, collected_from: 1.5,
+  linked: 1, associated: 1, involved: 0.8, evidence: 1.2, other: 0.8,
+};
+
+const NODE_ICONS: Record<string, React.ElementType> = {
+  person: User,
+  vehicle: Car,
+  property: Building2,
+  case: Briefcase,
+  incident: FileText,
+  evidence: Package,
+};
+
+const TYPE_LABELS: Record<string, string> = {
+  person: 'Person',
+  vehicle: 'Vehicle',
+  property: 'Property',
+  case: 'Case',
+  incident: 'Incident',
+  evidence: 'Evidence',
+};
+
+const ALL_TYPES = ['person', 'vehicle', 'property', 'case', 'incident', 'evidence'];
+
+// ── Search Result Type ───────────────────────────────────────
+
+interface SearchResult {
   id: number;
-  evidence_id: number | null;
-  job_type: string;
-  status: string;
-  profile: string;
-  input_path: string;
-  output_path: string | null;
-  progress_percent: number;
-  items_found: number;
-  items_processed: number;
-  error_message: string | null;
-  result_summary: string | null;
-  started_at: string | null;
-  completed_at: string | null;
-  created_at: string;
+  type: string;
+  label: string;
 }
 
-interface HashResult {
-  id: number;
-  evidence_id: number;
-  file_name: string;
-  file_size: number;
-  md5: string | null;
-  sha256: string | null;
-  photodna_hash: string | null;
-  phash: string | null;
-  flagged: boolean;
-  flag_reason: string | null;
-  hash_set_match: boolean;
-  hash_set_name: string | null;
-  created_at: string;
-}
+// ── SeedSelector Component ───────────────────────────────────
 
-const PROFILES = [
-  { id: 'forensic', label: 'Forensic (Full)', desc: 'Complete analysis — all parsers, hash computation, file carving' },
-  { id: 'csam', label: 'CSAM Detection', desc: 'PhotoDNA + nudity detection + hash set matching' },
-  { id: 'triage', label: 'Triage (Fast)', desc: 'Quick scan — metadata extraction, known file filtering' },
-  { id: 'fastmode', label: 'Fast Mode', desc: 'File system metadata only — fastest for large media' },
-  { id: 'blind', label: 'Blind', desc: 'No file system structure — useful for raw/carved images' },
-];
-
-// ── Collapsible Section Component ────────────────────────────
-
-function Section({ title, icon: Icon, defaultOpen = true, badge, children }: {
-  title: string;
-  icon: React.ElementType;
-  defaultOpen?: boolean;
-  badge?: React.ReactNode;
-  children: React.ReactNode;
+function SeedSelector({ onSelect, loading }: {
+  onSelect: (type: string, id: number, label: string) => void;
+  loading: boolean;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<SearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (query.trim().length < 2) { setResults([]); setShowDropdown(false); return; }
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const data = await apiFetch<SearchResult[]>(`/connections/search?q=${encodeURIComponent(query.trim())}`);
+        setResults(data || []);
+        setShowDropdown(true);
+      } catch { setResults([]); }
+      finally { setSearching(false); }
+    }, 300);
+    return () => clearTimeout(debounceRef.current);
+  }, [query]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
   return (
-    <div className="panel-beveled bg-surface-base overflow-hidden">
-      <button
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-rmpg-800/20 transition-colors"
-      >
-        {open ? <ChevronDown className="w-3 h-3 text-rmpg-500" /> : <ChevronRight className="w-3 h-3 text-rmpg-500" />}
-        <Icon className="w-3.5 h-3.5 text-brand-400" />
-        <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">{title}</span>
-        {badge}
-      </button>
-      {open && <div className="px-3 pb-3 space-y-3">{children}</div>}
+    <div ref={wrapperRef} className="relative">
+      <div className="flex items-center gap-1.5 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 focus-within:border-brand-500">
+        {searching || loading ? (
+          <Loader2 className="w-3.5 h-3.5 text-brand-400 animate-spin shrink-0" />
+        ) : (
+          <Search className="w-3.5 h-3.5 text-rmpg-500 shrink-0" />
+        )}
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onFocus={() => results.length > 0 && setShowDropdown(true)}
+          placeholder="Search person, vehicle, property, case..."
+          className="flex-1 bg-transparent text-rmpg-200 text-[11px] focus:outline-none placeholder:text-rmpg-600 min-w-0"
+        />
+        {query && (
+          <button onClick={() => { setQuery(''); setResults([]); setShowDropdown(false); }}
+            className="text-rmpg-500 hover:text-rmpg-300">
+            <X className="w-3 h-3" />
+          </button>
+        )}
+      </div>
+
+      {showDropdown && results.length > 0 && (
+        <div className="absolute top-full left-0 right-0 mt-1 bg-surface-base border border-rmpg-600 rounded-sm shadow-xl z-50 max-h-72 overflow-y-auto">
+          {results.map((r, idx) => {
+            const Icon = NODE_ICONS[r.type] || Package;
+            return (
+              <button
+                key={`${r.type}-${r.id}-${idx}`}
+                onClick={() => {
+                  onSelect(r.type, r.id, r.label);
+                  setQuery('');
+                  setShowDropdown(false);
+                }}
+                className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-rmpg-800/40 text-left transition-colors"
+              >
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: NODE_COLORS[r.type] }} />
+                <Icon className="w-3.5 h-3.5 shrink-0" style={{ color: NODE_COLORS[r.type] }} />
+                <span className="text-[10px] font-medium text-rmpg-300 truncate flex-1">{r.label}</span>
+                <span className="text-[9px] text-rmpg-500 uppercase shrink-0">{r.type}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
 
-// ── IPED Case Browser Sub-Tab ────────────────────────────────
+// ── Node Flag Parser ─────────────────────────────────────────
 
-interface CaseItem {
-  id: string;
-  name: string;
-  path?: string;
-  items?: number;
-  created?: string;
+function parseNodeFlags(node: any): { hasWarrant: boolean; hasBolo: boolean; hasCaution: boolean } {
+  let flags: string[] = [];
+  if (node.metadata?.flags) {
+    if (typeof node.metadata.flags === 'string') {
+      try { flags = JSON.parse(node.metadata.flags); } catch { /* */ }
+    } else if (Array.isArray(node.metadata.flags)) {
+      flags = node.metadata.flags;
+    }
+  }
+  const flagsLower = flags.map((f: string) => String(f).toLowerCase());
+  return {
+    hasWarrant: flagsLower.some(f => f.includes('warrant')),
+    hasBolo: flagsLower.some(f => f.includes('bolo')),
+    hasCaution: !!(node.metadata?.caution_flags),
+  };
 }
 
-interface CaseFileResult {
-  id: string;
-  name: string;
-  path: string;
-  type: string;
-  size: number;
-  category?: string;
-  flagged?: boolean;
+// ── GraphLegend Component ────────────────────────────────────
+
+function GraphLegend({ visible }: { visible: boolean }) {
+  if (!visible) return null;
+  return (
+    <div className="absolute bottom-2 left-2 z-10 bg-[#060c14]/92 backdrop-blur-sm border border-rmpg-700 rounded-sm p-2.5 max-w-[210px] select-none">
+      <div className="text-[8px] text-rmpg-400 uppercase tracking-wider mb-1.5 font-semibold">Entity Types</div>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 mb-2">
+        {ALL_TYPES.map(t => (
+          <div key={t} className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: NODE_PALETTE[t]?.primary }} />
+            <span className="text-[8px] text-rmpg-300">{TYPE_LABELS[t]}</span>
+          </div>
+        ))}
+      </div>
+      <div className="border-t border-rmpg-700 pt-1.5 mt-1">
+        <div className="text-[8px] text-rmpg-400 uppercase tracking-wider mb-1.5 font-semibold">Edge Relationships</div>
+        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+          {([
+            ['suspect', 'Suspect'], ['owner', 'Owner'], ['victim', 'Victim'],
+            ['witness', 'Witness'], ['location', 'Location'], ['linked', 'Linked'],
+          ] as const).map(([key, label]) => (
+            <div key={key} className="flex items-center gap-1.5">
+              <span className="w-4 h-[2px] shrink-0 rounded-full" style={{ background: RELATIONSHIP_COLORS[key] }} />
+              <span className="text-[8px] text-rmpg-300">{label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="border-t border-rmpg-700 pt-1.5 mt-1">
+        <div className="text-[8px] text-rmpg-400 uppercase tracking-wider mb-1.5 font-semibold">Flags</div>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
+            <span className="text-[8px] text-rmpg-300">Warrant</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+            <span className="text-[8px] text-rmpg-300">BOLO</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-yellow-400 shrink-0" />
+            <span className="text-[8px] text-rmpg-300">Caution</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
-function CaseBrowserTab({ isConnected, webApiUrl, webApiPort }: {
-  isConnected: boolean;
-  webApiUrl?: string | null;
-  webApiPort?: string | null;
+// ── GraphPanel Component ─────────────────────────────────────
+
+function GraphPanel({ graph, selectedNodeId, onSelectNode, depth, onDepthChange, typeFilter, onToggleTypeFilter, loading }: {
+  graph: ConnectionGraph | null;
+  selectedNodeId: string | null;
+  onSelectNode: (nodeId: string | null) => void;
+  depth: number;
+  onDepthChange: (d: number) => void;
+  typeFilter: Set<string>;
+  onToggleTypeFilter: (type: string) => void;
+  loading: boolean;
 }) {
-  const [cases, setCases] = useState<CaseItem[]>([]);
-  const [loadingCases, setLoadingCases] = useState(false);
-  const [selectedCase, setSelectedCase] = useState<CaseItem | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<CaseFileResult[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [caseError, setCaseError] = useState<string | null>(null);
+  const graphRef = useRef<any>();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [dimensions, setDimensions] = useState({ width: 600, height: 400 });
 
-  const fetchCases = useCallback(async () => {
-    setLoadingCases(true);
-    setCaseError(null);
-    try {
-      const data = await apiFetch<any>('/iped/cases');
-      setCases(Array.isArray(data) ? data : data?.cases || []);
-    } catch (err: any) {
-      setCaseError(err?.message || 'Failed to fetch cases from IPED Web API');
-    } finally {
-      setLoadingCases(false);
+  // Track container size
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const obs = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setDimensions({ width: entry.contentRect.width, height: entry.contentRect.height });
+      }
+    });
+    obs.observe(containerRef.current);
+    return () => obs.disconnect();
+  }, []);
+
+  // Filter graph by visible types
+  const filteredGraph = useMemo(() => {
+    if (!graph) return { nodes: [], links: [] };
+    const visibleNodes = graph.nodes.filter(n => typeFilter.has(n.type));
+    const visibleIds = new Set(visibleNodes.map(n => n.id));
+    const visibleLinks = graph.edges
+      .filter(e => visibleIds.has(e.source) && visibleIds.has(e.target))
+      .map(e => ({ ...e }));
+    return { nodes: visibleNodes, links: visibleLinks };
+  }, [graph, typeFilter]);
+
+  // Connection count per node (for dynamic sizing)
+  const connectionCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const link of filteredGraph.links) {
+      const src = typeof link.source === 'object' ? (link.source as any).id : link.source;
+      const tgt = typeof link.target === 'object' ? (link.target as any).id : link.target;
+      counts[src] = (counts[src] || 0) + 1;
+      counts[tgt] = (counts[tgt] || 0) + 1;
+    }
+    return counts;
+  }, [filteredGraph]);
+
+  // Legend visibility
+  const [showLegend, setShowLegend] = useState(true);
+
+  // Custom node painting — multi-layer with gradients, halos, and flag indicators
+  const paintNode = useCallback((node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
+    // Guard: node may not have coordinates yet during initial force simulation
+    if (!Number.isFinite(node.x) || !Number.isFinite(node.y)) return;
+
+    const isSelected = node.id === selectedNodeId;
+    const isSeed = node.depth === 0;
+    const palette = NODE_PALETTE[node.type] || NODE_PALETTE.evidence;
+    const conns = connectionCounts[node.id] || 0;
+    const baseSize = isSeed ? 9 : isSelected ? 7 : 5;
+    const size = baseSize + Math.min(conns * 0.5, 6);
+
+    // Depth-based opacity
+    const depthAlpha = Math.max(0.35, 1 - node.depth * 0.2);
+    ctx.save();
+    ctx.globalAlpha = depthAlpha;
+
+    // Layer 1: Outer glow halo
+    const glowRadius = isSeed ? size * 3.5 : size * 2.5;
+    const glowOpacity = isSeed ? 0.25 : 0.12;
+    const glow = ctx.createRadialGradient(node.x, node.y, size * 0.3, node.x, node.y, glowRadius);
+    glow.addColorStop(0, palette.glow + Math.round(glowOpacity * 255).toString(16).padStart(2, '0'));
+    glow.addColorStop(0.6, palette.glow + '0a');
+    glow.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.beginPath();
+    ctx.arc(node.x, node.y, glowRadius, 0, 2 * Math.PI);
+    ctx.fillStyle = glow;
+    ctx.fill();
+
+    // Layer 2: Main gradient fill (3D sphere effect)
+    const fill = ctx.createRadialGradient(
+      node.x - size * 0.25, node.y - size * 0.25, size * 0.1,
+      node.x, node.y, size
+    );
+    fill.addColorStop(0, palette.primary);
+    fill.addColorStop(0.7, palette.primary);
+    fill.addColorStop(1, palette.dark);
+    ctx.beginPath();
+    ctx.arc(node.x, node.y, size, 0, 2 * Math.PI);
+    ctx.fillStyle = fill;
+    ctx.fill();
+
+    // Layer 3: Inner highlight ring
+    ctx.beginPath();
+    ctx.arc(node.x, node.y, size * 0.65, 0, 2 * Math.PI);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+    ctx.lineWidth = 0.8 / globalScale;
+    ctx.stroke();
+
+    // Layer 4: Selection ring
+    if (isSelected) {
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, size + 1.5, 0, 2 * Math.PI);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2 / globalScale;
+      ctx.stroke();
+    }
+
+    // Layer 4b: Seed outer ring
+    if (isSeed && !isSelected) {
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, size + 1, 0, 2 * Math.PI);
+      ctx.strokeStyle = palette.primary + 'aa';
+      ctx.lineWidth = 1.5 / globalScale;
+      ctx.stroke();
+    }
+
+    // Layer 5: Flag indicators (small colored pips)
+    const { hasWarrant, hasBolo, hasCaution } = parseNodeFlags(node);
+    const pipDist = size + 3;
+    const pipSize = Math.max(2, 3 / globalScale);
+
+    if (hasWarrant) {
+      // Red pip at 1 o'clock
+      const angle = -Math.PI / 6;
+      ctx.beginPath();
+      ctx.arc(node.x + Math.cos(angle) * pipDist, node.y + Math.sin(angle) * pipDist, pipSize, 0, 2 * Math.PI);
+      ctx.fillStyle = '#ff5252';
+      ctx.fill();
+      ctx.strokeStyle = '#ff1744';
+      ctx.lineWidth = 0.5 / globalScale;
+      ctx.stroke();
+    }
+
+    if (hasBolo) {
+      // Amber pip at 11 o'clock
+      const angle = -5 * Math.PI / 6;
+      ctx.beginPath();
+      ctx.arc(node.x + Math.cos(angle) * pipDist, node.y + Math.sin(angle) * pipDist, pipSize, 0, 2 * Math.PI);
+      ctx.fillStyle = '#ffab40';
+      ctx.fill();
+      ctx.strokeStyle = '#ff9800';
+      ctx.lineWidth = 0.5 / globalScale;
+      ctx.stroke();
+    }
+
+    if (hasCaution) {
+      // Yellow pip at 12 o'clock
+      ctx.beginPath();
+      ctx.arc(node.x, node.y - pipDist, pipSize, 0, 2 * Math.PI);
+      ctx.fillStyle = '#fdd835';
+      ctx.fill();
+      ctx.strokeStyle = '#f9a825';
+      ctx.lineWidth = 0.5 / globalScale;
+      ctx.stroke();
+    }
+
+    ctx.restore();
+
+    // Label with text shadow for readability
+    if (globalScale > 0.6) {
+      const fontSize = Math.max(10 / globalScale, 3);
+      const labelAlpha = node.depth === 0 ? 1 : Math.max(0.45, 1 - node.depth * 0.18);
+      ctx.font = `${fontSize}px system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      // Shadow
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+      ctx.shadowBlur = 3;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 1;
+      ctx.fillStyle = `rgba(220, 225, 230, ${labelAlpha})`;
+      ctx.fillText(node.label, node.x, node.y + size + 3);
+      // Clear shadow
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetY = 0;
+    }
+  }, [selectedNodeId, connectionCounts]);
+
+  // Link label — styled pill badges at higher zoom, colored dots at medium zoom
+  const paintLink = useCallback((link: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
+    const start = link.source;
+    const end = link.target;
+    if (!start?.x || !end?.x) return;
+    const midX = (start.x + end.x) / 2;
+    const midY = (start.y + end.y) / 2;
+    const relColor = RELATIONSHIP_COLORS[link.relationship] || '#37474f';
+
+    if (globalScale >= 1.0 && link.relationship) {
+      // Pill badge at high zoom
+      const fontSize = Math.max(7 / globalScale, 2);
+      ctx.font = `bold ${fontSize}px system-ui, sans-serif`;
+      const text = link.relationship.replace(/_/g, ' ');
+      const textWidth = ctx.measureText(text).width;
+      const padX = 3 / globalScale;
+      const padY = 1.5 / globalScale;
+      const pillW = textWidth + padX * 2;
+      const pillH = fontSize + padY * 2;
+      const cornerR = 2 / globalScale;
+
+      // Pill background
+      ctx.beginPath();
+      ctx.roundRect(midX - pillW / 2, midY - pillH / 2, pillW, pillH, cornerR);
+      ctx.fillStyle = relColor + 'cc';
+      ctx.fill();
+      ctx.strokeStyle = relColor + '66';
+      ctx.lineWidth = 0.5 / globalScale;
+      ctx.stroke();
+
+      // Pill text
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, midX, midY);
+    } else if (globalScale >= 0.6) {
+      // Colored dot at medium zoom
+      ctx.beginPath();
+      ctx.arc(midX, midY, 1.5 / globalScale, 0, 2 * Math.PI);
+      ctx.fillStyle = relColor + '80';
+      ctx.fill();
     }
   }, []);
 
-  useEffect(() => {
-    if (isConnected) fetchCases();
-  }, [isConnected, fetchCases]);
+  return (
+    <div className="flex flex-col h-full">
+      {/* Toolbar */}
+      <div className="shrink-0 px-3 py-1.5 border-b border-rmpg-700 flex items-center gap-3 flex-wrap bg-surface-base">
+        {/* Depth control */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-[9px] text-rmpg-500 uppercase tracking-wider">Depth</span>
+          <button onClick={() => onDepthChange(Math.max(1, depth - 1))} disabled={depth <= 1}
+            className="toolbar-btn p-0.5 disabled:opacity-30"><Minus className="w-3 h-3" /></button>
+          <span className="text-[10px] text-rmpg-200 font-bold w-3 text-center">{depth}</span>
+          <button onClick={() => onDepthChange(Math.min(3, depth + 1))} disabled={depth >= 3}
+            className="toolbar-btn p-0.5 disabled:opacity-30"><Plus className="w-3 h-3" /></button>
+        </div>
 
-  const handleSearch = useCallback(async () => {
-    if (!selectedCase || !searchQuery.trim()) return;
-    setSearching(true);
-    try {
-      const data = await apiFetch<any>(`/iped/cases/${selectedCase.id}/search?q=${encodeURIComponent(searchQuery.trim())}`);
-      setSearchResults(Array.isArray(data) ? data : data?.items || data?.results || []);
-    } catch {
-      setSearchResults([]);
-    } finally {
-      setSearching(false);
-    }
-  }, [selectedCase, searchQuery]);
+        <div className="w-px h-4 bg-rmpg-700" />
 
-  if (!isConnected) {
+        {/* Type filters */}
+        <div className="flex items-center gap-1">
+          {ALL_TYPES.map(t => {
+            const active = typeFilter.has(t);
+            return (
+              <button key={t} onClick={() => onToggleTypeFilter(t)}
+                className={`flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-[9px] transition-colors border ${
+                  active ? 'border-rmpg-500 bg-rmpg-800/40' : 'border-transparent opacity-40 hover:opacity-70'
+                }`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full" style={{ background: NODE_COLORS[t] }} />
+                {TYPE_LABELS[t]}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex-1" />
+
+        {/* Graph controls */}
+        <button onClick={() => setShowLegend(v => !v)}
+          className={`toolbar-btn p-1 ${showLegend ? 'text-brand-400' : 'text-rmpg-500'}`}
+          title={showLegend ? 'Hide legend' : 'Show legend'}>
+          {showLegend ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+        </button>
+        <button onClick={() => graphRef.current?.zoomToFit(400, 40)}
+          className="toolbar-btn p-1" title="Fit to view">
+          <Maximize2 className="w-3 h-3" />
+        </button>
+
+        {loading && <Loader2 className="w-3.5 h-3.5 text-brand-400 animate-spin" />}
+      </div>
+
+      {/* Graph canvas */}
+      <div ref={containerRef} className="flex-1 relative" style={{ background: '#0d1520' }}>
+        <GraphLegend visible={showLegend && filteredGraph.nodes.length > 0} />
+        {filteredGraph.nodes.length > 0 ? (
+          <ForceGraph2D
+            ref={graphRef}
+            graphData={filteredGraph}
+            width={dimensions.width}
+            height={dimensions.height}
+            nodeCanvasObject={paintNode}
+            nodePointerAreaPaint={(node: any, color: string, ctx: CanvasRenderingContext2D) => {
+              if (!Number.isFinite(node.x) || !Number.isFinite(node.y)) return;
+              const conns = connectionCounts[node.id] || 0;
+              const hitSize = (node.depth === 0 ? 9 : node.id === selectedNodeId ? 7 : 5) + Math.min(conns * 0.5, 6) + 4;
+              ctx.beginPath();
+              ctx.arc(node.x, node.y, hitSize, 0, 2 * Math.PI);
+              ctx.fillStyle = color;
+              ctx.fill();
+            }}
+            linkCanvasObjectMode={() => 'after'}
+            linkCanvasObject={paintLink}
+            onNodeClick={(node: any) => onSelectNode(node.id)}
+            onBackgroundClick={() => onSelectNode(null)}
+            // Enhanced link styling — colored by relationship type
+            linkColor={(link: any) => RELATIONSHIP_COLORS[link.relationship] || '#37474f'}
+            linkWidth={(link: any) => RELATIONSHIP_WEIGHT[link.relationship] || 1}
+            linkCurvature={0.15}
+            // Animated directional particles
+            linkDirectionalParticles={2}
+            linkDirectionalParticleSpeed={0.004}
+            linkDirectionalParticleWidth={(link: any) =>
+              Math.max(1.5, (RELATIONSHIP_WEIGHT[link.relationship] || 1) * 0.8)
+            }
+            linkDirectionalParticleColor={(link: any) => {
+              const targetId = typeof link.target === 'object' ? (link.target as any).id : link.target;
+              const targetNode = filteredGraph.nodes.find((n: any) => n.id === targetId);
+              return targetNode ? (NODE_PALETTE[targetNode.type]?.glow || '#546e7a') : '#546e7a';
+            }}
+            // Seed glow background
+            onRenderFramePost={(ctx: CanvasRenderingContext2D, globalScale: number) => {
+              const seedNode = filteredGraph.nodes.find((n: any) => n.depth === 0);
+              if (!seedNode || !(seedNode as any).x) return;
+              const sx = (seedNode as any).x;
+              const sy = (seedNode as any).y;
+              const r = 250 / globalScale;
+              const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, r);
+              grad.addColorStop(0, 'rgba(26, 90, 158, 0.07)');
+              grad.addColorStop(0.5, 'rgba(26, 90, 158, 0.025)');
+              grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+              ctx.fillStyle = grad;
+              ctx.fillRect(sx - r, sy - r, r * 2, r * 2);
+            }}
+            backgroundColor="#0d1520"
+            d3AlphaDecay={0.02}
+            d3VelocityDecay={0.3}
+            warmupTicks={50}
+            cooldownTicks={100}
+          />
+        ) : (
+          !loading && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="text-center">
+                <Network className="w-12 h-12 mx-auto mb-3 text-rmpg-700" />
+                <div className="text-[11px] text-rmpg-500">No connections to display</div>
+              </div>
+            </div>
+          )
+        )}
+      </div>
+
+      {/* Stats bar — enhanced with per-type breakdown */}
+      {graph && (
+        <div className="shrink-0 px-3 py-1 border-t border-rmpg-700 bg-surface-base flex items-center gap-3 flex-wrap">
+          <span className="text-[9px] text-rmpg-500">{graph.nodes.length} nodes</span>
+          <span className="text-[9px] text-rmpg-500">{graph.edges.length} connections</span>
+          <div className="w-px h-3 bg-rmpg-700" />
+          {ALL_TYPES.map(t => {
+            const count = graph.nodes.filter(n => n.type === t).length;
+            if (count === 0) return null;
+            return (
+              <div key={t} className="flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full" style={{ background: NODE_PALETTE[t]?.primary }} />
+                <span className="text-[9px] text-rmpg-400">{count}</span>
+              </div>
+            );
+          })}
+          {graph.nodes.length >= 200 && (
+            <span className="text-[9px] text-amber-500 ml-auto">⚠ Node limit reached (200)</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── DetailPanel Component ────────────────────────────────────
+
+function DetailPanel({ node, edges, allNodes, onExpandNode }: {
+  node: GraphNode | null;
+  edges: GraphEdge[];
+  allNodes: GraphNode[];
+  onExpandNode: (type: string, id: number, label: string) => void;
+}) {
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
+  if (!node) {
     return (
-      <div className="text-center py-8 text-rmpg-500">
-        <FileSearch className="w-8 h-8 mx-auto mb-2 text-rmpg-600" />
-        <div className="text-[10px]">IPED Case Browser</div>
-        <div className="text-[9px] text-rmpg-600 mt-1">
-          IPED must be installed and a Web API connection configured to browse cases.
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center px-4">
+          <Network className="w-10 h-10 mx-auto mb-3 text-rmpg-700" />
+          <div className="text-[11px] text-rmpg-500">Select a node to view details</div>
+          <div className="text-[9px] text-rmpg-600 mt-1">Click any node in the graph</div>
         </div>
       </div>
     );
   }
 
+  const Icon = NODE_ICONS[node.type] || Package;
+  const color = NODE_COLORS[node.type] || '#6b7280';
+
+  // Group edges by connected node type
+  const grouped: Record<string, Array<{ edge: GraphEdge; otherNode: GraphNode }>> = {};
+  for (const edge of edges) {
+    const otherId = edge.source === node.id ? edge.target : edge.source;
+    const otherNode = allNodes.find(n => n.id === otherId);
+    if (!otherNode) continue;
+    if (!grouped[otherNode.type]) grouped[otherNode.type] = [];
+    grouped[otherNode.type].push({ edge, otherNode });
+  }
+
+  // Metadata display helper
+  const meta = node.metadata || {};
+  const metaFields: Array<{ label: string; value: string }> = [];
+  switch (node.type) {
+    case 'person':
+      if (meta.dob) metaFields.push({ label: 'DOB', value: meta.dob });
+      if (meta.address) metaFields.push({ label: 'Address', value: `${meta.address}${meta.city ? `, ${meta.city}` : ''}${meta.state ? ` ${meta.state}` : ''}` });
+      if (meta.phone) metaFields.push({ label: 'Phone', value: meta.phone });
+      break;
+    case 'vehicle':
+      if (meta.plate_number) metaFields.push({ label: 'Plate', value: `${meta.plate_number}${meta.state ? ` (${meta.state})` : ''}` });
+      if (meta.vin) metaFields.push({ label: 'VIN', value: meta.vin });
+      if (meta.year) metaFields.push({ label: 'Year', value: String(meta.year) });
+      break;
+    case 'property':
+      if (meta.address) metaFields.push({ label: 'Address', value: meta.address });
+      if (meta.property_type) metaFields.push({ label: 'Type', value: meta.property_type });
+      break;
+    case 'case':
+      if (meta.case_number) metaFields.push({ label: 'Case #', value: meta.case_number });
+      if (meta.status) metaFields.push({ label: 'Status', value: meta.status });
+      if (meta.priority) metaFields.push({ label: 'Priority', value: meta.priority });
+      if (meta.case_type) metaFields.push({ label: 'Type', value: meta.case_type });
+      break;
+    case 'incident':
+      if (meta.incident_number) metaFields.push({ label: 'Inc #', value: meta.incident_number });
+      if (meta.status) metaFields.push({ label: 'Status', value: meta.status });
+      if (meta.priority) metaFields.push({ label: 'Priority', value: meta.priority });
+      if (meta.location_address) metaFields.push({ label: 'Location', value: meta.location_address });
+      break;
+    case 'evidence':
+      if (meta.evidence_number) metaFields.push({ label: 'Ev #', value: meta.evidence_number });
+      if (meta.evidence_type) metaFields.push({ label: 'Type', value: meta.evidence_type });
+      if (meta.status) metaFields.push({ label: 'Status', value: meta.status });
+      break;
+  }
+
   return (
-    <div className="space-y-3">
-      {/* API connection info */}
-      {webApiUrl && (
-        <div className="flex items-center gap-2 text-[9px] text-rmpg-500 font-mono px-1">
-          <Server className="w-3 h-3" />
-          API: {webApiUrl}:{webApiPort}
-          <button onClick={fetchCases} className="ml-auto toolbar-btn p-1" title="Refresh cases">
-            <RefreshCw className={`w-3 h-3 ${loadingCases ? 'animate-spin' : ''}`} />
+    <div className="h-full flex flex-col overflow-hidden">
+      {/* Entity header card */}
+      <div className="shrink-0 p-3 border-b border-rmpg-700 bg-surface-base">
+        <div className="flex items-center gap-2.5 mb-2">
+          <div className="p-1.5 rounded-sm" style={{ background: color + '20', border: `1px solid ${color}40` }}>
+            <Icon className="w-4 h-4" style={{ color }} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-[11px] font-bold text-rmpg-100 truncate">{node.label}</div>
+            <div className="text-[9px] uppercase tracking-wider" style={{ color }}>{TYPE_LABELS[node.type]}</div>
+          </div>
+          <button
+            onClick={() => onExpandNode(node.type, node.entityId, node.label)}
+            className="toolbar-btn text-[9px] px-2 py-1 flex items-center gap-1"
+            title="Re-center graph on this entity"
+          >
+            <RotateCcw className="w-3 h-3" />
+            Center
           </button>
         </div>
-      )}
 
-      {caseError && (
-        <div className="flex items-center gap-2 px-3 py-2 text-xs text-red-400 bg-red-900/20 border border-red-800/40">
-          <AlertTriangle className="w-3 h-3 flex-shrink-0" />
-          {caseError}
-        </div>
-      )}
-
-      {loadingCases && (
-        <div className="flex items-center justify-center py-8 gap-2">
-          <Loader2 className="w-4 h-4 animate-spin text-brand-400" />
-          <span className="text-[10px] text-rmpg-400">Fetching cases from IPED...</span>
-        </div>
-      )}
-
-      {!loadingCases && cases.length === 0 && !caseError && (
-        <div className="text-center py-8 text-rmpg-500">
-          <Database className="w-8 h-8 mx-auto mb-2 text-rmpg-600" />
-          <div className="text-[10px]">No processed cases found</div>
-          <div className="text-[9px] text-rmpg-600 mt-1">
-            Process evidence through a job to create browseable cases.
-          </div>
-        </div>
-      )}
-
-      {!loadingCases && cases.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {/* Case list */}
-          <div className="panel-beveled bg-surface-base overflow-hidden">
-            <div className="panel-title-bar">
-              <FolderOpen className="title-icon w-3 h-3" />
-              <span>Cases ({cases.length})</span>
-            </div>
-            <div className="max-h-[400px] overflow-y-auto divide-y divide-rmpg-800/50">
-              {cases.map(c => (
-                <button
-                  key={c.id}
-                  onClick={() => { setSelectedCase(c); setSearchResults([]); setSearchQuery(''); }}
-                  className={`w-full text-left px-3 py-2 hover:bg-rmpg-800/30 transition-colors ${
-                    selectedCase?.id === c.id ? 'bg-brand-900/20 border-l-2 border-brand-400' : ''
-                  }`}
-                >
-                  <div className="text-xs font-semibold text-rmpg-200 truncate">{c.name}</div>
-                  {c.path && (
-                    <div className="text-[9px] text-rmpg-500 font-mono truncate mt-0.5">{c.path}</div>
-                  )}
-                  <div className="flex items-center gap-3 mt-1 text-[9px] text-rmpg-500">
-                    {c.items != null && <span>{c.items.toLocaleString()} items</span>}
-                    {c.created && <span>{new Date(c.created).toLocaleDateString()}</span>}
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Case detail / search */}
-          <div className="md:col-span-2 space-y-3">
-            {!selectedCase ? (
-              <div className="text-center py-12 text-rmpg-500">
-                <Eye className="w-6 h-6 mx-auto mb-2 text-rmpg-600" />
-                <div className="text-[10px]">Select a case to browse</div>
+        {/* Metadata fields */}
+        {metaFields.length > 0 && (
+          <div className="space-y-0.5 mt-2">
+            {metaFields.map((f, i) => (
+              <div key={i} className="flex items-baseline gap-2 text-[9px]">
+                <span className="text-rmpg-500 uppercase tracking-wider w-16 shrink-0">{f.label}</span>
+                <span className="text-rmpg-300 font-mono truncate">{f.value}</span>
               </div>
-            ) : (
-              <>
-                <div className="panel-beveled bg-surface-base overflow-hidden">
-                  <div className="panel-title-bar">
-                    <FileSearch className="title-icon w-3 h-3" />
-                    <span className="truncate">{selectedCase.name}</span>
-                  </div>
-                  <div className="p-3">
-                    {/* Search within case */}
-                    <div className="flex gap-2">
-                      <div className="relative flex-1">
-                        <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" />
-                        <input
-                          type="text"
-                          value={searchQuery}
-                          onChange={e => setSearchQuery(e.target.value)}
-                          onKeyDown={e => e.key === 'Enter' && handleSearch()}
-                          placeholder="Search files in this case..."
-                          className="input-dark text-[10px] pl-7 pr-2 py-1.5 w-full"
-                        />
-                      </div>
-                      <button
-                        onClick={handleSearch}
-                        disabled={searching || !searchQuery.trim()}
-                        className="toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1"
-                      >
-                        {searching ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
-                        Search
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Search results */}
-                {searchResults.length > 0 && (
-                  <div className="panel-beveled bg-surface-sunken overflow-x-auto">
-                    <table className="table-dark w-full">
-                      <thead>
-                        <tr>
-                          <th className="text-left">Name</th>
-                          <th className="text-left">Type</th>
-                          <th className="text-left">Category</th>
-                          <th className="text-right">Size</th>
-                          <th className="text-center">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {searchResults.map(f => (
-                          <tr key={f.id} className="hover:bg-surface-hover">
-                            <td>
-                              <div className="text-xs text-rmpg-200 font-semibold truncate max-w-[200px]">{f.name}</div>
-                              <div className="text-[9px] text-rmpg-500 font-mono truncate max-w-[200px]">{f.path}</div>
-                            </td>
-                            <td className="text-[10px] text-rmpg-300 font-mono">{f.type || '-'}</td>
-                            <td className="text-[10px] text-rmpg-400">{f.category || '-'}</td>
-                            <td className="text-right text-[10px] text-rmpg-400 font-mono">
-                              {f.size ? (f.size < 1024 * 1024 ? `${(f.size / 1024).toFixed(0)} KB` : `${(f.size / 1048576).toFixed(1)} MB`) : '-'}
-                            </td>
-                            <td className="text-center">
-                              {f.flagged ? (
-                                <span className="inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold bg-red-900/40 text-red-400 border border-red-700/40">
-                                  FLAGGED
-                                </span>
-                              ) : (
-                                <span className="text-[9px] text-rmpg-500">—</span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-
-                {searching && (
-                  <div className="flex items-center justify-center py-6 gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin text-brand-400" />
-                    <span className="text-[10px] text-rmpg-400">Searching case...</span>
-                  </div>
-                )}
-
-                {!searching && searchQuery && searchResults.length === 0 && (
-                  <div className="text-center py-6 text-rmpg-500">
-                    <div className="text-[10px]">No results found for &quot;{searchQuery}&quot;</div>
-                  </div>
-                )}
-              </>
-            )}
+            ))}
           </div>
+        )}
+      </div>
+
+      {/* Connections list */}
+      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+        <div className="text-[9px] text-rmpg-500 uppercase tracking-wider px-1 mb-1">
+          Connections ({edges.length})
         </div>
-      )}
+
+        {Object.entries(grouped).map(([type, items]) => {
+          const GroupIcon = NODE_ICONS[type] || Package;
+          const groupColor = NODE_COLORS[type] || '#6b7280';
+          const isCollapsed = collapsed[type];
+
+          return (
+            <div key={type} className="panel-beveled bg-surface-sunken overflow-hidden">
+              <button
+                onClick={() => setCollapsed(prev => ({ ...prev, [type]: !prev[type] }))}
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 hover:bg-rmpg-800/20 transition-colors"
+              >
+                {isCollapsed ? <ChevronRight className="w-3 h-3 text-rmpg-500" /> : <ChevronDown className="w-3 h-3 text-rmpg-500" />}
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: groupColor }} />
+                <span className="text-[10px] font-medium text-rmpg-300 uppercase tracking-wider">{TYPE_LABELS[type]}s</span>
+                <span className="text-[9px] text-rmpg-500 ml-auto">{items.length}</span>
+              </button>
+
+              {!isCollapsed && (
+                <div className="border-t border-rmpg-700">
+                  {items.map(({ edge, otherNode }, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => onExpandNode(otherNode.type, otherNode.entityId, otherNode.label)}
+                      className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-rmpg-800/30 text-left transition-colors"
+                    >
+                      <GroupIcon className="w-3 h-3 shrink-0" style={{ color: groupColor }} />
+                      <span className="text-[10px] text-rmpg-200 truncate flex-1">{otherNode.label}</span>
+                      <span className="text-[8px] bg-rmpg-800 border border-rmpg-600 text-rmpg-400 px-1.5 py-0.5 rounded-sm uppercase shrink-0">
+                        {edge.relationship}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {edges.length === 0 && (
+          <div className="text-center py-4 text-[10px] text-rmpg-600">
+            No connections found
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-// ── Main Forensics Page ──────────────────────────────────────
+// ── Main Page Component ──────────────────────────────────────
 
 export default function ForensicsPage() {
-  const [status, setStatus] = useState<IpedStatus | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Graph data
+  const [graph, setGraph] = useState<ConnectionGraph | null>(null);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Config form
-  const [installPath, setInstallPath] = useState('');
-  const [javaHome, setJavaHome] = useState('');
-  const [webApiUrl, setWebApiUrl] = useState('');
-  const [webApiPort, setWebApiPort] = useState('');
-  const [defaultProfile, setDefaultProfile] = useState('forensic');
-  const [photoDnaEnabled, setPhotoDnaEnabled] = useState(false);
-  const [autoHash, setAutoHash] = useState(false);
-  const [hashSetsPath, setHashSetsPath] = useState('');
-  const [saving, setSaving] = useState(false);
+  // Seed entity
+  const [seedType, setSeedType] = useState<string | null>(null);
+  const [seedId, setSeedId] = useState<number | null>(null);
+  const [seedLabel, setSeedLabel] = useState('');
 
-  // Validation
-  const [validating, setValidating] = useState(false);
-  const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
+  // Controls
+  const [depth, setDepth] = useState(2);
+  const [typeFilter, setTypeFilter] = useState<Set<string>>(new Set(ALL_TYPES));
 
-  // API test
-  const [testingApi, setTestingApi] = useState(false);
-  const [apiTestResult, setApiTestResult] = useState<{ success: boolean; message?: string } | null>(null);
+  // Selection
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
-  // Downloads
-  const [downloads, setDownloads] = useState<DownloadInfo | null>(null);
-
-  // Hash sets
-  const [hashSets, setHashSets] = useState<HashSetInfo[]>([]);
-
-  // Jobs
-  const [jobs, setJobs] = useState<IpedJob[]>([]);
-  const [loadingJobs, setLoadingJobs] = useState(false);
-
-  // Hash results
-  const [hashResults, setHashResults] = useState<HashResult[]>([]);
-  const [loadingHashes, setLoadingHashes] = useState(false);
-
-  // Active tab
-  const [activeTab, setActiveTab] = useState<'overview' | 'config' | 'jobs' | 'hashes' | 'cases'>('overview');
-
-  // ── Fetchers ─────────────────────────────────────────────
-
-  const fetchStatus = useCallback(async () => {
+  // Fetch graph
+  const fetchGraph = useCallback(async (type: string, id: number, d: number) => {
+    setLoading(true);
+    setError(null);
     try {
-      const data = await apiFetch<IpedStatus>('/iped/status');
-      setStatus(data);
-      if (data.defaultProfile) setDefaultProfile(data.defaultProfile);
-      setPhotoDnaEnabled(!!data.photodnaEnabled);
-      setAutoHash(!!data.autoHashOnUpload);
-
-      // Auto-validate when configured + installed
-      if (data.configured && data.installed) {
-        try {
-          const result = await apiFetch<ValidationResult>('/iped/validate', { method: 'POST' });
-          setValidationResult(result);
-        } catch { /* non-critical */ }
-      }
-    } catch (err) {
-      console.error('IPED status fetch failed:', err);
+      const data = await apiFetch<ConnectionGraph>(
+        `/connections/graph?type=${type}&id=${id}&depth=${d}`
+      );
+      setGraph(data);
+      setSelectedNodeId(`${type}-${id}`);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to load connections');
     } finally {
       setLoading(false);
     }
   }, []);
 
-  const fetchDownloads = useCallback(async () => {
-    try {
-      const data = await apiFetch<DownloadInfo>('/iped/download/info');
-      setDownloads(data);
-    } catch { /* non-critical */ }
-  }, []);
+  // Handle seed selection
+  const handleSeedSelect = useCallback((type: string, id: number, label: string) => {
+    setSeedType(type);
+    setSeedId(id);
+    setSeedLabel(label);
+    fetchGraph(type, id, depth);
+  }, [depth, fetchGraph]);
 
-  const fetchHashSets = useCallback(async () => {
-    try {
-      const data = await apiFetch<{ sets: HashSetInfo[] }>('/iped/hash-sets');
-      setHashSets(data.sets || []);
-    } catch { /* non-critical */ }
-  }, []);
-
-  const fetchJobs = useCallback(async () => {
-    setLoadingJobs(true);
-    try {
-      const data = await apiFetch<{ jobs: IpedJob[]; total: number }>('/iped/jobs?limit=50');
-      setJobs(data.jobs || []);
-    } catch { /* non-critical */ }
-    finally { setLoadingJobs(false); }
-  }, []);
-
-  const fetchHashResults = useCallback(async () => {
-    setLoadingHashes(true);
-    try {
-      const data = await apiFetch<{ results: HashResult[]; total: number }>('/iped/hash/results?limit=50');
-      setHashResults(data.results || []);
-    } catch { /* non-critical */ }
-    finally { setLoadingHashes(false); }
-  }, []);
-
+  // Re-fetch on depth change
   useEffect(() => {
-    fetchStatus();
-    fetchDownloads();
-    fetchHashSets();
-  }, [fetchStatus, fetchDownloads, fetchHashSets]);
-
-  // Fetch tab-specific data
-  useEffect(() => {
-    if (activeTab === 'jobs') fetchJobs();
-    if (activeTab === 'hashes') fetchHashResults();
-  }, [activeTab, fetchJobs, fetchHashResults]);
-
-  // ── Config Handlers ──────────────────────────────────────
-
-  const handleSaveConfig = async () => {
-    setSaving(true);
-    setValidationResult(null);
-    try {
-      await apiFetch('/iped/config', {
-        method: 'PUT',
-        body: JSON.stringify({
-          installPath: installPath.trim() || undefined,
-          javaHome: javaHome.trim() || undefined,
-          webApiUrl: webApiUrl.trim() || undefined,
-          webApiPort: webApiPort.trim() || undefined,
-          defaultProfile,
-          photodnaEnabled: photoDnaEnabled,
-          autoHashOnUpload: autoHash,
-          hashSetsPath: hashSetsPath.trim() || undefined,
-        }),
-      });
-      setInstallPath('');
-      setJavaHome('');
-      setWebApiUrl('');
-      setWebApiPort('');
-      setHashSetsPath('');
-      await fetchStatus();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save config');
-    } finally {
-      setSaving(false);
+    if (seedType && seedId) {
+      fetchGraph(seedType, seedId, depth);
     }
-  };
+  }, [depth]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleClear = async () => {
-    try {
-      await apiFetch('/iped/config', { method: 'DELETE' });
-      setValidationResult(null);
-      setApiTestResult(null);
-      await fetchStatus();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to clear config');
-    }
-  };
+  // Toggle type filter
+  const toggleTypeFilter = useCallback((type: string) => {
+    setTypeFilter(prev => {
+      const next = new Set(prev);
+      if (next.has(type)) next.delete(type);
+      else next.add(type);
+      return next;
+    });
+  }, []);
 
-  const handleValidate = async () => {
-    setValidating(true);
-    setValidationResult(null);
-    try {
-      const result = await apiFetch<ValidationResult>('/iped/validate', { method: 'POST' });
-      setValidationResult(result);
-      await fetchStatus();
-    } catch (err) {
-      setValidationResult({
-        valid: false, ipedFound: false, javaFound: false,
-        ipedVersion: null, javaVersion: null, platform: 'unknown',
-        errors: [err instanceof Error ? err.message : 'Validation failed'],
-      });
-    } finally {
-      setValidating(false);
-    }
-  };
-
-  const handleTestApi = async () => {
-    setTestingApi(true);
-    setApiTestResult(null);
-    try {
-      const result = await apiFetch<{ success: boolean; message: string }>('/iped/test-api', { method: 'POST' });
-      setApiTestResult(result);
-    } catch (err) {
-      setApiTestResult({ success: false, message: err instanceof Error ? err.message : 'API test failed' });
-    } finally {
-      setTestingApi(false);
-    }
-  };
-
-  const handleToggle = async (key: 'photodnaEnabled' | 'autoHashOnUpload', current: boolean, setter: (v: boolean) => void) => {
-    const newVal = !current;
-    setter(newVal);
-    if (status?.configured) {
-      try {
-        await apiFetch('/iped/config', {
-          method: 'PUT',
-          body: JSON.stringify({ [key]: newVal }),
-        });
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to update setting');
-        setter(current);
-      }
-    }
-  };
-
-  const handleProfileChange = async (profile: string) => {
-    setDefaultProfile(profile);
-    if (status?.configured) {
-      try {
-        await apiFetch('/iped/config', {
-          method: 'PUT',
-          body: JSON.stringify({ defaultProfile: profile }),
-        });
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to update profile');
-      }
-    }
-  };
-
-  const handleCancelJob = async (jobId: number) => {
-    try {
-      await apiFetch(`/iped/jobs/${jobId}/cancel`, { method: 'POST' });
-      await fetchJobs();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to cancel job');
-    }
-  };
-
-  // ── Render ───────────────────────────────────────────────
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="w-6 h-6 animate-spin text-brand-400" />
-      </div>
-    );
-  }
-
-  const isConnected = status?.configured && status?.installed;
+  // Derived state
+  const selectedNode = graph?.nodes.find(n => n.id === selectedNodeId) || null;
+  const selectedEdges = graph?.edges.filter(
+    e => e.source === selectedNodeId || e.target === selectedNodeId
+  ) || [];
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-rmpg-950">
-      {/* ── Page Header ──────────────────────────────────────── */}
-      <div className="shrink-0 px-4 py-3 border-b border-rmpg-800 bg-surface-base">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-md bg-brand-600/20 border border-brand-600/30">
-              <Microscope className="w-5 h-5 text-brand-400" />
-            </div>
-            <div>
-              <h1 className="text-sm font-bold text-rmpg-100 flex items-center gap-2">
-                IPED Digital Forensics
-                {isConnected ? (
-                  <span className="flex items-center gap-1 text-green-400 text-[10px] font-normal">
-                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                    CONNECTED
-                    {validationResult?.ipedVersion && (
-                      <span className="text-rmpg-400">v{validationResult.ipedVersion}</span>
-                    )}
-                  </span>
-                ) : status?.configured ? (
-                  <span className="flex items-center gap-1 text-amber-400 text-[10px] font-normal">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                    PATH NOT FOUND
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1 text-rmpg-500 text-[10px] font-normal">
-                    <span className="w-1.5 h-1.5 rounded-full bg-rmpg-500" />
-                    NOT CONFIGURED
-                  </span>
-                )}
-              </h1>
-              <p className="text-[10px] text-rmpg-500">
-                Evidence processing, hash computation, PhotoDNA, and forensic analysis
-              </p>
-            </div>
+      {/* ── Header ──────────────────────────────────────────── */}
+      <div className="shrink-0 px-4 py-2.5 border-b border-rmpg-800 bg-surface-base">
+        <div className="flex items-center gap-3">
+          <div className="p-1.5 rounded-sm bg-brand-600/20 border border-brand-600/30">
+            <Network className="w-4 h-4 text-brand-400" />
           </div>
-          <div className="flex items-center gap-2">
-            <a
-              href="https://github.com/sepinf-inc/IPED"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="toolbar-btn text-[10px] flex items-center gap-1 px-2.5 py-1"
-            >
-              <ExternalLink className="w-3 h-3" />
-              IPED GitHub
-            </a>
-            <button
-              onClick={() => { fetchStatus(); fetchHashSets(); fetchJobs(); fetchHashResults(); }}
-              className="toolbar-btn text-[10px] flex items-center gap-1 px-2.5 py-1"
-            >
-              <RefreshCw className="w-3 h-3" />
-              Refresh
-            </button>
+          <div className="shrink-0">
+            <h1 className="text-[11px] font-bold text-rmpg-100 uppercase tracking-wider">Connection Analysis</h1>
+            <p className="text-[9px] text-rmpg-500">Entity relationship spider web</p>
           </div>
-        </div>
-
-        {/* Tab bar */}
-        <div className="flex items-center gap-0.5 mt-3 -mb-[1px]">
-          {([
-            { id: 'overview', label: 'Overview', icon: Activity },
-            { id: 'config', label: 'Configuration', icon: Settings },
-            { id: 'jobs', label: 'Processing Jobs', icon: Play },
-            { id: 'hashes', label: 'Hash Results', icon: Hash },
-            { id: 'cases', label: 'Case Browser', icon: FileSearch },
-          ] as const).map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-medium rounded-t-sm border-b-2 transition-colors ${
-                activeTab === tab.id
-                  ? 'text-brand-400 border-brand-500 bg-rmpg-900/50'
-                  : 'text-rmpg-500 border-transparent hover:text-rmpg-300 hover:border-rmpg-600'
-              }`}
-            >
-              <tab.icon className="w-3 h-3" />
-              {tab.label}
-            </button>
-          ))}
+          <div className="flex-1 max-w-md">
+            <SeedSelector onSelect={handleSeedSelect} loading={loading} />
+          </div>
+          {seedLabel && (
+            <div className="hidden sm:flex items-center gap-1.5 text-[9px] text-rmpg-500 shrink-0">
+              <span>Seed:</span>
+              <span className="font-mono text-rmpg-300">{seedLabel}</span>
+            </div>
+          )}
         </div>
       </div>
 
       {/* Error banner */}
       {error && (
-        <div className="shrink-0 px-4 py-2 bg-red-950/30 border-b border-red-800/40 flex items-center justify-between">
+        <div className="shrink-0 px-4 py-1.5 bg-red-950/30 border-b border-red-800/40 flex items-center justify-between">
           <span className="text-[10px] text-red-400">{error}</span>
           <button onClick={() => setError(null)} className="text-red-400 hover:text-red-300 text-[10px]">dismiss</button>
         </div>
       )}
 
-      {/* ── Content Area ─────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
-
-        {/* ═══ OVERVIEW TAB ═══ */}
-        {activeTab === 'overview' && (
-          <>
-            {/* Stats grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-              {[
-                { label: 'Status', value: isConnected ? 'Online' : 'Offline', icon: Shield, color: isConnected ? 'text-green-400' : 'text-rmpg-500' },
-                { label: 'Total Jobs', value: status?.totalJobs ?? 0, icon: Database, color: 'text-rmpg-200' },
-                { label: 'Completed', value: status?.completedJobs ?? 0, icon: CheckCircle2, color: 'text-green-400' },
-                { label: 'Running', value: status?.runningJobs ?? 0, icon: Loader2, color: 'text-blue-400' },
-                { label: 'Total Hashes', value: status?.totalHashes ?? 0, icon: Hash, color: 'text-rmpg-200' },
-                { label: 'Flagged', value: status?.flaggedHashes ?? 0, icon: AlertTriangle, color: (status?.flaggedHashes ?? 0) > 0 ? 'text-red-400' : 'text-rmpg-500' },
-              ].map(stat => (
-                <div key={stat.label} className="panel-beveled bg-surface-base p-3 text-center">
-                  <stat.icon className={`w-4 h-4 mx-auto mb-1.5 ${stat.color}`} />
-                  <div className={`text-lg font-bold ${stat.color}`}>{stat.value}</div>
-                  <div className="text-[9px] text-rmpg-500 uppercase mt-0.5">{stat.label}</div>
+      {/* ── Content ─────────────────────────────────────────── */}
+      {!graph && !loading ? (
+        /* Empty state */
+        <div className="flex-1 flex items-center justify-center" style={{ background: '#0d1520' }}>
+          <div className="text-center px-6">
+            <Network className="w-16 h-16 mx-auto mb-4 text-rmpg-800" />
+            <h2 className="text-[13px] font-bold text-rmpg-400 mb-1">Connection Analysis</h2>
+            <p className="text-[10px] text-rmpg-600 max-w-xs mx-auto leading-relaxed">
+              Search for a person, vehicle, property, or case to visualize
+              their connections across all records, incidents, and cases.
+            </p>
+            <div className="flex items-center justify-center gap-3 mt-5">
+              {ALL_TYPES.map(t => (
+                <div key={t} className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full" style={{ background: NODE_PALETTE[t]?.primary }} />
+                  <span className="text-[9px] text-rmpg-600">{TYPE_LABELS[t]}</span>
                 </div>
               ))}
             </div>
-
-            {/* Validation info */}
-            {validationResult?.valid && (
-              <div className="flex items-center gap-2 text-[10px] px-3 py-2 rounded-sm bg-green-950/30 border border-green-800/40 text-green-400">
-                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                IPED v{validationResult.ipedVersion || 'unknown'} validated — Java {validationResult.javaVersion || 'unknown'} — {validationResult.platform}
-                {status?.installPath && <span className="text-rmpg-500 ml-2 font-mono">{status.installPath}</span>}
-              </div>
-            )}
-
-            {/* Running jobs alert */}
-            {(status?.runningJobs ?? 0) > 0 && (
-              <div className="flex items-center gap-2 text-[10px] px-3 py-2 rounded-sm bg-blue-950/30 border border-blue-800/40 text-blue-400">
-                <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
-                {status!.runningJobs} processing job(s) currently running
-              </div>
-            )}
-
-            {/* Flagged alert */}
-            {(status?.flaggedHashes ?? 0) > 0 && (
-              <div className="flex items-center gap-2 text-[10px] px-3 py-2 rounded-sm bg-red-950/30 border border-red-800/40 text-red-400">
-                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                {status!.flaggedHashes} flagged hash(es) require review
-                <button
-                  onClick={() => setActiveTab('hashes')}
-                  className="ml-auto underline hover:no-underline"
-                >
-                  View Hashes →
-                </button>
-              </div>
-            )}
-
-            {/* Two-tier info */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="panel-beveled bg-surface-base p-3 space-y-2">
-                <div className="flex items-center gap-2 text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">
-                  <FileSearch className="w-3.5 h-3.5" />
-                  Tier 1 — Built-in Hashing
-                </div>
-                <div className="text-[9px] text-rmpg-500 leading-relaxed">
-                  <strong className="text-green-400">Always Available</strong> — MD5, SHA-1, SHA-256, SHA-512 cryptographic hashes
-                  + content fingerprint for perceptual similarity. Works on any evidence file immediately — no external software.
-                </div>
-              </div>
-              <div className="panel-beveled bg-surface-base p-3 space-y-2">
-                <div className="flex items-center gap-2 text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">
-                  <Microscope className="w-3.5 h-3.5" />
-                  Tier 2 — IPED Processing
-                </div>
-                <div className="text-[9px] text-rmpg-500 leading-relaxed">
-                  <strong className={isConnected ? 'text-green-400' : 'text-amber-400'}>
-                    {isConnected ? 'Available' : 'Requires IPED Installation'}
-                  </strong> — PhotoDNA perceptual hashing, full disk image processing, file carving, face recognition, OCR,
-                  nudity detection, and advanced forensic analysis.
-                </div>
-              </div>
-            </div>
-
-            {/* Hash sets summary */}
-            <Section title="Hash Sets" icon={Hash} badge={
-              <span className="ml-1 text-[10px] text-brand-400">({hashSets.length} loaded)</span>
-            }>
-              {hashSets.length > 0 ? (
-                <div className="space-y-0.5 max-h-40 overflow-y-auto">
-                  {hashSets.map(hs => (
-                    <div key={hs.name} className="flex items-center justify-between px-2 py-1.5 bg-surface-sunken rounded-sm">
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[10px] font-medium text-rmpg-200">{hs.name}</div>
-                        <div className="text-[9px] text-rmpg-500">{hs.category} • {(hs.count || 0).toLocaleString()} entries</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-[9px] text-rmpg-600 bg-surface-sunken p-2 rounded-sm">
-                  No hash sets loaded. Import NSRL, ProjectVIC, or CSV hash sets via Configuration tab.
-                </div>
-              )}
-            </Section>
-
-            {/* Not configured hint */}
-            {!status?.configured && (
-              <div className="flex items-center gap-2 text-[10px] text-rmpg-500 bg-surface-sunken p-3 rounded-sm">
-                <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
-                <div>
-                  Set the IPED installation path in the{' '}
-                  <button onClick={() => setActiveTab('config')} className="text-brand-400 hover:text-brand-300 underline">
-                    Configuration
-                  </button>{' '}tab to enable Tier 2 forensic processing.
-                  Tier 1 hashing (MD5/SHA/content fingerprint) works immediately.
-                </div>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* ═══ CONFIGURATION TAB ═══ */}
-        {activeTab === 'config' && (
-          <>
-            {/* Installation Paths */}
-            <Section title="Installation Paths" icon={FolderOpen}>
-              <div className="space-y-1.5">
-                <label className="text-[10px] text-rmpg-400">IPED Installation Path</label>
-                <input
-                  type="text"
-                  value={installPath}
-                  onChange={(e) => setInstallPath(e.target.value)}
-                  placeholder={status?.installPath || '/path/to/IPED (directory containing iped.jar)'}
-                  className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-xs px-2.5 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none font-mono"
-                />
-                {status?.installPath && (
-                  <div className="text-[9px] text-rmpg-500 font-mono">Current: {status.installPath}</div>
-                )}
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] text-rmpg-400">Java Home <span className="text-rmpg-600">(JDK 11+ required)</span></label>
-                <input
-                  type="text"
-                  value={javaHome}
-                  onChange={(e) => setJavaHome(e.target.value)}
-                  placeholder={status?.javaHome || '/path/to/jdk'}
-                  className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-xs px-2.5 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none font-mono"
-                />
-                {validationResult?.javaVersion && (
-                  <div className="text-[9px] text-green-500">Java {validationResult.javaVersion}</div>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2 flex-wrap">
-                <button
-                  onClick={handleSaveConfig}
-                  disabled={saving}
-                  className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
-                >
-                  {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
-                  Save Config
-                </button>
-                {status?.configured && (
-                  <>
-                    <button onClick={handleValidate} disabled={validating}
-                      className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5">
-                      {validating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Shield className="w-3 h-3" />}
-                      Validate Installation
-                    </button>
-                    <button onClick={handleClear}
-                      className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 text-red-400 hover:text-red-300">
-                      <Trash2 className="w-3 h-3" />
-                      Clear
-                    </button>
-                  </>
-                )}
-              </div>
-
-              {validationResult && (
-                <div className={`flex items-center gap-2 text-[10px] px-2 py-1.5 rounded-sm ${
-                  validationResult.valid
-                    ? 'bg-green-950/30 border border-green-800/40 text-green-400'
-                    : 'bg-red-950/30 border border-red-800/40 text-red-400'
-                }`}>
-                  {validationResult.valid ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
-                  {validationResult.valid
-                    ? `IPED v${validationResult.ipedVersion || 'unknown'} validated (Java ${validationResult.javaVersion || 'unknown'}) — ${validationResult.platform}`
-                    : `Validation failed: ${validationResult.errors?.join(', ') || 'Unknown error'}`
-                  }
-                </div>
-              )}
-            </Section>
-
-            {/* Download Bundles */}
-            <Section title="IPED Bundles" icon={Download} defaultOpen={false}>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="bg-surface-sunken p-2.5 rounded-sm">
-                  <div className="text-[10px] font-bold text-rmpg-200 mb-1">macOS Bundle</div>
-                  {downloads?.bundles?.mac ? (
-                    <>
-                      <div className="text-[9px] text-rmpg-400 font-mono mb-1.5">{downloads.bundles.mac.filename}</div>
-                      <div className="text-[9px] text-rmpg-500 mb-2">v{downloads.bundles.mac.version} • {(downloads.bundles.mac.size / 1048576).toFixed(0)} MB</div>
-                      <a href={`/downloads/${downloads.bundles.mac.filename}`}
-                        className="toolbar-btn text-[10px] flex items-center gap-1 px-2.5 py-1 bg-brand-600 hover:bg-brand-500 text-white inline-flex">
-                        <Download className="w-3 h-3" />
-                        Download
-                      </a>
-                    </>
-                  ) : (
-                    <div className="text-[9px] text-rmpg-600">
-                      No macOS bundle available. Place <span className="font-mono text-rmpg-400">IPED-x.x.x-mac.zip</span> in server/downloads/
-                    </div>
-                  )}
-                </div>
-                <div className="bg-surface-sunken p-2.5 rounded-sm">
-                  <div className="text-[10px] font-bold text-rmpg-200 mb-1">Windows Bundle</div>
-                  {downloads?.bundles?.win ? (
-                    <>
-                      <div className="text-[9px] text-rmpg-400 font-mono mb-1.5">{downloads.bundles.win.filename}</div>
-                      <div className="text-[9px] text-rmpg-500 mb-2">v{downloads.bundles.win.version} • {(downloads.bundles.win.size / 1048576).toFixed(0)} MB</div>
-                      <a href={`/downloads/${downloads.bundles.win.filename}`}
-                        className="toolbar-btn text-[10px] flex items-center gap-1 px-2.5 py-1 bg-brand-600 hover:bg-brand-500 text-white inline-flex">
-                        <Download className="w-3 h-3" />
-                        Download
-                      </a>
-                    </>
-                  ) : (
-                    <div className="text-[9px] text-rmpg-600">
-                      No Windows bundle available. Place <span className="font-mono text-rmpg-400">IPED-x.x.x-win.zip</span> in server/downloads/
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="text-[9px] text-rmpg-600">
-                Bundles include IPED + Liberica JDK 11. Download from{' '}
-                <a href="https://github.com/sepinf-inc/IPED/releases" target="_blank" rel="noopener noreferrer"
-                  className="text-brand-400 hover:text-brand-300 underline">IPED Releases</a>.
-              </div>
-            </Section>
-
-            {/* Processing Configuration */}
-            <Section title="Processing Configuration" icon={HardDrive}>
-              <div className="space-y-1.5">
-                <label className="text-[10px] text-rmpg-400">Default Processing Profile</label>
-                <div className="space-y-0.5">
-                  {PROFILES.map(p => (
-                    <button
-                      key={p.id}
-                      onClick={() => handleProfileChange(p.id)}
-                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-left transition-colors hover:bg-rmpg-800/30"
-                      style={{
-                        background: defaultProfile === p.id ? 'rgba(188, 16, 16, 0.08)' : undefined,
-                        border: defaultProfile === p.id ? '1px solid rgba(188, 16, 16, 0.25)' : '1px solid transparent',
-                      }}
-                    >
-                      <div className={`w-2 h-2 rounded-full shrink-0 ${defaultProfile === p.id ? 'bg-brand-400' : 'bg-rmpg-700'}`} />
-                      <div className="flex-1 min-w-0">
-                        <div className={`text-[10px] font-medium ${defaultProfile === p.id ? 'text-rmpg-100' : 'text-rmpg-300'}`}>{p.label}</div>
-                        <div className="text-[9px] text-rmpg-500 truncate">{p.desc}</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <button onClick={() => handleToggle('photodnaEnabled', photoDnaEnabled, setPhotoDnaEnabled)}
-                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-left transition-colors hover:bg-rmpg-800/30">
-                  {photoDnaEnabled ? <ToggleRight className="w-5 h-5 text-brand-400" /> : <ToggleLeft className="w-5 h-5 text-rmpg-600" />}
-                  <div className="flex-1 min-w-0">
-                    <div className={`text-[10px] font-medium ${photoDnaEnabled ? 'text-rmpg-100' : 'text-rmpg-300'}`}>PhotoDNA Matching</div>
-                    <div className="text-[9px] text-rmpg-500">Requires IPED with PhotoDNA module (law enforcement only — contact iped@pf.gov.br)</div>
-                  </div>
-                </button>
-                <button onClick={() => handleToggle('autoHashOnUpload', autoHash, setAutoHash)}
-                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-left transition-colors hover:bg-rmpg-800/30">
-                  {autoHash ? <ToggleRight className="w-5 h-5 text-brand-400" /> : <ToggleLeft className="w-5 h-5 text-rmpg-600" />}
-                  <div className="flex-1 min-w-0">
-                    <div className={`text-[10px] font-medium ${autoHash ? 'text-rmpg-100' : 'text-rmpg-300'}`}>Auto-Hash Evidence Uploads</div>
-                    <div className="text-[9px] text-rmpg-500">Automatically compute MD5/SHA-256 + content fingerprint when evidence attachments are uploaded</div>
-                  </div>
-                </button>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] text-rmpg-400">IPED Web API <span className="text-rmpg-600">(optional — for case browsing)</span></label>
-                <div className="flex gap-2">
-                  <input type="text" value={webApiUrl} onChange={(e) => setWebApiUrl(e.target.value)}
-                    placeholder={status?.webApiUrl || 'http://localhost'}
-                    className="flex-1 bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-xs px-2.5 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none font-mono" />
-                  <input type="text" value={webApiPort} onChange={(e) => setWebApiPort(e.target.value)}
-                    placeholder={status?.webApiPort || '11111'}
-                    className="w-20 bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-xs px-2.5 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none font-mono text-center" />
-                </div>
-                {status?.configured && (
-                  <div className="flex items-center gap-2">
-                    <button onClick={handleTestApi} disabled={testingApi}
-                      className="toolbar-btn text-[10px] flex items-center gap-1 px-2.5 py-1">
-                      {testingApi ? <Loader2 className="w-3 h-3 animate-spin" /> : <Server className="w-3 h-3" />}
-                      Test API
-                    </button>
-                    {apiTestResult && (
-                      <span className={`text-[10px] ${apiTestResult.success ? 'text-green-400' : 'text-red-400'}`}>
-                        {apiTestResult.message}
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-            </Section>
-
-            {/* Hash Sets Management */}
-            <Section title="Hash Sets" icon={Hash} badge={
-              <span className="ml-1 text-[10px] text-brand-400">({hashSets.length} loaded)</span>
-            }>
-              <div className="flex items-center gap-2 mb-2">
-                <input type="text" value={hashSetsPath} onChange={(e) => setHashSetsPath(e.target.value)}
-                  placeholder="Path to NSRL/CSV hash set file..."
-                  className="flex-1 bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none font-mono" />
-              </div>
-              {hashSets.length > 0 ? (
-                <div className="space-y-0.5 max-h-40 overflow-y-auto">
-                  {hashSets.map(hs => (
-                    <div key={hs.name} className="flex items-center justify-between px-2 py-1.5 bg-surface-sunken rounded-sm">
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[10px] font-medium text-rmpg-200">{hs.name}</div>
-                        <div className="text-[9px] text-rmpg-500">{hs.category} • {(hs.count || 0).toLocaleString()} entries</div>
-                      </div>
-                      <button onClick={async () => {
-                        try { await apiFetch(`/iped/hash-sets/${encodeURIComponent(hs.name)}`, { method: 'DELETE' }); await fetchHashSets(); }
-                        catch (err) { setError(err instanceof Error ? err.message : 'Failed to remove hash set'); }
-                      }} className="text-rmpg-600 hover:text-red-400 shrink-0 ml-2">
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-[9px] text-rmpg-600 bg-surface-sunken p-2 rounded-sm">
-                  No hash sets loaded. Import NSRL, ProjectVIC, or CSV hash sets. Supported: CSV with md5/sha1/sha256 columns.
-                </div>
-              )}
-            </Section>
-          </>
-        )}
-
-        {/* ═══ PROCESSING JOBS TAB ═══ */}
-        {activeTab === 'jobs' && (
-          <>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[10px] text-rmpg-400">{jobs.length} job(s)</span>
-              <button onClick={fetchJobs} disabled={loadingJobs}
-                className="toolbar-btn text-[10px] flex items-center gap-1 px-2.5 py-1">
-                {loadingJobs ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-                Refresh
-              </button>
-            </div>
-            {jobs.length > 0 ? (
-              <div className="space-y-1">
-                {jobs.map(job => (
-                  <div key={job.id} className="panel-beveled bg-surface-base p-2.5 flex items-center gap-3">
-                    <div className={`w-2 h-2 rounded-full shrink-0 ${
-                      job.status === 'completed' ? 'bg-green-400' :
-                      job.status === 'running' ? 'bg-blue-400 animate-pulse' :
-                      job.status === 'failed' ? 'bg-red-400' :
-                      job.status === 'cancelled' ? 'bg-amber-400' : 'bg-rmpg-500'
-                    }`} />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[10px] font-medium text-rmpg-200">
-                        Job #{job.id} — {job.job_type.toUpperCase()} ({job.profile})
-                      </div>
-                      <div className="text-[9px] text-rmpg-500 truncate font-mono">{job.input_path}</div>
-                      {job.status === 'running' && (
-                        <div className="mt-1 h-1 bg-rmpg-700 rounded-full overflow-hidden">
-                          <div className="h-full bg-brand-500 rounded-full transition-all" style={{ width: `${job.progress_percent}%` }} />
-                        </div>
-                      )}
-                    </div>
-                    <div className="text-right shrink-0">
-                      <div className={`text-[10px] font-bold uppercase ${
-                        job.status === 'completed' ? 'text-green-400' :
-                        job.status === 'running' ? 'text-blue-400' :
-                        job.status === 'failed' ? 'text-red-400' : 'text-rmpg-500'
-                      }`}>{job.status}</div>
-                      <div className="text-[9px] text-rmpg-500">{job.items_processed}/{job.items_found} items</div>
-                    </div>
-                    {job.status === 'running' && (
-                      <button onClick={() => handleCancelJob(job.id)}
-                        className="toolbar-btn text-[10px] flex items-center gap-1 px-2 py-1 text-red-400 hover:text-red-300">
-                        <Square className="w-3 h-3" />
-                        Cancel
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8 text-rmpg-500">
-                <Play className="w-8 h-8 mx-auto mb-2 text-rmpg-600" />
-                <div className="text-[10px]">No processing jobs yet</div>
-                <div className="text-[9px] text-rmpg-600 mt-1">Jobs are created when evidence is processed through IPED</div>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* ═══ HASH RESULTS TAB ═══ */}
-        {activeTab === 'hashes' && (
-          <>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[10px] text-rmpg-400">{hashResults.length} result(s)</span>
-              <button onClick={fetchHashResults} disabled={loadingHashes}
-                className="toolbar-btn text-[10px] flex items-center gap-1 px-2.5 py-1">
-                {loadingHashes ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-                Refresh
-              </button>
-            </div>
-            {hashResults.length > 0 ? (
-              <div className="space-y-1">
-                {hashResults.map(hr => (
-                  <div key={hr.id} className={`panel-beveled bg-surface-base p-2.5 flex items-center gap-3 ${
-                    hr.flagged ? 'border-l-2 border-l-red-500' : ''
-                  }`}>
-                    <Hash className={`w-3.5 h-3.5 shrink-0 ${hr.flagged ? 'text-red-400' : 'text-rmpg-500'}`} />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[10px] font-medium text-rmpg-200 truncate">{hr.file_name}</div>
-                      <div className="text-[9px] text-rmpg-500 font-mono truncate">
-                        MD5: {hr.md5 || '—'} | SHA-256: {hr.sha256?.substring(0, 16) || '—'}...
-                      </div>
-                    </div>
-                    {hr.flagged && (
-                      <span className="text-[9px] bg-red-950/50 border border-red-800/40 text-red-400 px-1.5 py-0.5 rounded-sm font-bold">
-                        FLAGGED
-                      </span>
-                    )}
-                    {hr.hash_set_match && (
-                      <span className="text-[9px] bg-amber-950/50 border border-amber-800/40 text-amber-400 px-1.5 py-0.5 rounded-sm">
-                        {hr.hash_set_name || 'MATCH'}
-                      </span>
-                    )}
-                    <div className="text-[9px] text-rmpg-500 shrink-0">
-                      {(hr.file_size / 1024).toFixed(1)} KB
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8 text-rmpg-500">
-                <Hash className="w-8 h-8 mx-auto mb-2 text-rmpg-600" />
-                <div className="text-[10px]">No hash results yet</div>
-                <div className="text-[9px] text-rmpg-600 mt-1">Hash results appear after computing hashes on evidence files</div>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* ═══ CASE BROWSER TAB ═══ */}
-        {activeTab === 'cases' && (
-          <CaseBrowserTab isConnected={!!isConnected} webApiUrl={status?.webApiUrl} webApiPort={status?.webApiPort} />
-        )}
-      </div>
+          </div>
+        </div>
+      ) : (
+        <SplitPanel
+          left={
+            <GraphPanel
+              graph={graph}
+              selectedNodeId={selectedNodeId}
+              onSelectNode={setSelectedNodeId}
+              depth={depth}
+              onDepthChange={setDepth}
+              typeFilter={typeFilter}
+              onToggleTypeFilter={toggleTypeFilter}
+              loading={loading}
+            />
+          }
+          right={
+            <DetailPanel
+              node={selectedNode}
+              edges={selectedEdges}
+              allNodes={graph?.nodes || []}
+              onExpandNode={handleSeedSelect}
+            />
+          }
+          initialRatio={0.6}
+          minLeftPx={350}
+          minRightPx={250}
+          persistKey="connections"
+          leftLabel="Graph"
+          rightLabel="Details"
+        />
+      )}
     </div>
   );
 }

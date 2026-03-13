@@ -3,11 +3,13 @@ import { getDb } from '../../models/database';
 import { requireRole } from '../../middleware/auth';
 import { broadcastDispatchUpdate, broadcastUnitUpdate } from '../../utils/websocket';
 import { localNow } from '../../utils/timeUtils';
+import { generateIncidentNumber } from '../../utils/caseNumbers';
+import { createNotification, createNotificationForRoles } from '../notifications';
 
 const router = Router();
 
 // POST /api/dispatch/calls/:id/dispatch - Dispatch unit(s) to call
-router.post('/calls/:id/dispatch', (req: Request, res: Response) => {
+router.post('/calls/:id/dispatch', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -32,32 +34,62 @@ router.post('/calls/:id/dispatch', (req: Request, res: Response) => {
 
     const allUnits = [...new Set([...currentUnits, ...unit_ids])];
 
-    // Update call
-    db.prepare(`
-      UPDATE calls_for_service SET
-        status = CASE WHEN status = 'pending' THEN 'dispatched' ELSE status END,
-        assigned_unit_ids = ?,
-        dispatched_at = COALESCE(dispatched_at, ?),
-        dispatcher_id = COALESCE(dispatcher_id, ?)
-      WHERE id = ?
-    `).run(JSON.stringify(allUnits), now, req.user!.userId, call.id);
-
-    // Update each unit status
-    for (const unitId of unit_ids) {
+    // Transaction: update call + all units + activity logs atomically
+    const dispatchTx = db.transaction(() => {
+      // Update call
       db.prepare(`
-        UPDATE units SET status = 'dispatched', current_call_id = ?, last_status_change = ? WHERE id = ?
-      `).run(call.id, now, unitId);
+        UPDATE calls_for_service SET
+          status = CASE WHEN status = 'pending' THEN 'dispatched' ELSE status END,
+          assigned_unit_ids = ?,
+          dispatched_at = COALESCE(dispatched_at, ?),
+          dispatcher_id = COALESCE(dispatcher_id, ?)
+        WHERE id = ?
+      `).run(JSON.stringify(allUnits), now, req.user!.userId, call.id);
 
-      // Log activity
-      const unit = db.prepare('SELECT call_sign FROM units WHERE id = ?').get(unitId) as any;
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'unit_dispatched', 'unit', ?, ?, ?)
-      `).run(req.user!.userId, unitId, `Dispatched ${unit?.call_sign || unitId} to ${call.call_number}`, req.ip || 'unknown');
-    }
+      // Update each unit status
+      for (const unitId of unit_ids) {
+        db.prepare(`
+          UPDATE units SET status = 'dispatched', current_call_id = ?, last_status_change = ? WHERE id = ?
+        `).run(call.id, now, unitId);
+
+        // Log activity
+        const unit = db.prepare('SELECT call_sign FROM units WHERE id = ?').get(unitId) as any;
+        db.prepare(`
+          INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+          VALUES (?, 'unit_dispatched', 'unit', ?, ?, ?)
+        `).run(req.user!.userId, unitId, `Dispatched ${unit?.call_sign || unitId} to ${call.call_number}`, req.ip || 'unknown');
+      }
+    });
+    dispatchTx();
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
     broadcastDispatchUpdate({ action: 'units_dispatched', call: updated, unit_ids });
+
+    // Broadcast individual unit updates so Map/MDT get full unit state with call details
+    for (const unitId of unit_ids) {
+      const unitData = db.prepare(`
+        SELECT u.*, usr.full_name as officer_name, usr.badge_number, usr.phone as officer_phone,
+          c.call_number, c.incident_type as current_call_type, c.location_address as current_call_location
+        FROM units u
+        LEFT JOIN users usr ON u.officer_id = usr.id
+        LEFT JOIN calls_for_service c ON u.current_call_id = c.id
+        WHERE u.id = ?
+      `).get(unitId);
+      if (unitData) broadcastUnitUpdate({ action: 'unit_status_changed', unit: unitData });
+    }
+
+    // Notify dispatched officers individually
+    for (const unitId of unit_ids) {
+      const unitRow = db.prepare('SELECT officer_id, call_sign FROM units WHERE id = ?').get(unitId) as any;
+      if (unitRow?.officer_id) {
+        createNotification(
+          unitRow.officer_id, 'dispatch',
+          `Dispatched: ${call.call_number}`,
+          `${call.incident_type} — ${call.location_address || 'No address'}`,
+          'call', call.id, 'high', 'dispatch.unit_dispatched',
+        );
+      }
+    }
 
     res.json(updated);
   } catch (error: any) {
@@ -66,8 +98,8 @@ router.post('/calls/:id/dispatch', (req: Request, res: Response) => {
   }
 });
 
-// POST /api/dispatch/calls/:id/assign-unit - Attach a single unit to a call
-router.post('/calls/:id/assign-unit', (req: Request, res: Response) => {
+// POST /api/dispatch/calls/:id/assign-unit - Attach a single unit to a call (dispatchers + officers for self-dispatch)
+router.post('/calls/:id/assign-unit', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -100,29 +132,41 @@ router.post('/calls/:id/assign-unit', (req: Request, res: Response) => {
       currentUnits.push(Number(unit_id));
     }
 
-    // Update call: add unit to assigned_unit_ids, set dispatched if pending
-    db.prepare(`
-      UPDATE calls_for_service SET
-        status = CASE WHEN status = 'pending' THEN 'dispatched' ELSE status END,
-        assigned_unit_ids = ?,
-        dispatched_at = COALESCE(dispatched_at, ?)
-      WHERE id = ?
-    `).run(JSON.stringify(currentUnits), now, call.id);
+    // Transaction: update call + unit + activity log atomically
+    const assignTx = db.transaction(() => {
+      // Update call: add unit to assigned_unit_ids, set dispatched if pending
+      db.prepare(`
+        UPDATE calls_for_service SET
+          status = CASE WHEN status = 'pending' THEN 'dispatched' ELSE status END,
+          assigned_unit_ids = ?,
+          dispatched_at = COALESCE(dispatched_at, ?)
+        WHERE id = ?
+      `).run(JSON.stringify(currentUnits), now, call.id);
 
-    // Update unit: set status to dispatched and link to this call
-    db.prepare(`
-      UPDATE units SET status = 'dispatched', current_call_id = ?, last_status_change = ? WHERE id = ?
-    `).run(call.id, now, unit_id);
+      // Update unit: set status to dispatched and link to this call
+      db.prepare(`
+        UPDATE units SET status = 'dispatched', current_call_id = ?, last_status_change = ? WHERE id = ?
+      `).run(call.id, now, unit_id);
 
-    // Log activity
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'unit_dispatched', 'call', ?, ?, ?)
-    `).run(req.user!.userId, call.id, `Assigned ${unit.call_sign} to ${call.call_number}`, req.ip || 'unknown');
+      // Log activity
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'unit_dispatched', 'call', ?, ?, ?)
+      `).run(req.user!.userId, call.id, `Assigned ${unit.call_sign} to ${call.call_number}`, req.ip || 'unknown');
+    });
+    assignTx();
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
     broadcastDispatchUpdate({ action: 'unit_assigned', call: updated, unit_id });
-    broadcastUnitUpdate({ action: 'unit_status_changed', unit: db.prepare('SELECT u.*, usr.full_name as officer_name FROM units u LEFT JOIN users usr ON u.officer_id = usr.id WHERE u.id = ?').get(unit_id) });
+    const unitData = db.prepare(`
+      SELECT u.*, usr.full_name as officer_name, usr.badge_number, usr.phone as officer_phone,
+        c.call_number, c.incident_type as current_call_type, c.location_address as current_call_location
+      FROM units u
+      LEFT JOIN users usr ON u.officer_id = usr.id
+      LEFT JOIN calls_for_service c ON u.current_call_id = c.id
+      WHERE u.id = ?
+    `).get(unit_id);
+    if (unitData) broadcastUnitUpdate({ action: 'unit_status_changed', unit: unitData });
 
     res.json(updated);
   } catch (error: any) {
@@ -132,7 +176,7 @@ router.post('/calls/:id/assign-unit', (req: Request, res: Response) => {
 });
 
 // POST /api/dispatch/calls/:id/unassign-unit - Detach a single unit from a call
-router.post('/calls/:id/unassign-unit', (req: Request, res: Response) => {
+router.post('/calls/:id/unassign-unit', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -155,33 +199,46 @@ router.post('/calls/:id/unassign-unit', (req: Request, res: Response) => {
 
     const now = localNow();
 
-    // Remove unit from assigned_unit_ids
-    let currentUnits: number[] = [];
-    try {
-      currentUnits = JSON.parse(call.assigned_unit_ids || '[]');
-    } catch { /* ignore */ }
+    // Transaction: update call + unit + activity log atomically
+    // Read assigned_unit_ids INSIDE the transaction to prevent stale data race
+    const unassignTx = db.transaction(() => {
+      // Re-read call inside transaction to get fresh assigned_unit_ids
+      const freshCall = db.prepare('SELECT assigned_unit_ids FROM calls_for_service WHERE id = ?').get(call.id) as any;
+      let currentUnits: number[] = [];
+      try {
+        currentUnits = JSON.parse(freshCall?.assigned_unit_ids || '[]');
+      } catch { /* ignore */ }
+      currentUnits = currentUnits.filter((id) => id !== Number(unit_id));
 
-    currentUnits = currentUnits.filter((id) => id !== Number(unit_id));
+      // Update call: remove unit from assigned_unit_ids
+      db.prepare(`
+        UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?
+      `).run(JSON.stringify(currentUnits), call.id);
 
-    // Update call: remove unit from assigned_unit_ids
-    db.prepare(`
-      UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?
-    `).run(JSON.stringify(currentUnits), call.id);
+      // Update unit: set status to available and clear current_call_id
+      db.prepare(`
+        UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = ? WHERE id = ?
+      `).run(now, unit_id);
 
-    // Update unit: set status to available and clear current_call_id
-    db.prepare(`
-      UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = ? WHERE id = ?
-    `).run(now, unit_id);
-
-    // Log activity
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'unit_unassigned', 'call', ?, ?, ?)
-    `).run(req.user!.userId, call.id, `Removed ${unit.call_sign} from ${call.call_number}`, req.ip || 'unknown');
+      // Log activity
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'unit_unassigned', 'call', ?, ?, ?)
+      `).run(req.user!.userId, call.id, `Removed ${unit.call_sign} from ${call.call_number}`, req.ip || 'unknown');
+    });
+    unassignTx();
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
     broadcastDispatchUpdate({ action: 'unit_unassigned', call: updated, unit_id });
-    broadcastUnitUpdate({ action: 'unit_status_changed', unit: db.prepare('SELECT u.*, usr.full_name as officer_name FROM units u LEFT JOIN users usr ON u.officer_id = usr.id WHERE u.id = ?').get(unit_id) });
+    const unassignedUnit = db.prepare(`
+      SELECT u.*, usr.full_name as officer_name, usr.badge_number, usr.phone as officer_phone,
+        c.call_number, c.incident_type as current_call_type, c.location_address as current_call_location
+      FROM units u
+      LEFT JOIN users usr ON u.officer_id = usr.id
+      LEFT JOIN calls_for_service c ON u.current_call_id = c.id
+      WHERE u.id = ?
+    `).get(unit_id);
+    if (unassignedUnit) broadcastUnitUpdate({ action: 'unit_status_changed', unit: unassignedUnit });
 
     res.json(updated);
   } catch (error: any) {
@@ -191,7 +248,7 @@ router.post('/calls/:id/unassign-unit', (req: Request, res: Response) => {
 });
 
 // POST /api/dispatch/calls/:id/status - Update call status with timestamp
-router.post('/calls/:id/status', (req: Request, res: Response) => {
+router.post('/calls/:id/status', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -200,7 +257,7 @@ router.post('/calls/:id/status', (req: Request, res: Response) => {
       return;
     }
 
-    const { status, notes, disposition } = req.body;
+    const { status, notes, disposition, starting_mileage, ending_mileage, responding_vehicle_id } = req.body;
     if (!status) {
       res.status(400).json({ error: 'status is required' });
       return;
@@ -240,33 +297,67 @@ router.post('/calls/:id/status', (req: Request, res: Response) => {
       updateQuery += `, disposition = ?`;
       updateParams.push(disposition);
     }
+    if (starting_mileage != null) {
+      updateQuery += `, starting_mileage = ?`;
+      updateParams.push(starting_mileage);
+    }
+    if (ending_mileage != null) {
+      updateQuery += `, ending_mileage = ?`;
+      updateParams.push(ending_mileage);
+    }
+    if (responding_vehicle_id) {
+      updateQuery += `, responding_vehicle_id = ?`;
+      updateParams.push(responding_vehicle_id);
+    }
     updateQuery += ` WHERE id = ?`;
     updateParams.push(call.id);
 
-    db.prepare(updateQuery).run(...updateParams);
+    // Transaction: update call + free units + activity log atomically
+    let freedUnitIds: number[] = [];
+    const statusTx = db.transaction(() => {
+      db.prepare(updateQuery).run(...updateParams);
 
-    // If cleared, closed, cancelled, or archived, free up units
-    if (['cleared', 'closed', 'cancelled', 'archived'].includes(status)) {
-      let unitIds: number[] = [];
-      try {
-        unitIds = JSON.parse(call.assigned_unit_ids || '[]');
-      } catch { /* ignore */ }
+      // If cleared, closed, cancelled, or archived, free up units
+      if (['cleared', 'closed', 'cancelled', 'archived'].includes(status)) {
+        let unitIds: number[] = [];
+        try {
+          unitIds = JSON.parse(call.assigned_unit_ids || '[]');
+        } catch { /* ignore */ }
 
-      for (const unitId of unitIds) {
-        db.prepare(`
-          UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = ? WHERE id = ? AND current_call_id = ?
-        `).run(now, unitId, call.id);
+        for (const unitId of unitIds) {
+          const result = db.prepare(`
+            UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = ? WHERE id = ? AND current_call_id = ?
+          `).run(now, unitId, call.id);
+          if (result.changes > 0) freedUnitIds.push(unitId);
+        }
       }
-    }
 
-    // Log activity
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'status_change', 'call', ?, ?, ?)
-    `).run(req.user!.userId, call.id, `${call.call_number} status changed to ${status}`, req.ip || 'unknown');
+      // Log activity
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'status_change', 'call', ?, ?, ?)
+      `).run(req.user!.userId, call.id, `${call.call_number} status changed to ${status}`, req.ip || 'unknown');
+    });
+    statusTx();
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
     broadcastDispatchUpdate({ action: 'call_status_changed', call: updated, status });
+
+    // Broadcast unit status changes so dispatch map reflects freed units
+    for (const unitId of freedUnitIds) {
+      const unitData = db.prepare(`SELECT u.*, usr.full_name as officer_name, usr.badge_number, usr.phone as officer_phone, c.call_number, c.incident_type as current_call_type, c.location_address as current_call_location FROM units u LEFT JOIN users usr ON u.officer_id = usr.id LEFT JOIN calls_for_service c ON u.current_call_id = c.id WHERE u.id = ?`).get(unitId);
+      if (unitData) broadcastUnitUpdate({ action: 'unit_status_changed', unit: unitData });
+    }
+
+    // Notify supervisors when a call is cleared or closed
+    if (['cleared', 'closed'].includes(status)) {
+      createNotificationForRoles(
+        ['admin', 'manager', 'supervisor'],
+        'dispatch', `Call Cleared: ${call.call_number}`,
+        `${call.incident_type} — status changed to ${status}`,
+        'call', call.id, 'normal', 'dispatch.call_cleared', req.user!.userId,
+      );
+    }
 
     res.json(updated);
   } catch (error: any) {
@@ -276,7 +367,7 @@ router.post('/calls/:id/status', (req: Request, res: Response) => {
 });
 
 // POST /api/dispatch/calls/:id/revert-status - Revert call to previous status
-router.post('/calls/:id/revert-status', (req: Request, res: Response) => {
+router.post('/calls/:id/revert-status', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -322,31 +413,46 @@ router.post('/calls/:id/revert-status', (req: Request, res: Response) => {
     updateQuery += ` WHERE id = ?`;
     updateParams.push(call.id);
 
-    db.prepare(updateQuery).run(...updateParams);
+    // Transaction: revert call status + re-dispatch units + activity log atomically
+    let revertedUnitIds: number[] = [];
+    const revertTx = db.transaction(() => {
+      db.prepare(updateQuery).run(...updateParams);
 
-    // If reverting from cleared/closed, re-dispatch assigned units
-    if (['cleared', 'closed'].includes(call.status)) {
-      let unitIds: number[] = [];
-      try {
-        unitIds = JSON.parse(call.assigned_unit_ids || '[]');
-      } catch { /* ignore */ }
+      // If reverting from cleared/closed, re-dispatch assigned units
+      // Only re-assign units that are still available (not already on another call)
+      if (['cleared', 'closed'].includes(call.status)) {
+        let unitIds: number[] = [];
+        try {
+          unitIds = JSON.parse(call.assigned_unit_ids || '[]');
+        } catch { /* ignore */ }
 
-      for (const unitId of unitIds) {
-        const prevUnitStatus = previousStatus === 'onscene' ? 'onscene' : previousStatus === 'enroute' ? 'enroute' : 'dispatched';
-        db.prepare(`
-          UPDATE units SET status = ?, current_call_id = ?, last_status_change = ? WHERE id = ?
-        `).run(prevUnitStatus, call.id, now, unitId);
+        for (const unitId of unitIds) {
+          const prevUnitStatus = previousStatus === 'onscene' ? 'onscene' : previousStatus === 'enroute' ? 'enroute' : 'dispatched';
+          // Guard: only re-assign if unit is available (not already dispatched to another call)
+          const result = db.prepare(`
+            UPDATE units SET status = ?, current_call_id = ?, last_status_change = ?
+            WHERE id = ? AND (current_call_id IS NULL OR current_call_id = ?)
+          `).run(prevUnitStatus, call.id, now, unitId, call.id);
+          if (result.changes > 0) revertedUnitIds.push(unitId);
+        }
       }
-    }
 
-    // Log activity
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'status_reverted', 'call', ?, ?, ?)
-    `).run(req.user!.userId, call.id, `${call.call_number} status reverted from ${call.status} to ${previousStatus}`, req.ip || 'unknown');
+      // Log activity
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'status_reverted', 'call', ?, ?, ?)
+      `).run(req.user!.userId, call.id, `${call.call_number} status reverted from ${call.status} to ${previousStatus}`, req.ip || 'unknown');
+    });
+    revertTx();
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
     broadcastDispatchUpdate({ action: 'call_status_changed', call: updated, status: previousStatus });
+
+    // Broadcast unit status changes for re-dispatched units
+    for (const unitId of revertedUnitIds) {
+      const unitData = db.prepare(`SELECT u.*, usr.full_name as officer_name, usr.badge_number, usr.phone as officer_phone, c.call_number, c.incident_type as current_call_type, c.location_address as current_call_location FROM units u LEFT JOIN users usr ON u.officer_id = usr.id LEFT JOIN calls_for_service c ON u.current_call_id = c.id WHERE u.id = ?`).get(unitId);
+      if (unitData) broadcastUnitUpdate({ action: 'unit_status_changed', unit: unitData });
+    }
 
     res.json(updated);
   } catch (error: any) {
@@ -356,7 +462,7 @@ router.post('/calls/:id/revert-status', (req: Request, res: Response) => {
 });
 
 // POST /api/dispatch/calls/:id/hold - Put call on hold (saves previous status)
-router.post('/calls/:id/hold', (req: Request, res: Response) => {
+router.post('/calls/:id/hold', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -398,7 +504,7 @@ router.post('/calls/:id/hold', (req: Request, res: Response) => {
 });
 
 // POST /api/dispatch/calls/:id/resume - Resume a held call (restores previous status)
-router.post('/calls/:id/resume', (req: Request, res: Response) => {
+router.post('/calls/:id/resume', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -442,15 +548,14 @@ router.post('/calls/:id/promote-to-incident', requireRole('admin', 'manager', 's
     if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
 
     // Generate incident number
-    const { generateIncidentNumber } = require('../../utils/caseNumbers');
     const incidentNumber = generateIncidentNumber(db, call.incident_type || 'general');
 
     const result = db.prepare(`
       INSERT INTO incidents (incident_number, call_id, incident_type, priority, status,
         location_address, property_id, latitude, longitude, narrative, officer_id,
         zone_beat, section_id, zone_id, beat_id, domestic_violence, weapons_involved,
-        injuries, created_by)
-      VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        injuries)
+      VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       incidentNumber,
       call.id,
@@ -467,9 +572,8 @@ router.post('/calls/:id/promote-to-incident', requireRole('admin', 'manager', 's
       call.zone_id || null,
       call.beat_id || null,
       call.domestic_violence || 0,
-      call.weapons_involved || 0,
-      call.injuries_reported || 0,
-      req.user!.userId
+      call.weapons_involved || null,
+      call.injuries_reported || 0
     );
 
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(result.lastInsertRowid);
@@ -481,7 +585,7 @@ router.post('/calls/:id/promote-to-incident', requireRole('admin', 'manager', 's
 });
 
 // POST /api/dispatch/calls/:id/le-notification - Notify external agency
-router.post('/calls/:id/le-notification', (req: Request, res: Response) => {
+router.post('/calls/:id/le-notification', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -504,11 +608,302 @@ router.post('/calls/:id/le-notification', (req: Request, res: Response) => {
       req.params.id
     );
 
+    // Audit log — LE notification is a significant action requiring compliance trail
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'le_notification', 'call', ?, ?, ?, ?)
+    `).run(
+      req.user!.userId,
+      call.id,
+      `LE notified: ${agency || 'Local PD'}${case_number ? ` (Case #${case_number})` : ''}`,
+      req.ip || 'unknown',
+      now
+    );
+
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id);
     broadcastDispatchUpdate({ action: 'call_updated', call: updated });
     res.json(updated);
   } catch (error: any) {
     console.error('LE notification error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// CALL PERSONS — Link/unlink person records to dispatch calls
+// ═══════════════════════════════════════════════════════════
+
+// GET /api/dispatch/calls/:id/persons — List linked persons
+router.get('/calls/:id/persons', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT cp.*, p.first_name, p.last_name, p.middle_name, p.dob, p.phone,
+        p.address, p.city, p.state, p.zip, p.race, p.gender, p.height, p.weight,
+        p.hair_color, p.eye_color, p.flags, p.dl_number, p.dl_state,
+        u.full_name as added_by_name
+      FROM call_persons cp
+      LEFT JOIN persons p ON cp.person_id = p.id
+      LEFT JOIN users u ON cp.added_by = u.id
+      WHERE cp.call_id = ?
+      ORDER BY cp.created_at ASC
+    `).all(req.params.id);
+    res.json(rows);
+  } catch (error: any) {
+    console.error('Get call persons error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/dispatch/calls/:id/persons — Link a person to a call
+router.post('/calls/:id/persons', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT id, call_number FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) return res.status(404).json({ error: 'Call not found' });
+
+    const { person_id, role, notes } = req.body;
+    if (!person_id || !role) return res.status(400).json({ error: 'person_id and role are required' });
+
+    const person = db.prepare('SELECT id, first_name, last_name FROM persons WHERE id = ?').get(person_id) as any;
+    if (!person) return res.status(404).json({ error: 'Person not found' });
+
+    const existing = db.prepare('SELECT id FROM call_persons WHERE call_id = ? AND person_id = ?').get(call.id, person_id) as any;
+    if (existing) return res.status(409).json({ error: 'Person already linked to this call' });
+
+    const result = db.prepare(`
+      INSERT INTO call_persons (call_id, person_id, role, notes, added_by) VALUES (?, ?, ?, ?, ?)
+    `).run(call.id, person_id, role, notes || null, req.user!.userId);
+
+    const linked = db.prepare(`
+      SELECT cp.*, p.first_name, p.last_name, p.middle_name, p.dob, p.phone,
+        p.address, p.city, p.state, p.zip, p.race, p.gender, p.height, p.weight,
+        p.hair_color, p.eye_color, p.flags, p.dl_number, p.dl_state,
+        u.full_name as added_by_name
+      FROM call_persons cp
+      LEFT JOIN persons p ON cp.person_id = p.id
+      LEFT JOIN users u ON cp.added_by = u.id
+      WHERE cp.id = ?
+    `).get(result.lastInsertRowid);
+
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'person_linked', 'call', ?, ?, ?)
+    `).run(req.user!.userId, call.id,
+      `Linked ${person.first_name} ${person.last_name} as ${role} to call ${call.call_number}`,
+      req.ip || 'unknown');
+
+    broadcastDispatchUpdate({ type: 'call_person_linked', call_id: call.id, person: linked });
+    res.status(201).json(linked);
+  } catch (error: any) {
+    console.error('Link call person error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/dispatch/calls/:id/persons/:linkId — Update person link role/notes
+router.put('/calls/:id/persons/:linkId', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const link = db.prepare('SELECT * FROM call_persons WHERE id = ? AND call_id = ?').get(req.params.linkId, req.params.id) as any;
+    if (!link) return res.status(404).json({ error: 'Person link not found' });
+
+    const setClauses: string[] = [];
+    const setValues: any[] = [];
+    for (const field of ['role', 'notes']) {
+      if (req.body[field] !== undefined) {
+        setClauses.push(`${field} = ?`);
+        setValues.push(req.body[field] || null);
+      }
+    }
+    if (setClauses.length > 0) {
+      setValues.push(link.id);
+      db.prepare(`UPDATE call_persons SET ${setClauses.join(', ')} WHERE id = ?`).run(...setValues);
+    }
+
+    const updated = db.prepare(`
+      SELECT cp.*, p.first_name, p.last_name, p.middle_name, p.dob, p.phone,
+        p.address, p.city, p.state, p.zip, p.race, p.gender, p.height, p.weight,
+        p.hair_color, p.eye_color, p.flags, p.dl_number, p.dl_state,
+        u.full_name as added_by_name
+      FROM call_persons cp
+      LEFT JOIN persons p ON cp.person_id = p.id
+      LEFT JOIN users u ON cp.added_by = u.id
+      WHERE cp.id = ?
+    `).get(link.id);
+    res.json(updated);
+  } catch (error: any) {
+    console.error('Update call person error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/dispatch/calls/:id/persons/:linkId — Unlink person from call
+router.delete('/calls/:id/persons/:linkId', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const link = db.prepare('SELECT cp.*, p.first_name, p.last_name FROM call_persons cp LEFT JOIN persons p ON cp.person_id = p.id WHERE cp.id = ? AND cp.call_id = ?')
+      .get(req.params.linkId, req.params.id) as any;
+    if (!link) return res.status(404).json({ error: 'Person link not found' });
+
+    const call = db.prepare('SELECT call_number FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+
+    db.prepare('DELETE FROM call_persons WHERE id = ?').run(link.id);
+
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'person_unlinked', 'call', ?, ?, ?)
+    `).run(req.user!.userId, req.params.id,
+      `Unlinked ${link.first_name} ${link.last_name} from call ${call?.call_number || req.params.id}`,
+      req.ip || 'unknown');
+
+    broadcastDispatchUpdate({ type: 'call_person_unlinked', call_id: Number(req.params.id), link_id: link.id });
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Unlink call person error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// CALL VEHICLES — Link/unlink vehicle records to dispatch calls
+// ═══════════════════════════════════════════════════════════
+
+// GET /api/dispatch/calls/:id/vehicles — List linked vehicles
+router.get('/calls/:id/vehicles', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT cv.*, v.make, v.model, v.year, v.color, v.plate_number, v.state as plate_state,
+        v.vin, v.body_style, v.secondary_color,
+        op.first_name as owner_first_name, op.last_name as owner_last_name,
+        v.stolen_status, v.stolen_date,
+        u.full_name as added_by_name
+      FROM call_vehicles cv
+      LEFT JOIN vehicles_records v ON cv.vehicle_id = v.id
+      LEFT JOIN persons op ON v.owner_person_id = op.id
+      LEFT JOIN users u ON cv.added_by = u.id
+      WHERE cv.call_id = ?
+      ORDER BY cv.created_at ASC
+    `).all(req.params.id);
+    res.json(rows);
+  } catch (error: any) {
+    console.error('Get call vehicles error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/dispatch/calls/:id/vehicles — Link a vehicle to a call
+router.post('/calls/:id/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT id, call_number FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) return res.status(404).json({ error: 'Call not found' });
+
+    const { vehicle_id, role, notes } = req.body;
+    if (!vehicle_id || !role) return res.status(400).json({ error: 'vehicle_id and role are required' });
+
+    const vehicle = db.prepare('SELECT id, make, model, year, plate_number FROM vehicles_records WHERE id = ?').get(vehicle_id) as any;
+    if (!vehicle) return res.status(404).json({ error: 'Vehicle not found' });
+
+    const existing = db.prepare('SELECT id FROM call_vehicles WHERE call_id = ? AND vehicle_id = ?').get(call.id, vehicle_id) as any;
+    if (existing) return res.status(409).json({ error: 'Vehicle already linked to this call' });
+
+    const result = db.prepare(`
+      INSERT INTO call_vehicles (call_id, vehicle_id, role, notes, added_by) VALUES (?, ?, ?, ?, ?)
+    `).run(call.id, vehicle_id, role, notes || null, req.user!.userId);
+
+    const linked = db.prepare(`
+      SELECT cv.*, v.make, v.model, v.year, v.color, v.plate_number, v.state as plate_state,
+        v.vin, v.body_style, v.secondary_color,
+        op.first_name as owner_first_name, op.last_name as owner_last_name,
+        v.stolen_status, v.stolen_date,
+        u.full_name as added_by_name
+      FROM call_vehicles cv
+      LEFT JOIN vehicles_records v ON cv.vehicle_id = v.id
+      LEFT JOIN persons op ON v.owner_person_id = op.id
+      LEFT JOIN users u ON cv.added_by = u.id
+      WHERE cv.id = ?
+    `).get(result.lastInsertRowid);
+
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'vehicle_linked', 'call', ?, ?, ?)
+    `).run(req.user!.userId, call.id,
+      `Linked ${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''} PLT:${vehicle.plate_number || 'N/A'} as ${role} to call ${call.call_number}`,
+      req.ip || 'unknown');
+
+    broadcastDispatchUpdate({ type: 'call_vehicle_linked', call_id: call.id, vehicle: linked });
+    res.status(201).json(linked);
+  } catch (error: any) {
+    console.error('Link call vehicle error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/dispatch/calls/:id/vehicles/:linkId — Update vehicle link role/notes
+router.put('/calls/:id/vehicles/:linkId', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const link = db.prepare('SELECT * FROM call_vehicles WHERE id = ? AND call_id = ?').get(req.params.linkId, req.params.id) as any;
+    if (!link) return res.status(404).json({ error: 'Vehicle link not found' });
+
+    const setClauses: string[] = [];
+    const setValues: any[] = [];
+    for (const field of ['role', 'notes']) {
+      if (req.body[field] !== undefined) {
+        setClauses.push(`${field} = ?`);
+        setValues.push(req.body[field] || null);
+      }
+    }
+    if (setClauses.length > 0) {
+      setValues.push(link.id);
+      db.prepare(`UPDATE call_vehicles SET ${setClauses.join(', ')} WHERE id = ?`).run(...setValues);
+    }
+
+    const updated = db.prepare(`
+      SELECT cv.*, v.make, v.model, v.year, v.color, v.plate_number, v.state as plate_state,
+        v.vin, v.body_style, v.secondary_color,
+        op.first_name as owner_first_name, op.last_name as owner_last_name,
+        v.stolen_status, v.stolen_date,
+        u.full_name as added_by_name
+      FROM call_vehicles cv
+      LEFT JOIN vehicles_records v ON cv.vehicle_id = v.id
+      LEFT JOIN persons op ON v.owner_person_id = op.id
+      LEFT JOIN users u ON cv.added_by = u.id
+      WHERE cv.id = ?
+    `).get(link.id);
+    res.json(updated);
+  } catch (error: any) {
+    console.error('Update call vehicle error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/dispatch/calls/:id/vehicles/:linkId — Unlink vehicle from call
+router.delete('/calls/:id/vehicles/:linkId', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const link = db.prepare(`SELECT cv.*, v.make, v.model, v.year, v.plate_number
+      FROM call_vehicles cv LEFT JOIN vehicles_records v ON cv.vehicle_id = v.id
+      WHERE cv.id = ? AND cv.call_id = ?`).get(req.params.linkId, req.params.id) as any;
+    if (!link) return res.status(404).json({ error: 'Vehicle link not found' });
+
+    const call = db.prepare('SELECT call_number FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+
+    db.prepare('DELETE FROM call_vehicles WHERE id = ?').run(link.id);
+
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'vehicle_unlinked', 'call', ?, ?, ?)
+    `).run(req.user!.userId, req.params.id,
+      `Unlinked ${link.year || ''} ${link.make || ''} ${link.model || ''} from call ${call?.call_number || req.params.id}`,
+      req.ip || 'unknown');
+
+    broadcastDispatchUpdate({ type: 'call_vehicle_unlinked', call_id: Number(req.params.id), link_id: link.id });
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Unlink call vehicle error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

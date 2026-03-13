@@ -93,12 +93,16 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
     setError(null);
     setDigits(['', '', '', '', '', '']);
 
-    // Store selected user ID for PIN validation context
+    // Store selected user ID AND role for PIN validation context
     if (userId) {
+      const emp = employees.find(em => String(em.id) === userId);
       setConfig('current_user_id', userId).catch(() => {});
+      if (emp?.role) {
+        setConfig('current_user_role', emp.role).catch(() => {});
+      }
       localStorage.setItem('rmpg_offline_user_id', userId);
     }
-  }, []);
+  }, [employees]);
 
   const handleChange = useCallback((index: number, value: string) => {
     // Only allow numeric input
@@ -143,6 +147,8 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
     }
   }, []);
 
+  const isSelectedAdmin = employees.find(em => String(em.id) === selectedUserId)?.role === 'admin';
+
   const handleSubmit = useCallback(async () => {
     if (!selectedUserId && employees.length > 0) {
       setError('Select your name from the dropdown');
@@ -150,7 +156,8 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
     }
 
     const pin = digits.join('');
-    if (pin.length !== 6) {
+    // Admin users don't need a PIN — the server-side validatePin() returns success for admins
+    if (!isSelectedAdmin && pin.length !== 6) {
       setError('Enter all 6 digits');
       return;
     }
@@ -159,7 +166,8 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
     setError(null);
 
     try {
-      const result = await enterPin(pin);
+      // For admin: any PIN value works (validatePin returns success for admin role)
+      const result = await enterPin(isSelectedAdmin ? '000000' : pin);
 
       if (result.success) {
         onSuccess?.();
@@ -222,7 +230,9 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
         {/* Body */}
         <div className="px-5 py-4 space-y-3">
           <p className="text-xs text-rmpg-300 text-center leading-relaxed">
-            Internet is unavailable. Select your name and enter your 6-digit PIN to authorize offline access.
+            {isSelectedAdmin
+              ? 'Admin accounts have full offline access. Press authorize below.'
+              : 'Internet is unavailable. Select your name and enter your 6-digit PIN to authorize offline access.'}
           </p>
 
           {/* Employee Dropdown */}
@@ -282,29 +292,31 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
             </div>
           )}
 
-          {/* PIN Input Grid */}
-          <div className="flex justify-center gap-2">
-            {digits.map((digit, i) => (
-              <input
-                key={i}
-                ref={el => { inputRefs.current[i] = el; }}
-                type="text"
-                inputMode="numeric"
-                maxLength={1}
-                value={digit}
-                onChange={e => handleChange(i, e.target.value)}
-                onKeyDown={e => handleKeyDown(i, e)}
-                onPaste={i === 0 ? handlePaste : undefined}
-                disabled={submitting || (!selectedUserId && employees.length > 0)}
-                className="w-11 h-13 text-center text-2xl font-mono font-bold text-white transition-colors focus:outline-none disabled:opacity-40"
-                style={{
-                  background: '#0d0d0d',
-                  border: `2px solid ${error ? '#dc2626' : digit ? '#d97706' : '#2a3e58'}`,
-                  caretColor: '#d97706',
-                }}
-              />
-            ))}
-          </div>
+          {/* PIN Input Grid — hidden for admin (no PIN required) */}
+          {!isSelectedAdmin && (
+            <div className="flex justify-center gap-2">
+              {digits.map((digit, i) => (
+                <input
+                  key={i}
+                  ref={el => { inputRefs.current[i] = el; }}
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={1}
+                  value={digit}
+                  onChange={e => handleChange(i, e.target.value)}
+                  onKeyDown={e => handleKeyDown(i, e)}
+                  onPaste={i === 0 ? handlePaste : undefined}
+                  disabled={submitting || (!selectedUserId && employees.length > 0)}
+                  className="w-11 h-13 text-center text-2xl font-mono font-bold text-white transition-colors focus:outline-none disabled:opacity-40"
+                  style={{
+                    background: '#0d0d0d',
+                    border: `2px solid ${error ? '#dc2626' : digit ? '#d97706' : '#2a3e58'}`,
+                    caretColor: '#d97706',
+                  }}
+                />
+              ))}
+            </div>
+          )}
 
           {/* Error */}
           {error && (
@@ -327,7 +339,7 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
           {/* Submit button (mostly for accessibility — auto-submits on 6th digit) */}
           <button
             onClick={handleSubmit}
-            disabled={submitting || digits.some(d => d === '') || (!selectedUserId && employees.length > 0)}
+            disabled={submitting || (!isSelectedAdmin && digits.some(d => d === '')) || (!selectedUserId && employees.length > 0)}
             className="btn-primary w-full justify-center"
             style={{ borderColor: '#d97706', background: submitting ? '#3a3a3a' : undefined }}
           >
@@ -336,14 +348,18 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
                 <Loader2 className="w-4 h-4 animate-spin" />
                 Verifying...
               </>
+            ) : isSelectedAdmin ? (
+              'Authorize (Admin — No PIN Required)'
             ) : (
               'Authorize Offline Access'
             )}
           </button>
 
-          <p className="text-[9px] text-rmpg-500 text-center">
-            Contact your administrator for a PIN. Authorization lasts 24 hours.
-          </p>
+          {!isSelectedAdmin && (
+            <p className="text-[9px] text-rmpg-500 text-center">
+              Contact your administrator for a PIN. Authorization lasts 24 hours.
+            </p>
+          )}
         </div>
       </div>
     </div>

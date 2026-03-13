@@ -1,22 +1,30 @@
 // ============================================================
 // RMPG Flex — Arrest Records Page
 // ============================================================
-// Visual jail roster dashboard: county population cards,
-// intake/release statistics, searchable records table, and
-// person linking. Data sourced from automated county scrapers.
+// Full jail roster management: split panel layout with list +
+// detail, manual booking CRUD, county statistics, person
+// linking, criminal history integration, CSV export, and
+// multi-source filtering (scraper / manual / CSV import).
 // ============================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Database, Search, X, Loader2, ChevronDown, ChevronRight,
-  Users, UserPlus, UserMinus, UserX, MapPin, Clock, Shield, Activity,
-  BarChart3, TrendingUp, TrendingDown, Minus, Eye,
-  Link2, Unlink, AlertTriangle, RefreshCw, Filter,
-  ArrowUpDown, ArrowUp, ArrowDown,
+  Users, UserPlus, UserMinus, UserX, MapPin, Clock, Shield,
+  BarChart3, TrendingUp, TrendingDown, Minus, Eye, Plus,
+  Link2, Unlink, AlertTriangle, RefreshCw, Download, Pencil, Trash2,
+  ArrowUpDown, ArrowUp, ArrowDown, FileText, ShieldAlert,
+  Calendar, Building, Scale,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import EmptyState from '../components/EmptyState';
+import SplitPanel from '../components/SplitPanel';
+import CollapsibleSection from '../components/CollapsibleSection';
+import CriminalHistorySection from '../components/CriminalHistorySection';
+import ArrestFormModal from '../components/ArrestFormModal';
+import type { ArrestFormData } from '../components/ArrestFormModal';
+import { useWebSocket } from '../context/WebSocketContext';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -34,15 +42,6 @@ interface CountyStat {
   avg_stay_days: number | null;
 }
 
-interface DailyActivity {
-  day: string;
-  county: string;
-  intakes: number;
-  releases: number;
-  population: number;
-  scrape_runs: number;
-}
-
 interface PopulationSummary {
   total_records: number;
   total_active: number;
@@ -58,24 +57,34 @@ interface ArrestRecord {
   first_name: string;
   last_name: string;
   middle_name: string;
+  date_of_birth: string | null;
   booking_date: string | null;
   release_date: string | null;
-  charges: string[];
+  charges: string[] | string;
   county: string;
   source_id: string;
+  source_name: string | null;
   status: string;
   booking_number: string | null;
   agency: string | null;
   gender: string | null;
+  race: string | null;
   age: number | null;
   height: string | null;
   weight: string | null;
   hair_color: string | null;
   eye_color: string | null;
+  address: string | null;
   bail_amount: number | null;
+  hold_reason: string | null;
+  notes: string | null;
   entry_source: string | null;
+  jailbase_id: string | null;
   person_id: number | null;
   linked_person: { id: number; name: string } | null;
+  entered_by: number | null;
+  created_at: string | null;
+  updated_at: string | null;
 }
 
 interface PersonResult {
@@ -106,53 +115,152 @@ const COUNTY_BAR_COLORS: Record<string, string> = {
   salt_lake: 'bg-purple-500', summit: 'bg-cyan-500', uinta: 'bg-amber-500',
 };
 
+// ── Sort config ───────────────────────────────────────────
+
+type SortField = 'booking_date' | 'full_name' | 'county' | 'status';
+type SortDir = 'asc' | 'desc';
+const SORT_CYCLE: { field: SortField; dir: SortDir; label: string }[] = [
+  { field: 'booking_date', dir: 'desc', label: 'Newest First' },
+  { field: 'full_name', dir: 'asc', label: 'Name A→Z' },
+  { field: 'county', dir: 'asc', label: 'County A→Z' },
+  { field: 'status', dir: 'asc', label: 'Status' },
+];
+
+// ── Helpers ───────────────────────────────────────────────
+
+function parseCharges(c: string[] | string | null | undefined): string[] {
+  if (!c) return [];
+  if (Array.isArray(c)) return c;
+  try { const parsed = JSON.parse(c); return Array.isArray(parsed) ? parsed : []; }
+  catch { return c ? [c] : []; }
+}
+
+function fmtDate(d: string | null | undefined): string {
+  if (!d) return '—';
+  return String(d).substring(0, 10);
+}
+
+function calcAge(dob: string | null | undefined): string {
+  if (!dob) return '';
+  const birth = new Date(dob);
+  if (isNaN(birth.getTime())) return '';
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return `(${age} yrs)`;
+}
+
+function statusBadge(status: string) {
+  if (status === 'active') return { bg: 'bg-red-900/40 text-red-400', label: 'IN CUSTODY' };
+  if (status === 'released') return { bg: 'bg-green-900/40 text-green-400', label: 'RELEASED' };
+  if (status === 'transferred') return { bg: 'bg-amber-900/40 text-amber-400', label: 'TRANSFERRED' };
+  if (status === 'bonded') return { bg: 'bg-blue-900/40 text-blue-400', label: 'BONDED' };
+  return { bg: 'bg-rmpg-700 text-rmpg-400', label: status?.toUpperCase() || '—' };
+}
+
+function sourceBadge(source: string | null) {
+  if (source === 'manual') return { bg: 'bg-brand-900/40 text-brand-400', label: 'MANUAL' };
+  if (source === 'scraper') return { bg: 'bg-emerald-900/30 text-emerald-400', label: 'SCRAPER' };
+  if (source === 'csv') return { bg: 'bg-purple-900/30 text-purple-400', label: 'CSV' };
+  return { bg: 'bg-rmpg-700 text-rmpg-400', label: source?.toUpperCase() || 'UNKNOWN' };
+}
+
+// ── CSV Export ────────────────────────────────────────────
+
+function exportCsv(records: ArrestRecord[]) {
+  const headers = ['Name', 'DOB', 'County', 'Booking Date', 'Release Date', 'Status', 'Charges', 'Bail Amount', 'Agency', 'Source'];
+  const rows = records.map(r => [
+    r.full_name,
+    r.date_of_birth || '',
+    r.county || r.source_id || '',
+    fmtDate(r.booking_date),
+    fmtDate(r.release_date),
+    r.status,
+    parseCharges(r.charges).join('; '),
+    r.bail_amount != null ? String(r.bail_amount) : '',
+    r.agency || '',
+    r.entry_source || '',
+  ]);
+
+  const csv = [headers, ...rows]
+    .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    .join('\n');
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `arrest-records-${new Date().toISOString().split('T')[0]}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 // ── Component ─────────────────────────────────────────────
 
 export default function ArrestRecordsPage() {
-  // Statistics data
+  // ── State ───────────────────────────────────────────────
+  const { subscribe } = useWebSocket();
+
+  // Statistics
   const [stats, setStats] = useState<{
     per_county: CountyStat[];
-    daily_activity: DailyActivity[];
     population_summary: PopulationSummary;
   } | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
 
-  // Records table
+  // Records
   const [records, setRecords] = useState<ArrestRecord[]>([]);
   const [recordsTotal, setRecordsTotal] = useState(0);
   const [recordsPage, setRecordsPage] = useState(1);
   const [recordsLoading, setRecordsLoading] = useState(false);
+  const [selectedRecord, setSelectedRecord] = useState<ArrestRecord | null>(null);
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [countyFilter, setCountyFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
+  const [sourceFilter, setSourceFilter] = useState('');
 
-  // Detail / Link
-  const [expandedId, setExpandedId] = useState<number | null>(null);
+  // Sort
+  const [sortIdx, setSortIdx] = useState(0);
+
+  // Error
+  const [error, setError] = useState<string | null>(null);
+
+  // CRUD
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<ArrestRecord | undefined>(undefined);
+  const [formSubmitting, setFormSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
+
+  // Person linking
   const [linkingId, setLinkingId] = useState<number | null>(null);
   const [personSearch, setPersonSearch] = useState('');
   const [personResults, setPersonResults] = useState<PersonResult[]>([]);
   const [searchingPerson, setSearchingPerson] = useState(false);
   const [linkingPerson, setLinkingPerson] = useState(false);
 
-  // Sections
-  const [showStats, setShowStats] = useState(true);
-  const [showActivity, setShowActivity] = useState(false);
+  // Refs
+  const searchTimeout = useRef<ReturnType<typeof setTimeout>>();
 
-  // ── Fetch statistics ──────────────────────────────────────
+  // ── Fetch statistics ────────────────────────────────────
 
   const fetchStats = useCallback(async () => {
     setStatsLoading(true);
     try {
       const data = await apiFetch<any>('/jail-roster/statistics');
       setStats(data);
-    } catch { /* ignore */ }
-    finally { setStatsLoading(false); }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to load statistics';
+      setError(msg);
+    } finally {
+      setStatsLoading(false);
+    }
   }, []);
 
-  // ── Fetch records ─────────────────────────────────────────
+  // ── Fetch records (no hardcoded source filter!) ─────────
 
   const fetchRecords = useCallback(async (page = 1) => {
     setRecordsLoading(true);
@@ -160,14 +268,19 @@ export default function ArrestRecordsPage() {
       const qs = new URLSearchParams({
         page: String(page),
         limit: '30',
-        source: 'scraper',
+        ...(sourceFilter ? { source: sourceFilter } : {}),
         ...(countyFilter ? { source_id: countyFilter } : {}),
         ...(statusFilter ? { status: statusFilter } : {}),
       });
 
       let data: any;
       if (searchTerm.trim()) {
-        data = await apiFetch<any>(`/arrests/search?name=${encodeURIComponent(searchTerm)}&source=scraper${countyFilter ? `&source_id=${countyFilter}` : ''}`);
+        const searchQs = new URLSearchParams({
+          name: searchTerm,
+          ...(sourceFilter ? { source: sourceFilter } : {}),
+          ...(countyFilter ? { source_id: countyFilter } : {}),
+        });
+        data = await apiFetch<any>(`/arrests/search?${searchQs}`);
         setRecords(data.records || []);
         setRecordsTotal(data.resultCount || data.records?.length || 0);
       } else {
@@ -175,14 +288,34 @@ export default function ArrestRecordsPage() {
         setRecords(data.records || []);
         setRecordsTotal(data.total || 0);
       }
-    } catch { /* ignore */ }
-    finally { setRecordsLoading(false); }
-  }, [searchTerm, countyFilter, statusFilter]);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to load records';
+      setError(msg);
+    } finally {
+      setRecordsLoading(false);
+    }
+  }, [searchTerm, countyFilter, statusFilter, sourceFilter]);
 
   useEffect(() => { fetchStats(); }, [fetchStats]);
   useEffect(() => { fetchRecords(recordsPage); }, [fetchRecords, recordsPage]);
 
-  // ── Person search & link ──────────────────────────────────
+  // ── WebSocket live sync ─────────────────────────────────
+
+  useEffect(() => {
+    return subscribe('record_update', (msg) => {
+      const data = msg.data as any;
+      if (data?.type === 'arrest_created' || data?.type === 'arrest_updated') {
+        fetchRecords(recordsPage);
+        if (selectedRecord && data?.id === selectedRecord.id) {
+          apiFetch<ArrestRecord>(`/arrests/manual/${selectedRecord.id}`)
+            .then(fresh => setSelectedRecord(fresh))
+            .catch(() => { /* keep existing */ });
+        }
+      }
+    });
+  }, [subscribe, recordsPage, selectedRecord, fetchRecords]);
+
+  // ── Person search (debounced) ───────────────────────────
 
   const searchPersons = useCallback(async (query: string) => {
     if (query.length < 2) { setPersonResults([]); return; }
@@ -190,15 +323,21 @@ export default function ArrestRecordsPage() {
     try {
       const data = await apiFetch<any>(`/records/persons/search?q=${encodeURIComponent(query)}&limit=8`);
       setPersonResults(data.results || data || []);
-    } catch { setPersonResults([]); }
-    finally { setSearchingPerson(false); }
+    } catch {
+      setPersonResults([]);
+    } finally {
+      setSearchingPerson(false);
+    }
   }, []);
 
   useEffect(() => {
     if (!linkingId) return;
-    const timer = setTimeout(() => searchPersons(personSearch), 300);
-    return () => clearTimeout(timer);
+    clearTimeout(searchTimeout.current);
+    searchTimeout.current = setTimeout(() => searchPersons(personSearch), 300);
+    return () => clearTimeout(searchTimeout.current);
   }, [personSearch, searchPersons, linkingId]);
+
+  // ── Link / Unlink person ────────────────────────────────
 
   const handleLinkPerson = async (arrestId: number, personId: number) => {
     setLinkingPerson(true);
@@ -211,505 +350,615 @@ export default function ArrestRecordsPage() {
       setPersonSearch('');
       setPersonResults([]);
       fetchRecords(recordsPage);
-    } catch { /* ignore */ }
-    finally { setLinkingPerson(false); }
+      if (selectedRecord?.id === arrestId) {
+        try {
+          const fresh = await apiFetch<ArrestRecord>(`/arrests/manual/${arrestId}`);
+          setSelectedRecord(fresh);
+        } catch { /* keep existing */ }
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to link person';
+      setError(msg);
+    } finally {
+      setLinkingPerson(false);
+    }
   };
 
   const handleUnlinkPerson = async (arrestId: number) => {
     try {
       await apiFetch(`/arrests/${arrestId}/link-person`, { method: 'DELETE' });
       fetchRecords(recordsPage);
-    } catch { /* ignore */ }
+      if (selectedRecord?.id === arrestId) {
+        setSelectedRecord(prev => prev ? { ...prev, linked_person: null, person_id: null } : null);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to unlink person';
+      setError(msg);
+    }
   };
 
-  // ── Derived values ────────────────────────────────────────
+  // ── CRUD handlers ───────────────────────────────────────
+
+  const handleFormSubmit = async (data: ArrestFormData) => {
+    setFormSubmitting(true);
+    setFormError(null);
+    try {
+      if (editingRecord) {
+        await apiFetch(`/arrests/manual/${editingRecord.id}`, {
+          method: 'PUT',
+          body: JSON.stringify(data),
+        });
+      } else {
+        await apiFetch('/arrests/manual', {
+          method: 'POST',
+          body: JSON.stringify(data),
+        });
+      }
+      setFormOpen(false);
+      setEditingRecord(undefined);
+      fetchRecords(recordsPage);
+      if (editingRecord && selectedRecord?.id === editingRecord.id) {
+        try {
+          const fresh = await apiFetch<ArrestRecord>(`/arrests/manual/${editingRecord.id}`);
+          setSelectedRecord(fresh);
+        } catch { /* keep existing */ }
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to save booking';
+      setFormError(msg);
+    } finally {
+      setFormSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    try {
+      await apiFetch(`/arrests/manual/${id}`, { method: 'DELETE' });
+      setDeleteConfirm(null);
+      if (selectedRecord?.id === id) setSelectedRecord(null);
+      fetchRecords(recordsPage);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to delete record';
+      setError(msg);
+    }
+  };
+
+  const openEdit = (rec: ArrestRecord) => {
+    setEditingRecord(rec);
+    setFormError(null);
+    setFormOpen(true);
+  };
+
+  const openNew = () => {
+    setEditingRecord(undefined);
+    setFormError(null);
+    setFormOpen(true);
+  };
+
+  // ── Sort ────────────────────────────────────────────────
+
+  const cycleSort = () => setSortIdx(i => (i + 1) % SORT_CYCLE.length);
+  const sortConfig = SORT_CYCLE[sortIdx];
+
+  const sortedRecords = [...records].sort((a, b) => {
+    const { field, dir } = sortConfig;
+    const av = (a[field] || '') as string;
+    const bv = (b[field] || '') as string;
+    const cmp = av.localeCompare(bv);
+    return dir === 'asc' ? cmp : -cmp;
+  });
+
+  // ── Derived ─────────────────────────────────────────────
 
   const totalPages = Math.ceil(recordsTotal / 30);
   const maxPopulation = stats?.per_county ? Math.max(...stats.per_county.map(c => c.active_count), 1) : 1;
+  const isManualRecord = (rec: ArrestRecord) => rec.entry_source === 'manual';
 
-  // Aggregate daily activity for the summary chart (last 7 days)
-  const last7Days = stats?.daily_activity
-    ? (() => {
-        const byDay = new Map<string, { intakes: number; releases: number }>();
-        for (const a of stats.daily_activity) {
-          const existing = byDay.get(a.day) || { intakes: 0, releases: 0 };
-          existing.intakes += a.intakes;
-          existing.releases += a.releases;
-          byDay.set(a.day, existing);
-        }
-        return [...byDay.entries()]
-          .sort(([a], [b]) => a.localeCompare(b))
-          .slice(-7)
-          .map(([day, v]) => ({ day: day.substring(5), ...v }));
-      })()
-    : [];
+  // ── Render: Left Panel (List) ───────────────────────────
 
-  return (
+  const leftPanel = (
     <div className="h-full flex flex-col bg-surface-base">
-      <PanelTitleBar title="Arrest Records" icon={Shield} />
+      {/* Error banner */}
+      {error && (
+        <div className="px-3 py-2 bg-red-900/30 border-b border-red-700 text-red-400 text-xs flex items-center gap-2">
+          <AlertTriangle className="w-3 h-3 shrink-0" />
+          <span className="flex-1">{error}</span>
+          <button onClick={() => setError(null)} className="text-red-400 hover:text-red-300">
+            <X className="w-3 h-3" />
+          </button>
+        </div>
+      )}
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-
-        {/* ═══ Summary Bar ═══ */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+      {/* Summary bar */}
+      {stats?.population_summary && (
+        <div className="grid grid-cols-3 gap-1 p-2 border-b border-rmpg-700/30">
           {[
-            { label: 'Total Records', value: stats?.population_summary?.total_records || 0, icon: Database, color: 'text-brand-400' },
-            { label: 'In Custody', value: stats?.population_summary?.total_active || 0, icon: Users, color: 'text-red-400' },
-            { label: 'Released', value: stats?.population_summary?.total_released || 0, icon: UserMinus, color: 'text-green-400' },
-            { label: 'Counties', value: stats?.population_summary?.counties_with_data || 0, icon: MapPin, color: 'text-purple-400' },
-            { label: 'Intakes Today', value: stats?.population_summary?.intakes_today || 0, icon: TrendingUp, color: 'text-amber-400' },
-            { label: 'Releases Today', value: stats?.population_summary?.releases_today || 0, icon: TrendingDown, color: 'text-cyan-400' },
+            { label: 'Total', value: stats.population_summary.total_records, color: 'text-brand-400' },
+            { label: 'In Custody', value: stats.population_summary.total_active, color: 'text-red-400' },
+            { label: 'Released', value: stats.population_summary.total_released, color: 'text-green-400' },
           ].map(s => (
-            <div key={s.label} className="panel-beveled bg-surface-base p-2.5 rounded-sm text-center">
-              <s.icon className={`w-4 h-4 mx-auto mb-1 ${s.color}`} />
-              <div className={`text-lg font-bold ${s.color}`}>{s.value.toLocaleString()}</div>
-              <div className="text-[8px] text-rmpg-500 uppercase tracking-wider">{s.label}</div>
+            <div key={s.label} className="text-center py-1">
+              <div className={`text-sm font-bold ${s.color}`}>{s.value.toLocaleString()}</div>
+              <div className="text-[7px] text-rmpg-500 uppercase">{s.label}</div>
             </div>
           ))}
         </div>
+      )}
 
-        {/* ═══ County Population Cards ═══ */}
-        <div className="panel-beveled bg-surface-base rounded-sm">
-          <button
-            onClick={() => setShowStats(!showStats)}
-            className="w-full flex items-center gap-2 p-3 text-left"
-          >
-            {showStats ? <ChevronDown className="w-3.5 h-3.5 text-rmpg-500" /> : <ChevronRight className="w-3.5 h-3.5 text-rmpg-500" />}
-            <BarChart3 className="w-3.5 h-3.5 text-brand-400" />
-            <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">County Population &amp; Statistics</span>
-          </button>
-
-          {showStats && (
-            <div className="px-3 pb-3 space-y-3">
-              {statsLoading ? (
-                <div className="flex items-center gap-2 text-[10px] text-rmpg-500 py-4 justify-center">
-                  <Loader2 className="w-3 h-3 animate-spin" /> Loading statistics...
+      {/* County stats (collapsible) */}
+      {stats?.per_county && stats.per_county.length > 0 && (
+        <CollapsibleSection title="County Statistics" icon={BarChart3} defaultOpen={false} className="border-b border-rmpg-700/30">
+          <div className="grid grid-cols-2 gap-1.5 px-1">
+            {stats.per_county.map(c => (
+              <div
+                key={c.county}
+                className={`bg-gradient-to-br ${COUNTY_COLORS[c.county] || 'from-rmpg-700/20 to-rmpg-800/10 border-rmpg-600/30'} border rounded-sm p-2 cursor-pointer hover:brightness-110 transition-all ${countyFilter === c.county ? 'ring-1 ring-brand-400' : ''}`}
+                onClick={() => { setCountyFilter(countyFilter === c.county ? '' : c.county); setRecordsPage(1); }}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[9px] font-bold text-rmpg-100 truncate">{c.display_name || c.county}</span>
+                  <span className={`text-sm font-black ${COUNTY_ACCENTS[c.county] || 'text-brand-400'}`}>
+                    {c.active_count}
+                  </span>
                 </div>
-              ) : stats?.per_county?.length ? (
-                <>
-                  {/* County cards */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                    {stats.per_county.map(c => (
-                      <div
-                        key={c.county}
-                        className={`bg-gradient-to-br ${COUNTY_COLORS[c.county] || 'from-rmpg-700/20 to-rmpg-800/10 border-rmpg-600/30'} border rounded-sm p-3 cursor-pointer hover:brightness-110 transition-all ${countyFilter === c.county ? 'ring-1 ring-brand-400' : ''}`}
-                        onClick={() => { setCountyFilter(countyFilter === c.county ? '' : c.county); setRecordsPage(1); }}
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-xs font-bold text-rmpg-100">{c.display_name || c.county}</span>
-                          <span className={`text-lg font-black ${COUNTY_ACCENTS[c.county] || 'text-brand-400'}`}>
-                            {c.active_count}
-                          </span>
-                        </div>
+                <div className="w-full bg-rmpg-800/50 rounded-full h-1.5 mt-1">
+                  <div
+                    className={`h-1.5 rounded-full ${COUNTY_BAR_COLORS[c.county] || 'bg-brand-500'}`}
+                    style={{ width: `${(c.active_count / maxPopulation) * 100}%` }}
+                  />
+                </div>
+                <div className="flex items-center justify-between mt-1 text-[7px] text-rmpg-500">
+                  <span>Tot: {c.total_records}</span>
+                  <span>{c.male_count}M / {c.female_count}F</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CollapsibleSection>
+      )}
 
-                        {/* Population bar */}
-                        <div className="w-full bg-rmpg-800/50 rounded-full h-2 mb-2">
-                          <div
-                            className={`h-2 rounded-full transition-all ${COUNTY_BAR_COLORS[c.county] || 'bg-brand-500'}`}
-                            style={{ width: `${(c.active_count / maxPopulation) * 100}%` }}
-                          />
-                        </div>
+      {/* Toolbar: search, filters, actions */}
+      <div className="p-2 space-y-1.5 border-b border-rmpg-700/30">
+        {/* Search */}
+        <div className="relative">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={e => { setSearchTerm(e.target.value); setRecordsPage(1); }}
+            placeholder="Search by name..."
+            className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] pl-7 pr-8 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+          />
+          {searchTerm && (
+            <button onClick={() => setSearchTerm('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300">
+              <X className="w-3 h-3" />
+            </button>
+          )}
+        </div>
 
-                        <div className="grid grid-cols-3 gap-1 text-[8px] text-rmpg-400">
-                          <div className="text-center">
-                            <div className="font-bold text-rmpg-200">{c.total_records}</div>
-                            <div>TOTAL</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="font-bold text-green-400">{c.released_count}</div>
-                            <div>RELEASED</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="font-bold text-rmpg-300">
-                              {c.male_count}M / {c.female_count}F
-                            </div>
-                            <div>GENDER</div>
-                          </div>
-                        </div>
+        {/* Filter row */}
+        <div className="flex items-center gap-1 flex-wrap">
+          <select
+            value={countyFilter}
+            onChange={e => { setCountyFilter(e.target.value); setRecordsPage(1); }}
+            className="bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[9px] px-1.5 py-1 rounded-sm flex-1 min-w-0"
+          >
+            <option value="">All Counties</option>
+            {(stats?.per_county || []).map(c => (
+              <option key={c.county} value={c.county}>{c.display_name || c.county} ({c.active_count})</option>
+            ))}
+          </select>
 
-                        {c.avg_stay_days !== null && (
-                          <div className="mt-1.5 text-[8px] text-rmpg-500 text-center">
-                            Avg stay: <span className="text-rmpg-300 font-bold">{c.avg_stay_days}d</span>
-                          </div>
-                        )}
-                      </div>
-                    ))}
+          <select
+            value={statusFilter}
+            onChange={e => { setStatusFilter(e.target.value); setRecordsPage(1); }}
+            className="bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[9px] px-1.5 py-1 rounded-sm"
+          >
+            <option value="">All Status</option>
+            <option value="active">In Custody</option>
+            <option value="released">Released</option>
+            <option value="transferred">Transferred</option>
+            <option value="bonded">Bonded</option>
+          </select>
+
+          <select
+            value={sourceFilter}
+            onChange={e => { setSourceFilter(e.target.value); setRecordsPage(1); }}
+            className="bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[9px] px-1.5 py-1 rounded-sm"
+          >
+            <option value="">All Sources</option>
+            <option value="scraper">Scraper</option>
+            <option value="manual">Manual</option>
+            <option value="csv">CSV Import</option>
+          </select>
+        </div>
+
+        {/* Action buttons */}
+        <div className="flex items-center gap-1">
+          <button onClick={openNew} className="toolbar-btn toolbar-btn-primary text-[9px] flex items-center gap-1 px-2 py-1">
+            <Plus className="w-3 h-3" /> New Booking
+          </button>
+          <button onClick={() => exportCsv(sortedRecords)} className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1">
+            <Download className="w-3 h-3" /> CSV
+          </button>
+          <button onClick={cycleSort} className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1" title={`Sort: ${sortConfig.label}`}>
+            <ArrowUpDown className="w-3 h-3" /> {sortConfig.label}
+          </button>
+          <button
+            onClick={() => { fetchStats(); fetchRecords(recordsPage); }}
+            className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1 ml-auto"
+          >
+            <RefreshCw className="w-3 h-3" />
+          </button>
+          <span className="text-[8px] text-rmpg-500">{recordsTotal.toLocaleString()}</span>
+        </div>
+      </div>
+
+      {/* Records list */}
+      <div className="flex-1 overflow-y-auto">
+        {recordsLoading ? (
+          <div className="flex items-center gap-2 text-[10px] text-rmpg-500 py-8 justify-center">
+            <Loader2 className="w-3 h-3 animate-spin" /> Loading records...
+          </div>
+        ) : sortedRecords.length === 0 ? (
+          <EmptyState icon={UserX} title="No records found" description="Adjust filters or create a new booking." />
+        ) : (
+          <div className="space-y-0.5 p-1">
+            {sortedRecords.map(rec => {
+              const charges = parseCharges(rec.charges);
+              const isSelected = selectedRecord?.id === rec.id;
+              const stBadge = statusBadge(rec.status);
+
+              return (
+                <div
+                  key={rec.id}
+                  className={`flex items-center gap-2 px-2 py-1.5 rounded-sm cursor-pointer transition-colors ${
+                    isSelected
+                      ? 'bg-brand-900/30 border-l-2 border-brand-400'
+                      : 'bg-surface-sunken hover:bg-rmpg-800/30 border-l-2 border-transparent'
+                  }`}
+                  onClick={() => setSelectedRecord(rec)}
+                >
+                  {/* County color indicator */}
+                  <div className={`shrink-0 w-1 h-8 rounded-full ${COUNTY_BAR_COLORS[rec.source_id] || 'bg-rmpg-600'}`} />
+
+                  {/* Name + meta */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-bold text-rmpg-100 truncate">{rec.full_name}</span>
+                      {rec.entry_source === 'manual' && (
+                        <span className="text-[7px] px-1 py-px bg-brand-900/40 text-brand-400 font-bold uppercase rounded-sm">M</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 text-[8px] text-rmpg-500">
+                      <span className={COUNTY_ACCENTS[rec.source_id] || ''}>{rec.county || rec.source_id || '—'}</span>
+                      <span>{fmtDate(rec.booking_date)}</span>
+                      {charges.length > 0 && <span className="text-amber-400">{charges.length} chg</span>}
+                    </div>
                   </div>
 
-                  {/* 7-day intake/release mini chart */}
-                  {last7Days.length > 0 && (
-                    <div className="mt-3">
-                      <div className="text-[9px] font-bold text-rmpg-400 uppercase tracking-wider mb-2">
-                        7-Day Intake / Release Activity
-                      </div>
-                      <div className="flex items-end gap-1 h-16">
-                        {last7Days.map(d => {
-                          const maxVal = Math.max(...last7Days.map(x => Math.max(x.intakes, x.releases)), 1);
-                          return (
-                            <div key={d.day} className="flex-1 flex flex-col items-center gap-0.5">
-                              <div className="flex items-end gap-px w-full h-12">
-                                <div
-                                  className="flex-1 bg-amber-500/60 rounded-t-sm min-h-[2px]"
-                                  style={{ height: `${(d.intakes / maxVal) * 100}%` }}
-                                  title={`${d.intakes} intakes`}
-                                />
-                                <div
-                                  className="flex-1 bg-cyan-500/60 rounded-t-sm min-h-[2px]"
-                                  style={{ height: `${(d.releases / maxVal) * 100}%` }}
-                                  title={`${d.releases} releases`}
-                                />
-                              </div>
-                              <span className="text-[7px] text-rmpg-600">{d.day}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                      <div className="flex items-center gap-4 mt-1 text-[8px] text-rmpg-500">
-                        <span className="flex items-center gap-1"><span className="w-2 h-2 bg-amber-500/60 rounded-sm" /> Intakes</span>
-                        <span className="flex items-center gap-1"><span className="w-2 h-2 bg-cyan-500/60 rounded-sm" /> Releases</span>
-                      </div>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="text-[10px] text-rmpg-500 py-4 text-center">No statistics available yet.</div>
+                  {/* Status badge */}
+                  <span className={`text-[7px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0 ${stBadge.bg}`}>
+                    {stBadge.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between px-3 py-1.5 border-t border-rmpg-700/30 text-[9px]">
+          <button
+            disabled={recordsPage <= 1}
+            onClick={() => setRecordsPage(p => p - 1)}
+            className="text-rmpg-400 hover:text-rmpg-200 disabled:opacity-30 px-2 py-0.5"
+          >
+            ← Prev
+          </button>
+          <span className="text-rmpg-500">
+            {recordsPage} / {totalPages}
+          </span>
+          <button
+            disabled={recordsPage >= totalPages}
+            onClick={() => setRecordsPage(p => p + 1)}
+            className="text-rmpg-400 hover:text-rmpg-200 disabled:opacity-30 px-2 py-0.5"
+          >
+            Next →
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
+  // ── Render: Right Panel (Detail) ────────────────────────
+
+  const rightPanel = selectedRecord ? (() => {
+    const rec = selectedRecord;
+    const charges = parseCharges(rec.charges);
+    const stBadge = statusBadge(rec.status);
+    const srcBadge = sourceBadge(rec.entry_source);
+    const isManual = isManualRecord(rec);
+    const isLinking = linkingId === rec.id;
+
+    return (
+      <div className="h-full overflow-y-auto bg-surface-base">
+        {/* Header */}
+        <div className="p-4 border-b border-rmpg-700/30" style={{ background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)' }}>
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <h2 className="text-base font-bold text-white">{rec.full_name}</h2>
+              {rec.booking_number && (
+                <span className="text-[9px] font-mono text-rmpg-400">Booking #{rec.booking_number}</span>
               )}
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span className={`text-[8px] font-bold uppercase px-2 py-0.5 rounded ${stBadge.bg}`}>{stBadge.label}</span>
+              <span className={`text-[8px] font-bold uppercase px-2 py-0.5 rounded ${srcBadge.bg}`}>{srcBadge.label}</span>
+            </div>
+          </div>
+
+          {isManual && (
+            <div className="flex items-center gap-1.5 mt-2">
+              <button onClick={() => openEdit(rec)} className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1">
+                <Pencil className="w-3 h-3" /> Edit
+              </button>
+              <button
+                onClick={() => setDeleteConfirm(rec.id)}
+                className="toolbar-btn text-[9px] flex items-center gap-1 px-2 py-1 text-red-400 hover:text-red-300"
+              >
+                <Trash2 className="w-3 h-3" /> Delete
+              </button>
             </div>
           )}
         </div>
 
-        {/* ═══ Daily Activity Log (Collapsible) ═══ */}
-        <div className="panel-beveled bg-surface-base rounded-sm">
-          <button
-            onClick={() => { setShowActivity(!showActivity); }}
-            className="w-full flex items-center gap-2 p-3 text-left"
-          >
-            {showActivity ? <ChevronDown className="w-3.5 h-3.5 text-rmpg-500" /> : <ChevronRight className="w-3.5 h-3.5 text-rmpg-500" />}
-            <Activity className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">Daily Activity Log</span>
-          </button>
+        <div className="p-2 space-y-1">
+          {/* Booking Information */}
+          <CollapsibleSection title="Booking Information" icon={Calendar} defaultOpen>
+            <div className="grid grid-cols-2 gap-2 text-[9px]">
+              {[
+                { label: 'Booking Date', value: fmtDate(rec.booking_date) },
+                { label: 'Release Date', value: fmtDate(rec.release_date) },
+                { label: 'County', value: rec.county || rec.source_id || '—', accent: COUNTY_ACCENTS[rec.source_id] },
+                { label: 'Agency', value: rec.agency || '—' },
+                { label: 'Booking Number', value: rec.booking_number || '—', mono: true },
+                { label: 'Source', value: rec.entry_source || '—' },
+              ].map(f => (
+                <div key={f.label}>
+                  <span className="text-rmpg-500 uppercase text-[8px]">{f.label}</span>
+                  <div className={`font-bold ${f.accent || 'text-rmpg-200'} ${f.mono ? 'font-mono' : ''}`}>{f.value}</div>
+                </div>
+              ))}
+            </div>
+          </CollapsibleSection>
 
-          {showActivity && stats?.daily_activity && (
-            <div className="px-3 pb-3">
-              <div className="space-y-0.5 max-h-[250px] overflow-y-auto">
-                {stats.daily_activity.slice(0, 30).map((a, i) => (
-                  <div key={i} className="flex items-center gap-2 text-[9px] px-2 py-1 rounded-sm bg-surface-sunken">
-                    <span className="text-rmpg-500 w-14 shrink-0">{a.day}</span>
-                    <span className={`w-16 shrink-0 font-bold ${COUNTY_ACCENTS[a.county] || 'text-rmpg-300'}`}>
-                      {a.county}
-                    </span>
-                    <span className="text-rmpg-400 w-12 shrink-0">Pop: {a.population}</span>
-                    {a.intakes > 0 && (
-                      <span className="text-amber-400 flex items-center gap-0.5">
-                        <TrendingUp className="w-2.5 h-2.5" /> +{a.intakes}
-                      </span>
-                    )}
-                    {a.releases > 0 && (
-                      <span className="text-cyan-400 flex items-center gap-0.5">
-                        <TrendingDown className="w-2.5 h-2.5" /> -{a.releases}
-                      </span>
-                    )}
-                    {a.intakes === 0 && a.releases === 0 && (
-                      <span className="text-rmpg-600 flex items-center gap-0.5">
-                        <Minus className="w-2.5 h-2.5" /> no change
-                      </span>
-                    )}
-                    <span className="text-rmpg-600 ml-auto">{a.scrape_runs} runs</span>
+          {/* Physical Description */}
+          <CollapsibleSection title="Physical Description" icon={Eye} defaultOpen>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[9px]">
+              {[
+                { label: 'DOB', value: rec.date_of_birth ? `${fmtDate(rec.date_of_birth)} ${calcAge(rec.date_of_birth)}` : null },
+                { label: 'Gender', value: rec.gender },
+                { label: 'Race', value: rec.race },
+                { label: 'Height', value: rec.height },
+                { label: 'Weight', value: rec.weight },
+                { label: 'Hair', value: rec.hair_color },
+                { label: 'Eyes', value: rec.eye_color },
+                { label: 'Address', value: rec.address },
+              ].map(f => (
+                <div key={f.label}>
+                  <span className="text-rmpg-500 uppercase text-[8px]">{f.label}</span>
+                  <div className="text-rmpg-200 font-bold">{f.value || '—'}</div>
+                </div>
+              ))}
+            </div>
+          </CollapsibleSection>
+
+          {/* Charges & Bail */}
+          <CollapsibleSection title="Charges & Bail" icon={Scale} count={charges.length} defaultOpen>
+            {charges.length > 0 ? (
+              <div className="space-y-0.5 mb-2">
+                {charges.map((ch, i) => (
+                  <div key={i} className="text-[9px] text-amber-300 bg-amber-950/20 px-2 py-1 rounded-sm">
+                    {ch}
                   </div>
                 ))}
               </div>
+            ) : (
+              <div className="text-[9px] text-rmpg-500 py-1">No charges listed</div>
+            )}
+            <div className="grid grid-cols-2 gap-2 text-[9px]">
+              <div>
+                <span className="text-rmpg-500 uppercase text-[8px]">Bail Amount</span>
+                <div className="text-rmpg-200 font-bold">
+                  {rec.bail_amount != null ? `$${Number(rec.bail_amount).toLocaleString()}` : '—'}
+                </div>
+              </div>
+              <div>
+                <span className="text-rmpg-500 uppercase text-[8px]">Hold Reason</span>
+                <div className="text-rmpg-200 font-bold">{rec.hold_reason || '—'}</div>
+              </div>
             </div>
-          )}
-        </div>
+          </CollapsibleSection>
 
-        {/* ═══ Records Table ═══ */}
-        <div className="panel-beveled bg-surface-base p-3 space-y-2">
-          {/* Search & Filters */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={e => { setSearchTerm(e.target.value); setRecordsPage(1); }}
-                placeholder="Search inmates by name..."
-                className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] pl-7 pr-8 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
-              />
-              {searchTerm && (
-                <button onClick={() => setSearchTerm('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300">
-                  <X className="w-3 h-3" />
+          {/* Linked Person */}
+          <CollapsibleSection title="Linked Person" icon={Link2} defaultOpen>
+            {rec.linked_person ? (
+              <div className="flex items-center gap-2 text-[9px]">
+                <Link2 className="w-3 h-3 text-brand-400" />
+                <span className="text-brand-300 font-bold">{rec.linked_person.name}</span>
+                <span className="text-rmpg-500">(ID: {rec.linked_person.id})</span>
+                <button
+                  onClick={() => handleUnlinkPerson(rec.id)}
+                  className="text-[8px] text-red-400 hover:text-red-300 flex items-center gap-0.5 ml-2"
+                >
+                  <Unlink className="w-2.5 h-2.5" /> Unlink
                 </button>
-              )}
-            </div>
-
-            <select
-              value={countyFilter}
-              onChange={e => { setCountyFilter(e.target.value); setRecordsPage(1); }}
-              className="bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] px-2 py-1.5 rounded-sm"
-            >
-              <option value="">All Counties</option>
-              {(stats?.per_county || []).map(c => (
-                <option key={c.county} value={c.county}>{c.display_name || c.county} ({c.active_count})</option>
-              ))}
-            </select>
-
-            <select
-              value={statusFilter}
-              onChange={e => { setStatusFilter(e.target.value); setRecordsPage(1); }}
-              className="bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] px-2 py-1.5 rounded-sm"
-            >
-              <option value="">All Status</option>
-              <option value="active">In Custody</option>
-              <option value="released">Released</option>
-            </select>
-
-            <button
-              onClick={() => { fetchStats(); fetchRecords(recordsPage); }}
-              className="toolbar-btn text-[10px] flex items-center gap-1 px-2 py-1.5 text-rmpg-400 hover:text-rmpg-200"
-            >
-              <RefreshCw className="w-3 h-3" />
-            </button>
-
-            <div className="text-[9px] text-rmpg-500 ml-auto">
-              {recordsTotal.toLocaleString()} records
-            </div>
-          </div>
-
-          {/* Table header */}
-          <div className="flex items-center gap-2 px-2 py-1 text-[8px] text-rmpg-500 uppercase tracking-wider border-b border-rmpg-700/50">
-            <span className="w-1" />
-            <span className="flex-1">Name</span>
-            <span className="w-20 text-center hidden sm:block">County</span>
-            <span className="w-20 text-center hidden sm:block">Booked</span>
-            <span className="w-14 text-center">Status</span>
-            <span className="w-20 text-center hidden md:block">Charges</span>
-            <span className="w-16 text-center hidden md:block">Linked</span>
-          </div>
-
-          {/* Records */}
-          {recordsLoading ? (
-            <div className="flex items-center gap-2 text-[10px] text-rmpg-500 py-6 justify-center">
-              <Loader2 className="w-3 h-3 animate-spin" /> Loading records...
-            </div>
-          ) : records.length === 0 ? (
-            <EmptyState
-              icon={UserX}
-              title="No records found"
-              description="Adjust filters or wait for the next scraper sync."
-            />
-          ) : (
-            <div className="space-y-0.5 max-h-[50vh] overflow-y-auto">
-              {records.map(rec => {
-                const isExpanded = expandedId === rec.id;
-                const isLinking = linkingId === rec.id;
-                const chargeCount = Array.isArray(rec.charges) ? rec.charges.length : 0;
-
-                return (
-                  <div key={rec.id}>
-                    {/* Main row */}
-                    <div
-                      className={`flex items-center gap-2 px-2 py-1.5 rounded-sm cursor-pointer transition-colors ${
-                        isExpanded ? 'bg-rmpg-700/30' : 'bg-surface-sunken hover:bg-rmpg-800/30'
-                      }`}
-                      onClick={() => setExpandedId(isExpanded ? null : rec.id)}
-                    >
-                      {/* County color bar */}
-                      <div className={`shrink-0 w-1 h-8 rounded-full ${COUNTY_BAR_COLORS[rec.source_id] || 'bg-rmpg-600'}`} />
-
-                      {/* Name */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[11px] font-bold text-rmpg-100 truncate">{rec.full_name}</span>
-                          {rec.booking_number && (
-                            <span className="text-[8px] font-mono text-rmpg-500">#{rec.booking_number}</span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 text-[8px] text-rmpg-500 sm:hidden">
-                          {rec.source_id && <span className={COUNTY_ACCENTS[rec.source_id] || ''}>{rec.source_id}</span>}
-                          {rec.booking_date && <span>{String(rec.booking_date).substring(0, 10)}</span>}
-                        </div>
-                      </div>
-
-                      {/* County */}
-                      <span className={`w-20 text-center text-[9px] font-bold hidden sm:block ${COUNTY_ACCENTS[rec.source_id] || 'text-rmpg-400'}`}>
-                        {rec.source_id || '—'}
-                      </span>
-
-                      {/* Booking date */}
-                      <span className="w-20 text-center text-[9px] text-rmpg-400 hidden sm:block">
-                        {rec.booking_date ? String(rec.booking_date).substring(0, 10) : '—'}
-                      </span>
-
-                      {/* Status */}
-                      <span className={`w-14 text-center text-[8px] font-bold uppercase px-1 py-0.5 rounded ${
-                        rec.status === 'active' ? 'bg-red-900/40 text-red-400' :
-                        rec.status === 'released' ? 'bg-green-900/40 text-green-400' :
-                        'bg-rmpg-700 text-rmpg-400'
-                      }`}>
-                        {rec.status === 'active' ? 'CUSTODY' : rec.status}
-                      </span>
-
-                      {/* Charges count */}
-                      <span className="w-20 text-center text-[9px] hidden md:block">
-                        {chargeCount > 0 ? (
-                          <span className="text-amber-400">{chargeCount} charge{chargeCount !== 1 ? 's' : ''}</span>
-                        ) : (
-                          <span className="text-rmpg-600">—</span>
-                        )}
-                      </span>
-
-                      {/* Person link indicator */}
-                      <span className="w-16 text-center hidden md:block">
-                        {rec.linked_person ? (
-                          <span className="text-[8px] text-brand-400 flex items-center justify-center gap-0.5">
-                            <Link2 className="w-2.5 h-2.5" /> linked
-                          </span>
-                        ) : (
-                          <span className="text-[8px] text-rmpg-600">—</span>
-                        )}
-                      </span>
-                    </div>
-
-                    {/* Expanded detail */}
-                    {isExpanded && (
-                      <div className="bg-rmpg-800/20 border border-rmpg-700/30 rounded-sm mx-2 mb-1 p-3 space-y-2">
-                        {/* Detail grid */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[9px]">
-                          {[
-                            { label: 'Gender', value: rec.gender },
-                            { label: 'Age', value: rec.age },
-                            { label: 'Height', value: rec.height },
-                            { label: 'Weight', value: rec.weight },
-                            { label: 'Hair', value: rec.hair_color },
-                            { label: 'Eyes', value: rec.eye_color },
-                            { label: 'Bail', value: rec.bail_amount ? `$${Number(rec.bail_amount).toLocaleString()}` : null },
-                            { label: 'Release Date', value: rec.release_date ? String(rec.release_date).substring(0, 10) : null },
-                          ].filter(f => f.value).map(f => (
-                            <div key={f.label}>
-                              <span className="text-rmpg-500 uppercase text-[8px]">{f.label}: </span>
-                              <span className="text-rmpg-200 font-bold">{f.value}</span>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* Charges list */}
-                        {chargeCount > 0 && (
-                          <div>
-                            <div className="text-[8px] text-rmpg-500 uppercase mb-0.5">Charges</div>
-                            <div className="space-y-0.5">
-                              {rec.charges.map((ch, i) => (
-                                <div key={i} className="text-[9px] text-amber-300 bg-amber-950/20 px-2 py-0.5 rounded-sm">
-                                  {ch}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Person link section */}
-                        <div className="border-t border-rmpg-700/30 pt-2">
-                          <div className="text-[8px] text-rmpg-500 uppercase mb-1">Linked Person Record</div>
-                          {rec.linked_person ? (
-                            <div className="flex items-center gap-2">
-                              <Link2 className="w-3 h-3 text-brand-400" />
-                              <span className="text-[10px] text-brand-300 font-bold">{rec.linked_person.name}</span>
-                              <span className="text-[8px] text-rmpg-500">(ID: {rec.linked_person.id})</span>
-                              <button
-                                onClick={e => { e.stopPropagation(); handleUnlinkPerson(rec.id); }}
-                                className="text-[8px] text-red-400 hover:text-red-300 flex items-center gap-0.5 ml-2"
-                              >
-                                <Unlink className="w-2.5 h-2.5" /> Unlink
-                              </button>
-                            </div>
-                          ) : isLinking ? (
-                            <div className="space-y-1">
-                              <div className="relative">
-                                <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-2.5 h-2.5 text-rmpg-500" />
-                                <input
-                                  type="text"
-                                  value={personSearch}
-                                  onChange={e => setPersonSearch(e.target.value)}
-                                  placeholder="Search persons by name..."
-                                  className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] pl-6 pr-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
-                                  autoFocus
-                                  onClick={e => e.stopPropagation()}
-                                />
-                              </div>
-                              {searchingPerson && (
-                                <div className="flex items-center gap-1 text-[9px] text-rmpg-500">
-                                  <Loader2 className="w-2.5 h-2.5 animate-spin" /> Searching...
-                                </div>
-                              )}
-                              {personResults.length > 0 && (
-                                <div className="space-y-0.5 max-h-[120px] overflow-y-auto">
-                                  {personResults.map(p => (
-                                    <button
-                                      key={p.id}
-                                      onClick={e => { e.stopPropagation(); handleLinkPerson(rec.id, p.id); }}
-                                      disabled={linkingPerson}
-                                      className="w-full text-left px-2 py-1 rounded-sm bg-surface-sunken hover:bg-brand-900/30 text-[9px] flex items-center gap-2"
-                                    >
-                                      <UserPlus className="w-3 h-3 text-brand-400" />
-                                      <span className="text-rmpg-200 font-bold">{p.last_name}, {p.first_name}</span>
-                                      {p.dob && <span className="text-rmpg-500">DOB: {p.dob}</span>}
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                              <button
-                                onClick={e => { e.stopPropagation(); setLinkingId(null); setPersonSearch(''); setPersonResults([]); }}
-                                className="text-[8px] text-rmpg-500 hover:text-rmpg-300"
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={e => { e.stopPropagation(); setLinkingId(rec.id); }}
-                              className="text-[9px] text-brand-400 hover:text-brand-300 flex items-center gap-1"
-                            >
-                              <UserPlus className="w-3 h-3" /> Link to Person Record
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    )}
+              </div>
+            ) : isLinking ? (
+              <div className="space-y-1">
+                <div className="relative">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-2.5 h-2.5 text-rmpg-500" />
+                  <input
+                    type="text"
+                    value={personSearch}
+                    onChange={e => setPersonSearch(e.target.value)}
+                    placeholder="Search persons by name..."
+                    className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] pl-6 pr-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
+                    autoFocus
+                  />
+                </div>
+                {searchingPerson && (
+                  <div className="flex items-center gap-1 text-[9px] text-rmpg-500">
+                    <Loader2 className="w-2.5 h-2.5 animate-spin" /> Searching...
                   </div>
-                );
-              })}
-            </div>
+                )}
+                {personResults.length > 0 && (
+                  <div className="space-y-0.5 max-h-[120px] overflow-y-auto">
+                    {personResults.map(p => (
+                      <button
+                        key={p.id}
+                        onClick={() => handleLinkPerson(rec.id, p.id)}
+                        disabled={linkingPerson}
+                        className="w-full text-left px-2 py-1 rounded-sm bg-surface-sunken hover:bg-brand-900/30 text-[9px] flex items-center gap-2"
+                      >
+                        <UserPlus className="w-3 h-3 text-brand-400" />
+                        <span className="text-rmpg-200 font-bold">{p.last_name}, {p.first_name}</span>
+                        {p.dob && <span className="text-rmpg-500">DOB: {p.dob}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <button
+                  onClick={() => { setLinkingId(null); setPersonSearch(''); setPersonResults([]); }}
+                  className="text-[8px] text-rmpg-500 hover:text-rmpg-300"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setLinkingId(rec.id)}
+                className="text-[9px] text-brand-400 hover:text-brand-300 flex items-center gap-1"
+              >
+                <UserPlus className="w-3 h-3" /> Link to Person Record
+              </button>
+            )}
+          </CollapsibleSection>
+
+          {/* Criminal History (if linked to a person) */}
+          {rec.linked_person && (
+            <CriminalHistorySection
+              personId={String(rec.linked_person.id)}
+              personName={rec.linked_person.name}
+            />
           )}
 
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between pt-2 border-t border-rmpg-700/30">
-              <button
-                disabled={recordsPage <= 1}
-                onClick={() => setRecordsPage(p => p - 1)}
-                className="text-[10px] text-rmpg-400 hover:text-rmpg-200 disabled:opacity-30 px-2 py-1"
-              >
-                ← Previous
-              </button>
-              <span className="text-[10px] text-rmpg-500">
-                Page {recordsPage} of {totalPages}
-              </span>
-              <button
-                disabled={recordsPage >= totalPages}
-                onClick={() => setRecordsPage(p => p + 1)}
-                className="text-[10px] text-rmpg-400 hover:text-rmpg-200 disabled:opacity-30 px-2 py-1"
-              >
-                Next →
-              </button>
-            </div>
+          {/* Notes */}
+          {rec.notes && (
+            <CollapsibleSection title="Notes" icon={FileText} defaultOpen>
+              <div className="text-[9px] text-rmpg-200 whitespace-pre-wrap leading-relaxed">
+                {rec.notes}
+              </div>
+            </CollapsibleSection>
           )}
-        </div>
 
-        {/* Footer info */}
-        <div className="text-[9px] text-rmpg-600 px-1">
-          Data sourced from Utah county jail rosters via automated scrapers.
-          Click a county card to filter. Expand a record to view details or link to a person record.
+          {/* Metadata */}
+          <CollapsibleSection title="Metadata" icon={Database} defaultOpen={false}>
+            <div className="grid grid-cols-2 gap-2 text-[9px]">
+              {[
+                { label: 'Created', value: rec.created_at ? fmtDate(rec.created_at) : null },
+                { label: 'Updated', value: rec.updated_at ? fmtDate(rec.updated_at) : null },
+                { label: 'Entered By', value: rec.entered_by ? `User #${rec.entered_by}` : null },
+                { label: 'Entry Source', value: rec.entry_source },
+                { label: 'Source ID', value: rec.source_id || rec.jailbase_id },
+                { label: 'Record ID', value: String(rec.id) },
+              ].map(f => (
+                <div key={f.label}>
+                  <span className="text-rmpg-500 uppercase text-[8px]">{f.label}</span>
+                  <div className="text-rmpg-200 font-mono">{f.value || '—'}</div>
+                </div>
+              ))}
+            </div>
+          </CollapsibleSection>
         </div>
       </div>
+    );
+  })() : (
+    <div className="h-full flex items-center justify-center bg-surface-base">
+      <EmptyState
+        icon={ShieldAlert}
+        title="Select a record"
+        description="Choose a booking record from the list to view details."
+      />
+    </div>
+  );
+
+  // ── Main Render ─────────────────────────────────────────
+
+  return (
+    <div className="h-full flex flex-col bg-surface-base">
+      <PanelTitleBar title="Arrest Records" icon={Shield}>
+        <span className="text-[8px] text-rmpg-500">
+          {recordsTotal.toLocaleString()} records
+        </span>
+      </PanelTitleBar>
+
+      <div className="flex-1 overflow-hidden">
+        <SplitPanel
+          left={leftPanel}
+          right={rightPanel}
+          persistKey="arrests-split"
+          initialRatio={0.45}
+          rightVisible={true}
+          leftLabel="List"
+          rightLabel="Detail"
+        />
+      </div>
+
+      {/* Booking Form Modal */}
+      <ArrestFormModal
+        isOpen={formOpen}
+        onClose={() => { setFormOpen(false); setEditingRecord(undefined); }}
+        onSubmit={handleFormSubmit}
+        isSubmitting={formSubmitting}
+        editingRecord={editingRecord}
+        submitError={formError}
+      />
+
+      {/* Delete Confirmation */}
+      {deleteConfirm !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setDeleteConfirm(null)} />
+          <div className="relative w-full max-w-sm mx-4 bg-surface-base border border-rmpg-600 shadow-2xl animate-fade-in">
+            <div
+              className="flex items-center gap-2 px-4 py-2 border-b border-rmpg-600"
+              style={{ background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)' }}
+            >
+              <AlertTriangle className="w-4 h-4 text-red-400" />
+              <h2 className="text-xs font-bold text-white uppercase tracking-wider">Delete Booking</h2>
+            </div>
+            <div className="p-5">
+              <p className="text-sm text-rmpg-200 leading-relaxed">
+                Are you sure you want to permanently delete this booking record? This action cannot be undone.
+              </p>
+              <div className="flex items-center justify-end gap-3 mt-5">
+                <button onClick={() => setDeleteConfirm(null)} className="toolbar-btn">
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleDelete(deleteConfirm)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wide border shadow-sm bg-red-700 hover:bg-red-600 border-red-500 text-white transition-colors"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

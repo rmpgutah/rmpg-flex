@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Navigation, Key, Eye, EyeOff, Loader2, CheckCircle2, XCircle,
   Trash2, Zap, AlertTriangle, ToggleLeft, ToggleRight, Link2, Unlink,
-  Radio, Clock, Truck, Search, Camera, History, RefreshCw,
+  Radio, Clock, Truck, Search, Camera, History, RefreshCw, Video,
+  HardDrive, Download,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 
@@ -18,6 +19,25 @@ interface CpgStatus {
   poll_interval_seconds: number;
   active_mappings: number;
   last_sync: string | null;
+  media_sync_enabled?: boolean;
+  media_poll_interval_seconds?: number;
+  last_media_sync?: string | null;
+}
+
+interface MediaSyncStatus {
+  media_sync_enabled: boolean;
+  media_poll_interval_seconds: number;
+  last_media_sync: string | null;
+  total_synced_clips: number;
+  total_synced_bytes: number;
+  sync_errors: number;
+  devices: Array<{
+    cpg_device_id: string;
+    cpg_display_name: string | null;
+    last_media_synced_at: string | null;
+    media_sync_errors: number | null;
+    call_sign: string | null;
+  }>;
 }
 
 interface CpgDevice {
@@ -118,6 +138,13 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
   const [loadingDashcam, setLoadingDashcam] = useState(false);
   const [dashcamTotal, setDashcamTotal] = useState(0);
 
+  // Media sync
+  const [mediaStatus, setMediaStatus] = useState<MediaSyncStatus | null>(null);
+  const [mediaSyncEnabled, setMediaSyncEnabled] = useState(false);
+  const [mediaPollInterval, setMediaPollInterval] = useState(300);
+  const [syncing, setSyncing] = useState(false);
+  const [savingMedia, setSavingMedia] = useState(false);
+
   // ── Fetch status ──
   const fetchStatus = useCallback(async () => {
     try {
@@ -166,13 +193,24 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
     finally { setLoadingDashcam(false); }
   }, []);
 
+  // ── Fetch media sync status ──
+  const fetchMediaStatus = useCallback(async () => {
+    try {
+      const data = await apiFetch<MediaSyncStatus>('/clearpathgps/media-status');
+      setMediaStatus(data);
+      setMediaSyncEnabled(data.media_sync_enabled);
+      setMediaPollInterval(data.media_poll_interval_seconds || 300);
+    } catch { /* ignore */ }
+  }, []);
+
   useEffect(() => {
     fetchStatus();
     fetchMappings();
     fetchUnits();
     fetchSettings();
     fetchDashcamEvents();
-  }, [fetchStatus, fetchMappings, fetchUnits, fetchSettings, fetchDashcamEvents]);
+    fetchMediaStatus();
+  }, [fetchStatus, fetchMappings, fetchUnits, fetchSettings, fetchDashcamEvents, fetchMediaStatus]);
 
   // ── Save credentials ──
   const handleSaveCredentials = async () => {
@@ -331,6 +369,65 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
       setHistoryBackfill(!newVal); // revert
       setError(err instanceof Error ? err.message : 'Failed to update settings');
     }
+  };
+
+  // ── Toggle media sync ──
+  const handleToggleMediaSync = async () => {
+    const newVal = !mediaSyncEnabled;
+    setSavingMedia(true);
+    try {
+      await apiFetch('/clearpathgps/media-settings', {
+        method: 'PUT',
+        body: JSON.stringify({ media_sync_enabled: newVal, media_poll_interval_seconds: mediaPollInterval }),
+      });
+      setMediaSyncEnabled(newVal);
+      await fetchMediaStatus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to toggle media sync');
+    } finally {
+      setSavingMedia(false);
+    }
+  };
+
+  // ── Update media poll interval ──
+  const handleMediaPollIntervalChange = async (seconds: number) => {
+    setMediaPollInterval(seconds);
+    setSavingMedia(true);
+    try {
+      await apiFetch('/clearpathgps/media-settings', {
+        method: 'PUT',
+        body: JSON.stringify({ media_sync_enabled: mediaSyncEnabled, media_poll_interval_seconds: seconds }),
+      });
+      await fetchMediaStatus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update media poll interval');
+    } finally {
+      setSavingMedia(false);
+    }
+  };
+
+  // ── Trigger immediate media sync ──
+  const handleSyncNow = async () => {
+    setSyncing(true);
+    try {
+      const result = await apiFetch<{ synced: number; errors: number }>('/clearpathgps/media-sync-now', { method: 'POST' });
+      await fetchMediaStatus();
+      if (result.synced > 0) {
+        setError(null);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Media sync failed');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const formatBytes = (bytes: number) => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
   };
 
   if (loading) return <LoadingSpinner />;
@@ -767,6 +864,133 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
             <div className="flex items-center gap-2 text-[10px] text-rmpg-500 bg-surface-sunken p-2 rounded-sm">
               <Camera className="w-3.5 h-3.5 text-rmpg-600 shrink-0" />
               No dashcam events recorded yet. Events are captured automatically from ClearPathGPS when the poller detects camera triggers, hard braking, impacts, or other driving events.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Section 5: Media Sync ── */}
+      {status?.configured && status.enabled && mappings.length > 0 && (
+        <div className="panel-beveled p-3 bg-surface-base border-t-2 border-t-purple-500 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Video className="w-3.5 h-3.5 text-purple-400" />
+              <h3 className="field-label text-purple-400">Dashcam Video Sync</h3>
+              <span className={`w-1.5 h-1.5 rounded-full ${mediaSyncEnabled ? 'bg-purple-400 animate-pulse' : 'bg-rmpg-600'}`} />
+            </div>
+            <button
+              onClick={handleToggleMediaSync}
+              disabled={savingMedia}
+              className="flex items-center gap-1 text-[10px] text-rmpg-300 hover:text-white transition-colors"
+              title={mediaSyncEnabled ? 'Disable media sync' : 'Enable media sync'}
+            >
+              {mediaSyncEnabled ? (
+                <ToggleRight className="w-5 h-5 text-purple-400" />
+              ) : (
+                <ToggleLeft className="w-5 h-5 text-rmpg-500" />
+              )}
+              {mediaSyncEnabled ? 'ON' : 'OFF'}
+            </button>
+          </div>
+
+          <p className="text-[10px] text-rmpg-500 leading-relaxed">
+            Automatically downloads dashcam video clips from ClearPathGPS v3.0 Media API.
+            Clips are matched to driving events and stored locally for evidence management.
+          </p>
+
+          {/* Controls row */}
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Poll interval */}
+            <div className="flex items-center gap-1.5">
+              <Clock className="w-3 h-3 text-rmpg-500" />
+              <span className="text-[10px] text-rmpg-400">Check every:</span>
+              <select
+                value={mediaPollInterval}
+                onChange={e => handleMediaPollIntervalChange(parseInt(e.target.value, 10))}
+                disabled={!mediaSyncEnabled || savingMedia}
+                className="select-dark text-[10px] py-0.5 px-1.5 w-20"
+              >
+                <option value={60}>1 min</option>
+                <option value={120}>2 min</option>
+                <option value={300}>5 min</option>
+                <option value={600}>10 min</option>
+                <option value={900}>15 min</option>
+              </select>
+            </div>
+
+            {/* Sync Now button */}
+            <button
+              onClick={handleSyncNow}
+              disabled={syncing || !status?.enabled}
+              className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wide
+                         bg-purple-900/50 hover:bg-purple-800/60 border border-purple-700/50 text-purple-300
+                         disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {syncing ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <Download className="w-3 h-3" />
+              )}
+              {syncing ? 'Syncing...' : 'Sync Now'}
+            </button>
+          </div>
+
+          {/* Stats row */}
+          {mediaStatus && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="bg-surface-sunken p-2 text-center">
+                <p className="text-sm font-bold text-purple-400 font-mono">{mediaStatus.total_synced_clips}</p>
+                <p className="field-label">Clips Synced</p>
+              </div>
+              <div className="bg-surface-sunken p-2 text-center">
+                <p className="text-sm font-bold text-rmpg-200 font-mono">{formatBytes(mediaStatus.total_synced_bytes)}</p>
+                <p className="field-label">Storage Used</p>
+              </div>
+              <div className="bg-surface-sunken p-2 text-center">
+                <p className="text-sm font-bold text-rmpg-200 font-mono">
+                  {mediaStatus.last_media_sync
+                    ? new Date(mediaStatus.last_media_sync).toLocaleTimeString()
+                    : '—'}
+                </p>
+                <p className="field-label">Last Sync</p>
+              </div>
+              <div className="bg-surface-sunken p-2 text-center">
+                <p className={`text-sm font-bold font-mono ${mediaStatus.sync_errors > 0 ? 'text-red-400' : 'text-green-400'}`}>
+                  {mediaStatus.sync_errors}
+                </p>
+                <p className="field-label">Errors</p>
+              </div>
+            </div>
+          )}
+
+          {/* Per-device sync status */}
+          {mediaStatus && mediaStatus.devices.length > 0 && (
+            <div className="space-y-1">
+              <p className="field-label text-rmpg-500">Device Sync Status</p>
+              {mediaStatus.devices.map(dev => (
+                <div
+                  key={dev.cpg_device_id}
+                  className="flex items-center justify-between bg-surface-sunken px-2 py-1.5 text-[10px]"
+                >
+                  <div className="flex items-center gap-2">
+                    <HardDrive className="w-3 h-3 text-rmpg-500" />
+                    <span className="text-rmpg-200 font-mono">{dev.cpg_display_name || dev.cpg_device_id}</span>
+                    {dev.call_sign && (
+                      <span className="text-brand-400 font-semibold">{dev.call_sign}</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {(dev.media_sync_errors || 0) > 0 && (
+                      <span className="text-red-400 font-mono">{dev.media_sync_errors} err</span>
+                    )}
+                    <span className="text-rmpg-500">
+                      {dev.last_media_synced_at
+                        ? `Synced ${new Date(dev.last_media_synced_at).toLocaleString()}`
+                        : 'Never synced'}
+                    </span>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>

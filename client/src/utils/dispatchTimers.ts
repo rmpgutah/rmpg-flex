@@ -73,7 +73,9 @@ export function getStatusElapsed(call: CallForService): number {
       refTime = call.created_at;
   }
 
-  return Math.max(0, Math.floor((now - new Date(refTime).getTime()) / 1000));
+  if (!refTime) return 0;
+  const elapsed = Math.floor((now - new Date(refTime).getTime()) / 1000);
+  return Number.isFinite(elapsed) ? Math.max(0, elapsed) : 0;
 }
 
 /**
@@ -116,7 +118,7 @@ export function getTimerSeverity(elapsed: number, threshold: number): TimerSever
  * For times > 1 hour, shows H:MM:SS.
  */
 export function formatTimer(seconds: number): string {
-  if (seconds < 0) return '0:00';
+  if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
 
   const hours = Math.floor(seconds / 3600);
   const mins = Math.floor((seconds % 3600) / 60);

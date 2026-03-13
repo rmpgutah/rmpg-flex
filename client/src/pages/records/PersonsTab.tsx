@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Search,
   UserCircle,
@@ -58,6 +58,8 @@ function mapDbPerson(row: Record<string, unknown>): Person {
     gender: row.gender ? String(row.gender) : undefined,
     race: row.race ? String(row.race) : undefined,
     height: row.height ? String(row.height) : undefined,
+    height_feet: row.height_feet != null ? Number(row.height_feet) : undefined,
+    height_inches: row.height_inches != null ? Number(row.height_inches) : undefined,
     weight: row.weight ? String(row.weight) : undefined,
     build: row.build ? String(row.build) : undefined,
     complexion: row.complexion ? String(row.complexion) : undefined,
@@ -172,8 +174,9 @@ export interface PersonsTabState {
   personModalOpen: boolean;
   editingPerson: Person | undefined;
   personSubmitting: boolean;
+  personSubmitError: string | null;
   openNewPerson: () => void;
-  openEditPerson: (p: Person) => void;
+  openEditPerson: (p: Person) => Promise<void>;
   handlePersonSubmit: (data: PersonFormData) => Promise<void>;
   closeModal: () => void;
   // Alerts
@@ -211,9 +214,11 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
   const [personModalOpen, setPersonModalOpen] = useState(false);
   const [editingPerson, setEditingPerson] = useState<Person | undefined>(undefined);
   const [personSubmitting, setPersonSubmitting] = useState(false);
+  const [personSubmitError, setPersonSubmitError] = useState<string | null>(null);
 
   // Selection
   const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
+  const lastFetchedPersonId = useRef<string | null>(null);
 
   // Alerts for selected person
   const [personAlerts, setPersonAlerts] = useState<RecordAlert[]>([]);
@@ -228,6 +233,17 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
       setPersonModalOpen(true);
     }
   }, [openNewTrigger]);
+
+  // Fetch full person detail when selection changes (list only returns limited columns)
+  useEffect(() => {
+    const id = selectedPerson?.id;
+    if (!id) { lastFetchedPersonId.current = null; return; }
+    if (lastFetchedPersonId.current === id) return;
+    lastFetchedPersonId.current = id;
+    apiFetch<Record<string, unknown>>(`/records/persons/${id}`)
+      .then(full => setSelectedPerson(mapDbPerson(full as Record<string, unknown>)))
+      .catch(() => { /* keep list-level data as fallback */ });
+  }, [selectedPerson?.id]);
 
   // Clear selection if the person was removed from the list
   useEffect(() => {
@@ -263,7 +279,9 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
 
   const handlePersonSubmit = async (data: PersonFormData) => {
     setPersonSubmitting(true);
+    setPersonSubmitError(null);
     try {
+      const savedId = editingPerson?.id;
       if (editingPerson) {
         await apiFetch(`/records/persons/${editingPerson.id}`, { method: 'PUT', body: JSON.stringify(data) });
       } else {
@@ -272,16 +290,38 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
       setPersonModalOpen(false);
       setEditingPerson(undefined);
       await fetchPersons();
+      // Refresh the detail panel so it shows updated data after save
+      if (savedId) {
+        lastFetchedPersonId.current = null;
+        try {
+          const fresh = await apiFetch<Record<string, unknown>>(`/records/persons/${savedId}`);
+          setSelectedPerson(mapDbPerson(fresh as Record<string, unknown>));
+          lastFetchedPersonId.current = savedId;
+        } catch { /* keep existing selection */ }
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save person');
+      const msg = err instanceof Error ? err.message : 'Failed to save person';
+      setPersonSubmitError(msg);
+      setError(msg);
     } finally {
       setPersonSubmitting(false);
     }
   };
 
-  const openEditPerson = (person: Person) => { setEditingPerson(person); setPersonModalOpen(true); };
-  const openNewPerson = () => { setEditingPerson(undefined); setPersonModalOpen(true); };
-  const closeModal = () => { setPersonModalOpen(false); setEditingPerson(undefined); };
+  const openEditPerson = async (person: Person) => {
+    setPersonSubmitError(null);
+    setEditingPerson(person); // Set immediately with list data so modal has context
+    setPersonModalOpen(true);
+    // Upgrade with full detail (list only returns limited columns)
+    try {
+      const full = await apiFetch<Record<string, unknown>>(`/records/persons/${person.id}`);
+      setEditingPerson(mapDbPerson(full as Record<string, unknown>));
+    } catch {
+      // Keep the list-level data already set
+    }
+  };
+  const openNewPerson = () => { setEditingPerson(undefined); setPersonSubmitError(null); setPersonModalOpen(true); };
+  const closeModal = () => { setPersonModalOpen(false); setEditingPerson(undefined); setPersonSubmitError(null); };
 
   // Wrap archive/unarchive to also clear selection
   const handleArchive = async (type: 'persons' | 'vehicles' | 'properties' | 'evidence', id: string) => {
@@ -308,7 +348,7 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
 
   return {
     selectedPerson, setSelectedPerson,
-    personModalOpen, editingPerson, personSubmitting,
+    personModalOpen, editingPerson, personSubmitting, personSubmitError,
     openNewPerson, openEditPerson, handlePersonSubmit, closeModal,
     personAlerts, ssnRevealed, setSSNRevealed,
     filteredPersons, handleArchive, handleUnarchive,
@@ -326,7 +366,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
     filteredPersons, selectedPerson, setSelectedPerson, setSSNRevealed,
     searchQuery, setSearchQuery, showArchived,
     openEditPerson, setDeleteTarget, handleArchive, handleUnarchive,
-    personModalOpen, editingPerson, personSubmitting, handlePersonSubmit, closeModal,
+    personModalOpen, editingPerson, personSubmitting, personSubmitError, handlePersonSubmit, closeModal,
   } = state;
 
   return (
@@ -475,6 +515,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
         onSubmit={handlePersonSubmit}
         isSubmitting={personSubmitting}
         editingPerson={editingPerson}
+        submitError={personSubmitError}
       />
     </div>
   );

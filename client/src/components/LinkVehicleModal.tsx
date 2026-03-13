@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Car, Search, Loader2 } from 'lucide-react';
+import { Car, Search, Loader2, PlusCircle } from 'lucide-react';
 import FormModal from './FormModal';
+import VehicleFormModal, { type VehicleFormData } from './VehicleFormModal';
 import { apiFetch } from '../hooks/useApi';
 import type { VehicleRole } from '../types';
 
@@ -42,6 +43,8 @@ export default function LinkVehicleModal({ isOpen, onClose, incidentId, onLinked
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [showCreateVehicle, setShowCreateVehicle] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
 
   const resetForm = useCallback(() => {
     setSearchQuery('');
@@ -50,6 +53,7 @@ export default function LinkVehicleModal({ isOpen, onClose, incidentId, onLinked
     setRole('involved');
     setNotes('');
     setError('');
+    setShowCreateVehicle(false);
   }, []);
 
   useEffect(() => {
@@ -77,6 +81,34 @@ export default function LinkVehicleModal({ isOpen, onClose, incidentId, onLinked
     }, 300);
     return () => clearTimeout(timeout);
   }, [searchQuery, handleSearch]);
+
+  const handleCreateVehicle = async (data: VehicleFormData) => {
+    setIsCreating(true);
+    setError('');
+    try {
+      const result = await apiFetch<{ id: number }>('/records/vehicles', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+      // Auto-select the newly created vehicle
+      const newVehicle: VehicleResult = {
+        id: result.id,
+        plate_number: data.plate_number || undefined,
+        state: data.state || undefined,
+        make: data.make || undefined,
+        model: data.model || undefined,
+        year: data.year ? Number(data.year) : undefined,
+        color: data.color || undefined,
+        vin: data.vin || undefined,
+      };
+      setSelectedVehicle(newVehicle);
+      setShowCreateVehicle(false);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to create vehicle');
+    } finally {
+      setIsCreating(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -173,7 +205,17 @@ export default function LinkVehicleModal({ isOpen, onClose, incidentId, onLinked
         )}
 
         {searchQuery.length >= 2 && searchResults.length === 0 && !isSearching && !selectedVehicle && (
-          <p className="text-xs text-rmpg-400 mt-1">No vehicles found</p>
+          <div className="mt-1 flex items-center gap-2">
+            <p className="text-xs text-rmpg-400">No vehicles found</p>
+            <button
+              type="button"
+              onClick={() => setShowCreateVehicle(true)}
+              className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase text-brand-400 bg-brand-900/30 border border-brand-700/40 hover:bg-brand-900/50 transition-colors"
+            >
+              <PlusCircle className="w-3 h-3" />
+              Create New Vehicle
+            </button>
+          </div>
         )}
       </div>
 
@@ -220,6 +262,13 @@ export default function LinkVehicleModal({ isOpen, onClose, incidentId, onLinked
           onChange={(e) => setNotes(e.target.value)}
         />
       </div>
+      {/* Create Vehicle Modal */}
+      <VehicleFormModal
+        isOpen={showCreateVehicle}
+        onClose={() => setShowCreateVehicle(false)}
+        onSubmit={handleCreateVehicle}
+        isSubmitting={isCreating}
+      />
     </FormModal>
   );
 }

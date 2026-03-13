@@ -39,14 +39,18 @@ import CodeEnforcementPage from './pages/CodeEnforcementPage';
 import CourtTrackerPage from './pages/CourtTrackerPage';
 import DailyActivityReportsPage from './pages/DailyActivityReportsPage';
 import OffenderRegistryPage from './pages/OffenderRegistryPage';
+import SexOffenderRegistryPage from './pages/SexOffenderRegistryPage';
 import NcicPage from './pages/NcicPage';
 import BodyCamerasPage from './pages/BodyCamerasPage';
 import DashCamerasPage from './pages/DashCamerasPage';
 import TrainingDocsPage from './pages/TrainingDocsPage';
+import TrainingPage from './pages/TrainingPage';
 import DlSearchPage from './pages/DlSearchPage';
 import ForensicsPage from './pages/ForensicsPage';
 import SkipTracerPage from './pages/SkipTracerPage';
 import ArrestRecordsPage from './pages/ArrestRecordsPage';
+import EmailPage from './pages/EmailPage';
+import CrmPage from './pages/CrmPage';
 import IncidentDetailWindow from './pages/detached/IncidentDetailWindow';
 import RecordDetailWindow from './pages/detached/RecordDetailWindow';
 
@@ -141,7 +145,7 @@ function AppRoutes() {
         {/* Public */}
         <Route
           path="/login"
-          element={isAuthenticated ? <Navigate to="/" replace /> : <LoginPage />}
+          element={isAuthenticated ? <Navigate to={window.location.hostname === 'crm.rmpgutah.us' ? '/crm' : '/'} replace /> : <LoginPage />}
         />
 
         {/* Detached windows — no Layout wrapper */}
@@ -156,7 +160,7 @@ function AppRoutes() {
             </ProtectedRoute>
           }
         >
-          <Route path="/" element={<DashboardPage />} />
+          <Route path="/" element={window.location.hostname === 'crm.rmpgutah.us' ? <Navigate to="/crm" replace /> : <DashboardPage />} />
           <Route path="/dispatch" element={<DispatchPage />} />
           <Route path="/map" element={<MapPage />} />
           <Route path="/incidents" element={<IncidentsPage />} />
@@ -185,13 +189,17 @@ function AppRoutes() {
           <Route path="/court" element={<CourtTrackerPage />} />
           <Route path="/dar" element={<DailyActivityReportsPage />} />
           <Route path="/offender-registry" element={<OffenderRegistryPage />} />
+          <Route path="/sex-offender-registry" element={<SexOffenderRegistryPage />} />
           <Route path="/ncic" element={<NcicPage />} />
           <Route path="/audit" element={<AuditLogPage />} />
+          <Route path="/training" element={<TrainingPage />} />
           <Route path="/training-docs" element={<TrainingDocsPage />} />
           <Route path="/dl-search" element={<DlSearchPage />} />
           <Route path="/forensics" element={<ForensicsPage />} />
           <Route path="/skip-tracer" element={<SkipTracerPage />} />
           <Route path="/arrest-records" element={<ArrestRecordsPage />} />
+          <Route path="/email" element={<EmailPage />} />
+          <Route path="/crm" element={<CrmPage />} />
           <Route path="/admin" element={<AdminPage />} />
         </Route>
 

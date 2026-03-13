@@ -121,9 +121,9 @@ const AuditLogPage: React.FC = () => {
 
       const data = await apiFetch<{ data: AuditLogEntry[]; pagination: { total: number; totalPages: number } }>(`/audit/logs?${queryParams.toString()}`);
 
-      setLogs(data.data);
-      setTotalPages(data.pagination.totalPages);
-      setTotal(data.pagination.total);
+      setLogs(data?.data || []);
+      setTotalPages(data?.pagination?.totalPages || 1);
+      setTotal(data?.pagination?.total || 0);
     } catch (err) {
       console.error('Error fetching audit logs:', err);
       setError('Failed to load audit logs. Please try again.');

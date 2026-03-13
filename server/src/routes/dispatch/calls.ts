@@ -1,11 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../../models/database';
+import { requireRole } from '../../middleware/auth';
 import { generateCallNumber } from '../../utils/caseNumbers';
 import { sendCsv } from '../../utils/csvExport';
 import { localNow } from '../../utils/timeUtils';
 import { geocodeCallIfNeeded } from '../../utils/geocode';
 import { identifyBeat } from '../../utils/geofence';
 import { broadcastDispatchUpdate } from '../../utils/websocket';
+import { createNotificationForRoles } from '../notifications';
 
 const router = Router();
 
@@ -77,8 +79,15 @@ router.get('/calls', (req: Request, res: Response) => {
       LIMIT ? OFFSET ?
     `).all(...params, limitNum, offset);
 
+    // Strip caller PII for roles that shouldn't see it (contract_manager)
+    const callerPiiRoles = new Set(['admin', 'manager', 'supervisor', 'officer', 'dispatcher']);
+    const showCallerPii = callerPiiRoles.has(req.user?.role || '');
+    const safeCalls = showCallerPii
+      ? calls
+      : (calls as any[]).map(({ caller_name, caller_phone, caller_address, ...rest }) => rest);
+
     res.json({
-      data: calls,
+      data: safeCalls,
       pagination: {
         page: pageNum,
         limit: limitNum,
@@ -95,7 +104,7 @@ router.get('/calls', (req: Request, res: Response) => {
 // POST /api/dispatch/calls - Create new call for service
 // Supports optional historical fields: created_at, status, dispatched_at, enroute_at,
 // onscene_at, cleared_at, closed_at, disposition — for entering past records.
-router.post('/calls', (req: Request, res: Response) => {
+router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const {
@@ -118,6 +127,7 @@ router.post('/calls', (req: Request, res: Response) => {
       // PSO Client Request fields
       pso_service_type, pso_authorization, pso_requestor_name,
       pso_requestor_phone, pso_requestor_email, pso_billing_code,
+      pso_attempt_number: createAttemptNumber,
       // Process Service fields
       process_service_type, process_served_to, process_served_address,
       client_id: requestClientId,
@@ -133,8 +143,13 @@ router.post('/calls', (req: Request, res: Response) => {
       return;
     }
 
-    // Normalize priority to uppercase to match CHECK constraint (P1, P2, P3, P4)
+    // Normalize and validate priority against CHECK constraint (P1, P2, P3, P4)
     const normalizedPriority = String(priority).toUpperCase();
+    const VALID_PRIORITIES = ['P1', 'P2', 'P3', 'P4'];
+    if (!VALID_PRIORITIES.includes(normalizedPriority)) {
+      res.status(400).json({ error: `Invalid priority. Must be one of: ${VALID_PRIORITIES.join(', ')}` });
+      return;
+    }
 
     // Generate call number: CFS-YYYY-NNNNN
     const callNumber = generateCallNumber(db);
@@ -190,76 +205,99 @@ router.post('/calls', (req: Request, res: Response) => {
       } catch { /* geofence not configured, skip */ }
     }
 
-    const result = db.prepare(`
-      INSERT INTO calls_for_service (call_number, incident_type, priority, status, caller_name, caller_phone,
-        caller_relationship, caller_address, location_address, property_id, latitude, longitude, description, notes, source, dispatcher_id,
-        cross_street, location_building, location_floor, location_room, zone_beat,
-        section_id, zone_id, beat_id, dispatch_code,
-        section_name, zone_name, beat_name, beat_descriptor,
-        weapons_involved, injuries_reported, num_subjects, num_victims,
-        subject_description, vehicle_description, direction_of_travel,
-        scene_safety, weather_conditions, lighting_conditions,
-        alcohol_involved, drugs_involved, domestic_violence,
-        supervisor_notified, le_notified, le_agency, le_case_number,
-        damage_estimate, damage_description, responding_officer, action_taken,
-        mental_health_crisis, juvenile_involved, felony_in_progress, officer_safety_caution,
-        k9_requested, ems_requested, fire_requested, hazmat,
-        gang_related, evidence_collected, body_camera_active, photos_taken,
-        trespass_issued, vehicle_pursuit, foot_pursuit,
-        pso_service_type, pso_authorization, pso_requestor_name,
-        pso_requestor_phone, pso_requestor_email, pso_billing_code,
-        process_service_type, process_served_to, process_served_address,
-        contract_id, client_id,
-        created_at, dispatched_at, enroute_at, onscene_at, cleared_at, closed_at, archived_at, disposition)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-              ?, ?, ?, ?, ?, ?, ?,
-              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-              ?, ?, ?, ?, ?, ?, ?, ?, ?,
-              COALESCE(?, ?), ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      callNumber, incident_type, normalizedPriority, status, caller_name || null, caller_phone || null,
-      caller_relationship || null, caller_address || null, location_address, property_id || null,
-      latitude || null, longitude || null, description || null, notes || null,
-      source || 'phone', req.user!.userId,
-      cross_street || null, location_building || null, location_floor || null, location_room || null, autoZoneBeat,
-      autoSectionId, autoZoneId, autoBeatId, autoDispatchCode,
-      autoSectionName, autoZoneName, autoBeatName, autoBeatDescriptor,
-      weapons_involved || null, injuries_reported ? 1 : 0, num_subjects || null, num_victims || null,
-      subject_description || null, vehicle_description || null, direction_of_travel || null,
-      scene_safety || null, weather_conditions || null, lighting_conditions || null,
-      alcohol_involved ? 1 : 0, drugs_involved ? 1 : 0, domestic_violence ? 1 : 0,
-      supervisor_notified ? 1 : 0, le_notified ? 1 : 0, le_agency || null, le_case_number || null,
-      damage_estimate || null, damage_description || null, responding_officer || null, action_taken || null,
-      mental_health_crisis ? 1 : 0, juvenile_involved ? 1 : 0, felony_in_progress ? 1 : 0, officer_safety_caution ? 1 : 0,
-      k9_requested ? 1 : 0, ems_requested ? 1 : 0, fire_requested ? 1 : 0, hazmat ? 1 : 0,
-      gang_related ? 1 : 0, evidence_collected ? 1 : 0, body_camera_active ? 1 : 0, photos_taken ? 1 : 0,
-      trespass_issued ? 1 : 0, vehicle_pursuit ? 1 : 0, foot_pursuit ? 1 : 0,
-      pso_service_type || null, pso_authorization || null, pso_requestor_name || null,
-      pso_requestor_phone || null, pso_requestor_email || null, pso_billing_code || null,
-      process_service_type || null, process_served_to || null, process_served_address || null,
-      contract_id || null, resolvedClientId,
-      // Historical timestamps
-      customCreatedAt || null,
-      localNow(),
-      dispatched_at || null, enroute_at || null, onscene_at || null,
-      cleared_at || null, closed_at || null, archived_at || null,
-      customDisposition || null,
-    );
+    // Transaction: insert call + activity log atomically
+    const createCallTx = db.transaction(() => {
+      const result = db.prepare(`
+        INSERT INTO calls_for_service (call_number, incident_type, priority, status, caller_name, caller_phone,
+          caller_relationship, caller_address, location_address, property_id, latitude, longitude, description, notes, source, dispatcher_id,
+          cross_street, location_building, location_floor, location_room, zone_beat,
+          section_id, zone_id, beat_id, dispatch_code,
+          section_name, zone_name, beat_name, beat_descriptor,
+          weapons_involved, injuries_reported, num_subjects, num_victims,
+          subject_description, vehicle_description, direction_of_travel,
+          scene_safety, weather_conditions, lighting_conditions,
+          alcohol_involved, drugs_involved, domestic_violence,
+          supervisor_notified, le_notified, le_agency, le_case_number,
+          damage_estimate, damage_description, responding_officer, action_taken,
+          mental_health_crisis, juvenile_involved, felony_in_progress, officer_safety_caution,
+          k9_requested, ems_requested, fire_requested, hazmat,
+          gang_related, evidence_collected, body_camera_active, photos_taken,
+          trespass_issued, vehicle_pursuit, foot_pursuit,
+          pso_service_type, pso_authorization, pso_requestor_name,
+          pso_requestor_phone, pso_requestor_email, pso_billing_code, pso_attempt_number,
+          process_service_type, process_served_to, process_served_address,
+          contract_id, client_id,
+          created_at, dispatched_at, enroute_at, onscene_at, cleared_at, closed_at, archived_at, disposition)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        callNumber, incident_type, normalizedPriority, status, caller_name || null, caller_phone || null,
+        caller_relationship || null, caller_address || null, location_address, property_id || null,
+        latitude || null, longitude || null, description || null, notes || null,
+        source || 'phone', req.user!.userId,
+        cross_street || null, location_building || null, location_floor || null, location_room || null, autoZoneBeat,
+        autoSectionId, autoZoneId, autoBeatId, autoDispatchCode,
+        autoSectionName, autoZoneName, autoBeatName, autoBeatDescriptor,
+        (weapons_involved && weapons_involved !== 'None') ? weapons_involved : null, injuries_reported ? 1 : 0, num_subjects || null, num_victims || null,
+        subject_description || null, vehicle_description || null, direction_of_travel || null,
+        scene_safety || null, weather_conditions || null, lighting_conditions || null,
+        alcohol_involved ? 1 : 0, drugs_involved ? 1 : 0, domestic_violence ? 1 : 0,
+        supervisor_notified ? 1 : 0, le_notified ? 1 : 0, le_agency || null, le_case_number || null,
+        damage_estimate || null, damage_description || null, responding_officer || null, action_taken || null,
+        mental_health_crisis ? 1 : 0, juvenile_involved ? 1 : 0, felony_in_progress ? 1 : 0, officer_safety_caution ? 1 : 0,
+        k9_requested ? 1 : 0, ems_requested ? 1 : 0, fire_requested ? 1 : 0, hazmat ? 1 : 0,
+        gang_related ? 1 : 0, evidence_collected ? 1 : 0, body_camera_active ? 1 : 0, photos_taken ? 1 : 0,
+        trespass_issued ? 1 : 0, vehicle_pursuit ? 1 : 0, foot_pursuit ? 1 : 0,
+        pso_service_type || null, pso_authorization || null, pso_requestor_name || null,
+        pso_requestor_phone || null, pso_requestor_email || null, pso_billing_code || null, createAttemptNumber || 1,
+        process_service_type || null, process_served_to || null, process_served_address || null,
+        contract_id || null, resolvedClientId,
+        // created_at: use custom timestamp for historical entries, otherwise current time
+        customCreatedAt || localNow(),
+        dispatched_at || null, enroute_at || null, onscene_at || null,
+        cleared_at || null, closed_at || null, archived_at || null,
+        customDisposition || null,
+      );
 
-    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(result.lastInsertRowid) as any;
+      const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(result.lastInsertRowid) as any;
 
-    // Log activity
-    const isHistorical = !!customCreatedAt;
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'call_created', 'call', ?, ?, ?)
-    `).run(req.user!.userId, call.id, `${isHistorical ? 'Historical entry: ' : 'Created '}${callNumber}: ${incident_type}`, req.ip || 'unknown');
+      // Log activity
+      const isHistorical = !!customCreatedAt;
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'call_created', 'call', ?, ?, ?)
+      `).run(req.user!.userId, call.id, `${isHistorical ? 'Historical entry: ' : 'Created '}${callNumber}: ${incident_type}`, req.ip || 'unknown');
+
+      return call;
+    });
+    const call = createCallTx();
 
     // If no coordinates were provided, geocode the address asynchronously
     geocodeCallIfNeeded(call.id, location_address, latitude, longitude);
 
     // Broadcast to dispatch channel
     broadcastDispatchUpdate({ action: 'call_created', call });
+
+    // Notify dispatch/supervisors of new call
+    createNotificationForRoles(
+      ['admin', 'manager', 'supervisor', 'dispatcher'],
+      'dispatch', `New Call: ${call.call_number}`,
+      `${call.incident_type} — ${call.location_address || 'No address'}`,
+      'call', call.id, 'normal', 'dispatch.call_created', req.user!.userId,
+    );
+
+    // P1 emergency: extra critical notification to all sworn + dispatch
+    if (call.priority === 'P1') {
+      createNotificationForRoles(
+        ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'],
+        'dispatch', `🚨 P1 EMERGENCY: ${call.call_number}`,
+        `${call.incident_type} — ${call.location_address || 'No address'}`,
+        'call', call.id, 'critical', 'dispatch.call_priority_p1', req.user!.userId,
+      );
+    }
 
     res.status(201).json(call);
   } catch (error: any) {
@@ -415,7 +453,7 @@ router.get('/calls/:id', (req: Request, res: Response) => {
 });
 
 // PUT /api/dispatch/calls/:id - Update call
-router.put('/calls/:id', (req: Request, res: Response) => {
+router.put('/calls/:id', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -444,8 +482,10 @@ router.put('/calls/:id', (req: Request, res: Response) => {
       // PSO Client Request fields
       pso_service_type, pso_authorization, pso_requestor_name,
       pso_requestor_phone, pso_requestor_email, pso_billing_code,
+      pso_attempt_number,
       // Process Service fields
       process_service_type, process_served_to, process_served_address,
+      process_attempts, process_served_at, process_service_result,
       client_id: updateClientId,
     } = req.body;
 
@@ -506,6 +546,15 @@ router.put('/calls/:id', (req: Request, res: Response) => {
       } catch { /* geofence not configured, skip */ }
     }
 
+    // Validate priority if being updated
+    if (priority !== undefined) {
+      const VALID_PRIORITIES = ['P1', 'P2', 'P3', 'P4'];
+      if (!VALID_PRIORITIES.includes(String(priority).toUpperCase())) {
+        res.status(400).json({ error: `Invalid priority. Must be one of: ${VALID_PRIORITIES.join(', ')}` });
+        return;
+      }
+    }
+
     // Build dynamic SET clause so we only update provided fields
     const updates: string[] = [];
     const params: any[] = [];
@@ -514,7 +563,7 @@ router.put('/calls/:id', (req: Request, res: Response) => {
     };
 
     addField('incident_type', incident_type);
-    addField('priority', priority);
+    addField('priority', priority ? String(priority).toUpperCase() : priority);
     addField('status', status);
     addField('caller_name', caller_name);
     addField('caller_phone', caller_phone);
@@ -530,7 +579,7 @@ router.put('/calls/:id', (req: Request, res: Response) => {
     addField('location_building', location_building);
     addField('location_floor', location_floor);
     addField('location_room', location_room);
-    addField('weapons_involved', weapons_involved);
+    addField('weapons_involved', weapons_involved === 'None' ? null : weapons_involved);
     addField('injuries_reported', injuries_reported !== undefined ? (injuries_reported ? 1 : 0) : undefined);
     addField('num_subjects', num_subjects);
     addField('subject_description', subject_description);
@@ -584,10 +633,14 @@ router.put('/calls/:id', (req: Request, res: Response) => {
     addField('pso_requestor_phone', pso_requestor_phone);
     addField('pso_requestor_email', pso_requestor_email);
     addField('pso_billing_code', pso_billing_code);
+    addField('pso_attempt_number', pso_attempt_number);
     // Process Service fields
     addField('process_service_type', process_service_type);
     addField('process_served_to', process_served_to);
     addField('process_served_address', process_served_address);
+    addField('process_attempts', process_attempts !== undefined ? Number(process_attempts) : undefined);
+    addField('process_served_at', process_served_at);
+    addField('process_service_result', process_service_result);
     addField('client_id', resolvedUpdateClientId);
 
     if (updates.length === 0) {
@@ -618,6 +671,87 @@ router.put('/calls/:id', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Update call error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/dispatch/calls/:id/redispatch - Re-dispatch a PSO call (increment attempt)
+router.post('/calls/:id/redispatch', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) {
+      res.status(404).json({ error: 'Call not found' });
+      return;
+    }
+
+    // Only allow re-dispatch on PSO Client Request incidents
+    if (call.incident_type !== 'pso_client_request') {
+      res.status(400).json({ error: 'Re-dispatch is only available for PSO Client Request calls' });
+      return;
+    }
+
+    // Only allow re-dispatch on cleared/closed/cancelled calls
+    if (!['cleared', 'closed', 'cancelled'].includes(call.status)) {
+      res.status(400).json({ error: 'Call must be cleared, closed, or cancelled to re-dispatch' });
+      return;
+    }
+
+    const now = localNow();
+    const currentAttempt = call.pso_attempt_number || 1;
+    const newAttempt = currentAttempt + 1;
+
+    // Ordinal suffix for note
+    const ordinal = (n: number) => {
+      const s = ['th', 'st', 'nd', 'rd'];
+      const v = n % 100;
+      return n + (s[(v - 20) % 10] || s[v] || s[0]);
+    };
+
+    // Parse existing notes to append re-dispatch note
+    let notes: any[] = [];
+    if (call.notes) {
+      try { notes = JSON.parse(call.notes); } catch { notes = []; }
+    }
+    const { scheduled_note } = req.body || {};
+    const noteText = scheduled_note
+      ? `Re-dispatched — ${ordinal(newAttempt)} visit. Note: ${scheduled_note}`
+      : `Re-dispatched — ${ordinal(newAttempt)} visit`;
+    notes.push({
+      id: String(Date.now()),
+      author: req.user?.fullName || 'Dispatch',
+      text: noteText,
+      timestamp: now,
+      created_at: now,
+    });
+
+    // Reset status to pending, clear dispatch timestamps, increment attempt
+    db.prepare(`
+      UPDATE calls_for_service SET
+        status = 'pending',
+        dispatched_at = NULL,
+        enroute_at = NULL,
+        onscene_at = NULL,
+        cleared_at = NULL,
+        closed_at = NULL,
+        pso_attempt_number = ?,
+        notes = ?,
+        updated_at = ?
+      WHERE id = ?
+    `).run(newAttempt, JSON.stringify(notes), now, req.params.id);
+
+    // Activity log
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'call_redispatched', 'call', ?, ?, ?)
+    `).run(req.user!.userId, req.params.id, `Re-dispatched PSO call ${call.call_number} — ${ordinal(newAttempt)} visit${scheduled_note ? `. ${scheduled_note}` : ''}`, req.ip || 'unknown');
+
+    const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    broadcastDispatchUpdate({ action: 'call_updated', call: updated });
+
+    res.json(updated);
+  } catch (error: any) {
+    console.error('Re-dispatch call error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

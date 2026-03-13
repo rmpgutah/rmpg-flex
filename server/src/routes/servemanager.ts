@@ -108,7 +108,7 @@ function requireApiKey(_req: Request, res: Response): boolean {
   return true;
 }
 
-function upsertJobFromApi(job: any): void {
+export function upsertJobFromApi(job: any): void {
   ensureTables();
   const db = getDb();
   const now = localNow();
@@ -168,7 +168,7 @@ function upsertJobFromApi(job: any): void {
   );
 }
 
-function upsertAttemptFromApi(attempt: any): void {
+export function upsertAttemptFromApi(attempt: any): void {
   ensureTables();
   const db = getDb();
   const now = localNow();
@@ -732,6 +732,106 @@ router.put('/jobs/:id/link', requireRole('admin', 'manager'), (req: Request, res
     res.json({ data: updated });
   } catch (error: any) {
     console.error('SM link job error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// ROUTES: Auto-poller config
+// ============================================================
+
+import {
+  startServeManagerPoller,
+  stopServeManagerPoller,
+  restartServeManagerPoller,
+  pollServeManagerNow,
+} from '../utils/serveManagerPoller';
+
+function getPollerConfig(key: string): string | null {
+  try {
+    const db = getDb();
+    const row = db.prepare(
+      "SELECT config_value FROM system_config WHERE config_key = ? AND category = 'integrations' AND is_active = 1 LIMIT 1"
+    ).get(key) as { config_value: string } | undefined;
+    return row?.config_value || null;
+  } catch { return null; }
+}
+
+function setPollerConfig(key: string, value: string): void {
+  const db = getDb();
+  const now = localNow();
+  db.prepare("DELETE FROM system_config WHERE config_key = ? AND category = 'integrations'").run(key);
+  db.prepare(
+    "INSERT INTO system_config (config_key, config_value, category, sort_order, is_active, created_at, updated_at) VALUES (?, ?, 'integrations', 0, 1, ?, ?)"
+  ).run(key, value, now, now);
+}
+
+// GET /poller/status — current poller config
+router.get('/poller/status', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
+  try {
+    res.json({
+      enabled: getPollerConfig('servemanager_poller_enabled') === 'true',
+      poll_interval: parseInt(getPollerConfig('servemanager_poll_interval') || '300', 10),
+      target_client: getPollerConfig('servemanager_target_client') || 'ICU Investigations, LLC',
+      auto_create_calls: getPollerConfig('servemanager_auto_create_calls') !== 'false',
+      last_poll_at: getPollerConfig('servemanager_last_poll_at') || null,
+    });
+  } catch (error: any) {
+    console.error('SM poller status error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /poller/settings — update poller config + restart
+router.put('/poller/settings', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const { enabled, poll_interval, target_client, auto_create_calls } = req.body;
+
+    if (enabled !== undefined) {
+      setPollerConfig('servemanager_poller_enabled', String(!!enabled));
+    }
+    if (poll_interval !== undefined) {
+      const secs = Math.max(60, Math.min(1800, parseInt(poll_interval, 10) || 300));
+      setPollerConfig('servemanager_poll_interval', String(secs));
+    }
+    if (target_client !== undefined) {
+      setPollerConfig('servemanager_target_client', String(target_client));
+    }
+    if (auto_create_calls !== undefined) {
+      setPollerConfig('servemanager_auto_create_calls', String(!!auto_create_calls));
+    }
+
+    // Restart or stop based on enabled state
+    const isEnabled = getPollerConfig('servemanager_poller_enabled') === 'true';
+    if (isEnabled && getApiKey()) {
+      restartServeManagerPoller();
+    } else {
+      stopServeManagerPoller();
+    }
+
+    // Audit log
+    const db = getDb();
+    db.prepare(
+      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).run(req.user!.userId, 'sm_poller_settings_updated', 'system', null,
+      `SM poller: enabled=${isEnabled}, interval=${poll_interval || 'unchanged'}, client=${target_client || 'unchanged'}`,
+      req.ip || 'unknown', localNow());
+
+    res.json({ success: true, message: isEnabled ? 'Poller restarted' : 'Poller stopped' });
+  } catch (error: any) {
+    console.error('SM poller settings error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /poller/poll-now — trigger immediate poll
+router.post('/poller/poll-now', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+  try {
+    if (!requireApiKey(req, res)) return;
+    const result = await pollServeManagerNow();
+    res.json(result);
+  } catch (error: any) {
+    console.error('SM poll-now error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

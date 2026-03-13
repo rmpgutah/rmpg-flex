@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 
 // ============================================================
 // RMPG Flex — Clipboard & Document Title Hooks
@@ -48,6 +48,11 @@ export function useClipboard(resetDelay = 2000) {
     },
     [resetDelay],
   );
+
+  // Clear pending timer on unmount to prevent setState on unmounted component
+  useEffect(() => {
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, []);
 
   return { copy, copied };
 }

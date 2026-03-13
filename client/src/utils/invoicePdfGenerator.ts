@@ -114,7 +114,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
     y = addFieldPair(doc, 'Due Date', data.due_date?.substring(0, 10) || '', lx + (qw + SPACING.MD) * 3, y, qw);
     addFieldPair(doc, 'Payment Terms', data.payment_terms || 'Net 30', lx, y, hfw);
     y = addFieldPair(doc, 'Billing Period', `${data.period_start?.substring(0, 10) || ''} to ${data.period_end?.substring(0, 10) || ''}`, rx, y, hfw);
-    y = closeAutoSection(doc, sec.sectionY, y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ── Client Information Section (auto-sizing) ──────────
@@ -123,7 +123,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
     y = addFieldPair(doc, 'Billing Address', data.billing_address || data.client_address || '', lx, y, ffw);
     addFieldPair(doc, 'Contact', data.contact_name || '', lx, y, hfw);
     y = addFieldPair(doc, 'Email', data.billing_email || data.contact_email || '', rx, y, hfw);
-    y = closeAutoSection(doc, sec.sectionY, y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ── Line Items Table ─────────────────────────────────
@@ -150,7 +150,10 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
         doc.rect(LAYOUT.PAGE_MARGIN + 1, atY - 3, cw - 2, 6, 'F');
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-        doc.setTextColor(...COLOR.TEXT_INVERTED);
+        // Luminance check: use dark text on light backgrounds, white on dark
+        const hdrLum = headerBg[0] * 0.299 + headerBg[1] * 0.587 + headerBg[2] * 0.114;
+        const hdrTextColor: [number, number, number] = hdrLum > 140 ? [30, 30, 35] : [255, 255, 255];
+        doc.setTextColor(...hdrTextColor);
         cols.forEach(c => {
           const isRight = c.label !== 'DESCRIPTION';
           doc.text(c.label, isRight ? c.x + c.w : c.x, atY, { align: isRight ? 'right' : 'left' });
@@ -159,6 +162,13 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
       };
 
       y = drawItemHeaders(y);
+      const tableStartPage = doc.getNumberOfPages();
+      const tableStartY = sec.contentY - 3;
+
+      // Track page segments for outer border drawing
+      const tableSegments: { top: number; bottom: number; page: number }[] = [
+        { top: tableStartY, bottom: y, page: tableStartPage },
+      ];
 
       // Data rows
       doc.setFont('helvetica', 'normal');
@@ -166,9 +176,14 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
       for (let i = 0; i < items.length; i++) {
         // Page break check — re-draw headers on new page
         const prevPage = doc.getNumberOfPages();
+        const prevY = y;
         y = checkPageBreak(doc, y, 8);
         if (doc.getNumberOfPages() > prevPage) {
+          // Close segment on previous page
+          tableSegments[tableSegments.length - 1].bottom = prevY;
           y = drawItemHeaders(y);
+          // Start new segment on new page
+          tableSegments.push({ top: y - 8, bottom: y, page: doc.getNumberOfPages() });
           doc.setFont('helvetica', 'normal');
           doc.setFontSize(FONT.SIZE_FIELD_VALUE);
         }
@@ -204,10 +219,18 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
         doc.line(LAYOUT.PAGE_MARGIN + 1, y - 0.5, pageWidth - LAYOUT.PAGE_MARGIN - 1, y - 0.5);
       }
 
-      // Outer table border
-      doc.setDrawColor(...COLOR.BORDER_OUTER);
-      doc.setLineWidth(BORDER.TABLE_OUTER);
-      doc.rect(LAYOUT.PAGE_MARGIN + 1, sec.contentY - 3, cw - 2, y - sec.contentY + 4);
+      // Update final segment bottom
+      tableSegments[tableSegments.length - 1].bottom = y + 1;
+
+      // Outer table border — draw per page segment
+      const currentPage = doc.getNumberOfPages();
+      for (const seg of tableSegments) {
+        doc.setPage(seg.page);
+        doc.setDrawColor(...COLOR.BORDER_OUTER);
+        doc.setLineWidth(BORDER.TABLE_OUTER);
+        doc.rect(LAYOUT.PAGE_MARGIN + 1, seg.top, cw - 2, seg.bottom - seg.top + 3);
+      }
+      doc.setPage(currentPage);
     } else {
       doc.setFontSize(FONT.SIZE_TABLE_BODY);
       doc.setTextColor(...COLOR.TEXT_TERTIARY);
@@ -218,7 +241,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
 
     doc.setDrawColor(...COLOR.TEXT_PRIMARY);
     y += SPACING.MD;
-    y = closeAutoSection(doc, sec.sectionY, y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ── Totals Section ───────────────────────────────────
@@ -286,7 +309,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
     ]);
     y = addTableWithShading(doc, payHeaders, payRows, y, payColPositions);
 
-    y = closeAutoSection(doc, sec.sectionY, y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ── Notes Section ────────────────────────────────────
@@ -297,7 +320,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
     doc.setFont('helvetica', 'normal');
     y = addWrappedText(doc, data.notes, lx, y, ffw, 9);
     y += SPACING.MD;
-    y = closeAutoSection(doc, sec.sectionY, y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ── Footer on all pages ──────────────────────────────

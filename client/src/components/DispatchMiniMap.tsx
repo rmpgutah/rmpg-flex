@@ -204,10 +204,14 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     }
   }, [loaded, call?.id, call?.latitude, call?.longitude, units]);
 
+  // Track whether we have an active route via ref to avoid double-render from state dependency
+  const hasActiveRouteRef = useRef(false);
+  hasActiveRouteRef.current = !!activeRoute;
+
   // Auto-route: show driving route when exactly 1 assigned unit has GPS
   useEffect(() => {
     if (!loaded || !mapRef.current || !call?.latitude || !call?.longitude) {
-      if (activeRoute) clearRoute();
+      if (hasActiveRouteRef.current) clearRoute();
       return;
     }
 
@@ -229,12 +233,12 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       }
     } else {
       // Multiple or zero assigned units — clear route
-      if (activeRoute) {
+      if (hasActiveRouteRef.current) {
         clearRoute();
         lastAutoRouteRef.current = '';
       }
     }
-  }, [loaded, call?.id, call?.latitude, call?.longitude, call?.assigned_units, units, activeRoute, showRoute, clearRoute, updateOrigin]);
+  }, [loaded, call?.id, call?.latitude, call?.longitude, call?.assigned_units, units, showRoute, clearRoute, updateOrigin]);
 
   // Notify parent of route changes
   useEffect(() => {

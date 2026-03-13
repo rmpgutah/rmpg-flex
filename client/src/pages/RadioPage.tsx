@@ -16,6 +16,8 @@ import {
   PhoneCall,
   PhoneIncoming,
   VolumeX,
+  Play,
+  Square,
 } from 'lucide-react';
 import { useRadio } from '../hooks/useRadio';
 import { usePrivateCall } from '../hooks/usePrivateCall';
@@ -120,6 +122,91 @@ export default function RadioPage() {
   const [historyChannel, setHistoryChannel] = useState('');
   const [historyLoading, setHistoryLoading] = useState(false);
 
+  // ─── Audio Playback ───────────────────────────────────
+  const [playingId, setPlayingId] = useState<string | number | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const blobUrlRef = useRef<string | null>(null);
+
+  const togglePlayback = useCallback(async (entryId: string | number) => {
+    if (playingId === entryId) {
+      // Stop current playback
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = '';
+      }
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = null;
+      }
+      setPlayingId(null);
+      return;
+    }
+    // Stop any existing playback and clean up previous blob
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+    if (blobUrlRef.current) {
+      URL.revokeObjectURL(blobUrlRef.current);
+      blobUrlRef.current = null;
+    }
+
+    try {
+      // Fetch audio with JWT auth header (new Audio(url) can't set headers)
+      const token = localStorage.getItem('rmpg_token');
+      console.log('[Radio Playback] Fetching audio for entry', entryId, '| token:', token ? 'present' : 'MISSING');
+      const res = await fetch(`/api/comms/radio/audio/${entryId}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        console.error('[Radio Playback] HTTP error:', res.status, res.statusText);
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const blob = await res.blob();
+      console.log('[Radio Playback] Got blob:', blob.size, 'bytes, type:', blob.type);
+      const blobUrl = URL.createObjectURL(blob);
+      blobUrlRef.current = blobUrl;
+
+      const audio = new Audio(blobUrl);
+      audio.onended = () => {
+        setPlayingId(null);
+        if (blobUrlRef.current) {
+          URL.revokeObjectURL(blobUrlRef.current);
+          blobUrlRef.current = null;
+        }
+      };
+      audio.onerror = (e) => {
+        console.error('[Radio Playback] Audio element error:', e);
+        setPlayingId(null);
+        if (blobUrlRef.current) {
+          URL.revokeObjectURL(blobUrlRef.current);
+          blobUrlRef.current = null;
+        }
+      };
+      audioRef.current = audio;
+      await audio.play();
+      console.log('[Radio Playback] Playing audio for entry', entryId);
+      setPlayingId(entryId);
+    } catch (err) {
+      console.error('[Radio Playback] Failed:', err);
+      setPlayingId(null);
+    }
+  }, [playingId]);
+
+  // Cleanup audio + blob URLs on unmount
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = '';
+      }
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = null;
+      }
+    };
+  }, []);
+
   const fetchHistory = useCallback(async () => {
     setHistoryLoading(true);
     try {
@@ -141,9 +228,9 @@ export default function RadioPage() {
 
   const exportHistoryCsv = () => {
     if (historyEntries.length === 0) return;
-    const header = 'Timestamp,Channel,User,Duration(s),Transcript\n';
+    const header = 'Timestamp,Channel,User,Duration(s),Transcript,Has Audio\n';
     const rows = historyEntries.map(e =>
-      `"${e.transmitted_at}","${e.channel}","${e.full_name || e.username || ''}","${e.duration_seconds || ''}","${(e.transcript || '').replace(/"/g, '""')}"`
+      `"${e.transmitted_at}","${e.channel}","${e.full_name || e.username || ''}","${e.duration_seconds || ''}","${(e.transcript || '').replace(/"/g, '""')}","${e.audio_file ? 'Yes' : 'No'}"`
     ).join('\n');
     const blob = new Blob([header + rows], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -561,7 +648,7 @@ export default function RadioPage() {
                     : !micSupported
                       ? 'radial-gradient(circle, #2a3e58 0%, #1a2636 70%, #0d1520 100%)'
                       : isTransmitting
-                        ? 'radial-gradient(circle, #d93030 0%, #8a0c0c 70%, #4a0606 100%)'
+                        ? 'radial-gradient(circle, #dc2626 0%, #991b1b 70%, #450a0a 100%)'
                         : otherSpeaking
                           ? 'radial-gradient(circle, #b89030 0%, #6a5010 70%, #3a2a06 100%)'
                           : 'radial-gradient(circle, #2a4a2a 0%, #1a3a1a 70%, #0a2a0a 100%)',
@@ -836,6 +923,11 @@ export default function RadioPage() {
                               </div>
                             )}
                           </div>
+                          {entry.hasAudio && (
+                            <span className="flex-shrink-0 mt-px" title="Audio recorded">
+                              <Volume2 size={10} className="text-green-600" />
+                            </span>
+                          )}
                         </div>
                       ))
                     )
@@ -879,6 +971,19 @@ export default function RadioPage() {
                               </div>
                             )}
                           </div>
+                          {entry.audio_file && (
+                            <button
+                              onClick={() => togglePlayback(entry.id)}
+                              className="flex-shrink-0 mt-px p-0.5 rounded hover:bg-rmpg-800 transition-colors"
+                              title={playingId === entry.id ? 'Stop playback' : 'Play recording'}
+                            >
+                              {playingId === entry.id ? (
+                                <Square size={12} className="text-red-400" />
+                              ) : (
+                                <Play size={12} className="text-green-400" />
+                              )}
+                            </button>
+                          )}
                         </div>
                       ))
                     )

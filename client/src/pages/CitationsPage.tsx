@@ -36,7 +36,9 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import StatuteLookup, { type StatuteResult } from '../components/StatuteLookup';
 import PrintRecordButton from '../components/PrintRecordButton';
 import type { CitationPdfData } from '../utils/recordPdfGenerator';
-import { localToday } from '../utils/dateUtils';
+import { localToday, formatDate } from '../utils/dateUtils';
+import { useFormValidation } from '../hooks/useFormValidation';
+import { isValidDate, isValidPlate, isValidState } from '../utils/validate';
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -180,14 +182,7 @@ const EMPTY_FORM: CitationForm = {
   notes: '',
 };
 
-function formatDate(d: string | null | undefined): string {
-  if (!d) return '--';
-  try {
-    return new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-  } catch {
-    return d;
-  }
-}
+// formatDate imported from ../utils/dateUtils
 
 function formatCurrency(n: number | null | undefined): string {
   if (n == null) return '--';
@@ -221,7 +216,7 @@ export default function CitationsPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const { errors: formErrors, validate: runValidation, clearAllErrors: clearFormErrors } = useFormValidation();
 
   // Person search state
   const [personSearch, setPersonSearch] = useState('');
@@ -244,8 +239,8 @@ export default function CitationsPage() {
       if (searchQuery.trim()) params.set('q', searchQuery.trim());
 
       const res = await apiFetch<{ data: Citation[]; pagination: any }>(`/citations?${params}`);
-      setCitations(res.data);
-      setTotalPages(res.pagination.totalPages || 1);
+      setCitations(res.data || []);
+      setTotalPages(res.pagination?.totalPages || 1);
     } catch (err: any) {
       if (!options?.silent) setError(err.message || 'Failed to load citations');
     } finally {
@@ -350,7 +345,6 @@ export default function CitationsPage() {
 
   const updateField = (key: keyof CitationForm, value: any) => {
     setForm(prev => ({ ...prev, [key]: value }));
-    if (formErrors[key]) setFormErrors(prev => { const n = { ...prev }; delete n[key]; return n; });
   };
 
   const handleNewCitation = () => {
@@ -364,7 +358,7 @@ export default function CitationsPage() {
     setPersonSearch('');
     setSaveError('');
     setSaveSuccess(false);
-    setFormErrors({});
+    clearFormErrors();
     setMode('create');
     setSelectedCitation(null);
   };
@@ -399,28 +393,26 @@ export default function CitationsPage() {
     setPersonSearch(c.person_name || '');
     setSaveError('');
     setSaveSuccess(false);
-    setFormErrors({});
+    clearFormErrors();
     setMode('edit');
   };
 
   const handleCancelForm = () => {
     setMode('list');
-    setFormErrors({});
+    clearFormErrors();
     setSaveError('');
     setSaveSuccess(false);
   };
 
-  const validateForm = (): boolean => {
-    const errs: Record<string, string> = {};
-    if (!form.violation_description.trim()) errs.violation_description = 'Violation description is required';
-    if (!form.violation_date) errs.violation_date = 'Violation date is required';
-    if (!form.person_name.trim()) errs.person_name = 'Subject name is required';
-    setFormErrors(errs);
-    return Object.keys(errs).length === 0;
-  };
-
   const handleSave = async () => {
-    if (!validateForm()) return;
+    const isValid = runValidation(form, {
+      violation_description: { required: true, minLength: 3 },
+      violation_date: { required: true, custom: isValidDate, customMessage: 'Valid date required' },
+      person_name: { required: true },
+      vehicle_plate: { custom: (v) => !v || isValidPlate(v), customMessage: 'Invalid plate format (2–8 alphanumeric)' },
+      vehicle_state: { custom: (v) => !v || isValidState(v), customMessage: 'Invalid US state abbreviation' },
+    });
+    if (!isValid) return;
     setSaving(true);
     setSaveError('');
     setSaveSuccess(false);
@@ -596,7 +588,7 @@ export default function CitationsPage() {
               <div className="flex items-center gap-2 mb-0.5">
                 <span className="text-[11px] font-mono font-bold text-white">{c.citation_number}</span>
                 <span className={`inline-flex items-center px-1.5 py-0 text-[9px] font-bold uppercase border panel-beveled ${STATUS_BADGE[c.status] || ''}`}>
-                  {c.status.replace('_', ' ')}
+                  {c.status.replace(/_/g, ' ')}
                 </span>
                 <span className={`inline-flex items-center px-1.5 py-0 text-[9px] font-bold uppercase border panel-beveled ${TYPE_BADGE[c.type] || ''}`}>
                   {toDisplayLabel(c.type)}
@@ -645,7 +637,7 @@ export default function CitationsPage() {
           <Hash size={14} className="text-rmpg-400" />
           <h2 className="text-sm font-mono font-bold text-white">{c.citation_number}</h2>
           <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-bold uppercase border panel-beveled ${STATUS_BADGE[c.status] || ''}`}>
-            {c.status.replace('_', ' ')}
+            {c.status.replace(/_/g, ' ')}
           </span>
           <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-bold uppercase border panel-beveled ${TYPE_BADGE[c.type] || ''}`}>
             {toDisplayLabel(c.type)}
@@ -877,6 +869,7 @@ export default function CitationsPage() {
                 onClear={clearStatute}
                 categoryFilter={statuteCategoryFilter}
                 placeholder="Search statute code or description..."
+                showStateFilter
               />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

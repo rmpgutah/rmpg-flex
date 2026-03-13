@@ -56,6 +56,7 @@ const bodycamStorage = multer.diskStorage({
 
 const bodycamUpload = multer({
   storage: bodycamStorage,
+  limits: { fileSize: 10 * 1024 * 1024 * 1024 }, // 10 GB max per file
   fileFilter: (_req, file, cb) => {
     if (VIDEO_MIME_TYPES.has(file.mimetype)) {
       cb(null, true);
@@ -65,14 +66,29 @@ const bodycamUpload = multer({
   },
 });
 
+// Chunked upload storage — raw binary chunks saved to temp dir
+const CHUNK_DIR = path.resolve(BODYCAM_DIR, '_chunks');
+if (!fs.existsSync(CHUNK_DIR)) fs.mkdirSync(CHUNK_DIR, { recursive: true });
+const CHUNK_SIZE = 10 * 1024 * 1024; // 10 MB chunk size
+
+const chunkUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, CHUNK_DIR),
+    filename: (_req, _file, cb) => cb(null, `chunk_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`),
+  }),
+  limits: { fileSize: CHUNK_SIZE + 1024 * 1024 }, // chunk + 1MB safety margin
+});
+
 const router = Router();
 
 // Promote query-string token to Authorization header BEFORE authenticateToken runs.
 // <video> elements can't set custom headers, so the VideoPlayer passes the JWT as
 // ?token=... on the streaming URL. This middleware promotes it so authenticateToken
-// can validate it normally. Safe for all personnel routes (same JWT either way).
+// can validate it normally. Scoped to video streaming routes ONLY to limit attack surface.
 router.use((req: Request, res: Response, next: NextFunction) => {
-  if (!req.headers['authorization'] && req.query.token) {
+  const isVideoRoute = /\/(bodycam-videos|body-cameras)\//.test(req.path)
+    && /(stream|download|thumbnail)/.test(req.path);
+  if (!req.headers['authorization'] && req.query.token && isVideoRoute) {
     req.headers['authorization'] = `Bearer ${req.query.token}`;
   }
   next();
@@ -83,7 +99,8 @@ router.use(authenticateToken);
 // ─── USERS / OFFICERS ─────────────────────────────────
 
 // GET /api/personnel - List all personnel
-router.get('/', (req: Request, res: Response) => {
+// Restricted to sworn/dispatch/command roles — contract_manager must NOT see officer PII
+router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { role, status, archived } = req.query;
@@ -206,6 +223,18 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       return;
     }
 
+    // Validate role against allowlist
+    const VALID_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'];
+    if (!VALID_ROLES.includes(role)) {
+      res.status(400).json({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(', ')}` });
+      return;
+    }
+    // Only admins can create admin accounts
+    if (role === 'admin' && req.user!.role !== 'admin') {
+      res.status(403).json({ error: 'Only admins can create admin accounts' });
+      return;
+    }
+
     // Check username uniqueness
     const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
     if (existing) {
@@ -276,6 +305,24 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
     if (!user) {
       res.status(404).json({ error: 'User not found' });
       return;
+    }
+
+    // Validate role against allowlist if provided
+    const VALID_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'];
+    if (req.body.role && !VALID_ROLES.includes(req.body.role)) {
+      res.status(400).json({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(', ')}` });
+      return;
+    }
+    // Only admins can assign the admin role; prevent self-role-modification
+    if (req.body.role) {
+      if (req.body.role === 'admin' && req.user!.role !== 'admin') {
+        res.status(403).json({ error: 'Only admins can assign the admin role' });
+        return;
+      }
+      if (String(req.params.id) === String(req.user!.userId)) {
+        res.status(403).json({ error: 'Cannot change your own role' });
+        return;
+      }
     }
 
     // Build dynamic SET clause — only update fields explicitly provided in the body.
@@ -1207,6 +1254,88 @@ export function mountScheduleRoutes(parentRouter: Router): void {
     }
   });
 
+  // POST /api/personnel/training-requirements - Create requirement
+  parentRouter.post('/personnel/training-requirements', authenticateToken, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const { course_name, category, required_for_roles, renewal_period_months, minimum_hours, is_mandatory, description } = req.body;
+      if (!course_name) { res.status(400).json({ error: 'course_name is required' }); return; }
+
+      const result = db.prepare(`
+        INSERT INTO training_requirements (course_name, category, required_for_roles, renewal_period_months, minimum_hours, is_mandatory, description)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        course_name,
+        category || 'other',
+        JSON.stringify(required_for_roles || []),
+        renewal_period_months || null,
+        minimum_hours || 0,
+        is_mandatory ? 1 : 0,
+        description || null,
+      );
+
+      const requirement = db.prepare('SELECT * FROM training_requirements WHERE id = ?').get(result.lastInsertRowid) as any;
+      res.status(201).json({
+        ...requirement,
+        required_for_roles: typeof requirement.required_for_roles === 'string' ? JSON.parse(requirement.required_for_roles) : requirement.required_for_roles,
+        is_mandatory: !!requirement.is_mandatory,
+      });
+    } catch (error: any) {
+      console.error('Create training requirement error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // PUT /api/personnel/training-requirements/:id - Update requirement
+  parentRouter.put('/personnel/training-requirements/:id', authenticateToken, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const existing = db.prepare('SELECT * FROM training_requirements WHERE id = ?').get(req.params.id) as any;
+      if (!existing) { res.status(404).json({ error: 'Requirement not found' }); return; }
+
+      const fields = ['course_name', 'category', 'required_for_roles', 'renewal_period_months', 'minimum_hours', 'is_mandatory', 'description'];
+      const sets: string[] = [];
+      const vals: any[] = [];
+      for (const f of fields) {
+        if (f in req.body) {
+          sets.push(`${f} = ?`);
+          if (f === 'required_for_roles') vals.push(JSON.stringify(req.body[f] || []));
+          else if (f === 'is_mandatory') vals.push(req.body[f] ? 1 : 0);
+          else vals.push(req.body[f] ?? null);
+        }
+      }
+      if (sets.length > 0) {
+        vals.push(req.params.id);
+        db.prepare(`UPDATE training_requirements SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+      }
+
+      const updated = db.prepare('SELECT * FROM training_requirements WHERE id = ?').get(req.params.id) as any;
+      res.json({
+        ...updated,
+        required_for_roles: typeof updated.required_for_roles === 'string' ? JSON.parse(updated.required_for_roles) : updated.required_for_roles,
+        is_mandatory: !!updated.is_mandatory,
+      });
+    } catch (error: any) {
+      console.error('Update training requirement error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // DELETE /api/personnel/training-requirements/:id - Delete requirement
+  parentRouter.delete('/personnel/training-requirements/:id', authenticateToken, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const existing = db.prepare('SELECT * FROM training_requirements WHERE id = ?').get(req.params.id) as any;
+      if (!existing) { res.status(404).json({ error: 'Requirement not found' }); return; }
+
+      db.prepare('DELETE FROM training_requirements WHERE id = ?').run(req.params.id);
+      res.json({ message: 'Requirement deleted' });
+    } catch (error: any) {
+      console.error('Delete training requirement error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   // GET /api/personnel/training/:officerId - Officer-specific training
   parentRouter.get('/personnel/training/:officerId', authenticateToken, (req: Request, res: Response) => {
     try {
@@ -2002,7 +2131,204 @@ export function mountScheduleRoutes(parentRouter: Router): void {
     }
   });
 
-  // POST /api/personnel/bodycam-videos - Upload video
+  // ────────────────────────────────────────────────────────────
+  // Chunked Upload API — for reliable large file uploads
+  // ────────────────────────────────────────────────────────────
+
+  // POST /api/personnel/bodycam-videos/upload-init — Start a chunked upload session
+  parentRouter.post('/personnel/bodycam-videos/upload-init', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
+    try {
+      const { fileName, fileSize, totalChunks, mimeType } = req.body;
+      if (!fileName || !fileSize || !totalChunks) {
+        res.status(400).json({ error: 'fileName, fileSize, and totalChunks are required' });
+        return;
+      }
+      const uploadId = crypto.randomUUID();
+      const sessionDir = path.join(CHUNK_DIR, uploadId);
+      fs.mkdirSync(sessionDir, { recursive: true });
+
+      // Write session metadata
+      const meta = { uploadId, fileName, fileSize, totalChunks, mimeType: mimeType || 'video/mp4', receivedChunks: 0, createdAt: Date.now() };
+      fs.writeFileSync(path.join(sessionDir, '_meta.json'), JSON.stringify(meta));
+
+      console.log(`[Bodycam] Chunked upload initialized: ${uploadId}, file=${fileName}, size=${fileSize}, chunks=${totalChunks}`);
+      res.json({ uploadId, chunkSize: CHUNK_SIZE });
+    } catch (error: any) {
+      console.error('Upload init error:', error);
+      res.status(500).json({ error: 'Failed to initialize upload' });
+    }
+  });
+
+  // POST /api/personnel/bodycam-videos/upload-chunk — Upload a single chunk
+  parentRouter.post('/personnel/bodycam-videos/upload-chunk', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
+    req.setTimeout(120000); // 2 min per chunk
+    res.setTimeout(120000);
+
+    chunkUpload.single('chunk')(req, res, (multerErr: any) => {
+      if (multerErr) {
+        console.error('Chunk upload multer error:', multerErr?.message);
+        res.status(400).json({ error: multerErr.message || 'Chunk upload failed' });
+        return;
+      }
+
+      try {
+        const { uploadId, chunkIndex } = req.body;
+        if (!uploadId || chunkIndex == null || !req.file) {
+          if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+          res.status(400).json({ error: 'uploadId, chunkIndex, and chunk file are required' });
+          return;
+        }
+
+        const sessionDir = path.join(CHUNK_DIR, uploadId);
+        const metaPath = path.join(sessionDir, '_meta.json');
+        if (!fs.existsSync(metaPath)) {
+          if (req.file.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+          res.status(404).json({ error: 'Upload session not found or expired' });
+          return;
+        }
+
+        // Move chunk file into session directory
+        const idx = parseInt(String(chunkIndex), 10);
+        const chunkDest = path.join(sessionDir, `chunk_${String(idx).padStart(6, '0')}`);
+        fs.renameSync(req.file.path, chunkDest);
+
+        // Update meta
+        const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+        meta.receivedChunks = (meta.receivedChunks || 0) + 1;
+        fs.writeFileSync(metaPath, JSON.stringify(meta));
+
+        res.json({ success: true, chunkIndex: idx, received: meta.receivedChunks, total: meta.totalChunks });
+      } catch (error: any) {
+        console.error('Chunk upload error:', error);
+        if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        res.status(500).json({ error: 'Failed to process chunk' });
+      }
+    });
+  });
+
+  // POST /api/personnel/bodycam-videos/upload-complete — Finalize chunked upload
+  parentRouter.post('/personnel/bodycam-videos/upload-complete', authenticateToken, requireRole('admin'), async (req: Request, res: Response) => {
+    req.setTimeout(600000); // 10 min for reassembly
+    res.setTimeout(600000);
+
+    try {
+      const db = getDb();
+      const { uploadId, camera_id, officer_id, title, duration_seconds, recorded_at, case_number, classification, notes } = req.body;
+
+      if (!uploadId || !camera_id || !officer_id || !title) {
+        res.status(400).json({ error: 'uploadId, camera_id, officer_id, and title are required' });
+        return;
+      }
+
+      const sessionDir = path.join(CHUNK_DIR, uploadId);
+      const metaPath = path.join(sessionDir, '_meta.json');
+      if (!fs.existsSync(metaPath)) {
+        res.status(404).json({ error: 'Upload session not found or expired' });
+        return;
+      }
+
+      const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+      const totalChunks = parseInt(String(meta.totalChunks), 10);
+
+      // Verify all chunks are present
+      for (let i = 0; i < totalChunks; i++) {
+        const chunkPath = path.join(sessionDir, `chunk_${String(i).padStart(6, '0')}`);
+        if (!fs.existsSync(chunkPath)) {
+          res.status(400).json({ error: `Missing chunk ${i} of ${totalChunks}` });
+          return;
+        }
+      }
+
+      // Reassemble file
+      const now = new Date();
+      const destDir = path.join(BODYCAM_DIR, `${now.getFullYear()}`, String(now.getMonth() + 1).padStart(2, '0'));
+      if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+
+      const ext = path.extname(meta.fileName).toLowerCase() || '.mp4';
+      const finalFileName = `${crypto.randomUUID()}${ext}`;
+      const finalPath = path.join(destDir, finalFileName);
+
+      console.log(`[Bodycam] Reassembling ${totalChunks} chunks → ${finalPath}`);
+      const writeStream = fs.createWriteStream(finalPath);
+      for (let i = 0; i < totalChunks; i++) {
+        const chunkPath = path.join(sessionDir, `chunk_${String(i).padStart(6, '0')}`);
+        const chunkData = fs.readFileSync(chunkPath);
+        writeStream.write(chunkData);
+      }
+      await new Promise<void>((resolve, reject) => {
+        writeStream.on('finish', resolve);
+        writeStream.on('error', reject);
+        writeStream.end();
+      });
+
+      // Verify final file
+      const diskStat = fs.statSync(finalPath);
+      const verifiedSize = diskStat.size;
+      console.log(`[Bodycam] Reassembly complete: ${verifiedSize} bytes`);
+
+      const relativePath = path.relative(BODYCAM_DIR, finalPath);
+      const user = (req as any).user;
+
+      const result = db.prepare(`
+        INSERT INTO bodycam_videos (camera_id, officer_id, title, file_path, file_size, duration_seconds, mime_type, recorded_at, case_number, classification, notes, uploaded_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        camera_id, officer_id, title, relativePath, verifiedSize,
+        duration_seconds || null, meta.mimeType || 'video/mp4',
+        recorded_at || localNow(), case_number || null,
+        classification || 'routine', notes || null, String(user?.userId || 'system')
+      );
+
+      const videoId = result.lastInsertRowid;
+
+      // Clean up chunk session
+      try {
+        fs.rmSync(sessionDir, { recursive: true, force: true });
+      } catch { /* best effort */ }
+
+      // Fire-and-forget: extract actual duration with ffprobe
+      extractVideoDuration(finalPath).then((probedDuration) => {
+        if (probedDuration != null) {
+          try {
+            const dbInner = getDb();
+            dbInner.prepare('UPDATE bodycam_videos SET duration_seconds = ?, updated_at = ? WHERE id = ?')
+              .run(probedDuration, localNow(), videoId);
+          } catch (e: any) {
+            console.warn('ffprobe duration update failed:', e?.message);
+          }
+        }
+      }).catch(() => {});
+
+      const video = db.prepare(`
+        SELECT v.*, u.full_name as officer_name, c.camera_id as camera_serial
+        FROM bodycam_videos v
+        LEFT JOIN users u ON v.officer_id = u.id
+        LEFT JOIN body_cameras c ON v.camera_id = c.id
+        WHERE v.id = ?
+      `).get(videoId);
+
+      console.log(`[Bodycam] Chunked upload complete: id=${videoId}, title=${title}, size=${verifiedSize}`);
+      res.status(201).json(video);
+    } catch (error: any) {
+      console.error('Upload complete error:', error?.message, error?.stack);
+      res.status(500).json({ error: `Upload finalization failed: ${error?.message || 'Internal server error'}` });
+    }
+  });
+
+  // DELETE /api/personnel/bodycam-videos/upload-abort/:uploadId — Cancel a chunked upload
+  parentRouter.delete('/personnel/bodycam-videos/upload-abort/:uploadId', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
+    try {
+      const sessionDir = path.join(CHUNK_DIR, req.params.uploadId as string);
+      if (fs.existsSync(sessionDir)) {
+        fs.rmSync(sessionDir, { recursive: true, force: true });
+      }
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to abort upload' });
+    }
+  });
+
+  // POST /api/personnel/bodycam-videos - Upload video (legacy single-file upload)
   parentRouter.post('/personnel/bodycam-videos', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
     // Increase timeout for large video uploads (10 minutes)
     req.setTimeout(600000);

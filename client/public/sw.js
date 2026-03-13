@@ -8,8 +8,8 @@
 //      area so maps work on vehicle WiFi dead zones.
 // ============================================================
 
-const CACHE_NAME = 'rmpg-flex-v45';
-const TILE_CACHE_NAME = 'rmpg-flex-tiles-v1';
+const CACHE_NAME = 'rmpg-flex-v63';
+const TILE_CACHE_NAME = 'rmpg-flex-tiles-v2';
 const STATIC_ASSETS = [
   '/',
   '/manifest.json',
@@ -60,6 +60,15 @@ self.addEventListener('activate', (event) => {
 // If the user revisits, already-cached tiles are skipped.
 async function precacheTiles() {
   try {
+    // Check storage quota — skip tile caching if usage exceeds 80%
+    if (navigator.storage && navigator.storage.estimate) {
+      const estimate = await navigator.storage.estimate();
+      if (estimate.usage && estimate.quota && estimate.usage / estimate.quota > 0.8) {
+        console.log('[SW] Storage quota >80% — skipping tile pre-cache');
+        return;
+      }
+    }
+
     const resp = await fetch('/tiles/manifest.json');
     if (!resp.ok) return;
     const tilePaths = await resp.json();
@@ -140,9 +149,17 @@ self.addEventListener('fetch', (event) => {
           // Not in tile cache — try main cache, then network
           return caches.match(event.request).then((mainCached) => {
             if (mainCached) return mainCached;
-            return fetch(event.request).then((response) => {
+            return fetch(event.request).then(async (response) => {
               if (response.ok) {
-                tileCache.put(event.request, response.clone());
+                // Only cache if we have storage headroom
+                let canCache = true;
+                if (navigator.storage && navigator.storage.estimate) {
+                  try {
+                    const est = await navigator.storage.estimate();
+                    if (est.usage && est.quota && est.usage / est.quota > 0.8) canCache = false;
+                  } catch { /* proceed with caching */ }
+                }
+                if (canCache) tileCache.put(event.request, response.clone());
               }
               return response;
             }).catch(() => {
@@ -233,5 +250,10 @@ self.addEventListener('message', (event) => {
   // Allow manual trigger of tile pre-caching
   if (event.data && event.data.type === 'PRECACHE_TILES') {
     precacheTiles();
+  }
+  // Clean unregister — clear all caches and unregister SW (troubleshooting)
+  if (event.data && event.data.type === 'UNREGISTER') {
+    caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k))));
+    self.registration.unregister();
   }
 });

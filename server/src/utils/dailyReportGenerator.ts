@@ -5,7 +5,7 @@
 // Saves to server/data/reports/ with date-based naming.
 // ============================================================
 
-import jsPDF from 'jspdf';
+import { createRequire } from 'module';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -13,8 +13,13 @@ import { getDb } from '../models/database';
 import { identifyBeat } from './geofence';
 import { reverseGeocodeDetailed } from './geocode';
 
+// Use createRequire for jsPDF — tsx ESM interop can resolve the named
+// export incorrectly under long-running processes (not-a-constructor bug).
+// CJS require('jspdf').jsPDF always returns the constructor reliably.
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const __require = createRequire(import.meta.url);
+const { jsPDF } = __require('jspdf');
 
 // ── Report storage directory ────────────────────────────────
 

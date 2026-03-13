@@ -1,8 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
 import { broadcast } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
+import { createNotificationForRoles } from './notifications';
 
 const router = Router();
 router.use(authenticateToken);
@@ -45,8 +46,8 @@ router.get('/', (req: Request, res: Response) => {
       where += ' AND t.archived_at IS NULL';
     }
 
-    const pageNum = parseInt(page as string, 10);
-    const perPage = parseInt(per_page as string, 10);
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 25));
     const offset = (pageNum - 1) * perPage;
 
     const countRow = db.prepare(`SELECT COUNT(*) as total FROM trespass_orders t ${where}`).get(...params) as any;
@@ -68,7 +69,7 @@ router.get('/', (req: Request, res: Response) => {
       pagination: { page: pageNum, per_page: perPage, total: countRow.total, totalPages: Math.ceil(countRow.total / perPage) },
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -102,7 +103,7 @@ router.get('/check', (req: Request, res: Response) => {
 
     res.json({ orders: rows, count: rows.length });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -125,12 +126,12 @@ router.get('/:id', (req: Request, res: Response) => {
     if (!row) return res.status(404).json({ error: 'Trespass order not found' });
     res.json(row);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // POST / — Create new trespass order
-router.post('/', (req: Request, res: Response) => {
+router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -173,20 +174,33 @@ router.post('/', (req: Request, res: Response) => {
       order_type, reason, conditions,
       duration_days || null, effective_date || now, exp,
       originating_call_id || null, originating_incident_id || null,
-      user.id, user.full_name, authorized_by, notes,
+      user.userId, user.fullName, authorized_by, notes,
       now, now
     );
 
-    const created = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(result.lastInsertRowid);
-    broadcast('alerts', 'trespass_order_created', created);
+    const created = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(result.lastInsertRowid) as any;
+    // Broadcast minimal payload — no subject PII over WebSocket
+    broadcast('alerts', 'trespass_order_created', {
+      id: created.id, order_number: created.order_number, property_name: created.property_name,
+      order_type: created.order_type, status: created.status,
+    });
+
+    // Notify supervisors of new trespass order
+    createNotificationForRoles(
+      ['admin', 'manager', 'supervisor'],
+      'trespass', `Trespass Order: ${created.order_number}`,
+      `${created.order_type} — ${created.property_name || 'No property'}`,
+      'trespass_order', created.id, 'normal', 'trespass.created', req.user!.userId,
+    );
+
     res.status(201).json(created);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // PUT /:id — Update order
-router.put('/:id', (req: Request, res: Response) => {
+router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -213,55 +227,68 @@ router.put('/:id', (req: Request, res: Response) => {
     params.push(req.params.id);
     db.prepare(`UPDATE trespass_orders SET ${setClauses.join(', ')} WHERE id = ?`).run(...params);
 
-    const updated = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(req.params.id);
-    broadcast('alerts', 'trespass_order_updated', updated);
+    const updated = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(req.params.id) as any;
+    // Broadcast minimal payload — no subject PII over WebSocket
+    broadcast('alerts', 'trespass_order_updated', {
+      id: updated.id, order_number: updated.order_number, property_name: updated.property_name,
+      order_type: updated.order_type, status: updated.status,
+    });
     res.json(updated);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // PUT /:id/serve — Mark order as served
-router.put('/:id/serve', (req: Request, res: Response) => {
+router.put('/:id/serve', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
     const now = localNow();
     db.prepare(`UPDATE trespass_orders SET status = 'served', served_at = ?, served_by = ?, updated_at = ? WHERE id = ?`)
-      .run(now, user.id, now, req.params.id);
-    const updated = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(req.params.id);
-    broadcast('alerts', 'trespass_order_served', updated);
+      .run(now, user.userId, now, req.params.id);
+    const updated = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(req.params.id) as any;
+    broadcast('alerts', 'trespass_order_served', {
+      id: updated.id, order_number: updated.order_number, property_name: updated.property_name,
+      order_type: updated.order_type, status: updated.status,
+    });
     res.json(updated);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // PUT /:id/lift — Lift order
-router.put('/:id/lift', (req: Request, res: Response) => {
+router.put('/:id/lift', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
     db.prepare(`UPDATE trespass_orders SET status = 'lifted', updated_at = ? WHERE id = ?`).run(now, req.params.id);
-    const updated = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(req.params.id);
-    broadcast('alerts', 'trespass_order_lifted', updated);
+    const updated = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(req.params.id) as any;
+    broadcast('alerts', 'trespass_order_lifted', {
+      id: updated.id, order_number: updated.order_number, property_name: updated.property_name,
+      order_type: updated.order_type, status: updated.status,
+    });
     res.json(updated);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // PUT /:id/violate — Record violation
-router.put('/:id/violate', (req: Request, res: Response) => {
+router.put('/:id/violate', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
     db.prepare(`UPDATE trespass_orders SET status = 'violated', updated_at = ? WHERE id = ?`).run(now, req.params.id);
-    const updated = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(req.params.id);
-    broadcast('alerts', 'trespass_order_violated', updated);
+    const updated = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(req.params.id) as any;
+    broadcast('alerts', 'trespass_order_violated', {
+      id: updated.id, order_number: updated.order_number, property_name: updated.property_name,
+      order_type: updated.order_type, status: updated.status,
+    });
     res.json(updated);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
