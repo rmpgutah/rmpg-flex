@@ -1537,7 +1537,7 @@ export default function DispatchPage() {
     active: calls.filter((c) => ['dispatched', 'enroute', 'onscene', 'on_hold'].includes(c.status)).length,
     cleared: calls.filter((c) => ['cleared', 'closed', 'cancelled'].includes(c.status)).length,
     archived: archivedCalls.length,
-    serve: calls.filter((c) => PSO_INCIDENT_TYPES.includes(c.incident_type) && !['cleared', 'closed', 'cancelled'].includes(c.status)).length,
+    serve: calls.filter((c) => PSO_INCIDENT_TYPES.includes(c.incident_type)).length,
   }), [calls, archivedCalls]);
 
   if (isLoading) {
@@ -1747,6 +1747,79 @@ export default function DispatchPage() {
                         </div>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {/* PSO Details + Schedule Return Visit (mobile) */}
+                {selectedCall.incident_type === 'pso_client_request' && (
+                  <div className="panel-inset p-3">
+                    <div className="field-label mb-2 flex items-center gap-2">
+                      PSO Details
+                      {selectedCall.pso_attempt_number && selectedCall.pso_attempt_number > 1 && (
+                        <span className="px-1.5 py-0.5 text-[9px] font-bold rounded" style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24' }}>
+                          VISIT #{selectedCall.pso_attempt_number}
+                        </span>
+                      )}
+                    </div>
+                    <div className="space-y-1 text-xs text-rmpg-200">
+                      {selectedCall.pso_service_type && <div><span className="text-rmpg-400">Service:</span> {selectedCall.pso_service_type.replace(/_/g, ' ')}</div>}
+                      {selectedCall.pso_requestor_name && <div><span className="text-rmpg-400">Requestor:</span> {selectedCall.pso_requestor_name}</div>}
+                      {selectedCall.pso_requestor_phone && <div><span className="text-rmpg-400">Phone:</span> {selectedCall.pso_requestor_phone}</div>}
+                      {selectedCall.pso_billing_code && <div><span className="text-rmpg-400">Billing:</span> {selectedCall.pso_billing_code}</div>}
+                      {selectedCall.pso_authorization && <div><span className="text-rmpg-400">Auth:</span> {selectedCall.pso_authorization}</div>}
+                      {selectedCall.disposition && <div><span className="text-rmpg-400">Disposition:</span> {selectedCall.disposition}</div>}
+                    </div>
+
+                    {/* Visit History (mobile) */}
+                    {selectedCall.visit_history && selectedCall.visit_history.length > 0 && (
+                      <div className="mt-3 pt-2 border-t border-rmpg-600">
+                        <div className="field-label mb-1.5">Visit History</div>
+                        <div className="space-y-1.5">
+                          {selectedCall.visit_history.map((visit) => (
+                            <div key={visit.id} className="bg-rmpg-800/60 border border-rmpg-600/50 rounded px-2 py-1.5 text-[10px]">
+                              <div className="flex items-center gap-2 mb-0.5">
+                                <span className="font-bold text-amber-300">VISIT #{visit.visit_number}</span>
+                                <span className="text-rmpg-300">{(visit.status || '').toUpperCase()}</span>
+                              </div>
+                              <div className="text-rmpg-400 space-y-0.5">
+                                {visit.dispatched_at && <div>Dispatched: {formatTime(visit.dispatched_at)}</div>}
+                                {visit.onscene_at && <div>On Scene: {formatTime(visit.onscene_at)}</div>}
+                                {visit.cleared_at && <div>Cleared: {formatTime(visit.cleared_at)}</div>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Schedule Return Visit button (mobile) */}
+                    {['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
+                      <button
+                        className="w-full mt-3 py-2.5 px-4 text-sm font-semibold rounded"
+                        style={{ background: '#d4a01730', border: '1px solid #d4a01760', color: '#d4a017' }}
+                        onClick={async () => {
+                          const attempt = (selectedCall.pso_attempt_number || 1) + 1;
+                          const ordinal = attempt === 2 ? '2nd' : attempt === 3 ? '3rd' : `${attempt}th`;
+                          const note = window.prompt(`Re-dispatch as ${ordinal} visit?\n\nOptional: Add a note (e.g., "Return Thursday AM"):`, '');
+                          if (note === null) return;
+                          try {
+                            const result = await apiFetch(`/dispatch/calls/${selectedCall.id}/redispatch`, {
+                              method: 'POST',
+                              body: JSON.stringify({ scheduled_note: note || undefined }),
+                            });
+                            if (result) {
+                              const mapped = mapDbCall(result);
+                              setSelectedCall(mapped);
+                              setCalls(prev => prev.map(c => c.id === mapped.id ? mapped : c));
+                              addToast(`Re-dispatched — ${ordinal} visit${note ? `: ${note}` : ''}`, 'success');
+                            }
+                          } catch (err: any) { addToast(`Failed to re-dispatch: ${err?.message || 'Unknown error'}`, 'error'); }
+                        }}
+                      >
+                        <RotateCcw style={{ width: 14, height: 14, display: 'inline', marginRight: 6 }} />
+                        Schedule Return Visit
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
