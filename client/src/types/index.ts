@@ -329,6 +329,28 @@ export interface CallForService {
   previous_status?: CallStatus;
   created_by: string;
   updated_at: string;
+  // Visit history (PSO calls)
+  visit_history?: VisitHistory[];
+}
+
+export interface VisitHistory {
+  id: number;
+  call_id: string;
+  visit_number: number;
+  status: string;
+  dispatched_at?: string;
+  enroute_at?: string;
+  onscene_at?: string;
+  cleared_at?: string;
+  closed_at?: string;
+  assigned_units?: string; // JSON string of call signs
+  responding_vehicle_id?: string;
+  starting_mileage?: number;
+  ending_mileage?: number;
+  disposition?: string;
+  note?: string;
+  created_by?: string;
+  created_at: string;
 }
 
 // --- Units ---

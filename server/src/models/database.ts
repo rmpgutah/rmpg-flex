@@ -3026,6 +3026,31 @@ function migrateSchema(): void {
   // ── MILEAGE TRACKING — responding vehicle on calls ─────────
   addCol('calls_for_service', 'responding_vehicle_id', 'TEXT');
 
+  // ── CALL VISIT HISTORY — snapshot each PSO visit before redispatch ──
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS call_visit_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      call_id TEXT NOT NULL,
+      visit_number INTEGER NOT NULL DEFAULT 1,
+      status TEXT,
+      dispatched_at TEXT,
+      enroute_at TEXT,
+      onscene_at TEXT,
+      cleared_at TEXT,
+      closed_at TEXT,
+      assigned_units TEXT,
+      responding_vehicle_id TEXT,
+      starting_mileage REAL,
+      ending_mileage REAL,
+      disposition TEXT,
+      note TEXT,
+      created_by TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (call_id) REFERENCES calls_for_service(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_visit_history_call ON call_visit_history(call_id);
+  `);
+
   console.log('Schema migration completed.');
 }
 

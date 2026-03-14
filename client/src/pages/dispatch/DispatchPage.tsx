@@ -3049,6 +3049,67 @@ export default function DispatchPage() {
                   </div>
                 )}
 
+                {/* ── VISIT HISTORY TIMELINE — PSO calls, Info tab ─── */}
+                {detailTab === 'info' && !isEditing && selectedCall.incident_type === 'pso_client_request' && selectedCall.visit_history && selectedCall.visit_history.length > 0 && (
+                  <div className="border-t border-rmpg-600 pt-3 mb-3">
+                    <label className="field-label !flex items-center gap-1.5 mb-2">
+                      <Clock className="w-3 h-3" /> Visit History
+                      <span className="ml-1 px-1.5 py-0.5 text-[8px] font-bold rounded" style={{ background: '#3b82f620', border: '1px solid #3b82f640', color: '#60a5fa' }}>
+                        {selectedCall.visit_history.length} PRIOR {selectedCall.visit_history.length === 1 ? 'VISIT' : 'VISITS'}
+                      </span>
+                    </label>
+                    <div className="space-y-1.5">
+                      {selectedCall.visit_history.map((visit) => {
+                        let unitsList: string[] = [];
+                        try { unitsList = JSON.parse(visit.assigned_units || '[]'); } catch { /* ignore */ }
+                        const totalMiles = (visit.starting_mileage != null && visit.ending_mileage != null)
+                          ? (visit.ending_mileage - visit.starting_mileage).toFixed(1)
+                          : null;
+                        return (
+                          <div key={visit.id} className="bg-rmpg-800/60 border border-rmpg-600/50 rounded px-2.5 py-1.5">
+                            <div className="flex items-center justify-between mb-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[9px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1 py-0">
+                                  VISIT #{visit.visit_number}
+                                </span>
+                                <span className={`text-[8px] font-bold px-1 py-0 rounded ${
+                                  visit.status === 'cleared' ? 'bg-green-900/40 border border-green-700/50 text-green-400'
+                                  : visit.status === 'closed' ? 'bg-blue-900/40 border border-blue-700/50 text-blue-400'
+                                  : visit.status === 'cancelled' ? 'bg-red-900/40 border border-red-700/50 text-red-400'
+                                  : 'bg-rmpg-700 border border-rmpg-500 text-rmpg-300'
+                                }`}>
+                                  {(visit.status || '').toUpperCase()}
+                                </span>
+                                {visit.disposition && (
+                                  <span className="text-[9px] text-rmpg-300">{visit.disposition}</span>
+                                )}
+                              </div>
+                              {unitsList.length > 0 && (
+                                <span className="text-[9px] font-mono text-brand-300">{unitsList.join(', ')}</span>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[9px]">
+                              {visit.dispatched_at && <span className="text-rmpg-300"><span className="text-rmpg-500">Dispatched:</span> {formatTime(visit.dispatched_at)}</span>}
+                              {visit.enroute_at && <span className="text-rmpg-300"><span className="text-rmpg-500">En Route:</span> {formatTime(visit.enroute_at)}</span>}
+                              {visit.onscene_at && <span className="text-rmpg-300"><span className="text-rmpg-500">On Scene:</span> {formatTime(visit.onscene_at)}</span>}
+                              {visit.cleared_at && <span className="text-rmpg-300"><span className="text-rmpg-500">Cleared:</span> {formatTime(visit.cleared_at)}</span>}
+                              {visit.closed_at && <span className="text-rmpg-300"><span className="text-rmpg-500">Closed:</span> {formatTime(visit.closed_at)}</span>}
+                            </div>
+                            {(visit.responding_vehicle_id || totalMiles) && (
+                              <div className="flex gap-x-4 text-[9px] mt-0.5">
+                                {visit.responding_vehicle_id && <span className="text-rmpg-300"><span className="text-rmpg-500">Vehicle:</span> {visit.responding_vehicle_id}</span>}
+                                {visit.starting_mileage != null && <span className="text-rmpg-300"><span className="text-rmpg-500">Start Mi:</span> {visit.starting_mileage.toLocaleString()}</span>}
+                                {visit.ending_mileage != null && <span className="text-rmpg-300"><span className="text-rmpg-500">End Mi:</span> {visit.ending_mileage.toLocaleString()}</span>}
+                                {totalMiles && <span className="text-green-400 font-bold"><span className="text-rmpg-500">Total:</span> {totalMiles} mi</span>}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* ── QUICK-TOGGLE FLAGS — Flags tab ─── */}
                 {detailTab === 'flags' && !isEditing && (
                   <div className="border-t border-rmpg-600 pt-3 mb-3">

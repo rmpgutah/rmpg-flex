@@ -190,6 +190,24 @@ export interface CallPdfData {
   // Linked vehicles (from call_vehicles join)
   linked_vehicles?: { role: string; plate_number?: string; plate_state?: string; year?: number; color?: string; make?: string; model?: string; vin?: string; owner_first_name?: string; owner_last_name?: string; stolen_status?: string }[];
   attachment_images?: PdfImage[];
+  // Visit history (PSO return visits)
+  visit_history?: {
+    visit_number: number;
+    status: string;
+    dispatched_at?: string;
+    enroute_at?: string;
+    onscene_at?: string;
+    cleared_at?: string;
+    closed_at?: string;
+    assigned_units?: string;
+    responding_vehicle_id?: string;
+    starting_mileage?: number;
+    ending_mileage?: number;
+    disposition?: string;
+    note?: string;
+    created_by?: string;
+    created_at: string;
+  }[];
 }
 
 // ── System History sub-types for Person PDFs ─────────────────
@@ -1049,6 +1067,90 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       { const yL = addFieldPair(doc, 'Served At', data.process_served_at || '', lx, y, hfw);
         const yR = addFieldPair(doc, 'Result', (data.process_service_result || '').replace(/_/g, ' ').toUpperCase(), rx, y, hfw);
         y = Math.max(yL, yR); }
+    }
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Visit History Timeline (PSO calls with return visits)
+  if (data.incident_type === 'pso_client_request' && data.visit_history && data.visit_history.length > 0) {
+    y = checkPageBreak(doc, y, 20 + data.visit_history.length * 12, prio);
+    const sec = openAutoSection(doc, `Visit History — ${data.visit_history.length} Prior ${data.visit_history.length === 1 ? 'Visit' : 'Visits'}`, y);
+    y = sec.contentY;
+
+    for (const visit of data.visit_history) {
+      y = checkPageBreak(doc, y, 14, prio);
+      const ordSuffix = visit.visit_number === 1 ? 'st' : visit.visit_number === 2 ? 'nd' : visit.visit_number === 3 ? 'rd' : 'th';
+
+      // Visit header line
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      doc.text(`Visit #${visit.visit_number}`, lx, y);
+
+      // Status badge
+      const statusText = ` — ${(visit.status || 'unknown').toUpperCase()}`;
+      const visitLabelW = doc.getTextWidth(`Visit #${visit.visit_number}`);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+      doc.setTextColor(...COLOR.TEXT_SECONDARY);
+      doc.text(statusText, lx + visitLabelW, y);
+
+      // Units on the right
+      let unitsList: string[] = [];
+      try { unitsList = JSON.parse(visit.assigned_units || '[]'); } catch { /* ignore */ }
+      if (unitsList.length > 0) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+        doc.setTextColor(...COLOR.TEXT_TERTIARY);
+        const unitsText = `Units: ${unitsList.join(', ')}`;
+        const unitsW = doc.getTextWidth(unitsText);
+        doc.text(unitsText, lx + ffw - unitsW, y);
+      }
+      y += SPACING.SM + 1;
+
+      // Timestamps row
+      const timeFields: string[] = [];
+      if (visit.dispatched_at) timeFields.push(`Disp: ${fmtDateTime(visit.dispatched_at)}`);
+      if (visit.enroute_at) timeFields.push(`EnRt: ${fmtDateTime(visit.enroute_at)}`);
+      if (visit.onscene_at) timeFields.push(`OnSc: ${fmtDateTime(visit.onscene_at)}`);
+      if (visit.cleared_at) timeFields.push(`Clr: ${fmtDateTime(visit.cleared_at)}`);
+      if (visit.closed_at) timeFields.push(`Cls: ${fmtDateTime(visit.closed_at)}`);
+
+      if (timeFields.length > 0) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+        doc.setTextColor(...COLOR.TEXT_TERTIARY);
+        doc.text(timeFields.join('    '), lx + SPACING.MD, y);
+        y += SPACING.SM + 0.5;
+      }
+
+      // Mileage row (if present)
+      const mileageFields: string[] = [];
+      if (visit.responding_vehicle_id) mileageFields.push(`Vehicle: ${visit.responding_vehicle_id}`);
+      if (visit.starting_mileage != null) mileageFields.push(`Start: ${visit.starting_mileage.toLocaleString()} mi`);
+      if (visit.ending_mileage != null) mileageFields.push(`End: ${visit.ending_mileage.toLocaleString()} mi`);
+      if (visit.starting_mileage != null && visit.ending_mileage != null) {
+        mileageFields.push(`Total: ${(visit.ending_mileage - visit.starting_mileage).toFixed(1)} mi`);
+      }
+
+      if (mileageFields.length > 0) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+        doc.setTextColor(...COLOR.TEXT_TERTIARY);
+        doc.text(mileageFields.join('    '), lx + SPACING.MD, y);
+        y += SPACING.SM + 0.5;
+      }
+
+      // Disposition
+      if (visit.disposition) {
+        doc.setFont('helvetica', 'italic');
+        doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+        doc.setTextColor(...COLOR.TEXT_SECONDARY);
+        doc.text(`Disposition: ${visit.disposition}`, lx + SPACING.MD, y);
+        y += SPACING.SM + 0.5;
+      }
+
+      y += SPACING.XS;
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }

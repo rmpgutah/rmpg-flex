@@ -440,11 +440,18 @@ router.get('/calls/:id', (req: Request, res: Response) => {
       ORDER BY al.created_at DESC
     `).all(call.id);
 
+    // Attach visit history for PSO calls
+    let visit_history: any[] = [];
+    if (call.incident_type === 'pso_client_request') {
+      visit_history = db.prepare('SELECT * FROM call_visit_history WHERE call_id = ? ORDER BY visit_number ASC').all(call.id) as any[];
+    }
+
     res.json({
       ...call,
       assigned_units: assignedUnits,
       related_incidents: incidents,
       activity,
+      visit_history,
     });
   } catch (error: any) {
     console.error('Get call error:', error);
@@ -708,6 +715,30 @@ router.post('/calls/:id/redispatch', requireRole('admin', 'manager', 'supervisor
       return n + (s[(v - 20) % 10] || s[v] || s[0]);
     };
 
+    // ── Snapshot current visit into history BEFORE resetting ──
+    // Get assigned unit call signs for the snapshot
+    let assignedCallSigns: string[] = [];
+    try {
+      const unitIds = JSON.parse(call.assigned_unit_ids || '[]');
+      if (unitIds.length) {
+        const units = db.prepare(`SELECT call_sign FROM units WHERE id IN (${unitIds.map(() => '?').join(',')})`).all(...unitIds) as any[];
+        assignedCallSigns = units.map((u: any) => u.call_sign).filter(Boolean);
+      }
+    } catch { /* ignore parse errors */ }
+
+    db.prepare(`
+      INSERT INTO call_visit_history
+        (call_id, visit_number, status, dispatched_at, enroute_at, onscene_at, cleared_at, closed_at,
+         assigned_units, responding_vehicle_id, starting_mileage, ending_mileage, disposition, note, created_by, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      req.params.id, currentAttempt, call.status,
+      call.dispatched_at, call.enroute_at, call.onscene_at, call.cleared_at, call.closed_at,
+      JSON.stringify(assignedCallSigns), call.responding_vehicle_id || null,
+      call.starting_mileage ?? null, call.ending_mileage ?? null,
+      call.disposition || null, null, req.user?.fullName || 'Dispatch', now
+    );
+
     // Parse existing notes to append re-dispatch note
     let notes: any[] = [];
     if (call.notes) {
@@ -725,7 +756,7 @@ router.post('/calls/:id/redispatch', requireRole('admin', 'manager', 'supervisor
       created_at: now,
     });
 
-    // Reset status to pending, clear dispatch timestamps, increment attempt
+    // Reset status to pending, clear dispatch timestamps + mileage, increment attempt
     db.prepare(`
       UPDATE calls_for_service SET
         status = 'pending',
@@ -734,6 +765,9 @@ router.post('/calls/:id/redispatch', requireRole('admin', 'manager', 'supervisor
         onscene_at = NULL,
         cleared_at = NULL,
         closed_at = NULL,
+        starting_mileage = NULL,
+        ending_mileage = NULL,
+        responding_vehicle_id = NULL,
         pso_attempt_number = ?,
         notes = ?,
         updated_at = ?
@@ -747,11 +781,30 @@ router.post('/calls/:id/redispatch', requireRole('admin', 'manager', 'supervisor
     `).run(req.user!.userId, req.params.id, `Re-dispatched PSO call ${call.call_number} — ${ordinal(newAttempt)} visit${scheduled_note ? `. ${scheduled_note}` : ''}`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
-    broadcastDispatchUpdate({ action: 'call_updated', call: updated });
+    // Attach visit history to the response
+    const visitHistory = db.prepare('SELECT * FROM call_visit_history WHERE call_id = ? ORDER BY visit_number ASC').all(req.params.id);
+    broadcastDispatchUpdate({ action: 'call_updated', call: { ...updated, visit_history: visitHistory } });
 
-    res.json(updated);
+    res.json({ ...updated, visit_history: visitHistory });
   } catch (error: any) {
     console.error('Re-dispatch call error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/dispatch/calls/:id/visit-history - Get visit history for a PSO call
+router.get('/calls/:id/visit-history', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT id, incident_type FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) {
+      res.status(404).json({ error: 'Call not found' });
+      return;
+    }
+    const history = db.prepare('SELECT * FROM call_visit_history WHERE call_id = ? ORDER BY visit_number ASC').all(req.params.id);
+    res.json(history);
+  } catch (error: any) {
+    console.error('Visit history error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
