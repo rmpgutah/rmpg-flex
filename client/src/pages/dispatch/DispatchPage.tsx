@@ -2895,7 +2895,7 @@ export default function DispatchPage() {
                           </span>
                         )}
                       </label>
-                      {!isEditing && selectedCall.incident_type === 'pso_client_request' && ['cleared', 'closed', 'cancelled'].includes(selectedCall.status) && (
+                      {!isEditing && selectedCall.incident_type === 'pso_client_request' && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
                         <button
                           className="toolbar-btn px-2 py-0.5 text-[9px] font-semibold"
                           style={{ background: '#d4a01720', borderColor: '#d4a01740', color: '#d4a017' }}

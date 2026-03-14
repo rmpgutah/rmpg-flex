@@ -698,9 +698,9 @@ router.post('/calls/:id/redispatch', requireRole('admin', 'manager', 'supervisor
       return;
     }
 
-    // Only allow re-dispatch on cleared/closed/cancelled calls
-    if (!['cleared', 'closed', 'cancelled'].includes(call.status)) {
-      res.status(400).json({ error: 'Call must be cleared, closed, or cancelled to re-dispatch' });
+    // Only allow re-dispatch on completed/inactive calls
+    if (!['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(call.status)) {
+      res.status(400).json({ error: 'Call must be cleared, closed, cancelled, on hold, or archived to re-dispatch' });
       return;
     }
 
