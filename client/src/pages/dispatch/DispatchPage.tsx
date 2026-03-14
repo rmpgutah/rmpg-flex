@@ -767,7 +767,7 @@ export default function DispatchPage() {
       case 'active': return ['dispatched', 'enroute', 'onscene', 'on_hold'].includes(call.status);
       case 'cleared': return ['cleared', 'closed', 'cancelled'].includes(call.status);
       case 'archived': return true; // archivedCalls already filtered
-      case 'serve': return PSO_INCIDENT_TYPES.includes(call.incident_type) && !['cleared', 'closed', 'cancelled'].includes(call.status);
+      case 'serve': return PSO_INCIDENT_TYPES.includes(call.incident_type); // Show ALL PSO calls (active + cleared/on_hold for return visits)
       default: return true; // `calls` already excludes archived from backend
     }
   }).filter((call) => {
@@ -2915,7 +2915,7 @@ export default function DispatchPage() {
                                 setCalls(prev => prev.map(c => c.id === mapped.id ? mapped : c));
                                 addToast(`Re-dispatched — ${ordinal} visit${note ? `: ${note}` : ''}`, 'success');
                               }
-                            } catch { addToast('Failed to re-dispatch call', 'error'); }
+                            } catch (err: any) { addToast(`Failed to re-dispatch: ${err?.message || 'Unknown error'}`, 'error'); }
                           }}
                           title="Re-dispatch this PSO call with a new visit number"
                         >
