@@ -57,6 +57,7 @@ export interface LeadUpsertData {
   project_type?: string;
   property_size?: string;
   notes?: string;
+  service_interest?: string;
 }
 
 export interface ScrapeResult {
@@ -153,6 +154,16 @@ export function calculateLeadScore(lead: Partial<LeadUpsertData>): number {
   if (lead.contact_phone) score += 5;
   if (lead.contact_name) score += 5;
 
+  // Legal / collections lead boost
+  const si = (lead.service_interest || '').toLowerCase();
+  if (si) score += 15; // Has identified service interest
+
+  const src = (lead.source || '').toLowerCase();
+  if (src === 'utah_bar' || src === 'ut_courts') score += 10;
+
+  const ind = (lead.industry || '').toLowerCase();
+  if (/collection|civil.?lit|debt|creditor|bankrupt|eviction/.test(ind)) score += 10;
+
   return Math.min(score, 100);
 }
 
@@ -170,9 +181,9 @@ export function upsertLead(data: LeadUpsertData): { inserted: boolean; id: numbe
       contact_name, contact_email, contact_phone, contact_title,
       address, city, state, zip, latitude, longitude,
       estimated_value, permit_number, registration_date, license_number,
-      project_type, property_size, notes,
+      project_type, property_size, notes, service_interest,
       pipeline_stage, lead_score, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?)
   `).run(
     data.source,
     data.source_id || null,
@@ -198,6 +209,7 @@ export function upsertLead(data: LeadUpsertData): { inserted: boolean; id: numbe
     data.project_type || null,
     data.property_size || null,
     data.notes || null,
+    data.service_interest || null,
     score,
     now,
     now,

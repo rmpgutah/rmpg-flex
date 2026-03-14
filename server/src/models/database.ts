@@ -2607,6 +2607,8 @@ function migrateSchema(): void {
   }
   // PSO general attempt tracking (re-dispatch counter)
   addCol('calls_for_service', 'pso_attempt_number', 'INTEGER DEFAULT 1');
+  addCol('calls_for_service', 'pso_72hr_notified', 'TEXT'); // '48h' or '72h' or 'resolved' — tracks notification state for 72-hour rule
+  addCol('calls_for_service', 'pso_72hr_deadline', 'TEXT'); // ISO timestamp: exact 72hr deadline from when call was cleared
 
   // Process service specific
   addCol('calls_for_service', 'process_service_type', 'TEXT'); // subpoena, summons, complaint, eviction, restraining_order, other
@@ -2615,6 +2617,72 @@ function migrateSchema(): void {
   addCol('calls_for_service', 'process_attempts', 'INTEGER DEFAULT 0');
   addCol('calls_for_service', 'process_served_at', 'TEXT');
   addCol('calls_for_service', 'process_service_result', 'TEXT'); // served, unable_to_serve, refused, substitute_service
+
+  // ── Section/Zone/Beat columns for record types ──────────
+  // Citations
+  addCol('citations', 'section_id', 'TEXT');
+  addCol('citations', 'zone_id', 'TEXT');
+  addCol('citations', 'beat_id', 'TEXT');
+  addCol('citations', 'zone_beat', 'TEXT');
+  // Trespass Orders
+  addCol('trespass_orders', 'section_id', 'TEXT');
+  addCol('trespass_orders', 'zone_id', 'TEXT');
+  addCol('trespass_orders', 'beat_id', 'TEXT');
+  addCol('trespass_orders', 'zone_beat', 'TEXT');
+  // Field Interviews
+  addCol('field_interviews', 'section_id', 'TEXT');
+  addCol('field_interviews', 'zone_id', 'TEXT');
+  addCol('field_interviews', 'beat_id', 'TEXT');
+  addCol('field_interviews', 'zone_beat', 'TEXT');
+  // Code Enforcement Violations
+  addCol('code_violations', 'section_id', 'TEXT');
+  addCol('code_violations', 'zone_id', 'TEXT');
+  addCol('code_violations', 'beat_id', 'TEXT');
+  addCol('code_violations', 'zone_beat', 'TEXT');
+
+  // ── Data cleanup: normalize 'None' dropdown values to NULL ──
+  // When users select "None" from weapons/agency dropdowns, it should be NULL not the string "None"
+  try {
+    db.prepare(`UPDATE calls_for_service SET weapons_involved = NULL WHERE weapons_involved = 'None'`).run();
+    db.prepare(`UPDATE calls_for_service SET le_agency = NULL WHERE le_agency = 'None'`).run();
+    db.prepare(`UPDATE incidents SET weapons_involved = NULL WHERE weapons_involved = 'None'`).run();
+  } catch { /* columns may not exist yet */ }
+
+  // ── User Preferences (per-user customization) ──
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_preferences (
+      user_id INTEGER PRIMARY KEY,
+      -- Notification preferences
+      notify_dispatch_email INTEGER DEFAULT 1,
+      notify_dispatch_inapp INTEGER DEFAULT 1,
+      notify_bolo_email INTEGER DEFAULT 1,
+      notify_bolo_inapp INTEGER DEFAULT 1,
+      notify_warrant_email INTEGER DEFAULT 0,
+      notify_warrant_inapp INTEGER DEFAULT 1,
+      notify_system_email INTEGER DEFAULT 0,
+      notify_system_inapp INTEGER DEFAULT 1,
+      notify_credential_email INTEGER DEFAULT 1,
+      notify_credential_inapp INTEGER DEFAULT 1,
+      notify_pso_email INTEGER DEFAULT 1,
+      notify_pso_inapp INTEGER DEFAULT 1,
+      -- Quiet hours (HH:MM format, null = no quiet hours)
+      quiet_hours_start TEXT,
+      quiet_hours_end TEXT,
+      -- UI preferences
+      font_scale REAL DEFAULT 1.0,
+      compact_mode INTEGER DEFAULT 0,
+      show_map_labels INTEGER DEFAULT 1,
+      default_map_style TEXT DEFAULT 'dark',
+      -- Dashboard preferences (JSON array of visible widget IDs)
+      dashboard_widgets TEXT,
+      -- Dispatch board preferences
+      dispatch_sort TEXT DEFAULT 'priority',
+      dispatch_show_cleared INTEGER DEFAULT 0,
+      -- Timestamp
+      updated_at TEXT DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
 
   // Radio audio recording — store audio file path alongside transcripts
   addCol('radio_transcripts', 'audio_file', 'TEXT');
@@ -2851,6 +2919,409 @@ function migrateSchema(): void {
     db.exec('CREATE INDEX IF NOT EXISTS idx_warrant_watch_log_event ON warrant_watch_log(event, created_at)');
   } catch { /* already exists */ }
 
+  // ══════════════════════════════════════════════════════════════
+  // MULTI-STATE WARRANT SCRAPER
+  // ══════════════════════════════════════════════════════════════
+
+  // ── Warrant scraper config — one row per warrant source ──
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS warrant_scraper_config (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_key TEXT NOT NULL UNIQUE,
+        display_name TEXT NOT NULL,
+        source_url TEXT,
+        source_type TEXT NOT NULL DEFAULT 'html'
+          CHECK(source_type IN ('html', 'json', 'api', 'arrest_extract', 'none')),
+        state TEXT NOT NULL DEFAULT 'UT',
+        county TEXT,
+        enabled INTEGER NOT NULL DEFAULT 0,
+        scrape_interval_minutes INTEGER NOT NULL DEFAULT 120,
+        last_scrape_at TEXT,
+        consecutive_errors INTEGER NOT NULL DEFAULT 0,
+        circuit_broken INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+      )
+    `);
+  } catch { /* already exists */ }
+
+  // ── Scraped warrants — unified cache for all warrant sources ──
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS scraped_warrants (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_key TEXT NOT NULL,
+        warrant_id TEXT NOT NULL,
+        full_name TEXT NOT NULL,
+        first_name TEXT,
+        last_name TEXT,
+        middle_name TEXT,
+        date_of_birth TEXT,
+        age INTEGER,
+        gender TEXT,
+        race TEXT,
+        city TEXT,
+        state TEXT,
+        warrant_type TEXT,
+        case_number TEXT,
+        court_name TEXT,
+        issue_date TEXT,
+        charge_description TEXT,
+        bail_amount TEXT,
+        offense_level TEXT,
+        photo_url TEXT,
+        detail_url TEXT,
+        status TEXT NOT NULL DEFAULT 'active'
+          CHECK(status IN ('active', 'served', 'cleared', 'expired')),
+        person_id INTEGER,
+        first_seen_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        last_seen_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        cleared_at TEXT,
+        UNIQUE(source_key, warrant_id),
+        FOREIGN KEY (person_id) REFERENCES persons(id)
+      )
+    `);
+  } catch { /* already exists */ }
+
+  // Indexes for scraped warrants
+  try {
+    db.exec('CREATE INDEX IF NOT EXISTS idx_scraped_warrants_source ON scraped_warrants(source_key)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_scraped_warrants_name ON scraped_warrants(last_name, first_name)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_scraped_warrants_status ON scraped_warrants(status)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_scraped_warrants_person ON scraped_warrants(person_id)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_scraped_warrants_state ON scraped_warrants(state)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_warrant_scraper_config_state ON warrant_scraper_config(state)');
+  } catch { /* already exists */ }
+
+  // ── Seed warrant scraper configs ──────────────────────────────
+  try {
+    const insertWarrantConfig = db.prepare(`
+      INSERT OR IGNORE INTO warrant_scraper_config
+        (source_key, display_name, source_url, source_type, state, county, enabled, scrape_interval_minutes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const warrantSources = [
+      // ── Utah (already has warrants.utah.gov live search — this adds scheduled scrape of known persons) ──
+      ['ut_state', 'Utah State Warrants', 'https://warrants.utah.gov/api/v1', 'api', 'UT', null, 1, 60],
+
+      // ── Colorado (surrounding state — enabled by default, hourly scans) ──
+      ['co_el_paso_warrants', 'El Paso County, CO Warrants', 'https://www.epcsheriffsoffice.com/services/warrant-information/', 'html', 'CO', 'co_el_paso', 1, 60],
+      ['co_denver_warrants', 'Denver County, CO Warrants', 'https://www.denvergov.org/Government/Agencies-Departments-Offices/Department-of-Public-Safety/Police', 'html', 'CO', 'co_denver', 1, 60],
+      ['co_mesa_warrants', 'Mesa County, CO Warrants', 'https://sheriff.mesacounty.us/warrants/', 'html', 'CO', 'co_mesa', 1, 60],
+      ['co_pueblo_warrants', 'Pueblo County, CO Warrants', 'https://county.pueblo.org/sheriff/wanted-persons', 'html', 'CO', 'co_pueblo', 1, 60],
+      ['co_larimer_warrants', 'Larimer County, CO Warrants', 'https://www.larimer.org/sheriff/services/warrants', 'html', 'CO', 'co_larimer', 1, 60],
+      ['co_weld_warrants', 'Weld County, CO Warrants', 'https://www.weldcountysheriff.com/warrants', 'html', 'CO', 'co_weld', 1, 60],
+      ['co_arapahoe_warrants', 'Arapahoe County, CO Warrants', 'https://www.arapahoegov.com/1159/Warrants', 'html', 'CO', 'co_arapahoe', 1, 60],
+      ['co_adams_warrants', 'Adams County, CO Warrants', 'https://www.adamscountysheriff.org', 'html', 'CO', 'co_adams', 1, 60],
+      ['co_jefferson_warrants', 'Jefferson County, CO Warrants', 'https://www.jeffco.us/sheriff', 'html', 'CO', 'co_jefferson', 1, 60],
+      ['co_douglas_warrants', 'Douglas County, CO Warrants', 'https://www.dcsheriff.net', 'html', 'CO', 'co_douglas', 1, 60],
+      ['co_boulder_warrants', 'Boulder County, CO Warrants', 'https://www.bouldercounty.gov/sheriff/', 'html', 'CO', 'co_boulder', 1, 60],
+      ['co_garfield_warrants', 'Garfield County, CO Warrants', 'https://www.garcosheriff.com', 'html', 'CO', 'co_garfield', 1, 60],
+
+      // ── Wyoming (surrounding state — enabled by default, hourly scans) ──
+      ['wy_natrona_warrants', 'Natrona County, WY Warrants', 'https://www.natronacounty-wy.gov/sheriff', 'html', 'WY', 'wy_natrona', 1, 60],
+      ['wy_laramie_warrants', 'Laramie County, WY Warrants', 'https://www.laramiecountysheriff.com', 'html', 'WY', 'wy_laramie', 1, 60],
+      ['wy_sweetwater_warrants', 'Sweetwater County, WY Warrants', 'https://www.sweetwatercountywy.gov/sheriff', 'html', 'WY', 'wy_sweetwater', 1, 60],
+      ['wy_fremont_warrants', 'Fremont County, WY Warrants', 'https://www.fremontcountywy.org/sheriff', 'html', 'WY', 'wy_fremont', 1, 60],
+      ['wy_campbell_warrants', 'Campbell County, WY Warrants', 'https://www.ccsd.net', 'html', 'WY', 'wy_campbell', 1, 60],
+
+      // ── Idaho (surrounding state — enabled by default, hourly scans) ──
+      ['id_ada_warrants', 'Ada County, ID Warrants', 'https://www.adasheriff.org/Warrants', 'html', 'ID', 'id_ada', 1, 60],
+      ['id_canyon_warrants', 'Canyon County, ID Warrants', 'https://www.canyoncounty.id.gov/sheriff', 'html', 'ID', 'id_canyon', 1, 60],
+      ['id_bannock_warrants', 'Bannock County, ID Warrants', 'https://www.bannockcounty.us/sheriff/', 'html', 'ID', 'id_bannock', 1, 60],
+      ['id_bonneville_warrants', 'Bonneville County, ID Warrants', 'https://www.co.bonneville.id.us/sheriff', 'html', 'ID', 'id_bonneville', 1, 60],
+      ['id_twin_falls_warrants', 'Twin Falls County, ID Warrants', 'https://www.twinfallscounty.org/sheriff', 'html', 'ID', 'id_twin_falls', 1, 60],
+      ['id_kootenai_warrants', 'Kootenai County, ID Warrants', 'https://www.kcgov.us/sheriff', 'html', 'ID', 'id_kootenai', 1, 60],
+
+      // ── Nevada (surrounding state — enabled by default, hourly scans) ──
+      ['nv_clark_warrants', 'Clark County, NV (LVMPD) Warrants', 'https://www.lvmpd.com/en-us/Pages/WantedSuspects.aspx', 'html', 'NV', 'nv_clark', 1, 60],
+      ['nv_washoe_warrants', 'Washoe County, NV Warrants', 'https://www.washoecounty.gov/sheriff/warrants/', 'html', 'NV', 'nv_washoe', 1, 60],
+
+      // ── Arizona (surrounding state — enabled by default, hourly scans) ──
+      ['az_maricopa_warrants', 'Maricopa County, AZ (MCSO) Warrants', 'https://www.mcso.org/Home/MostWanted', 'html', 'AZ', 'az_maricopa', 1, 60],
+      ['az_pima_warrants', 'Pima County, AZ Warrants', 'https://www.pimasheriff.org/most-wanted', 'html', 'AZ', 'az_pima', 1, 60],
+      ['az_yavapai_warrants', 'Yavapai County, AZ Warrants', 'https://www.yavapai.us/sheriff/wanted', 'html', 'AZ', 'az_yavapai', 1, 60],
+
+      // ── New Mexico (surrounding state — enabled by default, hourly scans) ──
+      ['nm_bernalillo_warrants', 'Bernalillo County, NM Warrants', 'https://www.bernco.gov/sheriff/warrants/', 'html', 'NM', 'nm_bernalillo', 1, 60],
+      ['nm_dona_ana_warrants', 'Dona Ana County, NM Warrants', 'https://www.donaanacounty.org/sheriff', 'html', 'NM', 'nm_dona_ana', 1, 60],
+
+      // ── Federal / Nationwide Sources (critical for officer safety) ──
+      ['fed_fbi_wanted', 'FBI Most Wanted', 'https://www.fbi.gov/wanted', 'html', 'US', null, 1, 60],
+      ['fed_usms_wanted', 'US Marshals Most Wanted', 'https://www.usmarshals.gov/what-we-do/fugitive-operations/most-wanted', 'html', 'US', null, 1, 60],
+      ['fed_ice_wanted', 'ICE Most Wanted', 'https://www.ice.gov/most-wanted', 'html', 'US', null, 1, 60],
+      ['fed_dea_wanted', 'DEA Most Wanted', 'https://www.dea.gov/fugitives', 'html', 'US', null, 1, 60],
+      ['fed_atf_wanted', 'ATF Most Wanted', 'https://www.atf.gov/most-wanted', 'html', 'US', null, 1, 60],
+      ['fed_secret_service_wanted', 'Secret Service Most Wanted', 'https://www.secretservice.gov/investigation/mostwanted', 'html', 'US', null, 1, 60],
+
+      // ══════════════════════════════════════════════════════════
+      //  FULL 50-STATE WARRANT COVERAGE
+      //  Largest county/city law enforcement per state
+      //  All enabled, 2-hour intervals for non-surrounding states
+      // ══════════════════════════════════════════════════════════
+
+      // ── Alabama ──
+      ['al_jefferson_warrants', 'Jefferson County, AL Warrants', 'https://www.jeffcosheriff.net/warrants', 'html', 'AL', 'al_jefferson', 1, 120],
+      ['al_mobile_warrants', 'Mobile County, AL Warrants', 'https://www.mobileso.com/warrants/', 'html', 'AL', 'al_mobile', 1, 120],
+
+      // ── Alaska ──
+      ['ak_anchorage_warrants', 'Anchorage, AK Warrants', 'https://www.muni.org/departments/prior-records/warrants', 'html', 'AK', 'ak_anchorage', 1, 120],
+
+      // ── Arkansas ──
+      ['ar_pulaski_warrants', 'Pulaski County, AR Warrants', 'https://www.pulaskicounty.net/sheriff-warrants/', 'html', 'AR', 'ar_pulaski', 1, 120],
+      ['ar_benton_warrants', 'Benton County, AR Warrants', 'https://www.bentoncountysheriff.org/warrants', 'html', 'AR', 'ar_benton', 1, 120],
+
+      // ── California ──
+      ['ca_los_angeles_warrants', 'Los Angeles County, CA Warrants', 'https://lasd.org/most-wanted/', 'html', 'CA', 'ca_los_angeles', 1, 120],
+      ['ca_san_bernardino_warrants', 'San Bernardino County, CA Warrants', 'https://www.sbcounty.gov/sheriff/warrants/', 'html', 'CA', 'ca_san_bernardino', 1, 120],
+      ['ca_riverside_warrants', 'Riverside County, CA Warrants', 'https://www.riversidesheriff.org/585/Most-Wanted', 'html', 'CA', 'ca_riverside', 1, 120],
+      ['ca_san_diego_warrants', 'San Diego County, CA Warrants', 'https://www.sdsheriff.gov/bureaus/law-enforcement-services-bureau/warrants', 'html', 'CA', 'ca_san_diego', 1, 120],
+      ['ca_sacramento_warrants', 'Sacramento County, CA Warrants', 'https://www.sacsheriff.com/pages/warrants.aspx', 'html', 'CA', 'ca_sacramento', 1, 120],
+      ['ca_fresno_warrants', 'Fresno County, CA Warrants', 'https://www.fresnosheriff.org/warrants.html', 'html', 'CA', 'ca_fresno', 1, 120],
+      ['ca_kern_warrants', 'Kern County, CA Warrants', 'https://www.kernsheriff.org/warrants', 'html', 'CA', 'ca_kern', 1, 120],
+
+      // ── Connecticut ──
+      ['ct_hartford_warrants', 'Hartford, CT Warrants', 'https://www.hartfordct.gov/Government/Departments/Police/Most-Wanted', 'html', 'CT', 'ct_hartford', 1, 120],
+      ['ct_new_haven_warrants', 'New Haven, CT Warrants', 'https://www.newhavenct.gov/police/most-wanted', 'html', 'CT', 'ct_new_haven', 1, 120],
+
+      // ── Delaware ──
+      ['de_new_castle_warrants', 'New Castle County, DE Warrants', 'https://www.nccde.org/130/Most-Wanted', 'html', 'DE', 'de_new_castle', 1, 120],
+
+      // ── Florida ──
+      ['fl_miami_dade_warrants', 'Miami-Dade County, FL Warrants', 'https://www.miamidade.gov/global/police/wanted.page', 'html', 'FL', 'fl_miami_dade', 1, 120],
+      ['fl_broward_warrants', 'Broward County, FL Warrants', 'https://www.sheriff.org/BE/Pages/Wanted-Persons.aspx', 'html', 'FL', 'fl_broward', 1, 120],
+      ['fl_hillsborough_warrants', 'Hillsborough County, FL Warrants', 'https://www.hcso.tampa.fl.us/Community/Most-Wanted', 'html', 'FL', 'fl_hillsborough', 1, 120],
+      ['fl_orange_warrants', 'Orange County, FL Warrants', 'https://www.ocso.com/Crime-Information/Most-Wanted', 'html', 'FL', 'fl_orange', 1, 120],
+      ['fl_duval_warrants', 'Duval County (Jacksonville), FL Warrants', 'https://www.jaxsheriff.org/Divisions/Investigations/Most-Wanted.aspx', 'html', 'FL', 'fl_duval', 1, 120],
+
+      // ── Georgia ──
+      ['ga_fulton_warrants', 'Fulton County, GA Warrants', 'https://www.fultonsheriff.org/warrants', 'html', 'GA', 'ga_fulton', 1, 120],
+      ['ga_dekalb_warrants', 'DeKalb County, GA Warrants', 'https://www.dekalbcountyga.gov/sheriff/warrants', 'html', 'GA', 'ga_dekalb', 1, 120],
+      ['ga_gwinnett_warrants', 'Gwinnett County, GA Warrants', 'https://www.gwinnettcountysheriff.com/warrants', 'html', 'GA', 'ga_gwinnett', 1, 120],
+
+      // ── Hawaii ──
+      ['hi_honolulu_warrants', 'Honolulu, HI Warrants', 'https://www.honolulupd.org/most-wanted/', 'html', 'HI', 'hi_honolulu', 1, 120],
+
+      // ── Illinois ──
+      ['il_cook_warrants', 'Cook County, IL Warrants', 'https://www.cookcountysheriff.org/warrants/', 'html', 'IL', 'il_cook', 1, 120],
+      ['il_dupage_warrants', 'DuPage County, IL Warrants', 'https://www.dupagesheriff.org/warrants', 'html', 'IL', 'il_dupage', 1, 120],
+      ['il_lake_warrants', 'Lake County, IL Warrants', 'https://www.lakecountyil.gov/428/Warrants', 'html', 'IL', 'il_lake', 1, 120],
+
+      // ── Indiana ──
+      ['in_marion_warrants', 'Marion County, IN Warrants', 'https://www.indy.gov/agency/indianapolis-metropolitan-police-department', 'html', 'IN', 'in_marion', 1, 120],
+      ['in_lake_warrants', 'Lake County, IN Warrants', 'https://www.lakecountysheriff.com/warrants/', 'html', 'IN', 'in_lake', 1, 120],
+
+      // ── Iowa ──
+      ['ia_polk_warrants', 'Polk County, IA Warrants', 'https://www.polkcountyiowa.gov/county-sheriff/warrants/', 'html', 'IA', 'ia_polk', 1, 120],
+
+      // ── Kansas ──
+      ['ks_sedgwick_warrants', 'Sedgwick County, KS Warrants', 'https://www.sedgwickcounty.org/sheriff/warrants/', 'html', 'KS', 'ks_sedgwick', 1, 120],
+      ['ks_johnson_warrants', 'Johnson County, KS Warrants', 'https://www.jocosheriff.org/resources/warrants', 'html', 'KS', 'ks_johnson', 1, 120],
+
+      // ── Kentucky ──
+      ['ky_jefferson_warrants', 'Jefferson County, KY Warrants', 'https://www.loumetrowarrants.com', 'html', 'KY', 'ky_jefferson', 1, 120],
+      ['ky_fayette_warrants', 'Fayette County, KY Warrants', 'https://www.lexingtonky.gov/most-wanted', 'html', 'KY', 'ky_fayette', 1, 120],
+
+      // ── Louisiana ──
+      ['la_orleans_warrants', 'Orleans Parish, LA Warrants', 'https://www.nola.gov/nopd/crime-data/most-wanted/', 'html', 'LA', 'la_orleans', 1, 120],
+      ['la_east_baton_rouge_warrants', 'East Baton Rouge, LA Warrants', 'https://www.ebrso.org/warrants', 'html', 'LA', 'la_east_baton_rouge', 1, 120],
+
+      // ── Maine ──
+      ['me_cumberland_warrants', 'Cumberland County, ME Warrants', 'https://www.cumberlandso.org/warrants', 'html', 'ME', 'me_cumberland', 1, 120],
+
+      // ── Maryland ──
+      ['md_baltimore_warrants', 'Baltimore County, MD Warrants', 'https://www.baltimorepolice.org/crime-stats/most-wanted', 'html', 'MD', 'md_baltimore', 1, 120],
+      ['md_prince_georges_warrants', "Prince George's County, MD Warrants", 'https://www.princegeorgescountymd.gov/departments-offices/police/most-wanted', 'html', 'MD', 'md_prince_georges', 1, 120],
+
+      // ── Massachusetts ──
+      ['ma_suffolk_warrants', 'Suffolk County (Boston), MA Warrants', 'https://bpdnews.com/most-wanted', 'html', 'MA', 'ma_suffolk', 1, 120],
+      ['ma_worcester_warrants', 'Worcester County, MA Warrants', 'https://www.worcesterma.gov/police/most-wanted', 'html', 'MA', 'ma_worcester', 1, 120],
+
+      // ── Michigan ──
+      ['mi_wayne_warrants', 'Wayne County, MI Warrants', 'https://www.waynecounty.com/sheriff/warrants.aspx', 'html', 'MI', 'mi_wayne', 1, 120],
+      ['mi_oakland_warrants', 'Oakland County, MI Warrants', 'https://www.oakgov.com/sheriff/warrants', 'html', 'MI', 'mi_oakland', 1, 120],
+      ['mi_kent_warrants', 'Kent County, MI Warrants', 'https://www.accesskent.com/Sheriff/warrants/', 'html', 'MI', 'mi_kent', 1, 120],
+
+      // ── Minnesota ──
+      ['mn_hennepin_warrants', 'Hennepin County, MN Warrants', 'https://www.hennepinsheriff.org/warrants', 'html', 'MN', 'mn_hennepin', 1, 120],
+      ['mn_ramsey_warrants', 'Ramsey County, MN Warrants', 'https://www.ramseycounty.us/residents/public-safety/sheriff/warrants', 'html', 'MN', 'mn_ramsey', 1, 120],
+
+      // ── Mississippi ──
+      ['ms_hinds_warrants', 'Hinds County, MS Warrants', 'https://www.co.hinds.ms.us/pgs/apps/sheriff/warrants.asp', 'html', 'MS', 'ms_hinds', 1, 120],
+
+      // ── Missouri ──
+      ['mo_jackson_warrants', 'Jackson County, MO Warrants', 'https://www.jacksoncountygov.com/1441/Most-Wanted', 'html', 'MO', 'mo_jackson', 1, 120],
+      ['mo_st_louis_warrants', 'St. Louis County, MO Warrants', 'https://www.stlouiscountypolice.com/most-wanted', 'html', 'MO', 'mo_st_louis', 1, 120],
+
+      // ── Montana ──
+      ['mt_yellowstone_warrants', 'Yellowstone County, MT Warrants', 'https://www.co.yellowstone.mt.gov/sheriff/', 'html', 'MT', 'mt_yellowstone', 1, 120],
+      ['mt_missoula_warrants', 'Missoula County, MT Warrants', 'https://www.missoulacounty.us/government/public-safety/sheriff-s-office', 'html', 'MT', 'mt_missoula', 1, 120],
+
+      // ── Nebraska ──
+      ['ne_douglas_warrants', 'Douglas County, NE Warrants', 'https://www.douglascounty-ne.gov/sheriff', 'html', 'NE', 'ne_douglas', 1, 120],
+      ['ne_lancaster_warrants', 'Lancaster County, NE Warrants', 'https://lancaster.ne.gov/sheriff', 'html', 'NE', 'ne_lancaster', 1, 120],
+
+      // ── New Hampshire ──
+      ['nh_hillsborough_warrants', 'Hillsborough County, NH Warrants', 'https://www.goffstownpd.org/most-wanted', 'html', 'NH', 'nh_hillsborough', 1, 120],
+
+      // ── New Jersey ──
+      ['nj_essex_warrants', 'Essex County, NJ Warrants', 'https://www.essexsheriff.com/warrants/', 'html', 'NJ', 'nj_essex', 1, 120],
+      ['nj_hudson_warrants', 'Hudson County, NJ Warrants', 'https://www.hudsoncountysheriff.org/warrants', 'html', 'NJ', 'nj_hudson', 1, 120],
+      ['nj_bergen_warrants', 'Bergen County, NJ Warrants', 'https://www.bcsd.us/warrants', 'html', 'NJ', 'nj_bergen', 1, 120],
+
+      // ── New York ──
+      ['ny_nypd_warrants', 'New York City, NY Warrants', 'https://www.nyc.gov/site/nypd/services/see-something-say-something/most-wanted.page', 'html', 'NY', 'ny_nyc', 1, 120],
+      ['ny_suffolk_warrants', 'Suffolk County, NY Warrants', 'https://www.suffolkcountyny.gov/sheriff/warrants', 'html', 'NY', 'ny_suffolk', 1, 120],
+      ['ny_erie_warrants', 'Erie County, NY Warrants', 'https://www2.erie.gov/sheriff/warrants', 'html', 'NY', 'ny_erie', 1, 120],
+
+      // ── North Carolina ──
+      ['nc_mecklenburg_warrants', 'Mecklenburg County, NC Warrants', 'https://www.mecksheriff.com/warrants/', 'html', 'NC', 'nc_mecklenburg', 1, 120],
+      ['nc_wake_warrants', 'Wake County, NC Warrants', 'https://www.wakegov.com/sheriff/warrants', 'html', 'NC', 'nc_wake', 1, 120],
+      ['nc_guilford_warrants', 'Guilford County, NC Warrants', 'https://www.guilfordcountysheriff.com/warrants', 'html', 'NC', 'nc_guilford', 1, 120],
+
+      // ── North Dakota ──
+      ['nd_cass_warrants', 'Cass County, ND Warrants', 'https://www.casscountynd.gov/departments/sheriff/warrants', 'html', 'ND', 'nd_cass', 1, 120],
+
+      // ── Ohio ──
+      ['oh_cuyahoga_warrants', 'Cuyahoga County, OH Warrants', 'https://sheriff.cuyahogacounty.us/warrants/', 'html', 'OH', 'oh_cuyahoga', 1, 120],
+      ['oh_franklin_warrants', 'Franklin County, OH Warrants', 'https://sheriff.franklincountyohio.gov/warrants', 'html', 'OH', 'oh_franklin', 1, 120],
+      ['oh_hamilton_warrants', 'Hamilton County, OH Warrants', 'https://www.hcso.org/warrants', 'html', 'OH', 'oh_hamilton', 1, 120],
+
+      // ── Oklahoma ──
+      ['ok_oklahoma_warrants', 'Oklahoma County, OK Warrants', 'https://www.oklahomacounty.org/sheriff/warrants', 'html', 'OK', 'ok_oklahoma', 1, 120],
+      ['ok_tulsa_warrants', 'Tulsa County, OK Warrants', 'https://www.tcso.org/warrants/', 'html', 'OK', 'ok_tulsa', 1, 120],
+
+      // ── Oregon ──
+      ['or_multnomah_warrants', 'Multnomah County, OR Warrants', 'https://www.mcso.us/site/warrants.php', 'html', 'OR', 'or_multnomah', 1, 120],
+      ['or_jackson_warrants', 'Jackson County, OR Warrants', 'https://jacksoncounty.org/sheriff/', 'html', 'OR', 'or_jackson', 1, 120],
+      ['or_lane_warrants', 'Lane County, OR Warrants', 'https://www.lanecountyor.gov/government/county-departments-offices-and-representatives/sheriff-s-office/warrants', 'html', 'OR', 'or_lane', 1, 120],
+
+      // ── Pennsylvania ──
+      ['pa_philadelphia_warrants', 'Philadelphia, PA Warrants', 'https://www.phillypolice.com/most-wanted/', 'html', 'PA', 'pa_philadelphia', 1, 120],
+      ['pa_allegheny_warrants', 'Allegheny County, PA Warrants', 'https://www.alleghenycounty.us/sheriff/warrant-list', 'html', 'PA', 'pa_allegheny', 1, 120],
+
+      // ── Rhode Island ──
+      ['ri_providence_warrants', 'Providence, RI Warrants', 'https://www.providenceri.gov/police/most-wanted/', 'html', 'RI', 'ri_providence', 1, 120],
+
+      // ── South Carolina ──
+      ['sc_richland_warrants', 'Richland County, SC Warrants', 'https://www.rcsd.net/warrants/', 'html', 'SC', 'sc_richland', 1, 120],
+      ['sc_greenville_warrants', 'Greenville County, SC Warrants', 'https://www.gcso.org/warrants/', 'html', 'SC', 'sc_greenville', 1, 120],
+
+      // ── South Dakota ──
+      ['sd_minnehaha_warrants', 'Minnehaha County, SD Warrants', 'https://www.minnehahacounty.org/dept/sheriff/warrants.aspx', 'html', 'SD', 'sd_minnehaha', 1, 120],
+
+      // ── Tennessee ──
+      ['tn_shelby_warrants', 'Shelby County, TN Warrants', 'https://www.shelby-sheriff.org/warrants/', 'html', 'TN', 'tn_shelby', 1, 120],
+      ['tn_davidson_warrants', 'Davidson County, TN Warrants', 'https://www.nashville.gov/departments/police/investigative-services/most-wanted', 'html', 'TN', 'tn_davidson', 1, 120],
+      ['tn_knox_warrants', 'Knox County, TN Warrants', 'https://www.knoxsheriff.org/warrants/', 'html', 'TN', 'tn_knox', 1, 120],
+
+      // ── Texas ──
+      ['tx_harris_warrants', 'Harris County, TX Warrants', 'https://www.harriscountyso.org/Warrants/WarrantSearch', 'html', 'TX', 'tx_harris', 1, 120],
+      ['tx_dallas_warrants', 'Dallas County, TX Warrants', 'https://www.dallascounty.org/departments/sheriff/warrants.php', 'html', 'TX', 'tx_dallas', 1, 120],
+      ['tx_bexar_warrants', 'Bexar County, TX Warrants', 'https://www.bexar.org/3044/Warrants', 'html', 'TX', 'tx_bexar', 1, 120],
+      ['tx_tarrant_warrants', 'Tarrant County, TX Warrants', 'https://www.tarrantcounty.com/en/criminal-district-attorney/Most-Wanted.html', 'html', 'TX', 'tx_tarrant', 1, 120],
+      ['tx_travis_warrants', 'Travis County, TX Warrants', 'https://www.tcsheriff.org/warrants', 'html', 'TX', 'tx_travis', 1, 120],
+      ['tx_el_paso_warrants', 'El Paso County, TX Warrants', 'https://www.epcounty.com/sheriff/warrants.htm', 'html', 'TX', 'tx_el_paso', 1, 120],
+
+      // ── Vermont ──
+      ['vt_chittenden_warrants', 'Chittenden County, VT Warrants', 'https://www.burlingtonvt.gov/police/most-wanted', 'html', 'VT', 'vt_chittenden', 1, 120],
+
+      // ── Virginia ──
+      ['va_fairfax_warrants', 'Fairfax County, VA Warrants', 'https://www.fairfaxcounty.gov/police/wanted', 'html', 'VA', 'va_fairfax', 1, 120],
+      ['va_virginia_beach_warrants', 'Virginia Beach, VA Warrants', 'https://www.vbgov.com/government/departments/police/Pages/Most-Wanted.aspx', 'html', 'VA', 'va_virginia_beach', 1, 120],
+
+      // ── Washington ──
+      ['wa_king_warrants', 'King County, WA Warrants', 'https://kingcounty.gov/en/dept/sheriff/about/most-wanted', 'html', 'WA', 'wa_king', 1, 120],
+      ['wa_spokane_warrants', 'Spokane County, WA Warrants', 'https://www.spokanesheriff.org/warrants/', 'html', 'WA', 'wa_spokane', 1, 120],
+      ['wa_clark_warrants', 'Clark County, WA Warrants', 'https://clark.wa.gov/sheriff/warrants', 'html', 'WA', 'wa_clark', 1, 120],
+      ['wa_pierce_warrants', 'Pierce County, WA Warrants', 'https://www.piercecountywa.gov/1024/Most-Wanted', 'html', 'WA', 'wa_pierce', 1, 120],
+
+      // ── West Virginia ──
+      ['wv_kanawha_warrants', 'Kanawha County, WV Warrants', 'https://www.kanawhasheriff.us/warrants/', 'html', 'WV', 'wv_kanawha', 1, 120],
+
+      // ── Wisconsin ──
+      ['wi_milwaukee_warrants', 'Milwaukee County, WI Warrants', 'https://county.milwaukee.gov/EN/Sheriff/Warrants', 'html', 'WI', 'wi_milwaukee', 1, 120],
+      ['wi_dane_warrants', 'Dane County, WI Warrants', 'https://sheriff.countyofdane.com/warrants', 'html', 'WI', 'wi_dane', 1, 120],
+
+      // ── Arrest Record Extraction — extracts warrant-based bookings from existing arrest_records ──
+      ['arrest_extract_all', 'Warrant Extraction (All Arrest Records)', null, 'arrest_extract', 'ALL', null, 1, 60],
+    ];
+
+    let seeded = 0;
+    for (const [key, display, url, type, state, county, enabled, interval] of warrantSources) {
+      insertWarrantConfig.run(key, display, url, type, state, county, enabled ? 1 : 0, interval);
+      seeded++;
+    }
+    if (seeded > 0) {
+      console.log(`[migrate] Seeded ${seeded} warrant scraper configs`);
+    }
+  } catch (err) {
+    // INSERT OR IGNORE — safe if already seeded
+  }
+
+  // ── Add DOB verification flag to scraped warrants ──
+  addCol('scraped_warrants', 'dob_verified', 'INTEGER DEFAULT 0');
+
+  // ── Court Records cache table ──────────────────────────────
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS court_records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_number TEXT NOT NULL,
+        court_name TEXT,
+        state TEXT,
+        case_type TEXT,
+        filing_date TEXT,
+        disposition TEXT,
+        disposition_date TEXT,
+        charges TEXT,
+        offense_level TEXT,
+        defendant_name TEXT,
+        defendant_dob TEXT,
+        judge TEXT,
+        source_url TEXT,
+        source_system TEXT,
+        fetched_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        person_id INTEGER,
+        UNIQUE(case_number, source_system),
+        FOREIGN KEY (person_id) REFERENCES persons(id)
+      )
+    `);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec('CREATE INDEX IF NOT EXISTS idx_court_records_person ON court_records(person_id)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_court_records_defendant ON court_records(defendant_name)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_court_records_state ON court_records(state)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_court_records_fetched ON court_records(fetched_at)');
+  } catch { /* indexes may already exist */ }
+
+  // ── Enable all surrounding-state warrant sources + hourly intervals ────
+  // This migration activates previously-disabled sources and updates scan frequency
+  try {
+    // Enable all surrounding state sources (CO, WY, ID, NV, AZ, NM) + federal
+    db.prepare(`
+      UPDATE warrant_scraper_config
+      SET enabled = 1, scrape_interval_minutes = 60
+      WHERE state IN ('CO', 'WY', 'ID', 'NV', 'AZ', 'NM', 'US')
+        AND enabled = 0
+    `).run();
+    // Update Utah state scan to hourly
+    db.prepare(`
+      UPDATE warrant_scraper_config
+      SET scrape_interval_minutes = 60
+      WHERE source_key = 'ut_state' AND scrape_interval_minutes > 60
+    `).run();
+    // Enable all remaining US state sources at 2-hour intervals (full 50-state coverage)
+    db.prepare(`
+      UPDATE warrant_scraper_config
+      SET enabled = 1, scrape_interval_minutes = 120
+      WHERE enabled = 0
+        AND state NOT IN ('CO', 'WY', 'ID', 'NV', 'AZ', 'NM', 'US', 'UT', 'ALL')
+    `).run();
+  } catch { /* safe — idempotent */ }
+
   // ── MULTI-STATE JAIL ROSTER — add state columns ──────────────
   addCol('jail_roster_config', 'state', "TEXT DEFAULT 'UT'");
   addCol('arrest_records', 'state', "TEXT DEFAULT 'UT'");
@@ -2877,7 +3348,7 @@ function migrateSchema(): void {
 
     const multiStateCounties = [
       // ── Colorado ──
-      ['co_el_paso', 'El Paso County, CO', 'https://cjc.elpasoco.com/inmatesearch/Default.aspx', 'html', 'CO'],
+      ['co_el_paso', 'El Paso County, CO', 'https://epcsheriffsoffice.com/services/search-for-inmates/', 'html', 'CO'],
       ['co_mesa', 'Mesa County, CO', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'CO'],
       ['co_pueblo', 'Pueblo County, CO', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'CO'],
       ['co_larimer', 'Larimer County, CO', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'CO'],
@@ -2902,7 +3373,7 @@ function migrateSchema(): void {
       ['wy_teton', 'Teton County, WY', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'WY'],
 
       // ── Idaho ──
-      ['id_ada', 'Ada County, ID', 'https://apps.adacounty.id.gov/CurrentInmates/', 'html', 'ID'],
+      ['id_ada', 'Ada County, ID', 'https://apps.adacounty.id.gov/sheriff/reports/inmates.aspx', 'html', 'ID'],
       ['id_canyon', 'Canyon County, ID', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'ID'],
       ['id_bannock', 'Bannock County, ID', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'ID'],
       ['id_bonneville', 'Bonneville County, ID', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'ID'],
@@ -2912,7 +3383,7 @@ function migrateSchema(): void {
       ['id_madison', 'Madison County, ID', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'ID'],
 
       // ── Nevada ──
-      ['nv_clark', 'Clark County, NV', 'https://www.clarkcountynv.gov/government/departments/detention_center/inmate_search.php', 'html', 'NV'],
+      ['nv_clark', 'Clark County, NV', 'https://redrock.clarkcountynv.gov/ccdcincustody/incustodysearch.aspx', 'html', 'NV'],
       ['nv_washoe', 'Washoe County, NV', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'NV'],
       ['nv_elko', 'Elko County, NV', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'NV'],
       ['nv_lyon', 'Lyon County, NV', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'NV'],
@@ -2922,7 +3393,7 @@ function migrateSchema(): void {
       ['nv_white_pine', 'White Pine County, NV', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'NV'],
 
       // ── Arizona ──
-      ['az_maricopa', 'Maricopa County, AZ', 'https://www.mcso.org/InmateSearch', 'html', 'AZ'],
+      ['az_maricopa', 'Maricopa County, AZ', 'https://www.mcso.org/Inmate', 'html', 'AZ'],
       ['az_pima', 'Pima County, AZ', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'AZ'],
       ['az_yavapai', 'Yavapai County, AZ', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'AZ'],
       ['az_mohave', 'Mohave County, AZ', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'AZ'],
@@ -2933,7 +3404,7 @@ function migrateSchema(): void {
       ['az_cochise', 'Cochise County, AZ', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'AZ'],
 
       // ── New Mexico ──
-      ['nm_bernalillo', 'Bernalillo County, NM', 'https://app.bernco.gov/InmateSearch/', 'html', 'NM'],
+      ['nm_bernalillo', 'Bernalillo County, NM', 'https://viaintfacep2.bernco.gov/custodylist/Results', 'html', 'NM'],
       ['nm_dona_ana', 'Dona Ana County, NM', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'NM'],
       ['nm_san_juan', 'San Juan County, NM', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'NM'],
       ['nm_sandoval', 'Sandoval County, NM', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'NM'],
@@ -2978,7 +3449,7 @@ function migrateSchema(): void {
     const utahCounties = [
       // ── Counties with scrapable public rosters (enabled) ──
       ['ut_utah',       'Utah County',       'https://sheriff.utahcounty.gov/corrections/inmateSearch',                      'html', 1, 30],
-      ['ut_washington', 'Washington County',  'https://news.washeriff.net/public-services/inmate-information/current-inmate-roster/', 'html', 0, 30],
+      ['ut_washington', 'Washington County',  'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 1, 30],
       ['ut_tooele',     'Tooele County',      'https://inmate.tooelecountysheriff.org/',                                     'json', 1, 30],
       ['ut_carbon',     'Carbon County',      'https://www.carbon.utah.gov/service/jail-bookings/',                           'html', 0, 60],
       ['ut_state_prison','Utah State Prison (UDC)','https://corrections.utah.gov/inmate-services/offender-search/',              'json', 1, 120],
@@ -3025,6 +3496,14 @@ function migrateSchema(): void {
 
   // ── MILEAGE TRACKING — responding vehicle on calls ─────────
   addCol('calls_for_service', 'responding_vehicle_id', 'TEXT');
+
+  // ── CALL AGING / OVERDUE — 72-hour enforcement notifications ──
+  // Tracks whether 48h warning or 72h overdue notification has been sent
+  // for calls that remain in active status too long. NULL = no notification sent.
+  addCol('calls_for_service', 'overdue_notified', 'TEXT');
+
+  // ── CRM LEADS — service interest for legal/collections leads ──
+  addCol('crm_leads', 'service_interest', 'TEXT');
 
   // ── CALL VISIT HISTORY — snapshot each PSO visit before redispatch ──
   db.exec(`
@@ -3420,6 +3899,98 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_email_folders_graph ON email_folders(graph_id);
   `);
 
+  // ─── EMAIL TEMPLATES ─────────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS email_templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'general',
+      subject TEXT NOT NULL DEFAULT '',
+      body TEXT NOT NULL DEFAULT '',
+      is_system INTEGER NOT NULL DEFAULT 0,
+      created_by INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_email_templates_category ON email_templates(category);
+  `);
+
+  // ─── EMAIL INCIDENT LINKS ──────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS email_incident_links (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email_graph_id TEXT NOT NULL,
+      incident_id INTEGER,
+      call_id INTEGER,
+      warrant_id INTEGER,
+      person_id INTEGER,
+      link_type TEXT NOT NULL DEFAULT 'related'
+        CHECK(link_type IN ('related', 'evidence', 'notification', 'correspondence')),
+      notes TEXT,
+      linked_by INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (linked_by) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_email_incident_links_email ON email_incident_links(email_graph_id);
+    CREATE INDEX IF NOT EXISTS idx_email_incident_links_incident ON email_incident_links(incident_id);
+    CREATE INDEX IF NOT EXISTS idx_email_incident_links_call ON email_incident_links(call_id);
+  `);
+
+  // ─── SCHEDULED EMAILS ──────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS scheduled_emails (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      to_addresses TEXT NOT NULL,
+      cc_addresses TEXT,
+      bcc_addresses TEXT,
+      subject TEXT NOT NULL,
+      body TEXT NOT NULL,
+      attachments TEXT,
+      scheduled_at TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK(status IN ('pending', 'sent', 'failed', 'cancelled')),
+      error_message TEXT,
+      sent_at TEXT,
+      created_by INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_scheduled_emails_status ON scheduled_emails(status, scheduled_at);
+  `);
+
+  // Seed default email templates for law enforcement
+  try {
+    const templateCount = (db.prepare('SELECT COUNT(*) as c FROM email_templates').get() as any).c;
+    if (templateCount === 0) {
+      const insertTemplate = db.prepare(`
+        INSERT INTO email_templates (name, category, subject, body, is_system) VALUES (?, ?, ?, ?, 1)
+      `);
+      const templates = [
+        ['BOLO Alert', 'dispatch', 'BOLO: [Subject Description]',
+          'ATTENTION ALL UNITS\n\nBe On the Lookout for:\n\nSubject: [Name / Description]\nVehicle: [Year Make Model Color / License Plate]\nLast Known Location: [Location]\nReason: [Reason for BOLO]\n\nIf located, contact dispatch immediately.\nDo NOT attempt to apprehend without backup.\n\n-- RMPG Flex Dispatch'],
+        ['Evidence Request', 'investigations', 'Evidence Request — Case #[Case Number]',
+          'To: [Lab / Agency]\n\nRe: Case #[Case Number]\n\nPlease process the following evidence item(s):\n\nItem #: [Evidence Item Number]\nDescription: [Description]\nRequested Analysis: [DNA / Fingerprint / Toxicology / Other]\nPriority: [Routine / Expedited / Rush]\n\nChain of custody documentation is attached.\n\nPlease contact me with any questions.\n\nThank you.'],
+        ['Court Notification', 'legal', 'Court Appearance — [Case Number] — [Date]',
+          'This is to notify you of a scheduled court appearance:\n\nCase #: [Case Number]\nCourt: [Court Name]\nDate: [Date]\nTime: [Time]\nCourtroom: [Room]\nJudge: [Judge Name]\n\nPlease arrive at least 15 minutes early.\nBring all relevant case documentation.\n\nIf you have questions or conflicts, contact the court clerk immediately.'],
+        ['Inter-Agency Request', 'inter_agency', 'Inter-Agency Assistance Request — [Subject]',
+          'To: [Receiving Agency]\nFrom: Rocky Mountain Protective Group\n\nWe are requesting assistance with the following matter:\n\nCase #: [Case Number]\nNature: [Type of Assistance Needed]\nLocation: [Jurisdiction / Location]\nTimeframe: [When assistance is needed]\n\nBackground:\n[Brief description of the case/situation]\n\nPlease contact us at your earliest convenience to coordinate.\n\nThank you for your cooperation.'],
+        ['Incident Report Follow-Up', 'patrol', 'Follow-Up: Incident Report #[Number]',
+          'Dear [Recipient],\n\nThis email is regarding Incident Report #[Number] filed on [Date].\n\n[Follow-up details / Additional information / Status update]\n\nIf you have any questions or additional information to provide, please reply to this email or contact our office.\n\nThank you.'],
+        ['Subpoena Service Confirmation', 'legal', 'Subpoena Service Confirmation — [Case Number]',
+          'This confirms that the following subpoena has been served:\n\nCase #: [Case Number]\nServed To: [Name]\nDate of Service: [Date]\nTime of Service: [Time]\nLocation: [Address]\nMethod: [Personal / Substitute / Posted]\n\nServer: [Officer Name / Badge]\nReturn of Service documentation is attached.'],
+        ['Trespass Warning Notice', 'patrol', 'Trespass Warning — [Location]',
+          'Dear [Property Owner/Manager],\n\nA trespass warning was issued at the following location:\n\nProperty: [Address / Name]\nDate: [Date]\nTime: [Time]\nSubject Warned: [Name if known]\nDescription: [Subject description]\n\nThe subject has been advised that returning to the property may result in arrest for criminal trespass.\n\nA copy of the trespass notice is attached for your records.'],
+        ['Shift Briefing', 'internal', 'Shift Briefing — [Date] [Shift]',
+          'SHIFT BRIEFING\nDate: [Date]\nShift: [Day/Swing/Grave]\n\nPERSONNEL:\n[List of officers on duty]\n\nBOLOs / HOT ITEMS:\n[Active BOLOs and priority items]\n\nBEAT ASSIGNMENTS:\n[Beat assignments]\n\nSPECIAL INSTRUCTIONS:\n[Any special notes for the shift]\n\nStay safe out there.'],
+      ];
+      for (const [name, cat, subj, body] of templates) {
+        insertTemplate.run(name, cat, subj, body);
+      }
+      console.log(`[migrate] Seeded ${templates.length} email templates`);
+    }
+  } catch { /* already seeded */ }
+
   // ─── CRM TABLES ─────────────────────────────────────
   db.exec(`
     CREATE TABLE IF NOT EXISTS crm_tasks (
@@ -3686,6 +4257,10 @@ function seedData(): void {
   insertScrapeSource.run('slc_permits', 'Salt Lake County Construction Permits', 'https://slco.org/planning-transportation', 86400);
   insertScrapeSource.run('commercial_re', 'Commercial Real Estate (County Assessor)', null, 86400);
   insertScrapeSource.run('dabc_liquor', 'Utah DABC Liquor Licenses', 'https://abs.utah.gov', 86400);
+  insertScrapeSource.run('utah_bar', 'Utah State Bar Directory', 'https://services.utahbar.org', 86400);
+  insertScrapeSource.run('ut_commerce_collections', 'UT Div of Commerce - Collections', 'https://commerce.utah.gov', 86400);
+  insertScrapeSource.run('ut_consumer_protection', 'UT Consumer Protection', 'https://dcp.utah.gov', 86400);
+  insertScrapeSource.run('ut_courts', 'Utah Courts XCHANGE', 'https://xchange.utcourts.gov', 43200);
 
   // ─── PROPOSAL TEMPLATES (seed defaults) ──────────
   const insertTemplate = db.prepare(`

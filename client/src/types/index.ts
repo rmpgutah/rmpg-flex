@@ -1768,6 +1768,10 @@ export interface TrespassOrder {
   linked_person_last?: string;
   linked_property_name?: string;
   notes?: string;
+  section_id?: string;
+  zone_id?: string;
+  beat_id?: string;
+  zone_beat?: string;
   archived_at?: string;
   created_at: string;
   updated_at: string;
@@ -2190,7 +2194,8 @@ export interface CrmDashboardStats {
 
 // ─── CRM Leads & Pipeline ────────────────────────────
 
-export type LeadSource = 'utah_biz' | 'construction_permit' | 'commercial_re' | 'liquor_license' | 'manual';
+export type LeadSource = 'utah_biz' | 'construction_permit' | 'commercial_re' | 'liquor_license'
+  | 'utah_bar' | 'ut_courts' | 'ut_commerce_collections' | 'ut_consumer_protection' | 'manual';
 export type PipelineStage = 'new' | 'contacted' | 'qualified' | 'proposal' | 'negotiation' | 'won' | 'lost' | 'dismissed';
 export type ProposalStage = 'draft' | 'sent' | 'viewed' | 'accepted' | 'rejected' | 'expired';
 
@@ -2226,6 +2231,7 @@ export interface CrmLead {
   client_id?: number;
   proposal_id?: number;
   notes?: string;
+  service_interest?: string;
   lost_reason?: string;
   next_follow_up?: string;
   created_at: string;

@@ -72,6 +72,10 @@ const SOURCE_LABELS: Record<LeadSource, string> = {
   construction_permit: 'Construction',
   commercial_re: 'Commercial RE',
   liquor_license: 'DABC Liquor',
+  utah_bar: 'Utah Bar',
+  ut_commerce_collections: 'UT Commerce',
+  ut_consumer_protection: 'UT Consumer',
+  ut_courts: 'UT Courts',
   manual: 'Manual',
 };
 
@@ -80,6 +84,10 @@ const SOURCE_BADGE_CLASSES: Record<LeadSource, string> = {
   construction_permit: 'text-amber-400 bg-amber-900/30 border-amber-700/50',
   commercial_re: 'text-emerald-400 bg-emerald-900/30 border-emerald-700/50',
   liquor_license: 'text-purple-400 bg-purple-900/30 border-purple-700/50',
+  utah_bar: 'text-blue-400 bg-blue-900/30 border-blue-700/50',
+  ut_commerce_collections: 'text-orange-400 bg-orange-900/30 border-orange-700/50',
+  ut_consumer_protection: 'text-rose-400 bg-rose-900/30 border-rose-700/50',
+  ut_courts: 'text-indigo-400 bg-indigo-900/30 border-indigo-700/50',
   manual: 'text-rmpg-300 bg-rmpg-800/30 border-rmpg-700/50',
 };
 
@@ -137,6 +145,7 @@ export default function LeadsTab() {
   const [filterStage, setFilterStage] = useState<string>('');
   const [filterSearch, setFilterSearch] = useState('');
   const [filterScoreMin, setFilterScoreMin] = useState<string>('');
+  const [filterService, setFilterService] = useState<string>('');
 
   // ── Detail panel editing ────────────────────────────
   const [editNotes, setEditNotes] = useState('');
@@ -167,20 +176,21 @@ export default function LeadsTab() {
       if (filterStage) params.set('pipeline_stage', filterStage);
       if (filterSearch) params.set('search', filterSearch);
       if (filterScoreMin) params.set('score_min', filterScoreMin);
+      if (filterService) params.set('service_interest', filterService);
       const qs = params.toString();
       const data = await apiFetch<CrmLead[]>(`/api/crm/leads${qs ? `?${qs}` : ''}`);
-      if (data) setLeads(data);
+      if (data) setLeads(Array.isArray(data) ? data : []);
     } catch {
       addToast('Failed to load leads', 'error');
     } finally {
       setLoading(false);
     }
-  }, [filterSource, filterStage, filterSearch, filterScoreMin, addToast]);
+  }, [filterSource, filterStage, filterSearch, filterScoreMin, filterService, addToast]);
 
   const fetchPipeline = useCallback(async () => {
     try {
       const data = await apiFetch<PipelineSummary[]>('/api/crm/leads/pipeline-summary');
-      if (data) setPipelineSummary(data);
+      if (data) setPipelineSummary(Array.isArray(data) ? data : []);
     } catch { /* silent */ }
   }, []);
 
@@ -367,7 +377,21 @@ export default function LeadsTab() {
           <option value="construction_permit">Construction Permits</option>
           <option value="commercial_re">Commercial RE</option>
           <option value="liquor_license">DABC Liquor</option>
+          <option value="utah_bar">Utah Bar Attorneys</option>
+          <option value="ut_commerce_collections">UT Commerce Collections</option>
+          <option value="ut_consumer_protection">UT Consumer Protection</option>
+          <option value="ut_courts">Utah Courts Filings</option>
           <option value="manual">Manual</option>
+        </select>
+        <select
+          value={filterService}
+          onChange={e => setFilterService(e.target.value)}
+          className="bg-[#0d1520] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
+        >
+          <option value="">All Services</option>
+          <option value="process_serving">Process Serving</option>
+          <option value="repo_security">Repo Security</option>
+          <option value="skip_tracing">Skip Tracing</option>
         </select>
         <select
           value={filterStage}

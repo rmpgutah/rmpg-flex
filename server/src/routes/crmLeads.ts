@@ -18,6 +18,10 @@ import '../utils/utahBizScraper';
 import '../utils/constructionPermitScraper';
 import '../utils/dabcLicenseScraper';
 import '../utils/commercialReScraper';
+import '../utils/utahBarScraper';
+import '../utils/utCommerceCollectionsScraper';
+import '../utils/utConsumerProtectionScraper';
+import '../utils/utCourtsScraper';
 
 const router = Router();
 router.use(authenticate);
@@ -26,7 +30,7 @@ router.use(authenticate);
 router.get('/leads', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { source, pipeline_stage, score_min, assigned_to, search, date_from, date_to } = req.query;
+    const { source, pipeline_stage, score_min, assigned_to, search, date_from, date_to, service_interest } = req.query;
 
     let sql = `
       SELECT l.*, u.full_name as assigned_to_name
@@ -69,6 +73,10 @@ router.get('/leads', requireRole('admin', 'manager', 'contract_manager'), (req: 
     if (date_to) {
       sql += ' AND l.created_at <= ?';
       params.push(date_to + ' 23:59:59');
+    }
+    if (service_interest) {
+      sql += ' AND l.service_interest LIKE ?';
+      params.push(`%${service_interest}%`);
     }
 
     sql += ' ORDER BY l.lead_score DESC, l.created_at DESC LIMIT 500';
