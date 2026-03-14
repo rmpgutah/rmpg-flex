@@ -30,9 +30,9 @@ interface ThresholdConfig {
 export const THRESHOLDS: ThresholdConfig = {
   pending: {
     P1: 60,     // 1 minute — emergency
-    P2: 180,    // 3 minutes — urgent
+    P2: 14400,  // 4 hours — urgent / PSO Priority One requests
     P3: 300,    // 5 minutes — routine
-    P4: 600,    // 10 minutes — scheduled
+    P4: 259200, // 72 hours (3 days) — scheduled / PSO (yellow 24h, red 48h, overdue 72h)
   },
   dispatched: 180,  // 3 minutes
   onscene: 2700,    // 45 minutes
@@ -99,17 +99,17 @@ export function getThreshold(call: CallForService): number {
 
 /**
  * Determine the severity level based on elapsed time vs threshold.
- *   normal:   < 60% of threshold
- *   warning:  60-90% of threshold
- *   critical: 90-100% of threshold
- *   overdue:  > 100% of threshold
+ *   normal:   < 1/3 of threshold
+ *   warning:  1/3 – 2/3 of threshold  (P4: 24h yellow)
+ *   critical: 2/3 – 100% of threshold (P4: 48h red)
+ *   overdue:  > 100% of threshold     (P4: 72h+ overdue)
  */
 export function getTimerSeverity(elapsed: number, threshold: number): TimerSeverity {
   if (threshold === Infinity) return 'normal';
   const ratio = elapsed / threshold;
   if (ratio >= 1.0) return 'overdue';
-  if (ratio >= 0.9) return 'critical';
-  if (ratio >= 0.6) return 'warning';
+  if (ratio >= 2 / 3) return 'critical';
+  if (ratio >= 1 / 3) return 'warning';
   return 'normal';
 }
 

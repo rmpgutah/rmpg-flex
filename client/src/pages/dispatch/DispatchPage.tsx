@@ -1800,18 +1800,17 @@ export default function DispatchPage() {
                         onClick={async () => {
                           const attempt = (selectedCall.pso_attempt_number || 1) + 1;
                           const ordinal = attempt === 2 ? '2nd' : attempt === 3 ? '3rd' : `${attempt}th`;
-                          const note = window.prompt(`Re-dispatch as ${ordinal} visit?\n\nOptional: Add a note (e.g., "Return Thursday AM"):`, '');
-                          if (note === null) return;
+                          if (!window.confirm(`Schedule ${ordinal} return visit for ${selectedCall.call_number}?`)) return;
                           try {
                             const result = await apiFetch(`/dispatch/calls/${selectedCall.id}/redispatch`, {
                               method: 'POST',
-                              body: JSON.stringify({ scheduled_note: note || undefined }),
+                              body: JSON.stringify({}),
                             });
                             if (result) {
                               const mapped = mapDbCall(result);
                               setSelectedCall(mapped);
                               setCalls(prev => prev.map(c => c.id === mapped.id ? mapped : c));
-                              addToast(`Re-dispatched — ${ordinal} visit${note ? `: ${note}` : ''}`, 'success');
+                              addToast(`Re-dispatched — ${ordinal} visit`, 'success');
                             }
                           } catch (err: any) { addToast(`Failed to re-dispatch: ${err?.message || 'Unknown error'}`, 'error'); }
                         }}
@@ -2147,18 +2146,17 @@ export default function DispatchPage() {
                         onClick={async () => {
                           const attempt = (selectedCall.pso_attempt_number || 1) + 1;
                           const ordinal = attempt === 2 ? '2nd' : attempt === 3 ? '3rd' : `${attempt}th`;
-                          const note = window.prompt(`Re-dispatch as ${ordinal} visit?\n\nOptional: Add a note (e.g., "Return Thursday AM"):`, '');
-                          if (note === null) return;
+                          if (!window.confirm(`Schedule ${ordinal} return visit for ${selectedCall.call_number}?`)) return;
                           try {
                             const result = await apiFetch(`/dispatch/calls/${selectedCall.id}/redispatch`, {
                               method: 'POST',
-                              body: JSON.stringify({ scheduled_note: note || undefined }),
+                              body: JSON.stringify({}),
                             });
                             if (result) {
                               const mapped = mapDbCall(result);
                               setSelectedCall(mapped);
                               setCalls(prev => prev.map(c => c.id === mapped.id ? mapped : c));
-                              addToast(`Re-dispatched as ${ordinal} visit${note ? `: ${note}` : ''}`, 'success');
+                              addToast(`Re-dispatched as ${ordinal} visit`, 'success');
                             }
                           } catch (err: any) { addToast(`Re-dispatch failed: ${err?.message || 'Unknown error'}`, 'error'); }
                         }}
@@ -3003,18 +3001,17 @@ export default function DispatchPage() {
                           onClick={async () => {
                             const attempt = (selectedCall.pso_attempt_number || 1) + 1;
                             const ordinal = attempt === 2 ? '2nd' : attempt === 3 ? '3rd' : `${attempt}th`;
-                            const note = window.prompt(`Re-dispatch as ${ordinal} visit?\n\nOptional: Add a note (e.g., "Return Thursday AM"):`, '');
-                            if (note === null) return; // cancelled
+                            if (!window.confirm(`Schedule ${ordinal} return visit for ${selectedCall.call_number}?`)) return;
                             try {
                               const result = await apiFetch(`/dispatch/calls/${selectedCall.id}/redispatch`, {
                                 method: 'POST',
-                                body: JSON.stringify({ scheduled_note: note || undefined }),
+                                body: JSON.stringify({}),
                               });
                               if (result) {
                                 const mapped = mapDbCall(result);
                                 setSelectedCall(mapped);
                                 setCalls(prev => prev.map(c => c.id === mapped.id ? mapped : c));
-                                addToast(`Re-dispatched — ${ordinal} visit${note ? `: ${note}` : ''}`, 'success');
+                                addToast(`Re-dispatched — ${ordinal} visit`, 'success');
                               }
                             } catch (err: any) { addToast(`Failed to re-dispatch: ${err?.message || 'Unknown error'}`, 'error'); }
                           }}

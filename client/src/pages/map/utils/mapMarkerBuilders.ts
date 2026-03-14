@@ -14,18 +14,18 @@ export function buildUnitMarkerContent(callSign: string, status: UnitStatus): HT
   const label = UNIT_STATUS_LABELS[status];
 
   const wrapper = document.createElement('div');
-  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;';
+  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.7)) drop-shadow(0 0 1px rgba(0,0,0,0.5));';
 
   const tag = document.createElement('div');
   tag.style.cssText =
     `background:${color};color:#fff;font-size:9px;font-weight:900;` +
-    "padding:2px 5px;border:1px solid rgba(255,255,255,0.8);white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;" +
-    'display:flex;align-items:center;gap:3px;';
+    "padding:2px 6px;border:1.5px solid rgba(255,255,255,0.9);white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;" +
+    'display:flex;align-items:center;gap:3px;border-radius:1px;';
 
   const csSpan = document.createElement('span');
   csSpan.textContent = callSign;
   const stSpan = document.createElement('span');
-  stSpan.style.cssText = 'font-size:6px;opacity:0.8;letter-spacing:0.5px;';
+  stSpan.style.cssText = 'font-size:6px;opacity:0.85;letter-spacing:0.5px;';
   stSpan.textContent = label;
   tag.appendChild(csSpan);
   tag.appendChild(stSpan);
@@ -44,13 +44,13 @@ export function buildIncidentMarkerContent(priority: string, incidentType: strin
   const { category } = getIncidentCategory(incidentType);
 
   const wrapper = document.createElement('div');
-  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;';
+  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 1px 4px rgba(0,0,0,0.8)) drop-shadow(0 0 2px rgba(0,0,0,0.5));';
 
   const tag = document.createElement('div');
   tag.style.cssText =
     `background:${color};color:#fff;font-size:9px;font-weight:900;` +
-    "padding:2px 5px;border:1px solid #fff;white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;" +
-    'display:flex;align-items:center;gap:3px;';
+    "padding:2px 6px;border:1.5px solid rgba(255,255,255,0.95);white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;" +
+    'display:flex;align-items:center;gap:3px;border-radius:1px;';
 
   if (callNumber) {
     const numSpan = document.createElement('span');
@@ -72,24 +72,61 @@ export function buildIncidentMarkerContent(priority: string, incidentType: strin
   return wrapper;
 }
 
-export function buildPropertyMarkerContent(name: string): HTMLElement {
-  const shortName = name.length > 12 ? name.substring(0, 11) + '\u2026' : name;
-
+export function buildPropertyMarkerContent(name: string, address?: string, clientName?: string): HTMLElement {
   const wrapper = document.createElement('div');
-  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;';
+  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.6));';
 
-  const tag = document.createElement('div');
-  tag.style.cssText =
-    "background:#1e3a5f;color:#93c5fd;font-size:8px;font-weight:900;" +
-    "padding:2px 5px;border:1px solid #3b82f6;white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;border-radius:2px;";
-  tag.textContent = shortName;
+  // Small dot marker — visible on any map style (dark, satellite, streets, terrain)
+  const dot = document.createElement('div');
+  dot.style.cssText =
+    'width:10px;height:10px;border-radius:50%;' +
+    'background:radial-gradient(circle at 35% 35%, #60a5fa, #1e3a5f);' +
+    'border:2px solid rgba(255,255,255,0.95);' +
+    'box-shadow:0 0 8px rgba(59,130,246,0.7), 0 1px 4px rgba(0,0,0,0.5);' +
+    'transition:transform 0.15s ease, box-shadow 0.15s ease;';
 
-  const caret = document.createElement('div');
-  caret.style.cssText =
-    'width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid #1e3a5f;';
+  // Hover tooltip — shows name, address, client on mouseover
+  const tooltip = document.createElement('div');
+  tooltip.style.cssText =
+    'position:absolute;bottom:18px;left:50%;transform:translateX(-50%);' +
+    "background:#0d1520;color:#e5e7eb;padding:6px 10px;border:1px solid #3b82f650;border-radius:4px;" +
+    "font-family:'JetBrains Mono',monospace;white-space:nowrap;pointer-events:none;" +
+    'opacity:0;transition:opacity 0.15s ease;z-index:9999;min-width:120px;' +
+    'box-shadow:0 4px 12px rgba(0,0,0,0.5);';
 
-  wrapper.appendChild(tag);
-  wrapper.appendChild(caret);
+  const nameEl = document.createElement('div');
+  nameEl.style.cssText = 'font-size:10px;font-weight:900;color:#60a5fa;margin-bottom:2px;';
+  nameEl.textContent = name;
+  tooltip.appendChild(nameEl);
+
+  if (address) {
+    const addrEl = document.createElement('div');
+    addrEl.style.cssText = 'font-size:8px;color:#9ca3af;';
+    addrEl.textContent = address;
+    tooltip.appendChild(addrEl);
+  }
+
+  if (clientName) {
+    const clientEl = document.createElement('div');
+    clientEl.style.cssText = 'font-size:8px;color:#d4a017;margin-top:2px;';
+    clientEl.textContent = `Client: ${clientName}`;
+    tooltip.appendChild(clientEl);
+  }
+
+  // Hover events — enlarge dot + show tooltip
+  wrapper.addEventListener('mouseenter', () => {
+    dot.style.transform = 'scale(1.5)';
+    dot.style.boxShadow = '0 0 12px rgba(59,130,246,0.8), 0 1px 3px rgba(0,0,0,0.4)';
+    tooltip.style.opacity = '1';
+  });
+  wrapper.addEventListener('mouseleave', () => {
+    dot.style.transform = 'scale(1)';
+    dot.style.boxShadow = '0 0 6px rgba(59,130,246,0.6), 0 1px 3px rgba(0,0,0,0.4)';
+    tooltip.style.opacity = '0';
+  });
+
+  wrapper.appendChild(tooltip);
+  wrapper.appendChild(dot);
   return wrapper;
 }
 

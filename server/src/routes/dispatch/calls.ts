@@ -684,6 +684,7 @@ router.put('/calls/:id', requireRole('admin', 'manager', 'supervisor', 'dispatch
 
 // POST /api/dispatch/calls/:id/redispatch - Re-dispatch a PSO call (increment attempt)
 router.post('/calls/:id/redispatch', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  // Note: primary handler is now at top-level in index.ts — this is a fallback
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;

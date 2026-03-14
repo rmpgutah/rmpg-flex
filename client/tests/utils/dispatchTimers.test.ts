@@ -62,18 +62,18 @@ describe('dispatchTimers', () => {
   });
 
   describe('getTimerSeverity', () => {
-    it('returns normal below 60% threshold', () => {
-      expect(getTimerSeverity(30, 100)).toBe('normal');
-      expect(getTimerSeverity(59, 100)).toBe('normal');
+    it('returns normal below 1/3 threshold', () => {
+      expect(getTimerSeverity(20, 100)).toBe('normal');
+      expect(getTimerSeverity(33, 100)).toBe('normal');
     });
 
-    it('returns warning at 60-89% threshold', () => {
-      expect(getTimerSeverity(60, 100)).toBe('warning');
-      expect(getTimerSeverity(89, 100)).toBe('warning');
+    it('returns warning at 1/3 to 2/3 threshold', () => {
+      expect(getTimerSeverity(34, 100)).toBe('warning');
+      expect(getTimerSeverity(66, 100)).toBe('warning');
     });
 
-    it('returns critical at 90-99% threshold', () => {
-      expect(getTimerSeverity(90, 100)).toBe('critical');
+    it('returns critical at 2/3 to 99% threshold', () => {
+      expect(getTimerSeverity(67, 100)).toBe('critical');
       expect(getTimerSeverity(99, 100)).toBe('critical');
     });
 
@@ -134,10 +134,10 @@ describe('dispatchTimers', () => {
   });
 
   describe('THRESHOLDS', () => {
-    it('has increasing thresholds for P1-P4', () => {
-      expect(THRESHOLDS.pending.P1).toBeLessThan(THRESHOLDS.pending.P2);
-      expect(THRESHOLDS.pending.P2).toBeLessThan(THRESHOLDS.pending.P3);
-      expect(THRESHOLDS.pending.P3).toBeLessThan(THRESHOLDS.pending.P4);
+    it('P1 is shortest, P4 is longest', () => {
+      expect(THRESHOLDS.pending.P1).toBeLessThan(THRESHOLDS.pending.P3);
+      expect(THRESHOLDS.pending.P3).toBeLessThan(THRESHOLDS.pending.P2); // P2 is 4h for PSO Priority One
+      expect(THRESHOLDS.pending.P2).toBeLessThan(THRESHOLDS.pending.P4);
     });
 
     it('P1 is 60 seconds (emergency)', () => {
@@ -156,7 +156,7 @@ describe('dispatchTimers', () => {
   describe('getThreshold', () => {
     it('returns priority-based threshold for pending calls', () => {
       expect(getThreshold(makeCall({ status: 'pending', priority: 'P1' }))).toBe(60);
-      expect(getThreshold(makeCall({ status: 'pending', priority: 'P4' }))).toBe(600);
+      expect(getThreshold(makeCall({ status: 'pending', priority: 'P4' }))).toBe(259200);
     });
 
     it('returns dispatched threshold for dispatched calls', () => {

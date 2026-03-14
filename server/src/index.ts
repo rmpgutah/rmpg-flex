@@ -172,6 +172,61 @@ app.get('/api/presence', authenticateToken, (_req, res) => {
 // so every connected device sees changes in real-time
 app.use(liveBroadcast);
 
+// ─── Redispatch (top-level to bypass nested router issues) ──
+app.post('/api/dispatch/calls/:id/redispatch', authenticateToken, (req, res) => {
+  // Top-level route — bypasses nested dispatch router matching issue
+  try {
+    const db = getDb();
+    const role = req.user?.role;
+    if (!role || !['admin', 'manager', 'supervisor', 'dispatcher'].includes(role)) {
+      res.status(403).json({ error: 'Insufficient role' });
+      return;
+    }
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+    if (call.incident_type !== 'pso_client_request') { res.status(400).json({ error: 'Not a PSO call' }); return; }
+    if (!['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(call.status)) {
+      res.status(400).json({ error: 'Call must be completed to re-dispatch' }); return;
+    }
+    const now = new Date().toISOString().replace('T', ' ').split('.')[0];
+    const currentAttempt = call.pso_attempt_number || 1;
+    const newAttempt = currentAttempt + 1;
+    const ordinal = (n: number) => { const s = ['th','st','nd','rd']; const v = n % 100; return n + (s[(v-20)%10]||s[v]||s[0]); };
+
+    // Snapshot visit history
+    let assignedCallSigns: string[] = [];
+    try {
+      const unitIds = JSON.parse(call.assigned_unit_ids || '[]');
+      if (unitIds.length) {
+        const units = db.prepare(`SELECT call_sign FROM units WHERE id IN (${unitIds.map(()=>'?').join(',')})`).all(...unitIds) as any[];
+        assignedCallSigns = units.map((u:any) => u.call_sign).filter(Boolean);
+      }
+    } catch {}
+
+    db.prepare(`INSERT INTO call_visit_history (call_id, visit_number, status, dispatched_at, enroute_at, onscene_at, cleared_at, closed_at, assigned_units, responding_vehicle_id, starting_mileage, ending_mileage, disposition, note, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(req.params.id, currentAttempt, call.status, call.dispatched_at, call.enroute_at, call.onscene_at, call.cleared_at, call.closed_at, JSON.stringify(assignedCallSigns), call.responding_vehicle_id||null, call.starting_mileage??null, call.ending_mileage??null, call.disposition||null, null, req.user?.fullName||'Dispatch', now);
+
+    let notes: any[] = [];
+    if (call.notes) { try { notes = JSON.parse(call.notes); } catch { notes = []; } }
+    const { scheduled_note } = req.body || {};
+    const noteText = scheduled_note ? `Re-dispatched — ${ordinal(newAttempt)} visit. Note: ${scheduled_note}` : `Re-dispatched — ${ordinal(newAttempt)} visit`;
+    notes.push({ id: String(Date.now()), author: req.user?.fullName||'Dispatch', text: noteText, timestamp: now, created_at: now });
+
+    db.prepare(`UPDATE calls_for_service SET status='pending', dispatched_at=NULL, enroute_at=NULL, onscene_at=NULL, cleared_at=NULL, closed_at=NULL, starting_mileage=NULL, ending_mileage=NULL, responding_vehicle_id=NULL, pso_attempt_number=?, notes=?, updated_at=? WHERE id=?`)
+      .run(newAttempt, JSON.stringify(notes), now, req.params.id);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'call_redispatched', 'call', ?, ?, ?)`)
+      .run(req.user!.userId, req.params.id, `Re-dispatched PSO call ${call.call_number} — ${ordinal(newAttempt)} visit`, req.ip||'unknown');
+
+    const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    const visitHistory = db.prepare('SELECT * FROM call_visit_history WHERE call_id = ? ORDER BY visit_number ASC').all(req.params.id);
+    res.json({ ...updated, visit_history: visitHistory });
+  } catch (error: any) {
+    console.error('[REDISPATCH-TOPLEVEL] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ─── API Routes ───────────────────────────────────────
 app.use('/api/auth', authRoutes);
 app.use('/api/auth/security', securityDashboardRoutes);

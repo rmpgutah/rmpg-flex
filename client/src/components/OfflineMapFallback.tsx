@@ -52,6 +52,15 @@ interface ActiveCall {
   priority: string;
 }
 
+interface PropertyMarker {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  address?: string;
+  client_name?: string;
+}
+
 interface OfflineMapFallbackProps {
   /** Current GPS position from the device */
   selfPosition?: { lat: number; lng: number; accuracy?: number; heading?: number } | null;
@@ -59,6 +68,8 @@ interface OfflineMapFallbackProps {
   unitPositions?: UnitPosition[];
   /** Active dispatch calls with locations */
   activeCalls?: ActiveCall[];
+  /** Property locations */
+  properties?: PropertyMarker[];
   /** Callback when user clicks "Retry Google Maps" */
   onRetry?: () => void;
   /** Whether a retry is in progress */
@@ -99,6 +110,7 @@ export default function OfflineMapFallback({
   selfPosition,
   unitPositions = [],
   activeCalls = [],
+  properties = [],
   onRetry,
   retrying = false,
   className = '',
@@ -110,6 +122,7 @@ export default function OfflineMapFallback({
   const selfAccuracyRef = useRef<L.Circle | null>(null);
   const unitMarkersRef = useRef<Map<string, L.Marker>>(new Map());
   const callMarkersRef = useRef<Map<string, L.Marker>>(new Map());
+  const propMarkersRef = useRef<Map<string, L.Marker>>(new Map());
   const [isReady, setIsReady] = useState(false);
   const autoRetryRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const firstPositionRef = useRef(false);
@@ -198,6 +211,7 @@ export default function OfflineMapFallback({
       selfAccuracyRef.current = null;
       unitMarkersRef.current.clear();
       callMarkersRef.current.clear();
+      propMarkersRef.current.clear();
       firstPositionRef.current = false;
       setIsReady(false);
     };
@@ -465,6 +479,48 @@ export default function OfflineMapFallback({
     }
   }, [activeCalls, isReady]);
 
+  // ── Property markers (small blue dots with tooltips) ────────
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !isReady) return;
+
+    const currentIds = new Set(properties.map(p => p.id));
+
+    // Remove stale property markers
+    for (const [id, marker] of propMarkersRef.current) {
+      if (!currentIds.has(id)) {
+        map.removeLayer(marker);
+        propMarkersRef.current.delete(id);
+      }
+    }
+
+    // Create property markers
+    for (const prop of properties) {
+      if (propMarkersRef.current.has(prop.id)) continue;
+
+      const icon = L.divIcon({
+        className: 'rmpg-prop-marker',
+        html: `<div style="
+          width:10px;height:10px;border-radius:50%;
+          background:radial-gradient(circle at 35% 35%, #60a5fa, #1e3a5f);
+          border:2px solid rgba(255,255,255,0.9);
+          box-shadow:0 0 6px rgba(59,130,246,0.6), 0 1px 3px rgba(0,0,0,0.4);
+        "></div>`,
+        iconSize: [14, 14],
+        iconAnchor: [7, 7],
+      });
+
+      const marker = L.marker([prop.lat, prop.lng], { icon, zIndexOffset: 200 }).addTo(map);
+      const tooltipHtml = `<div style="text-align:center;">
+        <div style="font-weight:900;font-size:9px;color:#60a5fa;">${prop.name}</div>
+        ${prop.address ? `<div style="font-size:7px;opacity:0.7;">${prop.address}</div>` : ''}
+        ${prop.client_name ? `<div style="font-size:7px;color:#d4a017;">Client: ${prop.client_name}</div>` : ''}
+      </div>`;
+      marker.bindTooltip(tooltipHtml, { direction: 'top', offset: [0, -4], className: 'leaflet-tooltip-dark' });
+      propMarkersRef.current.set(prop.id, marker);
+    }
+  }, [properties, isReady]);
+
   // ── Center on self ──────────────────────────────────────────
   const centerOnSelf = useCallback(() => {
     if (mapRef.current && selfPosition) {
@@ -612,7 +668,8 @@ export default function OfflineMapFallback({
         /* Remove Leaflet's default icon backgrounds from our custom markers */
         .rmpg-self-marker,
         .rmpg-unit-marker,
-        .rmpg-call-marker {
+        .rmpg-call-marker,
+        .rmpg-prop-marker {
           background: transparent !important;
           border: none !important;
         }

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { loadGoogleMaps, DARK_MAP_STYLE, registerMapInstance, unregisterMapInstance, updateMapStyles, onOnlineRetryMaps, monitorTileLoading, getFallbackMapImage, addOfflineTileLayer } from '../../utils/googleMapsLoader';
+import { loadGoogleMaps, DARK_MAP_STYLE, NIGHT_NAV_STYLE, TERRAIN_STYLE, registerMapInstance, unregisterMapInstance, updateMapStyles, onOnlineRetryMaps, monitorTileLoading, getFallbackMapImage, addOfflineTileLayer } from '../../utils/googleMapsLoader';
 import { devLog, devWarn } from '../../utils/devLog';
 import {
   Layers,
@@ -62,7 +62,7 @@ import { useMapRouting } from '../../hooks/useMapRouting';
 import MobileBottomSheet from '../../components/mobile/MobileBottomSheet';
 import OfflineMapFallback from '../../components/OfflineMapFallback';
 import type { MapUnit as Unit, ActiveCall, MapProperty as Property, MapStyleId } from './utils/mapConstants';
-import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, MAP_STYLE_LABELS, getIncidentCategory } from './utils/mapConstants';
+import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, MAP_STYLE_LABELS, MAP_STYLE_DESCRIPTIONS, getIncidentCategory, isLightMapStyle, isSatelliteStyle } from './utils/mapConstants';
 import { buildUnitMarkerContent, buildIncidentMarkerContent, buildPropertyMarkerContent, buildSelfPositionMarker, getOverlayMarkerClass, injectKeyframes, type OverlayMarker } from './utils/mapMarkerBuilders';
 
 // ============================================================
@@ -166,7 +166,7 @@ export default function MapPage() {
   const [sidebarTab, setSidebarTab] = usePersistedTab('rmpg_map_sidebar', 'units', ['units', 'calls'] as const);
 
   // Map style
-  const [mapStyle, setMapStyle] = usePersistedTab('rmpg_map_style', 'dark' as MapStyleId, ['dark', 'satellite', 'hybrid', 'streets'] as const);
+  const [mapStyle, setMapStyle] = usePersistedTab('rmpg_map_style', 'dark' as MapStyleId, ['dark', 'satellite', 'hybrid', 'streets', 'terrain', 'night_nav'] as const);
   const [showMapStyles, setShowMapStyles] = useState(false);
 
   // Routing
@@ -600,6 +600,10 @@ export default function MapPage() {
       map.setMapTypeId('roadmap');
       map.setOptions({ styles: DARK_MAP_STYLE });
       updateMapStyles(map, DARK_MAP_STYLE);
+    } else if (mapStyle === 'night_nav') {
+      map.setMapTypeId('roadmap');
+      map.setOptions({ styles: NIGHT_NAV_STYLE });
+      updateMapStyles(map, NIGHT_NAV_STYLE);
     } else if (mapStyle === 'satellite') {
       map.setMapTypeId('satellite');
       map.setOptions({ styles: [] });
@@ -608,6 +612,10 @@ export default function MapPage() {
       map.setMapTypeId('hybrid');
       map.setOptions({ styles: [] });
       updateMapStyles(map, []);
+    } else if (mapStyle === 'terrain') {
+      map.setMapTypeId('terrain');
+      map.setOptions({ styles: TERRAIN_STYLE });
+      updateMapStyles(map, TERRAIN_STYLE);
     } else if (mapStyle === 'streets') {
       map.setMapTypeId('roadmap');
       map.setOptions({ styles: [] });
@@ -784,11 +792,11 @@ export default function MapPage() {
       });
     }
 
-    // Add property markers
+    // Add property markers (small dot with hover tooltip, click for details)
     if (layers.properties) {
       properties.forEach((prop) => {
         if (prop.latitude != null && prop.longitude != null) {
-          const content = buildPropertyMarkerContent(prop.name);
+          const content = buildPropertyMarkerContent(prop.name, prop.address, prop.client_name || undefined);
 
           const marker = createMarker({
             map,
@@ -796,16 +804,132 @@ export default function MapPage() {
             content,
             zIndex: 100,
             title: prop.name,
-            onClick: () => {
+            onClick: async () => {
+              // Show loading state immediately
               infoWindowRef.current?.setContent(`
-                <div style="min-width:160px;font-family:'Courier New',monospace;background:#0d1520;color:#e5e7eb;padding:10px;border:1px solid #3b82f650;border-radius:4px;">
+                <div style="min-width:200px;font-family:'JetBrains Mono',monospace;background:#0d1520;color:#e5e7eb;padding:12px;border:1px solid #3b82f650;border-radius:4px;">
                   <div style="font-weight:900;font-size:13px;color:#60a5fa;margin-bottom:4px;">${escapeHtml(prop.name)}</div>
-                  <div style="font-size:10px;color:#d1d5db;">${escapeHtml(prop.address)}</div>
-                  ${prop.client_name ? `<div style="font-size:9px;margin-top:6px;color:#9ca3af;font-weight:600;">Client: ${escapeHtml(prop.client_name)}</div>` : ''}
+                  <div style="font-size:10px;color:#9ca3af;">Loading details...</div>
                 </div>
               `);
               infoWindowRef.current?.setPosition({ lat: prop.latitude!, lng: prop.longitude! });
               infoWindowRef.current?.open(map);
+
+              // Fetch full property details (includes recent calls, contacts, schedules)
+              try {
+                const details = await apiFetch<any>(`/records/properties/${prop.id}`);
+                const recentCalls = details.recentCalls || [];
+                const schedules = details.todaySchedules || [];
+                const linkedPersons: any[] = details.linkedPersons || [];
+
+                // Build linked persons rows
+                const RELATIONSHIP_COLORS: Record<string, string> = {
+                  employee: '#22d3ee', contact: '#60a5fa', tenant: '#a78bfa', owner: '#4ade80',
+                  manager: '#d4a017', subject: '#f59e0b', trespass_warning: '#ef4444',
+                  banned: '#ef4444', frequent_visitor: '#9ca3af', associated: '#6b7280',
+                };
+                const personRows = linkedPersons.slice(0, 8).map((p: any) => {
+                  const relColor = RELATIONSHIP_COLORS[p.relationship] || '#6b7280';
+                  const name = escapeHtml(`${p.first_name} ${p.last_name}`);
+                  const rel = escapeHtml((p.relationship || '').replace(/_/g, ' '));
+                  const flagsArr = (() => { try { return JSON.parse(p.flags || '[]'); } catch { return []; } })();
+                  const hasWarning = flagsArr.includes('trespass') || flagsArr.includes('violent') || flagsArr.includes('armed') || p.relationship === 'trespass_warning' || p.relationship === 'banned';
+                  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #1e304820;">
+                    <div style="display:flex;align-items:center;gap:4px;">
+                      ${hasWarning ? '<span style="color:#ef4444;font-size:8px;">⚠</span>' : ''}
+                      <span style="color:#e0e8f0;font-size:9px;font-weight:700;">${name}</span>
+                      ${p.title ? `<span style="color:#6b7280;font-size:7px;">${escapeHtml(p.title)}</span>` : ''}
+                    </div>
+                    <span style="color:${relColor};font-size:7px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">${rel}</span>
+                  </div>`;
+                }).join('');
+
+                // Build call history rows
+                const callRows = recentCalls.slice(0, 5).map((c: any) => {
+                  const date = c.created_at ? new Date(c.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+                  const time = c.created_at ? new Date(c.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
+                  const statusColor = c.status === 'cleared' || c.status === 'closed' ? '#4ade80' : c.status === 'pending' ? '#fbbf24' : '#60a5fa';
+                  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #1e304820;">
+                    <div>
+                      <span style="color:#93c5fd;font-size:9px;font-weight:700;">${escapeHtml(c.call_number || '')}</span>
+                      <span style="color:#6b7280;font-size:8px;margin-left:4px;">${escapeHtml(c.incident_type?.replace(/_/g, ' ') || '')}</span>
+                    </div>
+                    <div style="text-align:right;">
+                      <span style="color:${statusColor};font-size:8px;font-weight:600;">${escapeHtml(c.status || '')}</span>
+                      <span style="color:#6b7280;font-size:7px;margin-left:4px;">${date} ${time}</span>
+                    </div>
+                  </div>`;
+                }).join('');
+
+                // Build schedule/officer rows
+                const scheduleRows = schedules.map((s: any) =>
+                  `<div style="font-size:8px;color:#d1d5db;padding:2px 0;">
+                    <span style="color:#22d3ee;">⦿</span> ${escapeHtml(s.officer_name || 'Unassigned')}
+                    <span style="color:#6b7280;margin-left:4px;">${escapeHtml(s.shift_type || '')}</span>
+                  </div>`
+                ).join('');
+
+                infoWindowRef.current?.setContent(`
+                  <div style="min-width:280px;max-width:360px;font-family:'JetBrains Mono',monospace;background:#0d1520;color:#e5e7eb;padding:12px;border:1px solid #3b82f650;border-radius:4px;">
+                    <div style="font-weight:900;font-size:13px;color:#60a5fa;margin-bottom:2px;">${escapeHtml(prop.name)}</div>
+                    <div style="font-size:10px;color:#d1d5db;margin-bottom:2px;">${escapeHtml(prop.address)}</div>
+                    ${prop.client_name ? `<div style="font-size:9px;color:#d4a017;font-weight:600;margin-bottom:6px;">Client: ${escapeHtml(prop.client_name)}</div>` : ''}
+
+                    ${details.property_type ? `<div style="font-size:8px;color:#9ca3af;margin-bottom:2px;">Type: ${escapeHtml(details.property_type)}</div>` : ''}
+                    ${details.emergency_contact ? `<div style="font-size:8px;color:#f87171;margin-bottom:2px;">Emergency: ${escapeHtml(details.emergency_contact)}</div>` : ''}
+                    ${details.gate_code ? `<div style="font-size:8px;color:#9ca3af;margin-bottom:2px;">Gate: ${escapeHtml(details.gate_code)}</div>` : ''}
+                    ${details.access_instructions ? `<div style="font-size:8px;color:#9ca3af;margin-bottom:6px;">Access: ${escapeHtml(details.access_instructions)}</div>` : ''}
+
+                    ${schedules.length > 0 ? `
+                      <div style="border-top:1px solid #1e3048;padding-top:6px;margin-top:4px;">
+                        <div style="font-size:9px;color:#22d3ee;font-weight:700;margin-bottom:3px;">TODAY'S OFFICERS</div>
+                        ${scheduleRows}
+                      </div>
+                    ` : ''}
+
+                    ${linkedPersons.length > 0 ? `
+                      <div style="border-top:1px solid #1e3048;padding-top:6px;margin-top:6px;">
+                        <div style="font-size:9px;color:#e879f9;font-weight:700;margin-bottom:3px;">LINKED PERSONS (${linkedPersons.length})</div>
+                        ${personRows}
+                        ${linkedPersons.length > 8 ? `<div style="font-size:8px;color:#6b7280;text-align:center;margin-top:4px;">+${linkedPersons.length - 8} more</div>` : ''}
+                      </div>
+                    ` : ''}
+
+                    ${recentCalls.length > 0 ? `
+                      <div style="border-top:1px solid #1e3048;padding-top:6px;margin-top:6px;">
+                        <div style="font-size:9px;color:#f59e0b;font-weight:700;margin-bottom:3px;">CALL HISTORY (${recentCalls.length})</div>
+                        ${callRows}
+                        ${recentCalls.length > 5 ? `<div style="font-size:8px;color:#6b7280;text-align:center;margin-top:4px;">+${recentCalls.length - 5} more</div>` : ''}
+                      </div>
+                    ` : `
+                      <div style="border-top:1px solid #1e3048;padding-top:6px;margin-top:6px;">
+                        <div style="font-size:9px;color:#6b7280;">No recent calls</div>
+                      </div>
+                    `}
+
+                    ${details.client_contact ? `
+                      <div style="border-top:1px solid #1e3048;padding-top:6px;margin-top:6px;">
+                        <div style="font-size:9px;color:#a78bfa;font-weight:700;margin-bottom:3px;">CLIENT CONTACT</div>
+                        <div style="font-size:9px;color:#d1d5db;">${escapeHtml(details.client_contact)}</div>
+                        ${details.client_phone ? `<div style="font-size:9px;color:#93c5fd;">${escapeHtml(details.client_phone)}</div>` : ''}
+                      </div>
+                    ` : ''}
+
+                    ${details.sla_response_minutes ? `<div style="font-size:8px;color:#4ade80;margin-top:4px;">SLA: ${details.sla_response_minutes} min response</div>` : ''}
+                    ${details.hazard_notes ? `<div style="font-size:8px;color:#f87171;margin-top:4px;padding:3px 5px;background:#f8717110;border:1px solid #f8717130;border-radius:2px;">⚠ ${escapeHtml(details.hazard_notes)}</div>` : ''}
+                    ${details.post_orders ? `<div style="font-size:8px;color:#9ca3af;margin-top:4px;">Post Orders: ${escapeHtml(details.post_orders.substring(0, 100))}${details.post_orders.length > 100 ? '…' : ''}</div>` : ''}
+                  </div>
+                `);
+              } catch {
+                // If fetch fails, show basic info
+                infoWindowRef.current?.setContent(`
+                  <div style="min-width:160px;font-family:'JetBrains Mono',monospace;background:#0d1520;color:#e5e7eb;padding:10px;border:1px solid #3b82f650;border-radius:4px;">
+                    <div style="font-weight:900;font-size:13px;color:#60a5fa;margin-bottom:4px;">${escapeHtml(prop.name)}</div>
+                    <div style="font-size:10px;color:#d1d5db;">${escapeHtml(prop.address)}</div>
+                    ${prop.client_name ? `<div style="font-size:9px;margin-top:6px;color:#d4a017;font-weight:600;">Client: ${escapeHtml(prop.client_name)}</div>` : ''}
+                  </div>
+                `);
+              }
             },
           });
 
@@ -1420,16 +1544,23 @@ export default function MapPage() {
             Positioned top-left to avoid conflicts with route info panel (bottom-left). */}
         {mapLoaded && tilesStalled && (
           <div
-            className="absolute top-12 left-3 z-[10] flex items-center gap-2 px-3 py-1.5"
+            className="absolute top-12 left-3 z-[10] flex items-center gap-2 px-3 py-2"
             style={{
-              background: 'rgba(0,0,0,0.9)',
+              background: 'rgba(6,12,20,0.95)',
               border: '1px solid #f59e0b40',
+              backdropFilter: 'blur(4px)',
+              borderRadius: 2,
             }}
           >
-            <Loader2 style={{ width: 12, height: 12, color: '#f59e0b' }} className="animate-spin" />
-            <span className="text-[9px] text-amber-400 font-bold uppercase tracking-wider font-mono">
-              OFFLINE TILES
-            </span>
+            <Loader2 style={{ width: 14, height: 14, color: '#f59e0b' }} className="animate-spin" />
+            <div className="flex flex-col">
+              <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider font-mono leading-none">
+                CACHED MAP
+              </span>
+              <span className="text-[8px] text-gray-500 font-mono leading-none mt-0.5">
+                Using offline tiles · Map fully interactive
+              </span>
+            </div>
             <button
               onClick={() => {
                 const map = mapInstanceRef.current;
@@ -1441,7 +1572,8 @@ export default function MapPage() {
                   }
                 }
               }}
-              className="text-[9px] text-blue-400 hover:text-blue-300 underline ml-1"
+              className="ml-1 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-blue-400 hover:text-white hover:bg-brand-600 transition-colors"
+              style={{ borderRadius: 2 }}
             >
               Retry
             </button>
@@ -1472,6 +1604,16 @@ export default function MapPage() {
                 status: u.status,
               }))}
             activeCalls={calls.filter(c => c.latitude != null && c.longitude != null)}
+            properties={properties
+              .filter(p => p.latitude != null && p.longitude != null)
+              .map(p => ({
+                id: p.id,
+                name: p.name,
+                lat: p.latitude!,
+                lng: p.longitude!,
+                address: p.address,
+                client_name: p.client_name || undefined,
+              }))}
             onRetry={() => {
               setRetryingGmaps(true);
               setMapError(null);
@@ -1563,7 +1705,11 @@ export default function MapPage() {
                     if (e.key === 'Escape') { setShowAddressResults(false); setAddressSearch(''); setAddressResults([]); }
                   }}
                   placeholder="Search address..."
-                  className="bg-black/30 border border-white/15 text-[11px] text-white placeholder:text-white/40 pl-8 pr-8 py-1.5 w-[240px] focus:border-white/40 focus:bg-black/50 focus:outline-none backdrop-blur-md shadow-lg font-mono transition-colors"
+                  className={`text-[11px] pl-8 pr-8 py-1.5 w-[240px] focus:outline-none backdrop-blur-md shadow-lg font-mono transition-colors ${
+                    isLightMapStyle(mapStyle)
+                      ? 'bg-white/80 border border-gray-300 text-gray-900 placeholder:text-gray-400 focus:border-blue-400 focus:bg-white/90'
+                      : 'bg-black/30 border border-white/15 text-white placeholder:text-white/40 focus:border-white/40 focus:bg-black/50'
+                  }`}
                   style={{ borderRadius: 2 }}
                 />
                 {addressSearch && (
@@ -1606,22 +1752,26 @@ export default function MapPage() {
                   const map = mapInstanceRef.current;
                   if (map) map.setZoom((map.getZoom() || 12) + 1);
                 }}
-                className="bg-black/30 border border-white/15 border-b-0 backdrop-blur-md px-2 py-1.5 hover:bg-black/50 transition-colors"
+                className={`border border-b-0 backdrop-blur-md px-2 py-1.5 transition-colors ${
+                  isLightMapStyle(mapStyle) ? 'bg-white/80 border-gray-300 hover:bg-white/95' : 'bg-black/30 border-white/15 hover:bg-black/50'
+                }`}
                 style={{ borderRadius: '2px 2px 0 0' }}
                 title="Zoom in"
               >
-                <Plus className="w-3.5 h-3.5 text-white/70" />
+                <Plus className={`w-3.5 h-3.5 ${isLightMapStyle(mapStyle) ? 'text-gray-600' : 'text-white/70'}`} />
               </button>
               <button
                 onClick={() => {
                   const map = mapInstanceRef.current;
                   if (map) map.setZoom((map.getZoom() || 12) - 1);
                 }}
-                className="bg-black/30 border border-white/15 backdrop-blur-md px-2 py-1.5 hover:bg-black/50 transition-colors"
+                className={`border backdrop-blur-md px-2 py-1.5 transition-colors ${
+                  isLightMapStyle(mapStyle) ? 'bg-white/80 border-gray-300 hover:bg-white/95' : 'bg-black/30 border-white/15 hover:bg-black/50'
+                }`}
                 style={{ borderRadius: '0 0 2px 2px' }}
                 title="Zoom out"
               >
-                <Minus className="w-3.5 h-3.5 text-white/70" />
+                <Minus className={`w-3.5 h-3.5 ${isLightMapStyle(mapStyle) ? 'text-gray-600' : 'text-white/70'}`} />
               </button>
             </div>
           </div>
@@ -1933,21 +2083,31 @@ export default function MapPage() {
               >
                 <MapIcon className="w-3 h-3 text-rmpg-400" />
                 <span className="text-[10px] text-rmpg-300 flex-1">Map Style</span>
-                <span className="text-[9px] text-rmpg-400">{MAP_STYLE_LABELS[mapStyle]}</span>
+                <span className="text-[9px] text-brand-400 font-bold">{MAP_STYLE_LABELS[mapStyle]}</span>
+                {showMapStyles ? <ChevronUp className="w-2.5 h-2.5 text-rmpg-500" /> : <ChevronDown className="w-2.5 h-2.5 text-rmpg-500" />}
               </button>
               {showMapStyles && (
-                <div className="mt-1 space-y-0.5">
-                  {(Object.entries(MAP_STYLE_LABELS) as [MapStyleId, string][]).map(([key, label]) => (
-                    <button
-                      key={key}
-                      onClick={() => { setMapStyle(key); setShowMapStyles(false); }}
-                      className={`w-full text-left px-4 py-1 text-[10px] rounded transition-colors ${
-                        mapStyle === key ? 'text-brand-400 bg-brand-900/20' : 'text-rmpg-400 hover:text-rmpg-200 hover:bg-rmpg-700/30'
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
+                <div className="mt-1 grid grid-cols-2 gap-1 px-1">
+                  {(Object.entries(MAP_STYLE_LABELS) as [MapStyleId, string][]).map(([key, label]) => {
+                    const isActive = mapStyle === key;
+                    const desc = MAP_STYLE_DESCRIPTIONS[key];
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => { setMapStyle(key); setShowMapStyles(false); }}
+                        className={`text-left px-2 py-1.5 rounded transition-all ${
+                          isActive
+                            ? 'bg-brand-900/30 border border-brand-500/50 ring-1 ring-brand-500/20'
+                            : 'bg-rmpg-800/30 border border-rmpg-700/50 hover:bg-rmpg-700/40 hover:border-rmpg-600/50'
+                        }`}
+                      >
+                        <div className={`text-[10px] font-bold ${isActive ? 'text-brand-400' : 'text-rmpg-200'}`}>
+                          {label}
+                        </div>
+                        <div className="text-[7px] text-rmpg-500 leading-tight mt-0.5">{desc}</div>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -2593,19 +2753,35 @@ export default function MapPage() {
           )}
         </div>}
 
-        {/* ── Status Legend - Bottom Left (desktop only, wraps on narrow) ── */}
-        {!isMobile && <div className="absolute bottom-2 left-2 z-[1000] max-w-[calc(100vw-16rem)]">
-          <div className="bg-surface-deep/95 border border-rmpg-600 px-2 py-1.5 backdrop-blur-sm shadow-xl" style={{ borderRadius: 2 }}>
-            <span className="text-[8px] font-bold text-rmpg-400 uppercase tracking-widest">Legend</span>
-            <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
+        {/* ── Status Legend - Bottom Left (desktop only) ── */}
+        {!isMobile && <div className="absolute bottom-2 left-2 z-[1000]">
+          <div
+            className="backdrop-blur-md shadow-xl"
+            style={{
+              borderRadius: 2,
+              background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.85)' : isSatelliteStyle(mapStyle) ? 'rgba(6,12,20,0.88)' : 'rgba(6,12,20,0.92)',
+              border: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.12)' : '1px solid rgba(30,48,72,0.5)',
+              padding: '4px 8px',
+            }}
+          >
+            <div className="flex items-center gap-2.5">
               {(Object.entries(UNIT_STATUS_COLORS) as [UnitStatus, string][])
                 .filter(([k]) => k !== 'off_duty')
                 .map(([status, color]) => (
                   <div key={status} className="flex items-center gap-1">
-                    <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color, boxShadow: `0 0 4px ${color}80` }} />
-                    <span className="text-[8px] text-rmpg-300 font-mono">{UNIT_STATUS_LABELS[status as UnitStatus]}</span>
+                    <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color, boxShadow: `0 0 5px ${color}80` }} />
+                    <span className={`text-[8px] font-mono font-bold ${isLightMapStyle(mapStyle) ? 'text-gray-600' : 'text-rmpg-300'}`}>
+                      {UNIT_STATUS_LABELS[status as UnitStatus]}
+                    </span>
                   </div>
                 ))}
+              <div className={`w-px h-3 ${isLightMapStyle(mapStyle) ? 'bg-gray-300' : 'bg-rmpg-600'}`} />
+              {(['P1', 'P2', 'P3', 'P4'] as const).map(p => (
+                <div key={p} className="flex items-center gap-0.5">
+                  <div className="w-1.5 h-1.5 rounded-sm shrink-0" style={{ backgroundColor: PRIORITY_COLORS[p] }} />
+                  <span className={`text-[7px] font-mono font-bold ${isLightMapStyle(mapStyle) ? 'text-gray-500' : 'text-rmpg-400'}`}>{p}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>}
@@ -2615,70 +2791,53 @@ export default function MapPage() {
           className="absolute top-2 z-[1000] transition-all"
           style={{ left: layersPanelOpen ? 'calc(clamp(160px, 14vw, 200px) + 24px)' : 52 }}
         >
-          <div className="bg-surface-deep/95 border border-rmpg-600 px-3 py-1.5 backdrop-blur-sm shadow-xl" style={{ borderRadius: 2 }}>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-mono">
-              <div className="flex items-center gap-1.5">
-                <Siren className="w-3 h-3 text-red-400 shrink-0" />
-                <span className="text-rmpg-400">ACTIVE</span>
-                <span className="text-white font-bold">{callsWithCoords.length}</span>
+          <div
+            className="backdrop-blur-md shadow-2xl"
+            style={{
+              borderRadius: 2,
+              background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.88)' : isSatelliteStyle(mapStyle) ? 'rgba(6,12,20,0.92)' : 'rgba(6,12,20,0.95)',
+              border: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.15)' : '1px solid rgba(30,48,72,0.6)',
+            }}
+          >
+            <div className="flex items-center gap-0.5 px-1.5 py-1">
+              {/* Live indicator */}
+              <div className="flex items-center gap-1 px-2 py-0.5" style={{ borderRight: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.1)' : '1px solid #1e3048' }}>
+                <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
+                <span className={`text-[9px] font-mono font-black tracking-wider ${isConnected ? (isLightMapStyle(mapStyle) ? 'text-green-700' : 'text-green-400') : 'text-red-400'}`}>
+                  {isConnected ? 'LIVE' : 'DISC'}
+                </span>
               </div>
-              <div className="w-px h-4 bg-rmpg-600 hidden sm:block" />
-              <div className="flex items-center gap-1.5">
-                <Shield className="w-3 h-3 text-green-400 shrink-0" />
-                <span className="text-rmpg-400">UNITS</span>
-                <span className="text-white font-bold">{unitsWithCoords.length}</span>
+
+              {/* Calls */}
+              <div className="flex items-center gap-1 px-2 py-0.5" style={{ borderRight: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.1)' : '1px solid #1e3048' }}>
+                <Siren className={`w-3 h-3 shrink-0 ${isLightMapStyle(mapStyle) ? 'text-red-600' : 'text-red-400'}`} />
+                <span className={`text-[13px] font-mono font-black ${isLightMapStyle(mapStyle) ? 'text-gray-900' : 'text-white'}`}>{callsWithCoords.length}</span>
+                {callsByPriority['P1'] ? <span className="text-[8px] font-mono font-bold text-red-500 bg-red-500/15 px-1 rounded">P1:{callsByPriority['P1']}</span> : null}
+                {callsByPriority['P2'] ? <span className="text-[8px] font-mono font-bold text-amber-500 bg-amber-500/15 px-1 rounded">P2:{callsByPriority['P2']}</span> : null}
               </div>
-              <div className="w-px h-4 bg-rmpg-600 hidden sm:block" />
-              <div className="flex items-center gap-1">
-                <span className="text-green-400 text-[9px]">AVL</span>
-                <span className="text-green-400 font-bold">{unitsByStatus['available'] || 0}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="text-amber-400 text-[9px]">DSP</span>
-                <span className="text-amber-400 font-bold">{unitsByStatus['dispatched'] || 0}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="text-blue-400 text-[9px]">ENR</span>
-                <span className="text-blue-400 font-bold">{unitsByStatus['enroute'] || 0}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="text-purple-400 text-[9px]">ONS</span>
-                <span className="text-purple-400 font-bold">{unitsByStatus['onscene'] || 0}</span>
-              </div>
-              {calls.length > 0 && (
-                <>
-                  <div className="w-px h-4 bg-rmpg-600 hidden sm:block" />
-                  {callsByPriority['P1'] ? (
-                    <div className="flex items-center gap-1">
-                      <span className="text-red-400 text-[9px]">P1</span>
-                      <span className="text-red-400 font-bold">{callsByPriority['P1']}</span>
-                    </div>
-                  ) : null}
-                  {callsByPriority['P2'] ? (
-                    <div className="flex items-center gap-1">
-                      <span className="text-amber-400 text-[9px]">P2</span>
-                      <span className="text-amber-400 font-bold">{callsByPriority['P2']}</span>
-                    </div>
-                  ) : null}
-                  {callsByPriority['P3'] ? (
-                    <div className="flex items-center gap-1">
-                      <span className="text-blue-400 text-[9px]">P3</span>
-                      <span className="text-blue-400 font-bold">{callsByPriority['P3']}</span>
-                    </div>
-                  ) : null}
-                </>
-              )}
-              {isConnected && (
-                <div className="flex items-center gap-1">
-                  <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                  <span className="text-green-400 font-bold text-[9px]">LIVE</span>
+
+              {/* Units */}
+              <div className="flex items-center gap-1 px-2 py-0.5">
+                <Shield className={`w-3 h-3 shrink-0 ${isLightMapStyle(mapStyle) ? 'text-green-600' : 'text-green-400'}`} />
+                <span className={`text-[13px] font-mono font-black ${isLightMapStyle(mapStyle) ? 'text-gray-900' : 'text-white'}`}>{unitsWithCoords.length}</span>
+                <div className="flex items-center gap-1.5 ml-1">
+                  {([
+                    { key: 'available', label: 'AVL', color: '#22c55e' },
+                    { key: 'dispatched', label: 'DSP', color: '#f59e0b' },
+                    { key: 'enroute', label: 'ENR', color: '#3b82f6' },
+                    { key: 'onscene', label: 'ONS', color: '#a855f7' },
+                  ] as const).filter(s => (unitsByStatus[s.key] || 0) > 0).map(({ key, label, color }) => (
+                    <span key={key} className="text-[8px] font-mono font-bold px-1 rounded" style={{ color, background: color + '15' }}>
+                      {label}:{unitsByStatus[key] || 0}
+                    </span>
+                  ))}
                 </div>
-              )}
+              </div>
+
               {showTrackingLines && trackingLinesRef.current.length > 0 && (
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 px-1.5">
                   <Navigation2 className="w-2.5 h-2.5 text-cyan-400" />
-                  <span className="text-cyan-400 text-[9px]">LINKS</span>
-                  <span className="text-cyan-400 font-bold">{trackingLinesRef.current.length}</span>
+                  <span className="text-cyan-400 text-[8px] font-mono font-bold">{trackingLinesRef.current.length}</span>
                 </div>
               )}
             </div>
@@ -2688,17 +2847,19 @@ export default function MapPage() {
         {/* ── Route Info Panel (bottom-left) ── */}
         {activeRoute && (
           <div
-            className="absolute bottom-4 left-4 z-[1000]"
+            className="absolute bottom-12 left-4 z-[1000] backdrop-blur-md"
             style={{
-              background: 'rgba(10,10,10,0.95)',
-              border: '1px solid #3b82f650',
-              padding: '8px 12px',
+              background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.92)' : 'rgba(6,12,20,0.95)',
+              border: isLightMapStyle(mapStyle) ? '1px solid rgba(59,130,246,0.3)' : '1px solid #3b82f650',
+              padding: '8px 14px',
               fontFamily: "'JetBrains Mono', 'Courier New', monospace",
-              minWidth: 180,
+              minWidth: 200,
+              borderRadius: 2,
+              boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-              <span style={{ fontSize: 10, color: '#60a5fa', fontWeight: 900 }}>
+              <span style={{ fontSize: 10, color: '#3b82f6', fontWeight: 900, letterSpacing: '0.05em' }}>
                 {activeRoute.unitCallSign} → {activeRoute.callNumber}
               </span>
               <button
@@ -2710,8 +2871,8 @@ export default function MapPage() {
               </button>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <span style={{ fontSize: 14, color: '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
-              <span style={{ fontSize: 11, color: '#9ca3af' }}>{activeRoute.distance}</span>
+              <span style={{ fontSize: 16, color: isLightMapStyle(mapStyle) ? '#111827' : '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
+              <span style={{ fontSize: 11, color: isLightMapStyle(mapStyle) ? '#6b7280' : '#9ca3af' }}>{activeRoute.distance}</span>
             </div>
             {routeLoading && (
               <div style={{ fontSize: 8, color: '#f59e0b', marginTop: 4 }}>Updating route…</div>
@@ -2730,11 +2891,15 @@ export default function MapPage() {
                   mapInstanceRef.current?.setZoom(16);
                 }
               }}
-              className="bg-surface-deep/95 border border-blue-500/50 p-2 backdrop-blur-sm shadow-xl hover:bg-blue-900/30 transition-colors"
+              className={`p-2.5 backdrop-blur-md shadow-xl transition-colors ${
+                isLightMapStyle(mapStyle)
+                  ? 'bg-white/90 border border-blue-300 hover:bg-blue-50'
+                  : 'bg-surface-deep/95 border border-blue-500/50 hover:bg-blue-900/30'
+              }`}
               style={{ borderRadius: 2 }}
               title={`Center on my position${gps.unitCallSign ? ` (${gps.unitCallSign})` : ''}`}
             >
-              <Navigation2 className="w-4 h-4 text-blue-400" />
+              <Navigation2 className={`w-4 h-4 ${isLightMapStyle(mapStyle) ? 'text-blue-600' : 'text-blue-400'}`} />
             </button>
           )}
           {/* Reset to default view */}
@@ -2743,11 +2908,15 @@ export default function MapPage() {
               mapInstanceRef.current?.panTo({ lat: 40.7608, lng: -111.8910 });
               mapInstanceRef.current?.setZoom(12);
             }}
-            className="bg-surface-deep/95 border border-rmpg-600 p-2 backdrop-blur-sm shadow-xl hover:bg-rmpg-700/40 transition-colors"
+            className={`p-2.5 backdrop-blur-md shadow-xl transition-colors ${
+              isLightMapStyle(mapStyle)
+                ? 'bg-white/90 border border-gray-300 hover:bg-gray-100'
+                : 'bg-surface-deep/95 border border-rmpg-600 hover:bg-rmpg-700/40'
+            }`}
             style={{ borderRadius: 2 }}
             title="Reset view"
           >
-            <Crosshair className="w-4 h-4 text-rmpg-300" />
+            <Crosshair className={`w-4 h-4 ${isLightMapStyle(mapStyle) ? 'text-gray-600' : 'text-rmpg-300'}`} />
           </button>
         </div>
       </div>
@@ -3069,6 +3238,29 @@ export default function MapPage() {
                     </div>
                   </div>
                 )}
+
+                {/* Map Style Selector (mobile) */}
+                <div className="px-3 py-2 space-y-1.5" style={{ background: '#0d1520', border: '1px solid #1e3048' }}>
+                  <div className="text-[10px] font-bold text-rmpg-400 uppercase tracking-widest mb-1">Map Style</div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {(Object.entries(MAP_STYLE_LABELS) as [MapStyleId, string][]).map(([key, label]) => {
+                      const isActive = mapStyle === key;
+                      return (
+                        <button
+                          key={key}
+                          onClick={() => setMapStyle(key)}
+                          className={`py-2 text-[10px] font-bold rounded transition-all ${
+                            isActive
+                              ? 'bg-brand-600 text-white'
+                              : 'bg-rmpg-800 text-rmpg-400 hover:bg-rmpg-700'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
 
                 <button
                   onClick={() => {

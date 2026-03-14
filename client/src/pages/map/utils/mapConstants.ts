@@ -48,14 +48,35 @@ export interface MapProperty {
 // ── Constants ────────────────────────────────────────────────
 
 // Map style options
-export type MapStyleId = 'dark' | 'satellite' | 'hybrid' | 'streets';
+export type MapStyleId = 'dark' | 'satellite' | 'hybrid' | 'streets' | 'terrain' | 'night_nav';
 
 export const MAP_STYLE_LABELS: Record<MapStyleId, string> = {
   dark: 'Dark',
   satellite: 'Satellite',
   hybrid: 'Hybrid',
   streets: 'Streets',
+  terrain: 'Terrain',
+  night_nav: 'Night Nav',
 };
+
+export const MAP_STYLE_DESCRIPTIONS: Record<MapStyleId, string> = {
+  dark: 'Low-light tactical',
+  satellite: 'Aerial imagery',
+  hybrid: 'Satellite + labels',
+  streets: 'Standard roads',
+  terrain: 'Elevation contours',
+  night_nav: 'High-contrast night',
+};
+
+/** Whether a map style uses a light background (affects overlay contrast) */
+export function isLightMapStyle(style: MapStyleId): boolean {
+  return style === 'streets' || style === 'terrain';
+}
+
+/** Whether a map style uses satellite imagery */
+export function isSatelliteStyle(style: MapStyleId): boolean {
+  return style === 'satellite' || style === 'hybrid';
+}
 
 // ── Incident Category Icons ──────────────────────────────────
 
