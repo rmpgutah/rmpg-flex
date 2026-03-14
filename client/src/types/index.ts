@@ -2195,7 +2195,8 @@ export interface CrmDashboardStats {
 // ─── CRM Leads & Pipeline ────────────────────────────
 
 export type LeadSource = 'utah_biz' | 'construction_permit' | 'commercial_re' | 'liquor_license'
-  | 'utah_bar' | 'ut_courts' | 'ut_commerce_collections' | 'ut_consumer_protection' | 'manual';
+  | 'utah_bar' | 'ut_courts' | 'ut_commerce_collections' | 'ut_consumer_protection'
+  | 'google_places' | 'ut_real_estate_licenses' | 'cfpb_complaints' | 'manual';
 export type PipelineStage = 'new' | 'contacted' | 'qualified' | 'proposal' | 'negotiation' | 'won' | 'lost' | 'dismissed';
 export type ProposalStage = 'draft' | 'sent' | 'viewed' | 'accepted' | 'rejected' | 'expired';
 

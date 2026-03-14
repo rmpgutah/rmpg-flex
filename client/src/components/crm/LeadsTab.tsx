@@ -76,6 +76,9 @@ const SOURCE_LABELS: Record<LeadSource, string> = {
   ut_commerce_collections: 'UT Commerce',
   ut_consumer_protection: 'UT Consumer',
   ut_courts: 'UT Courts',
+  google_places: 'Google Places',
+  ut_real_estate_licenses: 'UT Real Estate',
+  cfpb_complaints: 'CFPB Complaints',
   manual: 'Manual',
 };
 
@@ -88,6 +91,9 @@ const SOURCE_BADGE_CLASSES: Record<LeadSource, string> = {
   ut_commerce_collections: 'text-orange-400 bg-orange-900/30 border-orange-700/50',
   ut_consumer_protection: 'text-rose-400 bg-rose-900/30 border-rose-700/50',
   ut_courts: 'text-indigo-400 bg-indigo-900/30 border-indigo-700/50',
+  google_places: 'text-green-400 bg-green-900/30 border-green-700/50',
+  ut_real_estate_licenses: 'text-teal-400 bg-teal-900/30 border-teal-700/50',
+  cfpb_complaints: 'text-yellow-400 bg-yellow-900/30 border-yellow-700/50',
   manual: 'text-rmpg-300 bg-rmpg-800/30 border-rmpg-700/50',
 };
 
@@ -381,6 +387,9 @@ export default function LeadsTab() {
           <option value="ut_commerce_collections">UT Commerce Collections</option>
           <option value="ut_consumer_protection">UT Consumer Protection</option>
           <option value="ut_courts">Utah Courts Filings</option>
+          <option value="google_places">Google Places</option>
+          <option value="ut_real_estate_licenses">UT Real Estate Licenses</option>
+          <option value="cfpb_complaints">CFPB Complaints</option>
           <option value="manual">Manual</option>
         </select>
         <select

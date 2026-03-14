@@ -4261,6 +4261,9 @@ function seedData(): void {
   insertScrapeSource.run('ut_commerce_collections', 'UT Div of Commerce - Collections', 'https://commerce.utah.gov', 86400);
   insertScrapeSource.run('ut_consumer_protection', 'UT Consumer Protection', 'https://dcp.utah.gov', 86400);
   insertScrapeSource.run('ut_courts', 'Utah Courts XCHANGE', 'https://xchange.utcourts.gov', 43200);
+  insertScrapeSource.run('google_places', 'Google Places API', 'https://maps.googleapis.com/maps/api/place', 604800);
+  insertScrapeSource.run('ut_real_estate_licenses', 'Utah Real Estate Licenses', 'https://opendata.utah.gov', 604800);
+  insertScrapeSource.run('cfpb_complaints', 'CFPB Complaint Database', 'https://www.consumerfinance.gov', 604800);
 
   // ─── PROPOSAL TEMPLATES (seed defaults) ──────────
   const insertTemplate = db.prepare(`

@@ -22,6 +22,9 @@ import '../utils/utahBarScraper';
 import '../utils/utCommerceCollectionsScraper';
 import '../utils/utConsumerProtectionScraper';
 import '../utils/utCourtsScraper';
+import '../utils/googlePlacesLeadScraper';
+import '../utils/utahRealEstateLicenseScraper';
+import '../utils/cfpbComplaintScraper';
 
 const router = Router();
 router.use(authenticate);
