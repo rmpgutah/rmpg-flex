@@ -69,6 +69,8 @@ import ForcePasswordChangeModal from './ForcePasswordChangeModal';
 import Force2FASetupModal from './Force2FASetupModal';
 import MobileHeader from './mobile/MobileHeader';
 import MobileDrawer from './mobile/MobileDrawer';
+import MobileBottomNav from './mobile/MobileBottomNav';
+import MobileContextBar from './mobile/MobileContextBar';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { toDisplayLabel } from '../utils/formatters';
 import { openPageWindow, POPOUT_PAGES } from '../utils/windowManager';
@@ -523,7 +525,7 @@ export default function Layout() {
       )}
 
       {/* ============================================================ */}
-      {/* MOBILE: Compact 48px header + polished slide-in drawer       */}
+      {/* MOBILE: Compact header + context bar + drawer + bottom nav   */}
       {/* ============================================================ */}
       {isMobile && (
         <>
@@ -538,6 +540,13 @@ export default function Layout() {
             canGoForward={canGoForward}
             onNavBack={handleNavBack}
             onNavForward={handleNavForward}
+          />
+          <MobileContextBar
+            unitCallSign={gps.unitCallSign}
+            radioChannel={null}
+            activeCallNumber={null}
+            isConnected={isConnected}
+            gpsTracking={gps.isTracking}
           />
           <MobileDrawer
             isOpen={mobileMenuOpen}
@@ -1052,6 +1061,13 @@ export default function Layout() {
           </ErrorBoundary>
         </main>
       </div>
+
+      {/* Mobile Bottom Navigation */}
+      {isMobile && (
+        <MobileBottomNav
+          onMoreTap={() => setMobileMenuOpen(true)}
+        />
+      )}
 
       {/* Status Bar Footer — Desktop only (mobile status is in the drawer) */}
       {!isMobile && (
