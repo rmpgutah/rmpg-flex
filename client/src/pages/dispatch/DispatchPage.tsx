@@ -2139,6 +2139,34 @@ export default function DispatchPage() {
                         <Terminal style={{ width: 10, height: 10 }} /> NCIC
                       </button>
                     )}
+                    {/* Schedule Return Visit — PSO calls in completed states */}
+                    {!isEditing && selectedCall.incident_type === 'pso_client_request' && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
+                      <button
+                        className="toolbar-btn"
+                        style={{ background: '#d4a01725', borderColor: '#d4a01750', color: '#d4a017' }}
+                        onClick={async () => {
+                          const attempt = (selectedCall.pso_attempt_number || 1) + 1;
+                          const ordinal = attempt === 2 ? '2nd' : attempt === 3 ? '3rd' : `${attempt}th`;
+                          const note = window.prompt(`Re-dispatch as ${ordinal} visit?\n\nOptional: Add a note (e.g., "Return Thursday AM"):`, '');
+                          if (note === null) return;
+                          try {
+                            const result = await apiFetch(`/dispatch/calls/${selectedCall.id}/redispatch`, {
+                              method: 'POST',
+                              body: JSON.stringify({ scheduled_note: note || undefined }),
+                            });
+                            if (result) {
+                              const mapped = mapDbCall(result);
+                              setSelectedCall(mapped);
+                              setCalls(prev => prev.map(c => c.id === mapped.id ? mapped : c));
+                              addToast(`Re-dispatched as ${ordinal} visit${note ? `: ${note}` : ''}`, 'success');
+                            }
+                          } catch (err: any) { addToast(`Re-dispatch failed: ${err?.message || 'Unknown error'}`, 'error'); }
+                        }}
+                        title="Schedule a return visit for this PSO call"
+                      >
+                        <RotateCcw style={{ width: 10, height: 10 }} /> Return Visit
+                      </button>
+                    )}
                     {/* Revert status button — go back one step */}
                     {!isEditing && ['dispatched', 'enroute', 'onscene', 'cleared', 'closed'].includes(selectedCall.status) && (
                       <button
