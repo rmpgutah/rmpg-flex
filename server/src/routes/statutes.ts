@@ -262,7 +262,7 @@ router.get('/entity/:type/:id', (req: Request, res: Response) => {
 });
 
 // POST /api/statutes/entity — Link a statute to an entity
-router.post('/entity', (req: Request, res: Response) => {
+router.post('/entity', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { entity_type, entity_id, statute_id, notes } = req.body;
@@ -298,7 +298,7 @@ router.post('/entity', (req: Request, res: Response) => {
 });
 
 // DELETE /api/statutes/entity/:id — Remove a statute link
-router.delete('/entity/:id', (req: Request, res: Response) => {
+router.delete('/entity/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     db.prepare('DELETE FROM entity_statutes WHERE id = ?').run(req.params.id);

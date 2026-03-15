@@ -7,9 +7,11 @@
  */
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
+import { authenticateToken } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
 
 const router = Router();
+router.use(authenticateToken);
 
 // Default values — used when a user has no row in user_preferences yet
 const DEFAULTS = {

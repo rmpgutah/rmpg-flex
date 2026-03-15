@@ -587,7 +587,7 @@ router.delete('/persons/:id', requireRole('admin', 'manager'), (req: Request, re
 });
 
 // POST /api/records/persons/screen-all-ofac - Bulk OFAC screening for all unscreened persons
-router.post('/persons/screen-all-ofac', (req: Request, res: Response) => {
+router.post('/persons/screen-all-ofac', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const unchecked = db.prepare(
@@ -612,7 +612,7 @@ router.post('/persons/screen-all-ofac', (req: Request, res: Response) => {
 });
 
 // POST /api/records/persons/:id/screen-ofac - Force re-screen a single person
-router.post('/persons/:id/screen-ofac', (req: Request, res: Response) => {
+router.post('/persons/:id/screen-ofac', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id) as any;
@@ -2324,7 +2324,7 @@ router.get('/persons/:id/invoice-summary', (req: Request, res: Response) => {
 // ─── GET /api/records/ncic-query ─────────────────────────────
 // NCIC/NLETS query simulation — searches local database and returns
 // raw record data for client-side NCIC formatting.
-router.get('/ncic-query', async (req: Request, res: Response) => {
+router.get('/ncic-query', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { type, query: q } = req.query;
