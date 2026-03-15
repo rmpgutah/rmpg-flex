@@ -4,6 +4,15 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { broadcast } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
 import { searchUtahWarrants, searchUtahWarrantsCache, getUtahWarrantSyncStatus, runWarrantWatchScan } from '../utils/utahWarrantScraper';
+import {
+  searchScrapedWarrants, getActiveScrapedWarrants, getWarrantScraperStatus,
+  getWarrantScraperStats, manualScrapeSource, resetWarrantSourceErrors,
+  setWarrantSourceEnabled, checkPersonWarrants,
+} from '../utils/multiStateWarrantScraper';
+import {
+  searchCourtRecords, getCachedCourtRecords, getCourtRecordsByPersonId,
+  getCourtRecordStats,
+} from '../utils/courtRecordsScraper';
 import { createNotificationForRoles } from './notifications';
 
 const router = Router();
@@ -246,7 +255,7 @@ router.get('/watch/log', (req: Request, res: Response) => {
 
     const total = (db.prepare(`
       SELECT COUNT(*) as count FROM warrant_watch_log wl ${where}
-    `).get(...params) as any).count;
+    `).get(...params) as any)?.count || 0;
 
     const rows = db.prepare(`
       SELECT wl.*,
@@ -761,6 +770,186 @@ router.post('/:id/unarchive', requireRole('admin', 'manager', 'supervisor'), (re
     res.json(updated);
   } catch (error: any) {
     console.error('Unarchive warrant error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// MULTI-STATE WARRANT SCRAPER — Scraped warrants from all states
+// ═══════════════════════════════════════════════════════════════
+
+// GET /api/warrants/scraped/search — Search scraped warrants by name
+router.get('/scraped/search', (req: Request, res: Response) => {
+  try {
+    const { q, state, status, page = '1', limit = '50' } = req.query;
+    if (!q || String(q).trim().length < 2) {
+      res.json({ data: [], total: 0, pagination: { page: 1, limit: 50, total: 0, totalPages: 0 } });
+      return;
+    }
+
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
+    const offset = (pageNum - 1) * limitNum;
+
+    const result = searchScrapedWarrants(String(q), {
+      state: state ? String(state) : undefined,
+      status: status ? String(status) : undefined,
+      limit: limitNum,
+      offset,
+    });
+
+    res.json({
+      data: result.data,
+      total: result.total,
+      pagination: { page: pageNum, limit: limitNum, total: result.total, totalPages: Math.ceil(result.total / limitNum) },
+    });
+  } catch (error: any) {
+    console.error('Search scraped warrants error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/warrants/scraped/active — All active scraped warrants
+router.get('/scraped/active', (req: Request, res: Response) => {
+  try {
+    const { state, limit = '200' } = req.query;
+    const data = getActiveScrapedWarrants({
+      state: state ? String(state) : undefined,
+      limit: Math.min(500, parseInt(limit as string, 10) || 200),
+    });
+    res.json({ data, total: data.length });
+  } catch (error: any) {
+    console.error('Get active scraped warrants error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/warrants/scraped/stats — Warrant scraper statistics
+router.get('/scraped/stats', (req: Request, res: Response) => {
+  try {
+    const stats = getWarrantScraperStats();
+    res.json(stats);
+  } catch (error: any) {
+    console.error('Get warrant scraper stats error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/warrants/scraped/status — Scraper config status for all sources
+router.get('/scraped/status', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const status = getWarrantScraperStatus();
+    res.json({ data: status });
+  } catch (error: any) {
+    console.error('Get warrant scraper status error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/warrants/scraped/person/:personId — Check person for active warrants
+router.get('/scraped/person/:personId', (req: Request, res: Response) => {
+  try {
+    const personId = parseInt(String(req.params.personId), 10);
+    if (isNaN(personId)) {
+      res.status(400).json({ error: 'Invalid person ID' });
+      return;
+    }
+    const warrants = checkPersonWarrants(personId);
+    res.json({ data: warrants, total: warrants.length, has_active_warrants: warrants.length > 0 });
+  } catch (error: any) {
+    console.error('Check person warrants error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/warrants/scraped/scrape/:sourceKey — Trigger manual scrape
+router.post('/scraped/scrape/:sourceKey', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+  try {
+    const sourceKey = String(req.params.sourceKey);
+    res.json({ message: `Scrape started for ${sourceKey}`, status: 'running' });
+
+    // Run scrape in background
+    manualScrapeSource(sourceKey).catch(err => {
+      console.error(`[Warrant Scraper] Manual scrape failed for ${sourceKey}:`, err.message);
+    });
+  } catch (error: any) {
+    console.error('Manual warrant scrape error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/warrants/scraped/reset/:sourceKey — Reset source errors
+router.post('/scraped/reset/:sourceKey', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const sourceKey = String(req.params.sourceKey);
+    resetWarrantSourceErrors(sourceKey);
+    res.json({ message: `Errors reset for ${sourceKey}`, success: true });
+  } catch (error: any) {
+    console.error('Reset warrant source errors:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/warrants/scraped/enable/:sourceKey — Enable/disable a source
+router.put('/scraped/enable/:sourceKey', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const sourceKey = String(req.params.sourceKey);
+    const { enabled } = req.body;
+    setWarrantSourceEnabled(sourceKey, Boolean(enabled));
+    res.json({ message: `Source ${sourceKey} ${enabled ? 'enabled' : 'disabled'}`, success: true });
+  } catch (error: any) {
+    console.error('Toggle warrant source error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+//  COURT RECORDS — Public Court Record Search
+// ════════════════════════════════════════════════════════════
+
+// GET /api/warrants/court-records/search?firstName=&lastName=
+router.get('/court-records/search', async (req: Request, res: Response) => {
+  try {
+    const firstName = String(req.query.firstName || '').trim();
+    const lastName = String(req.query.lastName || '').trim();
+    if (!firstName || !lastName) {
+      res.status(400).json({ error: 'firstName and lastName are required' });
+      return;
+    }
+
+    const states = req.query.states ? String(req.query.states).split(',') : undefined;
+    const result = await searchCourtRecords(firstName, lastName, { states });
+    res.json(result);
+  } catch (error: any) {
+    console.error('Court records search error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/warrants/court-records/person/:personId
+router.get('/court-records/person/:personId', (req: Request, res: Response) => {
+  try {
+    const personId = parseInt(String(req.params.personId), 10);
+    if (isNaN(personId)) {
+      res.status(400).json({ error: 'Invalid person ID' });
+      return;
+    }
+
+    const records = getCourtRecordsByPersonId(personId);
+    res.json({ records, total: records.length });
+  } catch (error: any) {
+    console.error('Court records by person error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/warrants/court-records/stats
+router.get('/court-records/stats', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const stats = getCourtRecordStats();
+    res.json(stats);
+  } catch (error: any) {
+    console.error('Court records stats error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

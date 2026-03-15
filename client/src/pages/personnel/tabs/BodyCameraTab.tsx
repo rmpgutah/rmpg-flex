@@ -345,8 +345,7 @@ export default function BodyCameraTab({
             <button
               onClick={async () => {
                 if (!confirm(`Delete ${selectedCameraIds.size} camera(s) and all their videos?`)) return;
-                await onBulkDeleteCameras(Array.from(selectedCameraIds));
-                setSelectedCameraIds(new Set());
+                try { await onBulkDeleteCameras(Array.from(selectedCameraIds)); setSelectedCameraIds(new Set()); } catch { /* handled by parent */ }
               }}
               disabled={bulkLoading}
               className="toolbar-btn toolbar-btn-danger text-[10px] px-2.5 py-1 flex items-center gap-1"
@@ -375,8 +374,7 @@ export default function BodyCameraTab({
             <button
               onClick={async () => {
                 if (!confirm(`Delete ${selectedVideoIds.size} video(s)? This cannot be undone.`)) return;
-                await onBulkDeleteVideos(Array.from(selectedVideoIds));
-                setSelectedVideoIds(new Set());
+                try { await onBulkDeleteVideos(Array.from(selectedVideoIds)); setSelectedVideoIds(new Set()); } catch { /* handled by parent */ }
               }}
               disabled={bulkLoading}
               className="toolbar-btn toolbar-btn-danger text-[10px] px-2.5 py-1 flex items-center gap-1"
@@ -399,8 +397,7 @@ export default function BodyCameraTab({
               </select>
               <button
                 onClick={async () => {
-                  await onBulkClassifyVideos(Array.from(selectedVideoIds), bulkClassification);
-                  setSelectedVideoIds(new Set());
+                  try { await onBulkClassifyVideos(Array.from(selectedVideoIds), bulkClassification); setSelectedVideoIds(new Set()); } catch { /* handled by parent */ }
                 }}
                 disabled={bulkLoading}
                 className="toolbar-btn-primary text-[10px] px-2.5 py-1 flex items-center gap-1"

@@ -183,7 +183,7 @@ export default function MobileBottomSheet({
         {children}
       </div>
 
-      {/* ── Crimson accent at top border ──────────────────── */}
+      {/* ── Blue accent at top border ──────────────────── */}
       <div
         className="absolute top-0 left-1/4 right-1/4 h-[2px]"
         style={{

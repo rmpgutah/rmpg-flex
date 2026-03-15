@@ -96,7 +96,9 @@ function guessProcessType(documents: any[]): string {
 }
 
 function mapSmJobToCallData(job: SmJobRow) {
-  const addresses = JSON.parse(job.addresses_json || '[]');
+  let addresses: any[] = [];
+  try { addresses = JSON.parse(job.addresses_json || '[]'); } catch { /* malformed — use empty */ }
+  if (!Array.isArray(addresses)) addresses = [];
   const primary = addresses.find((a: any) => a.primary) || addresses[0];
 
   const locationAddress = primary
@@ -107,7 +109,9 @@ function mapSmJobToCallData(job: SmJobRow) {
   const latitude = primary?.lat || primary?.latitude || null;
   const longitude = primary?.lng || primary?.longitude || null;
 
-  const documents = JSON.parse(job.documents_json || '[]');
+  let documents: any[] = [];
+  try { documents = JSON.parse(job.documents_json || '[]'); } catch { /* malformed — use empty */ }
+  if (!Array.isArray(documents)) documents = [];
   const docNames = documents.map((d: any) => d.title).filter(Boolean).join(', ');
 
   const descParts: string[] = [];

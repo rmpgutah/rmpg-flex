@@ -430,7 +430,8 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   const allFieldLines = isEmpty ? [displayText] : doc.splitTextToSize(displayText, maxW);
   const lines: string[] = allFieldLines.slice(0, maxLines);
   if (allFieldLines.length > maxLines && lines.length > 0) {
-    lines[lines.length - 1] = lines[lines.length - 1].slice(0, -3) + '...';
+    const lastLn = lines[lines.length - 1];
+    lines[lines.length - 1] = lastLn.length > 3 ? lastLn.slice(0, -3) + '...' : '...';
   }
   const extraLines = Math.max(0, lines.length - 1);
   const boxH = baseBoxH + extraLines * lineStep;
@@ -543,7 +544,8 @@ export function addFlagBadges(
   let curY = y;
 
   for (const flag of flags) {
-    const text = flag.toUpperCase();
+    if (!flag) continue;
+    const text = String(flag).toUpperCase();
     const tw = doc.getTextWidth(text);
     const pillW = tw + pillPadX * 2;
 
@@ -601,7 +603,7 @@ export function addCautionBlock(
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   const allLines = doc.splitTextToSize(cautionText, maxW);
   const lines = allLines.slice(0, 6);
-  if (allLines.length > 6) lines[5] = lines[5].slice(0, -3) + '...';
+  if (allLines.length > 6) lines[5] = lines[5].length > 3 ? lines[5].slice(0, -3) + '...' : '...';
   const lineH = 3.5;
   const boxH = Math.max(8, lines.length * lineH + 4);
 
@@ -1080,9 +1082,9 @@ export function addImageToPage(
   maxWidth: number,
   maxHeight: number,
 ): { w: number; h: number } {
-  const aspect = image.width / image.height;
+  const aspect = (image.height > 0) ? image.width / image.height : 1;
   let renderW = maxWidth;
-  let renderH = renderW / aspect;
+  let renderH = aspect > 0 ? renderW / aspect : maxHeight;
   if (renderH > maxHeight) {
     renderH = maxHeight;
     renderW = renderH * aspect;
@@ -1176,7 +1178,7 @@ export function addAttachmentsSection(
  */
 export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?: string): number {
   const pageHeight = doc.internal.pageSize.getHeight();
-  if (y + needed > pageHeight - LAYOUT.FOOTER_HEIGHT - 12) {
+  if (y + needed > pageHeight - LAYOUT.FOOTER_HEIGHT - 8) {
     doc.addPage();
     addConfidentialWatermark(doc);
 
@@ -1248,27 +1250,31 @@ export function addTableWithShading(
   }
 
   // Helper to draw header row — dark blocky style
+  // atY = top of header rect; text is vertically centered within
+  const headerRowH = 5;
   const drawHeaders = (atY: number): number => {
-    const headerRowH = 8;
     // Dark table header (police report style)
     doc.setFillColor(...COLOR.BG_TABLE_HDR);
-    doc.rect(LAYOUT.PAGE_MARGIN + 1, atY - 3, cw - 2, headerRowH, 'F');
+    doc.rect(LAYOUT.PAGE_MARGIN + 1, atY, cw - 2, headerRowH, 'F');
     // Bold border around header
     doc.setDrawColor(...COLOR.BORDER_OUTER);
     doc.setLineWidth(BORDER.TABLE_OUTER);
-    doc.rect(LAYOUT.PAGE_MARGIN + 1, atY - 3, cw - 2, headerRowH);
+    doc.rect(LAYOUT.PAGE_MARGIN + 1, atY, cw - 2, headerRowH);
 
+    // Text vertically centered: baseline = top + half height + half cap-height
     doc.setFontSize(FONT.SIZE_TABLE_HEADER);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(...COLOR.TEXT_INVERTED);
+    const capH = FONT.SIZE_TABLE_HEADER * 0.35;  // approximate cap-height in mm
+    const textY = atY + (headerRowH + capH) / 2;
     for (const h of headers) {
-      doc.text(h.label, h.x, atY + 0.5);
+      doc.text(h.label, h.x, textY);
     }
     return atY + headerRowH;
   };
 
   let y = drawHeaders(startY);
-  const tableTop = startY - 3;
+  const tableTop = startY;
 
   // Track vertical segment boundaries for column borders (page-aware)
   const colSegments: { top: number; bottom: number; page: number }[] = [{ top: tableTop, bottom: y, page: doc.getNumberOfPages() }];
@@ -1290,7 +1296,8 @@ export function addTableWithShading(
       const allCellLines = cellText ? doc.splitTextToSize(cellText, availW) : [''];
       const lines = allCellLines.slice(0, maxCellLines);
       if (allCellLines.length > maxCellLines && lines.length > 0) {
-        lines[lines.length - 1] = lines[lines.length - 1].slice(0, -3) + '...';
+        const lastLine = lines[lines.length - 1];
+        lines[lines.length - 1] = lastLine.length > 3 ? lastLine.slice(0, -3) + '...' : '...';
       }
       cellLines.push(lines);
       if (lines.length > maxLines) maxLines = lines.length;
@@ -1299,10 +1306,9 @@ export function addTableWithShading(
 
     // Check page break before each row — re-draw headers on new page
     const prevPage = doc.getNumberOfPages();
-    const prevY = y; // Save position before page break for segment boundary
+    const prevY = y;
     y = checkPageBreak(doc, y, rowH + SPACING.SM);
     if (doc.getNumberOfPages() > prevPage) {
-      // Finalize previous segment on the old page at the pre-break Y position
       colSegments[colSegments.length - 1].bottom = prevY;
       y = drawHeaders(y);
       currentSegTop = y - 1;
@@ -1311,22 +1317,25 @@ export function addTableWithShading(
       doc.setFontSize(FONT.SIZE_TABLE_BODY);
     }
 
-    // Zebra shading with dynamic height
+    // y = top of this data row rect
+    // Zebra shading — rect starts at y, full rowH
     if (i % 2 === 0) {
       doc.setFillColor(...COLOR.BG_ZEBRA);
-      doc.rect(LAYOUT.PAGE_MARGIN + 1, y - 3, cw - 2, rowH, 'F');
+      doc.rect(LAYOUT.PAGE_MARGIN + 1, y, cw - 2, rowH, 'F');
     }
 
     // Row separator at bottom of row
     doc.setDrawColor(...COLOR.BORDER_TABLE);
     doc.setLineWidth(BORDER.TABLE_ROW);
-    doc.line(LAYOUT.PAGE_MARGIN + 1, y + rowH - 3, LAYOUT.PAGE_MARGIN + cw - 1, y + rowH - 3);
+    doc.line(LAYOUT.PAGE_MARGIN + 1, y + rowH, LAYOUT.PAGE_MARGIN + cw - 1, y + rowH);
 
-    // Render cell text (multi-line)
+    // Render cell text — vertically centered within row
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    const textBlockH = maxLines * cellLineH;
+    const textStartY = y + (rowH - textBlockH) / 2 + cellLineH * 0.7; // center block + baseline offset
     for (let c = 0; c < cellLines.length; c++) {
       const lines = cellLines[c];
-      let cellY = y;
+      let cellY = textStartY;
       for (const line of lines) {
         doc.text(line, colPositions[c], cellY);
         cellY += cellLineH;
@@ -1380,6 +1389,7 @@ export function addThreeColumnFields(
   const lx = getLeftX();
 
   for (let i = 0; i < fields.length; i += 3) {
+    y = checkPageBreak(doc, y, 12); // guard each row of 3 fields
     let maxNextY = y + SPACING.FIELD_ROW_ADVANCE;
     for (let c = 0; c < 3; c++) {
       if (i + c < fields.length) {
@@ -2503,48 +2513,60 @@ export function generatePdfReport(reportType: PdfReportType, data: IncidentData)
 
 /** Download PDF — async to fetch admin branding + seal before generating */
 export async function downloadPdfReport(reportType: PdfReportType, data: IncidentData) {
-  const branding = await fetchPdfBranding();
-  setActiveBranding(branding);
-  await loadPdfAssets();
+  try {
+    const branding = await fetchPdfBranding();
+    setActiveBranding(branding);
+    await loadPdfAssets();
 
-  // Extract officer digital signature from enriched data
-  const anyData = data as any;
-  if (anyData._officerSignature) {
-    setActiveOfficerSig({
-      signatureImage: anyData._officerSignature,
-      printedName: anyData.officer_name || '',
-      badgeNumber: anyData.badge_number || '',
-    });
-  } else {
+    // Extract officer digital signature from enriched data
+    const anyData = data as any;
+    if (anyData._officerSignature) {
+      setActiveOfficerSig({
+        signatureImage: anyData._officerSignature,
+        printedName: anyData.officer_name || '',
+        badgeNumber: anyData.badge_number || '',
+      });
+    } else {
+      setActiveOfficerSig(undefined);
+    }
+
+    const doc = generatePdfReport(reportType, data);
     setActiveOfficerSig(undefined);
+    const filename = `${data.incident_number || 'report'}_${reportType}.pdf`;
+    doc.save(filename);
+  } catch (err) {
+    setActiveOfficerSig(undefined);
+    console.error('PDF generation failed:', err);
+    throw new Error(`Failed to generate ${reportType} PDF: ${err instanceof Error ? err.message : 'Unknown error'}`);
   }
-
-  const doc = generatePdfReport(reportType, data);
-  setActiveOfficerSig(undefined);
-  const filename = `${data.incident_number}_${reportType}.pdf`;
-  doc.save(filename);
 }
 
 /** Generate incident report PDF and return a blob URL for in-app preview */
 export async function generatePdfReportBlobUrl(reportType: PdfReportType, data: IncidentData): Promise<string> {
-  const branding = await fetchPdfBranding();
-  setActiveBranding(branding);
-  await loadPdfAssets();
+  try {
+    const branding = await fetchPdfBranding();
+    setActiveBranding(branding);
+    await loadPdfAssets();
 
-  // Extract officer digital signature from enriched data
-  const anyData = data as any;
-  if (anyData._officerSignature) {
-    setActiveOfficerSig({
-      signatureImage: anyData._officerSignature,
-      printedName: anyData.officer_name || '',
-      badgeNumber: anyData.badge_number || '',
-    });
-  } else {
+    // Extract officer digital signature from enriched data
+    const anyData = data as any;
+    if (anyData._officerSignature) {
+      setActiveOfficerSig({
+        signatureImage: anyData._officerSignature,
+        printedName: anyData.officer_name || '',
+        badgeNumber: anyData.badge_number || '',
+      });
+    } else {
+      setActiveOfficerSig(undefined);
+    }
+
+    const doc = generatePdfReport(reportType, data);
     setActiveOfficerSig(undefined);
+    const blob = doc.output('blob');
+    return URL.createObjectURL(blob);
+  } catch (err) {
+    setActiveOfficerSig(undefined);
+    console.error('PDF preview generation failed:', err);
+    throw new Error(`Failed to generate ${reportType} PDF preview: ${err instanceof Error ? err.message : 'Unknown error'}`);
   }
-
-  const doc = generatePdfReport(reportType, data);
-  setActiveOfficerSig(undefined);
-  const blob = doc.output('blob');
-  return URL.createObjectURL(blob);
 }

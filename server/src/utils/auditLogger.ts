@@ -153,6 +153,7 @@ export type AuditAction =
   | 'BATCH_EMAIL'
   | 'MARK_ALL_READ'
   | 'OAUTH_INITIATE'
+  | 'SCHEDULE_EMAIL'
   // CRM
   | 'crm_task_created'
   | 'crm_task_updated'
@@ -205,6 +206,9 @@ export type AuditEntityType =
   | 'dashcam_video_link'
   | 'email'
   | 'email_folder'
+  | 'email_template'
+  | 'email_link'
+  | 'email_schedule'
   | 'system_config'
   | 'colorado_doc_offenders'
   | 'crm_task'

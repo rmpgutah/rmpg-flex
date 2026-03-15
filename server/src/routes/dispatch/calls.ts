@@ -245,7 +245,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         subject_description || null, vehicle_description || null, direction_of_travel || null,
         scene_safety || null, weather_conditions || null, lighting_conditions || null,
         alcohol_involved ? 1 : 0, drugs_involved ? 1 : 0, domestic_violence ? 1 : 0,
-        supervisor_notified ? 1 : 0, le_notified ? 1 : 0, le_agency || null, le_case_number || null,
+        supervisor_notified ? 1 : 0, le_notified ? 1 : 0, (le_agency && le_agency !== 'None') ? le_agency : null, le_case_number || null,
         damage_estimate || null, damage_description || null, responding_officer || null, action_taken || null,
         mental_health_crisis ? 1 : 0, juvenile_involved ? 1 : 0, felony_in_progress ? 1 : 0, officer_safety_caution ? 1 : 0,
         k9_requested ? 1 : 0, ems_requested ? 1 : 0, fire_requested ? 1 : 0, hazmat ? 1 : 0,
@@ -413,7 +413,8 @@ router.get('/calls/:id', (req: Request, res: Response) => {
     // Get assigned units with officer info
     let assignedUnits: any[] = [];
     try {
-      const unitIds = JSON.parse(call.assigned_unit_ids || '[]');
+      const parsed = JSON.parse(call.assigned_unit_ids || '[]');
+      const unitIds = Array.isArray(parsed) ? parsed : [];
       if (unitIds.length > 0) {
         const placeholders = unitIds.map(() => '?').join(',');
         assignedUnits = db.prepare(`
@@ -610,7 +611,7 @@ router.put('/calls/:id', requireRole('admin', 'manager', 'supervisor', 'dispatch
     addField('domestic_violence', domestic_violence !== undefined ? (domestic_violence ? 1 : 0) : undefined);
     addField('supervisor_notified', supervisor_notified !== undefined ? (supervisor_notified ? 1 : 0) : undefined);
     addField('le_notified', le_notified !== undefined ? (le_notified ? 1 : 0) : undefined);
-    addField('le_agency', le_agency);
+    addField('le_agency', le_agency === 'None' ? null : le_agency);
     addField('le_case_number', le_case_number);
     addField('damage_estimate', damage_estimate);
     addField('damage_description', damage_description);
@@ -720,7 +721,8 @@ router.post('/calls/:id/redispatch', requireRole('admin', 'manager', 'supervisor
     // Get assigned unit call signs for the snapshot
     let assignedCallSigns: string[] = [];
     try {
-      const unitIds = JSON.parse(call.assigned_unit_ids || '[]');
+      const parsedIds = JSON.parse(call.assigned_unit_ids || '[]');
+      const unitIds = Array.isArray(parsedIds) ? parsedIds : [];
       if (unitIds.length) {
         const units = db.prepare(`SELECT call_sign FROM units WHERE id IN (${unitIds.map(() => '?').join(',')})`).all(...unitIds) as any[];
         assignedCallSigns = units.map((u: any) => u.call_sign).filter(Boolean);
@@ -770,6 +772,7 @@ router.post('/calls/:id/redispatch', requireRole('admin', 'manager', 'supervisor
         ending_mileage = NULL,
         responding_vehicle_id = NULL,
         pso_attempt_number = ?,
+        pso_72hr_notified = NULL,
         notes = ?,
         updated_at = ?
       WHERE id = ?

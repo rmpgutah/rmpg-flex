@@ -71,7 +71,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
       SELECT COUNT(*) as count FROM offender_alerts oa
       LEFT JOIN persons p ON oa.person_id = p.id
       ${where}
-    `).get(...params) as any).count;
+    `).get(...params) as any)?.count || 0;
 
     const rows = db.prepare(`
       SELECT oa.*,

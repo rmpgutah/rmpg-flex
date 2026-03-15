@@ -113,9 +113,11 @@ router.get('/trusted-devices', authenticateToken, (req: Request, res: Response) 
 router.delete('/trusted-devices/:id', authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const deviceId = parseInt(req.params.id as string);
+    if (isNaN(deviceId)) { res.status(400).json({ error: 'Invalid device ID' }); return; }
     const result = db.prepare(
       'DELETE FROM trusted_devices WHERE id = ? AND user_id = ?'
-    ).run(parseInt(req.params.id as string), req.user!.userId);
+    ).run(deviceId, req.user!.userId);
 
     if (result.changes === 0) {
       res.status(404).json({ error: 'Device not found' });
@@ -169,9 +171,11 @@ router.get('/notifications', authenticateToken, (req: Request, res: Response) =>
 router.put('/notifications/:id/read', authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const notifId = parseInt(req.params.id as string);
+    if (isNaN(notifId)) { res.status(400).json({ error: 'Invalid notification ID' }); return; }
     db.prepare(
       'UPDATE security_notifications SET is_read = 1 WHERE id = ? AND user_id = ?'
-    ).run(parseInt(req.params.id as string), req.user!.userId);
+    ).run(notifId, req.user!.userId);
 
     res.json({ message: 'Marked as read' });
   } catch (error: any) {

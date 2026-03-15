@@ -8,7 +8,7 @@
 //      area so maps work on vehicle WiFi dead zones.
 // ============================================================
 
-const CACHE_NAME = 'rmpg-flex-v63';
+const CACHE_NAME = 'rmpg-flex-v64';
 const TILE_CACHE_NAME = 'rmpg-flex-tiles-v2';
 const STATIC_ASSETS = [
   '/',

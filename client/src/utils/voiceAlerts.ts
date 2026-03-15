@@ -60,19 +60,19 @@ interface VoicePhrase {
 /** localStorage key for voice alerts toggle (separate from rmpg-sound) */
 const VOICE_ALERTS_KEY = 'rmpg-voice-alerts';
 
-/** Inter-phrase pause in milliseconds */
-const PHRASE_GAP_MS = 200;
+/** Inter-phrase pause in milliseconds — slightly longer for natural breathing rhythm */
+const PHRASE_GAP_MS = 350;
 
 /** Post-tone pause before speech begins */
-const TONE_GAP_MS = 300;
+const TONE_GAP_MS = 400;
 
 /** Deduplication cache TTL (60 seconds) */
 const DEDUP_TTL_MS = 60_000;
 
-/** SpeechSynthesisUtterance configuration */
-const SPEECH_RATE = 1.05;   // slightly faster — urgent dispatch cadence
-const SPEECH_PITCH = 1.0;   // natural pitch
-const SPEECH_VOLUME = 0.9;  // loud but not clipping
+/** SpeechSynthesisUtterance configuration — tuned for natural human-like cadence */
+const SPEECH_RATE = 0.95;   // slightly slower than default — clearer, more natural
+const SPEECH_PITCH = 1.02;  // very slight pitch lift for authority/clarity
+const SPEECH_VOLUME = 0.92; // loud but not clipping
 
 // ─── Voice Selection ────────────────────────────────────────
 
@@ -81,8 +81,9 @@ let voicesLoaded = false;
 
 /**
  * Select the best available female voice.
- * Priority: Zira (Windows) → Google US Female → Samantha (macOS)
- * → any "female" voice → any English voice → default.
+ * Priority: Premium enhanced voices first (Google WaveNet, Apple Enhanced),
+ * then standard female voices, then any English voice.
+ * Higher-quality voices produce dramatically more natural-sounding alerts.
  */
 function selectFemaleVoice(): SpeechSynthesisVoice | null {
   if (cachedVoice && voicesLoaded) return cachedVoice;
@@ -93,12 +94,22 @@ function selectFemaleVoice(): SpeechSynthesisVoice | null {
 
   voicesLoaded = true;
 
-  // Priority candidates
+  // Priority candidates — premium/enhanced voices first for natural sound
   const candidates: Array<(v: SpeechSynthesisVoice) => boolean> = [
-    (v) => /zira/i.test(v.name),
-    (v) => /google.*us.*english/i.test(v.name) && /female/i.test(v.name),
-    (v) => /samantha/i.test(v.name),
+    // Tier 1: Premium enhanced voices (dramatically more natural)
+    (v) => /samantha.*enhanced/i.test(v.name),                          // macOS Enhanced Samantha
+    (v) => /karen.*enhanced/i.test(v.name),                             // macOS Enhanced Karen
+    (v) => /google.*us.*english.*female/i.test(v.name),                 // Chrome Google HD Female
+    (v) => /microsoft.*zira.*online/i.test(v.name),                     // Edge Online Zira (neural)
+    (v) => /microsoft.*jenny/i.test(v.name),                            // Windows 11 Jenny (neural)
+    // Tier 2: Standard quality named voices
+    (v) => /zira/i.test(v.name),                                        // Windows Zira
+    (v) => /samantha/i.test(v.name),                                    // macOS Samantha (standard)
+    (v) => /karen/i.test(v.name) && v.lang.startsWith('en'),            // macOS Karen (AU English)
+    (v) => /google.*english/i.test(v.name) && /female/i.test(v.name),   // Any Google Female
+    // Tier 3: Any female English voice
     (v) => /female/i.test(v.name) && v.lang.startsWith('en'),
+    // Tier 4: Any English voice
     (v) => v.lang.startsWith('en-US'),
     (v) => v.lang.startsWith('en'),
   ];
@@ -118,13 +129,17 @@ function selectFemaleVoice(): SpeechSynthesisVoice | null {
   return cachedVoice;
 }
 
-// Pre-load voices when module initializes
+// Pre-load voices when module initializes (one-time listener to avoid leak)
+let _voicesListenerRegistered = false;
 if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-  speechSynthesis.addEventListener('voiceschanged', () => {
-    cachedVoice = null;
-    voicesLoaded = false;
-    selectFemaleVoice();
-  });
+  if (!_voicesListenerRegistered) {
+    _voicesListenerRegistered = true;
+    speechSynthesis.addEventListener('voiceschanged', () => {
+      cachedVoice = null;
+      voicesLoaded = false;
+      selectFemaleVoice();
+    }, { once: false }); // Intentionally persistent — voices can change mid-session (e.g., language pack install)
+  }
   // Try immediate load (some browsers have voices ready synchronously)
   selectFemaleVoice();
 }
@@ -235,18 +250,74 @@ export function resetVoiceState(): void {
   cachedVoice = null;
 }
 
+// ─── Natural Speech Helpers ─────────────────────────────────
+
+/**
+ * Convert robotic ALL-CAPS dispatch text into natural spoken English.
+ * TTS engines handle sentence-case text far better — proper intonation,
+ * natural pacing, and no letter-by-letter spelling of acronyms.
+ * Punctuation pauses (commas, periods) add breathing room.
+ */
+function naturalPhrase(text: string): string {
+  // Map of dispatch shorthand → natural spoken form
+  const NATURAL_MAP: Record<string, string> = {
+    'ACTIVE WARRANTS': 'Active warrants on file.',
+    'ARMED SUSPECT': 'Caution, armed suspect.',
+    'VIOLENT SUSPECT': 'Caution, violent suspect.',
+    'MENTAL SUSPECT': 'Mental health concern noted.',
+    'KNOWN DRUG USER': 'Known drug user.',
+    'ESCAPE RISK': 'Caution, escape risk.',
+    'SUICIDE RISK': 'Caution, suicide risk.',
+    'REGISTERED SEX OFFENDER': 'Registered sex offender.',
+    'GANG AFFILIATED': 'Gang affiliation noted.',
+    'WATCHLIST MATCH': 'Watchlist match detected.',
+    'FEDERAL WATCHLIST HIT': 'Federal watchlist hit.',
+    'UTAH STATE WARRANT': 'Utah state warrant on file.',
+    'CRIMINAL HISTORY': 'Prior criminal history.',
+    'WARRANT HIT': 'Warrant hit.',
+    'ARMED SUBJECT': 'Caution, armed subject reported.',
+    'FELONY IN PROGRESS': 'Felony in progress.',
+    'OFFICER SAFETY CAUTION': 'Officer safety caution.',
+    'VEHICLE PURSUIT': 'Vehicle pursuit in progress.',
+    'FOOT PURSUIT': 'Foot pursuit in progress.',
+    'DOMESTIC VIOLENCE': 'Domestic violence call.',
+    'GANG RELATED': 'Gang related incident.',
+    'HAZMAT': 'Hazmat situation.',
+    'MENTAL HEALTH CRISIS': 'Mental health crisis.',
+    'INJURIES REPORTED': 'Injuries have been reported.',
+    'E M S REQUESTED': 'E.M.S. has been requested.',
+    'K 9 REQUESTED': 'K-9 unit has been requested.',
+    'DRUGS INVOLVED': 'Drugs are involved.',
+    'PRIOR ARMED CALLS AT LOCATION': 'Prior armed calls at this location.',
+    'PRIOR DOMESTIC VIOLENCE AT LOCATION': 'Prior domestic violence at this location.',
+    'PRIOR DRUG ACTIVITY AT LOCATION': 'Prior drug activity at this location.',
+    'PANIC ALERT': 'Panic alert.',
+    'OFFICER NEEDS ASSISTANCE': 'Officer needs immediate assistance.',
+    'STOLEN VEHICLE': 'Stolen vehicle.',
+    'BOLO HIT': 'Be on the lookout, hit confirmed.',
+    'HIT AND RUN': 'Hit and run.',
+    'DISPATCH': 'Dispatch.',
+    'NEW CALL': 'New call.',
+    'PRIORITY ONE': 'Priority one.',
+    'PRIORITY TWO': 'Priority two.',
+  };
+
+  return NATURAL_MAP[text] || text;
+}
+
 // ─── Phrase Builders ────────────────────────────────────────
 
 /**
  * Build spoken phrases from a safety screening result.
- * Each unique alert condition produces one short phrase.
+ * Each unique alert condition produces one short phrase
+ * converted to natural spoken English for human-like delivery.
  */
 function buildScreeningPhrases(result: ScreeningResult): VoicePhrase[] {
   const phrases: VoicePhrase[] = [];
   const seen = new Set<string>();
 
   const add = (text: string) => {
-    if (!seen.has(text)) { seen.add(text); phrases.push({ text }); }
+    if (!seen.has(text)) { seen.add(text); phrases.push({ text: naturalPhrase(text) }); }
   };
 
   // Person-level alerts
@@ -310,26 +381,27 @@ function buildScreeningPhrases(result: ScreeningResult): VoicePhrase[] {
 /**
  * Build spoken phrases from a call's boolean flags.
  * Critical flags first, then high, then medium priority.
+ * All phrases converted to natural spoken English.
  */
 function buildCallPhrases(call: CallFlags): VoicePhrase[] {
   const phrases: VoicePhrase[] = [];
 
   // Critical
-  if (call.weapons_involved && call.weapons_involved !== 'None') phrases.push({ text: 'ARMED SUBJECT' });
-  if (call.felony_in_progress) phrases.push({ text: 'FELONY IN PROGRESS' });
-  if (call.officer_safety_caution) phrases.push({ text: 'OFFICER SAFETY CAUTION' });
-  if (call.vehicle_pursuit) phrases.push({ text: 'VEHICLE PURSUIT' });
-  if (call.foot_pursuit) phrases.push({ text: 'FOOT PURSUIT' });
-  if (call.domestic_violence) phrases.push({ text: 'DOMESTIC VIOLENCE' });
-  if (call.gang_related) phrases.push({ text: 'GANG RELATED' });
-  if (call.hazmat) phrases.push({ text: 'HAZMAT' });
+  if (call.weapons_involved && call.weapons_involved !== 'None') phrases.push({ text: naturalPhrase('ARMED SUBJECT') });
+  if (call.felony_in_progress) phrases.push({ text: naturalPhrase('FELONY IN PROGRESS') });
+  if (call.officer_safety_caution) phrases.push({ text: naturalPhrase('OFFICER SAFETY CAUTION') });
+  if (call.vehicle_pursuit) phrases.push({ text: naturalPhrase('VEHICLE PURSUIT') });
+  if (call.foot_pursuit) phrases.push({ text: naturalPhrase('FOOT PURSUIT') });
+  if (call.domestic_violence) phrases.push({ text: naturalPhrase('DOMESTIC VIOLENCE') });
+  if (call.gang_related) phrases.push({ text: naturalPhrase('GANG RELATED') });
+  if (call.hazmat) phrases.push({ text: naturalPhrase('HAZMAT') });
 
   // High
-  if (call.mental_health_crisis) phrases.push({ text: 'MENTAL HEALTH CRISIS' });
-  if (call.injuries_reported) phrases.push({ text: 'INJURIES REPORTED' });
-  if (call.ems_requested) phrases.push({ text: 'E M S REQUESTED' });
-  if (call.k9_requested) phrases.push({ text: 'K 9 REQUESTED' });
-  if (call.drugs_involved) phrases.push({ text: 'DRUGS INVOLVED' });
+  if (call.mental_health_crisis) phrases.push({ text: naturalPhrase('MENTAL HEALTH CRISIS') });
+  if (call.injuries_reported) phrases.push({ text: naturalPhrase('INJURIES REPORTED') });
+  if (call.ems_requested) phrases.push({ text: naturalPhrase('E M S REQUESTED') });
+  if (call.k9_requested) phrases.push({ text: naturalPhrase('K 9 REQUESTED') });
+  if (call.drugs_involved) phrases.push({ text: naturalPhrase('DRUGS INVOLVED') });
 
   return phrases;
 }
@@ -402,11 +474,11 @@ export async function announcePanicAlert(officerName?: string): Promise<void> {
   await delay(TONE_GAP_MS);
 
   const phrases: VoicePhrase[] = [
-    { text: 'PANIC ALERT' },
-    { text: 'OFFICER NEEDS ASSISTANCE' },
+    { text: naturalPhrase('PANIC ALERT') },
+    { text: naturalPhrase('OFFICER NEEDS ASSISTANCE') },
   ];
   if (officerName) {
-    phrases.push({ text: officerName });
+    phrases.push({ text: `Officer ${officerName}.` });
   }
   enqueuePhrases(phrases);
 }
@@ -431,15 +503,16 @@ export async function announceDispatchEvent(call: CallFlags & {
   await playToneAsync('info');
   await delay(TONE_GAP_MS);
 
-  const phrases: VoicePhrase[] = [{ text: 'DISPATCH' }];
-  if (call.call_number) phrases.push({ text: `CALL ${call.call_number}` });
+  const phrases: VoicePhrase[] = [{ text: naturalPhrase('DISPATCH') }];
+  if (call.call_number) phrases.push({ text: `Call ${call.call_number}.` });
   if (call.incident_type) {
-    const type = call.incident_type.replace(/_/g, ' ').toUpperCase();
-    phrases.push({ text: type });
+    // Convert snake_case incident types to natural spoken form
+    const type = call.incident_type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    phrases.push({ text: `${type}.` });
   }
-  if (call.priority === 'P1') phrases.push({ text: 'PRIORITY ONE' });
-  else if (call.priority === 'P2') phrases.push({ text: 'PRIORITY TWO' });
-  if (call.location) phrases.push({ text: `AT ${call.location}` });
+  if (call.priority === 'P1') phrases.push({ text: naturalPhrase('PRIORITY ONE') });
+  else if (call.priority === 'P2') phrases.push({ text: naturalPhrase('PRIORITY TWO') });
+  if (call.location) phrases.push({ text: `At ${call.location}.` });
 
   // Append safety flags
   const safetyPhrases = buildCallPhrases(call);
@@ -467,14 +540,14 @@ export async function announceNewCall(call: CallFlags & {
   await playToneAsync('caution');
   await delay(TONE_GAP_MS);
 
-  const phrases: VoicePhrase[] = [{ text: 'NEW CALL' }];
-  if (call.call_number) phrases.push({ text: `CALL ${call.call_number}` });
+  const phrases: VoicePhrase[] = [{ text: naturalPhrase('NEW CALL') }];
+  if (call.call_number) phrases.push({ text: `Call ${call.call_number}.` });
   if (call.incident_type) {
-    const type = call.incident_type.replace(/_/g, ' ').toUpperCase();
-    phrases.push({ text: type });
+    const type = call.incident_type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    phrases.push({ text: `${type}.` });
   }
-  if (call.priority === 'P1') phrases.push({ text: 'PRIORITY ONE' });
-  else if (call.priority === 'P2') phrases.push({ text: 'PRIORITY TWO' });
+  if (call.priority === 'P1') phrases.push({ text: naturalPhrase('PRIORITY ONE') });
+  else if (call.priority === 'P2') phrases.push({ text: naturalPhrase('PRIORITY TWO') });
 
   // Append safety flags
   const safetyPhrases = buildCallPhrases(call);
@@ -570,7 +643,7 @@ export async function demoAllVoiceAlerts(): Promise<void> {
     await delay(TONE_GAP_MS);
 
     for (const text of group.phrases) {
-      await speakPhrase({ text });
+      await speakPhrase({ text: naturalPhrase(text) });
       await delay(PHRASE_GAP_MS);
     }
 

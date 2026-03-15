@@ -10,6 +10,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
+import { resolveDistrict } from '../utils/districtResolver';
 
 const router = Router();
 router.use(authenticateToken);
@@ -79,7 +80,7 @@ router.get('/violations', (req: Request, res: Response) => {
       const s = `%${search}%`; params.push(s, s, s, s);
     }
 
-    const total = (db.prepare(`SELECT COUNT(*) as count FROM code_violations ${where}`).get(...params) as any).count;
+    const total = (db.prepare(`SELECT COUNT(*) as count FROM code_violations ${where}`).get(...params) as any)?.count || 0;
     const rows = db.prepare(`SELECT * FROM code_violations ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(...params, limitNum, offset);
     res.json({ data: rows, pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) } });
   } catch (error: any) {
@@ -102,8 +103,21 @@ router.post('/violations', requireRole('admin', 'manager', 'supervisor', 'office
     const db = getDb();
     const now = localNow();
     const { violation_type, location, description, code_section, severity, property_id,
-      person_id, violator_name, violator_contact, compliance_deadline, fine_amount } = req.body;
+      person_id, violator_name, violator_contact, compliance_deadline, fine_amount,
+      latitude, longitude } = req.body;
     if (!location || !description || !violation_type) return res.status(400).json({ error: 'Location, description, and type required' });
+
+    // Auto-fill Section/Zone/Beat from coordinates
+    let { section_id, zone_id, beat_id, zone_beat } = req.body;
+    if (latitude && longitude && !section_id && !zone_id && !beat_id) {
+      const district = resolveDistrict(Number(latitude), Number(longitude));
+      if (district) {
+        section_id = district.section_id;
+        zone_id = district.zone_id;
+        beat_id = district.beat_id;
+        zone_beat = district.zone_beat;
+      }
+    }
 
     const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
     const violation_number = nextNumber('code_violations', 'CV', 'violation_number');
@@ -111,12 +125,16 @@ router.post('/violations', requireRole('admin', 'manager', 'supervisor', 'office
     const result = db.prepare(`
       INSERT INTO code_violations (violation_number, violation_type, status, location, property_id,
         person_id, violator_name, violator_contact, description, code_section, severity,
-        compliance_deadline, fine_amount, reporting_officer_id, reporting_officer_name, created_at, updated_at)
-      VALUES (?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        compliance_deadline, fine_amount, reporting_officer_id, reporting_officer_name,
+        section_id, zone_id, beat_id, zone_beat,
+        created_at, updated_at)
+      VALUES (?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(violation_number, violation_type, location, property_id || null,
       person_id || null, violator_name || null, violator_contact || null,
       description, code_section || null, severity || 'minor',
-      compliance_deadline || null, fine_amount || 0, req.user!.userId, user?.full_name || '', now, now);
+      compliance_deadline || null, fine_amount || 0, req.user!.userId, user?.full_name || '',
+      section_id || null, zone_id || null, beat_id || null, zone_beat || null,
+      now, now);
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
       VALUES (?, 'create', 'code_violation', ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ violation_number }), now);
@@ -134,7 +152,7 @@ router.put('/violations/:id', requireRole('admin', 'manager', 'supervisor', 'off
     const now = localNow();
     const fields = ['violation_type', 'location', 'description', 'code_section', 'severity',
       'property_id', 'person_id', 'violator_name', 'violator_contact', 'compliance_deadline',
-      'fine_amount', 'resolution_notes'];
+      'fine_amount', 'resolution_notes', 'section_id', 'zone_id', 'beat_id', 'zone_beat'];
     const updates: string[] = ['updated_at = ?'];
     const params: any[] = [now];
     for (const f of fields) {
@@ -154,12 +172,12 @@ router.put('/violations/:id/status', requireRole('admin', 'manager', 'supervisor
     const valid = ['open', 'notice_sent', 'reinspection', 'resolved', 'referred', 'voided'];
     if (!valid.includes(status)) return res.status(400).json({ error: 'Invalid status' });
 
-    const updates: any = { status, updated_at: now };
-    if (status === 'resolved') updates.resolved_date = localToday();
-    if (resolution_notes) updates.resolution_notes = resolution_notes;
-
-    const setClauses = Object.keys(updates).map(k => `${k} = ?`).join(', ');
-    db.prepare(`UPDATE code_violations SET ${setClauses} WHERE id = ?`).run(...Object.values(updates), req.params.id);
+    const setClauses: string[] = ['status = ?', 'updated_at = ?'];
+    const updateParams: any[] = [status, now];
+    if (status === 'resolved') { setClauses.push('resolved_date = ?'); updateParams.push(localToday()); }
+    if (resolution_notes) { setClauses.push('resolution_notes = ?'); updateParams.push(resolution_notes); }
+    updateParams.push(req.params.id);
+    db.prepare(`UPDATE code_violations SET ${setClauses.join(', ')} WHERE id = ?`).run(...updateParams);
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
       VALUES (?, 'status_change', 'code_violation', ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ status }), now);
@@ -188,7 +206,7 @@ router.get('/tows', (req: Request, res: Response) => {
       const s = `%${search}%`; params.push(s, s, s, s);
     }
 
-    const total = (db.prepare(`SELECT COUNT(*) as count FROM vehicle_tows ${where}`).get(...params) as any).count;
+    const total = (db.prepare(`SELECT COUNT(*) as count FROM vehicle_tows ${where}`).get(...params) as any)?.count || 0;
     const rows = db.prepare(`SELECT * FROM vehicle_tows ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(...params, limitNum, offset);
     res.json({ data: rows, pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }

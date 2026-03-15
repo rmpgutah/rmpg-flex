@@ -664,7 +664,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
                     {syncing ? 'Syncing...' : 'Sync Now'}
                   </button>
                   <button onClick={async () => {
-                    await apiFetch('/arrests/credentials', { method: 'DELETE' }); fetchStatus();
+                    try { await apiFetch('/arrests/credentials', { method: 'DELETE' }); fetchStatus(); } catch { /* handled by apiFetch */ }
                   }} className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 text-red-400 hover:text-red-300">
                     <Trash2 className="w-3 h-3" /> Clear Key
                   </button>

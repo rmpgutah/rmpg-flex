@@ -4,6 +4,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { broadcast } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
 import { createNotificationForRoles } from './notifications';
+import { resolveDistrict } from '../utils/districtResolver';
 
 const router = Router();
 router.use(authenticateToken);
@@ -19,7 +20,8 @@ function generateOrderNumber(db: ReturnType<typeof getDb>): string {
   let seq = 1;
   if (row) {
     const parts = row.order_number.split('-');
-    seq = parseInt(parts[2], 10) + 1;
+    const parsed = parts.length >= 3 ? parseInt(parts[2], 10) : NaN;
+    if (!isNaN(parsed)) seq = parsed + 1;
   }
   return `${prefix}${String(seq).padStart(4, '0')}`;
 }
@@ -150,6 +152,34 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
     if (!subject_first_name || !subject_last_name) return res.status(400).json({ error: 'Subject name is required' });
     if (!location) return res.status(400).json({ error: 'Location is required' });
 
+    // Auto-fill Section/Zone/Beat from linked call, incident, or property
+    let { section_id, zone_id, beat_id, zone_beat } = req.body;
+    if (!section_id && !zone_id && !beat_id) {
+      if (originating_call_id) {
+        const linkedCall = db.prepare('SELECT section_id, zone_id, beat_id, zone_beat FROM calls_for_service WHERE id = ?').get(originating_call_id) as any;
+        if (linkedCall) {
+          section_id = linkedCall.section_id; zone_id = linkedCall.zone_id;
+          beat_id = linkedCall.beat_id; zone_beat = linkedCall.zone_beat;
+        }
+      } else if (originating_incident_id) {
+        const linkedInc = db.prepare('SELECT section_id, zone_id, beat_id, zone_beat FROM incidents WHERE id = ?').get(originating_incident_id) as any;
+        if (linkedInc) {
+          section_id = linkedInc.section_id; zone_id = linkedInc.zone_id;
+          beat_id = linkedInc.beat_id; zone_beat = linkedInc.zone_beat;
+        }
+      } else if (property_id) {
+        // Try to get S/Z/B from property's lat/lng
+        const prop = db.prepare('SELECT latitude, longitude FROM properties WHERE id = ?').get(property_id) as any;
+        if (prop?.latitude && prop?.longitude) {
+          const district = resolveDistrict(Number(prop.latitude), Number(prop.longitude));
+          if (district) {
+            section_id = district.section_id; zone_id = district.zone_id;
+            beat_id = district.beat_id; zone_beat = district.zone_beat;
+          }
+        }
+      }
+    }
+
     // Auto-calc expiration if duration_days provided
     let exp = expiration_date || null;
     if (!exp && duration_days) {
@@ -166,8 +196,9 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
         duration_days, effective_date, expiration_date,
         originating_call_id, originating_incident_id,
         issued_by, issued_by_name, authorized_by, notes,
+        section_id, zone_id, beat_id, zone_beat,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       order_number, person_id || null, subject_first_name, subject_last_name, subject_dob || null, subject_description,
       property_id || null, property_name, location,
@@ -175,6 +206,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
       duration_days || null, effective_date || now, exp,
       originating_call_id || null, originating_incident_id || null,
       user.userId, user.fullName, authorized_by, notes,
+      section_id || null, zone_id || null, beat_id || null, zone_beat || null,
       now, now
     );
 
@@ -213,6 +245,7 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (re
       'order_type', 'status', 'reason', 'conditions',
       'duration_days', 'effective_date', 'expiration_date',
       'authorized_by', 'notes',
+      'section_id', 'zone_id', 'beat_id', 'zone_beat',
     ];
 
     const setClauses: string[] = ['updated_at = ?'];

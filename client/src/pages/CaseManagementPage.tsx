@@ -126,16 +126,21 @@ export default function CaseManagementPage() {
   useEffect(() => { fetchCases(); }, [fetchCases]);
   useEffect(() => { fetchStats(); }, [fetchStats]);
   useEffect(() => {
-    apiFetch<{ data: any[] }>('/personnel?per_page=200').then(r => setUsers(r.data || [])).catch(() => {});
+    let cancelled = false;
+    apiFetch<{ data: any[] }>('/personnel?per_page=200').then(r => { if (!cancelled) setUsers(r.data || []); }).catch(() => {});
+    return () => { cancelled = true; };
   }, []);
   useLiveSync('records', () => { fetchCases({ silent: true }); fetchStats(); });
 
   useEffect(() => {
     if (selected) {
       fetchNotes(selected.id);
-      const factors = selected.solvability_factors
-        ? (typeof selected.solvability_factors === 'string' ? JSON.parse(selected.solvability_factors) : selected.solvability_factors)
-        : {};
+      let factors: Record<string, any> = {};
+      try {
+        factors = selected.solvability_factors
+          ? (typeof selected.solvability_factors === 'string' ? JSON.parse(selected.solvability_factors) : selected.solvability_factors)
+          : {};
+      } catch { /* malformed JSON in DB — use empty */ }
       setSolvFactors(factors);
     }
   }, [selected, fetchNotes]);

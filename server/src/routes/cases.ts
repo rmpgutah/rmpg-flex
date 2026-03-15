@@ -65,7 +65,7 @@ router.get('/', (req: Request, res: Response) => {
       params.push(s, s, s);
     }
 
-    const total = (db.prepare(`SELECT COUNT(*) as count FROM cases c ${where}`).get(...params) as any).count;
+    const total = (db.prepare(`SELECT COUNT(*) as count FROM cases c ${where}`).get(...params) as any)?.count || 0;
     const rows = db.prepare(`
       SELECT c.*, u.full_name as lead_investigator_name
       FROM cases c

@@ -149,13 +149,18 @@ export function useRadio() {
   useEffect(() => {
     ensureChannelsLoaded();
     // Poll the cache briefly so the UI updates once the fetch resolves
+    let cleared = false;
     const t = setInterval(() => {
-      if (_cachedChannels !== radioChannels) {
-        setRadioChannels(_cachedChannels);
-        clearInterval(t);
-      }
+      // Use functional setState to avoid stale closure over radioChannels
+      setRadioChannels(prev => {
+        if (_cachedChannels !== prev) {
+          if (!cleared) { cleared = true; clearInterval(t); }
+          return _cachedChannels;
+        }
+        return prev;
+      });
     }, 200);
-    return () => clearInterval(t);
+    return () => { cleared = true; clearInterval(t); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [state, setState] = useState<RadioState>({

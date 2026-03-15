@@ -191,7 +191,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
         const item = items[i];
 
         // Dynamic row height for multi-line descriptions
-        const descLines = doc.splitTextToSize(item.description, cols[0].w - 2);
+        const descLines = doc.splitTextToSize(item.description || '', cols[0].w - 2);
         const rowHeight = Math.max(descLines.length * LAYOUT.LINE_HEIGHT, LAYOUT.LINE_HEIGHT) + 1;
 
         // Alternating shading with dynamic height
@@ -220,7 +220,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
       }
 
       // Update final segment bottom
-      tableSegments[tableSegments.length - 1].bottom = y + 1;
+      if (tableSegments.length > 0) tableSegments[tableSegments.length - 1].bottom = y + 1;
 
       // Outer table border — draw per page segment
       const currentPage = doc.getNumberOfPages();
@@ -338,13 +338,18 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
 
 // ── Print-friendly HTML ───────────────────────────────────
 
+function escHtml(s: string | null | undefined): string {
+  if (!s) return '';
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 export function generatePrintableInvoiceHtml(data: InvoicePdfData): string {
   const items = data.line_items || [];
   const payments = data.payments || [];
 
   const lineItemRows = items.map(item => `
     <tr>
-      <td style="padding: 6px 8px; border-bottom: 1px solid #ddd; font-size: 11px;">${item.description}</td>
+      <td style="padding: 6px 8px; border-bottom: 1px solid #ddd; font-size: 11px;">${escHtml(item.description)}</td>
       <td style="padding: 6px 8px; border-bottom: 1px solid #ddd; text-align: right; font-size: 11px;">${item.quantity}</td>
       <td style="padding: 6px 8px; border-bottom: 1px solid #ddd; text-align: right; font-size: 11px;">${fmt(item.unit_price)}</td>
       <td style="padding: 6px 8px; border-bottom: 1px solid #ddd; text-align: right; font-size: 11px; font-weight: bold; ${item.amount < 0 ? 'color: #00783c;' : ''}">${fmt(item.amount)}</td>
@@ -426,10 +431,10 @@ export function generatePrintableInvoiceHtml(data: InvoicePdfData): string {
   <div class="section-bar">SECTION 2 &mdash; CLIENT / BILL TO</div>
   <div class="section-body">
     <div class="field-grid">
-      <div class="field-box" style="grid-column: span 2;"><div class="label">Client Name</div><div class="value">${data.client_name || 'Client'}</div></div>
-      <div class="field-box" style="grid-column: span 2;"><div class="label">Billing Address</div><div class="value">${data.billing_address || data.client_address || ''}</div></div>
-      <div class="field-box"><div class="label">Contact</div><div class="value">${data.contact_name || ''}</div></div>
-      <div class="field-box"><div class="label">Email</div><div class="value">${data.billing_email || data.contact_email || ''}</div></div>
+      <div class="field-box" style="grid-column: span 2;"><div class="label">Client Name</div><div class="value">${escHtml(data.client_name) || 'Client'}</div></div>
+      <div class="field-box" style="grid-column: span 2;"><div class="label">Billing Address</div><div class="value">${escHtml(data.billing_address || data.client_address)}</div></div>
+      <div class="field-box"><div class="label">Contact</div><div class="value">${escHtml(data.contact_name)}</div></div>
+      <div class="field-box"><div class="label">Email</div><div class="value">${escHtml(data.billing_email || data.contact_email)}</div></div>
     </div>
   </div>
 
@@ -471,7 +476,7 @@ export function generatePrintableInvoiceHtml(data: InvoicePdfData): string {
 
   ${data.notes ? `
     <div class="section-bar">NOTES</div>
-    <div class="section-body"><p style="font-size: 11px;">${data.notes}</p></div>
+    <div class="section-body"><p style="font-size: 11px;">${escHtml(data.notes)}</p></div>
   ` : ''}
 
   <div class="footer">
@@ -485,7 +490,12 @@ export function generatePrintableInvoiceHtml(data: InvoicePdfData): string {
 
 /** Generate invoice PDF and return a blob URL for in-app preview */
 export async function generateInvoicePdfBlobUrl(data: InvoicePdfData): Promise<string> {
-  const doc = await generateInvoicePdf(data);
-  const blob = doc.output('blob');
-  return URL.createObjectURL(blob);
+  try {
+    const doc = await generateInvoicePdf(data);
+    const blob = doc.output('blob');
+    return URL.createObjectURL(blob);
+  } catch (err) {
+    console.error('Invoice PDF preview generation failed:', err);
+    throw new Error(`Failed to generate invoice PDF: ${err instanceof Error ? err.message : 'Unknown error'}`);
+  }
 }

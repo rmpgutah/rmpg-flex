@@ -7,6 +7,9 @@ import {
   Settings2, ChevronDown, ChevronRight as ChevronRightIcon,
   MessageSquare, CheckSquare, Square, CheckCircle, EyeOff,
   FolderPlus, Edit3, Trash, PanelLeftClose, PanelLeftOpen, Image,
+  Clock, FileStack, Users, Printer, Bell, BellOff,
+  Link2, Unlink, CalendarClock, Filter, SlidersHorizontal,
+  ExternalLink, Shield, Hash,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useWebSocket } from '../context/WebSocketContext';
@@ -49,6 +52,7 @@ function useSnackbar(durationMs = 3000) {
     timerRef.current = setTimeout(() => setSnackbar(null), durationMs);
   }, [durationMs]);
   const dismiss = useCallback(() => { if (timerRef.current) clearTimeout(timerRef.current); setSnackbar(null); }, []);
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
   return { snackbar, show, dismiss };
 }
 
@@ -62,7 +66,12 @@ function SignatureEditor({ onClose }: { onClose: () => void }) {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    apiFetch<{ signature: string }>('/email/signature').then(d => setSignature(d.signature || '')).catch(() => {}).finally(() => setLoading(false));
+    let cancelled = false;
+    apiFetch<{ signature: string }>('/email/signature')
+      .then(d => { if (!cancelled) setSignature(d.signature || ''); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   const handleSave = async () => {
@@ -106,7 +115,737 @@ function insertFormat(textarea: HTMLTextAreaElement, prefix: string, suffix: str
 }
 
 // ============================================================
-// Compose Modal — BCC, Attachments, Inline Images
+// Contact Autocomplete Input
+// ============================================================
+
+interface ContactSuggestion {
+  email: string;
+  name: string;
+  source: string;
+}
+
+function ContactAutocompleteInput({
+  value,
+  onChange,
+  placeholder,
+  label,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  placeholder?: string;
+  label?: string;
+}) {
+  const [suggestions, setSuggestions] = useState<ContactSuggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [activeIdx, setActiveIdx] = useState(-1);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const fetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setShowSuggestions(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const fetchSuggestions = useCallback((query: string) => {
+    if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current);
+    if (query.length < 2) { setSuggestions([]); return; }
+    fetchTimerRef.current = setTimeout(async () => {
+      try {
+        const data = await apiFetch<ContactSuggestion[]>(`/email/contacts/search?q=${encodeURIComponent(query)}`);
+        setSuggestions(data || []);
+        setShowSuggestions(true);
+        setActiveIdx(-1);
+      } catch { setSuggestions([]); }
+    }, 250);
+  }, []);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    onChange(val);
+    // Extract the current token being typed (after last comma)
+    const lastComma = val.lastIndexOf(',');
+    const currentToken = val.substring(lastComma + 1).trim();
+    fetchSuggestions(currentToken);
+  };
+
+  const selectSuggestion = (contact: ContactSuggestion) => {
+    const lastComma = value.lastIndexOf(',');
+    const prefix = lastComma >= 0 ? value.substring(0, lastComma + 1) + ' ' : '';
+    const formatted = contact.name ? `${contact.name} <${contact.email}>` : contact.email;
+    onChange(prefix + formatted + ', ');
+    setSuggestions([]);
+    setShowSuggestions(false);
+    inputRef.current?.focus();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!showSuggestions || suggestions.length === 0) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIdx(prev => Math.min(prev + 1, suggestions.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActiveIdx(prev => Math.max(prev - 1, 0)); }
+    else if (e.key === 'Enter' && activeIdx >= 0) { e.preventDefault(); selectSuggestion(suggestions[activeIdx]); }
+    else if (e.key === 'Escape') { setShowSuggestions(false); }
+  };
+
+  return (
+    <div ref={containerRef} className="relative">
+      {label && <label className="text-[10px] text-rmpg-400 block mb-0.5">{label}</label>}
+      <input
+        ref={inputRef}
+        value={value}
+        onChange={handleInputChange}
+        onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
+        onKeyDown={handleKeyDown}
+        placeholder={placeholder}
+        className="input-dark w-full text-xs"
+      />
+      {showSuggestions && suggestions.length > 0 && (
+        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-surface-base border border-border-strong rounded shadow-lg max-h-48 overflow-y-auto py-1">
+          {suggestions.map((contact, idx) => (
+            <button
+              key={`${contact.email}-${idx}`}
+              onClick={() => selectSuggestion(contact)}
+              className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-colors ${
+                idx === activeIdx ? 'bg-brand-500/20 text-white' : 'text-rmpg-300 hover:bg-brand-500/10 hover:text-white'
+              }`}
+            >
+              <div className="w-5 h-5 rounded-full bg-brand-500/20 flex items-center justify-center text-[9px] text-brand-400 font-bold flex-shrink-0">
+                {(contact.name || contact.email).charAt(0).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0 text-left">
+                {contact.name && <div className="text-[11px] truncate">{contact.name}</div>}
+                <div className="text-[10px] text-rmpg-500 truncate">{contact.email}</div>
+              </div>
+              <span className="text-[8px] text-rmpg-600 uppercase">{contact.source}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// Template Picker
+// ============================================================
+
+interface EmailTemplate {
+  id: number;
+  name: string;
+  category: string;
+  subject: string;
+  body: string;
+  is_system: number;
+}
+
+function TemplatePicker({ onSelect, onClose }: { onSelect: (template: EmailTemplate) => void; onClose: () => void }) {
+  const [templates, setTemplates] = useState<EmailTemplate[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    apiFetch<EmailTemplate[]>('/email/templates')
+      .then(data => setTemplates(data || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [onClose]);
+
+  const categories = [...new Set(templates.map(t => t.category))];
+  const filtered = filter ? templates.filter(t => t.category === filter) : templates;
+
+  return (
+    <div ref={ref} className="absolute left-0 top-full mt-1 z-50 w-72 bg-surface-base border border-border-strong rounded shadow-xl">
+      <div className="px-3 py-2 border-b border-border-subtle flex items-center justify-between">
+        <span className="text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider">Email Templates</span>
+        <button onClick={onClose} className="text-rmpg-500 hover:text-white"><X className="w-3 h-3" /></button>
+      </div>
+      {/* Category filter */}
+      <div className="px-2 py-1.5 border-b border-border-subtle flex items-center gap-1 flex-wrap">
+        <button onClick={() => setFilter('')}
+          className={`text-[9px] px-1.5 py-0.5 rounded ${!filter ? 'bg-brand-500/20 text-brand-400' : 'text-rmpg-500 hover:text-white'}`}>All</button>
+        {categories.map(cat => (
+          <button key={cat} onClick={() => setFilter(cat)}
+            className={`text-[9px] px-1.5 py-0.5 rounded capitalize ${filter === cat ? 'bg-brand-500/20 text-brand-400' : 'text-rmpg-500 hover:text-white'}`}>{cat}</button>
+        ))}
+      </div>
+      <div className="max-h-60 overflow-y-auto py-1">
+        {loading ? (
+          <div className="py-4 text-center"><Loader2 className="w-4 h-4 animate-spin text-brand-400 mx-auto" /></div>
+        ) : filtered.length === 0 ? (
+          <div className="py-4 text-center text-[10px] text-rmpg-500">No templates found</div>
+        ) : (
+          filtered.map(t => (
+            <button key={t.id} onClick={() => { onSelect(t); onClose(); }}
+              className="w-full text-left px-3 py-2 hover:bg-brand-500/10 transition-colors border-b border-border-subtle/30 last:border-0">
+              <div className="text-[11px] text-white font-medium truncate">{t.name}</div>
+              <div className="text-[9px] text-rmpg-500 truncate">{t.subject}</div>
+              <div className="flex items-center gap-1 mt-0.5">
+                <span className="text-[8px] text-rmpg-600 capitalize bg-surface-sunken px-1 rounded">{t.category}</span>
+                {t.is_system ? <span className="text-[8px] text-amber-600">system</span> : null}
+              </div>
+            </button>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// Schedule Send Modal
+// ============================================================
+
+function ScheduleSendModal({ onSchedule, onClose }: { onSchedule: (dateTime: string) => void; onClose: () => void }) {
+  const [date, setDate] = useState('');
+  const [time, setTime] = useState('08:00');
+
+  // Set default date to tomorrow
+  useEffect(() => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    setDate(tomorrow.toISOString().split('T')[0]);
+  }, []);
+
+  const handleSchedule = () => {
+    if (!date || !time) return;
+    const dateTime = `${date}T${time}:00`;
+    onSchedule(dateTime);
+  };
+
+  // Quick presets
+  const presets = [
+    { label: 'Tomorrow 8 AM', getDate: () => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(8, 0, 0, 0); return d; } },
+    { label: 'Tomorrow 1 PM', getDate: () => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(13, 0, 0, 0); return d; } },
+    { label: 'Monday 8 AM', getDate: () => { const d = new Date(); d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7)); d.setHours(8, 0, 0, 0); return d; } },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
+      <div className="bg-surface-base border border-border-subtle rounded w-80 mx-4">
+        <div className="px-4 py-2 border-b border-border-subtle flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-white flex items-center gap-2"><Clock className="w-4 h-4 text-brand-400" /> Schedule Send</h3>
+          <button onClick={onClose} className="text-rmpg-500 hover:text-white"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="p-4 space-y-3">
+          {/* Quick presets */}
+          <div className="space-y-1">
+            <span className="text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider">Quick Select</span>
+            <div className="flex flex-col gap-1">
+              {presets.map(preset => {
+                const d = preset.getDate();
+                return (
+                  <button key={preset.label} onClick={() => { setDate(d.toISOString().split('T')[0]); setTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`); }}
+                    className="text-left px-2 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/10 hover:text-white rounded transition-colors">
+                    {preset.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="border-t border-border-subtle pt-3">
+            <span className="text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider block mb-2">Custom Date & Time</span>
+            <div className="flex items-center gap-2">
+              <input type="date" value={date} onChange={e => setDate(e.target.value)}
+                className="input-dark text-xs flex-1" min={new Date().toISOString().split('T')[0]} />
+              <input type="time" value={time} onChange={e => setTime(e.target.value)}
+                className="input-dark text-xs w-28" />
+            </div>
+          </div>
+        </div>
+        <div className="px-4 py-2 border-t border-border-subtle flex justify-end gap-2">
+          <button onClick={onClose} className="btn-secondary text-xs px-3 py-1">Cancel</button>
+          <button onClick={handleSchedule} disabled={!date || !time} className="btn-primary text-xs px-3 py-1 flex items-center gap-1.5 disabled:opacity-40">
+            <Clock className="w-3.5 h-3.5" /> Schedule
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// Draft Auto-Save Helpers
+// ============================================================
+
+const DRAFT_STORAGE_KEY = 'email_compose_draft';
+
+interface DraftState {
+  to: string;
+  cc: string;
+  bcc: string;
+  subject: string;
+  body: string;
+  savedAt: string;
+}
+
+function saveDraft(draft: Omit<DraftState, 'savedAt'>): void {
+  try {
+    if (!draft.to && !draft.cc && !draft.subject && !draft.body) {
+      localStorage.removeItem(DRAFT_STORAGE_KEY);
+      return;
+    }
+    localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify({ ...draft, savedAt: new Date().toISOString() }));
+  } catch { /* quota exceeded or private browsing — ignore */ }
+}
+
+function loadDraft(): DraftState | null {
+  try {
+    const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
+    if (!raw) return null;
+    const draft = JSON.parse(raw) as DraftState;
+    // Discard drafts older than 24 hours
+    if (Date.now() - new Date(draft.savedAt).getTime() > 24 * 60 * 60 * 1000) { localStorage.removeItem(DRAFT_STORAGE_KEY); return null; }
+    return draft;
+  } catch { return null; }
+}
+
+function clearDraft(): void { localStorage.removeItem(DRAFT_STORAGE_KEY); }
+
+// ============================================================
+// Email-Incident Link Panel
+// ============================================================
+
+interface EmailLink {
+  id: number;
+  email_graph_id: string;
+  incident_id: number | null;
+  call_id: number | null;
+  warrant_id: number | null;
+  person_id: number | null;
+  link_type: string;
+  notes: string | null;
+  linked_by: number;
+  created_at: string;
+}
+
+function EmailIncidentLinks({ emailId, onSnackbar }: { emailId: string; onSnackbar: (msg: string, type?: 'success' | 'error') => void }) {
+  const [links, setLinks] = useState<EmailLink[]>([]);
+  const [showForm, setShowForm] = useState(false);
+  const [linkTarget, setLinkTarget] = useState<'incident' | 'call' | 'warrant' | 'person'>('incident');
+  const [linkRelation, setLinkRelation] = useState<'related' | 'evidence' | 'notification' | 'correspondence'>('related');
+  const [linkId, setLinkId] = useState('');
+  const [linkNotes, setLinkNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const fetchLinks = useCallback(async () => {
+    try {
+      const data = await apiFetch<EmailLink[]>(`/email/links/${emailId}`);
+      setLinks(data || []);
+    } catch { /* ignore */ }
+  }, [emailId]);
+
+  useEffect(() => { fetchLinks(); }, [fetchLinks]);
+
+  const handleLink = async () => {
+    if (!linkId.trim()) return;
+    setSaving(true);
+    try {
+      const payload: Record<string, any> = {
+        emailGraphId: emailId,
+        linkType: linkRelation,
+        notes: linkNotes || undefined,
+      };
+      payload[`${linkTarget}Id`] = parseInt(linkId, 10);
+      await apiFetch('/email/link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      setShowForm(false);
+      setLinkId('');
+      setLinkNotes('');
+      fetchLinks();
+      onSnackbar('Email linked successfully');
+    } catch (err: any) { onSnackbar(err.message || 'Failed to link', 'error'); }
+    finally { setSaving(false); }
+  };
+
+  const handleUnlink = async (id: number) => {
+    try {
+      await apiFetch(`/email/link/${id}`, { method: 'DELETE' });
+      fetchLinks();
+      onSnackbar('Link removed');
+    } catch { onSnackbar('Failed to remove link', 'error'); }
+  };
+
+  const getLinkLabel = (link: EmailLink) => {
+    if (link.incident_id) return `Incident #${link.incident_id}`;
+    if (link.call_id) return `Call #${link.call_id}`;
+    if (link.warrant_id) return `Warrant #${link.warrant_id}`;
+    if (link.person_id) return `Person #${link.person_id}`;
+    return 'Unknown';
+  };
+
+  const getLinkIcon = (link: EmailLink) => {
+    if (link.incident_id) return Shield;
+    if (link.call_id) return Hash;
+    if (link.warrant_id) return FileText;
+    return Users;
+  };
+
+  return (
+    <div className="border-t border-border-subtle">
+      <div className="px-4 py-1.5 flex items-center gap-1.5 bg-surface-base/50">
+        <Link2 className="w-3 h-3 text-rmpg-500" />
+        <span className="text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider flex-1">Case Links</span>
+        <span className="text-[9px] text-rmpg-600">{links.length}</span>
+        <button onClick={() => setShowForm(!showForm)} className="p-0.5 text-brand-400 hover:text-brand-300" title="Link to case">
+          <Plus className="w-3 h-3" />
+        </button>
+      </div>
+
+      {links.length > 0 && (
+        <div className="px-4 pb-1.5 flex flex-wrap gap-1">
+          {links.map(link => {
+            const Icon = getLinkIcon(link);
+            return (
+              <div key={link.id} className="flex items-center gap-1 px-2 py-0.5 bg-surface-sunken border border-border-subtle rounded text-[10px] text-rmpg-300 group">
+                <Icon className="w-3 h-3 text-brand-400" />
+                <span>{getLinkLabel(link)}</span>
+                {link.link_type && <span className="text-[8px] text-rmpg-600 capitalize">{link.link_type}</span>}
+                <button onClick={() => handleUnlink(link.id)} className="opacity-0 group-hover:opacity-100 text-rmpg-500 hover:text-red-400 transition-opacity">
+                  <X className="w-2.5 h-2.5" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {showForm && (
+        <div className="px-4 pb-2 space-y-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <select value={linkTarget} onChange={e => setLinkTarget(e.target.value as any)}
+              className="input-dark text-[10px] px-2 py-1 w-24">
+              <option value="incident">Incident</option>
+              <option value="call">Call</option>
+              <option value="warrant">Warrant</option>
+              <option value="person">Person</option>
+            </select>
+            <input value={linkId} onChange={e => setLinkId(e.target.value)} placeholder="ID #"
+              className="input-dark text-[10px] px-2 py-1 w-20" type="number" />
+            <select value={linkRelation} onChange={e => setLinkRelation(e.target.value as any)}
+              className="input-dark text-[10px] px-2 py-1 w-28">
+              <option value="related">Related</option>
+              <option value="evidence">Evidence</option>
+              <option value="notification">Notification</option>
+              <option value="correspondence">Correspondence</option>
+            </select>
+            <input value={linkNotes} onChange={e => setLinkNotes(e.target.value)} placeholder="Notes (optional)"
+              className="input-dark text-[10px] px-2 py-1 flex-1"
+              onKeyDown={e => { if (e.key === 'Enter') handleLink(); }} />
+            <button onClick={handleLink} disabled={saving || !linkId.trim()} className="btn-primary text-[9px] px-2 py-1 disabled:opacity-40">
+              {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Link'}
+            </button>
+            <button onClick={() => { setShowForm(false); setLinkId(''); setLinkNotes(''); }} className="text-rmpg-500 hover:text-white">
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// Scheduled Emails Panel
+// ============================================================
+
+interface ScheduledEmail {
+  id: number;
+  to_addresses: string;
+  subject: string;
+  scheduled_at: string;
+  status: string;
+  created_at: string;
+}
+
+function ScheduledEmailsPanel({ onSnackbar }: { onSnackbar: (msg: string, type?: 'success' | 'error') => void }) {
+  const [emails, setEmails] = useState<ScheduledEmail[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchScheduled = useCallback(async () => {
+    try {
+      const data = await apiFetch<ScheduledEmail[]>('/email/scheduled');
+      setEmails(data || []);
+    } catch { /* ignore */ }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { fetchScheduled(); }, [fetchScheduled]);
+
+  const handleCancel = async (id: number) => {
+    try {
+      await apiFetch(`/email/scheduled/${id}`, { method: 'DELETE' });
+      setEmails(prev => prev.filter(e => e.id !== id));
+      onSnackbar('Scheduled email cancelled');
+    } catch { onSnackbar('Failed to cancel', 'error'); }
+  };
+
+  if (loading) return <div className="py-2 text-center"><Loader2 className="w-4 h-4 animate-spin text-brand-400 mx-auto" /></div>;
+  if (emails.length === 0) return <div className="py-3 text-center text-[10px] text-rmpg-600">No scheduled emails</div>;
+
+  return (
+    <div className="space-y-1 py-1">
+      {emails.map(email => {
+        const toList = (() => { try { return JSON.parse(email.to_addresses) as string[]; } catch { return [email.to_addresses]; } })();
+        const scheduledDate = new Date(email.scheduled_at);
+        const isPast = scheduledDate.getTime() < Date.now();
+        return (
+          <div key={email.id} className="px-3 py-1.5 border-b border-border-subtle/30 group">
+            <div className="flex items-center gap-1.5">
+              <CalendarClock className={`w-3 h-3 flex-shrink-0 ${email.status === 'sent' ? 'text-green-500' : email.status === 'failed' ? 'text-red-400' : isPast ? 'text-amber-400' : 'text-brand-400'}`} />
+              <span className="text-[10px] text-rmpg-300 truncate flex-1">{email.subject || '(No subject)'}</span>
+              {email.status === 'pending' && (
+                <button onClick={() => handleCancel(email.id)}
+                  className="opacity-0 group-hover:opacity-100 text-rmpg-500 hover:text-red-400 transition-opacity" title="Cancel">
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+            <div className="text-[9px] text-rmpg-500 ml-[18px]">
+              To: {toList.join(', ').substring(0, 40)}{toList.join(', ').length > 40 ? '...' : ''}
+            </div>
+            <div className="text-[9px] ml-[18px]">
+              <span className={email.status === 'sent' ? 'text-green-500' : email.status === 'failed' ? 'text-red-400' : 'text-rmpg-500'}>
+                {email.status === 'pending' ? `Sends ${scheduledDate.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` :
+                 email.status === 'sent' ? 'Sent' : 'Failed'}
+              </span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ============================================================
+// Print Email Helper
+// ============================================================
+
+function printEmail(message: EmailMessage, bodyHtml?: string) {
+  const printWindow = window.open('', '_blank', 'width=800,height=600');
+  if (!printWindow) return;
+
+  const doc = printWindow.document;
+  const toStr = message.toAddresses.map(a => a.name ? `${a.name} <${a.email}>` : a.email).join(', ');
+  const ccStr = message.ccAddresses.length > 0 ? message.ccAddresses.map(a => a.name ? `${a.name} <${a.email}>` : a.email).join(', ') : '';
+  const dateStr = new Date(message.receivedAt).toLocaleString();
+
+  // Build print document using safe DOM methods
+  const style = doc.createElement('style');
+  style.textContent = `
+    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 12pt; color: #1a1a1a; margin: 40px; line-height: 1.6; }
+    .header { border-bottom: 2px solid #1a5a9e; padding-bottom: 12px; margin-bottom: 16px; }
+    .header h1 { font-size: 16pt; margin: 0 0 8px; color: #1a1a1a; }
+    .meta { font-size: 10pt; color: #555; margin: 2px 0; }
+    .meta strong { color: #333; min-width: 40px; display: inline-block; }
+    .body-content { margin-top: 16px; }
+    .footer { margin-top: 32px; padding-top: 12px; border-top: 1px solid #ccc; font-size: 9pt; color: #999; }
+    @media print { body { margin: 20px; } a { color: #1a5a9e; text-decoration: none; } }
+  `;
+  doc.head.appendChild(style);
+  doc.title = message.subject;
+
+  const header = doc.createElement('div');
+  header.className = 'header';
+
+  const h1 = doc.createElement('h1');
+  h1.textContent = message.subject;
+  header.appendChild(h1);
+
+  const addMeta = (label: string, value: string) => {
+    const div = doc.createElement('div');
+    div.className = 'meta';
+    const strong = doc.createElement('strong');
+    strong.textContent = label;
+    div.appendChild(strong);
+    div.appendChild(doc.createTextNode(' ' + value));
+    header.appendChild(div);
+  };
+
+  addMeta('From:', `${message.fromName || ''} <${message.fromAddress}>`);
+  addMeta('To:', toStr);
+  if (ccStr) addMeta('CC:', ccStr);
+  addMeta('Date:', dateStr);
+
+  doc.body.appendChild(header);
+
+  const bodyDiv = doc.createElement('div');
+  bodyDiv.className = 'body-content';
+  if (bodyHtml) {
+    // Use a sandboxed iframe approach: render HTML body inside an iframe for print
+    // This is the same HTML we already render from the email server in a sandboxed iframe
+    const iframe = doc.createElement('iframe');
+    iframe.style.cssText = 'width:100%;border:none;min-height:200px;';
+    iframe.srcdoc = `<html><head><style>body{font-family:Segoe UI,Arial,sans-serif;font-size:12pt;color:#1a1a1a;margin:0;line-height:1.6;}a{color:#1a5a9e;}img{max-width:100%;height:auto;}table{border-collapse:collapse;max-width:100%;}td,th{padding:4px 8px;}blockquote{border-left:3px solid #ccc;margin:8px 0;padding:4px 12px;color:#666;}</style></head><body>${bodyHtml}</body></html>`;
+    bodyDiv.appendChild(iframe);
+  } else {
+    const pre = doc.createElement('pre');
+    pre.textContent = message.bodyPreview;
+    bodyDiv.appendChild(pre);
+  }
+  doc.body.appendChild(bodyDiv);
+
+  const footer = doc.createElement('div');
+  footer.className = 'footer';
+  footer.textContent = `Printed from RMPG Flex — ${new Date().toLocaleString()}`;
+  doc.body.appendChild(footer);
+
+  setTimeout(() => { printWindow.print(); }, 500);
+}
+
+// ============================================================
+// Search Filter Panel
+// ============================================================
+
+interface SearchFilters {
+  sender: string;
+  hasAttachments: boolean;
+  isFlagged: boolean;
+  dateFrom: string;
+  dateTo: string;
+  unreadOnly: boolean;
+}
+
+const EMPTY_FILTERS: SearchFilters = {
+  sender: '',
+  hasAttachments: false,
+  isFlagged: false,
+  dateFrom: '',
+  dateTo: '',
+  unreadOnly: false,
+};
+
+function hasActiveFilters(f: SearchFilters): boolean {
+  return !!(f.sender || f.hasAttachments || f.isFlagged || f.dateFrom || f.dateTo || f.unreadOnly);
+}
+
+function SearchFilterPanel({
+  filters,
+  onChange,
+  onClose,
+}: {
+  filters: SearchFilters;
+  onChange: (filters: SearchFilters) => void;
+  onClose: () => void;
+}) {
+  const [local, setLocal] = useState<SearchFilters>(filters);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [onClose]);
+
+  const handleApply = () => { onChange(local); onClose(); };
+  const handleReset = () => { onChange(EMPTY_FILTERS); onClose(); };
+
+  return (
+    <div ref={ref} className="absolute left-0 right-0 top-full mt-1 z-50 bg-surface-base border border-border-strong rounded shadow-xl p-3 space-y-2">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider">Search Filters</span>
+        <button onClick={onClose} className="text-rmpg-500 hover:text-white"><X className="w-3 h-3" /></button>
+      </div>
+
+      <div>
+        <label className="text-[9px] text-rmpg-500 block mb-0.5">From (sender)</label>
+        <input value={local.sender} onChange={e => setLocal(prev => ({ ...prev, sender: e.target.value }))}
+          className="input-dark w-full text-[10px] px-2 py-1" placeholder="name or email" />
+      </div>
+
+      <div className="flex items-center gap-3">
+        <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
+          <input type="checkbox" checked={local.hasAttachments} onChange={e => setLocal(prev => ({ ...prev, hasAttachments: e.target.checked }))}
+            className="w-3 h-3 rounded border-border-subtle bg-surface-sunken accent-brand-500" />
+          <Paperclip className="w-3 h-3 text-rmpg-500" /> Has attachments
+        </label>
+        <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
+          <input type="checkbox" checked={local.isFlagged} onChange={e => setLocal(prev => ({ ...prev, isFlagged: e.target.checked }))}
+            className="w-3 h-3 rounded border-border-subtle bg-surface-sunken accent-brand-500" />
+          <Flag className="w-3 h-3 text-rmpg-500" /> Flagged
+        </label>
+        <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
+          <input type="checkbox" checked={local.unreadOnly} onChange={e => setLocal(prev => ({ ...prev, unreadOnly: e.target.checked }))}
+            className="w-3 h-3 rounded border-border-subtle bg-surface-sunken accent-brand-500" />
+          <Mail className="w-3 h-3 text-rmpg-500" /> Unread only
+        </label>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <div className="flex-1">
+          <label className="text-[9px] text-rmpg-500 block mb-0.5">From date</label>
+          <input type="date" value={local.dateFrom} onChange={e => setLocal(prev => ({ ...prev, dateFrom: e.target.value }))}
+            className="input-dark w-full text-[10px] px-2 py-1" />
+        </div>
+        <div className="flex-1">
+          <label className="text-[9px] text-rmpg-500 block mb-0.5">To date</label>
+          <input type="date" value={local.dateTo} onChange={e => setLocal(prev => ({ ...prev, dateTo: e.target.value }))}
+            className="input-dark w-full text-[10px] px-2 py-1" />
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between pt-1 border-t border-border-subtle">
+        {hasActiveFilters(local) ? (
+          <button onClick={handleReset} className="text-[10px] text-rmpg-500 hover:text-white">Clear filters</button>
+        ) : <div />}
+        <button onClick={handleApply} className="btn-primary text-[10px] px-3 py-0.5">Apply</button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// Desktop Notification Helper
+// ============================================================
+
+const NOTIF_PREF_KEY = 'email_notifications_enabled';
+
+function getNotificationsEnabled(): boolean {
+  try { return localStorage.getItem(NOTIF_PREF_KEY) !== 'false'; } catch { return true; }
+}
+
+function setNotificationsEnabled(enabled: boolean) {
+  try { localStorage.setItem(NOTIF_PREF_KEY, String(enabled)); } catch { /* ignore */ }
+}
+
+async function requestNotificationPermission(): Promise<boolean> {
+  if (!('Notification' in window)) return false;
+  if (Notification.permission === 'granted') return true;
+  if (Notification.permission === 'denied') return false;
+  const result = await Notification.requestPermission();
+  return result === 'granted';
+}
+
+function showDesktopNotification(title: string, body: string) {
+  if (!getNotificationsEnabled()) return;
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  try {
+    const notif = new Notification(title, {
+      body,
+      icon: '/icons/icon-192.png',
+      tag: 'email-notification',
+      silent: false,
+    });
+    notif.onclick = () => { window.focus(); notif.close(); };
+    setTimeout(() => notif.close(), 8000);
+  } catch { /* service worker context */ }
+}
+
+// ============================================================
+// Compose Modal — BCC, Attachments, Inline Images, Templates, Schedule
 // ============================================================
 
 interface FileAttachment {
@@ -134,8 +873,12 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
   const [error, setError] = useState('');
   const [showSignatureEditor, setShowSignatureEditor] = useState(false);
   const [fileAttachments, setFileAttachments] = useState<FileAttachment[]>([]);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [draftStatus, setDraftStatus] = useState<string>('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (replyMessage) {
@@ -150,10 +893,61 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
       } else if (mode === 'forward') {
         setSubject(`Fwd: ${replyMessage.subject.replace(/^Fwd:\s*/i, '')}`);
       }
+    } else if (mode === 'new') {
+      // Restore draft for new compositions
+      const draft = loadDraft();
+      if (draft) {
+        setTo(draft.to); setCc(draft.cc); setBcc(draft.bcc);
+        setSubject(draft.subject); setBody(draft.body);
+        if (draft.bcc) setShowBcc(true);
+        setDraftStatus(`Draft restored from ${formatDate(draft.savedAt)}`);
+      }
     }
   }, [mode, replyMessage]);
 
-  useEffect(() => { setTimeout(() => textareaRef.current?.focus(), 100); }, []);
+  // Auto-save draft on changes (debounced, only for new compositions)
+  useEffect(() => {
+    if (mode !== 'new') return;
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    draftTimerRef.current = setTimeout(() => {
+      saveDraft({ to, cc, bcc, subject, body });
+      if (to || cc || subject || body) setDraftStatus('Draft saved');
+    }, 2000);
+    return () => { if (draftTimerRef.current) clearTimeout(draftTimerRef.current); };
+  }, [to, cc, bcc, subject, body, mode]);
+
+  useEffect(() => { const t = setTimeout(() => textareaRef.current?.focus(), 100); return () => clearTimeout(t); }, []);
+
+  const handleTemplateSelect = (template: EmailTemplate) => {
+    setSubject(template.subject);
+    setBody(template.body);
+    setDraftStatus(`Template "${template.name}" applied`);
+  };
+
+  const handleScheduleSend = async (scheduledAt: string) => {
+    if (!to.trim()) { setError('Recipient is required'); return; }
+    if (!subject.trim()) { setError('Subject is required'); return; }
+    setSending(true);
+    setError('');
+    try {
+      await apiFetch('/email/schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: to.split(',').map(s => s.trim()).filter(Boolean),
+          cc: cc.trim() ? cc.split(',').map(s => s.trim()).filter(Boolean) : undefined,
+          bcc: bcc.trim() ? bcc.split(',').map(s => s.trim()).filter(Boolean) : undefined,
+          subject,
+          body,
+          scheduledAt,
+        }),
+      });
+      clearDraft();
+      onSent();
+      onClose();
+    } catch (err: any) { setError(err.message); }
+    finally { setSending(false); setShowScheduleModal(false); }
+  };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -219,6 +1013,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
       if (bcc.trim() && (mode === 'new' || mode === 'forward')) payload.bcc = bcc.split(',').map((s: string) => s.trim());
 
       await apiFetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      clearDraft();
       onSent();
       onClose();
     } catch (err: any) { setError(err.message); }
@@ -244,10 +1039,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
         <div className="p-4 space-y-2 flex-1 overflow-y-auto">
           {error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded px-2 py-1">{error}</div>}
 
-          <div>
-            <label className="text-[10px] text-rmpg-400 block mb-0.5">To</label>
-            <input value={to} onChange={e => setTo(e.target.value)} placeholder="email@example.com, ..." className="input-dark w-full text-xs" />
-          </div>
+          <ContactAutocompleteInput value={to} onChange={setTo} label="To" placeholder="email@example.com, ..." />
 
           <div>
             <div className="flex items-center gap-1 mb-0.5">
@@ -256,14 +1048,11 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
                 <button onClick={() => setShowBcc(true)} className="text-[9px] text-brand-400 hover:text-brand-300 ml-2">+ BCC</button>
               )}
             </div>
-            <input value={cc} onChange={e => setCc(e.target.value)} placeholder="Optional CC recipients" className="input-dark w-full text-xs" />
+            <ContactAutocompleteInput value={cc} onChange={setCc} placeholder="Optional CC recipients" />
           </div>
 
           {showBcc && (
-            <div>
-              <label className="text-[10px] text-rmpg-400 block mb-0.5">BCC</label>
-              <input value={bcc} onChange={e => setBcc(e.target.value)} placeholder="Hidden recipients" className="input-dark w-full text-xs" />
-            </div>
+            <ContactAutocompleteInput value={bcc} onChange={setBcc} label="BCC" placeholder="Hidden recipients" />
           )}
 
           <div>
@@ -286,6 +1075,14 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
                 className="p-1 text-rmpg-500 hover:text-white hover:bg-surface-raised rounded transition-colors" title="Insert image"><Image className="w-3.5 h-3.5" /></button>
               <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFileSelect} />
               <div className="flex-1" />
+              {/* Template picker */}
+              <div className="relative">
+                <button type="button" onClick={() => setShowTemplatePicker(!showTemplatePicker)}
+                  className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] text-rmpg-500 hover:text-white hover:bg-surface-raised rounded transition-colors" title="Insert template">
+                  <FileStack className="w-3 h-3" /> Template
+                </button>
+                {showTemplatePicker && <TemplatePicker onSelect={handleTemplateSelect} onClose={() => setShowTemplatePicker(false)} />}
+              </div>
               <button type="button" onClick={() => setShowSignatureEditor(!showSignatureEditor)}
                 className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] text-rmpg-500 hover:text-white hover:bg-surface-raised rounded transition-colors" title="Edit signature">
                 <Settings2 className="w-3 h-3" /> Signature
@@ -321,15 +1118,32 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
         </div>
 
         <div className="flex items-center justify-between px-4 py-2 border-t border-border-subtle">
-          <span className="text-[9px] text-rmpg-600">Signature auto-appended • **bold** *italic* [link](url)</span>
+          <div className="flex items-center gap-2">
+            <span className="text-[9px] text-rmpg-600">Signature auto-appended • **bold** *italic* [link](url)</span>
+            {draftStatus && <span className="text-[9px] text-green-600 italic">{draftStatus}</span>}
+          </div>
           <div className="flex items-center gap-2">
             <button onClick={onClose} className="btn-secondary text-xs px-3 py-1">Cancel</button>
+            {mode === 'new' && (
+              <button onClick={() => setShowScheduleModal(true)} disabled={sending}
+                className="btn-secondary text-xs px-3 py-1 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5" /> Send Later
+              </button>
+            )}
             <button onClick={handleSend} disabled={sending} className="btn-primary text-xs px-4 py-1 flex items-center gap-1.5">
               {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />} Send
             </button>
           </div>
         </div>
       </div>
+
+      {/* Schedule Send Modal */}
+      {showScheduleModal && (
+        <ScheduleSendModal
+          onSchedule={handleScheduleSend}
+          onClose={() => setShowScheduleModal(false)}
+        />
+      )}
     </div>
   );
 }
@@ -585,6 +1399,16 @@ export default function EmailPage() {
   // Context menu
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 
+  // Search filters
+  const [searchFilters, setSearchFilters] = useState<SearchFilters>(EMPTY_FILTERS);
+  const [showSearchFilters, setShowSearchFilters] = useState(false);
+
+  // Notifications
+  const [notificationsOn, setNotificationsOn] = useState(getNotificationsEnabled);
+
+  // Scheduled emails panel
+  const [showScheduledPanel, setShowScheduledPanel] = useState(false);
+
   // Resizable list panel
   const [listWidth, setListWidth] = useState(() => {
     const saved = localStorage.getItem('email_list_width');
@@ -601,6 +1425,9 @@ export default function EmailPage() {
       apiFetch<EmailFolder[]>('/email/folders').then(setFolders).catch(() => {});
     }, 500);
   }, []);
+
+  // Clean up debounced folder refresh on unmount
+  useEffect(() => () => { if (folderRefreshTimerRef.current) clearTimeout(folderRefreshTimerRef.current); }, []);
 
   // ─── Data Fetching ───
 
@@ -650,9 +1477,16 @@ export default function EmailPage() {
   }, [status?.authorized]); // eslint-disable-line
 
   useEffect(() => {
-    const unsub = subscribe('email:new_messages', () => {
+    const unsub = subscribe('email:new_messages', (data: any) => {
       if (selectedFolder === 'inbox') fetchMessages(1);
       fetchFolders();
+      // Desktop notification for new emails
+      if (data?.newCount > 0) {
+        showDesktopNotification(
+          `${data.newCount} new email${data.newCount > 1 ? 's' : ''}`,
+          data.unread ? `${data.unread} unread in inbox` : 'Check your inbox'
+        );
+      }
     });
     return unsub;
   }, [subscribe, selectedFolder, fetchMessages, fetchFolders]);
@@ -701,7 +1535,7 @@ export default function EmailPage() {
       setListWidth(Math.max(240, Math.min(500, e.clientX - folderWidth)));
     };
     const handleMouseUp = () => {
-      if (resizingRef.current) { resizingRef.current = false; document.body.style.cursor = ''; document.body.style.userSelect = ''; localStorage.setItem('email_list_width', String(listWidth)); }
+      if (resizingRef.current) { resizingRef.current = false; document.body.style.cursor = ''; document.body.style.userSelect = ''; try { localStorage.setItem('email_list_width', String(listWidth)); } catch { /* ignore */ } }
     };
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
@@ -863,7 +1697,7 @@ export default function EmailPage() {
   const toggleFolderCollapse = () => {
     const next = !folderCollapsed;
     setFolderCollapsed(next);
-    localStorage.setItem('email_folder_collapsed', String(next));
+    try { localStorage.setItem('email_folder_collapsed', String(next)); } catch { /* ignore */ }
   };
 
   // Context menu handler
@@ -917,7 +1751,23 @@ export default function EmailPage() {
   // Top-level folders only (no parentFolderId, or parentFolderId points to root)
   const topLevelFolders = sortedFolders.filter(f => !f.parentFolderId || WELL_KNOWN_FOLDERS.includes(f.displayName));
 
-  const threads = groupByConversation(messages);
+  // Apply client-side search filters
+  const filteredMessages = hasActiveFilters(searchFilters)
+    ? messages.filter(msg => {
+        if (searchFilters.sender) {
+          const s = searchFilters.sender.toLowerCase();
+          if (!msg.fromName.toLowerCase().includes(s) && !msg.fromAddress.toLowerCase().includes(s)) return false;
+        }
+        if (searchFilters.hasAttachments && !msg.hasAttachments) return false;
+        if (searchFilters.isFlagged && !msg.isFlagged) return false;
+        if (searchFilters.unreadOnly && msg.isRead) return false;
+        if (searchFilters.dateFrom && msg.receivedAt < searchFilters.dateFrom) return false;
+        if (searchFilters.dateTo && msg.receivedAt > searchFilters.dateTo + 'T23:59:59') return false;
+        return true;
+      })
+    : messages;
+
+  const threads = groupByConversation(filteredMessages);
   const unreadCount = messages.filter(m => !m.isRead).length;
   const isWellKnown = (name: string) => WELL_KNOWN_FOLDERS.includes(name);
 
@@ -1037,11 +1887,40 @@ export default function EmailPage() {
           </div>
         )}
 
-        {/* Keyboard shortcuts hint */}
+        {/* Scheduled emails section */}
         {!folderCollapsed && (
-          <div className="px-3 py-2 border-t border-border-subtle text-[8px] text-rmpg-600 space-y-0.5">
-            <div>Ctrl+N New • Ctrl+R Reply</div>
-            <div>Ctrl+F Forward • ↑↓ Navigate</div>
+          <div className="border-t border-border-subtle">
+            <button onClick={() => setShowScheduledPanel(!showScheduledPanel)}
+              className="w-full flex items-center gap-1.5 px-3 py-1.5 text-[10px] text-rmpg-400 hover:text-white transition-colors">
+              <CalendarClock className="w-3 h-3" />
+              <span className="flex-1 text-left">Scheduled</span>
+              {showScheduledPanel ? <ChevronDown className="w-2.5 h-2.5" /> : <ChevronRightIcon className="w-2.5 h-2.5" />}
+            </button>
+            {showScheduledPanel && <ScheduledEmailsPanel onSnackbar={showSnackbar} />}
+          </div>
+        )}
+
+        {/* Notification toggle + shortcuts */}
+        {!folderCollapsed && (
+          <div className="px-3 py-2 border-t border-border-subtle space-y-1">
+            <button onClick={async () => {
+              const newState = !notificationsOn;
+              if (newState) {
+                const granted = await requestNotificationPermission();
+                if (!granted) { showSnackbar('Notifications blocked by browser', 'error'); return; }
+              }
+              setNotificationsEnabled(newState);
+              setNotificationsOn(newState);
+              showSnackbar(newState ? 'Email notifications enabled' : 'Email notifications disabled');
+            }}
+              className="w-full flex items-center gap-1.5 text-[10px] text-rmpg-500 hover:text-white transition-colors py-0.5">
+              {notificationsOn ? <Bell className="w-3 h-3 text-brand-400" /> : <BellOff className="w-3 h-3" />}
+              {notificationsOn ? 'Notifications on' : 'Notifications off'}
+            </button>
+            <div className="text-[8px] text-rmpg-600 space-y-0.5">
+              <div>Ctrl+N New • Ctrl+R Reply</div>
+              <div>Ctrl+F Forward • ↑↓ Navigate</div>
+            </div>
           </div>
         )}
       </div>
@@ -1097,22 +1976,45 @@ export default function EmailPage() {
             <button onClick={() => setSelectedIds(new Set())} className="p-1 text-rmpg-500 hover:text-white" title="Clear selection"><X className="w-3.5 h-3.5" /></button>
           </div>
         ) : (
-          <div className="px-2 py-1.5 border-b border-border-subtle flex items-center gap-1.5">
-            <div className="flex-1 relative">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
-              <input value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="Search emails..."
-                className="input-dark w-full text-[11px] pl-7 pr-7 py-1" />
-              {searchInput && (
-                <button onClick={handleClearSearch} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white"><X className="w-3 h-3" /></button>
+          <div className="px-2 py-1.5 border-b border-border-subtle flex flex-col gap-1">
+            <div className="flex items-center gap-1.5">
+              <div className="flex-1 relative">
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
+                <input value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="Search emails..."
+                  className="input-dark w-full text-[11px] pl-7 pr-7 py-1" />
+                {searchInput && (
+                  <button onClick={handleClearSearch} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white"><X className="w-3 h-3" /></button>
+                )}
+                {showSearchFilters && (
+                  <SearchFilterPanel filters={searchFilters} onChange={setSearchFilters} onClose={() => setShowSearchFilters(false)} />
+                )}
+              </div>
+              <button onClick={() => setShowSearchFilters(!showSearchFilters)}
+                className={`p-1 rounded transition-colors ${hasActiveFilters(searchFilters) ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-500 hover:text-white'}`}
+                title="Search filters">
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+              </button>
+              {unreadCount > 0 && (
+                <button onClick={handleMarkAllRead} className="p-1 text-rmpg-500 hover:text-white rounded" title="Mark all as read"><Eye className="w-3.5 h-3.5" /></button>
               )}
+              <button onClick={handleRefresh} className="p-1 text-rmpg-500 hover:text-white rounded" title="Refresh">
+                <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              </button>
+              <button onClick={() => setComposing('new')} className="p-1 text-brand-400 hover:text-brand-300 rounded md:hidden" title="Compose"><Plus className="w-3.5 h-3.5" /></button>
             </div>
-            {unreadCount > 0 && (
-              <button onClick={handleMarkAllRead} className="p-1 text-rmpg-500 hover:text-white rounded" title="Mark all as read"><Eye className="w-3.5 h-3.5" /></button>
+            {/* Active filter indicators */}
+            {hasActiveFilters(searchFilters) && (
+              <div className="flex items-center gap-1 flex-wrap">
+                <span className="text-[8px] text-rmpg-500 uppercase">Filters:</span>
+                {searchFilters.sender && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded">from: {searchFilters.sender}</span>}
+                {searchFilters.hasAttachments && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded flex items-center gap-0.5"><Paperclip className="w-2.5 h-2.5" /> attachments</span>}
+                {searchFilters.isFlagged && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded flex items-center gap-0.5"><Flag className="w-2.5 h-2.5" /> flagged</span>}
+                {searchFilters.unreadOnly && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded">unread</span>}
+                {searchFilters.dateFrom && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded">from: {searchFilters.dateFrom}</span>}
+                {searchFilters.dateTo && <span className="text-[9px] px-1.5 py-0 bg-brand-500/10 text-brand-400 rounded">to: {searchFilters.dateTo}</span>}
+                <button onClick={() => setSearchFilters(EMPTY_FILTERS)} className="text-[8px] text-rmpg-500 hover:text-white ml-1">clear</button>
+              </div>
             )}
-            <button onClick={handleRefresh} className="p-1 text-rmpg-500 hover:text-white rounded" title="Refresh">
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-            </button>
-            <button onClick={() => setComposing('new')} className="p-1 text-brand-400 hover:text-brand-300 rounded md:hidden" title="Compose"><Plus className="w-3.5 h-3.5" /></button>
           </div>
         )}
 
@@ -1235,6 +2137,7 @@ export default function EmailPage() {
                 <button onClick={() => selectedMessage && handleToggleFlag(selectedMessage)} className="p-1 text-rmpg-500 hover:text-yellow-400" title="Toggle flag">
                   <Flag className={`w-3.5 h-3.5 ${selectedMessage?.isFlagged ? 'text-yellow-400 fill-yellow-400' : ''}`} />
                 </button>
+                <button onClick={() => fullMessage && printEmail(fullMessage, fullMessage.bodyHtml)} className="p-1 text-rmpg-500 hover:text-white" title="Print email"><Printer className="w-3.5 h-3.5" /></button>
                 <button onClick={() => selectedMessage && handleDelete(selectedMessage)} className="p-1 text-rmpg-500 hover:text-red-400" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
               </div>
 
@@ -1252,6 +2155,9 @@ export default function EmailPage() {
                   ))}
                 </div>
               )}
+
+              {/* Case Links */}
+              <EmailIncidentLinks emailId={fullMessage.id} onSnackbar={showSnackbar} />
             </div>
 
             {/* Message Body */}

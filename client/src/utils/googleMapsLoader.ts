@@ -508,7 +508,11 @@ function restoreAfterPrint(): void {
 
 // Auto-register beforeprint/afterprint listeners so that even native
 // Ctrl+P (or system print) switches maps to light on a best-effort basis.
+// Guard prevents duplicate registration if module is re-evaluated (HMR).
+// Remove-then-add ensures no duplicates accumulate across hot reloads.
 if (typeof window !== 'undefined') {
+  window.removeEventListener('beforeprint', switchToLightForPrint);
+  window.removeEventListener('afterprint', restoreAfterPrint);
   window.addEventListener('beforeprint', switchToLightForPrint);
   window.addEventListener('afterprint', restoreAfterPrint);
 }

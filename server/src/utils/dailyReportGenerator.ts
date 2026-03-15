@@ -292,6 +292,15 @@ async function collectDailyBreadcrumbs(dateStr: string): Promise<UnitTrail[]> {
         zoneCoverage[pt.beat_id] = { beat_code: pt.beat_code || '', city: pt.zone || '', point_count: 0, time_seconds: 0, percentage: 0 };
       }
       zoneCoverage[pt.beat_id].point_count++;
+      // Estimate time in zone from interval between consecutive points
+      if (i > 0 && points[i - 1].beat_id === pt.beat_id) {
+        const prevTime = new Date(points[i - 1].time).getTime();
+        const curTime = new Date(pt.time).getTime();
+        const delta = (curTime - prevTime) / 1000;
+        if (delta > 0 && delta < 600) { // cap at 10 min gap to avoid idle inflation
+          zoneCoverage[pt.beat_id].time_seconds += delta;
+        }
+      }
     }
     const totalTrackedSeconds = Object.values(zoneCoverage).reduce((s, z) => s + z.time_seconds, 0);
     for (const z of Object.values(zoneCoverage)) {
@@ -395,9 +404,9 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
   let brandText = 'ROCKY MOUNTAIN PATROL GROUP';
   let brandSub = 'Private Security & Operations Support';
   try {
-    const cfg = db.prepare("SELECT value FROM system_config WHERE key = 'branding'").get() as any;
-    if (cfg?.value) {
-      const b = JSON.parse(cfg.value);
+    const cfg = db.prepare("SELECT config_value FROM system_config WHERE config_key = 'branding'").get() as any;
+    if (cfg?.config_value) {
+      const b = JSON.parse(cfg.config_value);
       brandText = b.report_header_text || brandText;
       brandSub = b.report_subheader_text || brandSub;
     }
@@ -801,15 +810,19 @@ export async function generateAndSaveDailyReport(dateStr?: string): Promise<stri
   console.log(`[Daily Report] Saved: ${filepath} (${Math.round(pdfBuffer.length / 1024)} KB)`);
 
   // Also save metadata
-  const metaPath = path.join(REPORTS_DIR, `${filename}.meta.json`);
-  fs.writeFileSync(metaPath, JSON.stringify({
-    date,
-    generated_at: new Date().toISOString(),
-    units: trails.length,
-    total_breadcrumbs: totalPoints,
-    file_size_bytes: pdfBuffer.length,
-    filename,
-  }, null, 2));
+  try {
+    const metaPath = path.join(REPORTS_DIR, `${filename}.meta.json`);
+    fs.writeFileSync(metaPath, JSON.stringify({
+      date,
+      generated_at: new Date().toISOString(),
+      units: trails.length,
+      total_breadcrumbs: totalPoints,
+      file_size_bytes: pdfBuffer.length,
+      filename,
+    }, null, 2));
+  } catch (metaErr) {
+    console.error('[Daily Report] Failed to write metadata file:', metaErr);
+  }
 
   return filename;
 }

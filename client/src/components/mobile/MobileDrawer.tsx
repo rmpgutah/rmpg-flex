@@ -248,7 +248,7 @@ export default function MobileDrawer({
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
-        {/* Crimson accent */}
+        {/* Blue accent */}
         <div
           className="absolute top-0 left-0 right-0 h-[2px]"
           style={{ background: 'linear-gradient(90deg, #1a5a9e, #0e3359)' }}

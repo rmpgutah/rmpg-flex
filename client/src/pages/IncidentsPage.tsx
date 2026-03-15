@@ -170,6 +170,43 @@ export default function IncidentsPage() {
   // ---------- chain of custody expansion ----------
   const [expandedCustody, setExpandedCustody] = useState<Set<string>>(new Set());
 
+  // ---------- custody transfer modal ----------
+  const [custodyTransfer, setCustodyTransfer] = useState<{ evidenceId: string; evidenceNumber: string; currentLocation: string } | null>(null);
+  const [custodyAction, setCustodyAction] = useState<string>('transfer');
+  const [custodyToLocation, setCustodyToLocation] = useState('');
+  const [custodyNotes, setCustodyNotes] = useState('');
+  const [custodySubmitting, setCustodySubmitting] = useState(false);
+
+  const handleCustodyTransfer = async () => {
+    if (!custodyTransfer) return;
+    setCustodySubmitting(true);
+    try {
+      await apiFetch(`/api/records/evidence/${custodyTransfer.evidenceId}/chain-action`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: custodyAction,
+          from_location: custodyTransfer.currentLocation || null,
+          to_location: custodyToLocation || null,
+          notes: custodyNotes || null,
+        }),
+      });
+      addToast('Custody action recorded', 'success');
+      setCustodyTransfer(null);
+      setCustodyAction('transfer');
+      setCustodyToLocation('');
+      setCustodyNotes('');
+      // Refresh evidence for the selected incident
+      if (selectedIncident) {
+        const evData = await apiFetch<any>(`/api/records/evidence?incident_id=${selectedIncident.id}`);
+        setDetailEvidence(evData?.data || evData || []);
+      }
+    } catch {
+      addToast('Network error', 'error');
+    }
+    setCustodySubmitting(false);
+  };
+
   // ---------- toast ----------
   const { addToast } = useToast();
 
@@ -1416,7 +1453,16 @@ export default function IncidentsPage() {
                       <button
                         className="toolbar-btn"
                         style={{ fontSize: '10px', padding: '2px 6px' }}
-                        onClick={() => addToast('Custody transfer not yet implemented', 'info')}
+                        onClick={() => {
+                          setCustodyTransfer({
+                            evidenceId: String(ev.id),
+                            evidenceNumber: ev.evidence_number || '',
+                            currentLocation: ev.storage_location || '',
+                          });
+                          setCustodyAction('transfer');
+                          setCustodyToLocation('');
+                          setCustodyNotes('');
+                        }}
                       >
                         Transfer Custody
                       </button>
@@ -1811,6 +1857,93 @@ export default function IncidentsPage() {
         title={pdfViewerTitle}
         type="pdf"
       />
+
+      {/* Custody Transfer Modal */}
+      {custodyTransfer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setCustodyTransfer(null)}>
+          <div
+            className="bg-surface-raised border border-rmpg-600 shadow-xl w-[400px] max-w-[95vw]"
+            style={{ borderRadius: 2 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between">
+              <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">
+                Custody Action — {custodyTransfer.evidenceNumber}
+              </h3>
+              <button onClick={() => setCustodyTransfer(null)} className="text-rmpg-400 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div>
+                <label className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Action</label>
+                <select
+                  value={custodyAction}
+                  onChange={(e) => setCustodyAction(e.target.value)}
+                  className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-600 text-white"
+                  style={{ borderRadius: 2 }}
+                >
+                  <option value="transfer">Transfer</option>
+                  <option value="check_in">Check In</option>
+                  <option value="check_out">Check Out</option>
+                  <option value="lab_submit">Submit to Lab</option>
+                  <option value="release">Release</option>
+                  <option value="dispose">Dispose</option>
+                </select>
+              </div>
+              {custodyTransfer.currentLocation && (
+                <div>
+                  <label className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">From Location</label>
+                  <input
+                    value={custodyTransfer.currentLocation}
+                    readOnly
+                    className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-400"
+                    style={{ borderRadius: 2 }}
+                  />
+                </div>
+              )}
+              <div>
+                <label className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">To Location</label>
+                <input
+                  value={custodyToLocation}
+                  onChange={(e) => setCustodyToLocation(e.target.value)}
+                  placeholder="Evidence room, lab, officer name..."
+                  className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-600 text-white placeholder-rmpg-500"
+                  style={{ borderRadius: 2 }}
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Notes</label>
+                <textarea
+                  value={custodyNotes}
+                  onChange={(e) => setCustodyNotes(e.target.value)}
+                  placeholder="Optional notes..."
+                  rows={2}
+                  className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-600 text-white placeholder-rmpg-500 resize-none"
+                  style={{ borderRadius: 2 }}
+                />
+              </div>
+            </div>
+            <div className="px-4 py-2.5 border-t border-rmpg-600 flex justify-end gap-2">
+              <button
+                onClick={() => setCustodyTransfer(null)}
+                className="toolbar-btn px-3 py-1.5 text-[11px]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCustodyTransfer}
+                disabled={custodySubmitting}
+                className="toolbar-btn toolbar-btn-primary px-3 py-1.5 text-[11px] flex items-center gap-1"
+              >
+                {custodySubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
+                Record Action
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

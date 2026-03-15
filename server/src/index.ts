@@ -24,9 +24,13 @@ import { startClearPathGpsMediaPoller, stopClearPathGpsMediaPoller } from './uti
 import { startEmailPoller, stopEmailPoller } from './utils/emailPoller';
 import { scheduleOfacSync, searchOfacLocal, stopOfacSync } from './utils/ofacScraper';
 import { scheduleUtahWarrantSync, stopUtahWarrantSync } from './utils/utahWarrantScraper';
+import { scheduleWarrantScraper, stopWarrantScraper } from './utils/multiStateWarrantScraper';
+import { scheduleCourtRecordsScan, stopCourtRecordsScan } from './utils/courtRecordsScraper';
 import { scheduleArrestSync, stopArrestSync } from './utils/arrestScraper';
 import { scheduleJailRosterSync, stopJailRosterSync } from './utils/jailRosterScraper';
 import { startServeManagerPoller, stopServeManagerPoller } from './utils/serveManagerPoller';
+import { startPsoMonitor, stopPsoMonitor } from './utils/psoMonitor';
+import { startCallAgingMonitor, stopCallAgingMonitor } from './utils/callAgingMonitor';
 import { getDb } from './models/database';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -92,6 +96,7 @@ import emailRoutes from './routes/email';
 import crmRoutes from './routes/crm';
 import crmLeadsRoutes from './routes/crmLeads';
 import crmProposalsRoutes from './routes/crmProposals';
+import userPreferencesRoutes from './routes/userPreferences';
 import { scheduleLeadScrapers, stopLeadScrapers } from './utils/leadScraperBase';
 
 const app = express();
@@ -197,7 +202,7 @@ app.post('/api/dispatch/calls/:id/redispatch', authenticateToken, (req, res) => 
     let assignedCallSigns: string[] = [];
     try {
       const unitIds = JSON.parse(call.assigned_unit_ids || '[]');
-      if (unitIds.length) {
+      if (Array.isArray(unitIds) && unitIds.length) {
         const units = db.prepare(`SELECT call_sign FROM units WHERE id IN (${unitIds.map(()=>'?').join(',')})`).all(...unitIds) as any[];
         assignedCallSigns = units.map((u:any) => u.call_sign).filter(Boolean);
       }
@@ -212,7 +217,7 @@ app.post('/api/dispatch/calls/:id/redispatch', authenticateToken, (req, res) => 
     const noteText = scheduled_note ? `Re-dispatched — ${ordinal(newAttempt)} visit. Note: ${scheduled_note}` : `Re-dispatched — ${ordinal(newAttempt)} visit`;
     notes.push({ id: String(Date.now()), author: req.user?.fullName||'Dispatch', text: noteText, timestamp: now, created_at: now });
 
-    db.prepare(`UPDATE calls_for_service SET status='pending', dispatched_at=NULL, enroute_at=NULL, onscene_at=NULL, cleared_at=NULL, closed_at=NULL, starting_mileage=NULL, ending_mileage=NULL, responding_vehicle_id=NULL, pso_attempt_number=?, notes=?, updated_at=? WHERE id=?`)
+    db.prepare(`UPDATE calls_for_service SET status='pending', dispatched_at=NULL, enroute_at=NULL, onscene_at=NULL, cleared_at=NULL, closed_at=NULL, starting_mileage=NULL, ending_mileage=NULL, responding_vehicle_id=NULL, pso_attempt_number=?, pso_72hr_notified=NULL, notes=?, updated_at=? WHERE id=?`)
       .run(newAttempt, JSON.stringify(notes), now, req.params.id);
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'call_redispatched', 'call', ?, ?, ?)`)
@@ -276,6 +281,7 @@ app.use('/api/email', emailRoutes);
 app.use('/api/crm', crmRoutes);
 app.use('/api/crm', crmLeadsRoutes);
 app.use('/api/crm', crmProposalsRoutes);
+app.use('/api/user/preferences', authenticateToken, userPreferencesRoutes);
 
 // Mount download page and file serving routes (outside /api)
 // Also mounts /updates/latest.yml, /updates/latest-mac.yml for electron-updater
@@ -472,6 +478,12 @@ try {
     // Start ServeManager auto-poller (syncs jobs → creates dispatch calls)
     startServeManagerPoller();
 
+    // Start PSO 72-hour re-dispatch monitor (checks every 30 minutes)
+    startPsoMonitor();
+
+    // Start general call aging monitor — 72-hour overdue enforcement (checks every 30 minutes)
+    startCallAgingMonitor();
+
     // Schedule jail roster sync
     scheduleJailRosterSync();
 
@@ -480,6 +492,12 @@ try {
 
     // Start Utah state warrant scraper (syncs daily at midnight from warrants.utah.gov)
     scheduleUtahWarrantSync();
+
+    // Start multi-state warrant scraper (county sheriff warrant pages + arrest record extraction)
+    scheduleWarrantScraper();
+
+    // Start court records scraper (Utah XChange + surrounding states, every 2 hours)
+    scheduleCourtRecordsScan();
 
     // Start JailBase arrest record sync (hourly from RapidAPI)
     scheduleArrestSync();
@@ -552,8 +570,12 @@ function gracefulShutdown(signal: string) {
   try { stopClearPathGpsMediaPoller(); } catch (e) { console.error('[Shutdown] stopClearPathGpsMediaPoller:', e); }
   try { stopEmailPoller(); } catch (e) { console.error('[Shutdown] stopEmailPoller:', e); }
   try { stopServeManagerPoller(); } catch (e) { console.error('[Shutdown] stopServeManagerPoller:', e); }
+  try { stopPsoMonitor(); } catch (e) { console.error('[Shutdown] stopPsoMonitor:', e); }
+  try { stopCallAgingMonitor(); } catch (e) { console.error('[Shutdown] stopCallAgingMonitor:', e); }
   try { stopOfacSync(); } catch (e) { console.error('[Shutdown] stopOfacSync:', e); }
   try { stopUtahWarrantSync(); } catch (e) { console.error('[Shutdown] stopUtahWarrantSync:', e); }
+  try { stopWarrantScraper(); } catch (e) { console.error('[Shutdown] stopWarrantScraper:', e); }
+  try { stopCourtRecordsScan(); } catch (e) { console.error('[Shutdown] stopCourtRecordsScan:', e); }
   try { stopArrestSync(); } catch (e) { console.error('[Shutdown] stopArrestSync:', e); }
   try { stopJailRosterSync(); } catch (e) { console.error('[Shutdown] stopJailRosterSync:', e); }
   try { stopLeadScrapers(); } catch (e) { console.error('[Shutdown] stopLeadScrapers:', e); }

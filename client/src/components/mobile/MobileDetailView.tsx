@@ -166,7 +166,7 @@ export default function MobileDetailView({
             borderBottom: '1px solid #1e3048',
           }}
         >
-          {/* Crimson accent */}
+          {/* Blue accent */}
           <div
             className="absolute top-0 left-0 right-0 h-[2px]"
             style={{

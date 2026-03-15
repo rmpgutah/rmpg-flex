@@ -111,6 +111,11 @@ async function getDeviceFingerprint(): Promise<string> {
   }
 }
 
+/** Safe localStorage.setItem — silently handles quota exceeded / private browsing */
+function safeSetItem(key: string, value: string): void {
+  try { localStorage.setItem(key, value); } catch { /* quota exceeded or private browsing */ }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(localStorage.getItem(TOKEN_KEY));
@@ -156,8 +161,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (res.ok) {
           const data = await res.json();
-          localStorage.setItem(TOKEN_KEY, data.token);
-          localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
+          safeSetItem(TOKEN_KEY, data.token);
+          safeSetItem(REFRESH_TOKEN_KEY, data.refreshToken);
           setToken(data.token);
           refreshFailCountRef.current = 0; // reset backoff on success
           scheduleRefresh(data.token);
@@ -262,8 +267,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             if (refreshRes.ok) {
               const data = await refreshRes.json();
-              localStorage.setItem(TOKEN_KEY, data.token);
-              localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
+              safeSetItem(TOKEN_KEY, data.token);
+              safeSetItem(REFRESH_TOKEN_KEY, data.refreshToken);
               setToken(data.token);
               // setToken will re-trigger this effect — new generation will handle it
               return;
@@ -344,7 +349,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Initialize device fingerprint
   useEffect(() => {
-    getDeviceFingerprint().then(fp => { deviceFingerprintRef.current = fp; });
+    getDeviceFingerprint().then(fp => { deviceFingerprintRef.current = fp; }).catch(() => { /* fingerprint unavailable */ });
   }, []);
 
   // ── Two-Factor Authentication state ───────────────────
@@ -381,9 +386,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        localStorage.setItem(TOKEN_KEY, data.token);
-        if (data.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
-        if (data.sessionId) localStorage.setItem(SESSION_ID_KEY, data.sessionId);
+        safeSetItem(TOKEN_KEY, data.token);
+        if (data.refreshToken) safeSetItem(REFRESH_TOKEN_KEY, data.refreshToken);
+        if (data.sessionId) safeSetItem(SESSION_ID_KEY, data.sessionId);
 
         setUser(data.user);
         setToken(data.token);
@@ -450,9 +455,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        localStorage.setItem(TOKEN_KEY, data.token);
-        if (data.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
-        if (data.sessionId) localStorage.setItem(SESSION_ID_KEY, data.sessionId);
+        safeSetItem(TOKEN_KEY, data.token);
+        if (data.refreshToken) safeSetItem(REFRESH_TOKEN_KEY, data.refreshToken);
+        if (data.sessionId) safeSetItem(SESSION_ID_KEY, data.sessionId);
 
         setUser(data.user);
         setToken(data.token);
@@ -527,16 +532,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return { requires2FA: false, success: false };
         }
 
-        localStorage.setItem(TOKEN_KEY, data.token);
+        safeSetItem(TOKEN_KEY, data.token);
         if (data.refreshToken) {
-          localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
+          safeSetItem(REFRESH_TOKEN_KEY, data.refreshToken);
         }
         if (data.sessionId) {
-          localStorage.setItem(SESSION_ID_KEY, data.sessionId);
+          safeSetItem(SESSION_ID_KEY, data.sessionId);
         }
 
         // Store username for offline auth lookup
-        localStorage.setItem(LAST_USERNAME_KEY, username);
+        safeSetItem(LAST_USERNAME_KEY, username);
 
         // Set user BEFORE token so the effect sees user is already
         // populated and skips the redundant /me round-trip.
@@ -570,7 +575,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // If the server is unavailable, allow dev login in development only
       if (import.meta.env.DEV && err instanceof TypeError && err.message.includes('fetch')) {
         const mockToken = 'dev-token-' + Date.now();
-        localStorage.setItem(TOKEN_KEY, mockToken);
+        safeSetItem(TOKEN_KEY, mockToken);
         setUser({
           id: 'dev-1',
           username,
@@ -623,9 +628,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        localStorage.setItem(TOKEN_KEY, data.token);
-        if (data.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
-        if (data.sessionId) localStorage.setItem(SESSION_ID_KEY, data.sessionId);
+        safeSetItem(TOKEN_KEY, data.token);
+        if (data.refreshToken) safeSetItem(REFRESH_TOKEN_KEY, data.refreshToken);
+        if (data.sessionId) safeSetItem(SESSION_ID_KEY, data.sessionId);
         setUser(data.user);
         setToken(data.token);
         setPending2FA(false);
@@ -714,9 +719,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (data.token) {
-        localStorage.setItem(TOKEN_KEY, data.token);
-        if (data.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
-        if (data.sessionId) localStorage.setItem(SESSION_ID_KEY, data.sessionId);
+        safeSetItem(TOKEN_KEY, data.token);
+        if (data.refreshToken) safeSetItem(REFRESH_TOKEN_KEY, data.refreshToken);
+        if (data.sessionId) safeSetItem(SESSION_ID_KEY, data.sessionId);
         // Update React state so the app recognizes the authenticated session
         setToken(data.token);
         if (data.user) setUser(data.user);
@@ -755,9 +760,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       const data = await res.json();
-      localStorage.setItem(TOKEN_KEY, data.token);
-      if (data.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
-      if (data.sessionId) localStorage.setItem(SESSION_ID_KEY, data.sessionId);
+      safeSetItem(TOKEN_KEY, data.token);
+      if (data.refreshToken) safeSetItem(REFRESH_TOKEN_KEY, data.refreshToken);
+      if (data.sessionId) safeSetItem(SESSION_ID_KEY, data.sessionId);
       setUser(data.user);
       setToken(data.token);
       setIsLoading(false);

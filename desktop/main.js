@@ -107,7 +107,7 @@ function createSplashWindow() {
         .logo {
           width: 100px;
           height: 100px;
-          border: 3px solid #c41e1e;
+          border: 3px solid #1a5a9e;
           border-radius: 50%;
           display: flex;
           align-items: center;
@@ -117,7 +117,7 @@ function createSplashWindow() {
         .logo-text {
           font-size: 28px;
           font-weight: 900;
-          color: #c41e1e;
+          color: #1a5a9e;
           letter-spacing: 2px;
         }
         h1 {
@@ -138,7 +138,7 @@ function createSplashWindow() {
           width: 28px;
           height: 28px;
           border: 3px solid #333;
-          border-top: 3px solid #c41e1e;
+          border-top: 3px solid #1a5a9e;
           border-radius: 50%;
           animation: spin 0.8s linear infinite;
           margin-bottom: 12px;
@@ -262,7 +262,7 @@ function getOfflineHTML() {
           padding: 12px 32px;
           font-size: 14px;
           font-weight: 600;
-          background: #c41e1e;
+          background: #1a5a9e;
           color: #fff;
           border: none;
           border-radius: 6px;
@@ -270,7 +270,7 @@ function getOfflineHTML() {
           text-transform: uppercase;
           letter-spacing: 1px;
         }
-        button:hover { background: #a01818; }
+        button:hover { background: #14427a; }
         .server-url {
           margin-top: 24px;
           font-size: 11px;

@@ -795,7 +795,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.setFont('courier', 'bold');
       doc.setFontSize(8);
       doc.setTextColor(255, 255, 255);
-      doc.text(data.contract_id!, LAYOUT.PAGE_MARGIN + 3, barY + 16);
+      doc.text(data.contract_id || '', LAYOUT.PAGE_MARGIN + 3, barY + 16);
     }
 
     y = barY + barH + 2;
@@ -1266,7 +1266,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   const hasActiveWarrants = data.warrants && data.warrants.some(w => w.status === 'active');
   const prio = hasActiveWarrants ? 'critical' : data.bolo_active ? 'high' : 'routine';
 
-  const personName = `${data.last_name}, ${data.first_name}`.toUpperCase();
+  const personName = `${data.last_name || 'UNKNOWN'}, ${data.first_name || ''}`.toUpperCase();
   setActiveCaseNumber(personName);
   let y = addReportHeader(doc, personName, 'Individual Record', prio, undefined, { caseBoxLabel: 'INDIVIDUAL RECORD', useLogo: true });
 
@@ -1532,10 +1532,15 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // ── 14. Criminal History ─────────────────────────────────
+  // ── 14. Criminal History (Full Detail) — force new page ─
   if (data.criminal_records && data.criminal_records.length > 0) {
-    y = checkPageBreak(doc, y, 30, prio);
-    const sec = openAutoSection(doc, `Criminal History (${data.criminal_records.length})`, y); y = sec.contentY;
+    doc.addPage();
+    addConfidentialWatermark(doc);
+    y = 12; // start near top of new page
+    const sec = openAutoSection(doc, `Criminal History (${data.criminal_records.length} Records)`, y); y = sec.contentY;
+
+    // Summary table — quick reference overview
+    const cw = getContentWidth(doc);
     const crRows = data.criminal_records.map(r => [
       (r.record_type || '').replace(/_/g, ' ').toUpperCase(),
       r.offense || '—',
@@ -1547,17 +1552,96 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     y = addTableWithShading(
       doc,
       [
-        { label: 'TYPE', x: LAYOUT.PAGE_MARGIN + 3 },
-        { label: 'OFFENSE', x: LAYOUT.PAGE_MARGIN + 28 },
-        { label: 'LEVEL', x: LAYOUT.PAGE_MARGIN + 88 },
-        { label: 'CASE #', x: LAYOUT.PAGE_MARGIN + 110 },
-        { label: 'DISPOSITION', x: LAYOUT.PAGE_MARGIN + 138 },
-        { label: 'DATE', x: LAYOUT.PAGE_MARGIN + 168 },
+        { label: 'TYPE', x: lx },
+        { label: 'OFFENSE', x: lx + cw * 0.13 },
+        { label: 'LEVEL', x: lx + cw * 0.45 },
+        { label: 'CASE #', x: lx + cw * 0.55 },
+        { label: 'DISPOSITION', x: lx + cw * 0.70 },
+        { label: 'DATE', x: lx + cw * 0.87 },
       ],
       crRows,
       y,
-      [LAYOUT.PAGE_MARGIN + 3, LAYOUT.PAGE_MARGIN + 28, LAYOUT.PAGE_MARGIN + 88, LAYOUT.PAGE_MARGIN + 110, LAYOUT.PAGE_MARGIN + 138, LAYOUT.PAGE_MARGIN + 168],
+      [lx, lx + cw * 0.13, lx + cw * 0.45, lx + cw * 0.55, lx + cw * 0.70, lx + cw * 0.87],
     );
+    y += SPACING.MD;
+
+    // Detailed per-record cards — 3 per page, evenly spaced, never split
+    const pageH = doc.internal.pageSize.getHeight();
+    const recordsPerPage = 3;
+    const pageTopY = 14;  // top margin for detail pages
+    const pageBottomY = pageH - LAYOUT.FOOTER_HEIGHT - 8; // safe bottom (matches checkPageBreak)
+    const usableH = pageBottomY - pageTopY;
+    const slotH = usableH / recordsPerPage; // each record gets this vertical slot
+
+    // Helper to render one record card at a given Y position
+    const renderRecordCard = (r: PersonCriminalHistoryRecord, ri: number, startY: number) => {
+      let cy = startY;
+
+      // Record sub-header bar
+      doc.setFillColor(30, 55, 90);
+      doc.rect(lx, cy, ffw, 5, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(FONT.SIZE_TABLE_HEADER);
+      doc.setTextColor(...COLOR.TEXT_INVERTED);
+      doc.text(`RECORD ${ri + 1} — ${(r.record_type || 'UNKNOWN').replace(/_/g, ' ').toUpperCase()}`, lx + 2, cy + 3.2);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      cy += 7;
+
+      // Row 1: Offense + Level
+      { const yL = addFieldPair(doc, 'Offense', r.offense || '—', lx, cy, hfw);
+        const yR = addFieldPair(doc, 'Offense Level', (r.offense_level || '—').toUpperCase(), rx, cy, hfw);
+        cy = Math.max(yL, yR); }
+
+      // Row 2: Statute + Case Number
+      { const yL = addFieldPair(doc, 'Statute', r.statute || '—', lx, cy, hfw);
+        const yR = addFieldPair(doc, 'Case Number', r.case_number || '—', rx, cy, hfw);
+        cy = Math.max(yL, yR); }
+
+      // Row 3: Agency + Jurisdiction
+      { const yL = addFieldPair(doc, 'Agency', r.agency || '—', lx, cy, hfw);
+        const yR = addFieldPair(doc, 'Jurisdiction', r.jurisdiction || '—', rx, cy, hfw);
+        cy = Math.max(yL, yR); }
+
+      // Row 4: Offense Date + Disposition Date
+      { const yL = addFieldPair(doc, 'Offense Date', fmtDate(r.offense_date), lx, cy, hfw);
+        const yR = addFieldPair(doc, 'Disposition Date', fmtDate(r.disposition_date), rx, cy, hfw);
+        cy = Math.max(yL, yR); }
+
+      // Row 5: Disposition + Sentence
+      { const yL = addFieldPair(doc, 'Disposition', r.disposition || '—', lx, cy, hfw);
+        const yR = addFieldPair(doc, 'Sentence', r.sentence || '—', rx, cy, hfw);
+        cy = Math.max(yL, yR); }
+
+      return cy;
+    };
+
+    for (let ri = 0; ri < data.criminal_records.length; ri++) {
+      const slotIndex = ri % recordsPerPage; // 0, 1, or 2 within current page
+
+      // New page for every batch of 3 (including the first batch — summary table stays on its own page)
+      if (slotIndex === 0) {
+        doc.addPage();
+        addConfidentialWatermark(doc);
+      }
+
+      // Position this record in its evenly-distributed slot
+      const slotY = pageTopY + slotIndex * slotH;
+      const cardEndY = renderRecordCard(data.criminal_records[ri], ri, slotY);
+
+      // Draw subtle divider between records on same page
+      if (slotIndex < recordsPerPage - 1 && ri < data.criminal_records.length - 1) {
+        const dividerY = pageTopY + (slotIndex + 1) * slotH - 2;
+        doc.setDrawColor(...COLOR.BORDER_TABLE);
+        doc.setLineWidth(BORDER.TABLE_ROW);
+        doc.line(lx, dividerY, lx + ffw, dividerY);
+      }
+
+      // Track y for closeAutoSection (use end of last record on last page)
+      if (ri === data.criminal_records.length - 1) {
+        y = cardEndY;
+      }
+    }
+
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -2626,27 +2710,33 @@ export async function downloadRecordPdf<T extends RecordPdfType>(
   data: RecordDataMap[T],
   identifier?: string,
 ) {
-  const branding = await fetchPdfBranding();
-  setActiveBranding(branding);
-  await loadPdfAssets();
+  try {
+    const branding = await fetchPdfBranding();
+    setActiveBranding(branding);
+    await loadPdfAssets();
 
-  // Extract officer info for signature auto-fill (always populate name/badge/date)
-  const anyData = data as any;
-  const officerName = anyData.officer_name || anyData.reporting_officer || anyData.full_name || anyData.issuing_officer_name || anyData.entered_by || '';
-  const badgeNum = anyData.badge_number || anyData.officer_badge || '';
-  const today = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
-  setActiveOfficerSignature({
-    signatureImage: anyData._officerSignature || null,
-    printedName: officerName,
-    badgeNumber: badgeNum,
-    date: today,
-  });
+    // Extract officer info for signature auto-fill (always populate name/badge/date)
+    const anyData = data as any;
+    const officerName = anyData.officer_name || anyData.reporting_officer || anyData.full_name || anyData.issuing_officer_name || anyData.entered_by || '';
+    const badgeNum = anyData.badge_number || anyData.officer_badge || '';
+    const today = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+    setActiveOfficerSignature({
+      signatureImage: anyData._officerSignature || null,
+      printedName: officerName,
+      badgeNumber: badgeNum,
+      date: today,
+    });
 
-  const doc = generateRecordPdf(recordType, data);
-  setActiveOfficerSignature(undefined); // clear after generation
-  const id = identifier || 'record';
-  const filename = `${id}_${recordType}.pdf`;
-  doc.save(filename);
+    const doc = generateRecordPdf(recordType, data);
+    setActiveOfficerSignature(undefined); // clear after generation
+    const id = identifier || 'record';
+    const filename = `${id}_${recordType}.pdf`;
+    doc.save(filename);
+  } catch (err) {
+    setActiveOfficerSignature(undefined);
+    console.error('Record PDF generation failed:', err);
+    throw new Error(`Failed to generate ${recordType} PDF: ${err instanceof Error ? err.message : 'Unknown error'}`);
+  }
 }
 
 /** Generate record PDF and return a blob URL for in-app preview */
@@ -2654,24 +2744,30 @@ export async function generateRecordPdfBlobUrl<T extends RecordPdfType>(
   recordType: T,
   data: RecordDataMap[T],
 ): Promise<string> {
-  const branding = await fetchPdfBranding();
-  setActiveBranding(branding);
-  await loadPdfAssets();
+  try {
+    const branding = await fetchPdfBranding();
+    setActiveBranding(branding);
+    await loadPdfAssets();
 
-  // Extract officer info for signature auto-fill (always populate name/badge/date)
-  const anyData = data as any;
-  const officerName = anyData.officer_name || anyData.reporting_officer || anyData.full_name || anyData.issuing_officer_name || anyData.entered_by || '';
-  const badgeNum = anyData.badge_number || anyData.officer_badge || '';
-  const today = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
-  setActiveOfficerSignature({
-    signatureImage: anyData._officerSignature || null,
-    printedName: officerName,
-    badgeNumber: badgeNum,
-    date: today,
-  });
+    // Extract officer info for signature auto-fill (always populate name/badge/date)
+    const anyData = data as any;
+    const officerName = anyData.officer_name || anyData.reporting_officer || anyData.full_name || anyData.issuing_officer_name || anyData.entered_by || '';
+    const badgeNum = anyData.badge_number || anyData.officer_badge || '';
+    const today = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+    setActiveOfficerSignature({
+      signatureImage: anyData._officerSignature || null,
+      printedName: officerName,
+      badgeNumber: badgeNum,
+      date: today,
+    });
 
-  const doc = generateRecordPdf(recordType, data);
-  setActiveOfficerSignature(undefined); // clear after generation
-  const blob = doc.output('blob');
-  return URL.createObjectURL(blob);
+    const doc = generateRecordPdf(recordType, data);
+    setActiveOfficerSignature(undefined); // clear after generation
+    const blob = doc.output('blob');
+    return URL.createObjectURL(blob);
+  } catch (err) {
+    setActiveOfficerSignature(undefined);
+    console.error('Record PDF preview generation failed:', err);
+    throw new Error(`Failed to generate ${recordType} PDF preview: ${err instanceof Error ? err.message : 'Unknown error'}`);
+  }
 }

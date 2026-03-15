@@ -6,7 +6,7 @@
 // metrics — all driven by existing calls/incidents data.
 // ============================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   TrendingUp, BarChart3, Clock, MapPin, Users, AlertTriangle,
   RefreshCw, Loader2, Calendar, Filter,
@@ -24,6 +24,9 @@ export default function CrimeAnalysisPage() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
@@ -34,9 +37,9 @@ export default function CrimeAnalysisPage() {
         url += `?days=${dateRange}`;
       }
       const res = await apiFetch<{ data: any }>(url);
-      setData(res.data);
+      if (mountedRef.current) setData(res.data);
     } catch { /* silent */ }
-    finally { setLoading(false); }
+    finally { if (mountedRef.current) setLoading(false); }
   }, [dateRange, startDate, endDate]);
 
   useEffect(() => { fetchData(); }, [fetchData]);

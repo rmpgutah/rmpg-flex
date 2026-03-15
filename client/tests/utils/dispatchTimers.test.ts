@@ -8,6 +8,8 @@ import {
   THRESHOLDS,
   STATUS_LABELS,
   getThreshold,
+  getTimerState,
+  getCallAge,
   type TimerSeverity,
 } from '../../src/utils/dispatchTimers';
 import type { CallForService, CallStatus } from '../../src/types';
@@ -156,7 +158,7 @@ describe('dispatchTimers', () => {
   describe('getThreshold', () => {
     it('returns priority-based threshold for pending calls', () => {
       expect(getThreshold(makeCall({ status: 'pending', priority: 'P1' }))).toBe(60);
-      expect(getThreshold(makeCall({ status: 'pending', priority: 'P4' }))).toBe(259200);
+      expect(getThreshold(makeCall({ status: 'pending', priority: 'P4' }))).toBe(86400);
     });
 
     it('returns dispatched threshold for dispatched calls', () => {
@@ -173,6 +175,64 @@ describe('dispatchTimers', () => {
 
     it('returns Infinity for enroute calls (no alarm needed)', () => {
       expect(getThreshold(makeCall({ status: 'enroute' }))).toBe(Infinity);
+    });
+  });
+
+  describe('72-hour absolute overdue enforcement', () => {
+    it('absoluteOverdue threshold is 72 hours (259200 seconds)', () => {
+      expect(THRESHOLDS.absoluteOverdue).toBe(72 * 60 * 60);
+    });
+
+    it('marks enroute call as overdue after 72 hours even though per-status threshold is Infinity', () => {
+      const call = makeCall({
+        status: 'enroute',
+        created_at: new Date(Date.now() - 73 * 60 * 60 * 1000).toISOString(),
+        enroute_at: new Date(Date.now() - 73 * 60 * 60 * 1000).toISOString(),
+      });
+      const state = getTimerState(call);
+      expect(state.isOverdue).toBe(true);
+      expect(state.severity).toBe('overdue');
+    });
+
+    it('marks enroute call as critical after 48 hours', () => {
+      const call = makeCall({
+        status: 'enroute',
+        created_at: new Date(Date.now() - 50 * 60 * 60 * 1000).toISOString(),
+        enroute_at: new Date(Date.now() - 50 * 60 * 60 * 1000).toISOString(),
+      });
+      const state = getTimerState(call);
+      expect(state.severity).toBe('critical');
+    });
+
+    it('does not override overdue for calls already overdue by per-status threshold', () => {
+      // P1 pending call after 2 minutes — already overdue by per-status (60s)
+      const call = makeCall({
+        status: 'pending',
+        priority: 'P1',
+        created_at: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
+      });
+      const state = getTimerState(call);
+      expect(state.severity).toBe('overdue');
+    });
+
+    it('does not apply to cleared/closed calls', () => {
+      const call = makeCall({
+        status: 'cleared',
+        created_at: new Date(Date.now() - 100 * 60 * 60 * 1000).toISOString(),
+        cleared_at: new Date().toISOString(),
+      });
+      const state = getTimerState(call);
+      // cleared calls have Infinity threshold and aren't active, so no overdue
+      expect(state.isOverdue).toBe(false);
+    });
+
+    it('getCallAge returns age since created_at', () => {
+      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+      const call = makeCall({ created_at: twoHoursAgo });
+      const age = getCallAge(call);
+      // Should be approximately 7200 seconds (±2s tolerance for test execution)
+      expect(age).toBeGreaterThan(7198);
+      expect(age).toBeLessThan(7210);
     });
   });
 });

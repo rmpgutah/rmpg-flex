@@ -297,7 +297,7 @@ router.get('/bolos/check', (req: Request, res: Response) => {
 
     // Extract keywords (3+ chars) from each field and match against BOLO fields
     const extractKeywords = (text: string) =>
-      text.toUpperCase().split(/[\s,;]+/).filter(w => w.length >= 3);
+      (text || '').toUpperCase().split(/[\s,;]+/).filter(w => w.length >= 3);
 
     const matchClauses: string[] = [];
 
@@ -397,7 +397,8 @@ router.post('/bolos', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     let nextNum = 1;
     if (lastBolo) {
       const parts = lastBolo.bolo_number.split('-');
-      nextNum = parseInt(parts[1], 10) + 1;
+      const parsed = parts.length >= 2 ? parseInt(parts[1], 10) : NaN;
+      if (!isNaN(parsed)) nextNum = parsed + 1;
     }
     const boloNumber = `BOLO-${String(nextNum).padStart(3, '0')}`;
 
@@ -730,7 +731,13 @@ router.get('/radio/audio/:id', (req: Request, res: Response) => {
       'Content-Length': stat.size.toString(),
       'Cache-Control': 'public, max-age=86400',
     });
-    fs.createReadStream(filePath).pipe(res);
+    const stream = fs.createReadStream(filePath);
+    stream.on('error', (err) => {
+      console.error('Audio stream error:', err);
+      if (!res.headersSent) res.status(500).json({ error: 'Failed to stream audio' });
+      else res.destroy();
+    });
+    stream.pipe(res);
   } catch (error: any) {
     console.error('Get radio audio error:', error);
     res.status(500).json({ error: 'Internal server error' });

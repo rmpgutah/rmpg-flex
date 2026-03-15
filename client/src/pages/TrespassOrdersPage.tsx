@@ -12,6 +12,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import ExportButton from '../components/ExportButton';
 import { useToast } from '../components/ToastProvider';
 import { useFormValidation } from '../hooks/useFormValidation';
+import { useDistrictOptions } from '../hooks/useDistrictLookup';
 
 const ORDER_TYPES: { value: TrespassOrderType; label: string }[] = [
   { value: 'trespass_warning', label: 'Trespass Warning' },
@@ -41,11 +42,13 @@ const EMPTY_FORM = {
   order_type: 'trespass_warning' as TrespassOrderType,
   reason: '', conditions: '', duration_days: '', notes: '',
   authorized_by: '', person_id: '', property_id: '',
+  section_id: '', zone_id: '', beat_id: '',
 };
 
 export default function TrespassOrdersPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
+  const { sections: sectionOptions, zones: zoneOptions, beats: beatOptions } = useDistrictOptions();
   const { errors: formErrors, validate: validateForm, clearAllErrors } = useFormValidation();
 
   const [orders, setOrders] = useState<TrespassOrder[]>([]);
@@ -96,7 +99,9 @@ export default function TrespassOrdersPage() {
 
   // Fetch properties for dropdown
   useEffect(() => {
-    apiFetch<any[]>('/records/properties').then(r => setProperties(Array.isArray(r) ? r : [])).catch(() => {});
+    let cancelled = false;
+    apiFetch<any[]>('/records/properties').then(r => { if (!cancelled) setProperties(Array.isArray(r) ? r : []); }).catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   // Person search debounce
@@ -139,6 +144,9 @@ export default function TrespassOrdersPage() {
       authorized_by: order.authorized_by || '',
       person_id: order.person_id ? String(order.person_id) : '',
       property_id: order.property_id ? String(order.property_id) : '',
+      section_id: order.section_id || '',
+      zone_id: order.zone_id || '',
+      beat_id: order.beat_id || '',
     });
     setFormOpen(true);
   };
@@ -158,6 +166,10 @@ export default function TrespassOrdersPage() {
         person_id: formData.person_id ? parseInt(formData.person_id, 10) : null,
         property_id: formData.property_id ? parseInt(formData.property_id, 10) : null,
         duration_days: formData.duration_days ? parseInt(formData.duration_days, 10) : null,
+        section_id: formData.section_id || null,
+        zone_id: formData.zone_id || null,
+        beat_id: formData.beat_id || null,
+        zone_beat: (formData.zone_id && formData.beat_id) ? `${formData.zone_id}-${formData.beat_id}` : formData.zone_id || formData.beat_id || null,
       };
       if (editingOrder) {
         await apiFetch(`/trespass-orders/${editingOrder.id}`, { method: 'PUT', body: JSON.stringify(body) });
@@ -304,6 +316,9 @@ export default function TrespassOrdersPage() {
                   <span>{order.issued_by_name || order.issued_by_display}</span>
                   <span>•</span>
                   <span>{new Date(order.created_at).toLocaleDateString()}</span>
+                  {(order.section_id || order.zone_id || order.beat_id) && (
+                    <span className="font-mono text-rmpg-500">{[order.section_id, order.zone_id, order.beat_id].filter(Boolean).join('/')}</span>
+                  )}
                   {order.expiration_date && <span className="text-amber-500/70">Exp: {new Date(order.expiration_date).toLocaleDateString()}</span>}
                 </div>
               </div>
@@ -367,6 +382,9 @@ export default function TrespassOrdersPage() {
               <div><span className="text-rmpg-500 text-[10px] uppercase">Expires</span><div className="text-white">{selectedOrder.expiration_date ? new Date(selectedOrder.expiration_date).toLocaleDateString() : 'Permanent'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Issued By</span><div className="text-white">{selectedOrder.issued_by_name || selectedOrder.issued_by_display || '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Authorized By</span><div className="text-white">{selectedOrder.authorized_by || '—'}</div></div>
+              {(selectedOrder.section_id || selectedOrder.zone_id || selectedOrder.beat_id) && (
+                <div><span className="text-rmpg-500 text-[10px] uppercase">S/Z/B</span><div className="text-white font-mono">{[selectedOrder.section_id, selectedOrder.zone_id, selectedOrder.beat_id].filter(Boolean).join(' / ') || '—'}</div></div>
+              )}
               {selectedOrder.served_at && (
                 <>
                   <div><span className="text-rmpg-500 text-[10px] uppercase">Served At</span><div className="text-white">{new Date(selectedOrder.served_at).toLocaleString()}</div></div>
@@ -449,6 +467,34 @@ export default function TrespassOrdersPage() {
                 <div><label className="field-label">Location *</label>
                   <input className="input-dark text-xs w-full" value={formData.location} onChange={e => update('location', e.target.value)} />
                   {formErrors.location && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.location}</p>}</div>
+              </div>
+
+              {/* Section / Zone / Beat */}
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Section</label>
+                  <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
+                    value={formData.section_id || ''} onChange={e => update('section_id', e.target.value)}>
+                    <option value="">—</option>
+                    {sectionOptions.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Zone</label>
+                  <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
+                    value={formData.zone_id || ''} onChange={e => update('zone_id', e.target.value)}>
+                    <option value="">—</option>
+                    {zoneOptions.map(z => <option key={z} value={z}>{z}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Beat</label>
+                  <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
+                    value={formData.beat_id || ''} onChange={e => update('beat_id', e.target.value)}>
+                    <option value="">—</option>
+                    {beatOptions.map(b => <option key={b} value={b}>{b}</option>)}
+                  </select>
+                </div>
               </div>
 
               {/* Order details */}

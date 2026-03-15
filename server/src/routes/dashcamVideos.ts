@@ -213,6 +213,7 @@ router.put('/:id', authenticateToken, requireRole('admin', 'manager', 'superviso
   try {
     const db = getDb();
     const id = parseInt(String(req.params.id), 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
     const existing = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(id) as any;
     if (!existing) {
       res.status(404).json({ error: 'Video not found' });
@@ -272,6 +273,7 @@ router.delete('/:id', authenticateToken, requireRole('admin'), (req: Request, re
   try {
     const db = getDb();
     const id = parseInt(String(req.params.id), 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
     const video = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(id) as any;
     if (!video) {
       res.status(404).json({ error: 'Video not found' });
@@ -328,6 +330,13 @@ router.get('/:id/stream', (req: Request, res: Response, next) => {
       const parts = range.replace(/bytes=/, '').split('-');
       const start = parseInt(parts[0], 10);
       const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+      if (isNaN(start) || isNaN(end) || start < 0 || end >= fileSize || start > end) {
+        res.writeHead(416, { 'Content-Range': `bytes */${fileSize}` });
+        res.end();
+        return;
+      }
+
       const chunkSize = end - start + 1;
 
       res.writeHead(206, {
@@ -336,13 +345,17 @@ router.get('/:id/stream', (req: Request, res: Response, next) => {
         'Content-Length': chunkSize,
         'Content-Type': video.mime_type || 'video/mp4',
       });
-      fs.createReadStream(filePath, { start, end }).pipe(res);
+      const stream = fs.createReadStream(filePath, { start, end });
+      stream.on('error', (err) => { console.error('Dashcam stream error:', err); res.destroy(); });
+      stream.pipe(res);
     } else {
       res.writeHead(200, {
         'Content-Length': fileSize,
         'Content-Type': video.mime_type || 'video/mp4',
       });
-      fs.createReadStream(filePath).pipe(res);
+      const stream = fs.createReadStream(filePath);
+      stream.on('error', (err) => { console.error('Dashcam stream error:', err); res.destroy(); });
+      stream.pipe(res);
     }
   } catch (error: any) {
     console.error('Stream dashcam video error:', error);
@@ -357,6 +370,7 @@ router.get('/:id/links', authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const videoId = parseInt(String(req.params.id), 10);
+    if (isNaN(videoId)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
 
     const links = db.prepare(`
       SELECT * FROM dashcam_video_links WHERE video_id = ? ORDER BY created_at DESC
@@ -376,6 +390,7 @@ router.post('/:id/links', authenticateToken, requireRole('admin', 'manager', 'su
   try {
     const db = getDb();
     const videoId = parseInt(String(req.params.id), 10);
+    if (isNaN(videoId)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
     const { entity_type, entity_id, notes } = req.body;
     const user = (req as any).user;
 
@@ -429,6 +444,7 @@ router.delete('/:id/links/:linkId', authenticateToken, requireRole('admin', 'man
   try {
     const db = getDb();
     const linkId = parseInt(String(req.params.linkId), 10);
+    if (isNaN(linkId)) { res.status(400).json({ error: 'Invalid link ID' }); return; }
 
     const link = db.prepare('SELECT * FROM dashcam_video_links WHERE id = ?').get(linkId) as any;
     if (!link) {

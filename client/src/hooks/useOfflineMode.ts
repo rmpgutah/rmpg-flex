@@ -143,14 +143,20 @@ export function useOfflineMode() {
         if (cancelled) { stopExpiryTimer(); stopSyncSchedule(); monitor.stop(); return; }
 
         // Listen for Background Sync messages from Service Worker
+        if (cancelled) { stopExpiryTimer(); stopSyncSchedule(); monitor.stop(); return; }
         const handleSwMessage = (event: MessageEvent) => {
           if (event.data?.type === 'SYNC_PUSH_REQUESTED') {
             pushAll().catch(err => console.warn('[OFFLINE] SW sync push failed:', err.message));
           }
         };
         navigator.serviceWorker?.addEventListener('message', handleSwMessage);
-        // Store reference for cleanup
+        // Store reference for cleanup — if already cancelled, remove immediately
         swHandlerRef = handleSwMessage;
+        if (cancelled) {
+          navigator.serviceWorker?.removeEventListener('message', handleSwMessage);
+          swHandlerRef = null;
+          return;
+        }
 
         // Check for existing PIN session
         const session = await hasActiveSession();
@@ -173,8 +179,11 @@ export function useOfflineMode() {
       }
     }
 
+    // Declare BEFORE calling async init so the closure captures the variable correctly
     let swHandlerRef: ((event: MessageEvent) => void) | null = null;
-    initBrowserOffline();
+    initBrowserOffline().then(() => {
+      // swHandlerRef is now set inside initBrowserOffline
+    }).catch(() => { /* handled inside */ });
 
     return () => {
       cancelled = true;

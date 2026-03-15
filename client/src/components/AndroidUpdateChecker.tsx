@@ -34,7 +34,7 @@ async function getAppVersion(): Promise<string> {
     if (cap?.Plugins?.App?.getInfo) {
       const info = await cap.Plugins.App.getInfo();
       if (info.version && info.version !== '0.0.0') {
-        localStorage.setItem('rmpg_apk_version', info.version);
+        try { localStorage.setItem('rmpg_apk_version', info.version); } catch { /* quota */ }
         return info.version;
       }
     }
@@ -86,7 +86,7 @@ export default function AndroidUpdateChecker() {
       } else {
         // Up to date — cache version and clear stale info
         if (data.currentVersion && data.currentVersion !== '0.0.0') {
-          localStorage.setItem('rmpg_apk_version', data.currentVersion);
+          try { localStorage.setItem('rmpg_apk_version', data.currentVersion); } catch { /* quota */ }
         }
         setUpdateInfo(null);
         setDismissed(false); // allow future prompts

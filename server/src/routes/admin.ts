@@ -854,6 +854,7 @@ router.post('/users/:id/reset-2fa', requireRole('admin'), (req: Request, res: Re
   try {
     const db = getDb();
     const userId = parseInt(req.params.id as string);
+    if (isNaN(userId)) { res.status(400).json({ error: 'Invalid user ID' }); return; }
     const ip = String(req.ip || 'unknown');
     const userAgent = String(req.headers['user-agent'] || 'unknown');
 
@@ -912,6 +913,7 @@ router.post('/users/:id/force-password-change', requireRole('admin'), (req: Requ
   try {
     const db = getDb();
     const userId = parseInt(req.params.id as string);
+    if (isNaN(userId)) { res.status(400).json({ error: 'Invalid user ID' }); return; }
     const ip = String(req.ip || 'unknown');
 
     const user = db.prepare('SELECT id, username, full_name FROM users WHERE id = ?').get(userId) as any;
@@ -951,6 +953,7 @@ router.post('/users/:id/revoke-sessions', requireRole('admin'), (req: Request, r
   try {
     const db = getDb();
     const userId = parseInt(req.params.id as string);
+    if (isNaN(userId)) { res.status(400).json({ error: 'Invalid user ID' }); return; }
     const ip = String(req.ip || 'unknown');
 
     const user = db.prepare('SELECT id, username, full_name FROM users WHERE id = ?').get(userId) as any;
@@ -988,6 +991,7 @@ router.put('/users/:id/role', requireRole('admin'), (req: Request, res: Response
   try {
     const db = getDb();
     const userId = parseInt(req.params.id as string);
+    if (isNaN(userId)) { res.status(400).json({ error: 'Invalid user ID' }); return; }
     const { role } = req.body;
     const ip = String(req.ip || 'unknown');
 
@@ -1047,6 +1051,7 @@ router.put('/users/:id/status', requireRole('admin', 'manager'), (req: Request, 
   try {
     const db = getDb();
     const userId = parseInt(req.params.id as string);
+    if (isNaN(userId)) { res.status(400).json({ error: 'Invalid user ID' }); return; }
     const { status } = req.body;
     const ip = String(req.ip || 'unknown');
 

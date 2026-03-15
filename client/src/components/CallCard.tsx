@@ -165,6 +165,28 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
               VISIT #{call.pso_attempt_number}
             </span>
           )}
+          {/* 72-hour PSO re-dispatch countdown */}
+          {call.incident_type === 'pso_client_request' && ['cleared', 'closed'].includes(call.status) && (() => {
+            const terminalTime = call.closed_at || call.cleared_at;
+            if (!terminalTime) return null;
+            const elapsed = Date.now() - new Date(terminalTime).getTime();
+            const hoursLeft = Math.max(0, 72 - elapsed / (60 * 60 * 1000));
+            if (elapsed >= 72 * 60 * 60 * 1000) {
+              return (
+                <span className="text-[8px] font-bold font-mono text-red-400 bg-red-900/40 border border-red-600/50 px-1 py-0 animate-pulse">
+                  72HR OVERDUE
+                </span>
+              );
+            }
+            if (elapsed >= 48 * 60 * 60 * 1000) {
+              return (
+                <span className="text-[8px] font-bold font-mono text-amber-400 bg-amber-900/40 border border-amber-600/50 px-1 py-0">
+                  {Math.floor(hoursLeft)}HR LEFT
+                </span>
+              );
+            }
+            return null;
+          })()}
           {call.dispatch_code && !(call.incident_type === 'pso_client_request' && call.pso_attempt_number) && (
             <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1 py-0">
               {call.dispatch_code}

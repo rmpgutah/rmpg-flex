@@ -106,9 +106,9 @@ export const SPACING = {
 
   CONTENT_INSET:      1.5,   // Left/right padding inside sections
   SECTION_HEADER_H:   5,     // Section header bar height
-  SECTION_GAP:        1,     // Gap between sections
-  SECTION_CONTENT_PAD: 1,    // Gap from header bar to first content
-  SECTION_BOTTOM_PAD:  1.5,  // Padding inside section before bottom border
+  SECTION_GAP:        2,     // Gap between sections
+  SECTION_CONTENT_PAD: 2,    // Gap from header bar to first content
+  SECTION_BOTTOM_PAD:  2,    // Padding inside section before bottom border
 
   FIELD_ROW_HEIGHT:   8,     // Height of field box
   FIELD_ROW_ADVANCE:  8.5,   // Y-advance after field row
@@ -192,7 +192,8 @@ export function getQuarterWidth(doc: jsPDF): number {
 
 /** Generate proportional column X positions from ratio array */
 export function getProportionalColumns(doc: jsPDF, ratios: number[]): number[] {
-  const totalRatio = ratios.reduce((a, b) => a + b, 0);
+  if (!ratios || ratios.length === 0) return [getLeftX()];
+  const totalRatio = ratios.reduce((a, b) => a + b, 0) || 1;
   const availW = getContentWidth(doc) - 2 * SPACING.CONTENT_INSET;
   let x = getLeftX();
   const positions: number[] = [];

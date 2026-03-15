@@ -15,6 +15,7 @@ import type { CodeViolation, VehicleTow, ViolationType, ViolationStatus, TowStat
 import PanelTitleBar from '../components/PanelTitleBar';
 // ExportButton omitted — no dedicated export endpoint
 import { apiFetch } from '../hooks/useApi';
+import { useDistrictOptions } from '../hooks/useDistrictLookup';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
@@ -56,6 +57,7 @@ const TOW_REASONS: { value: TowReason; label: string }[] = [
 const EMPTY_VIOLATION = {
   violation_type: 'other' as ViolationType, location: '', description: '',
   code_section: '', severity: 'low', fine_amount: '', compliance_deadline: '', notes: '',
+  section_id: '', zone_id: '', beat_id: '',
 };
 
 const EMPTY_TOW = {
@@ -67,6 +69,7 @@ const EMPTY_TOW = {
 export default function CodeEnforcementPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
+  const { sections: sectionOptions, zones: zoneOptions, beats: beatOptions } = useDistrictOptions();
   const { errors: vFormErrors, validate: validateVForm, clearAllErrors: clearVErrors } = useFormValidation();
   const { errors: tFormErrors, validate: validateTForm, clearAllErrors: clearTErrors } = useFormValidation();
 
@@ -151,7 +154,8 @@ export default function CodeEnforcementPage() {
     if (!isValid) return;
     setSubmitting(true);
     try {
-      await apiFetch('/code-enforcement/violations', { method: 'POST', body: JSON.stringify(vFormData) });
+      const zoneBeat = [vFormData.zone_id, vFormData.beat_id].filter(Boolean).join('/') || undefined;
+      await apiFetch('/code-enforcement/violations', { method: 'POST', body: JSON.stringify({ ...vFormData, zone_beat: zoneBeat }) });
       addToast('Violation created', 'success');
       setVFormOpen(false);
       setVFormData({ ...EMPTY_VIOLATION });
@@ -302,6 +306,9 @@ export default function CodeEnforcementPage() {
                   <MapPin style={{ width: 9, height: 9 }} />
                   <span className="truncate">{v.location}</span>
                   {v.fine_amount && <span className="text-amber-400">${Number(v.fine_amount).toFixed(0)}</span>}
+                  {((v as any).section_id || (v as any).zone_id || (v as any).beat_id) && (
+                    <span className="font-mono text-rmpg-400">{[(v as any).section_id, (v as any).zone_id, (v as any).beat_id].filter(Boolean).join('/')}</span>
+                  )}
                 </div>
               </button>
             ))
@@ -369,6 +376,7 @@ export default function CodeEnforcementPage() {
                   ['Severity', selectedViolation.severity],
                   ['Fine Amount', selectedViolation.fine_amount ? `$${Number(selectedViolation.fine_amount).toFixed(2)}` : '—'],
                   ['Compliance Deadline', selectedViolation.compliance_deadline ? new Date(selectedViolation.compliance_deadline).toLocaleDateString() : '—'],
+                  ['S/Z/B', [(selectedViolation as any).section_id, (selectedViolation as any).zone_id, (selectedViolation as any).beat_id].filter(Boolean).join('/') || '—'],
                   ['Created', selectedViolation.created_at ? new Date(selectedViolation.created_at).toLocaleString() : '—'],
                 ].map(([label, value]) => (
                   <div key={label as string}>
@@ -471,6 +479,32 @@ export default function CodeEnforcementPage() {
                 <div>
                   <label className="field-label">Fine Amount</label>
                   <input value={vFormData.fine_amount} onChange={e => setVFormData(p => ({ ...p, fine_amount: e.target.value }))} type="number" className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="field-label">Section</label>
+                  <select className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none"
+                    value={vFormData.section_id || ''} onChange={e => setVFormData(p => ({...p, section_id: e.target.value}))}>
+                    <option value="">—</option>
+                    {sectionOptions.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="field-label">Zone</label>
+                  <select className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none"
+                    value={vFormData.zone_id || ''} onChange={e => setVFormData(p => ({...p, zone_id: e.target.value}))}>
+                    <option value="">—</option>
+                    {zoneOptions.map(z => <option key={z} value={z}>{z}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="field-label">Beat</label>
+                  <select className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none"
+                    value={vFormData.beat_id || ''} onChange={e => setVFormData(p => ({...p, beat_id: e.target.value}))}>
+                    <option value="">—</option>
+                    {beatOptions.map(b => <option key={b} value={b}>{b}</option>)}
+                  </select>
                 </div>
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">

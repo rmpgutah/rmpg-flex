@@ -152,8 +152,9 @@ export function drawFormRow(
   totalW: number,
   rowH?: number,
 ): number {
+  if (!cells || cells.length === 0) return y + (rowH || SPACING.FORM_CELL_H);
   const h = rowH || SPACING.FORM_CELL_H;
-  const totalRatio = cells.reduce((sum, c) => sum + (c.ratio || 1), 0);
+  const totalRatio = cells.reduce((sum, c) => sum + (c.ratio || 1), 0) || 1;
   let cellX = x;
 
   for (const cell of cells) {
@@ -230,9 +231,9 @@ export function drawSideTab(
   let textW = doc.getTextWidth(upperLabel);
 
   // Scale down if text overflows available height
-  if (textW > maxTextLen && maxTextLen > 0) {
+  if (textW > maxTextLen && maxTextLen > 0 && textW > 0) {
     fontSize = fontSize * (maxTextLen / textW);
-    fontSize = Math.max(fontSize, 4);
+    fontSize = Math.max(fontSize, 3); // floor at 3pt to prevent invisible text
     doc.setFontSize(fontSize);
     textW = doc.getTextWidth(upperLabel);
   }
@@ -323,7 +324,8 @@ export function drawCodeReferenceTable(
   totalW: number,
   cols: number = 3,
 ): number {
-  const colW = totalW / cols;
+  if (!codes || codes.length === 0) return y;
+  const colW = totalW / Math.max(cols, 1);
   const rowH = 3.2;
 
   // Title bar
@@ -351,12 +353,12 @@ export function drawCodeReferenceTable(
     doc.setFont('courier', 'bold');
     doc.setFontSize(4.5);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    doc.text(codes[i].code, cellX + 1, curY + 2.3);
+    doc.text(codes[i].code || '', cellX + 1, curY + 2.3);
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(4);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
-    doc.text(`= ${codes[i].description}`, cellX + 5.5, curY + 2.3, {
+    doc.text(`= ${codes[i].description || ''}`, cellX + 5.5, curY + 2.3, {
       maxWidth: colW - 7,
     });
   }
@@ -467,7 +469,7 @@ export function drawNibrsHeader(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_HEADER_TITLE);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
-  doc.text(config.agencyName.toUpperCase(), pageW / 2, y + 8, { align: 'center' });
+  doc.text((config.agencyName || '').toUpperCase(), pageW / 2, y + 8, { align: 'center' });
 
   // State identifier (small, above agency name if present)
   if (config.stateIdentifier) {
@@ -479,7 +481,7 @@ export function drawNibrsHeader(
   // Form title (below agency name)
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_REPORT_TYPE);
-  doc.text(config.formTitle.toUpperCase(), pageW / 2, y + 13, { align: 'center' });
+  doc.text((config.formTitle || '').toUpperCase(), pageW / 2, y + 13, { align: 'center' });
 
   // Case number box (right side)
   if (config.caseNumber) {

@@ -17,6 +17,7 @@ import {
   setConfigValue,
   CONFIG_KEYS,
 } from './msGraphClient';
+import { sendEmail } from './emailSender';
 
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
 
@@ -124,17 +125,27 @@ async function syncFolder(client: any, folderName: string, folderId: string, lim
   return newCount;
 }
 
-/** Sync inbox, sent items, and drafts from Microsoft Graph. */
+/** Sync inbox, sent items, drafts, and custom folders from Microsoft Graph. */
 async function syncInbox(): Promise<void> {
   if (!isConfigured() || !isEnabled() || !isAuthorized()) return;
 
   try {
     const client = await getGraphClient();
 
-    // Sync Inbox (100), Sent Items (50), Drafts (50)
+    // Sync core folders: Inbox (100), Sent Items (50), Drafts (50)
     const inboxNew = await syncFolder(client, 'inbox', 'inbox', 100);
     try { await syncFolder(client, 'sentitems', 'sentitems', 50); } catch { /* sent items may fail */ }
     try { await syncFolder(client, 'drafts', 'drafts', 50); } catch { /* drafts may fail */ }
+    try { await syncFolder(client, 'deleteditems', 'deleteditems', 30); } catch { /* deleted may fail */ }
+    try { await syncFolder(client, 'junkemail', 'junkemail', 20); } catch { /* junk may fail */ }
+    try { await syncFolder(client, 'archive', 'archive', 50); } catch { /* archive may fail */ }
+
+    // Sync custom user folders
+    try {
+      await syncCustomFolders(client);
+    } catch {
+      // Custom folder sync is best-effort
+    }
 
     // Sync folder counts
     await syncFolders(client);
@@ -156,6 +167,104 @@ async function syncInbox(): Promise<void> {
   } catch (err: any) {
     if (err.message?.includes('re-authorization')) return;
     throw err;
+  }
+
+  // Process scheduled emails after each sync cycle
+  try {
+    await processScheduledEmails();
+  } catch (err: any) {
+    console.error('[EmailPoller] Scheduled email processing error:', err.message);
+  }
+}
+
+/** Sync messages from custom (non-well-known) folders. */
+async function syncCustomFolders(client: any): Promise<void> {
+  const db = getDb();
+  const wellKnown = new Set(['inbox', 'sentitems', 'drafts', 'deleteditems', 'junkemail', 'archive']);
+
+  // Get all folders from cache
+  const folders = db.prepare('SELECT graph_id, display_name FROM email_folders').all() as { graph_id: string; display_name: string }[];
+
+  for (const folder of folders) {
+    // Skip well-known folders (already synced above) — check by display name heuristic
+    const normalizedName = folder.display_name.toLowerCase().replace(/\s+/g, '');
+    if (wellKnown.has(normalizedName) ||
+        normalizedName === 'sentmail' || normalizedName === 'deleteditems' ||
+        normalizedName === 'conversationhistory' || normalizedName === 'outbox') continue;
+
+    try {
+      await syncFolder(client, folder.graph_id, folder.graph_id, 30);
+    } catch {
+      // Skip individual folder failures silently
+    }
+  }
+}
+
+/** Process scheduled emails that are due for delivery. */
+async function processScheduledEmails(): Promise<void> {
+  const db = getDb();
+  const now = localNow();
+
+  const due = db.prepare(`
+    SELECT * FROM scheduled_emails
+    WHERE status = 'pending' AND scheduled_at <= ?
+    ORDER BY scheduled_at ASC
+    LIMIT 10
+  `).all(now) as {
+    id: number; to_addresses: string; cc_addresses: string | null;
+    bcc_addresses: string | null; subject: string; body: string;
+    attachments: string | null; created_by: number;
+  }[];
+
+  if (due.length === 0) return;
+
+  console.log(`[EmailPoller] Processing ${due.length} scheduled email(s)`);
+
+  for (const email of due) {
+    try {
+      const toParsed = JSON.parse(email.to_addresses);
+      const toList: string[] = Array.isArray(toParsed) ? toParsed : [String(toParsed)];
+      const ccParsed = email.cc_addresses ? JSON.parse(email.cc_addresses) : undefined;
+      const ccList: string[] | undefined = ccParsed ? (Array.isArray(ccParsed) ? ccParsed : [String(ccParsed)]) : undefined;
+      const bccParsed = email.bcc_addresses ? JSON.parse(email.bcc_addresses) : undefined;
+      const bccList: string[] | undefined = bccParsed ? (Array.isArray(bccParsed) ? bccParsed : [String(bccParsed)]) : undefined;
+
+      // Get user signature
+      const sigRow = db.prepare("SELECT config_value FROM system_config WHERE config_key = ?")
+        .get(`email_signature_${email.created_by}`) as { config_value: string } | undefined;
+
+      let bodyHtml = email.body;
+      if (sigRow?.config_value) {
+        bodyHtml += '\n\n--\n' + sigRow.config_value;
+      }
+      // Basic markdown conversion
+      bodyHtml = bodyHtml
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2">$1</a>')
+        .replace(/\n/g, '<br>');
+      bodyHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="font-family:Segoe UI,Arial,sans-serif;font-size:14px;line-height:1.5;color:#1a1a1a;">${bodyHtml}</body></html>`;
+
+      const sent = await sendEmail({
+        to: toList,
+        cc: ccList,
+        bcc: bccList,
+        subject: email.subject,
+        html: bodyHtml,
+      });
+
+      if (sent) {
+        db.prepare("UPDATE scheduled_emails SET status = 'sent', sent_at = ? WHERE id = ?").run(localNow(), email.id);
+        console.log(`[EmailPoller] Scheduled email #${email.id} sent to ${toList.join(', ')}`);
+      } else {
+        db.prepare("UPDATE scheduled_emails SET status = 'failed', error_message = 'Send failed' WHERE id = ?").run(email.id);
+      }
+    } catch (err: any) {
+      db.prepare("UPDATE scheduled_emails SET status = 'failed', error_message = ? WHERE id = ?")
+        .run(err.message || 'Unknown error', email.id);
+      console.error(`[EmailPoller] Scheduled email #${email.id} failed:`, err.message);
+    }
   }
 }
 

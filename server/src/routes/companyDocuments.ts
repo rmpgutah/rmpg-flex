@@ -48,6 +48,8 @@ router.get('/', (req: Request, res: Response) => {
 router.get('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const docId = parseInt(String(req.params.id), 10);
+    if (isNaN(docId)) { res.status(400).json({ error: 'Invalid document ID' }); return; }
     const doc = db.prepare(`
       SELECT d.*, u.full_name as creator_name,
              a.original_name as file_name, a.file_size, a.mime_type
@@ -55,7 +57,7 @@ router.get('/:id', (req: Request, res: Response) => {
       LEFT JOIN users u ON d.created_by = u.id
       LEFT JOIN attachments a ON d.file_id = a.file_id
       WHERE d.id = ?
-    `).get(parseInt(String(req.params.id), 10));
+    `).get(docId);
 
     if (!doc) {
       res.status(404).json({ error: 'Document not found' });
@@ -123,6 +125,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
   try {
     const db = getDb();
     const id = parseInt(String(req.params.id), 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid document ID' }); return; }
     const existing = db.prepare('SELECT id FROM company_documents WHERE id = ?').get(id);
     if (!existing) {
       res.status(404).json({ error: 'Document not found' });
@@ -182,6 +185,7 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
   try {
     const db = getDb();
     const id = parseInt(String(req.params.id), 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid document ID' }); return; }
     const doc = db.prepare('SELECT * FROM company_documents WHERE id = ?').get(id) as any;
 
     if (!doc) {

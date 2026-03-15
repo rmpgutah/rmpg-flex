@@ -313,7 +313,7 @@ export function getUtahWarrantSyncStatus(): {
 // ══════════════════════════════════════════════════════════════
 // WARRANT WATCH — Automated Bulk Scan
 // ══════════════════════════════════════════════════════════════
-// Runs every 12 hours (noon + midnight Mountain Time).
+// Runs every hour for officer safety.
 // Iterates every person in the persons table, queries Utah
 // warrants API, logs NEW hits and CLEARED warrants.
 // ══════════════════════════════════════════════════════════════
@@ -357,14 +357,15 @@ export async function runWarrantWatchScan(): Promise<{
 
   try {
     // Get all persons with first + last name (required by Utah API)
+    // Include DOB for age-based verification to reduce false positive warrant matches
     const persons = db.prepare(`
-      SELECT id, first_name, last_name
+      SELECT id, first_name, last_name, dob
       FROM persons
       WHERE first_name IS NOT NULL AND first_name != ''
         AND last_name IS NOT NULL AND last_name != ''
         AND archived_at IS NULL
       ORDER BY last_name, first_name
-    `).all() as { id: number; first_name: string; last_name: string }[];
+    `).all() as { id: number; first_name: string; last_name: string; dob: string | null }[];
 
     console.log(`[Warrant Watch] Scanning ${persons.length} persons against warrants.utah.gov`);
 
@@ -414,12 +415,27 @@ export async function runWarrantWatchScan(): Promise<{
         const foundWarrantIds = new Set<string>();
 
         for (const r of results) {
-          // Only match if name closely matches our person record
+          // Name matching (case-insensitive)
           const nameMatch =
             r.first_name.toUpperCase() === person.first_name.toUpperCase() &&
             r.last_name.toUpperCase() === person.last_name.toUpperCase();
 
           if (!nameMatch) continue;
+
+          // DOB verification — if both records have DOB, require match to reduce false positives
+          if (person.dob && r.age != null) {
+            // Utah API returns age, not DOB directly. Verify age matches ±1 year
+            const personDob = new Date(person.dob);
+            if (!isNaN(personDob.getTime())) {
+              const now = new Date();
+              const expectedAge = now.getFullYear() - personDob.getFullYear();
+              const ageDiff = Math.abs(expectedAge - r.age);
+              if (ageDiff > 1) {
+                // Age mismatch by more than 1 year — likely a different person
+                continue;
+              }
+            }
+          }
 
           foundWarrantIds.add(r.utah_warrant_id);
 
@@ -490,68 +506,37 @@ export async function runWarrantWatchScan(): Promise<{
 }
 
 // ── Scheduler ────────────────────────────────────────────────
-// Runs warrant watch scan at noon and midnight Mountain Time.
+// Runs warrant watch scan every hour for maximum officer safety.
 // Also cleans up stale cache entries every 6 hours.
 
-let schedulerTimer: ReturnType<typeof setTimeout> | null = null;
+/** Hourly scan interval — 60 minutes */
+const SCAN_INTERVAL_MS = 60 * 60 * 1000;
 
-/**
- * Calculate ms until next noon or midnight in Mountain Time (America/Denver).
- * Returns both the delay and the target time for logging.
- */
-function msUntilNextScanTime(): { delayMs: number; targetTime: string } {
-  const nowUtc = Date.now();
-  const mtnNow = new Date(new Date(nowUtc).toLocaleString('en-US', { timeZone: 'America/Denver' }));
-  const hour = mtnNow.getHours();
-  const min = mtnNow.getMinutes();
-  const sec = mtnNow.getSeconds();
+/** Startup delay before first scan — 90 seconds (let other services start first) */
+const SCAN_STARTUP_DELAY_MS = 90_000;
 
-  // Current Mountain Time as minutes since midnight
-  const currentMinutes = hour * 60 + min;
-
-  // Target times: midnight (0:00) and noon (12:00)
-  let nextTargetMinutes: number;
-  if (currentMinutes < 720) {
-    // Before noon → target is noon (720 min)
-    nextTargetMinutes = 720;
-  } else {
-    // After noon → target is midnight (1440 = next day 0:00)
-    nextTargetMinutes = 1440;
-  }
-
-  const minutesUntil = nextTargetMinutes - currentMinutes;
-  const delayMs = (minutesUntil * 60 - sec) * 1000;
-
-  const targetHour = nextTargetMinutes === 720 ? 12 : 0;
-  const targetDate = new Date(mtnNow);
-  targetDate.setHours(targetHour, 0, 0, 0);
-  if (nextTargetMinutes === 1440) targetDate.setDate(targetDate.getDate() + 1);
-
-  return {
-    delayMs: Math.max(delayMs, 1000), // at least 1 second
-    targetTime: targetDate.toLocaleString('en-US', { timeZone: 'America/Denver', hour12: true }),
-  };
-}
-
-function scheduleNextScan(): void {
-  const { delayMs, targetTime } = msUntilNextScanTime();
-  const hoursUntil = (delayMs / 3_600_000).toFixed(1);
-  console.log(`[Warrant Watch] Next scan at ${targetTime} Mountain (${hoursUntil}h from now)`);
-
-  schedulerTimer = setTimeout(async () => {
-    await runWarrantWatchScan();
-    scheduleNextScan(); // Schedule the next one
-  }, delayMs);
-
-  if (schedulerTimer.unref) schedulerTimer.unref();
-}
+let scanInterval: ReturnType<typeof setInterval> | null = null;
+let startupTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function scheduleUtahWarrantSync(): void {
   console.log('[Utah Warrants] Live search mode active — queries warrants.utah.gov on demand');
-  console.log('[Warrant Watch] Automated bulk scan enabled — runs at noon & midnight Mountain Time');
+  console.log('[Warrant Watch] Automated bulk scan enabled — runs every hour for officer safety');
 
-  // Schedule first scan
-  scheduleNextScan();
+  // Initial scan after startup delay
+  startupTimer = setTimeout(async () => {
+    console.log('[Warrant Watch] Running initial warrant scan...');
+    await runWarrantWatchScan();
+
+    // Then schedule hourly recurring scans
+    scanInterval = setInterval(async () => {
+      console.log('[Warrant Watch] Starting hourly warrant scan...');
+      await runWarrantWatchScan();
+    }, SCAN_INTERVAL_MS);
+
+    if (scanInterval.unref) scanInterval.unref();
+  }, SCAN_STARTUP_DELAY_MS);
+
+  if (startupTimer.unref) startupTimer.unref();
 
   // Clean up stale cache entries older than 7 days every 6 hours
   const cleanupInterval = setInterval(() => {
@@ -569,8 +554,12 @@ export function scheduleUtahWarrantSync(): void {
 }
 
 export function stopUtahWarrantSync(): void {
-  if (schedulerTimer) {
-    clearTimeout(schedulerTimer);
-    schedulerTimer = null;
+  if (startupTimer) {
+    clearTimeout(startupTimer);
+    startupTimer = null;
+  }
+  if (scanInterval) {
+    clearInterval(scanInterval);
+    scanInterval = null;
   }
 }

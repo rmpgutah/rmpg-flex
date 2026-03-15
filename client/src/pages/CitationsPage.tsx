@@ -39,6 +39,7 @@ import type { CitationPdfData } from '../utils/recordPdfGenerator';
 import { localToday, formatDate } from '../utils/dateUtils';
 import { useFormValidation } from '../hooks/useFormValidation';
 import { isValidDate, isValidPlate, isValidState } from '../utils/validate';
+import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -75,6 +76,10 @@ interface Citation {
   court_name: string | null;
   court_address: string | null;
   notes: string | null;
+  section_id: string | null;
+  zone_id: string | null;
+  beat_id: string | null;
+  zone_beat: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -113,6 +118,10 @@ interface CitationForm {
   court_name: string;
   court_address: string;
   notes: string;
+  section_id: string;
+  zone_id: string;
+  beat_id: string;
+  zone_beat: string;
 }
 
 // ── Constants ──────────────────────────────────────────────
@@ -180,6 +189,10 @@ const EMPTY_FORM: CitationForm = {
   court_name: '',
   court_address: '',
   notes: '',
+  section_id: '',
+  zone_id: '',
+  beat_id: '',
+  zone_beat: '',
 };
 
 // formatDate imported from ../utils/dateUtils
@@ -194,6 +207,8 @@ function formatCurrency(n: number | null | undefined): string {
 export default function CitationsPage() {
   const { user } = useAuth();
   const isMobile = useIsMobile();
+  const { sections: sectionOptions, zones: zoneOptions, beats: beatOptions } = useDistrictOptions();
+  const { identify: identifyDistrict } = useDistrictIdentify();
 
   // List state
   const [citations, setCitations] = useState<Citation[]>([]);
@@ -344,7 +359,16 @@ export default function CitationsPage() {
   // ── Form helpers ─────────────────────────────────────────
 
   const updateField = (key: keyof CitationForm, value: any) => {
-    setForm(prev => ({ ...prev, [key]: value }));
+    setForm(prev => {
+      const next = { ...prev, [key]: value };
+      // Auto-compute zone_beat when zone or beat changes
+      if (key === 'zone_id' || key === 'beat_id') {
+        const z = key === 'zone_id' ? value : prev.zone_id;
+        const b = key === 'beat_id' ? value : prev.beat_id;
+        next.zone_beat = (z && b) ? `${z}-${b}` : '';
+      }
+      return next;
+    });
   };
 
   const handleNewCitation = () => {
@@ -389,6 +413,10 @@ export default function CitationsPage() {
       court_name: c.court_name || '',
       court_address: c.court_address || '',
       notes: c.notes || '',
+      section_id: c.section_id || '',
+      zone_id: c.zone_id || '',
+      beat_id: c.beat_id || '',
+      zone_beat: c.zone_beat || '',
     });
     setPersonSearch(c.person_name || '');
     setSaveError('');
@@ -746,6 +774,9 @@ export default function CitationsPage() {
               <div><span className="text-rmpg-400">Date:</span> <span className="text-rmpg-200">{formatDate(c.violation_date)}</span></div>
               {c.violation_time && <div><span className="text-rmpg-400">Time:</span> <span className="text-rmpg-200">{c.violation_time}</span></div>}
               {c.location && <div><span className="text-rmpg-400">Location:</span> <span className="text-rmpg-200">{c.location}</span></div>}
+              {(c.section_id || c.zone_id || c.beat_id) && (
+                <div><span className="text-rmpg-400">S/Z/B:</span> <span className="text-rmpg-200 font-mono">{c.section_id || '—'} / {c.zone_id || '—'} / {c.beat_id || '—'}</span></div>
+              )}
             </div>
           </section>
 
@@ -1034,6 +1065,33 @@ export default function CitationsPage() {
             <div>
               <label className="field-label">Location</label>
               <input type="text" value={form.location} onChange={e => updateField('location', e.target.value)} placeholder="Address or intersection" className="input-dark w-full py-2 text-xs" />
+            </div>
+            {/* Section / Zone / Beat */}
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Section</label>
+                <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
+                  value={form.section_id || ''} onChange={(e) => updateField('section_id', e.target.value)}>
+                  <option value="">—</option>
+                  {sectionOptions.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Zone</label>
+                <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
+                  value={form.zone_id || ''} onChange={(e) => updateField('zone_id', e.target.value)}>
+                  <option value="">—</option>
+                  {zoneOptions.map(z => <option key={z} value={z}>{z}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Beat</label>
+                <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
+                  value={form.beat_id || ''} onChange={(e) => updateField('beat_id', e.target.value)}>
+                  <option value="">—</option>
+                  {beatOptions.map(b => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </div>
             </div>
           </div>
         </section>

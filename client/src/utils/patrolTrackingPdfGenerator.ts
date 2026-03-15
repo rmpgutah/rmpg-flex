@@ -113,17 +113,18 @@ function formatDuration(seconds: number): string {
 }
 
 function hexToRgb(hex: string): [number, number, number] {
-  const clean = hex.replace('#', '');
+  const clean = (hex || '#303030').replace('#', '');
   return [
-    parseInt(clean.substring(0, 2), 16),
-    parseInt(clean.substring(2, 4), 16),
-    parseInt(clean.substring(4, 6), 16),
+    parseInt(clean.substring(0, 2), 16) || 48,
+    parseInt(clean.substring(2, 4), 16) || 48,
+    parseInt(clean.substring(4, 6), 16) || 48,
   ];
 }
 
 // ── PDF Generator ───────────────────────────────────────────
 
 export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData): Promise<void> {
+  try {
   const branding = await fetchPdfBranding();
   const primaryRgb = hexToRgb(branding.primary_color || DEFAULT_PDF_BRANDING.primary_color);
   const accentRgb = hexToRgb(branding.accent_color || DEFAULT_PDF_BRANDING.accent_color);
@@ -450,7 +451,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
         pt.current_call_number || '-',                                  // Call #
         (pt.current_call_type || '-').replace(/_/g, ' '),              // Call Type
         pt.cumulative_distance_miles != null ? `${pt.cumulative_distance_miles}` : '-',  // Dist
-        `${pt.lat.toFixed(4)},${pt.lng.toFixed(4)}`,                   // Lat/Lng
+        pt.lat != null && pt.lng != null ? `${Number(pt.lat).toFixed(4)},${Number(pt.lng).toFixed(4)}` : '-',  // Lat/Lng
       ];
 
       for (let ci = 0; ci < cols.length; ci++) {
@@ -511,8 +512,8 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
           seg.dispatched_at ? formatDateTime(seg.dispatched_at) : '-',
           seg.onscene_at ? formatDateTime(seg.onscene_at) : '-',
           seg.time_to_onscene_seconds != null ? formatDuration(seg.time_to_onscene_seconds) : '-',
-          `${seg.response_distance_miles} mi`,
-          String(seg.breadcrumb_count),
+          seg.response_distance_miles != null ? `${seg.response_distance_miles} mi` : '-',
+          String(seg.breadcrumb_count || 0),
         ];
 
         for (let ci = 0; ci < rCols.length; ci++) {
@@ -524,8 +525,8 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     }
 
     // ── Zone Coverage Summary ──────────────────────────
-    const zc = trail.zone_coverage;
-    if (zc && Object.keys(zc).length > 0) {
+    const zc = trail.zone_coverage || {};
+    if (Object.keys(zc).length > 0) {
       ensureSpace(30); // header (10) + col headers (6) + at least 2 rows (10)
       drawSectionHeader('Zone Coverage Summary');
 
@@ -560,12 +561,12 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
 
         let zxOff = margin;
         const zRowData = [
-          beatId,
-          zone.beat_code,
-          zone.city,
-          String(zone.point_count),
-          formatDuration(zone.time_seconds),
-          `${zone.percentage}%`,
+          beatId || '-',
+          zone.beat_code || '-',
+          zone.city || '-',
+          String(zone.point_count || 0),
+          formatDuration(zone.time_seconds || 0),
+          `${zone.percentage || 0}%`,
         ];
 
         for (let ci = 0; ci < zCols.length; ci++) {
@@ -589,4 +590,8 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   const firstCallSign = data.trails[0]?.call_sign || 'ALL';
   const suffix = data.total_units === 1 ? `_${firstCallSign}` : '';
   doc.save(`RMPG_Patrol_Tracking${suffix}_${dateStr}.pdf`);
+  } catch (err) {
+    console.error('Patrol tracking PDF generation failed:', err);
+    throw new Error(`Failed to generate patrol tracking PDF: ${err instanceof Error ? err.message : 'Unknown error'}`);
+  }
 }

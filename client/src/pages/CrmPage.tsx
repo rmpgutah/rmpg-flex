@@ -173,7 +173,7 @@ export default function CrmPage() {
   });
 
   // Persist active section
-  useEffect(() => { localStorage.setItem('crm_active_section', activeSection); }, [activeSection]);
+  useEffect(() => { try { localStorage.setItem('crm_active_section', activeSection); } catch { /* ignore */ } }, [activeSection]);
 
   // ── Data Fetching ──────────────────────────────────────
   const fetchDashboard = useCallback(async () => {
@@ -240,10 +240,13 @@ export default function CrmPage() {
 
   // Initial load
   useEffect(() => {
+    let cancelled = false;
     Promise.all([fetchDashboard(), fetchClients(), fetchTasks(), apiFetch<any>('/personnel?status=active').then((r: any) => {
+      if (cancelled) return;
       const list = Array.isArray(r) ? r : r?.data ?? [];
       setOfficers(list.map((u: any) => ({ id: String(u.id), full_name: u.full_name || `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username })));
-    }).catch(() => {})]).finally(() => setIsLoading(false));
+    }).catch(() => {})]).finally(() => { if (!cancelled) setIsLoading(false); });
+    return () => { cancelled = true; };
   }, [fetchDashboard, fetchClients, fetchTasks]);
 
   // Fetch section data on tab change

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { toDisplayLabel } from '../utils/formatters';
 import {
   X,
@@ -13,6 +13,13 @@ import {
   ShieldCheck,
   ShieldOff,
   RefreshCw,
+  Camera,
+  Trash2,
+  Upload,
+  Settings,
+  Bell,
+  Monitor,
+  RotateCcw,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../hooks/useApi';
@@ -24,10 +31,34 @@ import SecurityKeyManager from './security/SecurityKeyManager';
 import BackupCodesDisplay from './security/BackupCodesDisplay';
 import SecurityStatusCard from './security/SecurityStatusCard';
 
+interface UserPreferences {
+  notify_dispatch_email: number;
+  notify_dispatch_inapp: number;
+  notify_bolo_email: number;
+  notify_bolo_inapp: number;
+  notify_warrant_email: number;
+  notify_warrant_inapp: number;
+  notify_system_email: number;
+  notify_system_inapp: number;
+  notify_credential_email: number;
+  notify_credential_inapp: number;
+  notify_pso_email: number;
+  notify_pso_inapp: number;
+  quiet_hours_start: string | null;
+  quiet_hours_end: string | null;
+  font_scale: number;
+  compact_mode: number;
+  show_map_labels: number;
+  default_map_style: string;
+  dispatch_sort: string;
+  dispatch_show_cleared: number;
+  [key: string]: any;
+}
+
 interface UserProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
-  initialTab?: 'profile' | 'password' | 'sessions' | 'security';
+  initialTab?: 'profile' | 'password' | 'sessions' | 'security' | 'preferences';
 }
 
 export default function UserProfileModal({ isOpen, onClose, initialTab = 'profile' }: UserProfileModalProps) {
@@ -59,6 +90,19 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
   const [signature, setSignature] = useState<string | null>(null);
   const [sigLoaded, setSigLoaded] = useState(false);
 
+  // Profile Image
+  const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [profileImageLoaded, setProfileImageLoaded] = useState(false);
+  const [imageUploading, setImageUploading] = useState(false);
+  const [imageDragOver, setImageDragOver] = useState(false);
+  const justUploadedImage = useRef(false); // Guards against useEffect resetting profileImage after upload
+
+  // User Preferences
+  const [prefs, setPrefs] = useState<UserPreferences | null>(null);
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
+  const [prefsSaving, setPrefsSaving] = useState(false);
+  const [prefsMsg, setPrefsMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
   // 2FA / Security
   const [totpStatus, setTotpStatus] = useState<{ enabled: boolean; required: boolean } | null>(null);
   const [setupStep, setSetupStep] = useState<'idle' | 'qr' | 'verify' | 'backups' | 'disabling'>('idle');
@@ -83,17 +127,147 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
       setNewPassword('');
       setConfirmPassword('');
       setSigLoaded(false);
+      setPrefsLoaded(false);
+      setPrefsMsg(null);
+      // Don't reset profile image if we just uploaded — the local state is already correct
+      if (justUploadedImage.current) {
+        justUploadedImage.current = false;
+      } else {
+        setProfileImageLoaded(false);
+        setProfileImage(user.profile_image || null);
+      }
     }
   }, [isOpen, user, initialTab]);
 
-  // Fetch digital signature on profile tab open
+  // Fetch digital signature + profile image on profile tab open
   useEffect(() => {
     if (isOpen && activeTab === 'profile' && !sigLoaded) {
       apiFetch<{ signature: string | null }>('/auth/signature')
         .then(data => { setSignature(data?.signature || null); setSigLoaded(true); })
         .catch(() => setSigLoaded(true));
     }
-  }, [isOpen, activeTab, sigLoaded]);
+    if (isOpen && activeTab === 'profile' && !profileImageLoaded) {
+      apiFetch<{ profile_image: string | null }>('/auth/profile-image')
+        .then(data => { setProfileImage(data?.profile_image || null); setProfileImageLoaded(true); })
+        .catch(() => setProfileImageLoaded(true));
+    }
+  }, [isOpen, activeTab, sigLoaded, profileImageLoaded]);
+
+  // Profile image upload handler — resizes to 256px, converts to JPEG base64, saves to server
+  const handleProfileImageFile = async (file: File) => {
+    if (!file.type.startsWith('image/')) return;
+    if (file.size > 10 * 1024 * 1024) {
+      setProfileMsg({ type: 'error', text: 'Image must be under 10MB' });
+      return;
+    }
+    setImageUploading(true);
+    try {
+      // Step 1: Read file as data URL via FileReader (more reliable than blob URL)
+      const rawDataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      // Step 2: Resize to 256×256 and compress as JPEG to keep DB payload small
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const canvas = document.createElement('canvas');
+            const size = 256;
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) { reject(new Error('Canvas context unavailable')); return; }
+            // Center-crop: take the largest square from the center
+            const srcSize = Math.min(img.width, img.height);
+            const sx = (img.width - srcSize) / 2;
+            const sy = (img.height - srcSize) / 2;
+            ctx.drawImage(img, sx, sy, srcSize, srcSize, 0, 0, size, size);
+            const result = canvas.toDataURL('image/jpeg', 0.85);
+            if (!result || result === 'data:,') {
+              reject(new Error('Canvas produced empty image'));
+              return;
+            }
+            resolve(result);
+          } catch (e) {
+            reject(e);
+          }
+        };
+        img.onerror = () => reject(new Error('Failed to load image for resizing'));
+        img.src = rawDataUrl; // Use the FileReader data URL, not a blob URL
+      });
+
+      // Step 3: Validate the data URL is complete before sending
+      const b64Match = dataUrl.match(/^data:image\/[a-z]+;base64,(.+)$/);
+      if (!b64Match) {
+        throw new Error('Generated image data URL is malformed');
+      }
+      const b64Data = b64Match[1];
+      // Pad base64 if needed (some browsers omit padding)
+      const paddedB64 = b64Data.length % 4 === 0 ? b64Data
+        : b64Data + '='.repeat(4 - (b64Data.length % 4));
+      const validatedDataUrl = dataUrl.replace(b64Data, paddedB64);
+
+      // Step 4: Verify the data URL renders before uploading
+      await new Promise<void>((resolve, reject) => {
+        const testImg = new Image();
+        testImg.onload = () => resolve();
+        testImg.onerror = () => reject(new Error('Generated image failed to render'));
+        testImg.src = validatedDataUrl;
+      });
+
+      // Step 5: Upload to server
+      const jsonBody = JSON.stringify({ profile_image: validatedDataUrl });
+      await apiFetch('/auth/profile-image', {
+        method: 'PUT',
+        body: jsonBody,
+      });
+
+      // Step 6: Verify the server stored it correctly
+      const stored = await apiFetch<{ profile_image: string | null }>('/auth/profile-image');
+      if (!stored?.profile_image || stored.profile_image.length !== validatedDataUrl.length) {
+        console.error('Server storage mismatch:', {
+          sent: validatedDataUrl.length,
+          received: stored?.profile_image?.length ?? 0,
+        });
+        throw new Error('Image was not stored correctly on the server');
+      }
+
+      // Step 7: Update local state immediately, then refresh context
+      setProfileImage(validatedDataUrl);
+      setProfileImageLoaded(true);
+      justUploadedImage.current = true; // Prevent useEffect from resetting our state
+      await refreshUser();
+      setProfileMsg({ type: 'success', text: 'Profile photo updated.' });
+    } catch (err) {
+      console.error('Profile image upload error:', err);
+      setProfileMsg({ type: 'error', text: 'Failed to upload profile photo.' });
+    } finally {
+      setImageUploading(false);
+    }
+  };
+
+  const handleRemoveProfileImage = async () => {
+    setImageUploading(true);
+    try {
+      await apiFetch('/auth/profile-image', {
+        method: 'PUT',
+        body: JSON.stringify({ profile_image: null }),
+      });
+      setProfileImage(null);
+      setProfileImageLoaded(true);
+      justUploadedImage.current = true;
+      await refreshUser();
+      setProfileMsg({ type: 'success', text: 'Profile photo removed.' });
+    } catch {
+      setProfileMsg({ type: 'error', text: 'Failed to remove profile photo.' });
+    } finally {
+      setImageUploading(false);
+    }
+  };
 
   const handleSignatureChange = async (dataUrl: string | null) => {
     setSignature(dataUrl);
@@ -129,7 +303,12 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
         .then(data => setTotpStatus(data))
         .catch(() => setTotpStatus(null));
     }
-  }, [isOpen, activeTab]);
+    if (isOpen && activeTab === 'preferences' && !prefsLoaded) {
+      apiFetch<UserPreferences>('/user/preferences')
+        .then(data => { setPrefs(data); setPrefsLoaded(true); })
+        .catch(() => setPrefsLoaded(true));
+    }
+  }, [isOpen, activeTab, prefsLoaded]);
 
   if (!isOpen || !user) return null;
 
@@ -243,6 +422,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
 
   const tabs = [
     { id: 'profile' as const, label: 'Profile', icon: User },
+    { id: 'preferences' as const, label: 'Prefs', icon: Settings },
     { id: 'password' as const, label: 'Password', icon: Lock },
     { id: 'security' as const, label: '2FA', icon: ShieldCheck },
     { id: 'sessions' as const, label: 'Sessions', icon: Shield },
@@ -284,6 +464,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
               alt={user.first_name}
               className="w-12 h-12 object-cover border-2 border-rmpg-600"
               style={{ borderRadius: 2 }}
+              onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
             />
           ) : (
             <div
@@ -396,6 +577,89 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                 </div>
               </div>
 
+              {/* Profile Photo Upload */}
+              <div className="mt-3 pt-3 border-t border-rmpg-700">
+                <label className="field-label flex items-center gap-1.5 mb-2">
+                  <Camera style={{ width: 11, height: 11 }} />
+                  Profile Photo
+                </label>
+                <div className="flex items-start gap-4">
+                  {/* Preview */}
+                  <div className="flex-shrink-0">
+                    {profileImage ? (
+                      <img
+                        src={profileImage}
+                        alt="Profile"
+                        className="w-20 h-20 object-cover border-2 border-rmpg-600"
+                        style={{ borderRadius: 2 }}
+                        onError={() => { setProfileImage(null); }}
+                      />
+                    ) : (
+                      <div
+                        className="w-20 h-20 flex items-center justify-center text-xl font-bold"
+                        style={{
+                          background: 'linear-gradient(135deg, #124070, #1a5a9e)',
+                          color: '#fff',
+                          border: '2px solid #2a4a6e',
+                          borderRadius: 2,
+                        }}
+                      >
+                        {initials}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Drop zone + buttons */}
+                  <div className="flex-1 space-y-2">
+                    <div
+                      className="relative border-2 border-dashed px-4 py-3 text-center transition-colors cursor-pointer"
+                      style={{
+                        borderColor: imageDragOver ? '#1a5a9e' : '#1e3348',
+                        background: imageDragOver ? 'rgba(26, 90, 158, 0.12)' : '#0a1018',
+                        borderRadius: 2,
+                      }}
+                      onDragOver={e => { e.preventDefault(); setImageDragOver(true); }}
+                      onDragLeave={() => setImageDragOver(false)}
+                      onDrop={e => {
+                        e.preventDefault();
+                        setImageDragOver(false);
+                        const file = e.dataTransfer.files?.[0];
+                        if (file) handleProfileImageFile(file);
+                      }}
+                      onClick={() => {
+                        const input = document.createElement('input');
+                        input.type = 'file';
+                        input.accept = 'image/*';
+                        input.onchange = () => {
+                          const file = input.files?.[0];
+                          if (file) handleProfileImageFile(file);
+                        };
+                        input.click();
+                      }}
+                    >
+                      <Upload style={{ width: 16, height: 16, margin: '0 auto 4px', color: '#5a6e80' }} />
+                      <div className="text-[10px]" style={{ color: '#5a6e80' }}>
+                        {imageUploading ? 'Uploading...' : 'Drop image here or click to browse'}
+                      </div>
+                      <div className="text-[9px] mt-0.5" style={{ color: '#3a4e60' }}>
+                        JPG, PNG, WebP — max 2MB
+                      </div>
+                    </div>
+                    {profileImage && (
+                      <button
+                        onClick={handleRemoveProfileImage}
+                        disabled={imageUploading}
+                        className="flex items-center gap-1 text-[10px] px-2 py-1 hover:text-red-400 transition-colors"
+                        style={{ color: '#6a7e90' }}
+                      >
+                        <Trash2 style={{ width: 10, height: 10 }} />
+                        Remove photo
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               {/* Digital Signature */}
               <div className="mt-3 pt-3 border-t border-rmpg-700">
                 <SignaturePad
@@ -500,6 +764,229 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   {pwSaving ? 'Changing...' : 'Change Password'}
                 </button>
               </div>
+            </>
+          )}
+
+          {activeTab === 'preferences' && (
+            <>
+              {!prefsLoaded ? (
+                <div className="text-xs text-center py-4" style={{ color: '#5a6e80' }}>Loading preferences...</div>
+              ) : prefs ? (
+                <>
+                  {/* Notification Preferences */}
+                  <div>
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <Bell style={{ width: 11, height: 11, color: '#8a9aaa' }} />
+                      <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#8a9aaa' }}>
+                        Notification Preferences
+                      </span>
+                    </div>
+                    <div className="space-y-1.5" style={{ background: '#0d1520', border: '1px solid #162236', padding: '8px 10px' }}>
+                      {[
+                        { key: 'dispatch', label: 'Dispatch Alerts' },
+                        { key: 'bolo', label: 'BOLO Alerts' },
+                        { key: 'warrant', label: 'Warrant Alerts' },
+                        { key: 'pso', label: 'PSO / 72hr Alerts' },
+                        { key: 'credential', label: 'Credential Expiry' },
+                        { key: 'system', label: 'System Notices' },
+                      ].map(({ key, label }) => (
+                        <div key={key} className="flex items-center justify-between">
+                          <span className="text-[11px] text-rmpg-200">{label}</span>
+                          <div className="flex items-center gap-3">
+                            <label className="flex items-center gap-1 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={!!prefs[`notify_${key}_inapp`]}
+                                onChange={e => setPrefs({ ...prefs, [`notify_${key}_inapp`]: e.target.checked ? 1 : 0 })}
+                                className="w-3 h-3"
+                              />
+                              <span className="text-[9px]" style={{ color: '#5a6e80' }}>In-App</span>
+                            </label>
+                            <label className="flex items-center gap-1 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={!!prefs[`notify_${key}_email`]}
+                                onChange={e => setPrefs({ ...prefs, [`notify_${key}_email`]: e.target.checked ? 1 : 0 })}
+                                className="w-3 h-3"
+                              />
+                              <span className="text-[9px]" style={{ color: '#5a6e80' }}>Email</span>
+                            </label>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Quiet Hours */}
+                  <div className="mt-3">
+                    <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#8a9aaa' }}>
+                      Quiet Hours (Suppress Notifications)
+                    </span>
+                    <div className="grid grid-cols-2 gap-2 mt-1.5">
+                      <div>
+                        <label className="field-label">Start</label>
+                        <input
+                          type="time"
+                          value={prefs.quiet_hours_start || ''}
+                          onChange={e => setPrefs({ ...prefs, quiet_hours_start: e.target.value || null })}
+                          className="input-dark text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="field-label">End</label>
+                        <input
+                          type="time"
+                          value={prefs.quiet_hours_end || ''}
+                          onChange={e => setPrefs({ ...prefs, quiet_hours_end: e.target.value || null })}
+                          className="input-dark text-xs"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Display Preferences */}
+                  <div className="mt-3 pt-3 border-t border-rmpg-700">
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <Monitor style={{ width: 11, height: 11, color: '#8a9aaa' }} />
+                      <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#8a9aaa' }}>
+                        Display Settings
+                      </span>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] text-rmpg-200">Font Scale</span>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="range"
+                            min="0.8"
+                            max="1.4"
+                            step="0.1"
+                            value={prefs.font_scale}
+                            onChange={e => setPrefs({ ...prefs, font_scale: parseFloat(e.target.value) })}
+                            className="w-24 h-1"
+                          />
+                          <span className="text-[10px] font-mono w-8 text-right" style={{ color: '#5a6e80' }}>
+                            {(prefs.font_scale * 100).toFixed(0)}%
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] text-rmpg-200">Compact Mode</span>
+                        <input
+                          type="checkbox"
+                          checked={!!prefs.compact_mode}
+                          onChange={e => setPrefs({ ...prefs, compact_mode: e.target.checked ? 1 : 0 })}
+                          className="w-3 h-3"
+                        />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] text-rmpg-200">Map Labels</span>
+                        <input
+                          type="checkbox"
+                          checked={!!prefs.show_map_labels}
+                          onChange={e => setPrefs({ ...prefs, show_map_labels: e.target.checked ? 1 : 0 })}
+                          className="w-3 h-3"
+                        />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] text-rmpg-200">Default Map Style</span>
+                        <select
+                          value={prefs.default_map_style}
+                          onChange={e => setPrefs({ ...prefs, default_map_style: e.target.value })}
+                          className="input-dark text-[10px] py-0.5 px-1 w-24"
+                        >
+                          <option value="dark">Dark</option>
+                          <option value="satellite">Satellite</option>
+                          <option value="terrain">Terrain</option>
+                          <option value="roadmap">Roadmap</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Dispatch Board Preferences */}
+                  <div className="mt-3 pt-3 border-t border-rmpg-700">
+                    <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#8a9aaa' }}>
+                      Dispatch Board
+                    </span>
+                    <div className="space-y-2 mt-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] text-rmpg-200">Default Sort</span>
+                        <select
+                          value={prefs.dispatch_sort}
+                          onChange={e => setPrefs({ ...prefs, dispatch_sort: e.target.value })}
+                          className="input-dark text-[10px] py-0.5 px-1 w-28"
+                        >
+                          <option value="priority">By Priority</option>
+                          <option value="time">By Time (Newest)</option>
+                          <option value="status">By Status</option>
+                        </select>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] text-rmpg-200">Show Cleared Calls</span>
+                        <input
+                          type="checkbox"
+                          checked={!!prefs.dispatch_show_cleared}
+                          onChange={e => setPrefs({ ...prefs, dispatch_show_cleared: e.target.checked ? 1 : 0 })}
+                          className="w-3 h-3"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {prefsMsg && (
+                    <div className={`flex items-center gap-2 px-3 py-2 text-xs mt-3 ${prefsMsg.type === 'success' ? 'text-green-400 bg-green-900/20 border border-green-800/40' : 'text-red-400 bg-red-900/20 border border-red-800/40'}`}>
+                      {prefsMsg.type === 'success' ? <Check style={{ width: 12, height: 12 }} /> : <AlertCircle style={{ width: 12, height: 12 }} />}
+                      {prefsMsg.text}
+                    </div>
+                  )}
+
+                  <div className="flex justify-between pt-3">
+                    <button
+                      onClick={async () => {
+                        try {
+                          const result = await apiFetch<UserPreferences>('/user/preferences/reset', { method: 'POST' });
+                          setPrefs(result);
+                          setPrefsMsg({ type: 'success', text: 'Preferences reset to defaults.' });
+                        } catch {
+                          setPrefsMsg({ type: 'error', text: 'Failed to reset preferences.' });
+                        }
+                      }}
+                      className="flex items-center gap-1 text-[10px] px-2 py-1 transition-colors"
+                      style={{ color: '#6a7e90' }}
+                    >
+                      <RotateCcw style={{ width: 10, height: 10 }} />
+                      Reset to Defaults
+                    </button>
+                    <button
+                      onClick={async () => {
+                        setPrefsSaving(true);
+                        setPrefsMsg(null);
+                        try {
+                          const { user_id, updated_at, ...updates } = prefs;
+                          const result = await apiFetch<UserPreferences>('/user/preferences', {
+                            method: 'PUT',
+                            body: JSON.stringify(updates),
+                          });
+                          setPrefs(result);
+                          setPrefsMsg({ type: 'success', text: 'Preferences saved.' });
+                        } catch {
+                          setPrefsMsg({ type: 'error', text: 'Failed to save preferences.' });
+                        } finally {
+                          setPrefsSaving(false);
+                        }
+                      }}
+                      disabled={prefsSaving}
+                      className="btn-primary"
+                    >
+                      <Save style={{ width: 12, height: 12 }} />
+                      {prefsSaving ? 'Saving...' : 'Save Preferences'}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="text-xs text-center py-4" style={{ color: '#5a6e80' }}>Failed to load preferences</div>
+              )}
             </>
           )}
 

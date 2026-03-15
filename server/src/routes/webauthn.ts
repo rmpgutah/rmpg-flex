@@ -261,6 +261,7 @@ router.delete('/credentials/:id', authenticateToken, (req: Request, res: Respons
   try {
     const db = getDb();
     const credId = parseInt(req.params.id as string);
+    if (isNaN(credId)) { res.status(400).json({ error: 'Invalid credential ID' }); return; }
     const cred = db.prepare(
       'SELECT id, name FROM webauthn_credentials WHERE id = ? AND user_id = ?'
     ).get(credId, req.user!.userId) as { id: number; name: string } | undefined;

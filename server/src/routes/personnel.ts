@@ -513,6 +513,13 @@ router.get('/bodycam-videos/:videoId/stream', (req: Request, res: Response) => {
       const parts = range.replace(/bytes=/, '').split('-');
       const start = parseInt(parts[0], 10);
       const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+      if (isNaN(start) || isNaN(end) || start < 0 || end >= fileSize || start > end) {
+        res.writeHead(416, { 'Content-Range': `bytes */${fileSize}` });
+        res.end();
+        return;
+      }
+
       const chunkSize = end - start + 1;
 
       res.writeHead(206, {
@@ -522,14 +529,18 @@ router.get('/bodycam-videos/:videoId/stream', (req: Request, res: Response) => {
         'Content-Type': video.mime_type || 'video/mp4',
       });
 
-      fs.createReadStream(filePath, { start, end }).pipe(res);
+      const stream = fs.createReadStream(filePath, { start, end });
+      stream.on('error', (err) => { console.error('Bodycam stream error:', err); res.destroy(); });
+      stream.pipe(res);
     } else {
       res.writeHead(200, {
         'Content-Length': fileSize,
         'Content-Type': video.mime_type || 'video/mp4',
       });
 
-      fs.createReadStream(filePath).pipe(res);
+      const stream = fs.createReadStream(filePath);
+      stream.on('error', (err) => { console.error('Bodycam stream error:', err); res.destroy(); });
+      stream.pipe(res);
     }
   } catch (error: any) {
     console.error('Stream bodycam video error:', error);
@@ -1245,7 +1256,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const requirements = db.prepare('SELECT * FROM training_requirements ORDER BY course_name').all();
       res.json(requirements.map((r: any) => ({
         ...r,
-        required_for_roles: typeof r.required_for_roles === 'string' ? JSON.parse(r.required_for_roles) : r.required_for_roles,
+        required_for_roles: (() => { try { return typeof r.required_for_roles === 'string' ? JSON.parse(r.required_for_roles) : r.required_for_roles; } catch { return []; } })(),
         is_mandatory: !!r.is_mandatory,
       })));
     } catch (error: any) {
@@ -2172,8 +2183,9 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       }
 
       try {
-        const { uploadId, chunkIndex } = req.body;
-        if (!uploadId || chunkIndex == null || !req.file) {
+        const { uploadId: rawUploadId, chunkIndex } = req.body;
+        const uploadId = rawUploadId ? path.basename(String(rawUploadId)) : '';
+        if (!uploadId || uploadId !== rawUploadId || chunkIndex == null || !req.file) {
           if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
           res.status(400).json({ error: 'uploadId, chunkIndex, and chunk file are required' });
           return;
@@ -2213,9 +2225,11 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
     try {
       const db = getDb();
-      const { uploadId, camera_id, officer_id, title, duration_seconds, recorded_at, case_number, classification, notes } = req.body;
+      const { uploadId: rawFinUploadId, camera_id, officer_id, title, duration_seconds, recorded_at, case_number, classification, notes } = req.body;
+      // Sanitize uploadId to prevent path traversal
+      const uploadId = rawFinUploadId ? path.basename(String(rawFinUploadId)) : '';
 
-      if (!uploadId || !camera_id || !officer_id || !title) {
+      if (!uploadId || uploadId !== rawFinUploadId || !camera_id || !officer_id || !title) {
         res.status(400).json({ error: 'uploadId, camera_id, officer_id, and title are required' });
         return;
       }
@@ -2318,7 +2332,13 @@ export function mountScheduleRoutes(parentRouter: Router): void {
   // DELETE /api/personnel/bodycam-videos/upload-abort/:uploadId — Cancel a chunked upload
   parentRouter.delete('/personnel/bodycam-videos/upload-abort/:uploadId', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
     try {
-      const sessionDir = path.join(CHUNK_DIR, req.params.uploadId as string);
+      // Sanitize uploadId to prevent path traversal (e.g. ../../)
+      const uploadId = path.basename(req.params.uploadId as string);
+      if (!uploadId || uploadId !== req.params.uploadId) {
+        res.status(400).json({ error: 'Invalid upload ID' });
+        return;
+      }
+      const sessionDir = path.join(CHUNK_DIR, uploadId);
       if (fs.existsSync(sessionDir)) {
         fs.rmSync(sessionDir, { recursive: true, force: true });
       }
@@ -2554,6 +2574,13 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         const parts = range.replace(/bytes=/, '').split('-');
         const start = parseInt(parts[0], 10);
         const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+        if (isNaN(start) || isNaN(end) || start < 0 || end >= fileSize || start > end) {
+          res.writeHead(416, { 'Content-Range': `bytes */${fileSize}` });
+          res.end();
+          return;
+        }
+
         const chunkSize = end - start + 1;
 
         res.writeHead(206, {
@@ -2563,14 +2590,18 @@ export function mountScheduleRoutes(parentRouter: Router): void {
           'Content-Type': video.mime_type || 'video/mp4',
         });
 
-        fs.createReadStream(filePath, { start, end }).pipe(res);
+        const stream = fs.createReadStream(filePath, { start, end });
+        stream.on('error', (err) => { console.error('Bodycam stream error:', err); res.destroy(); });
+        stream.pipe(res);
       } else {
         res.writeHead(200, {
           'Content-Length': fileSize,
           'Content-Type': video.mime_type || 'video/mp4',
         });
 
-        fs.createReadStream(filePath).pipe(res);
+        const stream = fs.createReadStream(filePath);
+        stream.on('error', (err) => { console.error('Bodycam stream error:', err); res.destroy(); });
+        stream.pipe(res);
       }
     } catch (error: any) {
       console.error('Stream bodycam video error:', error);
@@ -2616,10 +2647,10 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const db = getDb();
 
       // Headcount summary
-      const totalPersonnel = (db.prepare('SELECT COUNT(*) as count FROM users').get() as any).count;
-      const activePersonnel = (db.prepare("SELECT COUNT(*) as count FROM users WHERE status = 'active'").get() as any).count;
+      const totalPersonnel = (db.prepare('SELECT COUNT(*) as count FROM users').get() as any)?.count || 0;
+      const activePersonnel = (db.prepare("SELECT COUNT(*) as count FROM users WHERE status = 'active'").get() as any)?.count || 0;
       const onDuty = activePersonnel;
-      const clockedIn = (db.prepare("SELECT COUNT(*) as count FROM time_entries WHERE status = 'active'").get() as any).count;
+      const clockedIn = (db.prepare("SELECT COUNT(*) as count FROM time_entries WHERE status = 'active'").get() as any)?.count || 0;
 
       // Avg tenure
       const tenureRows = db.prepare("SELECT hire_date FROM users WHERE hire_date IS NOT NULL AND status = 'active'").all() as any[];
@@ -2630,8 +2661,8 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       // New hires / terminations in last 30 days
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-      const newHires = (db.prepare('SELECT COUNT(*) as count FROM users WHERE hire_date >= ?').get(thirtyDaysAgo) as any).count;
-      const terminations = (db.prepare('SELECT COUNT(*) as count FROM users WHERE termination_date >= ?').get(thirtyDaysAgo) as any).count;
+      const newHires = (db.prepare('SELECT COUNT(*) as count FROM users WHERE hire_date >= ?').get(thirtyDaysAgo) as any)?.count || 0;
+      const terminations = (db.prepare('SELECT COUNT(*) as count FROM users WHERE termination_date >= ?').get(thirtyDaysAgo) as any)?.count || 0;
 
       // Hours trend (by month)
       const hoursTrend = db.prepare(`
@@ -2661,10 +2692,10 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       `).all();
 
       // Credential compliance
-      const totalCreds = (db.prepare('SELECT COUNT(*) as count FROM credentials').get() as any).count;
-      const validCreds = (db.prepare("SELECT COUNT(*) as count FROM credentials WHERE expiry_date IS NULL OR expiry_date >= date('now')").get() as any).count;
-      const expiringSoon = (db.prepare("SELECT COUNT(*) as count FROM credentials WHERE expiry_date >= date('now') AND expiry_date <= date('now', '+90 days')").get() as any).count;
-      const expiredCreds = (db.prepare("SELECT COUNT(*) as count FROM credentials WHERE expiry_date < date('now')").get() as any).count;
+      const totalCreds = (db.prepare('SELECT COUNT(*) as count FROM credentials').get() as any)?.count || 0;
+      const validCreds = (db.prepare("SELECT COUNT(*) as count FROM credentials WHERE expiry_date IS NULL OR expiry_date >= date('now')").get() as any)?.count || 0;
+      const expiringSoon = (db.prepare("SELECT COUNT(*) as count FROM credentials WHERE expiry_date >= date('now') AND expiry_date <= date('now', '+90 days')").get() as any)?.count || 0;
+      const expiredCreds = (db.prepare("SELECT COUNT(*) as count FROM credentials WHERE expiry_date < date('now')").get() as any)?.count || 0;
 
       // Overtime tracking - top officers
       const overtimeTracking = db.prepare(`
@@ -2696,7 +2727,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       // Role distribution
       const ROLE_COLORS: Record<string, string> = {
         admin: '#ef4444', manager: '#a855f7', supervisor: '#f59e0b',
-        officer: '#bc1010', dispatcher: '#3b82f6',
+        officer: '#1a5a9e', dispatcher: '#3b82f6',
       };
       const roleDistribution = db.prepare(`
         SELECT role, COUNT(*) as count FROM users GROUP BY role ORDER BY count DESC
@@ -2707,9 +2738,9 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       }));
 
       // Training compliance
-      const totalTraining = (db.prepare('SELECT COUNT(*) as count FROM training_records').get() as any).count;
-      const completedTraining = (db.prepare("SELECT COUNT(*) as count FROM training_records WHERE status = 'completed'").get() as any).count;
-      const overdueTraining = (db.prepare("SELECT COUNT(*) as count FROM training_records WHERE status = 'overdue' OR (status = 'scheduled' AND expiry_date < date('now'))").get() as any).count;
+      const totalTraining = (db.prepare('SELECT COUNT(*) as count FROM training_records').get() as any)?.count || 0;
+      const completedTraining = (db.prepare("SELECT COUNT(*) as count FROM training_records WHERE status = 'completed'").get() as any)?.count || 0;
+      const overdueTraining = (db.prepare("SELECT COUNT(*) as count FROM training_records WHERE status = 'overdue' OR (status = 'scheduled' AND expiry_date < date('now'))").get() as any)?.count || 0;
 
       res.json({
         hours_trend: hoursTrend,

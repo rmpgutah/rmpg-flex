@@ -2,6 +2,7 @@ import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { WebSocketProvider } from './context/WebSocketContext';
+import { UserPreferencesProvider } from './context/UserPreferencesContext';
 import { ToastProvider } from './components/ToastProvider';
 import { GlobalSearch } from './components/GlobalSearch';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts';
@@ -214,13 +215,15 @@ export default function App() {
   return (
     <AuthProvider>
       <WebSocketProvider>
-        <ToastProvider>
-          <ErrorBoundary>
-            <WebUpdateBanner />
-            <AndroidUpdateChecker />
-            <AppRoutes />
-          </ErrorBoundary>
-        </ToastProvider>
+        <UserPreferencesProvider>
+          <ToastProvider>
+            <ErrorBoundary>
+              <WebUpdateBanner />
+              <AndroidUpdateChecker />
+              <AppRoutes />
+            </ErrorBoundary>
+          </ToastProvider>
+        </UserPreferencesProvider>
       </WebSocketProvider>
     </AuthProvider>
   );

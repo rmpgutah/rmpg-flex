@@ -47,6 +47,7 @@ import RmpgLogo from '../../components/RmpgLogo';
 import { apiFetch } from '../../hooks/useApi';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
+import { useUserPreferences } from '../../context/UserPreferencesContext';
 import { useWebSocket } from '../../context/WebSocketContext';
 import { useGpsTracking } from '../../hooks/useGpsTracking';
 import { formatIncidentType } from '../../utils/caseNumbers';
@@ -102,6 +103,7 @@ const statusToColor = (status: string): string => {
 export default function MapPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
+  const { prefs: userPrefs } = useUserPreferences();
   const [mobileLayersOpen, setMobileLayersOpen] = useState(false);
   const [mobileSheetTab, setMobileSheetTab] = useState<'layers' | 'units' | 'calls'>('layers');
   const mapRef = useRef<HTMLDivElement>(null);
@@ -165,8 +167,9 @@ export default function MapPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sidebarTab, setSidebarTab] = usePersistedTab('rmpg_map_sidebar', 'units', ['units', 'calls'] as const);
 
-  // Map style
-  const [mapStyle, setMapStyle] = usePersistedTab('rmpg_map_style', 'dark' as MapStyleId, ['dark', 'satellite', 'hybrid', 'streets', 'terrain', 'night_nav'] as const);
+  // Map style — seed from server preference if user hasn't picked one locally yet
+  const serverDefaultStyle = (userPrefs?.default_map_style || 'dark') as MapStyleId;
+  const [mapStyle, setMapStyle] = usePersistedTab('rmpg_map_style', serverDefaultStyle, ['dark', 'satellite', 'hybrid', 'streets', 'terrain', 'night_nav'] as const);
   const [showMapStyles, setShowMapStyles] = useState(false);
 
   // Routing
@@ -205,8 +208,9 @@ export default function MapPage() {
   const [showDistrictLegend, setShowDistrictLegend] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     apiFetch<any[]>('/dispatch/districts').then((districts) => {
-      if (!districts) return;
+      if (cancelled || !districts) return;
       const map = new Map<string, Map<string, BeatDistrictEntry>>();
       const sectionSet = new Map<string, string>();
       for (const d of districts) {
@@ -226,6 +230,7 @@ export default function MapPage() {
       setBeatDistrictMap(map);
       setDistrictSections(Array.from(sectionSet.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.id.localeCompare(b.id)));
     }).catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   // GeoJSON spatial layers (with shift planning selection integration)
@@ -359,19 +364,23 @@ export default function MapPage() {
 
   useEffect(() => {
     if (!showHeatmap) { setHeatmapData([]); return; }
+    let cancelled = false;
     let url = `/dispatch/heatmap?days=${heatmapDays}&mode=${heatmapMode}`;
     if (heatmapMode === 'type' && heatmapTypeFilter) url += `&type=${encodeURIComponent(heatmapTypeFilter)}`;
     apiFetch<any[]>(url)
-      .then((data) => setHeatmapData(data || []))
-      .catch(() => setHeatmapData([]));
+      .then((data) => { if (!cancelled) setHeatmapData(data || []); })
+      .catch(() => { if (!cancelled) setHeatmapData([]); });
+    return () => { cancelled = true; };
   }, [showHeatmap, heatmapDays, heatmapMode, heatmapTypeFilter]);
 
   // Fetch available incident types for heatmap type filter
   useEffect(() => {
     if (!showHeatmap) return;
+    let cancelled = false;
     apiFetch<{ incident_type: string; count: number }[]>('/dispatch/heatmap/types')
-      .then((data) => setHeatmapTypes(data || []))
+      .then((data) => { if (!cancelled) setHeatmapTypes(data || []); })
       .catch(() => {});
+    return () => { cancelled = true; };
   }, [showHeatmap]);
 
   // ============================================================

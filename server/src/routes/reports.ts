@@ -672,7 +672,7 @@ router.get('/training-compliance', requireRole('admin', 'manager'), (req: Reques
     const db = getDb();
     const users = db.prepare("SELECT id, full_name, badge_number, role FROM users WHERE role IN ('officer','manager','admin') AND status = 'active'").all() as any[];
     const requirements = db.prepare('SELECT * FROM training_requirements WHERE is_active = 1').all() as any[];
-    const records = db.prepare('SELECT * FROM training_records ORDER BY completed_date DESC').all() as any[];
+    const records = db.prepare('SELECT * FROM training_records ORDER BY completed_date DESC LIMIT 10000').all() as any[];
     res.json({ users, requirements, records });
   } catch (error: any) {
     console.error('Training compliance error:', error);
@@ -1284,7 +1284,9 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
       if (points.length >= 2) {
         const first = new Date(points[0].time).getTime();
         const last = new Date(points[points.length - 1].time).getTime();
-        durationMinutes = Math.round((last - first) / 60000);
+        if (!isNaN(first) && !isNaN(last)) {
+          durationMinutes = Math.round((last - first) / 60000);
+        }
       }
 
       // ── Zone coverage summary ────────────────────────────

@@ -12,6 +12,7 @@ import { validateEnum, requireInt } from '../middleware/sanitize';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 import { createNotificationForRoles } from './notifications';
+import { resolveDistrict } from '../utils/districtResolver';
 
 const router = Router();
 
@@ -286,11 +287,34 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispa
     let seq = 1;
     if (lastCit) {
       const parts = lastCit.citation_number.split('-');
-      seq = parseInt(parts[2], 10) + 1;
+      const parsed = parts.length >= 3 ? parseInt(parts[2], 10) : NaN;
+      if (!isNaN(parsed)) seq = parsed + 1;
     }
     const citation_number = `CIT-${year}-${String(seq).padStart(4, '0')}`;
 
     const now = localNow();
+
+    // Auto-fill Section/Zone/Beat from linked call or incident
+    let { section_id, zone_id, beat_id, zone_beat } = req.body;
+    if (!section_id && !zone_id && !beat_id) {
+      if (call_id) {
+        const linkedCall = db.prepare('SELECT section_id, zone_id, beat_id, zone_beat FROM calls_for_service WHERE id = ?').get(call_id) as any;
+        if (linkedCall) {
+          section_id = linkedCall.section_id;
+          zone_id = linkedCall.zone_id;
+          beat_id = linkedCall.beat_id;
+          zone_beat = linkedCall.zone_beat;
+        }
+      } else if (incident_id) {
+        const linkedIncident = db.prepare('SELECT section_id, zone_id, beat_id, zone_beat FROM incidents WHERE id = ?').get(incident_id) as any;
+        if (linkedIncident) {
+          section_id = linkedIncident.section_id;
+          zone_id = linkedIncident.zone_id;
+          beat_id = linkedIncident.beat_id;
+          zone_beat = linkedIncident.zone_beat;
+        }
+      }
+    }
 
     const result = db.prepare(`
       INSERT INTO citations (
@@ -302,7 +326,8 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispa
         incident_id, call_id,
         issuing_officer_id, issuing_officer_name, badge_number,
         court_date, court_name, court_address,
-        notes, created_at, updated_at
+        notes, section_id, zone_id, beat_id, zone_beat,
+        created_at, updated_at
       ) VALUES (
         ?, ?, ?,
         ?, ?, ?, ?, ?,
@@ -312,7 +337,8 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispa
         ?, ?,
         ?, ?, ?,
         ?, ?, ?,
-        ?, ?, ?
+        ?, ?, ?, ?, ?,
+        ?, ?
       )
     `).run(
       citation_number, type, status,
@@ -323,7 +349,8 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispa
       incident_id || null, call_id || null,
       issuing_officer_id || null, issuing_officer_name || null, badge_number || null,
       court_date || null, court_name || null, court_address || null,
-      notes || null, now, now
+      notes || null, section_id || null, zone_id || null, beat_id || null, zone_beat || null,
+      now, now
     );
 
     // Activity log
@@ -396,6 +423,10 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dis
       court_name: v => v ?? null,
       court_address: v => v ?? null,
       notes: v => v ?? null,
+      section_id: v => v ?? null,
+      zone_id: v => v ?? null,
+      beat_id: v => v ?? null,
+      zone_beat: v => v ?? null,
     };
 
     for (const [key, transform] of Object.entries(fieldMap)) {

@@ -4,7 +4,7 @@
 // and document management.
 // ============================================================
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   GraduationCap, Plus, Search, CheckCircle, AlertTriangle, Clock,
   BookOpen, Loader2, X, Edit2, Trash2, Archive, Users, Shield,
@@ -72,6 +72,9 @@ export default function TrainingPage() {
   const [showRequirementModal, setShowRequirementModal] = useState(false);
   const [editRequirement, setEditRequirement] = useState<TrainingRequirement | null>(null);
 
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
+
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
@@ -80,13 +83,14 @@ export default function TrainingPage() {
         apiFetch<TrainingRequirement[]>('/personnel/training-requirements'),
         apiFetch<Officer[]>('/admin/users'),
       ]);
+      if (!mountedRef.current) return;
       setRecords(recs || []);
       setRequirements(reqs || []);
       setOfficers((users || []).filter(u => u.status === 'active'));
     } catch (err) {
       console.error('Failed to load training data:', err);
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, []);
 

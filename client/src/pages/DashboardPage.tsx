@@ -317,7 +317,7 @@ export default function DashboardPage() {
       {/* Portal Header — RMPG Logo + System Title */}
       <div className="panel-beveled bg-surface-base overflow-hidden">
         <div className={`flex items-center gap-4 ${isMobile ? 'px-3 py-2' : 'px-4 py-3'} relative`}>
-          {/* Crimson accent line */}
+          {/* Blue accent line */}
           <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3359, #1a5a9e 30%, #1a5a9e 70%, #0e3359)' }} />
           {!isMobile && <RmpgLogo height={68} />}
           {isMobile && <RmpgLogo height={36} iconOnly />}

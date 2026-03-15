@@ -34,9 +34,11 @@ const USER_AGENT = 'RMPG-Flex/1.0 (Law Enforcement CAD/RMS)';
 const REQUEST_TIMEOUT_MS = 15_000;
 const REQUEST_DELAY_MS = 1_500;          // Between detail page fetches
 const MAX_DETAIL_BATCH = 50;             // Max detail pages per scrape cycle
-const CIRCUIT_BREAKER_THRESHOLD = 3;     // Consecutive errors → pause county
+const CIRCUIT_BREAKER_THRESHOLD = 5;     // Consecutive errors → pause county (raised from 3)
 const DEFAULT_INTERVAL_MS = 30 * 60_000; // 30 minutes
 const STARTUP_DELAY_MS = 30_000;         // 30s after server start
+const BACKOFF_BASE_MS = 60 * 60_000;     // 1 hour base for exponential backoff
+const BACKOFF_MAX_MS = 24 * 60 * 60_000; // 24 hour max backoff
 
 // ── Interfaces ──────────────────────────────────────────────
 
@@ -87,6 +89,8 @@ interface CountyConfig {
 // ── Scheduler state ─────────────────────────────────────────
 
 const countyIntervals = new Map<string, ReturnType<typeof setInterval>>();
+const backoffTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+const backoffAttempts = new Map<string, number>(); // Track how many times a county has auto-recovered
 let startupTimeout: ReturnType<typeof setTimeout> | null = null;
 
 // ── HTTP helpers ────────────────────────────────────────────
@@ -800,6 +804,8 @@ async function fetchDavisRoster(): Promise<string> {
 //
 // JailTracker county name mappings (API county parameter values):
 const JAILTRACKER_COUNTY_NAMES: Record<string, string> = {
+  // Utah
+  ut_washington: 'Washington County',
   // Colorado
   co_mesa: 'Mesa County', co_pueblo: 'Pueblo County', co_larimer: 'Larimer County',
   co_weld: 'Weld County', co_arapahoe: 'Arapahoe County', co_adams: 'Adams County',
@@ -1450,6 +1456,560 @@ async function fetchUtStatePrisonRoster(): Promise<string> {
 
 // ── Parser registry ─────────────────────────────────────────
 
+// ════════════════════════════════════════════════════════════
+//  MULTI-STATE CUSTOM PARSERS (non-JailTracker)
+// ════════════════════════════════════════════════════════════
+
+// ── Clark County, NV (Las Vegas CCDC) ──────────────────────
+// ASP.NET form-based search at redrock.clarkcountynv.gov.
+// We search A-Z by last name to build the full roster.
+
+const clarkNvParser: CountyParser = {
+  county: 'nv_clark',
+
+  parseRoster(html: string): RosterEntry[] {
+    const entries: RosterEntry[] = [];
+
+    // Parse result rows from the combined HTML
+    // CCDC results: table rows with ID, Name, Age, Race, Sex, Case, Charge, Status, Arrest Date, etc.
+    const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+    let match: RegExpExecArray | null;
+
+    while ((match = rowRegex.exec(html)) !== null) {
+      const rowHtml = match[1];
+      const cells: string[] = [];
+      const tdRe = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+      let tdMatch: RegExpExecArray | null;
+      while ((tdMatch = tdRe.exec(rowHtml)) !== null) {
+        cells.push(tdMatch[1].replace(/<[^>]+>/g, '').trim());
+      }
+
+      // Expected: ID, Name, Age, Race, Sex, Case, Charge, Status, Arrest Date, ...
+      if (cells.length < 5) continue;
+
+      // Skip header rows
+      if (cells[0] === 'ID' || cells[0] === 'Inmate' || cells[1] === 'Name') continue;
+
+      const inmateId = cells[0] || '';
+      const fullName = (cells[1] || '').trim();
+      if (!fullName || !inmateId) continue;
+
+      const { first, middle, last } = splitName(fullName);
+      const gender = (cells[4] || '').charAt(0).toUpperCase();
+      const charge = (cells[6] || '').trim();
+      const arrestDate = (cells[8] || cells[7] || '').trim();
+
+      entries.push({
+        roster_id: inmateId,
+        full_name: fullName,
+        first_name: first,
+        last_name: last,
+        middle_name: middle,
+        gender,
+        age: parseInt(cells[2], 10) || null,
+        booking_date: arrestDate,
+        charges: charge ? [charge] : [],
+        bail_amount: '',
+        detail_url: '',
+      });
+    }
+
+    return entries;
+  },
+};
+
+/**
+ * Clark County NV requires A-Z POST searches to build the full roster.
+ * ASP.NET ViewState-based form at redrock.clarkcountynv.gov.
+ */
+async function fetchClarkNvRoster(): Promise<string> {
+  const baseUrl = 'https://redrock.clarkcountynv.gov/ccdcincustody/incustodysearch.aspx';
+  const letters = 'abcdefghijklmnopqrstuvwxyz'.split('');
+  const allHtml: string[] = [];
+  const seen = new Set<string>();
+
+  // First, get the search page to extract ViewState
+  let viewState = '';
+  let eventValidation = '';
+  try {
+    const searchPage = await fetchPage(baseUrl);
+    const vsMatch = searchPage.match(/id="__VIEWSTATE"\s+value="([^"]*)"/);
+    const evMatch = searchPage.match(/id="__EVENTVALIDATION"\s+value="([^"]*)"/);
+    viewState = vsMatch ? vsMatch[1] : '';
+    eventValidation = evMatch ? evMatch[1] : '';
+  } catch {
+    throw new Error('Failed to load Clark County search page');
+  }
+
+  for (const letter of letters) {
+    try {
+      const body = new URLSearchParams({
+        __VIEWSTATE: viewState,
+        __EVENTVALIDATION: eventValidation,
+        ctl00$ContentPlaceHolder1$txtLastName: letter,
+        ctl00$ContentPlaceHolder1$btnSearch: 'Search',
+      });
+
+      const res = await fetch(baseUrl, {
+        method: 'POST',
+        headers: {
+          'User-Agent': USER_AGENT,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: body.toString(),
+      });
+
+      if (!res.ok) continue;
+      const html = await res.text();
+
+      // Update ViewState for next request
+      const vsMatch = html.match(/id="__VIEWSTATE"\s+value="([^"]*)"/);
+      const evMatch = html.match(/id="__EVENTVALIDATION"\s+value="([^"]*)"/);
+      if (vsMatch) viewState = vsMatch[1];
+      if (evMatch) eventValidation = evMatch[1];
+
+      // Extract result rows, deduplicate
+      const rows = html.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
+      for (const row of rows) {
+        const idMatch = row.match(/<td[^>]*>(\d{5,})<\/td>/);
+        const key = idMatch ? idMatch[1] : row.substring(0, 80);
+        if (!seen.has(key)) {
+          seen.add(key);
+          allHtml.push(row);
+        }
+      }
+    } catch (err) {
+      console.error(`[Jail Roster] Clark NV search error for letter ${letter}:`, (err as Error).message);
+    }
+
+    await sleep(REQUEST_DELAY_MS);
+  }
+
+  console.log(`[Jail Roster] Clark County NV: aggregated ${allHtml.length} unique rows`);
+  return allHtml.join('\n');
+}
+
+// ── El Paso County, CO ────────────────────────────────────
+// HTML form search at epcsheriffsoffice.com. Search A-Z by last name.
+
+const elPasoCoParser: CountyParser = {
+  county: 'co_el_paso',
+
+  parseRoster(html: string): RosterEntry[] {
+    const entries: RosterEntry[] = [];
+
+    // Parse table rows with booking number, first, middle, last
+    const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+    let match: RegExpExecArray | null;
+
+    while ((match = rowRegex.exec(html)) !== null) {
+      const rowHtml = match[1];
+      const cells: string[] = [];
+      const tdRe = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+      let tdMatch: RegExpExecArray | null;
+      while ((tdMatch = tdRe.exec(rowHtml)) !== null) {
+        cells.push(tdMatch[1].replace(/<[^>]+>/g, '').trim());
+      }
+
+      if (cells.length < 3) continue;
+      if (cells[0].match(/^(Booking|Number|ID)$/i)) continue;
+
+      const bookingNumber = cells[0] || '';
+      const firstName = (cells[1] || '').trim();
+      const middleName = (cells[2] || '').trim();
+      const lastName = (cells[3] || cells[1] || '').trim();
+
+      if (!firstName && !lastName) continue;
+
+      // Handle different column orders
+      let fName = firstName, mName = middleName, lName = lastName;
+      if (cells.length >= 4) {
+        fName = cells[1].trim();
+        mName = cells[2].trim();
+        lName = cells[3].trim();
+      }
+
+      const fullName = mName
+        ? `${lName}, ${fName} ${mName}`
+        : `${lName}, ${fName}`;
+
+      entries.push({
+        roster_id: bookingNumber || `elpaso-${lName}-${fName}`,
+        full_name: fullName,
+        first_name: fName,
+        last_name: lName,
+        middle_name: mName,
+        gender: '',
+        age: null,
+        booking_date: '',
+        charges: [],
+        bail_amount: '',
+        detail_url: '',
+      });
+    }
+
+    return entries;
+  },
+};
+
+/**
+ * El Paso County CO — search A-Z by last name.
+ */
+async function fetchElPasoCoRoster(): Promise<string> {
+  const baseUrl = 'https://epcsheriffsoffice.com/services/search-for-inmates/';
+  const letters = 'abcdefghijklmnopqrstuvwxyz'.split('');
+  const allHtml: string[] = [];
+  const seen = new Set<string>();
+
+  for (const letter of letters) {
+    try {
+      // Try GET with query param first, fall back to POST
+      const url = `${baseUrl}?lastName=${letter}`;
+      const html = await fetchPage(url);
+
+      const rows = html.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
+      for (const row of rows) {
+        const bookMatch = row.match(/<td[^>]*>(\w{2,3}\d{4,})<\/td>/i);
+        const key = bookMatch ? bookMatch[1] : row.substring(0, 80);
+        if (!seen.has(key)) {
+          seen.add(key);
+          allHtml.push(row);
+        }
+      }
+    } catch {
+      // Skip this letter
+    }
+    await sleep(REQUEST_DELAY_MS);
+  }
+
+  console.log(`[Jail Roster] El Paso County CO: aggregated ${allHtml.length} unique rows`);
+  return allHtml.join('\n');
+}
+
+// ── Ada County, ID ────────────────────────────────────────
+// ASP.NET WebForms at apps.adacounty.id.gov. Uses postback mechanism.
+// Roster refreshes every 24 hours. Search A-Z by last name initials.
+
+const adaIdParser: CountyParser = {
+  county: 'id_ada',
+
+  parseRoster(html: string): RosterEntry[] {
+    const entries: RosterEntry[] = [];
+
+    // Ada County displays inmates in table rows or arrest-class elements
+    const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+    let match: RegExpExecArray | null;
+
+    while ((match = rowRegex.exec(html)) !== null) {
+      const rowHtml = match[1];
+      const cells: string[] = [];
+      const tdRe = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+      let tdMatch: RegExpExecArray | null;
+      while ((tdMatch = tdRe.exec(rowHtml)) !== null) {
+        cells.push(tdMatch[1].replace(/<[^>]+>/g, '').trim());
+      }
+
+      if (cells.length < 3) continue;
+      // Skip headers
+      if (cells[0].match(/^(Name|Inmate|#|Booking|ID)$/i)) continue;
+
+      // Try to identify name cell — look for comma-separated format
+      let nameCell = '';
+      let bookingDate = '';
+      let charges: string[] = [];
+
+      for (const cell of cells) {
+        if (cell.includes(',') && cell.match(/[A-Z]{2,}/i) && !nameCell) {
+          nameCell = cell;
+        } else if (cell.match(/\d{1,2}\/\d{1,2}\/\d{2,4}/)) {
+          bookingDate = cell;
+        } else if (cell.length > 5 && !cell.match(/^\d+$/)) {
+          charges.push(cell);
+        }
+      }
+
+      if (!nameCell) continue;
+
+      const { first, middle, last } = splitName(nameCell);
+      const rosterId = `ada-${last}-${first}-${bookingDate}`.replace(/[^a-zA-Z0-9-]/g, '');
+
+      entries.push({
+        roster_id: rosterId,
+        full_name: nameCell,
+        first_name: first,
+        last_name: last,
+        middle_name: middle,
+        gender: '',
+        age: null,
+        booking_date: bookingDate,
+        charges,
+        bail_amount: '',
+        detail_url: '',
+      });
+    }
+
+    return entries;
+  },
+};
+
+/**
+ * Ada County ID — ASP.NET postback-based search. Query A-Z.
+ */
+async function fetchAdaIdRoster(): Promise<string> {
+  const baseUrl = 'https://apps.adacounty.id.gov/sheriff/reports/inmates.aspx';
+  const letters = 'abcdefghijklmnopqrstuvwxyz'.split('');
+  const allHtml: string[] = [];
+  const seen = new Set<string>();
+
+  // Get initial page for ASP.NET state
+  let viewState = '';
+  let eventValidation = '';
+  let viewStateGen = '';
+  try {
+    const page = await fetchPage(baseUrl);
+    const vsMatch = page.match(/id="__VIEWSTATE"\s+value="([^"]*)"/);
+    const evMatch = page.match(/id="__EVENTVALIDATION"\s+value="([^"]*)"/);
+    const vsgMatch = page.match(/id="__VIEWSTATEGENERATOR"\s+value="([^"]*)"/);
+    viewState = vsMatch ? vsMatch[1] : '';
+    eventValidation = evMatch ? evMatch[1] : '';
+    viewStateGen = vsgMatch ? vsgMatch[1] : '';
+
+    // Also capture initial page results
+    const rows = page.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
+    for (const row of rows) {
+      if (!seen.has(row.substring(0, 80))) {
+        seen.add(row.substring(0, 80));
+        allHtml.push(row);
+      }
+    }
+  } catch (err) {
+    throw new Error(`Failed to load Ada County search page: ${(err as Error).message}`);
+  }
+
+  for (const letter of letters) {
+    try {
+      const params: Record<string, string> = {
+        __VIEWSTATE: viewState,
+        __VIEWSTATEGENERATOR: viewStateGen,
+        __EVENTVALIDATION: eventValidation,
+        'ctl00$ContentPlaceHolder1$txtFilter': letter,
+        'ctl00$ContentPlaceHolder1$btnFilter': 'Filter',
+      };
+
+      const body = new URLSearchParams(params);
+      const res = await fetch(baseUrl, {
+        method: 'POST',
+        headers: {
+          'User-Agent': USER_AGENT,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: body.toString(),
+      });
+
+      if (!res.ok) continue;
+      const html = await res.text();
+
+      // Update ViewState
+      const vsMatch = html.match(/id="__VIEWSTATE"\s+value="([^"]*)"/);
+      const evMatch = html.match(/id="__EVENTVALIDATION"\s+value="([^"]*)"/);
+      if (vsMatch) viewState = vsMatch[1];
+      if (evMatch) eventValidation = evMatch[1];
+
+      const rows = html.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
+      for (const row of rows) {
+        const key = row.substring(0, 80);
+        if (!seen.has(key)) {
+          seen.add(key);
+          allHtml.push(row);
+        }
+      }
+    } catch {
+      // Skip this letter
+    }
+    await sleep(REQUEST_DELAY_MS);
+  }
+
+  console.log(`[Jail Roster] Ada County ID: aggregated ${allHtml.length} unique rows`);
+  return allHtml.join('\n');
+}
+
+// ── Maricopa County, AZ (MCSO) ───────────────────────────
+// Form-based search at mcso.org. Supports name + DOB search.
+// We search A-Z by last name.
+
+const maricopaAzParser: CountyParser = {
+  county: 'az_maricopa',
+
+  parseRoster(html: string): RosterEntry[] {
+    const entries: RosterEntry[] = [];
+
+    // MCSO results display: Name at booking, booking number, charges, facility, status
+    const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+    let match: RegExpExecArray | null;
+
+    while ((match = rowRegex.exec(html)) !== null) {
+      const rowHtml = match[1];
+      const cells: string[] = [];
+      const tdRe = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+      let tdMatch: RegExpExecArray | null;
+      while ((tdMatch = tdRe.exec(rowHtml)) !== null) {
+        cells.push(tdMatch[1].replace(/<[^>]+>/g, '').trim());
+      }
+
+      if (cells.length < 2) continue;
+      if (cells[0].match(/^(Name|Booking|Inmate|Charge)$/i)) continue;
+
+      // Look for name and booking number
+      let nameCell = '';
+      let bookingNo = '';
+      let charge = '';
+      let facility = '';
+
+      for (const cell of cells) {
+        if (cell.includes(',') && cell.match(/[A-Z]{2,}/i) && !nameCell) {
+          nameCell = cell;
+        } else if (cell.match(/^[A-Z]?\d{6,}$/i) && !bookingNo) {
+          bookingNo = cell;
+        } else if (cell.length > 10 && !cell.match(/^\d+$/) && !charge) {
+          charge = cell;
+        } else if (cell.match(/^(durango|estrella|towers|lower|intake)/i)) {
+          facility = cell;
+        }
+      }
+
+      if (!nameCell) continue;
+
+      const { first, middle, last } = splitName(nameCell);
+
+      entries.push({
+        roster_id: bookingNo || `maricopa-${last}-${first}`,
+        full_name: nameCell,
+        first_name: first,
+        last_name: last,
+        middle_name: middle,
+        gender: '',
+        age: null,
+        booking_date: '',
+        charges: charge ? [charge] : [],
+        bail_amount: '',
+        detail_url: facility ? `Facility: ${facility}` : '',
+      });
+    }
+
+    return entries;
+  },
+};
+
+/**
+ * Maricopa County AZ (MCSO) — search A-Z by last name.
+ */
+async function fetchMaricopaAzRoster(): Promise<string> {
+  const searchUrl = 'https://www.mcso.org/InmateSearch';
+  const letters = 'abcdefghijklmnopqrstuvwxyz'.split('');
+  const allHtml: string[] = [];
+  const seen = new Set<string>();
+
+  for (const letter of letters) {
+    try {
+      const body = new URLSearchParams({
+        LastName: letter,
+        FirstName: '',
+        DOB: '',
+      });
+
+      const res = await fetch(searchUrl, {
+        method: 'POST',
+        headers: {
+          'User-Agent': USER_AGENT,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: body.toString(),
+      });
+
+      if (!res.ok) continue;
+      const html = await res.text();
+
+      const rows = html.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
+      for (const row of rows) {
+        const key = row.substring(0, 100);
+        if (!seen.has(key)) {
+          seen.add(key);
+          allHtml.push(row);
+        }
+      }
+    } catch {
+      // Skip this letter
+    }
+    await sleep(REQUEST_DELAY_MS);
+  }
+
+  console.log(`[Jail Roster] Maricopa County AZ: aggregated ${allHtml.length} unique rows`);
+  return allHtml.join('\n');
+}
+
+// ── Bernalillo County, NM ─────────────────────────────────
+// Server-rendered table at viaintfacep2.bernco.gov/custodylist/Results.
+// Full list available without search — just fetch the results page.
+// Columns: Inmate (name), Booking Date, Booking Number, Inmate ID, YOB, Housing
+
+const bernalilloNmParser: CountyParser = {
+  county: 'nm_bernalillo',
+
+  parseRoster(html: string): RosterEntry[] {
+    const entries: RosterEntry[] = [];
+
+    const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+    let match: RegExpExecArray | null;
+
+    while ((match = rowRegex.exec(html)) !== null) {
+      const rowHtml = match[1];
+      const cells: string[] = [];
+      const tdRe = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+      let tdMatch: RegExpExecArray | null;
+      while ((tdMatch = tdRe.exec(rowHtml)) !== null) {
+        cells.push(tdMatch[1].replace(/<[^>]+>/g, '').trim());
+      }
+
+      // Expected: Inmate, Booking Date, Booking Number, Inmate ID, YOB, Housing
+      if (cells.length < 4) continue;
+      if (cells[0].match(/^(Inmate|Name|#)$/i)) continue;
+
+      const fullName = (cells[0] || '').trim();
+      if (!fullName || fullName.length < 3) continue;
+
+      const { first, middle, last } = splitName(fullName);
+      const bookingDate = (cells[1] || '').trim();
+      const bookingNumber = (cells[2] || '').trim();
+      const inmateId = (cells[3] || '').trim();
+      const yob = (cells[4] || '').trim();
+
+      // Calculate approximate age from YOB
+      let age: number | null = null;
+      if (yob && yob.match(/^\d{4}$/)) {
+        age = new Date().getFullYear() - parseInt(yob, 10);
+      }
+
+      entries.push({
+        roster_id: bookingNumber || inmateId || `bernalillo-${last}-${first}`,
+        full_name: fullName,
+        first_name: first,
+        last_name: last,
+        middle_name: middle,
+        gender: '',
+        age,
+        booking_date: bookingDate,
+        charges: [],
+        bail_amount: '',
+        detail_url: '',
+      });
+    }
+
+    return entries;
+  },
+};
+
+// ── Parser registry ─────────────────────────────────────────
+
 // Start with Utah-specific parsers
 const COUNTY_PARSERS: Record<string, CountyParser> = {
   weber: weberParser,
@@ -1463,6 +2023,12 @@ const COUNTY_PARSERS: Record<string, CountyParser> = {
   ut_tooele: tooeleParser,
   ut_carbon: carbonParser,
   ut_state_prison: utStatePrisonParser,
+  // Multi-state custom parsers
+  nv_clark: clarkNvParser,
+  co_el_paso: elPasoCoParser,
+  id_ada: adaIdParser,
+  az_maricopa: maricopaAzParser,
+  nm_bernalillo: bernalilloNmParser,
 };
 
 // Register JailTracker parsers for all configured counties
@@ -1660,6 +2226,14 @@ async function scrapeCounty(county: string): Promise<{
 }> {
   const config = getCountyConfig(county);
   if (!config) throw new Error(`No config for county: ${county}`);
+
+  // Gracefully skip counties with no scrapable roster — don't count as errors
+  if (config.roster_type === 'none' || (!config.roster_url && !COUNTY_PARSERS[county])) {
+    const err = new Error(`No public roster available for ${county} (roster_type: ${config.roster_type})`);
+    (err as any).noRoster = true;
+    throw err;
+  }
+
   if (config.consecutive_errors >= CIRCUIT_BREAKER_THRESHOLD) {
     // Mark as circuit-broken error type so syncCounty doesn't re-increment
     const err = new Error(`Circuit breaker active for ${county} (${config.consecutive_errors} errors)`);
@@ -1687,6 +2261,18 @@ async function scrapeCounty(county: string): Promise<{
   } else if (county === 'ut_state_prison') {
     // Utah State Prison (UDC) uses A-Z offender search API
     content = await fetchUtStatePrisonRoster();
+  } else if (county === 'nv_clark') {
+    // Clark County NV — ASP.NET postback search, aggregate A-Z
+    content = await fetchClarkNvRoster();
+  } else if (county === 'co_el_paso') {
+    // El Paso County CO — A-Z letter search aggregation
+    content = await fetchElPasoCoRoster();
+  } else if (county === 'id_ada') {
+    // Ada County ID — ASP.NET WebForms with A-Z search
+    content = await fetchAdaIdRoster();
+  } else if (county === 'az_maricopa') {
+    // Maricopa County AZ — MCSO inmate search API
+    content = await fetchMaricopaAzRoster();
   } else if (config.roster_type === 'jailtracker') {
     // JailTracker (public-safety-cloud.com) — session-based JSON API
     content = await fetchJailTrackerRoster(county);
@@ -1740,11 +2326,23 @@ async function syncCounty(county: string): Promise<void> {
       UPDATE jail_roster_config SET last_scrape_at = ?, consecutive_errors = 0, updated_at = ? WHERE county = ?
     `).run(localNow(), localNow(), county);
 
+    // Successful scrape — reset backoff counter so next failure starts at 1h backoff
+    backoffAttempts.delete(county);
+
     console.log(`[Jail Roster] ${county}: ${result.records_found} found, ${result.records_new} new, ${result.records_updated} updated, ${result.records_released} released, ${result.details_fetched} details (${duration}ms)`);
 
   } catch (err) {
     // If circuit breaker threw, don't re-increment or spam logs
     if ((err as any).circuitBreaker) return;
+
+    // If no roster available, disable the county and stop silently
+    if ((err as any).noRoster) {
+      console.log(`[Jail Roster] ${county}: no public roster — auto-disabling`);
+      db.prepare('UPDATE jail_roster_config SET enabled = 0, updated_at = ? WHERE county = ?').run(localNow(), county);
+      const h = countyIntervals.get(county);
+      if (h) { clearInterval(h); countyIntervals.delete(county); }
+      return;
+    }
 
     const duration = Date.now() - startTime;
     const errorMsg = (err as Error).message;
@@ -1762,16 +2360,74 @@ async function syncCounty(county: string): Promise<void> {
 
     const currentConfig = getCountyConfig(county);
     if (currentConfig && currentConfig.consecutive_errors >= CIRCUIT_BREAKER_THRESHOLD) {
-      console.error(`[Jail Roster] CIRCUIT BREAKER: ${county} paused after ${currentConfig.consecutive_errors} consecutive errors`);
-    }
+      // Schedule auto-recovery with exponential backoff
+      const attempt = (backoffAttempts.get(county) || 0) + 1;
+      backoffAttempts.set(county, attempt);
+      const backoffMs = Math.min(BACKOFF_BASE_MS * Math.pow(2, attempt - 1), BACKOFF_MAX_MS);
+      const backoffHrs = (backoffMs / 3_600_000).toFixed(1);
 
-    console.error(`[Jail Roster] Error scraping ${county}:`, errorMsg);
+      console.warn(`[Jail Roster] CIRCUIT BREAKER: ${county} paused after ${currentConfig.consecutive_errors} errors — auto-retry in ${backoffHrs}h (attempt ${attempt})`);
+
+      // Clear any existing backoff timeout for this county
+      const existingBackoff = backoffTimeouts.get(county);
+      if (existingBackoff) clearTimeout(existingBackoff);
+
+      // Schedule automatic recovery
+      const recoveryTimeout = setTimeout(() => {
+        backoffTimeouts.delete(county);
+        console.log(`[Jail Roster] Auto-recovering ${county} after backoff (attempt ${attempt})`);
+        // Reset error counter and try again
+        db.prepare('UPDATE jail_roster_config SET consecutive_errors = 0, updated_at = ? WHERE county = ?').run(localNow(), county);
+        scheduleCounty(county);
+      }, backoffMs);
+      backoffTimeouts.set(county, recoveryTimeout);
+    } else {
+      console.error(`[Jail Roster] Error scraping ${county} (${currentConfig?.consecutive_errors || '?'}/${CIRCUIT_BREAKER_THRESHOLD}):`, errorMsg);
+    }
   }
 }
 
 // ════════════════════════════════════════════════════════════
 //  PUBLIC API
 // ════════════════════════════════════════════════════════════
+
+/** Schedule (or re-schedule) a single county's scraper interval */
+function scheduleCounty(county: string, initialDelayMs = 0): void {
+  // Clear any existing interval for this county
+  const existing = countyIntervals.get(county);
+  if (existing) {
+    clearInterval(existing);
+    countyIntervals.delete(county);
+  }
+
+  const config = getCountyConfig(county);
+  if (!config || !config.enabled) return;
+
+  const intervalMs = (config.scrape_interval_minutes || 30) * 60_000;
+
+  const start = () => {
+    syncCounty(county);
+
+    const handle = setInterval(() => {
+      const current = getCountyConfig(county);
+      if (current && current.consecutive_errors >= CIRCUIT_BREAKER_THRESHOLD) {
+        // Circuit breaker tripped — stop interval (auto-recovery is scheduled in syncCounty error handler)
+        const h = countyIntervals.get(county);
+        if (h) clearInterval(h);
+        countyIntervals.delete(county);
+        return;
+      }
+      syncCounty(county);
+    }, intervalMs);
+    countyIntervals.set(county, handle);
+  };
+
+  if (initialDelayMs > 0) {
+    setTimeout(start, initialDelayMs);
+  } else {
+    start();
+  }
+}
 
 /** Start the scheduler — call from server startup */
 export function scheduleJailRosterSync(): void {
@@ -1800,40 +2456,33 @@ export function scheduleJailRosterSync(): void {
     // Stagger start times — 5s between counties (5min total for ~60 counties)
     let staggerIdx = 0;
     enabled.forEach((config) => {
-      const intervalMs = (config.scrape_interval_minutes || 30) * 60_000;
-
-      // Skip counties already circuit-broken (they'll resume after manual reset)
+      // Circuit-broken counties will auto-recover via backoff — no need for manual reset
       if (config.consecutive_errors >= CIRCUIT_BREAKER_THRESHOLD) {
-        console.log(`[Jail Roster] ${config.county}: circuit breaker active (${config.consecutive_errors} errors) — skipping until manual reset`);
+        const attempt = (backoffAttempts.get(config.county) || 0) + 1;
+        backoffAttempts.set(config.county, attempt);
+        const backoffMs = Math.min(BACKOFF_BASE_MS * Math.pow(2, attempt - 1), BACKOFF_MAX_MS);
+        const backoffHrs = (backoffMs / 3_600_000).toFixed(1);
+        console.log(`[Jail Roster] ${config.county}: circuit breaker active (${config.consecutive_errors} errors) — auto-retry in ${backoffHrs}h`);
+
+        const recoveryTimeout = setTimeout(() => {
+          backoffTimeouts.delete(config.county);
+          const db = getDb();
+          db.prepare('UPDATE jail_roster_config SET consecutive_errors = 0, updated_at = ? WHERE county = ?').run(localNow(), config.county);
+          console.log(`[Jail Roster] Auto-recovering ${config.county} after startup backoff`);
+          scheduleCounty(config.county);
+        }, backoffMs);
+        backoffTimeouts.set(config.county, recoveryTimeout);
         return;
       }
 
       const staggerDelay = staggerIdx * 5_000; // 5s stagger between counties
       staggerIdx++;
-
-      // Initial scrape after stagger
-      setTimeout(() => {
-        syncCounty(config.county);
-
-        // Then on interval — check circuit breaker before each attempt
-        const handle = setInterval(() => {
-          const current = getCountyConfig(config.county);
-          if (current && current.consecutive_errors >= CIRCUIT_BREAKER_THRESHOLD) {
-            console.log(`[Jail Roster] ${config.county}: circuit breaker tripped — stopping interval`);
-            const h = countyIntervals.get(config.county);
-            if (h) clearInterval(h);
-            countyIntervals.delete(config.county);
-            return;
-          }
-          syncCounty(config.county);
-        }, intervalMs);
-        countyIntervals.set(config.county, handle);
-      }, staggerDelay);
+      scheduleCounty(config.county, staggerDelay);
     });
   }, STARTUP_DELAY_MS);
 }
 
-/** Stop all scraper intervals */
+/** Stop all scraper intervals and backoff timers */
 export function stopJailRosterSync(): void {
   if (startupTimeout) {
     clearTimeout(startupTimeout);
@@ -1841,9 +2490,14 @@ export function stopJailRosterSync(): void {
   }
   for (const [county, handle] of countyIntervals) {
     clearInterval(handle);
-    console.log(`[Jail Roster] Stopped scheduler for ${county}`);
   }
   countyIntervals.clear();
+  for (const [county, handle] of backoffTimeouts) {
+    clearTimeout(handle);
+  }
+  backoffTimeouts.clear();
+  backoffAttempts.clear();
+  console.log('[Jail Roster] All schedulers and backoff timers stopped');
 }
 
 /** Manual scrape trigger for a specific county */
@@ -1885,12 +2539,16 @@ export function getJailRosterStatus(): {
     const hasParser = !!COUNTY_PARSERS[c.county];
     const isCircuitBroken = c.consecutive_errors >= CIRCUIT_BREAKER_THRESHOLD;
     const isScheduled = countyIntervals.has(c.county);
+    const hasBackoff = backoffTimeouts.has(c.county);
+    const backoffAttempt = backoffAttempts.get(c.county) || 0;
 
     return {
       ...c,
       has_parser: hasParser,
       circuit_broken: isCircuitBroken,
       is_scheduled: isScheduled,
+      auto_recovering: hasBackoff,
+      backoff_attempt: backoffAttempt,
       last_sync: lastSync || null,
     };
   });
@@ -1929,7 +2587,22 @@ export function resetCountyErrors(county: string): boolean {
   const result = db.prepare(`
     UPDATE jail_roster_config SET consecutive_errors = 0, updated_at = ? WHERE county = ?
   `).run(localNow(), county);
-  return result.changes > 0;
+  if (result.changes === 0) return false;
+
+  // Clear backoff state and restart the county scheduler
+  backoffAttempts.delete(county);
+  const existingBackoff = backoffTimeouts.get(county);
+  if (existingBackoff) {
+    clearTimeout(existingBackoff);
+    backoffTimeouts.delete(county);
+  }
+
+  // Restart the interval if it's not already running
+  if (!countyIntervals.has(county)) {
+    scheduleCounty(county, 5_000); // 5s delay before first scrape
+  }
+
+  return true;
 }
 
 /** Update county config (enable/disable, change interval) */

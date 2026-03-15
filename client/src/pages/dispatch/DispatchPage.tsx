@@ -76,6 +76,7 @@ import { mapDbCall, mapDbUnit } from './utils/dispatchMappers';
 import { formatTime, formatElapsed, formatActivityDetails, type FilterTab } from './utils/dispatchFormatters';
 import { announceCallAlerts, announcePanicAlert, announceNewCall, announceDispatchEvent } from '../../utils/voiceAlerts';
 import { useDistrictOptions } from '../../hooks/useDistrictLookup';
+import { useUserPreferences } from '../../context/UserPreferencesContext';
 import {
   WEATHER_OPTIONS,
   LIGHTING_OPTIONS,
@@ -93,6 +94,7 @@ export default function DispatchPage() {
   const { addToast } = useToast();
   const { subscribe } = useWebSocket();
   const isMobile = useIsMobile();
+  const { prefs: userPrefs } = useUserPreferences();
   const { districts, sections, zones, beats, sectionLabels, zoneLabels, beatLabels } = useDistrictOptions();
   const [calls, setCalls] = useState<CallForService[]>([]);
   const recentlyCreatedIdsRef = useRef<Set<string | number>>(new Set()); // synchronous dedup for POST + WS race
@@ -604,9 +606,11 @@ export default function DispatchPage() {
 
   // Fetch all active personnel for unit assignment dropdown (any role)
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       try {
         const res = await apiFetch<any>('/personnel?status=active');
+        if (cancelled) return;
         const list = Array.isArray(res) ? res : res?.data ?? [];
         setOfficers(list.map((u: any) => ({
           id: String(u.id),
@@ -617,6 +621,7 @@ export default function DispatchPage() {
         // Silently ignore — personnel list is optional
       }
     })();
+    return () => { cancelled = true; };
   }, []);
 
   // Create Unit handler
@@ -780,17 +785,33 @@ export default function DispatchPage() {
       (call.description || '').toLowerCase().includes(q) ||
       (call.caller_name || '').toLowerCase().includes(q)
     );
+  }).filter((call) => {
+    // Show cleared calls in 'all' tab if user preference is enabled
+    if (filterTab === 'all' && userPrefs?.dispatch_show_cleared) return true;
+    if (filterTab === 'all' && ['cleared', 'closed', 'cancelled'].includes(call.status)) return false;
+    return true;
   }).sort((a, b) => {
     // Archive tab: sort by call number ascending (001, 002, 003...)
     if (filterTab === 'archived') {
       return (a.call_number || '').localeCompare(b.call_number || '', undefined, { numeric: true });
     }
-    // Active tabs: sort by priority then newest first
+    // User-selectable sort for active tabs
+    const sortMode = userPrefs?.dispatch_sort || 'priority';
+    if (sortMode === 'time') {
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    }
+    if (sortMode === 'status') {
+      const sOrder: Record<string, number> = { dispatched: 0, enroute: 1, onscene: 2, pending: 3, on_hold: 4, cleared: 5, closed: 6, cancelled: 7 };
+      const sDiff = (sOrder[a.status] ?? 5) - (sOrder[b.status] ?? 5);
+      if (sDiff !== 0) return sDiff;
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    }
+    // Default: priority then newest first
     const pOrder: Record<string, number> = { P1: 0, P2: 1, P3: 2, P4: 3 };
     const pDiff = (pOrder[a.priority] ?? 3) - (pOrder[b.priority] ?? 3);
     if (pDiff !== 0) return pDiff;
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-  }), [calls, archivedCalls, filterTab, searchQuery]);
+  }), [calls, archivedCalls, filterTab, searchQuery, userPrefs?.dispatch_sort, userPrefs?.dispatch_show_cleared]);
 
   // Keyboard shortcuts for dispatch power users
   useEffect(() => {
@@ -1791,6 +1812,29 @@ export default function DispatchPage() {
                         </div>
                       </div>
                     )}
+
+                    {/* 72-hour countdown (mobile) */}
+                    {['cleared', 'closed'].includes(selectedCall.status) && (() => {
+                      const terminalTime = selectedCall.closed_at || selectedCall.cleared_at;
+                      if (!terminalTime) return null;
+                      const elapsed = Date.now() - new Date(terminalTime).getTime();
+                      const hoursLeft = Math.max(0, 72 - elapsed / 3600000);
+                      if (elapsed >= 72 * 3600000) {
+                        return (
+                          <div className="mt-2 p-2 rounded text-center text-xs font-bold animate-pulse" style={{ background: '#dc262630', border: '1px solid #dc262650', color: '#f87171' }}>
+                            72-HOUR DEADLINE PASSED — RE-DISPATCH REQUIRED
+                          </div>
+                        );
+                      }
+                      if (elapsed >= 48 * 3600000) {
+                        return (
+                          <div className="mt-2 p-2 rounded text-center text-xs font-bold" style={{ background: '#f59e0b20', border: '1px solid #f59e0b40', color: '#fbbf24' }}>
+                            {Math.floor(hoursLeft)} HOURS UNTIL 72-HR DEADLINE
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
 
                     {/* Schedule Return Visit button (mobile) */}
                     {['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
@@ -2994,6 +3038,28 @@ export default function DispatchPage() {
                           </span>
                         )}
                       </label>
+                      {/* 72-hour countdown indicator */}
+                      {!isEditing && selectedCall.incident_type === 'pso_client_request' && ['cleared', 'closed'].includes(selectedCall.status) && (() => {
+                        const terminalTime = selectedCall.closed_at || selectedCall.cleared_at;
+                        if (!terminalTime) return null;
+                        const elapsed = Date.now() - new Date(terminalTime).getTime();
+                        const hoursLeft = Math.max(0, 72 - elapsed / (3600000));
+                        if (elapsed >= 72 * 3600000) {
+                          return (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded animate-pulse" style={{ background: '#dc262640', border: '1px solid #dc262660', color: '#f87171' }}>
+                              72HR OVERDUE — RE-DISPATCH REQUIRED
+                            </span>
+                          );
+                        }
+                        if (elapsed >= 48 * 3600000) {
+                          return (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: '#f59e0b20', border: '1px solid #f59e0b40', color: '#fbbf24' }}>
+                              {Math.floor(hoursLeft)}HR UNTIL DEADLINE
+                            </span>
+                          );
+                        }
+                        return null;
+                      })()}
                       {!isEditing && selectedCall.incident_type === 'pso_client_request' && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
                         <button
                           className="toolbar-btn px-2 py-0.5 text-[9px] font-semibold"

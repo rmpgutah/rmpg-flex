@@ -100,13 +100,13 @@ export default function ReportsTab() {
       const [m, rev, pip, ret, roi] = await Promise.all([
         apiFetch<CrmMetrics>('/api/crm/reports/metrics'),
         apiFetch<RevenueRow[]>('/api/crm/reports/revenue'),
-        apiFetch<PipelineSummary[]>('/api/crm/reports/pipeline'),
+        apiFetch<{ stages: PipelineSummary[] }>('/api/crm/reports/pipeline'),
         apiFetch<RetentionRow[]>('/api/crm/reports/retention'),
         apiFetch<LeadSourceROI[]>('/api/crm/reports/lead-source-roi'),
       ]);
       if (m) setMetrics(m);
       if (rev) setRevenue(rev);
-      if (pip) setPipeline(pip);
+      if (pip) setPipeline(Array.isArray(pip) ? pip : pip.stages || []);
       if (ret) setRetention(ret);
       if (roi) setLeadSourceROI(roi.sort((a, b) => b.conversion_rate - a.conversion_rate));
     } catch {

@@ -62,8 +62,8 @@ ${bodyHtml}
 /** Get a user's email signature from system_config. */
 function getUserSignature(userId: number): string | null {
   const db = getDb();
-  const row = db.prepare("SELECT value FROM system_config WHERE key = ?").get(`email_signature_${userId}`) as { value: string } | undefined;
-  return row?.value || null;
+  const row = db.prepare("SELECT config_value FROM system_config WHERE config_key = ?").get(`email_signature_${userId}`) as { config_value: string } | undefined;
+  return row?.config_value || null;
 }
 
 // ─── PUBLIC: OAuth callback (no JWT — redirect from Microsoft) ───
@@ -145,11 +145,11 @@ router.put('/signature', (req: Request, res: Response) => {
     const { signature } = req.body;
     const db = getDb();
     const key = `email_signature_${req.user!.userId}`;
+    // Delete existing signature first, then insert if non-empty
+    db.prepare("DELETE FROM system_config WHERE config_key = ?").run(key);
     if (signature && signature.trim()) {
-      db.prepare("INSERT INTO system_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+      db.prepare("INSERT INTO system_config (config_key, config_value, category) VALUES (?, ?, 'email')")
         .run(key, signature.trim());
-    } else {
-      db.prepare("DELETE FROM system_config WHERE key = ?").run(key);
     }
     res.json({ success: true });
   } catch (err: any) {
@@ -356,6 +356,11 @@ router.get('/messages', async (req: Request, res: Response) => {
     const total = (db.prepare(`SELECT COUNT(*) as count FROM email_cache ${where}`).get(...params) as any)?.count || 0;
     const rows = db.prepare(`SELECT * FROM email_cache ${where} ORDER BY received_at DESC LIMIT ? OFFSET ?`).all(...params, perPage, offset) as any[];
 
+    const safeJsonParse = (str: string | null | undefined, fallback: any[] = []): any[] => {
+      if (!str) return fallback;
+      try { return JSON.parse(str); } catch { return fallback; }
+    };
+
     res.json({
       messages: rows.map(r => ({
         id: r.graph_id,
@@ -363,8 +368,8 @@ router.get('/messages', async (req: Request, res: Response) => {
         subject: r.subject,
         fromAddress: r.from_address,
         fromName: r.from_name,
-        toAddresses: JSON.parse(r.to_addresses || '[]'),
-        ccAddresses: JSON.parse(r.cc_addresses || '[]'),
+        toAddresses: safeJsonParse(r.to_addresses),
+        ccAddresses: safeJsonParse(r.cc_addresses),
         bodyPreview: r.body_preview,
         hasAttachments: !!r.has_attachments,
         isRead: !!r.is_read,
@@ -729,6 +734,305 @@ router.post('/messages/:id/move', async (req: Request, res: Response) => {
     const db = getDb();
     db.prepare('UPDATE email_cache SET folder_id = ? WHERE graph_id = ?').run(folderId, req.params.id);
 
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
+// EMAIL TEMPLATES
+// ============================================================
+
+// GET /api/email/templates — List all templates
+router.get('/templates', (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const templates = db.prepare(`
+      SELECT t.*, u.full_name as created_by_name
+      FROM email_templates t
+      LEFT JOIN users u ON t.created_by = u.id
+      ORDER BY t.category, t.name
+    `).all();
+    res.json({ data: templates });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/email/templates/:id — Get single template
+router.get('/templates/:id', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const template = db.prepare('SELECT * FROM email_templates WHERE id = ?').get(req.params.id);
+    if (!template) { res.status(404).json({ error: 'Template not found' }); return; }
+    res.json(template);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/email/templates — Create template
+router.post('/templates', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { name, category, subject, body } = req.body;
+    if (!name) { res.status(400).json({ error: 'Template name is required' }); return; }
+
+    const result = db.prepare(`
+      INSERT INTO email_templates (name, category, subject, body, created_by)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(name, category || 'general', subject || '', body || '', req.user!.userId);
+
+    auditLog(req, 'CREATE', 'email_template', result.lastInsertRowid as number, `Created template: ${name}`);
+    res.json({ success: true, id: result.lastInsertRowid });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/email/templates/:id — Update template
+router.put('/templates/:id', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { name, category, subject, body } = req.body;
+    const now = localNow();
+
+    db.prepare(`
+      UPDATE email_templates SET name = ?, category = ?, subject = ?, body = ?, updated_at = ?
+      WHERE id = ?
+    `).run(name, category, subject, body, now, req.params.id);
+
+    auditLog(req, 'UPDATE', 'email_template', parseInt(String(req.params.id)), `Updated template: ${name}`);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/email/templates/:id — Delete template
+router.delete('/templates/:id', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const template = db.prepare('SELECT * FROM email_templates WHERE id = ?').get(req.params.id) as any;
+    if (!template) { res.status(404).json({ error: 'Template not found' }); return; }
+    if (template.is_system) { res.status(400).json({ error: 'Cannot delete system templates' }); return; }
+
+    db.prepare('DELETE FROM email_templates WHERE id = ?').run(req.params.id);
+    auditLog(req, 'DELETE', 'email_template', parseInt(String(req.params.id)), `Deleted template: ${template.name}`);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
+// CONTACT AUTOCOMPLETE
+// ============================================================
+
+// GET /api/email/contacts/search — Search users + persons for email recipients
+router.get('/contacts/search', (req: Request, res: Response) => {
+  try {
+    const { q } = req.query;
+    if (!q || String(q).trim().length < 2) {
+      res.json({ data: [] });
+      return;
+    }
+
+    const db = getDb();
+    const query = `%${String(q).trim()}%`;
+    const results: { name: string; email: string; type: string }[] = [];
+
+    // Search users (internal contacts)
+    const users = db.prepare(`
+      SELECT full_name, email FROM users
+      WHERE (full_name LIKE ? OR email LIKE ? OR username LIKE ?)
+        AND email IS NOT NULL AND email != ''
+        AND active = 1
+      ORDER BY full_name LIMIT 10
+    `).all(query, query, query) as { full_name: string; email: string }[];
+
+    for (const u of users) {
+      results.push({ name: u.full_name, email: u.email, type: 'user' });
+    }
+
+    // Search persons (external contacts)
+    const persons = db.prepare(`
+      SELECT first_name, last_name, email FROM persons
+      WHERE (first_name || ' ' || last_name LIKE ? OR email LIKE ?)
+        AND email IS NOT NULL AND email != ''
+        AND archived_at IS NULL
+      ORDER BY last_name, first_name LIMIT 10
+    `).all(query, query) as { first_name: string; last_name: string; email: string }[];
+
+    for (const p of persons) {
+      results.push({ name: `${p.first_name} ${p.last_name}`.trim(), email: p.email, type: 'person' });
+    }
+
+    // De-duplicate by email
+    const seen = new Set<string>();
+    const unique = results.filter(r => {
+      const key = r.email.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    res.json({ data: unique });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
+// EMAIL-INCIDENT LINKING
+// ============================================================
+
+// POST /api/email/link — Link an email to an incident/call/warrant/person
+router.post('/link', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { emailGraphId, incidentId, callId, warrantId, personId, linkType, notes } = req.body;
+    if (!emailGraphId) { res.status(400).json({ error: 'Email ID is required' }); return; }
+    if (!incidentId && !callId && !warrantId && !personId) {
+      res.status(400).json({ error: 'At least one link target is required' });
+      return;
+    }
+
+    const result = db.prepare(`
+      INSERT INTO email_incident_links (email_graph_id, incident_id, call_id, warrant_id, person_id, link_type, notes, linked_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(emailGraphId, incidentId || null, callId || null, warrantId || null, personId || null,
+      linkType || 'related', notes || null, req.user!.userId);
+
+    auditLog(req, 'CREATE', 'email_link', result.lastInsertRowid as number,
+      `Linked email to ${incidentId ? `incident #${incidentId}` : callId ? `call #${callId}` : warrantId ? `warrant #${warrantId}` : `person #${personId}`}`);
+
+    res.json({ success: true, id: result.lastInsertRowid });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/email/links/:emailGraphId — Get links for an email
+router.get('/links/:emailGraphId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const links = db.prepare(`
+      SELECT el.*,
+        i.case_number as incident_case_number,
+        c.call_number as call_number,
+        p.first_name || ' ' || p.last_name as person_name,
+        u.full_name as linked_by_name
+      FROM email_incident_links el
+      LEFT JOIN incidents i ON el.incident_id = i.id
+      LEFT JOIN calls_for_service c ON el.call_id = c.id
+      LEFT JOIN persons p ON el.person_id = p.id
+      LEFT JOIN users u ON el.linked_by = u.id
+      WHERE el.email_graph_id = ?
+      ORDER BY el.created_at DESC
+    `).all(String(req.params.emailGraphId));
+    res.json({ data: links });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/email/links/incident/:incidentId — Get emails linked to an incident
+router.get('/links/incident/:incidentId', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const links = db.prepare(`
+      SELECT el.*, ec.subject, ec.from_address, ec.from_name, ec.received_at, ec.body_preview,
+        u.full_name as linked_by_name
+      FROM email_incident_links el
+      LEFT JOIN email_cache ec ON el.email_graph_id = ec.graph_id
+      LEFT JOIN users u ON el.linked_by = u.id
+      WHERE el.incident_id = ?
+      ORDER BY ec.received_at DESC
+    `).all(req.params.incidentId);
+    res.json({ data: links });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/email/link/:id — Remove a link
+router.delete('/link/:id', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare('DELETE FROM email_incident_links WHERE id = ?').run(req.params.id);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
+// SCHEDULED SENDS
+// ============================================================
+
+// POST /api/email/schedule — Schedule an email for later delivery
+router.post('/schedule', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { to, cc, bcc, subject, body, attachments, scheduledAt } = req.body;
+    if (!to || !subject || !scheduledAt) {
+      res.status(400).json({ error: 'To, subject, and scheduledAt are required' });
+      return;
+    }
+
+    const toList = Array.isArray(to) ? to : [to];
+
+    const result = db.prepare(`
+      INSERT INTO scheduled_emails (to_addresses, cc_addresses, bcc_addresses, subject, body, attachments, scheduled_at, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      JSON.stringify(toList),
+      cc ? JSON.stringify(Array.isArray(cc) ? cc : [cc]) : null,
+      bcc ? JSON.stringify(Array.isArray(bcc) ? bcc : [bcc]) : null,
+      subject, body || '',
+      attachments ? JSON.stringify(attachments) : null,
+      scheduledAt, req.user!.userId
+    );
+
+    auditLog(req, 'SCHEDULE_EMAIL', 'email', result.lastInsertRowid as number,
+      JSON.stringify({ to: toList, subject, scheduledAt }));
+
+    res.json({ success: true, id: result.lastInsertRowid });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/email/scheduled — List scheduled emails
+router.get('/scheduled', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { status = 'pending' } = req.query;
+    const rows = db.prepare(`
+      SELECT se.*, u.full_name as created_by_name
+      FROM scheduled_emails se
+      LEFT JOIN users u ON se.created_by = u.id
+      WHERE se.status = ? AND se.created_by = ?
+      ORDER BY se.scheduled_at ASC
+    `).all(String(status), req.user!.userId);
+    res.json({ data: rows });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/email/scheduled/:id — Cancel a scheduled email
+router.delete('/scheduled/:id', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const row = db.prepare('SELECT * FROM scheduled_emails WHERE id = ? AND created_by = ?')
+      .get(req.params.id, req.user!.userId) as any;
+    if (!row) { res.status(404).json({ error: 'Scheduled email not found' }); return; }
+    if (row.status !== 'pending') { res.status(400).json({ error: 'Can only cancel pending emails' }); return; }
+
+    db.prepare("UPDATE scheduled_emails SET status = 'cancelled' WHERE id = ?").run(req.params.id);
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

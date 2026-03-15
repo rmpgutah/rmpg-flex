@@ -110,7 +110,14 @@ export default function SexOffenderRegistryPage() {
   const [editingRecord, setEditingRecord] = useState<SexOffenderRecord | null>(null);
   const [verifying, setVerifying] = useState(false);
 
-  // ── Fetch records ─────────────────────────────────────────
+  // ── Link Person State ───────────────────────────────────
+  const [showLinkPerson, setShowLinkPerson] = useState(false);
+  const [linkSearch, setLinkSearch] = useState('');
+  const [linkResults, setLinkResults] = useState<any[]>([]);
+  const [linkSearching, setLinkSearching] = useState(false);
+  const [linkSubmitting, setLinkSubmitting] = useState(false);
+
+  // ── Fetch records (declared before handlers that depend on it) ──
   const fetchRecords = useCallback(async () => {
     setLoading(true);
     try {
@@ -128,6 +135,44 @@ export default function SexOffenderRegistryPage() {
       setLoading(false);
     }
   }, [page, search, tierFilter, statusFilter]);
+
+  const handleLinkPersonSearch = useCallback(async (q: string) => {
+    setLinkSearch(q);
+    if (q.length < 2) { setLinkResults([]); return; }
+    setLinkSearching(true);
+    try {
+      const res = await apiRaw(`/api/records/persons/search?q=${encodeURIComponent(q)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setLinkResults(data.data || data || []);
+      }
+    } catch { /* ignore */ }
+    setLinkSearching(false);
+  }, []);
+
+  const handleLinkPerson = useCallback(async (personId: string) => {
+    if (!selected) return;
+    setLinkSubmitting(true);
+    try {
+      const res = await apiRaw(`/api/sex-offender-registry/${selected.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ person_id: personId }),
+      });
+      if (res.ok) {
+        addToast('Person linked to sex offender record', 'success');
+        setShowLinkPerson(false);
+        setLinkSearch('');
+        setLinkResults([]);
+        fetchRecords();
+      } else {
+        const err = await res.json().catch(() => ({ error: 'Failed' }));
+        addToast(err.error || 'Link failed', 'error');
+      }
+    } catch {
+      addToast('Network error', 'error');
+    }
+    setLinkSubmitting(false);
+  }, [selected, addToast, fetchRecords]);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -692,7 +737,10 @@ export default function SexOffenderRegistryPage() {
         >
           <Edit2 size={11} /> Edit Entry
         </button>
-        <button className="toolbar-btn px-3 py-1.5 text-[11px] flex items-center gap-1.5 opacity-60" disabled title="Coming soon">
+        <button
+          className="toolbar-btn px-3 py-1.5 text-[11px] flex items-center gap-1.5"
+          onClick={() => { setShowLinkPerson(true); setLinkSearch(''); setLinkResults([]); }}
+        >
           <Link2 size={11} /> Link Person
         </button>
         <div className="flex-1" />
@@ -764,6 +812,72 @@ export default function SexOffenderRegistryPage() {
           onImport={handleImport}
           onClose={() => setShowImportModal(false)}
         />
+      )}
+
+      {/* ── Link Person Modal ──────────────────────────────── */}
+      {showLinkPerson && selected && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowLinkPerson(false)}>
+          <div
+            className="bg-surface-raised border border-rmpg-600 shadow-xl w-[440px] max-w-[95vw]"
+            style={{ borderRadius: 2 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between">
+              <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">
+                Link to Person Record
+              </h3>
+              <button onClick={() => setShowLinkPerson(false)} className="text-rmpg-400 hover:text-white">
+                <X size={14} />
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <p className="text-[11px] text-rmpg-300">
+                Link <span className="text-white font-bold">{selected.first_name} {selected.last_name}</span> to an existing person record in the RMS.
+              </p>
+              <div className="relative">
+                <Search size={14} className="absolute left-2 top-2 text-rmpg-500" />
+                <input
+                  value={linkSearch}
+                  onChange={(e) => handleLinkPersonSearch(e.target.value)}
+                  placeholder="Search persons by name..."
+                  className="w-full pl-7 pr-3 py-1.5 text-xs bg-surface-sunken border border-rmpg-600 text-white placeholder-rmpg-500"
+                  style={{ borderRadius: 2 }}
+                  autoFocus
+                />
+              </div>
+              {linkSearching && (
+                <div className="flex items-center gap-2 text-[10px] text-rmpg-400">
+                  <Loader2 size={12} className="animate-spin" /> Searching…
+                </div>
+              )}
+              {linkResults.length > 0 && (
+                <div className="max-h-48 overflow-y-auto space-y-1">
+                  {linkResults.map((p: any) => (
+                    <button
+                      key={p.id}
+                      onClick={() => handleLinkPerson(p.id)}
+                      disabled={linkSubmitting}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 bg-surface-sunken border border-rmpg-700 hover:bg-rmpg-700 transition-colors text-left disabled:opacity-50"
+                    >
+                      <User size={12} className="text-rmpg-400 shrink-0" />
+                      <span className="text-[11px] text-white font-bold truncate">
+                        {p.last_name}, {p.first_name}
+                      </span>
+                      {p.dob && (
+                        <span className="text-[10px] text-rmpg-400">DOB: {formatDate(p.dob)}</span>
+                      )}
+                      <span className="flex-1" />
+                      <Link2 size={10} className="text-brand-400 shrink-0" />
+                    </button>
+                  ))}
+                </div>
+              )}
+              {linkSearch.length >= 2 && !linkSearching && linkResults.length === 0 && (
+                <p className="text-[10px] text-rmpg-500 text-center py-2">No matching persons found</p>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -45,7 +45,7 @@ router.get('/events', (req: Request, res: Response) => {
       const s = `%${search}%`; params.push(s, s, s, s);
     }
 
-    const total = (db.prepare(`SELECT COUNT(*) as count FROM court_events e ${where}`).get(...params) as any).count;
+    const total = (db.prepare(`SELECT COUNT(*) as count FROM court_events e ${where}`).get(...params) as any)?.count || 0;
     const rows = db.prepare(`
       SELECT e.*, p.first_name || ' ' || p.last_name as defendant_full_name
       FROM court_events e

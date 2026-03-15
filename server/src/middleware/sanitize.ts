@@ -6,7 +6,7 @@ const MAX_STRING_LENGTH = 10_000;
 const LONG_TEXT_FIELDS = new Set([
   'notes', 'description', 'narrative', 'details', 'conditions',
   'body', 'content', 'text', 'config_value', 'digital_signature',
-  'report_content', 'supplemental_narrative',
+  'report_content', 'supplemental_narrative', 'profile_image',
 ]);
 const MAX_LONG_TEXT_LENGTH = 100_000;
 

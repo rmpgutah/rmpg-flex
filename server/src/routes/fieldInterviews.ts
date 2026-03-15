@@ -4,6 +4,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { broadcast } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
 import { createNotificationForRoles } from './notifications';
+import { resolveDistrict } from '../utils/districtResolver';
 
 const router = Router();
 router.use(authenticateToken);
@@ -110,6 +111,18 @@ router.post('/', (req: Request, res: Response) => {
 
     if (!location) return res.status(400).json({ error: 'Location is required' });
 
+    // Auto-fill Section/Zone/Beat from coordinates
+    let { section_id, zone_id, beat_id, zone_beat } = req.body;
+    if (latitude && longitude && !section_id && !zone_id && !beat_id) {
+      const district = resolveDistrict(Number(latitude), Number(longitude));
+      if (district) {
+        section_id = district.section_id;
+        zone_id = district.zone_id;
+        beat_id = district.beat_id;
+        zone_beat = district.zone_beat;
+      }
+    }
+
     const result = db.prepare(`
       INSERT INTO field_interviews (
         fi_number, person_id, subject_first_name, subject_last_name, subject_dob,
@@ -119,8 +132,10 @@ router.post('/', (req: Request, res: Response) => {
         contact_reason, contact_type, action_taken,
         narrative, vehicle_plate, vehicle_description, vehicle_id,
         associated_call_id, associated_incident_id,
-        officer_id, officer_name, status, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
+        officer_id, officer_name, status,
+        section_id, zone_id, beat_id, zone_beat,
+        created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)
     `).run(
       fi_number, person_id || null, subject_first_name, subject_last_name, subject_dob,
       subject_gender, subject_race, subject_height, subject_weight,
@@ -129,7 +144,9 @@ router.post('/', (req: Request, res: Response) => {
       contact_reason, contact_type, action_taken,
       narrative, vehicle_plate, vehicle_description, vehicle_id || null,
       associated_call_id || null, associated_incident_id || null,
-      user.userId, user.fullName, now
+      user.userId, user.fullName,
+      section_id || null, zone_id || null, beat_id || null, zone_beat || null,
+      now
     );
 
     const created = db.prepare('SELECT * FROM field_interviews WHERE id = ?').get(result.lastInsertRowid) as any;
@@ -171,8 +188,19 @@ router.put('/:id', (req: Request, res: Response) => {
       'contact_reason', 'contact_type', 'action_taken',
       'narrative', 'vehicle_plate', 'vehicle_description', 'vehicle_id',
       'associated_call_id', 'associated_incident_id',
-      'status',
+      'status', 'section_id', 'zone_id', 'beat_id', 'zone_beat',
     ];
+
+    // Auto-fill S/Z/B when coordinates are updated
+    if (req.body.latitude && req.body.longitude && !req.body.section_id) {
+      const district = resolveDistrict(Number(req.body.latitude), Number(req.body.longitude));
+      if (district) {
+        req.body.section_id = district.section_id;
+        req.body.zone_id = district.zone_id;
+        req.body.beat_id = district.beat_id;
+        req.body.zone_beat = district.zone_beat;
+      }
+    }
 
     const setClauses: string[] = [];
     const params: any[] = [];

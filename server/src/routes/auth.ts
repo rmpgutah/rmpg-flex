@@ -163,7 +163,7 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
     const db = getDb();
     const user = db.prepare(`
       SELECT id, username, password_hash, first_name, last_name, full_name, email, role,
-             badge_number, phone, status, avatar_url, must_change_password
+             badge_number, phone, status, avatar_url, profile_image, must_change_password
       FROM users WHERE username = ?
     `).get(username) as any;
 
@@ -328,6 +328,7 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
         badge_number: user.badge_number,
         phone: user.phone,
         avatar_url: user.avatar_url,
+        profile_image: user.profile_image || null,
         status: user.status,
         must_change_password: !!user.must_change_password,
         totp_enabled: false,
@@ -452,7 +453,7 @@ router.get('/me', authenticateToken, (req: Request, res: Response) => {
     const db = getDb();
     const user = db.prepare(`
       SELECT id, username, first_name, last_name, full_name, email, role,
-             badge_number, phone, status, avatar_url, created_at, must_change_password, totp_enabled
+             badge_number, phone, status, avatar_url, profile_image, created_at, must_change_password, totp_enabled
       FROM users WHERE id = ?
     `).get(req.user!.userId) as any;
 
@@ -478,6 +479,7 @@ router.get('/me', authenticateToken, (req: Request, res: Response) => {
       phone: user.phone,
       status: user.status,
       avatar_url: user.avatar_url,
+      profile_image: user.profile_image || null,
       created_at: user.created_at,
       must_change_password: !!user.must_change_password,
       totp_enabled: !!user.totp_enabled,
@@ -647,7 +649,8 @@ router.post('/change-password', passwordRateLimit, authenticateToken, (req: Requ
 
     // Check password history — prevent reuse of recent passwords
     if (config.password.historyCount > 0) {
-      const historyHashes: string[] = user.password_history ? JSON.parse(user.password_history) : [];
+      let historyHashes: string[] = [];
+      try { historyHashes = user.password_history ? JSON.parse(user.password_history) : []; } catch { /* corrupted history — allow password change */ }
       if (checkPasswordHistory(newPassword, historyHashes)) {
         res.status(400).json({
           error: `Password was used recently. Cannot reuse the last ${config.password.historyCount} passwords.`,
@@ -660,7 +663,8 @@ router.post('/change-password', passwordRateLimit, authenticateToken, (req: Requ
     const now = localNow();
 
     // Update password history: prepend old hash, keep last N
-    const oldHistory: string[] = user.password_history ? JSON.parse(user.password_history) : [];
+    let oldHistory: string[] = [];
+    try { oldHistory = user.password_history ? JSON.parse(user.password_history) : []; } catch { /* corrupted — start fresh history */ }
     const newHistory = [user.password_hash, ...oldHistory].slice(0, config.password.historyCount);
 
     db.prepare(`
@@ -750,7 +754,7 @@ router.put('/profile', authenticateToken, (req: Request, res: Response) => {
 
     // Return updated user
     const updated = db.prepare(`
-      SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, status, avatar_url, created_at
+      SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, status, avatar_url, profile_image, created_at
       FROM users WHERE id = ?
     `).get(user.id) as any;
 
@@ -769,6 +773,68 @@ router.put('/profile', authenticateToken, (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Update profile error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── PUT /api/auth/profile-image ─────────────────────────
+// Save or clear the current user's profile image (base64 data URL)
+router.put('/profile-image', authenticateToken, (req: Request, res: Response) => {
+  try {
+    const { profile_image } = req.body; // base64 data URL or null to clear
+    const db = getDb();
+
+    if (profile_image !== null && profile_image !== undefined) {
+      if (typeof profile_image !== 'string' || !profile_image.startsWith('data:image/')) {
+        res.status(400).json({ error: 'Profile image must be an image data URL' });
+        return;
+      }
+      // Limit size (~2MB for a profile photo)
+      if (profile_image.length > 2_000_000) {
+        res.status(400).json({ error: 'Profile image too large (max 2MB)' });
+        return;
+      }
+    }
+
+    db.prepare('UPDATE users SET profile_image = ?, updated_at = ? WHERE id = ?')
+      .run(profile_image || null, localNow(), req.user!.userId);
+
+    // Verify roundtrip — ensure DB stored the complete value
+    if (profile_image) {
+      const verify = db.prepare('SELECT length(profile_image) as len FROM users WHERE id = ?')
+        .get(req.user!.userId) as { len: number } | undefined;
+      if (verify && verify.len !== profile_image.length) {
+        console.error(`Profile image truncated! Sent ${profile_image.length}, stored ${verify.len}`);
+        res.status(500).json({ error: 'Image data was truncated during storage' });
+        return;
+      }
+    }
+
+    // Broadcast so avatar updates everywhere
+    try {
+      broadcast('personnel', 'data_changed', {
+        action: 'put', module: 'auth', entity: 'profile_image',
+        id: req.user!.userId, timestamp: new Date().toISOString(),
+      });
+    } catch { /* never break the response */ }
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Save profile image error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── GET /api/auth/profile-image ─────────────────────────
+// Retrieve the current user's profile image
+router.get('/profile-image', authenticateToken, (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const row = db.prepare('SELECT profile_image FROM users WHERE id = ?')
+      .get(req.user!.userId) as { profile_image: string | null } | undefined;
+    res.json({ profile_image: row?.profile_image || null });
+  } catch (error: any) {
+    console.error('Get profile image error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -865,7 +931,7 @@ router.post('/verify-2fa', mfaRateLimit, (req: Request, res: Response) => {
 
     const db = getDb();
     const user = db.prepare(
-      'SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, avatar_url, status, must_change_password, totp_secret_enc, totp_backup_codes FROM users WHERE id = ?'
+      'SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, avatar_url, profile_image, status, must_change_password, totp_secret_enc, totp_backup_codes FROM users WHERE id = ?'
     ).get(decoded.userId) as any;
 
     if (!user) {
@@ -933,13 +999,17 @@ router.post('/verify-2fa', mfaRateLimit, (req: Request, res: Response) => {
 
       // If TOTP fails, try legacy backup codes
       if (!codeValid && user.totp_backup_codes) {
-        const hashedCodes: string[] = JSON.parse(user.totp_backup_codes);
-        const result = verifyBackupCode(code, hashedCodes);
-        if (result.valid) {
-          codeValid = true;
-          db.prepare('UPDATE users SET totp_backup_codes = ? WHERE id = ?')
-            .run(JSON.stringify(result.remainingCodes), user.id);
-        }
+        try {
+          const hashedCodes: string[] = JSON.parse(user.totp_backup_codes);
+          if (Array.isArray(hashedCodes)) {
+            const result = verifyBackupCode(code, hashedCodes);
+            if (result.valid) {
+              codeValid = true;
+              db.prepare('UPDATE users SET totp_backup_codes = ? WHERE id = ?')
+                .run(JSON.stringify(result.remainingCodes), user.id);
+            }
+          }
+        } catch { /* corrupted backup codes — skip legacy fallback */ }
       }
     } else {
       // Neither system has a secret — 2FA is marked enabled but no secret exists
@@ -1055,6 +1125,7 @@ router.post('/verify-2fa', mfaRateLimit, (req: Request, res: Response) => {
         badge_number: user.badge_number,
         phone: user.phone,
         avatar_url: user.avatar_url,
+        profile_image: user.profile_image || null,
         status: user.status,
         must_change_password: false,
         totp_enabled: true,
@@ -1693,6 +1764,7 @@ router.post('/login/verify-2fa', authenticateTempToken, (req: Request, res: Resp
         badge_number: user.badge_number,
         phone: user.phone,
         avatar_url: user.avatar_url,
+        profile_image: user.profile_image || null,
         status: user.status,
         must_change_password: !!user.must_change_password,
         totp_enabled: true,
@@ -1743,15 +1815,19 @@ router.post('/login/verify-backup-code', authenticateTempToken, (req: Request, r
         .get(userId) as { totp_backup_codes: string | null } | undefined;
 
       if (legacyUser?.totp_backup_codes) {
-        const hashedCodes: string[] = JSON.parse(legacyUser.totp_backup_codes);
-        const result = verifyBackupCode(code, hashedCodes);
-        if (result.valid) {
-          // Update the legacy backup codes — remove the used one
-          db.prepare('UPDATE users SET totp_backup_codes = ? WHERE id = ?')
-            .run(JSON.stringify(result.remainingCodes), userId);
-          usedLegacy = true;
-          matchedCode = { id: -1, code_hash: '' }; // sentinel to indicate match
-        }
+        try {
+          const hashedCodes: string[] = JSON.parse(legacyUser.totp_backup_codes);
+          if (Array.isArray(hashedCodes)) {
+            const result = verifyBackupCode(code, hashedCodes);
+            if (result.valid) {
+              // Update the legacy backup codes — remove the used one
+              db.prepare('UPDATE users SET totp_backup_codes = ? WHERE id = ?')
+                .run(JSON.stringify(result.remainingCodes), userId);
+              usedLegacy = true;
+              matchedCode = { id: -1, code_hash: '' }; // sentinel to indicate match
+            }
+          }
+        } catch { /* corrupted legacy backup codes — skip */ }
       }
     }
 
@@ -1760,7 +1836,8 @@ router.post('/login/verify-backup-code', authenticateTempToken, (req: Request, r
       if (backupCodes.length === 0) {
         const legacyUser = db.prepare('SELECT totp_backup_codes FROM users WHERE id = ?')
           .get(userId) as { totp_backup_codes: string | null } | undefined;
-        const legacyCodes = legacyUser?.totp_backup_codes ? JSON.parse(legacyUser.totp_backup_codes) as string[] : [];
+        let legacyCodes: string[] = [];
+        try { legacyCodes = legacyUser?.totp_backup_codes ? JSON.parse(legacyUser.totp_backup_codes) as string[] : []; } catch { /* corrupted */ }
         if (legacyCodes.length === 0) {
           res.status(400).json({ error: 'No backup codes remaining. Contact an administrator.' });
           return;
@@ -1784,7 +1861,7 @@ router.post('/login/verify-backup-code', authenticateTempToken, (req: Request, r
     if (usedLegacy) {
       const legacyUser = db.prepare('SELECT totp_backup_codes FROM users WHERE id = ?')
         .get(userId) as { totp_backup_codes: string | null } | undefined;
-      remaining = legacyUser?.totp_backup_codes ? (JSON.parse(legacyUser.totp_backup_codes) as string[]).length : 0;
+      try { remaining = legacyUser?.totp_backup_codes ? (JSON.parse(legacyUser.totp_backup_codes) as string[]).length : 0; } catch { remaining = 0; }
     } else {
       remaining = backupCodes.length - 1;
     }
@@ -1841,6 +1918,7 @@ router.post('/login/verify-backup-code', authenticateTempToken, (req: Request, r
         badge_number: user.badge_number,
         phone: user.phone,
         avatar_url: user.avatar_url,
+        profile_image: user.profile_image || null,
         status: user.status,
         must_change_password: !!user.must_change_password,
         totp_enabled: true,
@@ -1886,7 +1964,7 @@ router.post('/login/change-password', authenticateTempToken, (req: Request, res:
     }
 
     const db = getDb();
-    const user = db.prepare('SELECT id, username, full_name, email, role, badge_number, phone, avatar_url, password_hash, first_name, last_name, status, must_change_password FROM users WHERE id = ?')
+    const user = db.prepare('SELECT id, username, full_name, email, role, badge_number, phone, avatar_url, profile_image, password_hash, first_name, last_name, status, must_change_password FROM users WHERE id = ?')
       .get(userId) as any;
 
     if (!user) {
@@ -1964,6 +2042,7 @@ router.post('/login/change-password', authenticateTempToken, (req: Request, res:
         badge_number: user.badge_number,
         phone: user.phone,
         avatar_url: user.avatar_url,
+        profile_image: user.profile_image || null,
         status: user.status,
         must_change_password: false,
         totp_enabled: true,

@@ -201,21 +201,21 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
     ws.on('close', () => {
       clearTimeout(authTimer);
       // Clean up private call and radio state before removing client
-      handlePrivateCallDisconnect(clientId);
-      handleRadioDisconnect(clientId);
+      try { handlePrivateCallDisconnect(clientId); } catch (e) { console.error('[WS] Error in private call disconnect:', e); }
+      try { handleRadioDisconnect(clientId); } catch (e) { console.error('[WS] Error in radio disconnect:', e); }
       clients.delete(clientId);
       clientMessageRates.delete(clientId);
       // Broadcast updated presence when a user disconnects
-      setTimeout(() => broadcastPresence(), 100);
+      setTimeout(() => { try { broadcastPresence(); } catch (e) { console.error('[WS] Error broadcasting presence:', e); } }, 100);
     });
 
     ws.on('error', () => {
       clearTimeout(authTimer);
-      handlePrivateCallDisconnect(clientId);
-      handleRadioDisconnect(clientId);
+      try { handlePrivateCallDisconnect(clientId); } catch (e) { console.error('[WS] Error in private call disconnect:', e); }
+      try { handleRadioDisconnect(clientId); } catch (e) { console.error('[WS] Error in radio disconnect:', e); }
       clients.delete(clientId);
       clientMessageRates.delete(clientId);
-      setTimeout(() => broadcastPresence(), 100);
+      setTimeout(() => { try { broadcastPresence(); } catch (e) { console.error('[WS] Error broadcasting presence:', e); } }, 100);
     });
 
     // Send welcome message (but don't confirm authentication yet)
@@ -697,6 +697,12 @@ function handleRadioLeave(clientId: string): void {
     }, clientId);
   }
 
+  // Clean up any orphaned audio buffers and timers for this client
+  const bufKey = `${channel}:${clientId}`;
+  if (audioBuffers.has(bufKey)) audioBuffers.delete(bufKey);
+  const bufTimer = audioBufferTimers.get(bufKey);
+  if (bufTimer) { clearTimeout(bufTimer); audioBufferTimers.delete(bufKey); }
+
   client.radioChannel = null;
 
   // Notify remaining channel members
@@ -936,8 +942,19 @@ function relayRadioAudio(senderClientId: string, data: any): void {
 /** Clean up radio state when a client disconnects */
 function handleRadioDisconnect(clientId: string): void {
   const client = clients.get(clientId);
-  if (!client || !client.radioChannel) return;
-  handleRadioLeave(clientId);
+  if (client?.radioChannel) {
+    handleRadioLeave(clientId);
+  }
+  // Also sweep any orphaned audioBuffers/timers for this clientId (handles edge cases
+  // where radioChannel was cleared but buffers remain from a stalled transmission)
+  for (const key of audioBuffers.keys()) {
+    if (key.endsWith(`:${clientId}`)) {
+      audioBuffers.delete(key);
+      const timer = audioBufferTimers.get(key);
+      if (timer) { clearTimeout(timer); audioBufferTimers.delete(key); }
+      loggedTransmissions.delete(key);
+    }
+  }
 }
 
 // ─── Private Call System (Full-Duplex) ──────────────────────

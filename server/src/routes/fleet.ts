@@ -196,12 +196,12 @@ router.get('/analytics', (req: Request, res: Response) => {
       status_breakdown: statusWithColors,
       fuel_economy_trend: fuelEconomyTrend,
       fleet_summary: {
-        total_vehicles: totalVehicles.count,
-        avg_mileage: Math.round(avgMileage.avg || 0),
-        total_maintenance_cost: totalMaintCost.total || 0,
-        total_fuel_cost: totalFuelCost.total || 0,
-        vehicles_needing_service: vehiclesNeedingService.count,
-        inspections_failing: inspectionsFailing.count,
+        total_vehicles: totalVehicles?.count || 0,
+        avg_mileage: Math.round(avgMileage?.avg || 0),
+        total_maintenance_cost: totalMaintCost?.total || 0,
+        total_fuel_cost: totalFuelCost?.total || 0,
+        vehicles_needing_service: vehiclesNeedingService?.count || 0,
+        inspections_failing: inspectionsFailing?.count || 0,
       },
     });
   } catch (error: any) {

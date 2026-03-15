@@ -29,7 +29,8 @@ router.post('/calls/:id/dispatch', requireRole('admin', 'manager', 'supervisor',
     // Merge with existing assigned units
     let currentUnits: number[] = [];
     try {
-      currentUnits = JSON.parse(call.assigned_unit_ids || '[]');
+      const parsed = JSON.parse(call.assigned_unit_ids || '[]');
+      currentUnits = Array.isArray(parsed) ? parsed : [];
     } catch { /* ignore */ }
 
     const allUnits = [...new Set([...currentUnits, ...unit_ids])];
@@ -63,7 +64,9 @@ router.post('/calls/:id/dispatch', requireRole('admin', 'manager', 'supervisor',
     dispatchTx();
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
-    broadcastDispatchUpdate({ action: 'units_dispatched', call: updated, unit_ids });
+    if (updated) {
+      broadcastDispatchUpdate({ action: 'units_dispatched', call: updated, unit_ids });
+    }
 
     // Broadcast individual unit updates so Map/MDT get full unit state with call details
     for (const unitId of unit_ids) {
@@ -78,17 +81,21 @@ router.post('/calls/:id/dispatch', requireRole('admin', 'manager', 'supervisor',
       if (unitData) broadcastUnitUpdate({ action: 'unit_status_changed', unit: unitData });
     }
 
-    // Notify dispatched officers individually
-    for (const unitId of unit_ids) {
-      const unitRow = db.prepare('SELECT officer_id, call_sign FROM units WHERE id = ?').get(unitId) as any;
-      if (unitRow?.officer_id) {
-        createNotification(
-          unitRow.officer_id, 'dispatch',
-          `Dispatched: ${call.call_number}`,
-          `${call.incident_type} — ${call.location_address || 'No address'}`,
-          'call', call.id, 'high', 'dispatch.unit_dispatched',
-        );
+    // Notify dispatched officers individually (non-fatal — dispatch must not fail on notification error)
+    try {
+      for (const unitId of unit_ids) {
+        const unitRow = db.prepare('SELECT officer_id, call_sign FROM units WHERE id = ?').get(unitId) as any;
+        if (unitRow?.officer_id) {
+          createNotification(
+            unitRow.officer_id, 'dispatch',
+            `Dispatched: ${call.call_number}`,
+            `${call.incident_type} — ${call.location_address || 'No address'}`,
+            'call', call.id, 'high', 'dispatch.unit_dispatched',
+          );
+        }
       }
+    } catch (notifErr: any) {
+      console.error('[Dispatch] Officer notification failed (non-fatal):', notifErr.message);
     }
 
     res.json(updated);
@@ -120,12 +127,26 @@ router.post('/calls/:id/assign-unit', requireRole('admin', 'manager', 'superviso
       return;
     }
 
+    // Prevent double-dispatch: if unit is already on a different active call, warn
+    if (unit.current_call_id && unit.current_call_id !== call.id) {
+      const otherCall = db.prepare('SELECT call_number, status FROM calls_for_service WHERE id = ?').get(unit.current_call_id) as any;
+      if (otherCall && !['cleared', 'closed', 'cancelled', 'archived'].includes(otherCall.status)) {
+        res.status(409).json({
+          error: `Unit ${unit.call_sign} is already assigned to active call ${otherCall.call_number} (${otherCall.status})`,
+          code: 'UNIT_ALREADY_DISPATCHED',
+          current_call: otherCall.call_number,
+        });
+        return;
+      }
+    }
+
     const now = localNow();
 
     // Merge with existing assigned units
     let currentUnits: number[] = [];
     try {
-      currentUnits = JSON.parse(call.assigned_unit_ids || '[]');
+      const parsed = JSON.parse(call.assigned_unit_ids || '[]');
+      currentUnits = Array.isArray(parsed) ? parsed : [];
     } catch { /* ignore */ }
 
     if (!currentUnits.includes(Number(unit_id))) {
@@ -157,7 +178,9 @@ router.post('/calls/:id/assign-unit', requireRole('admin', 'manager', 'superviso
     assignTx();
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
-    broadcastDispatchUpdate({ action: 'unit_assigned', call: updated, unit_id });
+    if (updated) {
+      broadcastDispatchUpdate({ action: 'unit_assigned', call: updated, unit_id });
+    }
     const unitData = db.prepare(`
       SELECT u.*, usr.full_name as officer_name, usr.badge_number, usr.phone as officer_phone,
         c.call_number, c.incident_type as current_call_type, c.location_address as current_call_location
@@ -229,7 +252,9 @@ router.post('/calls/:id/unassign-unit', requireRole('admin', 'manager', 'supervi
     unassignTx();
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
-    broadcastDispatchUpdate({ action: 'unit_unassigned', call: updated, unit_id });
+    if (updated) {
+      broadcastDispatchUpdate({ action: 'unit_unassigned', call: updated, unit_id });
+    }
     const unassignedUnit = db.prepare(`
       SELECT u.*, usr.full_name as officer_name, usr.badge_number, usr.phone as officer_phone,
         c.call_number, c.incident_type as current_call_type, c.location_address as current_call_location
@@ -267,6 +292,42 @@ router.post('/calls/:id/status', requireRole('admin', 'manager', 'supervisor', '
     if (!validStatuses.includes(status)) {
       res.status(400).json({ error: 'Invalid status', valid: validStatuses });
       return;
+    }
+
+    // ── PSO 72-Hour Rule Enforcement (server-side) ──────────
+    // PSO Client Request calls have special rules:
+    // 1. Cannot be cleared/closed without a disposition
+    // 2. Cannot be archived if 72hr re-dispatch deadline hasn't been addressed
+    // 3. Auto-sets pso_72hr_deadline when cleared so countdown is precise
+    if (call.incident_type === 'pso_client_request') {
+      // Require disposition when clearing/closing PSO calls
+      if (['cleared', 'closed'].includes(status) && !disposition && !call.disposition) {
+        res.status(400).json({
+          error: 'PSO calls require a disposition when clearing or closing',
+          code: 'PSO_DISPOSITION_REQUIRED',
+        });
+        return;
+      }
+
+      // Prevent archiving PSO calls that are overdue (72hr passed without re-dispatch)
+      if (status === 'archived') {
+        const clearedTime = call.cleared_at || call.closed_at;
+        if (clearedTime) {
+          const elapsed = Date.now() - new Date(clearedTime).getTime();
+          const HOURS_72 = 72 * 60 * 60 * 1000;
+          if (elapsed >= HOURS_72 && call.pso_72hr_notified !== 'resolved') {
+            // Only admins/managers can archive overdue PSO calls
+            const canOverride = ['admin', 'manager'].includes(req.user?.role || '');
+            if (!canOverride) {
+              res.status(403).json({
+                error: 'PSO call is 72hr overdue — must be re-dispatched or resolved by admin/manager before archiving',
+                code: 'PSO_72HR_OVERDUE',
+              });
+              return;
+            }
+          }
+        }
+      }
     }
 
     const now = localNow();
@@ -317,12 +378,31 @@ router.post('/calls/:id/status', requireRole('admin', 'manager', 'supervisor', '
     const statusTx = db.transaction(() => {
       db.prepare(updateQuery).run(...updateParams);
 
+      // ── PSO 72-hour deadline: set precise deadline when PSO call is cleared/closed ──
+      if (call.incident_type === 'pso_client_request' && ['cleared', 'closed'].includes(status)) {
+        db.prepare(`
+          UPDATE calls_for_service SET pso_72hr_deadline = ?, pso_72hr_notified = NULL WHERE id = ?
+        `).run(
+          new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+          call.id,
+        );
+      }
+
+      // ── Reset overdue flag when call leaves active status ──
+      if (['cleared', 'closed', 'cancelled', 'archived'].includes(status)) {
+        db.prepare('UPDATE calls_for_service SET overdue_notified = NULL WHERE id = ? AND overdue_notified IS NOT NULL')
+          .run(call.id);
+      }
+
       // If cleared, closed, cancelled, or archived, free up units
       if (['cleared', 'closed', 'cancelled', 'archived'].includes(status)) {
         let unitIds: number[] = [];
         try {
-          unitIds = JSON.parse(call.assigned_unit_ids || '[]');
-        } catch { /* ignore */ }
+          const parsed = JSON.parse(call.assigned_unit_ids || '[]');
+          unitIds = Array.isArray(parsed) ? parsed : [];
+        } catch {
+          console.warn(`[Dispatch] Corrupted assigned_unit_ids for call ${call.call_number}: ${call.assigned_unit_ids}`);
+        }
 
         for (const unitId of unitIds) {
           const result = db.prepare(`
@@ -341,6 +421,10 @@ router.post('/calls/:id/status', requireRole('admin', 'manager', 'supervisor', '
     statusTx();
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
+    if (!updated) {
+      res.status(404).json({ error: 'Call not found after update' });
+      return;
+    }
     broadcastDispatchUpdate({ action: 'call_status_changed', call: updated, status });
 
     // Broadcast unit status changes so dispatch map reflects freed units
@@ -351,12 +435,32 @@ router.post('/calls/:id/status', requireRole('admin', 'manager', 'supervisor', '
 
     // Notify supervisors when a call is cleared or closed
     if (['cleared', 'closed'].includes(status)) {
-      createNotificationForRoles(
-        ['admin', 'manager', 'supervisor'],
-        'dispatch', `Call Cleared: ${call.call_number}`,
-        `${call.incident_type} — status changed to ${status}`,
-        'call', call.id, 'normal', 'dispatch.call_cleared', req.user!.userId,
-      );
+      try {
+        createNotificationForRoles(
+          ['admin', 'manager', 'supervisor'],
+          'dispatch', `Call Cleared: ${call.call_number}`,
+          `${call.incident_type} — status changed to ${status}`,
+          'call', call.id, 'normal', 'dispatch.call_cleared', req.user!.userId,
+        );
+      } catch (notifErr: any) {
+        console.error('[Dispatch] Notification failed (non-fatal):', notifErr.message);
+      }
+
+      // PSO-specific: send 72-hour deadline notification
+      if (call.incident_type === 'pso_client_request') {
+        try {
+          const attempt = call.pso_attempt_number || 1;
+          createNotificationForRoles(
+            ['admin', 'manager', 'supervisor', 'dispatcher'],
+            'dispatch',
+            `PSO 72hr Clock Started: ${call.call_number}`,
+            `PSO call ${call.call_number} (Visit #${attempt}) has been ${status}. Re-dispatch within 72 hours. Location: ${call.location_address || 'unknown'}`,
+            'call', call.id, 'high', 'pso_72hr_clock_started',
+          );
+        } catch (notifErr: any) {
+          console.error('[Dispatch] PSO notification failed (non-fatal):', notifErr.message);
+        }
+      }
     }
 
     res.json(updated);
@@ -423,7 +527,8 @@ router.post('/calls/:id/revert-status', requireRole('admin', 'manager', 'supervi
       if (['cleared', 'closed'].includes(call.status)) {
         let unitIds: number[] = [];
         try {
-          unitIds = JSON.parse(call.assigned_unit_ids || '[]');
+          const parsed = JSON.parse(call.assigned_unit_ids || '[]');
+          unitIds = Array.isArray(parsed) ? parsed : [];
         } catch { /* ignore */ }
 
         for (const unitId of unitIds) {
@@ -518,6 +623,9 @@ router.post('/calls/:id/resume', requireRole('admin', 'manager', 'supervisor', '
       return;
     }
 
+    if (!call.previous_status) {
+      console.warn(`[Dispatch] Call ${call.call_number} on_hold with NULL previous_status — defaulting to 'pending'`);
+    }
     const restoreStatus = call.previous_status || 'pending';
 
     db.prepare(`
@@ -693,7 +801,7 @@ router.post('/calls/:id/persons', requireRole('admin', 'manager', 'supervisor', 
       `Linked ${person.first_name} ${person.last_name} as ${role} to call ${call.call_number}`,
       req.ip || 'unknown');
 
-    broadcastDispatchUpdate({ type: 'call_person_linked', call_id: call.id, person: linked });
+    broadcastDispatchUpdate({ action: 'call_person_linked', call_id: call.id, person: linked });
     res.status(201).json(linked);
   } catch (error: any) {
     console.error('Link call person error:', error);
@@ -757,7 +865,7 @@ router.delete('/calls/:id/persons/:linkId', requireRole('admin', 'manager', 'sup
       `Unlinked ${link.first_name} ${link.last_name} from call ${call?.call_number || req.params.id}`,
       req.ip || 'unknown');
 
-    broadcastDispatchUpdate({ type: 'call_person_unlinked', call_id: Number(req.params.id), link_id: link.id });
+    broadcastDispatchUpdate({ action: 'call_person_unlinked', call_id: Number(req.params.id), link_id: link.id });
     res.json({ success: true });
   } catch (error: any) {
     console.error('Unlink call person error:', error);
@@ -833,7 +941,7 @@ router.post('/calls/:id/vehicles', requireRole('admin', 'manager', 'supervisor',
       `Linked ${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''} PLT:${vehicle.plate_number || 'N/A'} as ${role} to call ${call.call_number}`,
       req.ip || 'unknown');
 
-    broadcastDispatchUpdate({ type: 'call_vehicle_linked', call_id: call.id, vehicle: linked });
+    broadcastDispatchUpdate({ action: 'call_vehicle_linked', call_id: call.id, vehicle: linked });
     res.status(201).json(linked);
   } catch (error: any) {
     console.error('Link call vehicle error:', error);
@@ -900,7 +1008,7 @@ router.delete('/calls/:id/vehicles/:linkId', requireRole('admin', 'manager', 'su
       `Unlinked ${link.year || ''} ${link.make || ''} ${link.model || ''} from call ${call?.call_number || req.params.id}`,
       req.ip || 'unknown');
 
-    broadcastDispatchUpdate({ type: 'call_vehicle_unlinked', call_id: Number(req.params.id), link_id: link.id });
+    broadcastDispatchUpdate({ action: 'call_vehicle_unlinked', call_id: Number(req.params.id), link_id: link.id });
     res.json({ success: true });
   } catch (error: any) {
     console.error('Unlink call vehicle error:', error);

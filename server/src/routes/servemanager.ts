@@ -349,7 +349,7 @@ router.get('/jobs', async (req: Request, res: Response) => {
     if (svcStatus) { conditions.push('service_status = ?'); pArr.push(svcStatus); }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-    const total = (db.prepare(`SELECT COUNT(*) as count FROM sm_jobs ${where}`).get(...pArr) as any).count;
+    const total = (db.prepare(`SELECT COUNT(*) as count FROM sm_jobs ${where}`).get(...pArr) as any)?.count || 0;
     const rows = db.prepare(`SELECT * FROM sm_jobs ${where} ORDER BY sm_created_at DESC LIMIT ? OFFSET ?`).all(...pArr, limit, offset);
 
     res.json({

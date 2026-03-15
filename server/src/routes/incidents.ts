@@ -999,7 +999,8 @@ router.post('/:id/evidence', requireRole('admin', 'manager', 'supervisor', 'offi
     let nextNum = 1;
     if (lastEvidence) {
       const parts = lastEvidence.evidence_number.split('-');
-      nextNum = parseInt(parts[2], 10) + 1;
+      const parsed = parts.length >= 3 ? parseInt(parts[2], 10) : NaN;
+      if (!isNaN(parsed)) nextNum = parsed + 1;
     }
     const evidenceNumber = `EV-${currentYear}-${String(nextNum).padStart(5, '0')}`;
 
@@ -1095,7 +1096,8 @@ router.post('/:id/supplements', requireRole('admin', 'manager', 'supervisor', 'o
     let nextNum = 1;
     if (lastSup) {
       const parts = lastSup.report_number.split('-');
-      nextNum = parseInt(parts[2], 10) + 1;
+      const parsed = parts.length >= 3 ? parseInt(parts[2], 10) : NaN;
+      if (!isNaN(parsed)) nextNum = parsed + 1;
     }
     const reportNumber = `SUP-${currentYear}-${String(nextNum).padStart(5, '0')}`;
 

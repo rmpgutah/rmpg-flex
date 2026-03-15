@@ -244,8 +244,8 @@ async function tryRefreshToken(): Promise<string | null> {
 
       if (res.ok) {
         const data = await res.json();
-        localStorage.setItem('rmpg_token', data.token);
-        localStorage.setItem('rmpg_refresh_token', data.refreshToken);
+        try { localStorage.setItem('rmpg_token', data.token); } catch { /* quota exceeded */ }
+        try { localStorage.setItem('rmpg_refresh_token', data.refreshToken); } catch { /* quota exceeded */ }
         return data.token as string;
       }
 

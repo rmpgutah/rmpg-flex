@@ -187,7 +187,12 @@ function pushCallForService(db: any, body: any, userId: number) {
   const last = db.prepare(
     `SELECT call_number FROM calls_for_service WHERE call_number LIKE ? ORDER BY id DESC LIMIT 1`
   ).get(`CFS-${year}-%`);
-  const seq = last ? parseInt(last.call_number.split('-')[2], 10) + 1 : 1;
+  let seq = 1;
+  if (last) {
+    const parts = last.call_number.split('-');
+    const parsed = parts.length >= 3 ? parseInt(parts[2], 10) : NaN;
+    if (!isNaN(parsed)) seq = parsed + 1;
+  }
   const callNumber = `CFS-${year}-${String(seq).padStart(5, '0')}`;
   const now = localNow();
 

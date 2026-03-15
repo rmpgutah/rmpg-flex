@@ -16,6 +16,7 @@ import { useToast } from '../components/ToastProvider';
 import { useFormValidation } from '../hooks/useFormValidation';
 import { isValidPlate, isValidDate } from '../utils/validate';
 import { formatDate, formatDateTime } from '../utils/dateUtils';
+import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
 
 const CONTACT_REASONS: { value: FIContactReason; label: string }[] = [
   { value: 'suspicious_activity', label: 'Suspicious Activity' },
@@ -64,12 +65,15 @@ const EMPTY_FORM = {
   action_taken: 'none' as FIActionTaken, narrative: '',
   vehicle_plate: '', vehicle_description: '',
   person_id: '',
+  section_id: '', zone_id: '', beat_id: '',
 };
 
 export default function FieldInterviewsPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
   const { errors: formErrors, validate: validateForm, clearAllErrors } = useFormValidation();
+  const { sections: sectionOptions, zones: zoneOptions, beats: beatOptions } = useDistrictOptions();
+  const { identify: identifyDistrict } = useDistrictIdentify();
 
   // Data state
   const [fis, setFis] = useState<FieldInterview[]>([]);
@@ -171,6 +175,9 @@ export default function FieldInterviewsPage() {
       vehicle_plate: fi.vehicle_plate || '',
       vehicle_description: fi.vehicle_description || '',
       person_id: fi.person_id ? String(fi.person_id) : '',
+      section_id: (fi as any).section_id || '',
+      zone_id: (fi as any).zone_id || '',
+      beat_id: (fi as any).beat_id || '',
     });
     setFormOpen(true);
   };
@@ -189,6 +196,7 @@ export default function FieldInterviewsPage() {
       const body = {
         ...formData,
         person_id: formData.person_id ? parseInt(formData.person_id, 10) : null,
+        zone_beat: [formData.zone_id, formData.beat_id].filter(Boolean).join('/') || null,
       };
       if (editingFi) {
         await apiFetch(`/field-interviews/${editingFi.id}`, { method: 'PUT', body: JSON.stringify(body) });
@@ -378,6 +386,9 @@ export default function FieldInterviewsPage() {
               <div><span className="text-rmpg-500 text-[10px] uppercase">Hair / Eyes</span><div className="text-white">{[selectedFi.subject_hair, selectedFi.subject_eye].filter(Boolean).join(' / ') || '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Clothing</span><div className="text-white">{selectedFi.subject_clothing || '—'}</div></div>
               <div className="col-span-2"><span className="text-rmpg-500 text-[10px] uppercase">Location</span><div className="text-white">{selectedFi.location}</div></div>
+              {((selectedFi as any).section_id || (selectedFi as any).zone_id || (selectedFi as any).beat_id) && (
+                <div className="col-span-2"><span className="text-rmpg-500 text-[10px] uppercase">Section / Zone / Beat</span><div className="text-white">{[(selectedFi as any).section_id, (selectedFi as any).zone_id, (selectedFi as any).beat_id].filter(Boolean).join(' / ') || '—'}</div></div>
+              )}
               <div><span className="text-rmpg-500 text-[10px] uppercase">Contact Reason</span><div className="text-white capitalize">{selectedFi.contact_reason.replace(/_/g, ' ')}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Contact Type</span><div className="text-white capitalize">{selectedFi.contact_type}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Action Taken</span><div className="text-white capitalize">{selectedFi.action_taken}</div></div>
@@ -473,6 +484,34 @@ export default function FieldInterviewsPage() {
                     <select className="select-dark text-xs w-full" value={formData.contact_type} onChange={e => update('contact_type', e.target.value)}>
                       {CONTACT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </select></div>
+                </div>
+              </div>
+
+              {/* Section / Zone / Beat */}
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Section</label>
+                  <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
+                    value={formData.section_id || ''} onChange={e => update('section_id', e.target.value)}>
+                    <option value="">—</option>
+                    {sectionOptions.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Zone</label>
+                  <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
+                    value={formData.zone_id || ''} onChange={e => update('zone_id', e.target.value)}>
+                    <option value="">—</option>
+                    {zoneOptions.map(z => <option key={z} value={z}>{z}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Beat</label>
+                  <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
+                    value={formData.beat_id || ''} onChange={e => update('beat_id', e.target.value)}>
+                    <option value="">—</option>
+                    {beatOptions.map(b => <option key={b} value={b}>{b}</option>)}
+                  </select>
                 </div>
               </div>
 

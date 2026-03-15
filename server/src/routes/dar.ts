@@ -46,7 +46,7 @@ router.get('/', (req: Request, res: Response) => {
       const s = `%${search}%`; params.push(s, s, s, s);
     }
 
-    const total = (db.prepare(`SELECT COUNT(*) as count FROM daily_activity_reports d ${where}`).get(...params) as any).count;
+    const total = (db.prepare(`SELECT COUNT(*) as count FROM daily_activity_reports d ${where}`).get(...params) as any)?.count || 0;
     const rows = db.prepare(`
       SELECT d.*, u.full_name as reviewer_name
       FROM daily_activity_reports d

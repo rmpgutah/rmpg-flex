@@ -53,7 +53,7 @@ router.post('/calls/archive-bulk', requireRole('admin', 'manager', 'dispatcher')
 
         // Free up any assigned units
         let unitIds: number[] = [];
-        try { unitIds = JSON.parse(call.assigned_unit_ids || '[]'); } catch { /* ignore */ }
+        try { const p = JSON.parse(call.assigned_unit_ids || '[]'); unitIds = Array.isArray(p) ? p : []; } catch { /* ignore */ }
         for (const unitId of unitIds) {
           freeUnitStmt.run(now, unitId, call.id);
         }
@@ -98,7 +98,8 @@ router.post('/calls/:id/archive', requireRole('admin', 'manager', 'dispatcher'),
       // Free up any assigned units when archiving
       let unitIds: number[] = [];
       try {
-        unitIds = JSON.parse(call.assigned_unit_ids || '[]');
+        const parsed = JSON.parse(call.assigned_unit_ids || '[]');
+        unitIds = Array.isArray(parsed) ? parsed : [];
       } catch { /* ignore */ }
       for (const unitId of unitIds) {
         db.prepare(`UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = ? WHERE id = ? AND current_call_id = ?`)
@@ -167,7 +168,7 @@ router.delete('/calls/:id', requireRole('admin', 'manager'), (req: Request, res:
     const deleteTx = db.transaction(() => {
       // If call has active units assigned, free them first
       let unitIds: number[] = [];
-      try { unitIds = JSON.parse(call.assigned_unit_ids || '[]'); } catch { /* ignore */ }
+      try { const p = JSON.parse(call.assigned_unit_ids || '[]'); unitIds = Array.isArray(p) ? p : []; } catch { /* ignore */ }
       for (const unitId of unitIds) {
         db.prepare(`
           UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = ? WHERE id = ? AND current_call_id = ?
