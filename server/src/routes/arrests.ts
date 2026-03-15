@@ -149,7 +149,7 @@ router.post('/manual', requireRole('admin', 'manager', 'officer', 'supervisor'),
         jailbase_id, source_id, source_name,
         full_name, first_name, last_name, middle_name,
         date_of_birth, booking_date, release_date,
-        charges, county, status, booking_number, agency,
+        charges, county, state, status, booking_number, agency,
         gender, race, height, weight, hair_color, eye_color,
         address, bail_amount, hold_reason, notes,
         entry_source, entered_by, created_at, updated_at
@@ -157,7 +157,7 @@ router.post('/manual', requireRole('admin', 'manager', 'officer', 'supervisor'),
         ?, 'manual', 'Manual Entry',
         ?, ?, ?, ?,
         ?, ?, ?,
-        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
         'manual', ?, ?, ?
@@ -166,7 +166,7 @@ router.post('/manual', requireRole('admin', 'manager', 'officer', 'supervisor'),
       `manual-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`,
       fullName, first || b.first_name || '', last || b.last_name || '', middle || b.middle_name || '',
       b.date_of_birth || null, b.booking_date || now, b.release_date || null,
-      charges, b.county || '', b.status || 'active', b.booking_number || null, b.agency || null,
+      charges, b.county || '', b.state || 'UT', b.status || 'active', b.booking_number || null, b.agency || null,
       b.gender || null, b.race || null, b.height || null, b.weight || null, b.hair_color || null, b.eye_color || null,
       b.address || null, b.bail_amount != null && !isNaN(parseFloat(b.bail_amount)) ? parseFloat(b.bail_amount) : null, b.hold_reason || null, b.notes || null,
       user?.id || null, now, now,
@@ -323,7 +323,7 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
         jailbase_id, source_id, source_name,
         full_name, first_name, last_name, middle_name,
         date_of_birth, booking_date, release_date,
-        charges, county, status, booking_number, agency,
+        charges, county, state, status, booking_number, agency,
         gender, race, height, weight, hair_color, eye_color,
         address, bail_amount, hold_reason, notes,
         entry_source, entered_by, created_at, updated_at
@@ -331,7 +331,7 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
         ?, 'csv-import', ?,
         ?, ?, ?, ?,
         ?, ?, ?,
-        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
         'csv', ?, ?, ?
@@ -374,6 +374,7 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
             r.release_date || r.ReleaseDate || r.RELEASE_DATE || null,
             chargesJson,
             r.county || county || '',
+            r.state || 'UT',
             r.status || 'active',
             r.booking_number || r.BookingNumber || r.BOOKING_NUMBER || r.booking_id || null,
             r.agency || agency || null,
@@ -538,6 +539,19 @@ router.get('/search', async (req: Request, res: Response) => {
     const name = (req.query.name as string || '').trim();
     if (!name || name.length < 2) return res.status(400).json({ error: 'Name required (min 2 characters)' });
     const result = await searchArrests(name);
+
+    // Apply optional client-side filters (source, source_id/county) that searchArrests doesn't handle
+    const sourceFilter = (req.query.source as string || '').trim();
+    const countyFilter = (req.query.source_id as string || '').trim();
+    if (sourceFilter || countyFilter) {
+      result.records = result.records.filter((r: any) => {
+        if (sourceFilter && r.entry_source !== sourceFilter) return false;
+        if (countyFilter && r.source_id !== countyFilter) return false;
+        return true;
+      });
+      result.resultCount = result.records.length;
+    }
+
     res.json(result);
   } catch (err: any) {
     console.error(err); res.status(500).json({ error: 'Internal server error' });
