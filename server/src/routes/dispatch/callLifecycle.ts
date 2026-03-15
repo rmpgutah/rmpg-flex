@@ -377,7 +377,7 @@ router.post('/calls/:id/timeline', requireRole('admin', 'manager', 'dispatcher',
 });
 
 // GET /api/dispatch/calls/:id/warnings - Get warning tags for a call
-router.get('/calls/:id/warnings', (req: Request, res: Response) => {
+router.get('/calls/:id/warnings', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;

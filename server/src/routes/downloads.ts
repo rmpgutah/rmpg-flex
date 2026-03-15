@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
+import fsp from 'fs/promises';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 
@@ -67,23 +68,25 @@ interface InstallerMeta {
   releaseDate?: string;
 }
 
-/** Scan downloads directory for available installers with full metadata. */
-function getInstallerInfo(): {
+/** Scan downloads directory for available installers with full metadata.
+ *  Uses async fs operations to avoid blocking the event loop. */
+async function getInstallerInfoAsync(): Promise<{
   mac?: InstallerMeta;
   win?: InstallerMeta;
   android?: InstallerMeta;
   iped_mac?: InstallerMeta;
   iped_win?: InstallerMeta;
-} {
+}> {
   const result: { mac?: InstallerMeta; win?: InstallerMeta; android?: InstallerMeta; iped_mac?: InstallerMeta; iped_win?: InstallerMeta } = {};
 
-  if (!fs.existsSync(DOWNLOADS_DIR)) return result;
+  try { await fsp.access(DOWNLOADS_DIR); } catch { return result; }
 
-  const files = fs.readdirSync(DOWNLOADS_DIR);
+  const files = await fsp.readdir(DOWNLOADS_DIR);
 
   for (const file of files) {
     const filePath = path.join(DOWNLOADS_DIR, file);
-    const stat = fs.statSync(filePath);
+    let stat: fs.Stats;
+    try { stat = await fsp.stat(filePath); } catch { continue; }
     const version = extractVersion(file);
 
     const meta: InstallerMeta = {
@@ -107,7 +110,7 @@ function getInstallerInfo(): {
           result.iped_win = meta;
         }
       }
-      continue; // Don't double-match as regular installer
+      continue;
     }
 
     if (file.endsWith('.dmg') && !file.includes('blockmap')) {
@@ -128,12 +131,32 @@ function getInstallerInfo(): {
   return result;
 }
 
+/** Synchronous wrapper for use in YAML manifest routes where sync SHA-512 is needed */
+function getInstallerInfo(): ReturnType<typeof getInstallerInfoAsync> extends Promise<infer T> ? T : never {
+  // For sync contexts (YAML routes), use sync fallback
+  const result: any = {};
+  if (!fs.existsSync(DOWNLOADS_DIR)) return result;
+  const files = fs.readdirSync(DOWNLOADS_DIR);
+  for (const file of files) {
+    const filePath = path.join(DOWNLOADS_DIR, file);
+    const stat = fs.statSync(filePath);
+    const version = extractVersion(file);
+    const meta: InstallerMeta = { filename: file, version: version || '0.0.0', size: formatBytes(stat.size), bytes: stat.size, releaseDate: stat.mtime.toISOString() };
+    const ipedMatch = file.match(/^IPED-[\d.]+-(mac|win)\.zip$/i);
+    if (ipedMatch) { const p = ipedMatch[1].toLowerCase(); if (p === 'mac') { if (!result.iped_mac || isVersionLessThan(result.iped_mac.version, meta.version)) result.iped_mac = meta; } else if (p === 'win') { if (!result.iped_win || isVersionLessThan(result.iped_win.version, meta.version)) result.iped_win = meta; } continue; }
+    if (file.endsWith('.dmg') && !file.includes('blockmap')) { if (!result.mac || isVersionLessThan(result.mac.version, meta.version)) result.mac = meta; }
+    else if (file.endsWith('.exe') && !file.includes('blockmap')) { if (!result.win || isVersionLessThan(result.win.version, meta.version)) result.win = meta; }
+    else if (file.endsWith('.apk')) { if (!result.android || isVersionLessThan(result.android.version, meta.version)) result.android = meta; }
+  }
+  return result;
+}
+
 // Updates are always non-mandatory — silent background updates only
 
 // ─── GET /api/downloads/info — Returns available installer metadata ────
-router.get('/info', (_req: Request, res: Response) => {
+router.get('/info', async (_req: Request, res: Response) => {
   try {
-    const info = getInstallerInfo();
+    const info = await getInstallerInfoAsync();
     res.json(info);
   } catch (error: any) {
     console.error('Downloads info error:', error);
@@ -142,12 +165,12 @@ router.get('/info', (_req: Request, res: Response) => {
 });
 
 // ─── GET /api/updates/check — Version check for auto-updater ──────────
-router.get('/check', (req: Request, res: Response) => {
+router.get('/check', async (req: Request, res: Response) => {
   try {
     const currentVersion = (req.query.currentVersion as string) || '0.0.0';
     const platform = (req.query.platform as string) || 'win32';
 
-    const info = getInstallerInfo();
+    const info = await getInstallerInfoAsync();
     const installer = platform === 'darwin' ? info.mac : platform === 'android' ? info.android : info.win;
 
     if (!installer) {
@@ -275,26 +298,25 @@ export function mountDownloadFileRoute(app: any) {
   // Serve files from BOTH /downloads/ and /updates/ paths
   // electron-updater fetches files relative to the feed URL (/updates/)
   // while the download page uses /downloads/
-  const serveInstallerFile = (req: Request, res: Response) => {
+  const serveInstallerFile = async (req: Request, res: Response) => {
     const filename = req.params.filename as string;
 
     // Security: only allow specific file extensions
-    const ext = path.extname(filename as string).toLowerCase();
+    const ext = path.extname(filename).toLowerCase();
     if (!ALLOWED_EXTENSIONS.includes(ext)) {
       res.status(403).json({ error: 'Forbidden file type' });
       return;
     }
 
     // Prevent path traversal
-    const safeName = path.basename(filename as string);
+    const safeName = path.basename(filename);
     const filePath = path.join(DOWNLOADS_DIR, safeName);
 
-    if (!fs.existsSync(filePath)) {
+    let stat: fs.Stats;
+    try { stat = await fsp.stat(filePath); } catch {
       res.status(404).json({ error: 'File not found' });
       return;
     }
-
-    const stat = fs.statSync(filePath);
 
     // Determine MIME type
     let mimeType = 'application/octet-stream';
@@ -309,7 +331,8 @@ export function mountDownloadFileRoute(app: any) {
 
     // Only set download disposition for actual installers
     if (safeName.endsWith('.dmg') || safeName.endsWith('.exe') || safeName.endsWith('.apk')) {
-      res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+      const sanitized = safeName.replace(/[\r\n\0"]/g, '_');
+      res.setHeader('Content-Disposition', `attachment; filename="${sanitized}"`);
     }
 
     const stream = fs.createReadStream(filePath);

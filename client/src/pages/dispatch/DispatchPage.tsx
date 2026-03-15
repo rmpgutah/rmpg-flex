@@ -141,6 +141,8 @@ export default function DispatchPage() {
   const [showVehicleDropdown, setShowVehicleDropdown] = useState(false);
   const personSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const vehicleSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const personAbortRef = useRef<AbortController | null>(null);
+  const vehicleAbortRef = useRef<AbortController | null>(null);
   const personDropdownRef = useRef<HTMLDivElement>(null);
   const vehicleDropdownRef = useRef<HTMLDivElement>(null);
   const [showCreatePersonModal, setShowCreatePersonModal] = useState(false);
@@ -160,25 +162,35 @@ export default function DispatchPage() {
 
   const searchPersons = useCallback((query: string) => {
     if (personSearchTimerRef.current) clearTimeout(personSearchTimerRef.current);
+    if (personAbortRef.current) personAbortRef.current.abort();
     if (query.length < 2) { setPersonSearchResults([]); setShowPersonDropdown(false); return; }
     personSearchTimerRef.current = setTimeout(async () => {
       try {
-        const results = await apiFetch<any[]>(`/records/persons/search?q=${encodeURIComponent(query)}`);
+        const controller = new AbortController();
+        personAbortRef.current = controller;
+        const results = await apiFetch<any[]>(`/records/persons/search?q=${encodeURIComponent(query)}`, { signal: controller.signal });
         setPersonSearchResults(Array.isArray(results) ? results.slice(0, 10) : []);
         setShowPersonDropdown(true);
-      } catch { setPersonSearchResults([]); }
+      } catch (e: any) {
+        if (e?.name !== 'AbortError') setPersonSearchResults([]);
+      }
     }, 300);
   }, []);
 
   const searchVehicles = useCallback((query: string) => {
     if (vehicleSearchTimerRef.current) clearTimeout(vehicleSearchTimerRef.current);
+    if (vehicleAbortRef.current) vehicleAbortRef.current.abort();
     if (query.length < 2) { setVehicleSearchResults([]); setShowVehicleDropdown(false); return; }
     vehicleSearchTimerRef.current = setTimeout(async () => {
       try {
-        const results = await apiFetch<any[]>(`/records/vehicles/search?q=${encodeURIComponent(query)}`);
+        const controller = new AbortController();
+        vehicleAbortRef.current = controller;
+        const results = await apiFetch<any[]>(`/records/vehicles/search?q=${encodeURIComponent(query)}`, { signal: controller.signal });
         setVehicleSearchResults(Array.isArray(results) ? results.slice(0, 10) : []);
         setShowVehicleDropdown(true);
-      } catch { setVehicleSearchResults([]); }
+      } catch (e: any) {
+        if (e?.name !== 'AbortError') setVehicleSearchResults([]);
+      }
     }, 300);
   }, []);
   // ── Linked Persons / Vehicles on call ──

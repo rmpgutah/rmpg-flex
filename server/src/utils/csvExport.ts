@@ -34,12 +34,21 @@ function escapeCsvValue(value: any): string {
  * @param columns  Array of { key, header } objects defining columns
  * @param rows     Array of data objects whose properties correspond to column keys
  */
+const CSV_MAX_ROWS = 10_000;
+
 export function sendCsv(
   res: Response,
   filename: string,
   columns: CsvColumn[],
   rows: any[],
 ): void {
+  if (rows.length > CSV_MAX_ROWS) {
+    res.status(413).json({
+      error: `Export too large (${rows.length.toLocaleString()} rows). Maximum is ${CSV_MAX_ROWS.toLocaleString()}. Narrow your date range or add filters.`,
+    });
+    return;
+  }
+
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 

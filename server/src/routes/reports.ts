@@ -1426,7 +1426,8 @@ router.get('/daily-reports/:filename', requireRole('admin', 'manager', 'supervis
       return;
     }
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+    const safeName = filename.replace(/[\r\n\0"]/g, '_');
+    res.setHeader('Content-Disposition', `inline; filename="${safeName}"`);
     res.sendFile(filepath);
   } catch (error: any) {
     console.error('Download daily report error:', error);

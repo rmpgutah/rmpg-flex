@@ -7,7 +7,7 @@ import { localNow } from '../../utils/timeUtils';
 const router = Router();
 
 // GET /api/dispatch/units - Get all units with current status
-router.get('/units', (req: Request, res: Response) => {
+router.get('/units', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const units = db.prepare(`

@@ -113,8 +113,8 @@ router.get('/persons', (req: Request, res: Response) => {
       pagination: {
         page: pageNum,
         limit: limitNum,
-        total: countRow.total,
-        totalPages: Math.ceil(countRow.total / limitNum),
+        total: countRow?.total ?? 0,
+        totalPages: limitNum > 0 ? Math.ceil((countRow?.total ?? 0) / limitNum) : 0,
       },
     });
   } catch (error: any) {
@@ -692,8 +692,8 @@ router.get('/vehicles', (req: Request, res: Response) => {
       pagination: {
         page: pageNum,
         limit: limitNum,
-        total: countRow.total,
-        totalPages: Math.ceil(countRow.total / limitNum),
+        total: countRow?.total ?? 0,
+        totalPages: limitNum > 0 ? Math.ceil((countRow?.total ?? 0) / limitNum) : 0,
       },
     });
   } catch (error: any) {
@@ -1249,8 +1249,8 @@ router.get('/evidence', (req: Request, res: Response) => {
       pagination: {
         page: pageNum,
         limit: limitNum,
-        total: countRow.total,
-        totalPages: Math.ceil(countRow.total / limitNum),
+        total: countRow?.total ?? 0,
+        totalPages: limitNum > 0 ? Math.ceil((countRow?.total ?? 0) / limitNum) : 0,
       },
     });
   } catch (error: any) {

@@ -1280,7 +1280,17 @@ export default function MapPage() {
 
     fetchTrails();
     const interval = setInterval(fetchTrails, 15000);
-    return () => { clearInterval(interval); clearTimeout(retryTimeout); };
+    return () => {
+      clearInterval(interval);
+      clearTimeout(retryTimeout);
+      // Clean up polylines, markers, and arrows on unmount to prevent memory leaks
+      breadcrumbLinesRef.current.forEach((l) => l.setMap(null));
+      breadcrumbLinesRef.current = [];
+      breadcrumbMarkersRef.current.forEach((m) => m.setMap(null));
+      breadcrumbMarkersRef.current = [];
+      breadcrumbArrowsRef.current.forEach((a) => a.setMap(null));
+      breadcrumbArrowsRef.current = [];
+    };
   }, [showBreadcrumbs, breadcrumbHours, breadcrumbColorMode, mapLoaded]);
 
   // ============================================================

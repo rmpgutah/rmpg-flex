@@ -561,7 +561,8 @@ router.get('/messages/:id/attachments/:aid', async (req: Request, res: Response)
 
     const content = Buffer.from(attachment.contentBytes, 'base64');
     res.setHeader('Content-Type', attachment.contentType || 'application/octet-stream');
-    res.setHeader('Content-Disposition', `attachment; filename="${attachment.name}"`);
+    const safeName = (attachment.name || 'attachment').replace(/[\r\n\0"]/g, '_');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
     res.setHeader('Content-Length', content.length.toString());
     res.send(content);
   } catch (err: any) {

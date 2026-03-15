@@ -24,7 +24,7 @@ const router = Router();
 // Body formats:
 //   Single (legacy):  { latitude, longitude, accuracy, heading, speed }
 //   Batch (v4.3+):    { points: [{ lat, lng, accuracy, heading, speed, timestamp }] }
-router.post('/gps', (req: Request, res: Response) => {
+router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
 
@@ -39,9 +39,11 @@ router.post('/gps', (req: Request, res: Response) => {
     }
 
     let points: GpsPoint[];
+    let pointsReceived = 0;
 
-    if (Array.isArray(req.body.points)) {
+    if (Array.isArray(req.body?.points) && req.body.points.length > 0) {
       // Batch format: { points: [...] }
+      pointsReceived = req.body.points.length;
       points = req.body.points.slice(0, 60); // Cap at 60 points per request
     } else if (req.body.latitude != null && req.body.longitude != null) {
       // Legacy single-point format
@@ -79,16 +81,26 @@ router.post('/gps', (req: Request, res: Response) => {
       const userInfo = db.prepare('SELECT badge_number, username, full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
       const callSign = userInfo?.badge_number || userInfo?.username || `P-${req.user!.userId}`;
 
-      // Avoid duplicate call_sign — append user ID if needed
+      // Use INSERT OR IGNORE to prevent race conditions when multiple GPS
+      // requests arrive simultaneously for a new user — only the first succeeds
       const existing = db.prepare('SELECT id FROM units WHERE call_sign = ?').get(callSign) as any;
       const finalCallSign = existing ? `${callSign}-${req.user!.userId}` : callSign;
 
-      db.prepare(`
-        INSERT INTO units (call_sign, officer_id, status)
-        VALUES (?, ?, 'available')
-      `).run(finalCallSign, req.user!.userId);
+      try {
+        db.prepare(`
+          INSERT INTO units (call_sign, officer_id, status)
+          VALUES (?, ?, 'available')
+        `).run(finalCallSign, req.user!.userId);
+      } catch (insertErr: any) {
+        // If a concurrent request already created the unit, just fetch it
+        if (!insertErr.message?.includes('UNIQUE constraint')) throw insertErr;
+      }
 
       unit = db.prepare('SELECT id, call_sign, status FROM units WHERE officer_id = ?').get(req.user!.userId) as any;
+      if (!unit) {
+        res.status(500).json({ error: 'Failed to create or find unit' });
+        return;
+      }
       console.log(`[GPS] Auto-created unit "${finalCallSign}" for user ${req.user!.userId} (${userInfo?.full_name || 'unknown'})`);
 
       // Audit log: auto-created unit
@@ -97,7 +109,7 @@ router.post('/gps', (req: Request, res: Response) => {
         VALUES (?, 'unit_auto_created', 'unit', ?, ?, ?)
       `).run(
         req.user!.userId,
-        unit?.id ?? null,
+        unit.id,
         `Auto-created unit "${finalCallSign}" via GPS tracking for ${userInfo?.full_name || 'unknown'}`,
         req.ip || 'unknown',
       );
@@ -175,7 +187,17 @@ router.post('/gps', (req: Request, res: Response) => {
       broadcastUnitUpdate({ action: 'unit_position_update', unit: updated });
     }
 
-    res.json({ ok: true, unit_id: unit.id, call_sign: unit.call_sign, inserted: validPoints.length });
+    const pointsCapped = pointsReceived > 60 ? pointsReceived - 60 : 0;
+    const pointsInvalid = points.length - validPoints.length;
+    res.json({
+      ok: true,
+      unit_id: unit.id,
+      call_sign: unit.call_sign,
+      inserted: validPoints.length,
+      pointsReceived,
+      pointsCapped,
+      pointsInvalid,
+    });
 
     // ── Async geocode: reverse-geocode the latest point, then backfill the batch ──
     // Runs after the response is sent so it doesn't slow down the GPS endpoint.
@@ -206,7 +228,7 @@ router.post('/gps', (req: Request, res: Response) => {
 });
 
 // GET /api/dispatch/gps/my-unit - Get current user's assigned unit
-router.get('/gps/my-unit', (req: Request, res: Response) => {
+router.get('/gps/my-unit', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const unit = db.prepare(`
@@ -223,7 +245,7 @@ router.get('/gps/my-unit', (req: Request, res: Response) => {
 
 // GET /api/dispatch/gps/trail/:unitId - Get GPS breadcrumb trail for a unit
 // Also applies the same starburst-prevention filters as /trails.
-router.get('/gps/trail/:unitId', (req: Request, res: Response) => {
+router.get('/gps/trail/:unitId', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const unitId = parseInt(req.params.unitId as string, 10);
@@ -289,7 +311,7 @@ router.get('/gps/trail/:unitId', (req: Request, res: Response) => {
 // GET /api/dispatch/gps/trails - Get breadcrumb trails for all active units
 // Applies server-side filtering to eliminate starburst artifacts caused by
 // WiFi-triangulation jumps stored in the database (pre-v4.3 data).
-router.get('/gps/trails', (req: Request, res: Response) => {
+router.get('/gps/trails', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const hours = Math.min(Math.max(parseInt(req.query.hours as string, 10) || 8, 1), 72);

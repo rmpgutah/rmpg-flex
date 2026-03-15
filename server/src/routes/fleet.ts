@@ -143,8 +143,8 @@ router.get('/', (req: Request, res: Response) => {
       pagination: {
         page: pageNum,
         per_page: perPage,
-        total: countRow.total,
-        totalPages: Math.ceil(countRow.total / perPage),
+        total: countRow?.total ?? 0,
+        totalPages: perPage > 0 ? Math.ceil((countRow?.total ?? 0) / perPage) : 0,
       },
     });
   } catch (error: any) {
@@ -730,8 +730,8 @@ router.get('/:id/maintenance', (req: Request, res: Response) => {
       pagination: {
         page: pageNum,
         per_page: perPage,
-        total: countRow.total,
-        totalPages: Math.ceil(countRow.total / perPage),
+        total: countRow?.total ?? 0,
+        totalPages: perPage > 0 ? Math.ceil((countRow?.total ?? 0) / perPage) : 0,
       },
     });
   } catch (error: any) {
@@ -974,8 +974,8 @@ router.get('/:id/fuel', (req: Request, res: Response) => {
       pagination: {
         page: pageNum,
         per_page: perPage,
-        total: countRow.total,
-        totalPages: Math.ceil(countRow.total / perPage),
+        total: countRow?.total ?? 0,
+        totalPages: perPage > 0 ? Math.ceil((countRow?.total ?? 0) / perPage) : 0,
       },
     });
   } catch (error: any) {
@@ -1177,8 +1177,8 @@ router.get('/:id/inspections', (req: Request, res: Response) => {
       pagination: {
         page: pageNum,
         per_page: perPage,
-        total: countRow.total,
-        totalPages: Math.ceil(countRow.total / perPage),
+        total: countRow?.total ?? 0,
+        totalPages: perPage > 0 ? Math.ceil((countRow?.total ?? 0) / perPage) : 0,
       },
     });
   } catch (error: any) {
@@ -1380,8 +1380,8 @@ router.get('/:id/assignments', (req: Request, res: Response) => {
       pagination: {
         page: pageNum,
         per_page: perPage,
-        total: countRow.total,
-        totalPages: Math.ceil(countRow.total / perPage),
+        total: countRow?.total ?? 0,
+        totalPages: perPage > 0 ? Math.ceil((countRow?.total ?? 0) / perPage) : 0,
       },
     });
   } catch (error: any) {

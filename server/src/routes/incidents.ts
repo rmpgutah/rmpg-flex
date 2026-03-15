@@ -75,13 +75,14 @@ router.get('/', (req: Request, res: Response) => {
       LIMIT ? OFFSET ?
     `).all(...params, limitNum, offset);
 
+    const total = countRow?.total ?? 0;
     res.json({
       data: incidents,
       pagination: {
         page: pageNum,
         limit: limitNum,
-        total: countRow?.total ?? 0,
-        totalPages: Math.ceil((countRow?.total ?? 0) / limitNum),
+        total,
+        totalPages: limitNum > 0 ? Math.ceil(total / limitNum) : 0,
       },
     });
   } catch (error: any) {

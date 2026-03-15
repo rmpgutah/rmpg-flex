@@ -9,10 +9,18 @@ import { identifyBeat } from '../../utils/geofence';
 import { broadcastDispatchUpdate } from '../../utils/websocket';
 import { createNotificationForRoles } from '../notifications';
 
+/** Safely coerce a value to SQLite integer boolean (1/0).
+ *  Handles string "false"/"0" correctly (JS truthy would be wrong). */
+function toBoolInt(val: any): number {
+  if (val === undefined || val === null) return 0;
+  if (typeof val === 'string') return val === 'false' || val === '0' || val === '' ? 0 : 1;
+  return val ? 1 : 0;
+}
+
 const router = Router();
 
 // GET /api/dispatch/calls - List calls with filters
-router.get('/calls', (req: Request, res: Response) => {
+router.get('/calls', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const {
@@ -86,13 +94,14 @@ router.get('/calls', (req: Request, res: Response) => {
       ? calls
       : (calls as any[]).map(({ caller_name, caller_phone, caller_address, ...rest }) => rest);
 
+    const total = countRow?.total ?? 0;
     res.json({
       data: safeCalls,
       pagination: {
         page: pageNum,
         limit: limitNum,
-        total: countRow.total,
-        totalPages: Math.ceil(countRow.total / limitNum),
+        total,
+        totalPages: limitNum > 0 ? Math.ceil(total / limitNum) : 0,
       },
     });
   } catch (error: any) {
@@ -241,16 +250,16 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         cross_street || null, location_building || null, location_floor || null, location_room || null, autoZoneBeat,
         autoSectionId, autoZoneId, autoBeatId, autoDispatchCode,
         autoSectionName, autoZoneName, autoBeatName, autoBeatDescriptor,
-        (weapons_involved && weapons_involved !== 'None') ? weapons_involved : null, injuries_reported ? 1 : 0, num_subjects ?? null, num_victims ?? null,
+        (weapons_involved && weapons_involved !== 'None') ? weapons_involved : null, toBoolInt(injuries_reported), num_subjects ?? null, num_victims ?? null,
         subject_description || null, vehicle_description || null, direction_of_travel || null,
         scene_safety || null, weather_conditions || null, lighting_conditions || null,
-        alcohol_involved ? 1 : 0, drugs_involved ? 1 : 0, domestic_violence ? 1 : 0,
-        supervisor_notified ? 1 : 0, le_notified ? 1 : 0, (le_agency && le_agency !== 'None') ? le_agency : null, le_case_number || null,
+        toBoolInt(alcohol_involved), toBoolInt(drugs_involved), toBoolInt(domestic_violence),
+        toBoolInt(supervisor_notified), toBoolInt(le_notified), (le_agency && le_agency !== 'None') ? le_agency : null, le_case_number || null,
         damage_estimate ?? null, damage_description || null, responding_officer || null, action_taken || null,
-        mental_health_crisis ? 1 : 0, juvenile_involved ? 1 : 0, felony_in_progress ? 1 : 0, officer_safety_caution ? 1 : 0,
-        k9_requested ? 1 : 0, ems_requested ? 1 : 0, fire_requested ? 1 : 0, hazmat ? 1 : 0,
-        gang_related ? 1 : 0, evidence_collected ? 1 : 0, body_camera_active ? 1 : 0, photos_taken ? 1 : 0,
-        trespass_issued ? 1 : 0, vehicle_pursuit ? 1 : 0, foot_pursuit ? 1 : 0,
+        toBoolInt(mental_health_crisis), toBoolInt(juvenile_involved), toBoolInt(felony_in_progress), toBoolInt(officer_safety_caution),
+        toBoolInt(k9_requested), toBoolInt(ems_requested), toBoolInt(fire_requested), toBoolInt(hazmat),
+        toBoolInt(gang_related), toBoolInt(evidence_collected), toBoolInt(body_camera_active), toBoolInt(photos_taken),
+        toBoolInt(trespass_issued), toBoolInt(vehicle_pursuit), toBoolInt(foot_pursuit),
         pso_service_type || null, pso_authorization || null, pso_requestor_name || null,
         pso_requestor_phone || null, pso_requestor_email || null, pso_billing_code || null, createAttemptNumber ?? 1,
         process_service_type || null, process_served_to || null, process_served_address || null,
@@ -307,7 +316,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
 });
 
 // GET /api/dispatch/calls/export - Export calls as CSV
-router.get('/calls/export', (req: Request, res: Response) => {
+router.get('/calls/export', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { status, priority, startDate, endDate } = req.query;
@@ -360,7 +369,7 @@ router.get('/calls/export', (req: Request, res: Response) => {
 });
 
 // GET /api/dispatch/calls/check-duplicate - Check for active calls at same/similar address
-router.get('/calls/check-duplicate', (req: Request, res: Response) => {
+router.get('/calls/check-duplicate', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { address } = req.query;
@@ -390,7 +399,7 @@ router.get('/calls/check-duplicate', (req: Request, res: Response) => {
 });
 
 // GET /api/dispatch/calls/:id - Get single call with details
-router.get('/calls/:id', (req: Request, res: Response) => {
+router.get('/calls/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare(`
@@ -588,7 +597,7 @@ router.put('/calls/:id', requireRole('admin', 'manager', 'supervisor', 'dispatch
     addField('location_floor', location_floor);
     addField('location_room', location_room);
     addField('weapons_involved', weapons_involved === 'None' ? null : weapons_involved);
-    addField('injuries_reported', injuries_reported !== undefined ? (injuries_reported ? 1 : 0) : undefined);
+    addField('injuries_reported', injuries_reported !== undefined ? toBoolInt(injuries_reported) : undefined);
     addField('num_subjects', num_subjects);
     addField('subject_description', subject_description);
     addField('vehicle_description', vehicle_description);
@@ -606,11 +615,11 @@ router.put('/calls/:id', requireRole('admin', 'manager', 'supervisor', 'dispatch
     addField('weather_conditions', weather_conditions);
     addField('lighting_conditions', lighting_conditions);
     addField('num_victims', num_victims);
-    addField('alcohol_involved', alcohol_involved !== undefined ? (alcohol_involved ? 1 : 0) : undefined);
-    addField('drugs_involved', drugs_involved !== undefined ? (drugs_involved ? 1 : 0) : undefined);
-    addField('domestic_violence', domestic_violence !== undefined ? (domestic_violence ? 1 : 0) : undefined);
-    addField('supervisor_notified', supervisor_notified !== undefined ? (supervisor_notified ? 1 : 0) : undefined);
-    addField('le_notified', le_notified !== undefined ? (le_notified ? 1 : 0) : undefined);
+    addField('alcohol_involved', alcohol_involved !== undefined ? toBoolInt(alcohol_involved) : undefined);
+    addField('drugs_involved', drugs_involved !== undefined ? toBoolInt(drugs_involved) : undefined);
+    addField('domestic_violence', domestic_violence !== undefined ? toBoolInt(domestic_violence) : undefined);
+    addField('supervisor_notified', supervisor_notified !== undefined ? toBoolInt(supervisor_notified) : undefined);
+    addField('le_notified', le_notified !== undefined ? toBoolInt(le_notified) : undefined);
     addField('le_agency', le_agency === 'None' ? null : le_agency);
     addField('le_case_number', le_case_number);
     addField('damage_estimate', damage_estimate);
@@ -619,21 +628,21 @@ router.put('/calls/:id', requireRole('admin', 'manager', 'supervisor', 'dispatch
     addField('starting_mileage', starting_mileage);
     addField('ending_mileage', ending_mileage);
     // Extended operational flags
-    addField('mental_health_crisis', mental_health_crisis !== undefined ? (mental_health_crisis ? 1 : 0) : undefined);
-    addField('juvenile_involved', juvenile_involved !== undefined ? (juvenile_involved ? 1 : 0) : undefined);
-    addField('felony_in_progress', felony_in_progress !== undefined ? (felony_in_progress ? 1 : 0) : undefined);
-    addField('officer_safety_caution', officer_safety_caution !== undefined ? (officer_safety_caution ? 1 : 0) : undefined);
-    addField('k9_requested', k9_requested !== undefined ? (k9_requested ? 1 : 0) : undefined);
-    addField('ems_requested', ems_requested !== undefined ? (ems_requested ? 1 : 0) : undefined);
-    addField('fire_requested', fire_requested !== undefined ? (fire_requested ? 1 : 0) : undefined);
-    addField('hazmat', hazmat !== undefined ? (hazmat ? 1 : 0) : undefined);
-    addField('gang_related', gang_related !== undefined ? (gang_related ? 1 : 0) : undefined);
-    addField('evidence_collected', evidence_collected !== undefined ? (evidence_collected ? 1 : 0) : undefined);
-    addField('body_camera_active', body_camera_active !== undefined ? (body_camera_active ? 1 : 0) : undefined);
-    addField('photos_taken', photos_taken !== undefined ? (photos_taken ? 1 : 0) : undefined);
-    addField('trespass_issued', trespass_issued !== undefined ? (trespass_issued ? 1 : 0) : undefined);
-    addField('vehicle_pursuit', vehicle_pursuit !== undefined ? (vehicle_pursuit ? 1 : 0) : undefined);
-    addField('foot_pursuit', foot_pursuit !== undefined ? (foot_pursuit ? 1 : 0) : undefined);
+    addField('mental_health_crisis', mental_health_crisis !== undefined ? toBoolInt(mental_health_crisis) : undefined);
+    addField('juvenile_involved', juvenile_involved !== undefined ? toBoolInt(juvenile_involved) : undefined);
+    addField('felony_in_progress', felony_in_progress !== undefined ? toBoolInt(felony_in_progress) : undefined);
+    addField('officer_safety_caution', officer_safety_caution !== undefined ? toBoolInt(officer_safety_caution) : undefined);
+    addField('k9_requested', k9_requested !== undefined ? toBoolInt(k9_requested) : undefined);
+    addField('ems_requested', ems_requested !== undefined ? toBoolInt(ems_requested) : undefined);
+    addField('fire_requested', fire_requested !== undefined ? toBoolInt(fire_requested) : undefined);
+    addField('hazmat', hazmat !== undefined ? toBoolInt(hazmat) : undefined);
+    addField('gang_related', gang_related !== undefined ? toBoolInt(gang_related) : undefined);
+    addField('evidence_collected', evidence_collected !== undefined ? toBoolInt(evidence_collected) : undefined);
+    addField('body_camera_active', body_camera_active !== undefined ? toBoolInt(body_camera_active) : undefined);
+    addField('photos_taken', photos_taken !== undefined ? toBoolInt(photos_taken) : undefined);
+    addField('trespass_issued', trespass_issued !== undefined ? toBoolInt(trespass_issued) : undefined);
+    addField('vehicle_pursuit', vehicle_pursuit !== undefined ? toBoolInt(vehicle_pursuit) : undefined);
+    addField('foot_pursuit', foot_pursuit !== undefined ? toBoolInt(foot_pursuit) : undefined);
     // PSO Client Request fields
     addField('pso_service_type', pso_service_type);
     addField('pso_authorization', pso_authorization);

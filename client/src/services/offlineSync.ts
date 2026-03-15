@@ -400,7 +400,14 @@ async function serverFetch(endpoint: string, options: RequestInit = {}): Promise
       return refreshAndRetry(endpoint, options);
     }
 
-    const data = await response.json();
+    // Parse JSON safely — non-2xx responses may not have valid JSON bodies
+    let data: any;
+    try {
+      data = await response.json();
+    } catch {
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      throw new Error('Invalid JSON response');
+    }
 
     if (response.ok) {
       return data;

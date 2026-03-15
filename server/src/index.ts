@@ -192,8 +192,8 @@ app.post('/api/webhook/github', webhookRateLimit, express.raw({ type: 'applicati
   child.unref();
 });
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 app.use(sanitizeInput);
 
 // Request timeout — 30s default, skip for upload routes (large files)
@@ -548,6 +548,22 @@ try {
         console.log('[DB Maintenance] WAL checkpoint + ANALYZE completed');
       } catch (e) { console.error('[DB Maintenance] Failed:', e); }
     }, 24 * 60 * 60 * 1000).unref();
+
+    // Hourly expired session cleanup — remove inactive sessions and
+    // sessions not used for 30+ days to prevent unbounded table growth
+    setInterval(() => {
+      try {
+        const db = getDb();
+        const result = db.prepare(`
+          DELETE FROM sessions
+          WHERE is_active = 0
+             OR last_used_at < datetime('now', 'localtime', '-30 days')
+        `).run();
+        if (result.changes > 0) {
+          console.log(`[Session Cleanup] Removed ${result.changes} expired sessions`);
+        }
+      } catch (e) { console.error('[Session Cleanup] Failed:', e); }
+    }, 60 * 60 * 1000).unref();
 
     // Start patrol monitor for missed scan alerts
     startPatrolMonitor(5 * 60 * 1000); // Check every 5 minutes

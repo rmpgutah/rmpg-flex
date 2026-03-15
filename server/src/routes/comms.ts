@@ -602,7 +602,7 @@ router.get('/activity-feed', (req: Request, res: Response) => {
 
     res.json({
       data: activity,
-      total: countRow.total,
+      total: countRow?.total ?? 0,
       limit: limitNum,
       offset: offsetNum,
     });
@@ -657,7 +657,7 @@ router.get('/radio/transcripts', (req: Request, res: Response) => {
       LIMIT ? OFFSET ?
     `).all(...params, limitNum, offsetNum);
 
-    res.json({ data: transcripts, total: countRow.total, limit: limitNum, offset: offsetNum });
+    res.json({ data: transcripts, total: countRow?.total ?? 0, limit: limitNum, offset: offsetNum });
   } catch (error: any) {
     console.error('Get radio transcripts error:', error);
     res.status(500).json({ error: 'Internal server error' });

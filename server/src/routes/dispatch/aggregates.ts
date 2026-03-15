@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../../models/database';
-import { authenticateToken } from '../../middleware/auth';
+import { authenticateToken, requireRole } from '../../middleware/auth';
 import { broadcastDispatchUpdate, broadcastUnitUpdate, broadcastPanic } from '../../utils/websocket';
 import { generateCallNumber } from '../../utils/caseNumbers';
 import { localNow } from '../../utils/timeUtils';
@@ -14,7 +14,7 @@ router.use(authenticateToken);
 
 // GET /api/dispatch/heatmap - Aggregated call locations for heat map display
 // Query params: days (int), mode ('all'|'risk'|'type'), type (incident_type filter)
-router.get('/heatmap', (req: Request, res: Response) => {
+router.get('/heatmap', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
@@ -97,7 +97,7 @@ router.get('/heatmap', (req: Request, res: Response) => {
 });
 
 // GET /api/dispatch/heatmap/types - Available incident types for heatmap filter
-router.get('/heatmap/types', (req: Request, res: Response) => {
+router.get('/heatmap/types', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const types = db.prepare(`
@@ -116,7 +116,7 @@ router.get('/heatmap/types', (req: Request, res: Response) => {
 });
 
 // GET /api/dispatch/queue - Active dispatch queue
-router.get('/queue', (req: Request, res: Response) => {
+router.get('/queue', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const calls = db.prepare(`
@@ -138,7 +138,7 @@ router.get('/queue', (req: Request, res: Response) => {
 });
 
 // GET /api/dispatch/stats - Current dispatch statistics
-router.get('/stats', (req: Request, res: Response) => {
+router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
 
@@ -192,7 +192,7 @@ router.get('/stats', (req: Request, res: Response) => {
 
 // POST /api/dispatch/panic - Emergency PANIC button
 // Broadcasts audible alert to all connected users
-router.post('/panic', async (req: Request, res: Response) => {
+router.post('/panic', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { latitude, longitude, message } = req.body;
@@ -329,7 +329,7 @@ router.post('/panic', async (req: Request, res: Response) => {
 
 // GET /api/dispatch/premise-history - Premise history lookup
 // Returns prior calls at or near a given address.
-router.get('/premise-history', (req: Request, res: Response) => {
+router.get('/premise-history', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { address } = req.query;
@@ -403,7 +403,7 @@ router.get('/premise-history', (req: Request, res: Response) => {
 
 // GET /api/dispatch/safety-screen - Officer Safety Auto-Screening
 // Searches persons and warrants by name to detect active warrants, caution flags, criminal history.
-router.get('/safety-screen', (req: Request, res: Response) => {
+router.get('/safety-screen', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { name } = req.query;
@@ -511,7 +511,7 @@ router.get('/safety-screen', (req: Request, res: Response) => {
 });
 
 // GET /api/dispatch/districts - List all 3-tier dispatch districts
-router.get('/districts', (req: Request, res: Response) => {
+router.get('/districts', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const districts = db.prepare('SELECT * FROM dispatch_districts ORDER BY section_id, zone_id, beat_id').all();
@@ -523,7 +523,7 @@ router.get('/districts', (req: Request, res: Response) => {
 });
 
 // GET /api/dispatch/districts/lookup - Lookup 3-tier by zone_id + beat_id
-router.get('/districts/lookup', (req: Request, res: Response) => {
+router.get('/districts/lookup', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { zone_id, beat_id } = req.query;
@@ -558,7 +558,7 @@ router.get('/districts/lookup', (req: Request, res: Response) => {
 });
 
 // GET /api/dispatch/districts/identify - Identify district from GPS coordinates
-router.get('/districts/identify', (req: Request, res: Response) => {
+router.get('/districts/identify', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { lat, lng } = req.query;

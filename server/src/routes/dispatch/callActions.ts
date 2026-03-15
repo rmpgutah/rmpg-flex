@@ -742,7 +742,7 @@ router.post('/calls/:id/le-notification', requireRole('admin', 'manager', 'super
 // ═══════════════════════════════════════════════════════════
 
 // GET /api/dispatch/calls/:id/persons — List linked persons
-router.get('/calls/:id/persons', (req: Request, res: Response) => {
+router.get('/calls/:id/persons', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const rows = db.prepare(`
@@ -878,7 +878,7 @@ router.delete('/calls/:id/persons/:linkId', requireRole('admin', 'manager', 'sup
 // ═══════════════════════════════════════════════════════════
 
 // GET /api/dispatch/calls/:id/vehicles — List linked vehicles
-router.get('/calls/:id/vehicles', (req: Request, res: Response) => {
+router.get('/calls/:id/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const rows = db.prepare(`
