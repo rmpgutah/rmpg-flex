@@ -440,8 +440,6 @@ router.post('/persons', requireRole('admin', 'manager', 'supervisor', 'officer',
       photo_url || null, JSON.stringify(flags || []), notes || null,
     );
 
-    const person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(result.lastInsertRowid);
-
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'person_created', 'person', ?, ?, ?)
