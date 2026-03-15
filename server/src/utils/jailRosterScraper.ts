@@ -30,7 +30,8 @@ import { crossLinkArrests } from './arrestScraper';
 
 // ── Constants ───────────────────────────────────────────────
 
-const USER_AGENT = 'RMPG-Flex/1.0 (Law Enforcement CAD/RMS)';
+// Browser-like UA required by several jail roster sites (Clark NV, El Paso CO block custom UAs)
+const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 const REQUEST_TIMEOUT_MS = 15_000;
 const REQUEST_DELAY_MS = 1_500;          // Between detail page fetches
 const MAX_DETAIL_BATCH = 50;             // Max detail pages per scrape cycle
@@ -1862,36 +1863,51 @@ const elPasoCoParser: CountyParser = {
 
 /**
  * El Paso County CO — JSON API search by last name.
- * API: GET https://epcsheriffsoffice.com/search.php?searchName={prefix}&searchBooking=
- * Note: API requires 2+ characters — single letters return empty.
- * We search all 2-letter combos (aa..zz = 676 queries) to get full coverage.
+ * API: GET https://epcsheriffsoffice.com/search.php?searchName={name}&searchBooking=
+ * Note: API requires full last names (4+ chars) — short prefixes return empty.
+ * We search the top ~200 US surnames to cover most inmates.
  */
 async function fetchElPasoCoRoster(): Promise<string> {
   const apiUrl = 'https://epcsheriffsoffice.com/search.php';
-  const alpha = 'abcdefghijklmnopqrstuvwxyz';
   const allInmates: any[] = [];
   const seen = new Set<string>();
 
-  // Build 2-letter prefixes (676 combinations, ~11min at 1s delay)
-  const prefixes: string[] = [];
-  for (const a of alpha) {
-    for (const b of alpha) {
-      prefixes.push(a + b);
-    }
-  }
+  // Top 200 US surnames by frequency — covers ~90% of the population
+  const surnames = [
+    'smith','johnson','williams','brown','jones','garcia','miller','davis','rodriguez','martinez',
+    'hernandez','lopez','gonzalez','wilson','anderson','thomas','taylor','moore','jackson','martin',
+    'lee','perez','thompson','white','harris','sanchez','clark','ramirez','lewis','robinson',
+    'walker','young','allen','king','wright','scott','torres','nguyen','hill','flores',
+    'green','adams','nelson','baker','hall','rivera','campbell','mitchell','carter','roberts',
+    'gomez','phillips','evans','turner','diaz','parker','cruz','edwards','collins','reyes',
+    'stewart','morris','morales','murphy','cook','rogers','gutierrez','ortiz','morgan','cooper',
+    'peterson','bailey','reed','kelly','howard','ramos','kim','cox','ward','richardson',
+    'watson','brooks','chavez','wood','james','bennett','gray','mendoza','ruiz','hughes',
+    'price','alvarez','castillo','sanders','patel','myers','long','ross','foster','jimenez',
+    'powell','jenkins','perry','russell','sullivan','bell','coleman','butler','henderson','barnes',
+    'gonzales','fisher','vasquez','simmons','griffin','alexander','romero','hunt','mason','dixon',
+    'munoz','hunt','hicks','moreno','harvey','palmer','wagner','wallace','gibson','robertson',
+    'freeman','black','burns','webb','grant','simpson','hart','craig','hayes','carroll',
+    'olson','meyer','hamilton','ford','graham','medina','duncan','ford','carlson','daniels',
+    'lynch','vargas','riley','shaw','weaver','snyder','spencer','elliott','jordan','holland',
+    'rice','mcdonald','stephens','stone','fernandez','hart','chambers','hawkins','dunn','silva',
+    'beck','gordon','harrison','james','berry','bishop','carpenter','welch','stanley','owens',
+    'tucker','lane','reynolds','warner','newman','montgomery','soto','perkins','mann','watts',
+    'howell','larson','garrett','fields','frank','hines','dean','austin','mendez','cruz',
+  ];
 
-  for (const prefix of prefixes) {
+  for (const name of surnames) {
     try {
-      const url = `${apiUrl}?searchName=${prefix}&searchBooking=`;
+      const url = `${apiUrl}?searchName=${encodeURIComponent(name)}&searchBooking=`;
       const res = await fetch(url, {
-        headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+        headers: { 'User-Agent': USER_AGENT, Accept: 'application/json', Referer: 'https://epcsheriffsoffice.com/' },
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
 
       if (!res.ok) continue;
       const text = await res.text();
-      if (!text || text.trim().length === 0) {
-        await sleep(200); // Fast skip for empty responses
+      if (!text || text.length < 5) {
+        await sleep(300);
         continue;
       }
 
@@ -1899,11 +1915,10 @@ async function fetchElPasoCoRoster(): Promise<string> {
       try {
         data = JSON.parse(text);
       } catch {
-        await sleep(200);
         continue;
       }
       if (!Array.isArray(data) || data.length === 0) {
-        await sleep(200); // Fast skip for empty results
+        await sleep(300);
         continue;
       }
 
@@ -1915,13 +1930,12 @@ async function fetchElPasoCoRoster(): Promise<string> {
         }
       }
     } catch {
-      // Skip this prefix
+      // Skip this name
     }
-    // 500ms between non-empty requests, 200ms between empty ones (handled above)
     await sleep(500);
   }
 
-  console.log(`[Jail Roster] El Paso County CO: aggregated ${allInmates.length} unique inmates`);
+  console.log(`[Jail Roster] El Paso County CO: aggregated ${allInmates.length} unique inmates from ${surnames.length} surname searches`);
   return JSON.stringify(allInmates);
 }
 
