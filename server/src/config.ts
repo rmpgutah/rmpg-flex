@@ -71,6 +71,29 @@ try {
   console.warn('⚠  SSL certificate files found but could not be read:', (err as Error).message);
 }
 
+// ─── TOTP / Two-Factor config (shared by config.totp and config.twoFactor) ──
+const totpConfig = {
+  issuer: process.env.TOTP_ISSUER || 'RMPG Flex',
+  encryptionKey: process.env.TOTP_ENCRYPTION_KEY || (isProduction
+    ? (() => {
+        console.error('');
+        console.error('╔═══════════════════════════════════════════════════════════╗');
+        console.error('║  CRITICAL: TOTP_ENCRYPTION_KEY is not set!               ║');
+        console.error('║  Generate one: openssl rand -hex 32                       ║');
+        console.error('║  Set it in .env: TOTP_ENCRYPTION_KEY=<your-key>           ║');
+        console.error('╚═══════════════════════════════════════════════════════════╝');
+        console.error('');
+        return crypto.randomBytes(32).toString('hex');
+      })()
+    // Dev fallback: deterministic key so TOTP secrets survive server restarts
+    : 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2'
+  ),
+  requiredRoles: (process.env.TOTP_REQUIRED_ROLES || 'admin,manager,supervisor,officer,dispatcher,contract_manager').split(',').map(s => s.trim()).filter(Boolean),
+  tempTokenExpiry: process.env.TOTP_TEMP_TOKEN_EXPIRY || '3m',
+  backupCodeCount: envInt('TOTP_BACKUP_CODE_COUNT', 10),
+  trustedDeviceDays: envInt('TRUSTED_DEVICE_DAYS', 30),
+};
+
 export const config = {
   // Server
   port: envInt('PORT', 3001),
@@ -118,27 +141,9 @@ export const config = {
   },
 
   // Two-Factor Authentication (TOTP)
-  totp: {
-    issuer: process.env.TOTP_ISSUER || 'RMPG Flex',
-    encryptionKey: process.env.TOTP_ENCRYPTION_KEY || (isProduction
-      ? (() => {
-          console.error('');
-          console.error('╔═══════════════════════════════════════════════════════════╗');
-          console.error('║  CRITICAL: TOTP_ENCRYPTION_KEY is not set!               ║');
-          console.error('║  Generate one: openssl rand -hex 32                       ║');
-          console.error('║  Set it in .env: TOTP_ENCRYPTION_KEY=<your-key>           ║');
-          console.error('╚═══════════════════════════════════════════════════════════╝');
-          console.error('');
-          return crypto.randomBytes(32).toString('hex');
-        })()
-      // Dev fallback: deterministic key so TOTP secrets survive server restarts
-      : 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2'
-    ),
-    requiredRoles: (process.env.TOTP_REQUIRED_ROLES || 'admin,manager,supervisor,officer,dispatcher,contract_manager').split(',').map(s => s.trim()).filter(Boolean),
-    tempTokenExpiry: process.env.TOTP_TEMP_TOKEN_EXPIRY || '3m',
-    backupCodeCount: envInt('TOTP_BACKUP_CODE_COUNT', 10),
-    trustedDeviceDays: envInt('TRUSTED_DEVICE_DAYS', 30),
-  },
+  // Referenced as both config.totp and config.twoFactor across the codebase
+  totp: totpConfig,
+  twoFactor: totpConfig,
 
   // Session
   session: {

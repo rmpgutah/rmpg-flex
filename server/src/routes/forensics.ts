@@ -462,7 +462,7 @@ router.put('/:caseId/analyses/:analysisId', (req: Request, res: Response) => {
 
     if (status && status !== existing.status) {
       addTimelineEntry(
-        parseInt(req.params.caseId), 'analysis_update',
+        parseInt(req.params.caseId as string), 'analysis_update',
         `${existing.analysis_type} analysis → ${status}`,
         user.userId, user.fullName || user.username,
       );
@@ -496,7 +496,7 @@ router.post('/:id/timeline', (req: Request, res: Response) => {
     const { action = 'note', description } = req.body;
     if (!description?.trim()) return res.status(400).json({ error: 'Description is required' });
 
-    addTimelineEntry(parseInt(req.params.id), action, description.trim(), user.userId, user.fullName || user.username);
+    addTimelineEntry(parseInt(req.params.id as string), action, description.trim(), user.userId, user.fullName || user.username);
     res.status(201).json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: 'Internal server error' });
@@ -629,7 +629,7 @@ router.post('/:id/hashes/compute', async (req: Request, res: Response) => {
         created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      evidenceId, attachmentId, parseInt(req.params.id), exhibitId,
+      evidenceId, attachmentId, parseInt(req.params.id as string), exhibitId,
       fileName, filePath, fileSize, mimeType,
       hashes.md5, hashes.sha1, hashes.sha256, hashes.sha512,
       contentFingerprint,
@@ -679,7 +679,7 @@ router.post('/:id/hashes/manual', (req: Request, res: Response) => {
         created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      parseInt(req.params.id), exhibit_id || null, file_name.trim(), fp || null, file_size || null, mime_type || null,
+      parseInt(req.params.id as string), exhibit_id || null, file_name.trim(), fp || null, file_size || null, mime_type || null,
       md5 || null, sha1 || null, sha256 || null, sha512 || null,
       hash_set_match ? 1 : 0, hash_set_name || null, hash_set_category || null, match_confidence || null,
       flagged ? 1 : 0, flag_reason || null, notes || null,
@@ -746,7 +746,7 @@ router.put('/:id/hashes/:hashId', (req: Request, res: Response) => {
     // Log flagging
     if (flagged !== undefined && flagged !== existing.flagged) {
       addTimelineEntry(
-        parseInt(req.params.id),
+        parseInt(req.params.id as string),
         flagged ? 'hash_flagged' : 'hash_unflagged',
         `${existing.file_name} ${flagged ? 'FLAGGED' : 'unflagged'}${flag_reason ? `: ${flag_reason}` : ''}`,
         user.userId, user.fullName || user.username,
@@ -775,7 +775,7 @@ router.delete('/:id/hashes/:hashId', (req: Request, res: Response) => {
 
     const user = (req as any).user;
     addTimelineEntry(
-      parseInt(req.params.id), 'hash_deleted',
+      parseInt(req.params.id as string), 'hash_deleted',
       `Hash record deleted: ${existing.file_name}`,
       user.userId, user.fullName || user.username,
     );
@@ -898,7 +898,7 @@ function resolveLinkedRecord(type: string, id: number): any {
 router.get('/:id/links', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const caseId = parseInt(req.params.id);
+    const caseId = parseInt(req.params.id as string);
 
     // Verify case exists
     const fc = db.prepare('SELECT id FROM forensic_cases WHERE id = ?').get(caseId);
@@ -938,7 +938,7 @@ router.get('/:id/links', (req: Request, res: Response) => {
 router.post('/:id/links', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const caseId = parseInt(req.params.id);
+    const caseId = parseInt(req.params.id as string);
     const user = (req as any).user;
     const { linked_type, linked_id, relationship, relevance, notes } = req.body;
 
@@ -978,8 +978,8 @@ router.post('/:id/links', (req: Request, res: Response) => {
 router.put('/:id/links/:linkId', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const caseId = parseInt(req.params.id);
-    const linkId = parseInt(req.params.linkId);
+    const caseId = parseInt(req.params.id as string);
+    const linkId = parseInt(req.params.linkId as string);
     const user = (req as any).user;
     const { relationship, relevance, notes } = req.body;
 
@@ -1017,8 +1017,8 @@ router.put('/:id/links/:linkId', (req: Request, res: Response) => {
 router.delete('/:id/links/:linkId', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const caseId = parseInt(req.params.id);
-    const linkId = parseInt(req.params.linkId);
+    const caseId = parseInt(req.params.id as string);
+    const linkId = parseInt(req.params.linkId as string);
     const user = (req as any).user;
 
     const existing = db.prepare('SELECT * FROM forensic_case_links WHERE id = ? AND forensic_case_id = ?').get(linkId, caseId) as any;
@@ -1042,7 +1042,7 @@ router.delete('/:id/links/:linkId', (req: Request, res: Response) => {
 router.get('/:id/links/search', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const caseId = parseInt(req.params.id);
+    const caseId = parseInt(req.params.id as string);
     const { type, q } = req.query;
 
     if (!type) return res.status(400).json({ error: 'type parameter required' });
@@ -1182,7 +1182,7 @@ router.get('/:id/links/search', (req: Request, res: Response) => {
 router.get('/:id/links/summary', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const caseId = parseInt(req.params.id);
+    const caseId = parseInt(req.params.id as string);
 
     const fc = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(caseId) as any;
     if (!fc) return res.status(404).json({ error: 'Forensic case not found' });

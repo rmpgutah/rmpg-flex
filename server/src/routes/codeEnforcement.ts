@@ -134,7 +134,7 @@ router.put('/violations/:id', (req: Request, res: Response) => {
     }
     params.push(req.params.id);
     db.prepare(`UPDATE code_violations SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-    res.json({ data: { id: parseInt(req.params.id) } });
+    res.json({ data: { id: parseInt(req.params.id as string) } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -156,7 +156,7 @@ router.put('/violations/:id/status', (req: Request, res: Response) => {
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
       VALUES (?, 'status_change', 'code_violation', ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ status }), now);
 
-    res.json({ data: { id: parseInt(req.params.id), status } });
+    res.json({ data: { id: parseInt(req.params.id as string), status } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -248,7 +248,7 @@ router.put('/tows/:id', (req: Request, res: Response) => {
     }
     params.push(req.params.id);
     db.prepare(`UPDATE vehicle_tows SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-    res.json({ data: { id: parseInt(req.params.id) } });
+    res.json({ data: { id: parseInt(req.params.id as string) } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -271,7 +271,7 @@ router.put('/tows/:id/status', (req: Request, res: Response) => {
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
       VALUES (?, 'status_change', 'vehicle_tow', ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ status }), now);
 
-    res.json({ data: { id: parseInt(req.params.id), status } });
+    res.json({ data: { id: parseInt(req.params.id as string), status } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 

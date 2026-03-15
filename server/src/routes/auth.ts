@@ -16,14 +16,14 @@ import {
   JwtPayload,
 } from '../middleware/auth';
 import { authRateLimit } from '../middleware/rateLimiter';
-import { validatePassword, getPasswordPolicyDescription, checkPasswordHistory, isPasswordExpired } from '../middleware/validatePassword';
+import { validatePassword, getPasswordPolicyDescription, checkPasswordHistory } from '../middleware/validatePassword';
 import config from '../config';
 import { localNow } from '../utils/timeUtils';
 import {
   generateTotpSecret as legacyGenerateTotpSecret,
   generateQrCodeDataUrl,
   verifyTotpCode,
-  generateBackupCodes,
+  generateBackupCodes as legacyGenerateBackupCodes,
   verifyBackupCode,
   encryptSecret as legacyEncryptSecret,
   decryptSecret as legacyDecryptSecret,
@@ -44,6 +44,7 @@ import {
   verifyTotpToken,
   encryptSecret,
   decryptSecret,
+  generateBackupCodes,
   hashBackupCode,
   verifyBackupCode as verifyBackupCodeHash,
 } from '../utils/totpService';
@@ -1531,7 +1532,7 @@ router.post('/totp/setup', authenticateToken, async (req: Request, res: Response
     const qrCodeUrl = await generateQrCodeDataUrl(otpauthUrl);
 
     // Generate backup codes
-    const { plain: backupCodes, hashed: hashedBackupCodes } = generateBackupCodes(config.totp?.backupCodeCount || 10);
+    const { plain: backupCodes, hashed: hashedBackupCodes } = legacyGenerateBackupCodes(config.totp?.backupCodeCount || 10);
 
     // Store pending secret (not active yet — user must verify first)
     const encPendingSecret = legacyEncryptSecret(secret);
@@ -1707,7 +1708,7 @@ router.post('/webauthn/register/complete', authenticateToken, async (req: Reques
 // DELETE /api/auth/webauthn/credentials/:id — remove a registered key
 router.delete('/webauthn/credentials/:id', authenticateToken, (req: Request, res: Response) => {
   try {
-    const credId = parseInt(req.params.id, 10);
+    const credId = parseInt(req.params.id as string, 10);
     if (isNaN(credId)) {
       res.status(400).json({ error: 'Invalid credential ID' });
       return;

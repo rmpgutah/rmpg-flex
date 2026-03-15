@@ -500,7 +500,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [scheduleRefresh]);
 
   // ─── Step 2a: Verify 2FA TOTP Code ────────────────
-  const verify2FA = useCallback(async (code: string, trustDeviceFlag: boolean) => {
+  const verify2FA = useCallback(async (code: string, trustDeviceFlag: boolean = false) => {
     setLoginBusy(true);
     setError(null);
 

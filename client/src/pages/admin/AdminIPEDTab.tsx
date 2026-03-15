@@ -18,6 +18,7 @@ interface IpedStatus {
   installed: boolean;
   installPath: string | null;
   javaHome: string | null;
+  javaVersion?: string;
   webApiUrl: string | null;
   webApiPort: string | null;
   defaultProfile: string;

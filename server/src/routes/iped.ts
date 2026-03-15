@@ -251,7 +251,7 @@ router.get('/jobs', (req: Request, res: Response) => {
 router.get('/jobs/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
 
     const job = db.prepare(`
@@ -279,7 +279,7 @@ router.get('/jobs/:id', (req: Request, res: Response) => {
 // ── POST /jobs/:id/cancel — Cancel running job ──────────────
 router.post('/jobs/:id/cancel', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
     const cancelled = cancelIpedJob(id);
     res.json({ success: cancelled, message: cancelled ? 'Job cancelled' : 'Job not running' });
@@ -418,7 +418,7 @@ router.post('/hash-sets/import-iped', requireRole('admin'), async (req: Request,
 // ── DELETE /hash-sets/:name — Remove hash set ───────────────
 router.delete('/hash-sets/:name', requireRole('admin'), (req: Request, res: Response) => {
   try {
-    const removed = removeHashSet(req.params.name);
+    const removed = removeHashSet(req.params.name as string);
     res.json({ success: true, removed });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

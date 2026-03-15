@@ -361,8 +361,8 @@ router.get('/person/:id', async (req: Request, res: Response) => {
     const { id } = req.params;
     if (!id) return res.status(400).json({ error: 'id parameter required' });
 
-    const data = await rapidApiFetch('/search/detailsbyID', { id });
-    persistSearch('personDetailsByID', { id }, data, req.user!.userId);
+    const data = await rapidApiFetch('/search/detailsbyID', { id: id as string });
+    persistSearch('personDetailsByID', { id: id as string }, data, req.user!.userId);
     res.json(data);
   } catch (err: any) {
     res.status(500).json({ error: err.message });

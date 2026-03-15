@@ -363,7 +363,7 @@ router.get('/history/:deviceId', requireRole('admin', 'manager'), async (req: Re
       return;
     }
 
-    const events = await getDeviceHistory(deviceId, String(from), String(to));
+    const events = await getDeviceHistory(deviceId as string, from as string, to as string);
     res.json({ events, count: events.length });
   } catch (error: any) {
     console.error('ClearPathGPS fetch history error:', error);
@@ -429,7 +429,7 @@ router.get('/dashcam-events', requireRole('admin', 'manager', 'supervisor', 'off
 router.get('/dashcam-events/by-officer/:officerId', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const officerId = parseInt(req.params.officerId, 10);
+    const officerId = parseInt(req.params.officerId as string, 10);
     if (isNaN(officerId)) { res.status(400).json({ error: 'Invalid officer ID' }); return; }
 
     const { from, to, event_type, limit: limitStr } = req.query;

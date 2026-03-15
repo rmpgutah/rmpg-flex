@@ -746,29 +746,26 @@ export default function ForensicsPage() {
       <PanelTitleBar
         title="Forensic Lab"
         icon={Microscope}
-        badge={
-          <div className="flex items-center gap-2 ml-2">
-            <span className="text-[10px] text-rmpg-500">{stats?.total || 0} cases</span>
-            {(stats?.overdue || 0) > 0 && (
-              <span className="text-[9px] bg-red-950/60 text-red-400 border border-red-800/40 px-1.5 py-0.5 rounded-sm font-bold animate-pulse">
-                {stats!.overdue} OVERDUE
-              </span>
-            )}
-          </div>
-        }
-        actions={
-          <div className="flex items-center gap-1.5">
-            <button onClick={() => { fetchCases(); fetchStats(); if (selected) fetchDetail(selected.id); }}
-              className="toolbar-btn text-[10px] flex items-center gap-1 px-2 py-1">
-              <RefreshCw className="w-3 h-3" /> Refresh
-            </button>
-            <button onClick={() => { setForm(EMPTY_FORM); setShowForm(true); }}
-              className="toolbar-btn toolbar-btn-primary text-[10px] flex items-center gap-1 px-2.5 py-1">
-              <Plus className="w-3 h-3" /> New Case
-            </button>
-          </div>
-        }
-      />
+      >
+        <div className="flex items-center gap-2 ml-2">
+          <span className="text-[10px] text-rmpg-500">{stats?.total || 0} cases</span>
+          {(stats?.overdue || 0) > 0 && (
+            <span className="text-[9px] bg-red-950/60 text-red-400 border border-red-800/40 px-1.5 py-0.5 rounded-sm font-bold animate-pulse">
+              {stats!.overdue} OVERDUE
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <button onClick={() => { fetchCases(); fetchStats(); if (selected) fetchDetail(selected.id); }}
+            className="toolbar-btn text-[10px] flex items-center gap-1 px-2 py-1">
+            <RefreshCw className="w-3 h-3" /> Refresh
+          </button>
+          <button onClick={() => { setForm(EMPTY_FORM); setShowForm(true); }}
+            className="toolbar-btn toolbar-btn-primary text-[10px] flex items-center gap-1 px-2.5 py-1">
+            <Plus className="w-3 h-3" /> New Case
+          </button>
+        </div>
+      </PanelTitleBar>
 
       {/* ── Dashboard Stats ─────────────────────────────────── */}
       <div className="shrink-0 flex items-center gap-1 px-3 py-1.5 border-b border-rmpg-800 bg-surface-base">
@@ -857,7 +854,7 @@ export default function ForensicsPage() {
                   <div className="text-[11px] text-rmpg-200 font-medium truncate leading-tight">{c.title}</div>
                   {/* Row 3: Status + type + examiner */}
                   <div className="flex items-center gap-2 mt-1.5">
-                    <StatusBadge status={c.status} className={`text-[9px] px-1.5 py-0.5 ${getStatusColor(c.status)}`} />
+                    <StatusBadge status={c.status} type="incident_status" className={`text-[9px] px-1.5 py-0.5 ${getStatusColor(c.status)}`} />
                     <span className="text-[9px] text-rmpg-500">{typeLabel(c.case_type)}</span>
                     {c.assigned_examiner_name && (
                       <span className="text-[9px] text-rmpg-500 truncate flex items-center gap-0.5 ml-auto">
@@ -903,7 +900,7 @@ export default function ForensicsPage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-sm font-bold text-brand-400 font-mono">{selected.lab_case_number}</span>
-                      <StatusBadge status={selected.status} className={`text-[9px] px-2 py-0.5 ${getStatusColor(selected.status)}`} />
+                      <StatusBadge status={selected.status} type="incident_status" className={`text-[9px] px-2 py-0.5 ${getStatusColor(selected.status)}`} />
                       {(() => {
                         const p = getPriorityMeta(selected.priority);
                         return <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm ${p.color} ${p.bg}`}>{selected.priority}</span>;
@@ -1188,7 +1185,7 @@ export default function ForensicsPage() {
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2">
                             <span className="text-[11px] font-bold text-rmpg-200">{analysisLabel(a.analysis_type)}</span>
-                            <StatusBadge status={a.status} className={`text-[9px] px-1.5 py-0.5 ${
+                            <StatusBadge status={a.status} type="incident_status" className={`text-[9px] px-1.5 py-0.5 ${
                               a.status === 'complete' ? 'bg-green-900/50 text-green-400 border-green-700/50' :
                               a.status === 'in_progress' ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
                               a.status === 'inconclusive' ? 'bg-purple-900/50 text-purple-400 border-purple-700/50' :

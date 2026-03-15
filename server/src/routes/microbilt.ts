@@ -615,8 +615,8 @@ router.post('/dl/search', requireRole('admin', 'manager', 'officer'), async (req
     }
 
     // ── 4. Merge: API results take priority, local fills gaps ─
-    let subjects: any[];
-    let source: string;
+    let subjects: any[] = [];
+    let source: string = 'NONE';
 
     if (apiSubjects.length > 0) {
       // Use fresh API data — but also include any local records

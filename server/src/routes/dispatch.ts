@@ -7,7 +7,7 @@ import { sendCsv } from '../utils/csvExport';
 import { localNow } from '../utils/timeUtils';
 import { geocodeCallIfNeeded, reverseGeocodeAddress, reverseGeocodeDetailed } from '../utils/geocode';
 import { searchOfacLocal } from '../utils/ofacScraper';
-import { searchUtahWarrants } from '../utils/utahWarrantScraper';
+import { searchUtahWarrantsCache } from '../utils/utahWarrantScraper';
 import { identifyBeat } from '../utils/geofence';
 
 const router = Router();
@@ -1528,7 +1528,7 @@ router.get('/gps/my-unit', (req: Request, res: Response) => {
 router.get('/gps/trail/:unitId', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const unitId = parseInt(req.params.unitId);
+    const unitId = parseInt(req.params.unitId as string);
     const hours = parseInt(req.query.hours as string) || 8;
 
     const rows = db.prepare(`
@@ -2766,7 +2766,7 @@ router.get('/safety-screen', (req: Request, res: Response) => {
         utahOpts.firstName = parts[0];
         utahOpts.lastName = parts.slice(1).join(' ');
       }
-      utahWarrantHits = searchUtahWarrants(searchName, utahOpts);
+      utahWarrantHits = searchUtahWarrantsCache(searchName, utahOpts);
     } catch { /* Utah warrants may not be synced yet */ }
 
     // ── Premise history check (if address provided) ──

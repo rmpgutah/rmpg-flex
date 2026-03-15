@@ -111,7 +111,7 @@ function authenticateTokenOrQuery(req: Request, res: Response, next: NextFunctio
   const expParam = typeof req.query.exp === 'string' ? parseInt(req.query.exp, 10) : null;
 
   if (sigParam && expParam) {
-    const fileId = req.params.fileId;
+    const fileId = req.params.fileId as string;
     if (fileId && verifyFileAccess(fileId, sigParam, expParam)) {
       // Signed access verified — minimal user context for read-only serving
       req.user = { userId: 0, username: 'signed-access', role: 'viewer', fullName: 'Signed Access' };
@@ -195,7 +195,7 @@ router.get('/sign/:fileId', authenticateToken, (req: Request, res: Response) => 
       return;
     }
 
-    const { sig, exp } = signFileAccess(req.params.fileId);
+    const { sig, exp } = signFileAccess(req.params.fileId as string);
     res.json({ sig, exp, file_id: req.params.fileId });
   } catch (error: any) {
     console.error('Sign file error:', error);

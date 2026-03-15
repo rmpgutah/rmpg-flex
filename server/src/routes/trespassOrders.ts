@@ -178,7 +178,7 @@ router.post('/', (req: Request, res: Response) => {
     );
 
     const created = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(result.lastInsertRowid);
-    broadcast('alerts', { type: 'trespass_order_created', data: created });
+    broadcast('alerts', 'trespass_order_created', created);
     res.status(201).json(created);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -214,7 +214,7 @@ router.put('/:id', (req: Request, res: Response) => {
     db.prepare(`UPDATE trespass_orders SET ${setClauses.join(', ')} WHERE id = ?`).run(...params);
 
     const updated = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(req.params.id);
-    broadcast('alerts', { type: 'trespass_order_updated', data: updated });
+    broadcast('alerts', 'trespass_order_updated', updated);
     res.json(updated);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -230,7 +230,7 @@ router.put('/:id/serve', (req: Request, res: Response) => {
     db.prepare(`UPDATE trespass_orders SET status = 'served', served_at = ?, served_by = ?, updated_at = ? WHERE id = ?`)
       .run(now, user.id, now, req.params.id);
     const updated = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(req.params.id);
-    broadcast('alerts', { type: 'trespass_order_served', data: updated });
+    broadcast('alerts', 'trespass_order_served', updated);
     res.json(updated);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -244,7 +244,7 @@ router.put('/:id/lift', (req: Request, res: Response) => {
     const now = localNow();
     db.prepare(`UPDATE trespass_orders SET status = 'lifted', updated_at = ? WHERE id = ?`).run(now, req.params.id);
     const updated = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(req.params.id);
-    broadcast('alerts', { type: 'trespass_order_lifted', data: updated });
+    broadcast('alerts', 'trespass_order_lifted', updated);
     res.json(updated);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -258,7 +258,7 @@ router.put('/:id/violate', (req: Request, res: Response) => {
     const now = localNow();
     db.prepare(`UPDATE trespass_orders SET status = 'violated', updated_at = ? WHERE id = ?`).run(now, req.params.id);
     const updated = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(req.params.id);
-    broadcast('alerts', { type: 'trespass_order_violated', data: updated });
+    broadcast('alerts', 'trespass_order_violated', updated);
     res.json(updated);
   } catch (err: any) {
     res.status(500).json({ error: err.message });

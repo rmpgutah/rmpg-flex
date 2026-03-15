@@ -45,6 +45,7 @@ export interface TransmissionEntry {
   channel: string;
   startedAt: number;
   duration: number; // seconds
+  transcript?: string;
 }
 
 export interface PanicRadioAlert {
@@ -173,6 +174,8 @@ export function useRadio() {
   const streamRef = useRef<MediaStream | null>(null);
   const playerRef = useRef<StreamPlayer | null>(null);
   const transmitStartTimeRef = useRef<number>(0);
+  const transcriptRef = useRef<string>('');
+  const recognitionRef = useRef<any>(null);
 
   // Ref mirrors isTransmitting to avoid stale closures in event handlers.
   // When the Space key fires keyup, the callback closure may hold an old
@@ -462,7 +465,7 @@ export function useRadio() {
     // Tell server we're done — include transcript + duration for DB storage
     send({
       type: 'radio_transmit_end',
-      data: { transcript, duration },
+      data: { transcript: transcriptRef.current, duration },
     });
 
     // APX roger beep — confirms transmission ended

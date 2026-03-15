@@ -4,6 +4,7 @@ import { Server as HttpsServer } from 'https';
 import jwt from 'jsonwebtoken';
 import config from '../config';
 import crypto from 'crypto';
+import * as database from '../models/database';
 
 interface JwtPayload {
   userId: number;
