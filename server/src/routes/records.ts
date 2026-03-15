@@ -4,6 +4,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { sendCsv } from '../utils/csvExport';
 import { localNow, localToday } from '../utils/timeUtils';
 import { searchUtahWarrants } from '../utils/utahWarrantScraper';
+import { searchOfacLocal } from '../utils/ofacScraper';
 
 const router = Router();
 
@@ -35,8 +36,8 @@ function screenPersonOfac(personId: number, firstName: string, lastName: string)
     if (hits.length > 0) {
       try {
         db.prepare(`
-          INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, created_at)
-          VALUES ('system', 'high', ?, ?, 'person', ?, ?)
+          INSERT INTO notifications (user_id, type, priority, title, body, entity_type, entity_id, created_at)
+          VALUES (0, 'system', 'high', ?, ?, 'person', ?, ?)
         `).run(
           `OFAC WATCHLIST MATCH: ${firstName} ${lastName}`,
           `Person record #${personId} matches ${hits.length} OFAC entry(ies): ${hits.map(h => h.sdn_name).join(', ')}`,
@@ -191,7 +192,7 @@ router.get('/persons/export', (req: Request, res: Response) => {
 router.get('/persons/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id) as any;
+    let person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id) as any;
 
     if (!person) {
       res.status(404).json({ error: 'Person not found' });

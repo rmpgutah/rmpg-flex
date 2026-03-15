@@ -8,7 +8,7 @@
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 import { generateCaseNumber } from '../utils/caseNumbers';
 
@@ -102,7 +102,7 @@ router.get('/:id', (req: Request, res: Response) => {
 });
 
 // ─── POST / ──────────────────────────────────────────────
-router.post('/', (req: Request, res: Response) => {
+router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -135,7 +135,7 @@ router.post('/', (req: Request, res: Response) => {
 });
 
 // ─── PUT /:id ────────────────────────────────────────────
-router.put('/:id', (req: Request, res: Response) => {
+router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -170,7 +170,7 @@ router.put('/:id', (req: Request, res: Response) => {
 });
 
 // ─── PUT /:id/status ────────────────────────────────────
-router.put('/:id/status', (req: Request, res: Response) => {
+router.put('/:id/status', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -200,7 +200,7 @@ router.put('/:id/status', (req: Request, res: Response) => {
 });
 
 // ─── POST /:id/notes ────────────────────────────────────
-router.post('/:id/notes', (req: Request, res: Response) => {
+router.post('/:id/notes', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -236,7 +236,7 @@ router.get('/:id/notes', (req: Request, res: Response) => {
 });
 
 // ─── POST /:id/calculate-solvability ────────────────────
-router.post('/:id/calculate-solvability', (req: Request, res: Response) => {
+router.post('/:id/calculate-solvability', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();

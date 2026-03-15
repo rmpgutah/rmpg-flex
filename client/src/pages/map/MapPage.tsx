@@ -184,6 +184,7 @@ export default function MapPage() {
   const [showAddressResults, setShowAddressResults] = useState(false);
   const addressSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const addressMarkerRef = useRef<any>(null);
+  const addressDismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // GPS own-position
   const gps = useGpsTracking();
@@ -500,7 +501,7 @@ export default function MapPage() {
         }
       });
       dismissObserver.observe(document.body, { childList: true, subtree: true });
-      setTimeout(() => dismissObserver.disconnect(), 10000);
+      const dismissTimer = setTimeout(() => dismissObserver.disconnect(), 10000);
 
       // AdvancedMarkerElement requires a cloud mapId on the Map constructor.
       // Without mapId, markers are created but silently never render.
@@ -583,6 +584,8 @@ export default function MapPage() {
     return () => {
       cancelled = true; // Stop any pending retries
       unsubOnline();
+      clearTimeout(dismissTimer);
+      dismissObserver.disconnect();
       if (tileMonitorCleanupRef.current) { tileMonitorCleanupRef.current(); tileMonitorCleanupRef.current = null; }
       if (offlineTileCleanupRef.current) { offlineTileCleanupRef.current(); offlineTileCleanupRef.current = null; }
       if (mapInstanceRef.current) unregisterMapInstance(mapInstanceRef.current);
@@ -1243,7 +1246,7 @@ export default function MapPage() {
               const html = `
                 <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:220px;line-height:1.6;background:#0a0e14;padding:10px 12px;border-radius:6px;border:1px solid #1e2a3a">
                   <div style="font-weight:bold;font-size:13px;margin-bottom:4px;color:${unitColor}">
-                    ${trail.call_sign} — ${trail.officer_name || 'Unknown'}
+                    ${escapeHtml(trail.call_sign)} — ${escapeHtml(trail.officer_name || 'Unknown')}
                   </div>
                   <div style="color:#8899aa;font-size:10px;margin-bottom:4px">${escapeHtml(trail.badge_number || '')}</div>
                   ${pt.road_name ? `<div style="color:#fbbf24;font-weight:bold;font-size:12px;margin-bottom:4px;padding:2px 0;border-bottom:1px solid #1e2a3a">${escapeHtml(pt.road_name)}</div>` : ''}
@@ -1522,11 +1525,13 @@ export default function MapPage() {
         });
 
         // Auto-dismiss after 30 seconds
-        setTimeout(() => {
+        if (addressDismissTimer.current) clearTimeout(addressDismissTimer.current);
+        addressDismissTimer.current = setTimeout(() => {
           if (addressMarkerRef.current) {
             removeMarker(addressMarkerRef.current);
             addressMarkerRef.current = null;
           }
+          addressDismissTimer.current = null;
         }, 30000);
       }
     });

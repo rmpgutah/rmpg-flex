@@ -197,7 +197,6 @@ function AppRoutes() {
           <Route path="/audit" element={<AuditLogPage />} />
           <Route path="/training" element={<TrainingPage />} />
           <Route path="/training-docs" element={<TrainingDocsPage />} />
-          <Route path="/dl-search" element={<DlSearchPage />} />
           <Route path="/forensics" element={<ForensicsPage />} />
           <Route path="/skip-tracer" element={<SkipTracerPage />} />
           <Route path="/arrest-records" element={<ArrestRecordsPage />} />

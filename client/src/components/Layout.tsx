@@ -398,7 +398,7 @@ export default function Layout() {
   // Close mobile menu on route change
   useEffect(() => { setMobileMenuOpen(false); }, [location.pathname]);
 
-  // F-key shortcut navigation (Spillman Flex style) + Alt+Arrow back/forward
+  // Alt+Arrow back/forward navigation
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       // Don't handle if user is typing in an input
@@ -416,26 +416,10 @@ export default function Layout() {
         handleNavForward();
         return;
       }
-
-      const fKey = e.key.match(/^F(\d+)$/);
-      if (!fKey) return;
-
-      const matchItem = TOOLBAR_NAV.find(item => item.shortcut === e.key);
-      if (matchItem) {
-        // Check permissions
-        if (matchItem.adminOnly && !isAdmin) return;
-        if (isContractManager && CONTRACT_MANAGER_BLOCKED_PATHS.has(matchItem.path)) return;
-        e.preventDefault();
-        if (matchItem.newWindow) {
-          window.open(matchItem.path, '_blank');
-        } else {
-          navigate(matchItem.path);
-        }
-      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [navigate, isAdmin, isContractManager, handleNavBack, handleNavForward]);
+  }, [handleNavBack, handleNavForward]);
 
   // Profile dropdown & modal
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);

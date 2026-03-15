@@ -1090,7 +1090,12 @@ export default function DispatchPage() {
               ...(token ? { Authorization: `Bearer ${token}` } : {}),
             },
           });
-          navigate('/incidents');
+          if (incRes.ok) {
+            navigate('/incidents');
+          } else {
+            const errData = await incRes.json().catch(() => ({}));
+            addToast(errData.error || 'Failed to create incident report', 'error');
+          }
         } catch (err) {
           console.error('Failed to promote call to incident:', err);
           addToast('Failed to create incident report from call', 'error');

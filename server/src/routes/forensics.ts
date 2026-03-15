@@ -8,7 +8,7 @@
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
 import { computeFileHashes, computeContentFingerprint } from '../utils/ipedManager';
 import path from 'path';
@@ -19,16 +19,19 @@ router.use(authenticateToken);
 
 // ── Helpers ──────────────────────────────────────────────
 
+/** Generate lab case number — wrapped in transaction to prevent race conditions */
 function generateLabCaseNumber(): string {
   const db = getDb();
   const year = new Date().getFullYear();
   const prefix = `FL-${year}-`;
-  const last = db.prepare(
-    `SELECT lab_case_number FROM forensic_cases WHERE lab_case_number LIKE ? ORDER BY id DESC LIMIT 1`,
-  ).get(`${prefix}%`) as { lab_case_number: string } | undefined;
-  const parsed = last ? parseInt(last.lab_case_number.replace(prefix, ''), 10) : 0;
-  const seq = (isNaN(parsed) ? 0 : parsed) + 1;
-  return `${prefix}${String(seq).padStart(4, '0')}`;
+  return db.transaction(() => {
+    const last = db.prepare(
+      `SELECT lab_case_number FROM forensic_cases WHERE lab_case_number LIKE ? ORDER BY id DESC LIMIT 1`,
+    ).get(`${prefix}%`) as { lab_case_number: string } | undefined;
+    const parsed = last ? parseInt(last.lab_case_number.replace(prefix, ''), 10) : 0;
+    const seq = (isNaN(parsed) ? 0 : parsed) + 1;
+    return `${prefix}${String(seq).padStart(4, '0')}`;
+  })();
 }
 
 function addTimelineEntry(caseId: number, action: string, description: string, userId: number, userName: string) {
@@ -142,7 +145,7 @@ router.get('/:id', (req: Request, res: Response) => {
 
 // ─── POST / — Create forensic case ───────────────────────
 
-router.post('/', (req: Request, res: Response) => {
+router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -190,7 +193,7 @@ router.post('/', (req: Request, res: Response) => {
 
 // ─── PUT /:id — Update forensic case ─────────────────────
 
-router.put('/:id', (req: Request, res: Response) => {
+router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -288,7 +291,7 @@ router.put('/:id', (req: Request, res: Response) => {
 
 // ─── DELETE /:id ─────────────────────────────────────────
 
-router.delete('/:id', (req: Request, res: Response) => {
+router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.id);
@@ -317,7 +320,7 @@ router.get('/:id/exhibits', (req: Request, res: Response) => {
 
 // ─── POST /:id/exhibits ─────────────────────────────────
 
-router.post('/:id/exhibits', (req: Request, res: Response) => {
+router.post('/:id/exhibits', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -349,7 +352,7 @@ router.post('/:id/exhibits', (req: Request, res: Response) => {
 
 // ─── PUT /:caseId/exhibits/:exhibitId ────────────────────
 
-router.put('/:caseId/exhibits/:exhibitId', (req: Request, res: Response) => {
+router.put('/:caseId/exhibits/:exhibitId', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { description, item_type, condition_received, examination_requested, examination_performed, results, status, notes, returned_date } = req.body;
@@ -398,7 +401,7 @@ router.get('/:id/analyses', (req: Request, res: Response) => {
 
 // ─── POST /:id/analyses ─────────────────────────────────
 
-router.post('/:id/analyses', (req: Request, res: Response) => {
+router.post('/:id/analyses', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -426,7 +429,7 @@ router.post('/:id/analyses', (req: Request, res: Response) => {
 
 // ─── PUT /:caseId/analyses/:analysisId ───────────────────
 
-router.put('/:caseId/analyses/:analysisId', (req: Request, res: Response) => {
+router.put('/:caseId/analyses/:analysisId', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -490,7 +493,7 @@ router.get('/:id/timeline', (req: Request, res: Response) => {
 
 // ─── POST /:id/timeline — Add manual note/entry ──────────
 
-router.post('/:id/timeline', (req: Request, res: Response) => {
+router.post('/:id/timeline', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -536,7 +539,7 @@ router.get('/:id/hashes', (req: Request, res: Response) => {
 
 // ─── POST /:id/hashes/compute — Compute hashes for an exhibit's file or a direct path ──
 
-router.post('/:id/hashes/compute', async (req: Request, res: Response) => {
+router.post('/:id/hashes/compute', requireRole('admin', 'manager', 'supervisor', 'officer'), async (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -653,7 +656,7 @@ router.post('/:id/hashes/compute', async (req: Request, res: Response) => {
 
 // ─── POST /:id/hashes/manual — Manually add a hash record (e.g., from external tools) ──
 
-router.post('/:id/hashes/manual', (req: Request, res: Response) => {
+router.post('/:id/hashes/manual', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -703,7 +706,7 @@ router.post('/:id/hashes/manual', (req: Request, res: Response) => {
 
 // ─── PUT /:id/hashes/:hashId — Update hash record (flag, review, set match) ──
 
-router.put('/:id/hashes/:hashId', (req: Request, res: Response) => {
+router.put('/:id/hashes/:hashId', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -764,7 +767,7 @@ router.put('/:id/hashes/:hashId', (req: Request, res: Response) => {
 
 // ─── DELETE /:id/hashes/:hashId — Delete hash record ──
 
-router.delete('/:id/hashes/:hashId', (req: Request, res: Response) => {
+router.delete('/:id/hashes/:hashId', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare(`
@@ -790,7 +793,7 @@ router.delete('/:id/hashes/:hashId', (req: Request, res: Response) => {
 
 // ─── POST /:id/hashes/verify — Verify a hash against known hash sets ──
 
-router.post('/:id/hashes/verify', (req: Request, res: Response) => {
+router.post('/:id/hashes/verify', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { hash_value, hash_type = 'sha256' } = req.body;
@@ -936,7 +939,7 @@ router.get('/:id/links', (req: Request, res: Response) => {
 });
 
 // ─── POST /:id/links — Link evidence to a forensic case ─────
-router.post('/:id/links', (req: Request, res: Response) => {
+router.post('/:id/links', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const caseId = parseInt(req.params.id as string);
@@ -976,7 +979,7 @@ router.post('/:id/links', (req: Request, res: Response) => {
 });
 
 // ─── PUT /:id/links/:linkId — Update link metadata ──────────
-router.put('/:id/links/:linkId', (req: Request, res: Response) => {
+router.put('/:id/links/:linkId', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const caseId = parseInt(req.params.id as string);
@@ -1015,7 +1018,7 @@ router.put('/:id/links/:linkId', (req: Request, res: Response) => {
 });
 
 // ─── DELETE /:id/links/:linkId — Remove a link ──────────────
-router.delete('/:id/links/:linkId', (req: Request, res: Response) => {
+router.delete('/:id/links/:linkId', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const caseId = parseInt(req.params.id as string);

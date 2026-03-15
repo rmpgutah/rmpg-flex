@@ -245,18 +245,14 @@ export default function IncidentsPage() {
       if (!isEditingRef.current || !selectedIncidentRef.current) return;
       const narrative = narrativeRef.current?.value;
       if (narrative == null) return;
-      const token = localStorage.getItem('rmpg_token');
-      try {
-        fetch(`/api/incidents/${selectedIncidentRef.current.id}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify({ narrative }),
-          keepalive: true,
-        });
-      } catch { /* best-effort */ }
+      // Use apiFetch for proper token refresh handling; keepalive ensures
+      // the request completes even during page navigation
+      apiFetch(`/incidents/${selectedIncidentRef.current.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ narrative }),
+        keepalive: true,
+      }).catch(() => { /* best-effort save */ });
     };
   }, []);
 

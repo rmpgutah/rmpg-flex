@@ -9,21 +9,23 @@ import { resolveDistrict } from '../utils/districtResolver';
 const router = Router();
 router.use(authenticateToken);
 
-/** Generate next order number: TO-YYYY-NNNN */
+/** Generate next order number: TO-YYYY-NNNN — wrapped in transaction to prevent race conditions */
 function generateOrderNumber(db: ReturnType<typeof getDb>): string {
   const year = new Date().getFullYear();
   const prefix = `TO-${year}-`;
-  const row = db.prepare(
-    `SELECT order_number FROM trespass_orders WHERE order_number LIKE ? ORDER BY id DESC LIMIT 1`
-  ).get(`${prefix}%`) as { order_number: string } | undefined;
+  return db.transaction(() => {
+    const row = db.prepare(
+      `SELECT order_number FROM trespass_orders WHERE order_number LIKE ? ORDER BY id DESC LIMIT 1`
+    ).get(`${prefix}%`) as { order_number: string } | undefined;
 
-  let seq = 1;
-  if (row) {
-    const parts = row.order_number.split('-');
-    const parsed = parts.length >= 3 ? parseInt(parts[2], 10) : NaN;
-    if (!isNaN(parsed)) seq = parsed + 1;
-  }
-  return `${prefix}${String(seq).padStart(4, '0')}`;
+    let seq = 1;
+    if (row) {
+      const parts = row.order_number.split('-');
+      const parsed = parts.length >= 3 ? parseInt(parts[2], 10) : NaN;
+      if (!isNaN(parsed)) seq = parsed + 1;
+    }
+    return `${prefix}${String(seq).padStart(4, '0')}`;
+  })();
 }
 
 // GET / — List trespass orders
@@ -278,6 +280,8 @@ router.put('/:id/serve', requireRole('admin', 'manager', 'supervisor', 'officer'
     const db = getDb();
     const user = (req as any).user;
     const now = localNow();
+    const existing = db.prepare('SELECT id FROM trespass_orders WHERE id = ?').get(req.params.id);
+    if (!existing) { res.status(404).json({ error: 'Trespass order not found' }); return; }
     db.prepare(`UPDATE trespass_orders SET status = 'served', served_at = ?, served_by = ?, updated_at = ? WHERE id = ?`)
       .run(now, user.userId, now, req.params.id);
     const updated = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(req.params.id) as any;
@@ -296,6 +300,8 @@ router.put('/:id/lift', requireRole('admin', 'manager', 'supervisor'), (req: Req
   try {
     const db = getDb();
     const now = localNow();
+    const existing = db.prepare('SELECT id FROM trespass_orders WHERE id = ?').get(req.params.id);
+    if (!existing) { res.status(404).json({ error: 'Trespass order not found' }); return; }
     db.prepare(`UPDATE trespass_orders SET status = 'lifted', updated_at = ? WHERE id = ?`).run(now, req.params.id);
     const updated = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(req.params.id) as any;
     broadcast('alerts', 'trespass_order_lifted', {
@@ -313,6 +319,8 @@ router.put('/:id/violate', requireRole('admin', 'manager', 'supervisor', 'office
   try {
     const db = getDb();
     const now = localNow();
+    const existing = db.prepare('SELECT id FROM trespass_orders WHERE id = ?').get(req.params.id);
+    if (!existing) { res.status(404).json({ error: 'Trespass order not found' }); return; }
     db.prepare(`UPDATE trespass_orders SET status = 'violated', updated_at = ? WHERE id = ?`).run(now, req.params.id);
     const updated = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(req.params.id) as any;
     broadcast('alerts', 'trespass_order_violated', {

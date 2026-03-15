@@ -767,7 +767,9 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         watchIdRef.current = null;
       }
       // Short delay to let the new network stabilize, then restart
-      setTimeout(() => {
+      if (networkRestartTimer) clearTimeout(networkRestartTimer);
+      networkRestartTimer = setTimeout(() => {
+        networkRestartTimer = null;
         stopTracking();
         startTracking();
       }, 1000);
@@ -775,8 +777,12 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       prevType = newType;
     };
 
+    let networkRestartTimer: ReturnType<typeof setTimeout> | null = null;
     conn.addEventListener('change', handleNetworkChange);
-    return () => conn.removeEventListener('change', handleNetworkChange);
+    return () => {
+      conn.removeEventListener('change', handleNetworkChange);
+      if (networkRestartTimer) clearTimeout(networkRestartTimer);
+    };
   }, [sendBatch, stopTracking, startTracking]);
 
   // ─── Online/offline listener ───────────────────────────────

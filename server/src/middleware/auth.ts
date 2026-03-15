@@ -115,15 +115,6 @@ export function generateRefreshToken(payload: Omit<JwtPayload, 'type'>): string 
   );
 }
 
-export function generateTempToken(payload: Omit<JwtPayload, 'type'>, pendingActions: string[] = []): string {
-  const options: SignOptions = { expiresIn: config.totp.tempTokenExpiry as SignOptions['expiresIn'] };
-  return jwt.sign(
-    { ...payload, type: 'mfa_pending', pendingActions },
-    config.jwt.secret,
-    options
-  );
-}
-
 export function verifyRefreshToken(token: string): JwtPayload {
   const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
   if (decoded.type !== 'refresh') {

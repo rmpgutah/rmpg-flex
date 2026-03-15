@@ -594,7 +594,7 @@ try {
               if (hits.length > 0) {
                 matches++;
                 try {
-                  db.prepare(`INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, created_at) VALUES ('system', 'high', ?, ?, 'person', ?, ?)`)
+                  db.prepare(`INSERT INTO notifications (user_id, type, priority, title, body, entity_type, entity_id, created_at) VALUES (0, 'system', 'high', ?, ?, 'person', ?, ?)`)
                     .run(`OFAC WATCHLIST MATCH: ${p.first_name} ${p.last_name}`, `Person #${p.id} matches OFAC sanctions list`, p.id, now);
                 } catch { /* notifications table may not exist */ }
               }

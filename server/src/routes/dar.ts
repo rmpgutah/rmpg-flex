@@ -14,16 +14,19 @@ import { localNow, localToday } from '../utils/timeUtils';
 const router = Router();
 router.use(authenticateToken);
 
+/** Generate next DAR number — wrapped in transaction to prevent race conditions */
 function nextDarNumber(): string {
   const db = getDb();
   const yr = new Date().getFullYear();
   const prefix = `DAR-${yr}-`;
-  const last = db.prepare(
-    "SELECT dar_number FROM daily_activity_reports WHERE dar_number LIKE ? ORDER BY id DESC LIMIT 1"
-  ).get(`${prefix}%`) as { dar_number: string } | undefined;
-  const parsed = last ? parseInt(last.dar_number.replace(prefix, ''), 10) : 0;
-  const seq = (isNaN(parsed) ? 0 : parsed) + 1;
-  return `${prefix}${String(seq).padStart(4, '0')}`;
+  return db.transaction(() => {
+    const last = db.prepare(
+      "SELECT dar_number FROM daily_activity_reports WHERE dar_number LIKE ? ORDER BY id DESC LIMIT 1"
+    ).get(`${prefix}%`) as { dar_number: string } | undefined;
+    const parsed = last ? parseInt(last.dar_number.replace(prefix, ''), 10) : 0;
+    const seq = (isNaN(parsed) ? 0 : parsed) + 1;
+    return `${prefix}${String(seq).padStart(4, '0')}`;
+  })();
 }
 
 // ─── GET / ───────────────────────────────────────────────
@@ -255,6 +258,12 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
 router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const existing = db.prepare('SELECT id, officer_id FROM daily_activity_reports WHERE id = ?').get(req.params.id) as any;
+    if (!existing) { res.status(404).json({ error: 'DAR not found' }); return; }
+    // Officers can only edit their own DARs
+    if (req.user!.role === 'officer' && existing.officer_id !== req.user!.userId) {
+      res.status(403).json({ error: 'You can only edit your own DAR' }); return;
+    }
     const now = localNow();
     const fields = ['activities_narrative', 'notable_events', 'equipment_issues',
       'safety_concerns', 'recommendations', 'post_assignment', 'shift_start', 'shift_end'];
@@ -278,6 +287,8 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (re
 router.put('/:id/submit', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const existing = db.prepare('SELECT id FROM daily_activity_reports WHERE id = ?').get(req.params.id);
+    if (!existing) { res.status(404).json({ error: 'DAR not found' }); return; }
     const now = localNow();
     db.prepare('UPDATE daily_activity_reports SET status = ?, submitted_at = ?, updated_at = ? WHERE id = ?')
       .run('submitted', now, now, req.params.id);
@@ -293,6 +304,8 @@ router.put('/:id/submit', requireRole('admin', 'manager', 'supervisor', 'officer
 router.put('/:id/approve', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const existing = db.prepare('SELECT id FROM daily_activity_reports WHERE id = ?').get(req.params.id);
+    if (!existing) { res.status(404).json({ error: 'DAR not found' }); return; }
     const now = localNow();
     const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
 
@@ -311,6 +324,8 @@ router.put('/:id/approve', requireRole('admin', 'manager', 'supervisor'), (req: 
 router.put('/:id/return', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const existing = db.prepare('SELECT id FROM daily_activity_reports WHERE id = ?').get(req.params.id);
+    if (!existing) { res.status(404).json({ error: 'DAR not found' }); return; }
     const now = localNow();
     const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
     const { review_notes } = req.body;

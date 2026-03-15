@@ -10,20 +10,23 @@ const router = Router();
 router.use(authenticateToken);
 
 /** Generate next FI number: FI-YYYY-NNNN */
+/** Generate FI number — wrapped in transaction to prevent race conditions */
 function generateFiNumber(db: ReturnType<typeof getDb>): string {
   const year = new Date().getFullYear();
   const prefix = `FI-${year}-`;
-  const row = db.prepare(
-    `SELECT fi_number FROM field_interviews WHERE fi_number LIKE ? ORDER BY id DESC LIMIT 1`
-  ).get(`${prefix}%`) as { fi_number: string } | undefined;
+  return db.transaction(() => {
+    const row = db.prepare(
+      `SELECT fi_number FROM field_interviews WHERE fi_number LIKE ? ORDER BY id DESC LIMIT 1`
+    ).get(`${prefix}%`) as { fi_number: string } | undefined;
 
-  let seq = 1;
-  if (row) {
-    const parts = row.fi_number.split('-');
-    const parsed = parseInt(parts[2], 10);
-    seq = (isNaN(parsed) ? 0 : parsed) + 1;
-  }
-  return `${prefix}${String(seq).padStart(4, '0')}`;
+    let seq = 1;
+    if (row) {
+      const parts = row.fi_number.split('-');
+      const parsed = parseInt(parts[2], 10);
+      seq = (isNaN(parsed) ? 0 : parsed) + 1;
+    }
+    return `${prefix}${String(seq).padStart(4, '0')}`;
+  })();
 }
 
 // GET / — List field interviews
@@ -93,7 +96,7 @@ router.get('/:id', (req: Request, res: Response) => {
 });
 
 // POST / — Create new FI
-router.post('/', (req: Request, res: Response) => {
+router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -175,7 +178,7 @@ router.post('/', (req: Request, res: Response) => {
 });
 
 // PUT /:id — Update FI
-router.put('/:id', (req: Request, res: Response) => {
+router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT id FROM field_interviews WHERE id = ?').get(req.params.id);
@@ -235,6 +238,8 @@ router.put('/:id', (req: Request, res: Response) => {
 router.post('/:id/archive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const existing = db.prepare('SELECT id FROM field_interviews WHERE id = ?').get(req.params.id);
+    if (!existing) { res.status(404).json({ error: 'Field interview not found' }); return; }
     db.prepare(`UPDATE field_interviews SET status = 'archived', archived_at = ? WHERE id = ?`).run(localNow(), req.params.id);
     res.json({ success: true });
   } catch (err: any) {
@@ -246,6 +251,8 @@ router.post('/:id/archive', requireRole('admin', 'manager', 'supervisor'), (req:
 router.post('/:id/unarchive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const existing = db.prepare('SELECT id FROM field_interviews WHERE id = ?').get(req.params.id);
+    if (!existing) { res.status(404).json({ error: 'Field interview not found' }); return; }
     db.prepare(`UPDATE field_interviews SET status = 'active', archived_at = NULL WHERE id = ?`).run(req.params.id);
     res.json({ success: true });
   } catch (err: any) {
@@ -257,6 +264,8 @@ router.post('/:id/unarchive', requireRole('admin', 'manager', 'supervisor'), (re
 router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const existing = db.prepare('SELECT id FROM field_interviews WHERE id = ?').get(req.params.id);
+    if (!existing) { res.status(404).json({ error: 'Field interview not found' }); return; }
     db.prepare(`UPDATE field_interviews SET status = 'archived', archived_at = ? WHERE id = ?`).run(localNow(), req.params.id);
     res.json({ success: true });
   } catch (err: any) {

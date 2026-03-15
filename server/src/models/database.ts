@@ -4149,6 +4149,7 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_activity_log_user ON activity_log(user_id);
     CREATE INDEX IF NOT EXISTS idx_activity_log_created ON activity_log(created_at);
     CREATE INDEX IF NOT EXISTS idx_activity_log_entity ON activity_log(entity_type, entity_id);
+    CREATE INDEX IF NOT EXISTS idx_activity_log_action ON activity_log(action);
 
     CREATE INDEX IF NOT EXISTS idx_credentials_officer ON credentials(officer_id);
     CREATE INDEX IF NOT EXISTS idx_credentials_status ON credentials(status);
@@ -4160,6 +4161,7 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
     CREATE INDEX IF NOT EXISTS idx_sessions_session_id ON sessions(session_id);
     CREATE INDEX IF NOT EXISTS idx_sessions_active ON sessions(is_active);
+    CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
 
     CREATE INDEX IF NOT EXISTS idx_login_attempts_username ON login_attempts(username);
     CREATE INDEX IF NOT EXISTS idx_login_attempts_ip ON login_attempts(ip_address);

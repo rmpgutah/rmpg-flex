@@ -68,9 +68,9 @@ async function extractDashcamDuration(filePath: string): Promise<number | null> 
 
 const router = Router();
 
-// Promote query-string token to Authorization header for <video> streaming
+// Promote query-string token to Authorization header for <video> streaming only
 router.use((req: Request, _res: Response, next: NextFunction) => {
-  if (!req.headers['authorization'] && req.query.token) {
+  if (!req.headers['authorization'] && req.query.token && /\/(stream|download|thumbnail)/.test(req.path)) {
     req.headers['authorization'] = `Bearer ${req.query.token}`;
   }
   next();

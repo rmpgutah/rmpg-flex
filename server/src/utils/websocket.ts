@@ -231,6 +231,27 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
     }));
   });
 
+  // ── Server-side keepalive — detect dead connections ──────────
+  const PING_INTERVAL_MS = 30_000;
+  const pingInterval = setInterval(() => {
+    wss!.clients.forEach((ws) => {
+      if ((ws as any).__isAlive === false) {
+        ws.terminate();
+        return;
+      }
+      (ws as any).__isAlive = false;
+      ws.ping();
+    });
+  }, PING_INTERVAL_MS);
+
+  wss.on('close', () => clearInterval(pingInterval));
+
+  // Mark connections alive on pong
+  wss.on('connection', (ws) => {
+    (ws as any).__isAlive = true;
+    ws.on('pong', () => { (ws as any).__isAlive = true; });
+  });
+
   return wss;
 }
 
@@ -811,7 +832,7 @@ function handleRadioTransmitStart(clientId: string): void {
 }
 
 /** Handle PTT key-up — stop transmitting */
-function handleRadioTransmitEnd(clientId: string): void {
+function handleRadioTransmitEnd(clientId: string, data?: { transcript?: string; duration?: number; linked_call_id?: number }): void {
   const client = clients.get(clientId);
   if (!client || !client.radioChannel) return;
 
