@@ -413,7 +413,7 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
         status: user.status,
         must_change_password: !!user.must_change_password,
         totp_enabled: false,
-        requires_2fa_setup: needs2FASetup,
+        requires_2fa_setup: false,
       },
     });
   } catch (error: any) {
