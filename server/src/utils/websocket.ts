@@ -53,7 +53,7 @@ function safeSend(ws: WebSocket, data: string): boolean {
 }
 
 // Authentication timeout — disconnect clients that don't authenticate within 10 seconds
-const AUTH_TIMEOUT_MS = 10_000;
+const AUTH_TIMEOUT_MS = 3_000;
 
 // All channels every authenticated client auto-subscribes to
 const DEFAULT_CHANNELS = ['dispatch', 'alerts', 'records', 'personnel', 'fleet', 'incidents', 'citations', 'patrol', 'admin', 'presence', 'messages', 'email'];
@@ -120,11 +120,13 @@ function getRadioChannelNames(): string[] {
   return DEFAULT_RADIO_CHANNELS;
 }
 
-// Allowed origins for WebSocket connections (production + local dev)
+// Allowed origins for WebSocket connections — only include dev origins outside production
 const ALLOWED_ORIGINS = new Set([
   'https://rmpgutah.us',
-  'http://localhost:5173',   // Vite dev server
-  'http://localhost:3001',   // Express dev server
+  ...(config.isProduction ? [] : [
+    'http://localhost:5173',   // Vite dev server
+    'http://localhost:3001',   // Express dev server
+  ]),
 ]);
 
 export function initWebSocket(server: Server | HttpsServer): WebSocketServer {

@@ -934,15 +934,17 @@ router.get('/security/overview', requireRole('admin'), (_req: Request, res: Resp
       WHERE success = 0 AND created_at > datetime('now', '-1 day', 'localtime')
     `).get() as { count: number };
 
+    const totalCount = totalUsers?.count ?? 0;
+    const twoFACount = with2FA?.count ?? 0;
     res.json({
-      totalActiveUsers: totalUsers.count,
-      usersWithTwoFA: with2FA.count,
-      usersPendingSetup: pendingSetup.count,
-      twoFAAdoptionRate: totalUsers.count > 0 ? Math.round((with2FA.count / totalUsers.count) * 100) : 0,
+      totalActiveUsers: totalCount,
+      usersWithTwoFA: twoFACount,
+      usersPendingSetup: pendingSetup?.count ?? 0,
+      twoFAAdoptionRate: totalCount > 0 ? Math.round((twoFACount / totalCount) * 100) : 0,
       lockedAccounts,
-      activeSessions: activeSessions.count,
-      passwordsExpired: passwordsExpired.count,
-      failedLoginsLast24h: recentFailures.count,
+      activeSessions: activeSessions?.count ?? 0,
+      passwordsExpired: passwordsExpired?.count ?? 0,
+      failedLoginsLast24h: recentFailures?.count ?? 0,
     });
   } catch (error: any) {
     console.error('Security overview error:', error);
@@ -1193,46 +1195,6 @@ router.put('/users/:id/status', requireRole('admin', 'manager'), (req: Request, 
     res.json({ message: `${user.full_name}'s status changed from ${oldStatus} to ${status}.`, oldStatus, newStatus: status });
   } catch (error: any) {
     console.error('Change status error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ═══════════════════════════════════════════════════════
-// GET /api/admin/security/overview — System-wide security metrics
-// ═══════════════════════════════════════════════════════
-router.get('/security/overview', requireRole('admin'), (_req: Request, res: Response) => {
-  try {
-    const db = getDb();
-
-    const totalUsers = db.prepare("SELECT COUNT(*) as count FROM users WHERE status = 'active'").get() as { count: number };
-    const with2FA = db.prepare("SELECT COUNT(*) as count FROM users WHERE status = 'active' AND totp_enabled = 1").get() as { count: number };
-    const pendingSetup = db.prepare("SELECT COUNT(*) as count FROM users WHERE status = 'active' AND totp_setup_required = 1").get() as { count: number };
-    const lockedAccounts = db.prepare(`
-      SELECT COUNT(DISTINCT username) as count FROM login_attempts
-      WHERE success = 0 AND created_at > datetime('now', 'localtime', '-15 minutes')
-      GROUP BY username HAVING COUNT(*) >= 5
-    `).all().length;
-    const activeSessions = db.prepare("SELECT COUNT(*) as count FROM sessions WHERE is_active = 1").get() as { count: number };
-    const passwordsExpired = db.prepare("SELECT COUNT(*) as count FROM users WHERE status = 'active' AND password_expires_at IS NOT NULL AND password_expires_at < datetime('now','localtime')").get() as { count: number };
-
-    // Recent failed login attempts (last 24h)
-    const recentFailures = db.prepare(`
-      SELECT COUNT(*) as count FROM login_attempts
-      WHERE success = 0 AND created_at > datetime('now', 'localtime', '-1 day')
-    `).get() as { count: number };
-
-    res.json({
-      totalActiveUsers: totalUsers.count,
-      usersWithTwoFA: with2FA.count,
-      usersPendingSetup: pendingSetup.count,
-      twoFAAdoptionRate: totalUsers.count > 0 ? Math.round((with2FA.count / totalUsers.count) * 100) : 0,
-      lockedAccounts,
-      activeSessions: activeSessions.count,
-      passwordsExpired: passwordsExpired.count,
-      failedLoginsLast24h: recentFailures.count,
-    });
-  } catch (error: any) {
-    console.error('Security overview error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -4,7 +4,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import { getDb } from '../models/database';
@@ -12,13 +12,14 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 import { queueOverlayProcessing, type BodyCamOverlayConfig } from '../utils/videoOverlay';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 /** Extract video duration using ffprobe. Returns seconds or null if ffmpeg not available. */
 async function extractVideoDuration(filePath: string): Promise<number | null> {
   try {
-    const { stdout } = await execAsync(
-      `ffprobe -v error -show_entries format=duration -of csv=p=0 "${filePath}"`,
+    const { stdout } = await execFileAsync(
+      'ffprobe',
+      ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', filePath],
       { timeout: 30000 }
     );
     const seconds = parseFloat(stdout.trim());
@@ -244,7 +245,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       return;
     }
 
-    const passwordHash = bcryptjs.hashSync(password, 10);
+    const passwordHash = bcryptjs.hashSync(password, 12);
 
     // Derive first_name/last_name from full_name if not provided
     const nameParts = (full_name || '').split(' ');
@@ -354,7 +355,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
     // ── Admin password reset (not in updatableFields — needs bcrypt) ──
     const passwordChanged = !!(req.body.password && typeof req.body.password === 'string' && req.body.password.trim());
     if (passwordChanged) {
-      const hash = bcryptjs.hashSync(req.body.password.trim(), 10);
+      const hash = bcryptjs.hashSync(req.body.password.trim(), 12);
       setClauses.push('password_hash = ?');
       setValues.push(hash);
       setClauses.push('last_password_change = ?');

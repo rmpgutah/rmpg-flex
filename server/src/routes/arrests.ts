@@ -529,7 +529,8 @@ router.post('/test', requireRole('admin', 'manager'), async (_req: Request, res:
     res.json({ success: true, status: 200, message: `API key valid. ${body.records?.length || 0} source(s).` });
   } catch (err: any) {
     if (err.name === 'AbortError') return res.json({ success: false, error: 'Timed out after 10s' });
-    res.json({ success: false, error: err.message });
+    console.error('[arrests] API test error:', err.message);
+    res.json({ success: false, error: 'Connection failed' });
   }
 });
 

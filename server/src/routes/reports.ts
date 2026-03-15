@@ -163,7 +163,7 @@ router.get('/dashboard', (req: Request, res: Response) => {
       const smTotal = db.prepare(`SELECT COUNT(*) as count FROM sm_jobs`).get() as any;
       const smPending = db.prepare(`SELECT COUNT(*) as count FROM sm_jobs WHERE status IN ('pending', 'assigned', 'in_progress')`).get() as any;
       const smCompleted = db.prepare(`SELECT COUNT(*) as count FROM sm_jobs WHERE status IN ('completed', 'served')`).get() as any;
-      smStats = { totalJobs: smTotal.count, pendingJobs: smPending.count, completedJobs: smCompleted.count };
+      smStats = { totalJobs: smTotal?.count ?? 0, pendingJobs: smPending?.count ?? 0, completedJobs: smCompleted?.count ?? 0 };
     } catch { /* sm_jobs table may not exist */ }
 
     // PSO avg response time (separate from general)
@@ -178,32 +178,32 @@ router.get('/dashboard', (req: Request, res: Response) => {
     `).get() as any;
 
     const pso = {
-      activeCalls: psoActive.count,
-      todayCalls: psoToday.count,
-      monthCalls: psoThisMonth.count,
-      monthCompleted: psoCompleted.count,
-      avgResponseMinutes: psoAvgResponse.avg_minutes ? Math.round(psoAvgResponse.avg_minutes * 10) / 10 : null,
-      avgAttempts: psoAvgAttempts.avg_attempts ? Math.round(psoAvgAttempts.avg_attempts * 10) / 10 : null,
+      activeCalls: psoActive?.count ?? 0,
+      todayCalls: psoToday?.count ?? 0,
+      monthCalls: psoThisMonth?.count ?? 0,
+      monthCompleted: psoCompleted?.count ?? 0,
+      avgResponseMinutes: psoAvgResponse?.avg_minutes ? Math.round(psoAvgResponse.avg_minutes * 10) / 10 : null,
+      avgAttempts: psoAvgAttempts?.avg_attempts ? Math.round(psoAvgAttempts.avg_attempts * 10) / 10 : null,
       serveResults: {
-        total: psoServeResults.total || 0,
-        served: psoServeResults.served || 0,
-        notServed: psoServeResults.not_served || 0,
-        refused: psoServeResults.refused || 0,
-        pendingResult: psoServeResults.pending_result || 0,
+        total: psoServeResults?.total || 0,
+        served: psoServeResults?.served || 0,
+        notServed: psoServeResults?.not_served || 0,
+        refused: psoServeResults?.refused || 0,
+        pendingResult: psoServeResults?.pending_result || 0,
       },
       byServiceType: psoByServiceType,
       serveManager: smStats,
     };
 
     res.json({
-      activeCalls: activeCalls.count,
-      todayCalls: todayCalls.count,
-      unitsOnDuty: unitsOnDuty.count,
-      totalUnits: totalUnits.count,
-      pendingReports: pendingReports.count,
-      activeBolos: activeBolos.count,
-      unreadMessages: unreadMessages.count,
-      avgResponseMinutes: avgResponse.avg_minutes ? Math.round(avgResponse.avg_minutes * 10) / 10 : null,
+      activeCalls: activeCalls?.count ?? 0,
+      todayCalls: todayCalls?.count ?? 0,
+      unitsOnDuty: unitsOnDuty?.count ?? 0,
+      totalUnits: totalUnits?.count ?? 0,
+      pendingReports: pendingReports?.count ?? 0,
+      activeBolos: activeBolos?.count ?? 0,
+      unreadMessages: unreadMessages?.count ?? 0,
+      avgResponseMinutes: avgResponse?.avg_minutes ? Math.round(avgResponse.avg_minutes * 10) / 10 : null,
       callsByPriority,
       callsByStatus,
       recentActivity,

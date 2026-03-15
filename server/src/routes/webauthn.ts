@@ -239,10 +239,11 @@ router.post('/register-verify', authenticateToken, async (req: Request, res: Res
       req.ip || 'unknown',
     );
 
+    const lastRow = db.prepare('SELECT last_insert_rowid() as id').get() as { id: number } | undefined;
     res.json({
       success: true,
       credential: {
-        id: (db.prepare('SELECT last_insert_rowid() as id').get() as { id: number }).id,
+        id: lastRow?.id ?? 0,
         name: credName,
         deviceType: credentialDeviceType,
         backedUp: credentialBackedUp,
@@ -277,19 +278,19 @@ router.delete('/credentials/:id', authenticateToken, (req: Request, res: Respons
     // Check if user still has any 2FA methods
     const remaining = db.prepare(
       'SELECT COUNT(*) as count FROM webauthn_credentials WHERE user_id = ?'
-    ).get(req.user!.userId) as { count: number };
+    ).get(req.user!.userId) as { count: number } | undefined;
 
     // Check new user_totp_secrets table for active TOTP, falling back to legacy column
     const hasNewTotp = db.prepare(
       'SELECT COUNT(*) as count FROM user_totp_secrets WHERE user_id = ?'
-    ).get(req.user!.userId) as { count: number };
+    ).get(req.user!.userId) as { count: number } | undefined;
     const hasLegacyTotp = db.prepare(
       'SELECT totp_secret_enc FROM users WHERE id = ?'
     ).get(req.user!.userId) as { totp_secret_enc: string | null } | undefined;
-    const hasAnyTotp = hasNewTotp.count > 0 || !!hasLegacyTotp?.totp_secret_enc;
+    const hasAnyTotp = (hasNewTotp?.count ?? 0) > 0 || !!hasLegacyTotp?.totp_secret_enc;
 
     // If no security keys AND no TOTP secret, disable 2FA
-    if (remaining.count === 0 && !hasAnyTotp) {
+    if ((remaining?.count ?? 0) === 0 && !hasAnyTotp) {
       db.prepare('UPDATE users SET totp_enabled = 0 WHERE id = ?').run(req.user!.userId);
     }
 

@@ -104,6 +104,12 @@ import { scheduleLeadScrapers, stopLeadScrapers } from './utils/leadScraperBase'
 
 const app = express();
 
+// Trust first proxy (nginx) so req.ip reflects the real client IP
+// Critical for rate limiting, session binding, and audit logging
+if (config.isProduction) {
+  app.set('trust proxy', 1);
+}
+
 // ─── Domain Redirect (www → apex) ────────────────────
 // In production, redirect www.rmpgutah.us → rmpgutah.us for canonical URLs
 if (config.isProduction || config.ssl.enabled) {

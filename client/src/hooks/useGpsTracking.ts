@@ -497,9 +497,9 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       clearInterval(ipFallbackIntervalRef.current);
       ipFallbackIntervalRef.current = null;
     }
-    // Flush any remaining points before stopping
+    // Flush any remaining points before stopping (fire-and-forget with error guard)
     if (flush && queueRef.current.length > 0) {
-      sendBatch();
+      sendBatch().catch(() => { /* cleanup — ignore send failures */ });
     }
   }, [sendBatch]);
 

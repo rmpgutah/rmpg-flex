@@ -16,13 +16,27 @@ const __dirname = path.dirname(__filename);
 
 const router = Router();
 
-// Allowed table names for retention policy operations (SQL injection prevention)
-const RETENTION_ALLOWED_TABLES = new Set([
-  'calls_for_service', 'incidents', 'persons', 'vehicles', 'warrants',
-  'evidence', 'arrests', 'citations', 'audit_log', 'activity_log',
-  'fleet_vehicles', 'fleet_fuel_logs', 'fleet_maintenance_logs',
-  'attachments', 'notifications', 'patrol_breadcrumbs',
-]);
+// Safe table name mapping for retention policy operations.
+// Maps entity_type values to hardcoded SQL identifiers — prevents SQL injection
+// even if database values are compromised, since only these literal strings are used.
+const RETENTION_TABLE_MAP: Record<string, string> = {
+  'calls_for_service': 'calls_for_service',
+  'incidents': 'incidents',
+  'persons': 'persons',
+  'vehicles': 'vehicles',
+  'warrants': 'warrants',
+  'evidence': 'evidence',
+  'arrests': 'arrests',
+  'citations': 'citations',
+  'audit_log': 'audit_log',
+  'activity_log': 'activity_log',
+  'fleet_vehicles': 'fleet_vehicles',
+  'fleet_fuel_logs': 'fleet_fuel_logs',
+  'fleet_maintenance_logs': 'fleet_maintenance_logs',
+  'attachments': 'attachments',
+  'notifications': 'notifications',
+  'patrol_breadcrumbs': 'patrol_breadcrumbs',
+};
 
 // All routes require authentication
 router.use(authenticateToken);
@@ -237,7 +251,7 @@ router.get('/health/detailed', requireRole('admin', 'manager'), (req: Request, r
     for (const table of tables) {
       try {
         const row = db.prepare(`SELECT COUNT(*) as count FROM ${table}`).get() as any;
-        tableCounts[table] = row.count;
+        tableCounts[table] = row?.count ?? 0;
       } catch {
         tableCounts[table] = 0;
       }
@@ -247,21 +261,21 @@ router.get('/health/detailed', requireRole('admin', 'manager'), (req: Request, r
     let activeSessions = 0;
     try {
       const row = db.prepare("SELECT COUNT(*) as count FROM sessions WHERE is_active = 1").get() as any;
-      activeSessions = row.count;
+      activeSessions = row?.count ?? 0;
     } catch { /* ignore */ }
 
     // Active units
     let activeUnits = 0;
     try {
       const row = db.prepare("SELECT COUNT(*) as count FROM units WHERE status != 'off_duty'").get() as any;
-      activeUnits = row.count;
+      activeUnits = row?.count ?? 0;
     } catch { /* ignore */ }
 
     // Pending calls
     let pendingCalls = 0;
     try {
       const row = db.prepare("SELECT COUNT(*) as count FROM calls_for_service WHERE status NOT IN ('closed','cancelled','archived')").get() as any;
-      pendingCalls = row.count;
+      pendingCalls = row?.count ?? 0;
     } catch { /* ignore */ }
 
     // WebSocket connected clients
@@ -709,8 +723,9 @@ router.post('/retention/run', requireRole('admin'), (req: Request, res: Response
     for (const policy of policies) {
       let totalAffected = 0;
 
-      // Validate table name against whitelist (prevent SQL injection)
-      if (!RETENTION_ALLOWED_TABLES.has(policy.entity_type)) {
+      // Map entity_type to a safe hardcoded table name (defense-in-depth SQL injection prevention)
+      const safeTable = RETENTION_TABLE_MAP[policy.entity_type];
+      if (!safeTable) {
         results.push({
           entity_type: policy.entity_type,
           action: 'error: table not in allowed list',
@@ -724,7 +739,7 @@ router.post('/retention/run', requireRole('admin'), (req: Request, res: Response
           // Try to archive records — table must have an archived_at column
           try {
             const archiveResult = db.prepare(`
-              UPDATE ${policy.entity_type}
+              UPDATE ${safeTable}
               SET archived_at = ?
               WHERE archived_at IS NULL
                 AND created_at < date('now', '-' || ? || ' days')
@@ -744,7 +759,7 @@ router.post('/retention/run', requireRole('admin'), (req: Request, res: Response
 
         if (policy.auto_delete) {
           const deleteResult = db.prepare(`
-            DELETE FROM ${policy.entity_type}
+            DELETE FROM ${safeTable}
             WHERE created_at < date('now', '-' || ? || ' days')
           `).run(policy.retention_days);
           totalAffected += deleteResult.changes;
@@ -762,9 +777,10 @@ router.post('/retention/run', requireRole('admin'), (req: Request, res: Response
           UPDATE retention_policies SET last_run_at = ?, records_affected = ?, updated_at = ? WHERE id = ?
         `).run(now, totalAffected, now, policy.id);
       } catch (err: any) {
+        console.error(`[Retention] Error processing ${policy.entity_type}:`, err);
         results.push({
           entity_type: policy.entity_type,
-          action: `error: ${err.message}`,
+          action: 'error: operation failed',
           records_affected: 0,
         });
       }
@@ -802,14 +818,15 @@ router.get('/retention/preview', requireRole('admin', 'manager'), (req: Request,
       let archiveCount = 0;
       let deleteCount = 0;
 
-      // Validate table name against whitelist (prevent SQL injection)
-      if (!RETENTION_ALLOWED_TABLES.has(policy.entity_type)) continue;
+      // Map entity_type to a safe hardcoded table name (defense-in-depth SQL injection prevention)
+      const safeTable = RETENTION_TABLE_MAP[policy.entity_type];
+      if (!safeTable) continue;
 
       try {
         if (policy.auto_archive) {
           try {
             const row = db.prepare(`
-              SELECT COUNT(*) as count FROM ${policy.entity_type}
+              SELECT COUNT(*) as count FROM ${safeTable}
               WHERE archived_at IS NULL
                 AND created_at < date('now', '-' || ? || ' days')
             `).get(policy.retention_days) as any;
@@ -821,7 +838,7 @@ router.get('/retention/preview', requireRole('admin', 'manager'), (req: Request,
 
         if (policy.auto_delete) {
           const row = db.prepare(`
-            SELECT COUNT(*) as count FROM ${policy.entity_type}
+            SELECT COUNT(*) as count FROM ${safeTable}
             WHERE created_at < date('now', '-' || ? || ' days')
           `).get(policy.retention_days) as any;
           deleteCount = row.count;
