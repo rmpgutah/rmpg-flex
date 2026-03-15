@@ -75,6 +75,10 @@ const audioBuffers: Map<string, Buffer[]> = new Map();
 const audioBufferTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
 const AUDIO_BUFFER_TIMEOUT_MS = 120_000; // 2 minutes
 
+/** Emergency override auto-clear timers: channel → timer */
+const emergencyOverrideTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+const EMERGENCY_OVERRIDE_DURATION_MS = 30_000; // 30 seconds
+
 /** Per-client message rate limiting */
 const clientMessageRates: Map<string, { count: number; resetAt: number }> = new Map();
 const WS_RATE_LIMIT_WINDOW_MS = 1000; // 1 second window
@@ -284,6 +288,17 @@ function authenticateClient(client: WSClient, token: string): boolean {
     client.role = decoded.role;
     client.authenticated = true;
 
+    // Auto-populate unitCallSign from units table (for selcall addressing)
+    try {
+      const db = database.getDb();
+      const unit = db.prepare(
+        "SELECT call_sign FROM units WHERE officer_user_id = ? AND status != 'off_duty' LIMIT 1"
+      ).get(decoded.userId) as { call_sign: string } | undefined;
+      if (unit?.call_sign) {
+        client.unitCallSign = unit.call_sign;
+      }
+    } catch { /* DB not ready or no unit assigned — unitCallSign stays undefined */ }
+
     safeSend(client.ws, JSON.stringify({
       type: 'authenticated',
       userId: decoded.userId,
@@ -377,7 +392,7 @@ function handleClientMessage(clientId: string, message: any): void {
 
     case 'radio_transmit_end':
       if (!client.authenticated) return;
-      handleRadioTransmitEnd(clientId);
+      handleRadioTransmitEnd(clientId, message.data);
       break;
 
     case 'radio_audio':
@@ -394,6 +409,13 @@ function handleClientMessage(clientId: string, message: any): void {
       if (!client.authenticated) return;
       handleEmergencyOverride(clientId, message.data);
       break;
+    case 'set_call_sign':
+      if (!client.authenticated) return;
+      if (typeof message.callSign === 'string' && message.callSign.length <= 20) {
+        client.unitCallSign = message.callSign.trim() || undefined;
+      }
+      break;
+
     case 'scan_subscribe':
       if (!client.authenticated) return;
       handleScanSubscribe(clientId, message.data);
@@ -818,8 +840,8 @@ function handleRadioTransmitStart(clientId: string): void {
     audioBufferTimers.delete(bufferKey);
   }, AUDIO_BUFFER_TIMEOUT_MS));
 
-  // Notify all channel members (including sender for confirmation)
-  const payload = JSON.stringify({
+  // Notify all channel members + scanners (including sender for confirmation)
+  const startPayload = JSON.stringify({
     type: 'radio_transmit_start',
     data: {
       userId: client.userId,
@@ -831,8 +853,11 @@ function handleRadioTransmitStart(clientId: string): void {
   });
 
   clients.forEach((c) => {
-    if (c.authenticated && c.radioChannel === channel) {
-      safeSend(c.ws, payload);
+    if (!c.authenticated) return;
+    if (c.radioChannel === channel) {
+      safeSend(c.ws, startPayload);
+    } else if (c.scanChannels?.includes(channel)) {
+      safeSend(c.ws, startPayload);
     }
   });
 }
@@ -908,8 +933,8 @@ function handleRadioTransmitEnd(clientId: string, data?: { transcript?: string; 
     console.error('Failed to save radio transcript:', err);
   }
 
-  // Notify all channel members (include transcript so listeners can display it)
-  const payload = JSON.stringify({
+  // Notify all channel members + scanners (include transcript so listeners can display it)
+  const endPayload = JSON.stringify({
     type: 'radio_transmit_end',
     data: {
       userId: client.userId,
@@ -924,8 +949,11 @@ function handleRadioTransmitEnd(clientId: string, data?: { transcript?: string; 
   });
 
   clients.forEach((c) => {
-    if (c.authenticated && c.radioChannel === channel) {
-      safeSend(c.ws, payload);
+    if (!c.authenticated) return;
+    if (c.radioChannel === channel) {
+      safeSend(c.ws, endPayload);
+    } else if (c.scanChannels?.includes(channel)) {
+      safeSend(c.ws, endPayload);
     }
   });
 }
@@ -1119,13 +1147,28 @@ function handleEmergencyOverride(clientId: string, data: any): void {
     if (bufTimer) { clearTimeout(bufTimer); audioBufferTimers.delete(bufKey); }
   }
 
+  // Clear any existing override timer for this channel
+  const existingOverrideTimer = emergencyOverrideTimers.get(channel);
+  if (existingOverrideTimer) clearTimeout(existingOverrideTimer);
+
   // Broadcast emergency override notification to all channel members
   broadcastToRadioChannel(channel, 'emergency_override', {
     userId: client.userId,
     username: client.username,
     fullName: client.fullName,
     channel,
+    duration: EMERGENCY_OVERRIDE_DURATION_MS / 1000,
   });
+
+  // Auto-clear override after timeout — broadcast channel_clear so clients know it's safe
+  emergencyOverrideTimers.set(channel, setTimeout(() => {
+    emergencyOverrideTimers.delete(channel);
+    broadcastToRadioChannel(channel, 'emergency_override_clear', {
+      channel,
+      reason: 'Override expired',
+    });
+    console.log(`[Radio] Emergency override on ${channel} auto-cleared after ${EMERGENCY_OVERRIDE_DURATION_MS / 1000}s`);
+  }, EMERGENCY_OVERRIDE_DURATION_MS));
 }
 
 /** Channel scan subscription — client wants to monitor additional channels */
