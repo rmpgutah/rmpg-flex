@@ -1706,6 +1706,7 @@ function migrateSchema(): void {
 
   // ── USERS — WebAuthn / YubiKey hardware key auth ──────
   addCol('users', 'webauthn_enabled', 'INTEGER DEFAULT 0'); // 0 = disabled, 1 = enabled
+  addCol('users', 'token_generation', 'INTEGER NOT NULL DEFAULT 1'); // Bumped on role change to revoke existing JWTs
 
   // ── NOTIFICATIONS — widen type CHECK for login_alert / security ──
   try {

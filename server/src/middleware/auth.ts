@@ -9,6 +9,7 @@ export interface JwtPayload {
   role: string;
   fullName: string;
   sessionId?: string;
+  tokenGeneration?: number;
   type?: 'access' | 'refresh' | 'mfa_pending';
   pendingActions?: string[];
 }
@@ -62,6 +63,18 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
           // 'warn' mode: log but allow through
         }
       } catch { /* DB not available - allow through */ }
+    }
+
+    // Token generation check — reject tokens issued before a privilege change
+    if (decoded.tokenGeneration != null) {
+      try {
+        const db = getDb();
+        const row = db.prepare('SELECT token_generation FROM users WHERE id = ?').get(decoded.userId) as { token_generation: number } | undefined;
+        if (row && row.token_generation > decoded.tokenGeneration) {
+          res.status(401).json({ error: 'Token revoked due to privilege change', code: 'TOKEN_REVOKED' });
+          return;
+        }
+      } catch { /* DB failure — allow through to avoid lockout */ }
     }
 
     req.user = decoded;

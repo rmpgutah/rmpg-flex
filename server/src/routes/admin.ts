@@ -1124,6 +1124,9 @@ router.put('/users/:id/role', requireRole('admin'), (req: Request, res: Response
     db.prepare('UPDATE users SET role = ?, updated_at = ? WHERE id = ?')
       .run(role, localNow(), userId);
 
+    // Bump token generation to revoke all existing JWTs for this user
+    db.prepare('UPDATE users SET token_generation = token_generation + 1 WHERE id = ?').run(userId);
+
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'role_changed', 'user', ?, ?, ?)
