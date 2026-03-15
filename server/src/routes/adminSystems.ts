@@ -553,7 +553,7 @@ router.post('/announcements', requireRole('admin', 'manager'), (req: Request, re
       VALUES (?, 'announcement_created', 'announcement', ?, ?, ?)
     `).run(req.user!.userId, result.lastInsertRowid, `Created announcement: ${title}`, req.ip || 'unknown');
 
-    res.status(201).json(announcement);
+    res.status(201).json(announcement || { id: result.lastInsertRowid });
   } catch (error: any) {
     console.error('Create announcement error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -909,7 +909,7 @@ router.post('/departments', requireRole('admin', 'manager'), (req: Request, res:
       VALUES (?, 'department_created', 'department', ?, ?, ?)
     `).run(req.user!.userId, result.lastInsertRowid, `Created department: ${name}`, req.ip || 'unknown');
 
-    res.status(201).json(department);
+    res.status(201).json(department || { id: result.lastInsertRowid });
   } catch (error: any) {
     if (error.message?.includes('UNIQUE constraint')) {
       res.status(409).json({ error: 'A department with this name or code already exists' });

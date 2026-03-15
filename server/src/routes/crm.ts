@@ -289,7 +289,7 @@ router.get('/contacts', requireRole('admin', 'manager', 'contract_manager'), (re
 router.get('/expiring-contracts', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const days = parseInt(req.query.days as string, 10) || 90;
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 90));
     const futureDate = new Date();
     futureDate.setDate(futureDate.getDate() + days);
     const future = futureDate.toISOString().slice(0, 10);

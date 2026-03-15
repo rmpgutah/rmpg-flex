@@ -1003,7 +1003,7 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
     const officerId = req.query.officerId as string;
     const startDate = req.query.startDate as string;
     const endDate = req.query.endDate as string;
-    const hours = parseInt(req.query.hours as string, 10) || 8;
+    const hours = Math.max(1, Math.min(72, parseInt(req.query.hours as string, 10) || 8));
     const includeGeocode = req.query.geocode === 'true'; // opt-in (costs API calls)
 
     // ── Haversine distance (meters) ──────────────────────

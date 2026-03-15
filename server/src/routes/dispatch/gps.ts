@@ -281,7 +281,7 @@ router.get('/gps/trail/:unitId', (req: Request, res: Response) => {
 router.get('/gps/trails', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const hours = parseInt(req.query.hours as string, 10) || 8;
+    const hours = Math.min(Math.max(parseInt(req.query.hours as string, 10) || 8, 1), 72);
 
     // Haversine distance in meters between two lat/lng pairs
     const haversineM = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
@@ -382,7 +382,7 @@ router.get('/gps/trails', (req: Request, res: Response) => {
 router.delete('/gps/breadcrumbs/cleanup', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const days = Math.max(1, parseInt(req.query.days as string, 10) || 7);
+    const days = Math.max(1, Math.min(90, parseInt(req.query.days as string, 10) || 7));
 
     // Use SQLite datetime() to match the stored format (datetime('now','localtime'))
     const result = db.prepare(

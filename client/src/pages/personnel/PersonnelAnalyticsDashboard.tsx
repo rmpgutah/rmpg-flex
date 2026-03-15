@@ -113,7 +113,7 @@ export default function PersonnelAnalyticsDashboard({ officers, credentials, tim
               <div className="flex-1 h-1.5 bg-rmpg-700 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-brand-500 rounded-full"
-                  style={{ width: `${(count / officers.length) * 100}%` }}
+                  style={{ width: `${officers.length > 0 ? (count / officers.length) * 100 : 0}%` }}
                 />
               </div>
               <span className="text-xs font-mono text-rmpg-200 w-6 text-right">{count}</span>

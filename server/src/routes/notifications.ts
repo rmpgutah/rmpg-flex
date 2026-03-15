@@ -106,7 +106,7 @@ export function createNotification(
     ).get(result.lastInsertRowid);
 
     // Send directly to target user — not broadcast to all clients
-    sendToUser(userId, 'notification', notification);
+    if (notification) sendToUser(userId, 'notification', notification);
 
     // ── Email delivery ──
     if (triggerEvent) {
