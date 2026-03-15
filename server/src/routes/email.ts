@@ -1,0 +1,877 @@
+// ============================================================
+// Microsoft Email Routes
+// ============================================================
+// API routes for Microsoft 365 email integration:
+// - Admin config (credentials, OAuth, SMTP fallback)
+// - Inbox operations (list, read, send, reply, attachments)
+// - OAuth2 callback (no JWT — CSRF state validated)
+
+import { Router, Request, Response } from 'express';
+import { authenticateToken, requireRole } from '../middleware/auth';
+import { getDb } from '../models/database';
+import { auditLog } from '../utils/auditLogger';
+import { localNow } from '../utils/timeUtils';
+import {
+  CONFIG_KEYS,
+  GRAPH_SCOPES,
+  getConfigValue,
+  setConfigValue,
+  deleteConfigValue,
+  getDecryptedValue,
+  getAuthorizationUrl,
+  exchangeCodeForTokens,
+  getGraphClient,
+  testConnection,
+  getStatus,
+  isConfigured,
+  isEnabled,
+  isAuthorized,
+  clearCachedAuth,
+} from '../utils/msGraphClient';
+import { testSMTPConnection } from '../utils/smtpClient';
+import { sendEmail } from '../utils/emailSender';
+import { syncNow, restartEmailPoller } from '../utils/emailPoller';
+
+const router = Router();
+
+/** Convert plain text to a proper HTML email body.
+ *  Escapes entities, converts basic markdown-like syntax,
+ *  converts newlines to <br>, wraps in styled HTML document. */
+function textToEmailHtml(text: string, signature?: string): string {
+  let fullText = text || '';
+  if (signature) {
+    fullText += '\n\n--\n' + signature;
+  }
+  let escaped = fullText
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+  // Basic markdown: **bold**, *italic*, [text](url)
+  escaped = escaped.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  escaped = escaped.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  escaped = escaped.replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" style="color:#1a5a9e;">$1</a>');
+  const bodyHtml = escaped.replace(/\n/g, '<br>');
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:16px;font-family:Segoe UI,Arial,sans-serif;font-size:14px;line-height:1.5;color:#1a1a1a;">
+${bodyHtml}
+</body></html>`;
+}
+
+/** Get a user's email signature from system_config. */
+function getUserSignature(userId: number): string | null {
+  const db = getDb();
+  const row = db.prepare("SELECT value FROM system_config WHERE key = ?").get(`email_signature_${userId}`) as { value: string } | undefined;
+  return row?.value || null;
+}
+
+// ─── PUBLIC: OAuth callback (no JWT — redirect from Microsoft) ───
+
+router.get('/oauth/callback', async (req: Request, res: Response) => {
+  try {
+    const { code, state, error, error_description } = req.query;
+
+    if (error) {
+      console.error('[OAuth] Microsoft returned error:', error, error_description);
+      res.redirect(`/admin?tab=email&status=error&message=${encodeURIComponent(String(error_description || error))}`);
+      return;
+    }
+
+    if (!code || !state) {
+      res.redirect('/admin?tab=email&status=error&message=Missing+code+or+state');
+      return;
+    }
+
+    // Validate CSRF state
+    const storedState = getConfigValue(CONFIG_KEYS.oauthState);
+    if (!storedState || storedState !== String(state)) {
+      res.redirect('/admin?tab=email&status=error&message=Invalid+state+token');
+      return;
+    }
+
+    // Clear state to prevent replay
+    deleteConfigValue(CONFIG_KEYS.oauthState);
+
+    // Exchange code for tokens — always use https (req.protocol may report http incorrectly)
+    const redirectUri = `https://${req.get('host')}/api/email/oauth/callback`;
+    await exchangeCodeForTokens(String(code), redirectUri);
+
+    // Enable integration and start poller
+    setConfigValue(CONFIG_KEYS.enabled, 'true');
+    restartEmailPoller();
+
+    console.log('[OAuth] Microsoft email authorized successfully');
+    res.redirect('/admin?tab=email&status=authorized');
+  } catch (err: any) {
+    console.error('[OAuth] Token exchange failed:', err.message);
+    res.redirect(`/admin?tab=email&status=error&message=${encodeURIComponent(err.message)}`);
+  }
+});
+
+// ─── All remaining routes require JWT auth ───
+
+router.use(authenticateToken);
+
+// ============================================================
+// USER ENDPOINTS (all authenticated users)
+// ============================================================
+
+// GET /api/email/status — Integration status
+router.get('/status', (_req: Request, res: Response) => {
+  try {
+    const status = getStatus();
+    const db = getDb();
+    const cached = db.prepare('SELECT COUNT(*) as count FROM email_cache').get() as { count: number };
+    res.json({ ...status, cachedMessages: cached?.count || 0 });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/email/signature — Get current user's email signature
+router.get('/signature', (req: Request, res: Response) => {
+  try {
+    const signature = getUserSignature(req.user!.userId);
+    res.json({ signature: signature || '' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/email/signature — Save current user's email signature
+router.put('/signature', (req: Request, res: Response) => {
+  try {
+    const { signature } = req.body;
+    const db = getDb();
+    const key = `email_signature_${req.user!.userId}`;
+    if (signature && signature.trim()) {
+      db.prepare("INSERT INTO system_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+        .run(key, signature.trim());
+    } else {
+      db.prepare("DELETE FROM system_config WHERE key = ?").run(key);
+    }
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/email/unread-count — Unread count (for nav badge)
+router.get('/unread-count', (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const row = db.prepare(
+      "SELECT COUNT(*) as count FROM email_cache WHERE folder_id = 'inbox' AND is_read = 0"
+    ).get() as { count: number };
+    res.json({ count: row?.count || 0 });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/email/folders — List mailbox folders
+router.get('/folders', async (req: Request, res: Response) => {
+  try {
+    if (!isAuthorized()) {
+      res.json([]);
+      return;
+    }
+
+    // Try live from Graph, fall back to cache
+    try {
+      const client = await getGraphClient();
+      const result = await client
+        .api('/me/mailFolders')
+        .select('id,displayName,parentFolderId,totalItemCount,unreadItemCount,childFolderCount')
+        .top(50)
+        .get();
+      res.json(result.value || []);
+    } catch {
+      // Fall back to cached
+      const db = getDb();
+      const folders = db.prepare('SELECT * FROM email_folders ORDER BY display_name').all();
+      res.json(folders.map((f: any) => ({
+        id: f.graph_id,
+        displayName: f.display_name,
+        parentFolderId: f.parent_folder_id,
+        totalItemCount: f.total_count,
+        unreadItemCount: f.unread_count,
+      })));
+    }
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/email/folders/:id/children — List child folders
+router.get('/folders/:id/children', async (req: Request, res: Response) => {
+  try {
+    if (!isAuthorized()) { res.json([]); return; }
+    const client = await getGraphClient();
+    const result = await client
+      .api(`/me/mailFolders/${req.params.id}/childFolders`)
+      .select('id,displayName,parentFolderId,totalItemCount,unreadItemCount,childFolderCount')
+      .top(50)
+      .get();
+    res.json(result.value || []);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/email/folders — Create a new folder
+router.post('/folders', async (req: Request, res: Response) => {
+  try {
+    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+    const { displayName, parentFolderId } = req.body;
+    if (!displayName?.trim()) { res.status(400).json({ error: 'Folder name required' }); return; }
+
+    const client = await getGraphClient();
+    const apiPath = parentFolderId
+      ? `/me/mailFolders/${parentFolderId}/childFolders`
+      : '/me/mailFolders';
+
+    const folder = await client.api(apiPath).post({ displayName: displayName.trim() });
+    auditLog(req, 'CREATE', 'email_folder', 0, JSON.stringify({ displayName, parentFolderId }));
+    res.json(folder);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH /api/email/folders/:id — Rename a folder
+router.patch('/folders/:id', async (req: Request, res: Response) => {
+  try {
+    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+    const { displayName } = req.body;
+    if (!displayName?.trim()) { res.status(400).json({ error: 'Folder name required' }); return; }
+
+    const client = await getGraphClient();
+    await client.api(`/me/mailFolders/${req.params.id}`).update({ displayName: displayName.trim() });
+    auditLog(req, 'UPDATE', 'email_folder', 0, JSON.stringify({ folderId: req.params.id, displayName }));
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/email/folders/:id — Delete a folder
+router.delete('/folders/:id', async (req: Request, res: Response) => {
+  try {
+    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+    const client = await getGraphClient();
+    await client.api(`/me/mailFolders/${req.params.id}`).delete();
+    auditLog(req, 'DELETE', 'email_folder', 0, JSON.stringify({ folderId: req.params.id }));
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/email/messages — List messages (paginated, filterable)
+router.get('/messages', async (req: Request, res: Response) => {
+  try {
+    const {
+      folder = 'inbox',
+      page = '1',
+      per_page = '25',
+      search,
+    } = req.query;
+
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const perPage = Math.min(50, Math.max(1, parseInt(per_page as string, 10) || 25));
+
+    // Try live from Graph API
+    if (isAuthorized()) {
+      try {
+        const client = await getGraphClient();
+        let apiPath = folder === 'inbox'
+          ? '/me/mailFolders/inbox/messages'
+          : `/me/mailFolders/${folder}/messages`;
+
+        let query = client
+          .api(apiPath)
+          .select('id,conversationId,subject,from,toRecipients,ccRecipients,bodyPreview,hasAttachments,isRead,flag,importance,receivedDateTime,sentDateTime')
+          .orderby('receivedDateTime desc')
+          .top(perPage)
+          .skip((pageNum - 1) * perPage);
+
+        if (search) {
+          query = query.search(`"${String(search)}"`);
+        }
+
+        const result = await query.get();
+
+        res.json({
+          messages: (result.value || []).map((msg: any) => ({
+            id: msg.id,
+            conversationId: msg.conversationId,
+            subject: msg.subject || '(No subject)',
+            fromAddress: msg.from?.emailAddress?.address || '',
+            fromName: msg.from?.emailAddress?.name || '',
+            toAddresses: (msg.toRecipients || []).map((r: any) => ({
+              email: r.emailAddress?.address,
+              name: r.emailAddress?.name,
+            })),
+            ccAddresses: (msg.ccRecipients || []).map((r: any) => ({
+              email: r.emailAddress?.address,
+              name: r.emailAddress?.name,
+            })),
+            bodyPreview: msg.bodyPreview || '',
+            hasAttachments: msg.hasAttachments || false,
+            isRead: msg.isRead || false,
+            isFlagged: msg.flag?.flagStatus === 'flagged',
+            importance: msg.importance || 'normal',
+            receivedAt: msg.receivedDateTime,
+            sentAt: msg.sentDateTime,
+          })),
+          hasMore: !!(result['@odata.nextLink']),
+        });
+        return;
+      } catch (err: any) {
+        console.error('[Email] Graph message fetch failed, using cache:', err.message);
+      }
+    }
+
+    // Fallback to cached messages
+    const db = getDb();
+    const conditions: string[] = [];
+    const params: any[] = [];
+
+    if (folder && folder !== 'all') {
+      conditions.push('folder_id = ?');
+      params.push(folder);
+    }
+
+    if (search) {
+      conditions.push('(subject LIKE ? OR from_address LIKE ? OR from_name LIKE ? OR body_preview LIKE ?)');
+      const term = `%${search}%`;
+      params.push(term, term, term, term);
+    }
+
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const offset = (pageNum - 1) * perPage;
+
+    const total = (db.prepare(`SELECT COUNT(*) as count FROM email_cache ${where}`).get(...params) as any)?.count || 0;
+    const rows = db.prepare(`SELECT * FROM email_cache ${where} ORDER BY received_at DESC LIMIT ? OFFSET ?`).all(...params, perPage, offset) as any[];
+
+    res.json({
+      messages: rows.map(r => ({
+        id: r.graph_id,
+        conversationId: r.conversation_id,
+        subject: r.subject,
+        fromAddress: r.from_address,
+        fromName: r.from_name,
+        toAddresses: JSON.parse(r.to_addresses || '[]'),
+        ccAddresses: JSON.parse(r.cc_addresses || '[]'),
+        bodyPreview: r.body_preview,
+        hasAttachments: !!r.has_attachments,
+        isRead: !!r.is_read,
+        isFlagged: !!r.is_flagged,
+        importance: r.importance,
+        receivedAt: r.received_at,
+        sentAt: r.sent_at,
+      })),
+      hasMore: offset + perPage < total,
+      total,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/email/messages/batch — Batch operations on multiple messages
+// IMPORTANT: Must be registered before /messages/:id to avoid Express treating "batch" as an ID
+router.post('/messages/batch', async (req: Request, res: Response) => {
+  try {
+    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+
+    const { action, ids } = req.body;
+    if (!action || !Array.isArray(ids) || ids.length === 0) {
+      res.status(400).json({ error: 'Action and ids[] required' });
+      return;
+    }
+
+    const client = await getGraphClient();
+    const db = getDb();
+    let success = 0;
+    let failed = 0;
+
+    for (const id of ids.slice(0, 50)) {
+      try {
+        if (action === 'delete') {
+          await client.api(`/me/messages/${id}/move`).post({ destinationId: 'deleteditems' });
+          db.prepare('DELETE FROM email_cache WHERE graph_id = ?').run(id);
+        } else if (action === 'archive') {
+          await client.api(`/me/messages/${id}/move`).post({ destinationId: 'archive' });
+          db.prepare('DELETE FROM email_cache WHERE graph_id = ?').run(id);
+        } else if (action === 'markRead') {
+          await client.api(`/me/messages/${id}`).update({ isRead: true });
+          db.prepare('UPDATE email_cache SET is_read = 1 WHERE graph_id = ?').run(id);
+        } else if (action === 'markUnread') {
+          await client.api(`/me/messages/${id}`).update({ isRead: false });
+          db.prepare('UPDATE email_cache SET is_read = 0 WHERE graph_id = ?').run(id);
+        }
+        success++;
+      } catch {
+        failed++;
+      }
+    }
+
+    auditLog(req, 'BATCH_EMAIL', 'email', 0, JSON.stringify({ action, count: ids.length, success, failed }));
+    res.json({ success, failed });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/email/messages/mark-all-read — Mark all messages in a folder as read
+router.post('/messages/mark-all-read', async (req: Request, res: Response) => {
+  try {
+    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+
+    const { folder = 'inbox' } = req.body;
+    const client = await getGraphClient();
+    const db = getDb();
+
+    const unread = db.prepare(
+      'SELECT graph_id FROM email_cache WHERE folder_id = ? AND is_read = 0'
+    ).all(folder) as { graph_id: string }[];
+
+    let success = 0;
+    for (const row of unread.slice(0, 100)) {
+      try {
+        await client.api(`/me/messages/${row.graph_id}`).update({ isRead: true });
+        success++;
+      } catch { /* skip individual failures */ }
+    }
+
+    db.prepare('UPDATE email_cache SET is_read = 1 WHERE folder_id = ? AND is_read = 0').run(folder);
+
+    auditLog(req, 'MARK_ALL_READ', 'email', 0, JSON.stringify({ folder, count: success }));
+    res.json({ success: true, marked: success });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/email/messages/:id — Full message with body
+router.get('/messages/:id', async (req: Request, res: Response) => {
+  try {
+    if (!isAuthorized()) {
+      res.status(503).json({ error: 'Email not authorized' });
+      return;
+    }
+
+    const client = await getGraphClient();
+    const msg = await client
+      .api(`/me/messages/${req.params.id}`)
+      .select('id,conversationId,subject,from,toRecipients,ccRecipients,body,bodyPreview,hasAttachments,isRead,flag,importance,receivedDateTime,sentDateTime')
+      .get();
+
+    // Mark as read in Graph
+    if (!msg.isRead) {
+      client.api(`/me/messages/${req.params.id}`).update({ isRead: true }).catch(() => {});
+      // Also update cache
+      const db = getDb();
+      db.prepare('UPDATE email_cache SET is_read = 1 WHERE graph_id = ?').run(req.params.id);
+    }
+
+    res.json({
+      id: msg.id,
+      conversationId: msg.conversationId,
+      subject: msg.subject || '(No subject)',
+      fromAddress: msg.from?.emailAddress?.address || '',
+      fromName: msg.from?.emailAddress?.name || '',
+      toAddresses: (msg.toRecipients || []).map((r: any) => ({
+        email: r.emailAddress?.address,
+        name: r.emailAddress?.name,
+      })),
+      ccAddresses: (msg.ccRecipients || []).map((r: any) => ({
+        email: r.emailAddress?.address,
+        name: r.emailAddress?.name,
+      })),
+      bodyHtml: msg.body?.content || '',
+      bodyPreview: msg.bodyPreview || '',
+      hasAttachments: msg.hasAttachments || false,
+      isRead: true,
+      isFlagged: msg.flag?.flagStatus === 'flagged',
+      importance: msg.importance || 'normal',
+      receivedAt: msg.receivedDateTime,
+      sentAt: msg.sentDateTime,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/email/messages/:id/attachments — List attachments
+router.get('/messages/:id/attachments', async (req: Request, res: Response) => {
+  try {
+    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+
+    const client = await getGraphClient();
+    const result = await client
+      .api(`/me/messages/${req.params.id}/attachments`)
+      .select('id,name,contentType,size,isInline,contentId')
+      .get();
+
+    res.json((result.value || []).map((a: any) => ({
+      id: a.id,
+      name: a.name,
+      contentType: a.contentType,
+      size: a.size,
+      isInline: a.isInline || false,
+      contentId: a.contentId,
+    })));
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/email/messages/:id/attachments/:aid — Download attachment
+router.get('/messages/:id/attachments/:aid', async (req: Request, res: Response) => {
+  try {
+    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+
+    const client = await getGraphClient();
+    const attachment = await client
+      .api(`/me/messages/${req.params.id}/attachments/${req.params.aid}`)
+      .get();
+
+    const content = Buffer.from(attachment.contentBytes, 'base64');
+    res.setHeader('Content-Type', attachment.contentType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${attachment.name}"`);
+    res.setHeader('Content-Length', content.length.toString());
+    res.send(content);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/email/send — Send new email (supports BCC + file attachments)
+router.post('/send', async (req: Request, res: Response) => {
+  try {
+    const { to, cc, bcc, subject, body, attachments } = req.body;
+    if (!to || !subject) {
+      res.status(400).json({ error: 'To and subject are required' });
+      return;
+    }
+
+    const toList = Array.isArray(to) ? to : [to];
+    const ccList = cc ? (Array.isArray(cc) ? cc : [cc]) : undefined;
+    const bccList = bcc ? (Array.isArray(bcc) ? bcc : [bcc]) : undefined;
+
+    const signature = getUserSignature(req.user!.userId);
+
+    // Build attachment array from client-sent base64 data
+    const emailAttachments = (attachments || []).map((att: { name: string; contentType: string; contentBytes: string }) => ({
+      filename: att.name,
+      content: Buffer.from(att.contentBytes, 'base64'),
+      contentType: att.contentType || 'application/octet-stream',
+    }));
+
+    const sent = await sendEmail({
+      to: toList,
+      cc: ccList,
+      bcc: bccList,
+      subject,
+      html: textToEmailHtml(body || '', signature || undefined),
+      attachments: emailAttachments.length > 0 ? emailAttachments : undefined,
+    });
+
+    if (sent) {
+      auditLog(req, 'SEND_EMAIL', 'email', 0, JSON.stringify({ to: toList, subject, attachmentCount: emailAttachments.length }));
+      res.json({ success: true });
+    } else {
+      res.status(500).json({ error: 'Failed to send email' });
+    }
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/email/messages/:id/reply — Reply to message
+router.post('/messages/:id/reply', async (req: Request, res: Response) => {
+  try {
+    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+
+    const { body } = req.body;
+    const client = await getGraphClient();
+    const signature = getUserSignature(req.user!.userId);
+
+    await client.api(`/me/messages/${req.params.id}/reply`).post({
+      comment: textToEmailHtml(body || '', signature || undefined),
+    });
+
+    auditLog(req, 'REPLY_EMAIL', 'email', 0, JSON.stringify({ messageId: req.params.id }));
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/email/messages/:id/reply-all — Reply all
+router.post('/messages/:id/reply-all', async (req: Request, res: Response) => {
+  try {
+    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+
+    const { body } = req.body;
+    const client = await getGraphClient();
+    const signature = getUserSignature(req.user!.userId);
+
+    await client.api(`/me/messages/${req.params.id}/replyAll`).post({
+      comment: textToEmailHtml(body || '', signature || undefined),
+    });
+
+    auditLog(req, 'REPLY_ALL_EMAIL', 'email', 0, JSON.stringify({ messageId: req.params.id }));
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/email/messages/:id/forward — Forward message
+router.post('/messages/:id/forward', async (req: Request, res: Response) => {
+  try {
+    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+
+    const { to, body } = req.body;
+    if (!to) { res.status(400).json({ error: 'Recipient required' }); return; }
+
+    const toList = Array.isArray(to) ? to : [to];
+    const client = await getGraphClient();
+
+    const signature = getUserSignature(req.user!.userId);
+    await client.api(`/me/messages/${req.params.id}/forward`).post({
+      comment: textToEmailHtml(body || '', signature || undefined),
+      toRecipients: toList.map((email: string) => ({
+        emailAddress: { address: email.trim() },
+      })),
+    });
+
+    auditLog(req, 'FORWARD_EMAIL', 'email', 0, JSON.stringify({ messageId: req.params.id, to: toList }));
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH /api/email/messages/:id — Update message (read/unread, flag)
+router.patch('/messages/:id', async (req: Request, res: Response) => {
+  try {
+    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+
+    const { isRead, isFlagged } = req.body;
+    const client = await getGraphClient();
+
+    const updates: any = {};
+    if (isRead !== undefined) updates.isRead = isRead;
+    if (isFlagged !== undefined) {
+      updates.flag = { flagStatus: isFlagged ? 'flagged' : 'notFlagged' };
+    }
+
+    await client.api(`/me/messages/${req.params.id}`).update(updates);
+
+    // Update cache
+    const db = getDb();
+    if (isRead !== undefined) {
+      db.prepare('UPDATE email_cache SET is_read = ? WHERE graph_id = ?').run(isRead ? 1 : 0, req.params.id);
+    }
+    if (isFlagged !== undefined) {
+      db.prepare('UPDATE email_cache SET is_flagged = ? WHERE graph_id = ?').run(isFlagged ? 1 : 0, req.params.id);
+    }
+
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/email/messages/:id — Move to trash
+router.delete('/messages/:id', async (req: Request, res: Response) => {
+  try {
+    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+
+    const client = await getGraphClient();
+
+    // Move to Deleted Items folder
+    await client.api(`/me/messages/${req.params.id}/move`).post({
+      destinationId: 'deleteditems',
+    });
+
+    // Remove from cache
+    const db = getDb();
+    db.prepare('DELETE FROM email_cache WHERE graph_id = ?').run(req.params.id);
+
+    auditLog(req, 'DELETE_EMAIL', 'email', 0, JSON.stringify({ messageId: req.params.id }));
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/email/messages/:id/move — Move to folder
+router.post('/messages/:id/move', async (req: Request, res: Response) => {
+  try {
+    if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
+
+    const { folderId } = req.body;
+    if (!folderId) { res.status(400).json({ error: 'Folder ID required' }); return; }
+
+    const client = await getGraphClient();
+    await client.api(`/me/messages/${req.params.id}/move`).post({
+      destinationId: folderId,
+    });
+
+    // Update cache folder
+    const db = getDb();
+    db.prepare('UPDATE email_cache SET folder_id = ? WHERE graph_id = ?').run(folderId, req.params.id);
+
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
+// ADMIN ENDPOINTS
+// ============================================================
+
+// PUT /api/email/admin/credentials — Save Azure AD credentials
+router.put('/admin/credentials', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const { clientId, clientSecret, tenantId } = req.body;
+    if (!clientId || !clientSecret || !tenantId) {
+      res.status(400).json({ error: 'All three Azure AD credentials are required' });
+      return;
+    }
+
+    setConfigValue(CONFIG_KEYS.clientId, clientId, true);
+    setConfigValue(CONFIG_KEYS.clientSecret, clientSecret, true);
+    setConfigValue(CONFIG_KEYS.tenantId, tenantId, true);
+    clearCachedAuth();
+
+    auditLog(req, 'UPDATE', 'system_config', 0, 'ms_email_credentials_saved');
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/email/admin/credentials — Clear all email config
+router.delete('/admin/credentials', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    for (const key of Object.values(CONFIG_KEYS)) {
+      deleteConfigValue(key);
+    }
+    clearCachedAuth();
+
+    // Clear cached emails
+    const db = getDb();
+    db.prepare('DELETE FROM email_cache').run();
+    db.prepare('DELETE FROM email_attachments').run();
+    db.prepare('DELETE FROM email_folders').run();
+
+    auditLog(req, 'DELETE', 'system_config', 0, 'ms_email_credentials_cleared');
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/email/admin/oauth/authorize — Generate OAuth authorization URL
+router.get('/admin/oauth/authorize', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    if (!isConfigured()) {
+      res.status(400).json({ error: 'Azure AD credentials not configured yet' });
+      return;
+    }
+
+    // Store who initiated the OAuth flow
+    setConfigValue(CONFIG_KEYS.oauthInitiator, String(req.user!.userId));
+
+    // Always use https — req.protocol may report http incorrectly with https.createServer
+    const redirectUri = `https://${req.get('host')}/api/email/oauth/callback`;
+    const url = getAuthorizationUrl(redirectUri);
+
+    auditLog(req, 'OAUTH_INITIATE', 'system_config', 0, 'ms_email_oauth_started');
+    res.json({ url });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/email/admin/test-connection — Test Graph API connection
+router.post('/admin/test-connection', requireRole('admin'), async (req: Request, res: Response) => {
+  try {
+    const graphResult = await testConnection();
+    const smtpResult = await testSMTPConnection().catch(() => ({ success: false, error: 'SMTP not configured' }));
+
+    res.json({
+      graph: graphResult,
+      smtp: smtpResult,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/email/admin/enable — Toggle enabled + poll interval
+router.put('/admin/enable', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const { enabled, pollInterval } = req.body;
+
+    if (enabled !== undefined) {
+      setConfigValue(CONFIG_KEYS.enabled, String(!!enabled));
+    }
+
+    if (pollInterval !== undefined) {
+      const seconds = Math.max(60, Math.min(600, parseInt(pollInterval, 10) || 300));
+      setConfigValue(CONFIG_KEYS.pollInterval, String(seconds));
+    }
+
+    // Restart poller with new settings
+    restartEmailPoller();
+
+    auditLog(req, 'UPDATE', 'system_config', 0,
+      JSON.stringify({ action: 'ms_email_settings_updated', enabled, pollInterval }));
+
+    res.json({ success: true, ...getStatus() });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/email/admin/smtp-settings — Configure SMTP fallback
+router.put('/admin/smtp-settings', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const { enabled, password } = req.body;
+
+    if (enabled !== undefined) {
+      setConfigValue(CONFIG_KEYS.smtpFallback, String(!!enabled));
+    }
+
+    if (password) {
+      setConfigValue(CONFIG_KEYS.smtpPassword, password, true);
+    }
+
+    auditLog(req, 'UPDATE', 'system_config', 0, 'ms_email_smtp_settings_updated');
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/email/admin/sync-now — Trigger immediate inbox sync
+router.post('/admin/sync-now', requireRole('admin'), async (req: Request, res: Response) => {
+  try {
+    const result = await syncNow();
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+export default router;
