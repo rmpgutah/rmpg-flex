@@ -1456,7 +1456,11 @@ export type WSMessageType =
   // Presence
   | 'presence_update'
   // Email
-  | 'email:new_messages';
+  | 'email:new_messages'
+  // Process Server
+  | 'serve:created'
+  | 'serve:updated'
+  | 'serve:attempt';
 
 export interface WSMessage {
   type: WSMessageType;
