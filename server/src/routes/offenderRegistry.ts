@@ -143,9 +143,9 @@ router.post('/', (req: Request, res: Response) => {
       source_incident_id || null, source_citation_id || null, source_case_id || null,
       req.user!.userId, notes || null, now, now);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
-      VALUES (?, 'create', 'offender_alert', ?, ?, ?)`).run(
-      req.user!.userId, result.lastInsertRowid, JSON.stringify({ person_id, alert_type, severity }), now);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'create', 'offender_alert', ?, ?, ?, ?)`).run(
+      req.user!.userId, result.lastInsertRowid, JSON.stringify({ person_id, alert_type, severity }), req.ip || 'unknown', now);
 
     res.status(201).json({ data: { id: result.lastInsertRowid } });
   } catch (error: any) {
@@ -187,8 +187,8 @@ router.put('/:id/clear', (req: Request, res: Response) => {
     const now = localNow();
     db.prepare('UPDATE offender_alerts SET status = ?, updated_at = ? WHERE id = ?').run('cleared', now, req.params.id);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
-      VALUES (?, 'clear', 'offender_alert', ?, '{}', ?)`).run(req.user!.userId, req.params.id, now);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'clear', 'offender_alert', ?, '{}', ?, ?)`).run(req.user!.userId, req.params.id, req.ip || 'unknown', now);
 
     res.json({ data: { id: parseInt(req.params.id as string), status: 'cleared' } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }

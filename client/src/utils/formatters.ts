@@ -212,7 +212,7 @@ export function formatDistance(meters: number): string {
 
 /**
  * Convert a snake_case or raw label into "Title Case" display text.
- * e.g. "contract_manager" → "Contract Manager"
+ * e.g. "client_viewer" → "Client Viewer"
  *      "on_scene"         → "On Scene"
  *      "dispatcher"       → "Dispatcher"
  */

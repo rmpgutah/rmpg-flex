@@ -45,8 +45,8 @@ router.get('/', (req: Request, res: Response) => {
       where += ' AND fi.archived_at IS NULL';
     }
 
-    const pageNum = parseInt(page as string, 10);
-    const perPage = parseInt(per_page as string, 10);
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 50));
     const offset = (pageNum - 1) * perPage;
 
     const countRow = db.prepare(`SELECT COUNT(*) as total FROM field_interviews fi ${where}`).get(...params) as any;

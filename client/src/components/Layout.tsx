@@ -164,8 +164,8 @@ const TOOLBAR_NAV: NavItem[] = [
     externalUrl: import.meta.env.DEV ? 'http://localhost:3002/sso' : 'https://crm.rmpgutah.us/sso' },
 ];
 
-// Paths that contract_manager role is NOT allowed to see
-const CONTRACT_MANAGER_BLOCKED_PATHS = new Set([
+// Paths that client_viewer role is NOT allowed to see
+const CLIENT_VIEWER_BLOCKED_PATHS = new Set([
   '/admin', '/audit', '/personnel', '/fleet', '/ncic',
   '/radio', '/patrol', '/shift-plans', '/statute-analytics',
   '/reports/custom', '/crime-analysis', '/dar',
@@ -180,7 +180,7 @@ export default function Layout() {
   const gps = useGpsTracking();
   const presence = usePresence();
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
-  const isContractManager = user?.role === 'contract_manager';
+  const isClientViewer = user?.role === 'client_viewer';
   const pageTitle = PAGE_TITLES[location.pathname] || 'Dashboard';
 
   // ── Offline PIN Modal (global catch for OfflineUnauthorizedError) ──
@@ -289,7 +289,7 @@ export default function Layout() {
       // Build visible nav items (same filter as toolbar rendering)
       const visibleNav = TOOLBAR_NAV.filter(item => {
         if (item.adminOnly && !isAdmin) return false;
-        if (isContractManager && CONTRACT_MANAGER_BLOCKED_PATHS.has(item.path)) return false;
+        if (isClientViewer && CLIENT_VIEWER_BLOCKED_PATHS.has(item.path)) return false;
         return true;
       });
 
@@ -315,7 +315,7 @@ export default function Layout() {
 
     window.addEventListener('keydown', handleFKey);
     return () => window.removeEventListener('keydown', handleFKey);
-  }, [navigate, isAdmin, isContractManager]);
+  }, [navigate, isAdmin, isClientViewer]);
 
   // Mobile menu & responsive detection
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -648,7 +648,7 @@ export default function Layout() {
       )}
 
       {/* Contract Manager Banner */}
-      {isContractManager && (
+      {isClientViewer && (
         <div
           className="flex items-center justify-center gap-2 px-4"
           style={{
@@ -714,7 +714,7 @@ export default function Layout() {
         <div className="flex items-center gap-0 flex-shrink-0">
           {TOOLBAR_NAV.filter(item => {
             if (item.adminOnly && !isAdmin) return false;
-            if (isContractManager && CONTRACT_MANAGER_BLOCKED_PATHS.has(item.path)) return false;
+            if (isClientViewer && CLIENT_VIEWER_BLOCKED_PATHS.has(item.path)) return false;
             return true;
           }).map((item, idx, filtered) => {
             const Icon = item.icon;
@@ -779,7 +779,7 @@ export default function Layout() {
                       >
                         {item.children!.filter(c => {
                           if (c.adminOnly && !isAdmin) return false;
-                          if (isContractManager && CONTRACT_MANAGER_BLOCKED_PATHS.has(c.path)) return false;
+                          if (isClientViewer && CLIENT_VIEWER_BLOCKED_PATHS.has(c.path)) return false;
                           return true;
                         }).map((child) => {
                           const ChildIcon = child.icon;

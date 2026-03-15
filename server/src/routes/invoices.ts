@@ -293,8 +293,8 @@ router.post('/', (req: Request, res: Response) => {
 
     // Activity log
     db.prepare(
-      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(user.userId, 'invoice_created', 'invoice', result.lastInsertRowid, `Created invoice ${invoice_number} for client ${client.name}`, now);
+      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).run(user.userId, 'invoice_created', 'invoice', result.lastInsertRowid, `Created invoice ${invoice_number} for client ${client.name}`, req.ip || 'unknown', now);
 
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json({ data: invoice });
@@ -568,8 +568,8 @@ router.put('/:id', (req: Request, res: Response) => {
     }
 
     db.prepare(
-      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(user.userId, 'invoice_updated', 'invoice', req.params.id, `Updated invoice ${invoice.invoice_number}`, now);
+      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).run(user.userId, 'invoice_updated', 'invoice', req.params.id, `Updated invoice ${invoice.invoice_number}`, req.ip || 'unknown', now);
 
     const updated = db.prepare(`
       SELECT i.*, c.name as client_name FROM invoices i
@@ -632,8 +632,8 @@ router.put('/:id/status', (req: Request, res: Response) => {
     recalculateInvoiceTotals(req.params.id);
 
     db.prepare(
-      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(user.userId, 'invoice_status_changed', 'invoice', req.params.id, `Status: ${invoice.status} → ${status}`, now);
+      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).run(user.userId, 'invoice_status_changed', 'invoice', req.params.id, `Status: ${invoice.status} → ${status}`, req.ip || 'unknown', now);
 
     const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id);
     res.json({ data: updated });
@@ -770,8 +770,8 @@ router.post('/:id/payments', (req: Request, res: Response) => {
     }
 
     db.prepare(
-      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(user.userId, 'payment_recorded', 'invoice', req.params.id, `Payment of $${amount} recorded on invoice ${invoice.invoice_number}`, now);
+      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).run(user.userId, 'payment_recorded', 'invoice', req.params.id, `Payment of $${amount} recorded on invoice ${invoice.invoice_number}`, req.ip || 'unknown', now);
 
     const payment = db.prepare(`
       SELECT p.*, u.full_name as recorded_by_name
@@ -810,8 +810,8 @@ router.delete('/:id/payments/:paymentId', (req: Request, res: Response) => {
     }
 
     db.prepare(
-      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(user.userId, 'payment_reversed', 'invoice', req.params.id, `Payment of $${payment.amount} reversed on invoice ${updated.invoice_number}`, now);
+      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).run(user.userId, 'payment_reversed', 'invoice', req.params.id, `Payment of $${payment.amount} reversed on invoice ${updated.invoice_number}`, req.ip || 'unknown', now);
 
     res.json({ success: true });
   } catch (error: any) {

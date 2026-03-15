@@ -661,9 +661,10 @@ router.post('/calls/:id/dispatch', (req: Request, res: Response) => {
         status = CASE WHEN status = 'pending' THEN 'dispatched' ELSE status END,
         assigned_unit_ids = ?,
         dispatched_at = COALESCE(dispatched_at, ?),
-        dispatcher_id = COALESCE(dispatcher_id, ?)
+        dispatcher_id = COALESCE(dispatcher_id, ?),
+        updated_at = ?
       WHERE id = ?
-    `).run(JSON.stringify(allUnits), now, req.user!.userId, call.id);
+    `).run(JSON.stringify(allUnits), now, req.user!.userId, now, call.id);
 
     // Update each unit status
     for (const unitId of unit_ids) {
@@ -728,9 +729,10 @@ router.post('/calls/:id/assign-unit', (req: Request, res: Response) => {
       UPDATE calls_for_service SET
         status = CASE WHEN status = 'pending' THEN 'dispatched' ELSE status END,
         assigned_unit_ids = ?,
-        dispatched_at = COALESCE(dispatched_at, ?)
+        dispatched_at = COALESCE(dispatched_at, ?),
+        updated_at = ?
       WHERE id = ?
-    `).run(JSON.stringify(currentUnits), now, call.id);
+    `).run(JSON.stringify(currentUnits), now, now, call.id);
 
     // Update unit: set status to dispatched and link to this call
     db.prepare(`
@@ -788,8 +790,8 @@ router.post('/calls/:id/unassign-unit', (req: Request, res: Response) => {
 
     // Update call: remove unit from assigned_unit_ids
     db.prepare(`
-      UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?
-    `).run(JSON.stringify(currentUnits), call.id);
+      UPDATE calls_for_service SET assigned_unit_ids = ?, updated_at = ? WHERE id = ?
+    `).run(JSON.stringify(currentUnits), now, call.id);
 
     // Update unit: set status to available and clear current_call_id
     db.prepare(`
@@ -848,8 +850,8 @@ router.post('/calls/:id/status', (req: Request, res: Response) => {
     };
 
     const tsField = timestampField[status];
-    let updateQuery = `UPDATE calls_for_service SET status = ?`;
-    const updateParams: any[] = [status];
+    let updateQuery = `UPDATE calls_for_service SET status = ?, updated_at = ?`;
+    const updateParams: any[] = [status, now];
 
     if (tsField) {
       updateQuery += `, ${tsField} = COALESCE(${tsField}, ?)`;
@@ -935,8 +937,8 @@ router.post('/calls/:id/revert-status', (req: Request, res: Response) => {
     };
 
     const tsField = timestampField[call.status];
-    let updateQuery = `UPDATE calls_for_service SET status = ?`;
-    const updateParams: any[] = [previousStatus];
+    let updateQuery = `UPDATE calls_for_service SET status = ?, updated_at = ?`;
+    const updateParams: any[] = [previousStatus, now];
 
     // Clear the timestamp for the status being reverted
     if (tsField) {
@@ -1001,8 +1003,8 @@ router.post('/calls/:id/hold', (req: Request, res: Response) => {
     }
 
     db.prepare(`
-      UPDATE calls_for_service SET status = 'on_hold', previous_status = ? WHERE id = ?
-    `).run(call.status, call.id);
+      UPDATE calls_for_service SET status = 'on_hold', previous_status = ?, updated_at = ? WHERE id = ?
+    `).run(call.status, localNow(), call.id);
 
     // Log activity
     db.prepare(`
@@ -1038,8 +1040,8 @@ router.post('/calls/:id/resume', (req: Request, res: Response) => {
     const restoreStatus = call.previous_status || 'pending';
 
     db.prepare(`
-      UPDATE calls_for_service SET status = ?, previous_status = NULL WHERE id = ?
-    `).run(restoreStatus, call.id);
+      UPDATE calls_for_service SET status = ?, previous_status = NULL, updated_at = ? WHERE id = ?
+    `).run(restoreStatus, localNow(), call.id);
 
     // Log activity
     db.prepare(`
@@ -2100,7 +2102,7 @@ router.post('/calls/archive-bulk', (req: Request, res: Response) => {
       return;
     }
 
-    const archiveStmt = db.prepare('UPDATE calls_for_service SET status = ?, archived_at = ? WHERE id = ?');
+    const archiveStmt = db.prepare('UPDATE calls_for_service SET status = ?, archived_at = ?, updated_at = ? WHERE id = ?');
     const freeUnitStmt = db.prepare(
       `UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = ? WHERE id = ? AND current_call_id = ?`
     );
@@ -2110,7 +2112,7 @@ router.post('/calls/archive-bulk', (req: Request, res: Response) => {
 
     const archiveTransaction = db.transaction(() => {
       for (const call of callsToArchive) {
-        archiveStmt.run('archived', now, call.id);
+        archiveStmt.run('archived', now, now, call.id);
 
         // Free up any assigned units
         let unitIds: number[] = [];
@@ -2150,8 +2152,8 @@ router.post('/calls/:id/archive', (req: Request, res: Response) => {
     }
 
     const now = localNow();
-    db.prepare('UPDATE calls_for_service SET status = ?, archived_at = ? WHERE id = ?')
-      .run('archived', now, call.id);
+    db.prepare('UPDATE calls_for_service SET status = ?, archived_at = ?, updated_at = ? WHERE id = ?')
+      .run('archived', now, now, call.id);
 
     // Free up any assigned units when archiving
     let unitIds: number[] = [];
@@ -2192,7 +2194,7 @@ router.post('/calls/:id/unarchive', (req: Request, res: Response) => {
       return;
     }
 
-    db.prepare('UPDATE calls_for_service SET status = ? WHERE id = ?').run('closed', call.id);
+    db.prepare('UPDATE calls_for_service SET status = ?, updated_at = ? WHERE id = ?').run('closed', localNow(), call.id);
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
@@ -2536,8 +2538,8 @@ router.post('/panic', authenticateToken, async (req: Request, res: Response) => 
 
       // Update call's assigned_unit_ids JSON array
       const unitIds = JSON.stringify([String(unit.id)]);
-      db.prepare('UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?')
-        .run(unitIds, call.id);
+      db.prepare('UPDATE calls_for_service SET assigned_unit_ids = ?, updated_at = ? WHERE id = ?')
+        .run(unitIds, localNow(), call.id);
 
       broadcastUnitUpdate({ action: 'unit_status_changed', unit: { ...unit, status: 'dispatched', current_call_id: call.id } });
     }

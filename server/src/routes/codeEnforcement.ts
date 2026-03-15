@@ -110,8 +110,8 @@ router.post('/violations', (req: Request, res: Response) => {
       description, code_section || null, severity || 'minor',
       compliance_deadline || null, fine_amount || 0, req.user!.userId, user?.full_name || '', now, now);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
-      VALUES (?, 'create', 'code_violation', ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ violation_number }), now);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'create', 'code_violation', ?, ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ violation_number }), req.ip || 'unknown', now);
 
     res.status(201).json({ data: { id: result.lastInsertRowid, violation_number } });
   } catch (error: any) {
@@ -153,8 +153,8 @@ router.put('/violations/:id/status', (req: Request, res: Response) => {
     const setClauses = Object.keys(updates).map(k => `${k} = ?`).join(', ');
     db.prepare(`UPDATE code_violations SET ${setClauses} WHERE id = ?`).run(...Object.values(updates), req.params.id);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
-      VALUES (?, 'status_change', 'code_violation', ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ status }), now);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'status_change', 'code_violation', ?, ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ status }), req.ip || 'unknown', now);
 
     res.json({ data: { id: parseInt(req.params.id as string), status } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
@@ -223,8 +223,8 @@ router.post('/tows', (req: Request, res: Response) => {
       tow_fee || 0, storage_fee_daily || 0,
       req.user!.userId, user?.full_name || '', notes || null, now, now, now);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
-      VALUES (?, 'create', 'vehicle_tow', ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ tow_number }), now);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'create', 'vehicle_tow', ?, ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ tow_number }), req.ip || 'unknown', now);
 
     res.status(201).json({ data: { id: result.lastInsertRowid, tow_number } });
   } catch (error: any) {
@@ -268,8 +268,8 @@ router.put('/tows/:id/status', (req: Request, res: Response) => {
     const setClauses = Object.keys(updates).map(k => `${k} = ?`).join(', ');
     db.prepare(`UPDATE vehicle_tows SET ${setClauses} WHERE id = ?`).run(...Object.values(updates), req.params.id);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
-      VALUES (?, 'status_change', 'vehicle_tow', ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ status }), now);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'status_change', 'vehicle_tow', ?, ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ status }), req.ip || 'unknown', now);
 
     res.json({ data: { id: parseInt(req.params.id as string), status } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }

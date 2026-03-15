@@ -147,8 +147,8 @@ router.post('/events', (req: Request, res: Response) => {
       JSON.stringify(officers_required || []), notes || null,
       req.user!.userId, now, now);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
-      VALUES (?, 'create', 'court_event', ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ event_number }), now);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'create', 'court_event', ?, ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ event_number }), req.ip || 'unknown', now);
 
     res.status(201).json({ data: { id: result.lastInsertRowid, event_number } });
   } catch (error: any) {
@@ -193,8 +193,8 @@ router.put('/events/:id/outcome', (req: Request, res: Response) => {
         status = 'completed', updated_at = ? WHERE id = ?
     `).run(outcome, sentence || null, fine_amount || null, notes || null, now, req.params.id);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
-      VALUES (?, 'outcome', 'court_event', ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ outcome }), now);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'outcome', 'court_event', ?, ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ outcome }), req.ip || 'unknown', now);
 
     res.json({ data: { id: parseInt(req.params.id as string), outcome } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }

@@ -60,8 +60,8 @@ router.get('/persons', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { page = '1', limit = '50', flags, archived } = req.query;
-    const pageNum = parseInt(page as string, 10);
-    const limitNum = parseInt(limit as string, 10);
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
     let whereClause = 'WHERE 1=1';
@@ -649,8 +649,8 @@ router.get('/vehicles', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { page = '1', limit = '50', archived } = req.query;
-    const pageNum = parseInt(page as string, 10);
-    const limitNum = parseInt(limit as string, 10);
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
     let whereClause = 'WHERE 1=1';
@@ -1163,8 +1163,8 @@ router.get('/evidence', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { page = '1', limit = '50', archived } = req.query;
-    const pageNum = parseInt(page as string, 10);
-    const limitNum = parseInt(limit as string, 10);
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
     let whereClause = 'WHERE 1=1';
@@ -1470,9 +1470,9 @@ router.post('/evidence/:id/chain-action', (req: Request, res: Response) => {
     db.prepare(`UPDATE evidence SET chain_of_custody = ?, status = ?, storage_location = ?, updated_at = ? WHERE id = ?`)
       .run(JSON.stringify(chain), newStatus, storageLocation, localNow(), evidence.id);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
-      VALUES (?, ?, 'evidence', ?, ?, ?)`).run(
-      req.user!.userId, `evidence_${action}`, evidence.id, JSON.stringify({ action, to_location }), localNow());
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, ?, 'evidence', ?, ?, ?, ?)`).run(
+      req.user!.userId, `evidence_${action}`, evidence.id, JSON.stringify({ action, to_location }), req.ip || 'unknown', localNow());
 
     res.json({ data: { id: evidence.id, status: newStatus, chain_of_custody: chain } });
   } catch (error: any) {

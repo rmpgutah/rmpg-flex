@@ -31,6 +31,7 @@ interface AuthContextType {
   confirmSetup2FA: (code: string) => Promise<{ backupCodes: string[] }>;
   changePasswordDuringLogin: (newPassword: string) => Promise<void>;
   pending2FA: boolean;
+  twoFactorMethods: { totp: boolean; webauthn: boolean };
   /** Expose temp token for WebAuthn authenticate-options flow */
   tempToken: string | null;
   cancel2FA: () => void;
@@ -44,6 +45,7 @@ interface AuthContextType {
   loginUsername: string;
   setLoginUsername: (u: string) => void;
   pendingBackupCodes: string[] | null;
+  backupCodes: string[] | null;
   requiresPasswordChange: boolean;
 }
 
@@ -326,6 +328,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // ── Two-Factor Authentication state ───────────────────
   const [pending2FA, setPending2FA] = useState(false);
+  const [twoFactorMethods, setTwoFactorMethods] = useState<{ totp: boolean; webauthn: boolean }>({ totp: false, webauthn: false });
   const [tempToken, setTempToken] = useState<string | null>(null);
 
   const cancel2FA = useCallback(() => {
@@ -496,6 +499,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (data.requires2FA || data.step === 'verify_2fa') {
           setTempToken(data.tempToken);
           setPending2FA(true);
+          if (data.methods) {
+            setTwoFactorMethods({ totp: !!data.methods.totp, webauthn: !!data.methods.webauthn });
+          }
           setRequiresPasswordChange(!!data.requiresPasswordChange);
           setLoginStep('verify_2fa');
           return { requires2FA: true, success: false };
@@ -829,6 +835,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     confirmSetup2FA,
     changePasswordDuringLogin,
     pending2FA,
+    twoFactorMethods,
     tempToken,
     cancel2FA,
     logout,
@@ -840,8 +847,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loginUsername,
     setLoginUsername,
     pendingBackupCodes,
+    backupCodes: pendingBackupCodes,
     requiresPasswordChange,
-  }), [user, token, isLoading, loginBusy, login, verify2FA, verifyBackupCode, verifyWebAuthn, setup2FA, confirmSetup2FA, changePasswordDuringLogin, pending2FA, tempToken, cancel2FA, logout, refreshUser, error, clearError, loginStep, loginUsername, pendingBackupCodes, requiresPasswordChange]);
+  }), [user, token, isLoading, loginBusy, login, verify2FA, verifyBackupCode, verifyWebAuthn, setup2FA, confirmSetup2FA, changePasswordDuringLogin, pending2FA, twoFactorMethods, tempToken, cancel2FA, logout, refreshUser, error, clearError, loginStep, loginUsername, pendingBackupCodes, requiresPasswordChange]);
 
   return (
     <AuthContext.Provider value={contextValue}>

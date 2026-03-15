@@ -1242,7 +1242,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const requirements = db.prepare('SELECT * FROM training_requirements ORDER BY course_name').all();
       res.json(requirements.map((r: any) => ({
         ...r,
-        required_for_roles: typeof r.required_for_roles === 'string' ? JSON.parse(r.required_for_roles) : r.required_for_roles,
+        required_for_roles: typeof r.required_for_roles === 'string' ? (() => { try { return JSON.parse(r.required_for_roles); } catch { return []; } })() : r.required_for_roles,
         is_mandatory: !!r.is_mandatory,
       })));
     } catch (error: any) {

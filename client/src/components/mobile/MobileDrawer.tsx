@@ -147,8 +147,8 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
-// Paths blocked for contract_manager role
-const CONTRACT_MANAGER_BLOCKED_PATHS = new Set([
+// Paths blocked for client_viewer role
+const CLIENT_VIEWER_BLOCKED_PATHS = new Set([
   '/admin', '/audit', '/personnel', '/fleet', '/ncic',
   '/radio', '/patrol', '/shift-plans', '/statute-analytics',
   '/reports/custom', '/crime-analysis', '/dar',
@@ -312,10 +312,10 @@ export default function MobileDrawer({
         {/* ── Navigation Groups ── */}
         <div className="flex-1 overflow-y-auto py-2" style={{ maxHeight: 'calc(100vh - 200px)' }}>
           {NAV_GROUPS.map((group) => {
-            const isContractMgr = user?.role === 'contract_manager';
+            const isClientViewer = user?.role === 'client_viewer';
             const visibleItems = group.items.filter((item) => {
               if (item.adminOnly && !isAdmin) return false;
-              if (isContractMgr && CONTRACT_MANAGER_BLOCKED_PATHS.has(item.path)) return false;
+              if (isClientViewer && CLIENT_VIEWER_BLOCKED_PATHS.has(item.path)) return false;
               return true;
             });
             if (visibleItems.length === 0) return null;

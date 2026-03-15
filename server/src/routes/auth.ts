@@ -1413,7 +1413,8 @@ router.post('/verify-2fa', authRateLimit, (req: Request, res: Response) => {
 
     // If TOTP fails, try backup code
     if (!codeValid && user.totp_backup_codes) {
-      const hashedCodes: string[] = JSON.parse(user.totp_backup_codes);
+      let hashedCodes: string[] = [];
+      try { hashedCodes = JSON.parse(user.totp_backup_codes); } catch { /* corrupted backup codes */ }
       const result = verifyBackupCode(code, hashedCodes);
       if (result.valid) {
         codeValid = true;

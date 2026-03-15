@@ -39,7 +39,7 @@ const ROLE_COLORS: Record<UserRole, string> = {
   supervisor: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
   officer: 'bg-brand-900/50 text-brand-400 border-brand-700/50',
   dispatcher: 'bg-green-900/50 text-green-400 border-green-700/50',
-  contract_manager: 'bg-teal-900/50 text-teal-400 border-teal-700/50',
+  client_viewer: 'bg-teal-900/50 text-teal-400 border-teal-700/50',
 };
 
 type UserStatus = 'active' | 'inactive' | 'terminated';

@@ -137,7 +137,7 @@ router.get('/', (req: Request, res: Response) => {
       date_to,
     } = req.query;
 
-    const pageNum = parseInt(page as string, 10);
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const limitNum = Math.min(parseInt(limit as string, 10) || 50, 200);
     const offset = (pageNum - 1) * limitNum;
 

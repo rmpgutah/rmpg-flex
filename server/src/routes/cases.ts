@@ -124,8 +124,8 @@ router.post('/', (req: Request, res: Response) => {
         .run(result.lastInsertRowid, case_number, linked_call_id);
     }
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
-      VALUES (?, 'create', 'case', ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ case_number, title }), now);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'create', 'case', ?, ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ case_number, title }), req.ip || 'unknown', now);
 
     res.status(201).json({ data: { id: result.lastInsertRowid, case_number } });
   } catch (error: any) {
@@ -159,8 +159,8 @@ router.put('/:id', (req: Request, res: Response) => {
     params.push(req.params.id);
     db.prepare(`UPDATE cases SET ${updates.join(', ')} WHERE id = ?`).run(...params);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
-      VALUES (?, 'update', 'case', ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ fields: Object.keys(req.body) }), now);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'update', 'case', ?, ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ fields: Object.keys(req.body) }), req.ip || 'unknown', now);
 
     res.json({ data: { id: parseInt(req.params.id as string) } });
   } catch (error: any) {
@@ -188,9 +188,9 @@ router.put('/:id/status', (req: Request, res: Response) => {
     const setClauses = Object.keys(updates).map(k => `${k} = ?`).join(', ');
     db.prepare(`UPDATE cases SET ${setClauses} WHERE id = ?`).run(...Object.values(updates), req.params.id);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
-      VALUES (?, 'status_change', 'case', ?, ?, ?)`).run(
-      req.user!.userId, req.params.id, JSON.stringify({ from: existing.status, to: status }), now);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'status_change', 'case', ?, ?, ?, ?)`).run(
+      req.user!.userId, req.params.id, JSON.stringify({ from: existing.status, to: status }), req.ip || 'unknown', now);
 
     res.json({ data: { id: parseInt(req.params.id as string), status } });
   } catch (error: any) {

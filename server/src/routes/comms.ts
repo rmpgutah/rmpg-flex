@@ -473,7 +473,7 @@ router.delete('/bolos/:id', requireRole('admin', 'manager', 'supervisor'), (req:
       return;
     }
 
-    db.prepare("UPDATE bolos SET status = 'cancelled' WHERE id = ?").run(bolo.id);
+    db.prepare("UPDATE bolos SET status = 'cancelled', updated_at = ? WHERE id = ?").run(localNow(), bolo.id);
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)

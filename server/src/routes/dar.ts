@@ -240,8 +240,8 @@ router.post('/', (req: Request, res: Response) => {
       activities_narrative || null, notable_events || null, equipment_issues || null,
       safety_concerns || null, recommendations || null, now, now);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
-      VALUES (?, 'create', 'dar', ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ dar_number }), now);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'create', 'dar', ?, ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ dar_number }), req.ip || 'unknown', now);
 
     res.status(201).json({ data: { id: result.lastInsertRowid, dar_number } });
   } catch (error: any) {
@@ -281,8 +281,8 @@ router.put('/:id/submit', (req: Request, res: Response) => {
     db.prepare('UPDATE daily_activity_reports SET status = ?, submitted_at = ?, updated_at = ? WHERE id = ?')
       .run('submitted', now, now, req.params.id);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
-      VALUES (?, 'submit', 'dar', ?, '{}', ?)`).run(req.user!.userId, req.params.id, now);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'submit', 'dar', ?, '{}', ?, ?)`).run(req.user!.userId, req.params.id, req.ip || 'unknown', now);
 
     res.json({ data: { id: parseInt(req.params.id as string), status: 'submitted' } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
@@ -299,8 +299,8 @@ router.put('/:id/approve', (req: Request, res: Response) => {
       reviewed_by_name = ?, reviewed_at = ?, review_notes = ?, updated_at = ? WHERE id = ?`)
       .run(req.user!.userId, user?.full_name || '', now, req.body.review_notes || null, now, req.params.id);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
-      VALUES (?, 'approve', 'dar', ?, '{}', ?)`).run(req.user!.userId, req.params.id, now);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'approve', 'dar', ?, '{}', ?, ?)`).run(req.user!.userId, req.params.id, req.ip || 'unknown', now);
 
     res.json({ data: { id: parseInt(req.params.id as string), status: 'approved' } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
