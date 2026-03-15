@@ -622,23 +622,98 @@ export default function WarrantsPage() {
   // Utah Search
   // ============================================================
 
+  /** Direct browser fetch from warrants.utah.gov (fallback when server proxy is blocked) */
+  const searchUtahDirect = useCallback(async (query: string): Promise<UtahWarrantResult[]> => {
+    const parts = query.trim().split(/[\s,]+/).filter(Boolean);
+    if (parts.length < 2) return [];
+
+    const results: UtahWarrantResult[] = [];
+
+    // Search persons — try both orderings (first last, last first)
+    for (const [first, last] of [[parts[0], parts[parts.length - 1]], [parts[parts.length - 1], parts[0]]]) {
+      try {
+        const personsRes = await fetch('https://warrants.utah.gov/api/v1/persons', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: { first: first.toUpperCase(), last: last.toUpperCase() } }),
+        });
+        if (!personsRes.ok) continue;
+        const personsData = await personsRes.json();
+        if (!personsData?.persons?.length) continue;
+
+        // Fetch warrants for each person
+        for (const person of personsData.persons) {
+          try {
+            const warrantsRes = await fetch(`https://warrants.utah.gov/api/v1/persons/${person.id}/warrants`);
+            if (!warrantsRes.ok) continue;
+            const warrantsData = await warrantsRes.json();
+            for (const w of warrantsData?.warrants || []) {
+              results.push({
+                utah_person_id: person.id,
+                first_name: person.name?.first || '',
+                middle_name: person.name?.middle || null,
+                last_name: person.name?.last || '',
+                age: person.age ? parseInt(String(person.age), 10) || null : null,
+                city: person.homeAddress?.city || null,
+                utah_warrant_id: w.id,
+                issue_date: w.issueDate || null,
+                court_name: w.court?.name || null,
+                case_id: w.court?.caseId || null,
+                charges: JSON.stringify(w.charges || []),
+                source: 'UTAH_STATE',
+              });
+            }
+          } catch { /* skip individual person warrant fetch errors */ }
+        }
+        if (results.length > 0) break; // found results, don't try reversed name
+      } catch { /* network error — continue to next ordering or fail */ }
+    }
+
+    // Cache results on server for other users
+    if (results.length > 0) {
+      apiFetch('/warrants/utah/cache', {
+        method: 'POST',
+        body: JSON.stringify({ results }),
+      }).catch(() => { /* cache failure is non-critical */ });
+    }
+
+    return results;
+  }, []);
+
   const handleUtahSearch = useCallback(async () => {
     if (!utahSearchQuery.trim() || utahSearchQuery.trim().length < 2) return;
     setUtahSearching(true);
     setUtahSearched(false);
     try {
+      // Try server-side proxy first
       const res = await apiFetch<{ data: UtahWarrantResult[]; source: string }>(
         `/warrants/utah?search=${encodeURIComponent(utahSearchQuery.trim())}`
       );
-      setUtahResults(res.data || []);
-      setUtahResultSource((res.source || '') as 'live' | 'cache');
+      if (res.data && res.data.length > 0) {
+        setUtahResults(res.data);
+        setUtahResultSource((res.source || '') as 'live' | 'cache');
+        setUtahSearched(true);
+        return;
+      }
+
+      // Server returned empty — try direct browser fetch (bypasses CloudFront WAF)
+      const directResults = await searchUtahDirect(utahSearchQuery.trim());
+      setUtahResults(directResults);
+      setUtahResultSource(directResults.length > 0 ? 'live' : 'cache');
       setUtahSearched(true);
     } catch {
-      setUtahResults([]);
+      // Server proxy failed — try direct browser fetch
+      try {
+        const directResults = await searchUtahDirect(utahSearchQuery.trim());
+        setUtahResults(directResults);
+        setUtahResultSource(directResults.length > 0 ? 'live' : 'cache');
+      } catch {
+        setUtahResults([]);
+      }
       setUtahSearched(true);
     }
     finally { setUtahSearching(false); }
-  }, [utahSearchQuery]);
+  }, [utahSearchQuery, searchUtahDirect]);
 
   // ============================================================
   // Handlers — Local Warrants

@@ -201,6 +201,49 @@ router.get('/utah', async (req: Request, res: Response) => {
   }
 });
 
+// POST /api/warrants/utah/cache — Client-side direct search results imported to server cache
+// When CloudFront blocks the server IP, the client fetches warrants.utah.gov directly
+// from the user's browser and posts results here for caching.
+router.post('/utah/cache', (req: Request, res: Response) => {
+  try {
+    const { results } = req.body;
+    if (!Array.isArray(results) || results.length === 0) {
+      res.json({ cached: 0 });
+      return;
+    }
+
+    const db = getDb();
+    const now = localNow();
+
+    const insertStmt = db.prepare(`
+      INSERT OR REPLACE INTO utah_warrants
+        (utah_person_id, first_name, middle_name, last_name, age, city,
+         utah_warrant_id, issue_date, court_name, case_id, charges, fetched_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const tx = db.transaction(() => {
+      for (const r of results) {
+        if (!r.utah_person_id || !r.utah_warrant_id) continue;
+        insertStmt.run(
+          r.utah_person_id, r.first_name || '', r.middle_name || null,
+          r.last_name || '', r.age || null, r.city || null,
+          r.utah_warrant_id, r.issue_date || null,
+          r.court_name || null, r.case_id || null,
+          typeof r.charges === 'string' ? r.charges : JSON.stringify(r.charges || []),
+          now
+        );
+      }
+    });
+    tx();
+
+    res.json({ cached: results.length });
+  } catch (error: any) {
+    console.error('Cache Utah warrants error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // GET /api/warrants/utah/count — Cached warrant count for tab badge
 router.get('/utah/count', (req: Request, res: Response) => {
   try {

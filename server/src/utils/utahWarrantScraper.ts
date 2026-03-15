@@ -16,6 +16,10 @@
 
 import { getDb } from '../models/database';
 import { localNow } from './timeUtils';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+
+const execFileAsync = promisify(execFile);
 
 // ── API endpoints ────────────────────────────────────────────
 const BASE_URL = 'https://warrants.utah.gov/api/v1';
@@ -25,8 +29,8 @@ const WARRANTS_URL = (personId: string) => `${BASE_URL}/persons/${personId}/warr
 // ── Config ───────────────────────────────────────────────────
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const REQUEST_TIMEOUT_MS = 10_000;          // 10 second timeout per request
-const MAX_RETRIES = 2;
-const RETRY_DELAY_MS = 2000;
+const MAX_RETRIES = 1;
+const RETRY_DELAY_MS = 5000;
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -66,54 +70,100 @@ async function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// Per-request rate limiter — minimum 5 seconds between API calls to avoid
+// triggering CloudFront WAF rate limiting which blocks the VPS IP.
+let lastApiCallAt = 0;
+const MIN_API_INTERVAL_MS = 5000;
+
+async function rateLimit(): Promise<void> {
+  const elapsed = Date.now() - lastApiCallAt;
+  if (elapsed < MIN_API_INTERVAL_MS) {
+    await sleep(MIN_API_INTERVAL_MS - elapsed);
+  }
+  lastApiCallAt = Date.now();
+}
+
+// CloudFront WAF blocks Node.js fetch() based on TLS fingerprinting (JA3).
+// We use curl via child_process instead — curl's TLS fingerprint is accepted.
+// A two-step flow warms the session (GET homepage → cookie jar) then POSTs the API.
+
+const COOKIE_JAR = '/tmp/utah_warrants_cookies.txt';
+
+const CURL_BROWSER_ARGS = [
+  '-s',                // silent
+  '--max-time', String(REQUEST_TIMEOUT_MS / 1000),
+  '-H', 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+  '-H', 'Accept-Language: en-US,en;q=0.9',
+];
+
+let lastSessionWarmAt = 0;
+const SESSION_WARM_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+async function warmSession(): Promise<void> {
+  if (Date.now() - lastSessionWarmAt < SESSION_WARM_TTL_MS) return;
+  try {
+    await execFileAsync('curl', [
+      ...CURL_BROWSER_ARGS,
+      '-c', COOKIE_JAR,       // save cookies
+      '-o', '/dev/null',      // discard body
+      '-H', 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'https://warrants.utah.gov/',
+    ], { timeout: REQUEST_TIMEOUT_MS + 2000 });
+    lastSessionWarmAt = Date.now();
+  } catch (err: any) {
+    console.warn(`[Utah Warrants] Session warm failed: ${err.message}`);
+  }
+}
+
 async function fetchJson<T>(url: string, options: RequestInit, retries = MAX_RETRIES): Promise<T | null> {
+  await warmSession();
+  await rateLimit();
+
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      const args = [
+        ...CURL_BROWSER_ARGS,
+        '-b', COOKIE_JAR,       // send cookies
+        '-c', COOKIE_JAR,       // update cookies
+        '-H', 'Content-Type: application/json',
+        '-H', 'Accept: application/json, text/plain, */*',
+        '-H', 'Origin: https://warrants.utah.gov',
+        '-H', 'Referer: https://warrants.utah.gov/',
+      ];
 
-      const res = await fetch(url, {
-        ...options,
-        signal: controller.signal,
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json, text/plain, */*',
-          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-          'Origin': 'https://warrants.utah.gov',
-          'Referer': 'https://warrants.utah.gov/',
-          'sec-ch-ua': '"Chromium";v="122", "Google Chrome";v="122"',
-          'sec-ch-ua-mobile': '?0',
-          'sec-ch-ua-platform': '"macOS"',
-          'sec-fetch-dest': 'empty',
-          'sec-fetch-mode': 'cors',
-          'sec-fetch-site': 'same-origin',
-          ...(options.headers || {}),
-        },
+      if (options.method === 'POST' && options.body) {
+        args.push('-X', 'POST', '-d', String(options.body));
+      }
+
+      args.push(url);
+
+      const { stdout } = await execFileAsync('curl', args, {
+        timeout: REQUEST_TIMEOUT_MS + 2000,
+        maxBuffer: 2 * 1024 * 1024,
       });
 
-      clearTimeout(timeout);
+      if (!stdout.trim()) return null;
 
-      if (res.ok || res.status === 201) {
-        return await res.json() as T;
+      // Check if we got an HTML error page instead of JSON
+      if (stdout.trim().startsWith('<!') || stdout.trim().startsWith('<HTML')) {
+        if (attempt < retries) {
+          console.warn(`[Utah Warrants] 403 from CloudFront — re-warming session and retrying in ${RETRY_DELAY_MS / 1000}s`);
+          lastSessionWarmAt = 0;
+          await sleep(RETRY_DELAY_MS * (attempt + 1));
+          await warmSession();
+          continue;
+        }
+        console.warn(`[Utah Warrants] CloudFront blocked request to ${url}`);
+        return null;
       }
 
-      if (res.status === 403 && attempt < retries) {
-        console.warn(`[Utah Warrants] 403 rate-limited — retrying in ${RETRY_DELAY_MS / 1000}s`);
-        await sleep(RETRY_DELAY_MS * (attempt + 1));
-        continue;
-      }
-
-      console.warn(`[Utah Warrants] HTTP ${res.status} from ${url}`);
-      return null;
+      return JSON.parse(stdout) as T;
     } catch (err: any) {
-      if (err.name === 'AbortError') {
-        console.warn(`[Utah Warrants] Request timeout for ${url}`);
-      } else if (attempt < retries) {
+      if (attempt < retries) {
         await sleep(RETRY_DELAY_MS);
         continue;
-      } else {
-        console.warn(`[Utah Warrants] Fetch error: ${err.message}`);
       }
+      console.warn(`[Utah Warrants] Fetch error: ${err.message}`);
       return null;
     }
   }
@@ -318,8 +368,8 @@ export function getUtahWarrantSyncStatus(): {
 // warrants API, logs NEW hits and CLEARED warrants.
 // ══════════════════════════════════════════════════════════════
 
-/** Delay between person searches to avoid rate-limiting (3 seconds) */
-const SCAN_DELAY_MS = 3000;
+/** Delay between person searches to avoid CloudFront rate-limiting (8 seconds) */
+const SCAN_DELAY_MS = 8000;
 
 /** Generate a unique run ID for each scan */
 function generateRunId(): string {
