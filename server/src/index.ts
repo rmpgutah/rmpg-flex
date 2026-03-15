@@ -205,6 +205,14 @@ app.use((req, res, next) => {
   next();
 });
 
+// Prevent caching of API responses (sensitive data)
+app.use('/api', (_req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  next();
+});
+
 // Apply rate limiting to API routes
 app.use('/api', apiRateLimit);
 
@@ -224,33 +232,42 @@ app.get('/api/health', (_req, res) => {
   const overall = dbStatus === 'ok' ? 'ok' : 'degraded';
   const statusCode = overall === 'ok' ? 200 : 503;
 
-  res.status(statusCode).json({
-    status: overall,
-    name: 'RMPG Flex CAD/RMS Server',
-    version: SERVER_VERSION,
-    environment: config.nodeEnv,
-    timestamp: new Date().toISOString(),
-    uptime: Math.floor(process.uptime()),
-    database: { status: dbStatus, ...(dbError && { error: dbError }) },
-    connections: { websocket: getConnectedClientCount() },
-    features: {
-      rateLimiting: true,
-      securityHeaders: true,
-      inputSanitization: true,
-      tokenRefresh: true,
-      sessionManagement: true,
-      accountLockout: true,
-      passwordPolicy: true,
-      fileUpload: true,
-      warrants: true,
-      fleetManagement: true,
-      notifications: true,
-      csvExport: true,
-      sslEncryption: config.ssl.enabled,
-      wsAuthentication: true,
-      liveSync: true,
-    },
-  });
+  if (config.isProduction) {
+    // Production: minimal info — no version, environment, features, or connection counts
+    res.status(statusCode).json({
+      status: overall,
+      timestamp: new Date().toISOString(),
+      database: { status: dbStatus },
+    });
+  } else {
+    res.status(statusCode).json({
+      status: overall,
+      name: 'RMPG Flex CAD/RMS Server',
+      version: SERVER_VERSION,
+      environment: config.nodeEnv,
+      timestamp: new Date().toISOString(),
+      uptime: Math.floor(process.uptime()),
+      database: { status: dbStatus, ...(dbError && { error: dbError }) },
+      connections: { websocket: getConnectedClientCount() },
+      features: {
+        rateLimiting: true,
+        securityHeaders: true,
+        inputSanitization: true,
+        tokenRefresh: true,
+        sessionManagement: true,
+        accountLockout: true,
+        passwordPolicy: true,
+        fileUpload: true,
+        warrants: true,
+        fleetManagement: true,
+        notifications: true,
+        csvExport: true,
+        sslEncryption: config.ssl.enabled,
+        wsAuthentication: true,
+        liveSync: true,
+      },
+    });
+  }
 });
 
 // ─── Presence Endpoint ───────────────────────────────
@@ -437,7 +454,7 @@ app.get('*', (req, res) => {
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error('Unhandled Express error:', err?.message || err, err?.stack || '');
   if (!res.headersSent) {
-    res.status(500).json({ error: err?.message || 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
