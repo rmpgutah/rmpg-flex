@@ -247,8 +247,9 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
     const passwordHash = bcryptjs.hashSync(password, 10);
 
     // Derive first_name/last_name from full_name if not provided
-    const derivedFirst = first_name || full_name.split(' ')[0] || '';
-    const derivedLast = last_name || full_name.split(' ').slice(1).join(' ') || '';
+    const nameParts = (full_name || '').split(' ');
+    const derivedFirst = first_name || nameParts[0] || '';
+    const derivedLast = last_name || nameParts.slice(1).join(' ') || '';
 
     const result = db.prepare(`
       INSERT INTO users (username, password_hash, full_name, first_name, last_name, email, role, badge_number, phone,

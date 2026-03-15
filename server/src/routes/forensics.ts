@@ -328,7 +328,8 @@ router.post('/:id/exhibits', (req: Request, res: Response) => {
     if (!description?.trim()) return res.status(400).json({ error: 'Description is required' });
 
     // Auto-generate exhibit number (A, B, C, ...)
-    const count = (db.prepare('SELECT COUNT(*) as c FROM forensic_exhibits WHERE forensic_case_id = ?').get(req.params.id) as any).c;
+    const countRow = db.prepare('SELECT COUNT(*) as c FROM forensic_exhibits WHERE forensic_case_id = ?').get(req.params.id) as any;
+    const count = countRow?.c ?? 0;
     const exhibit_number = String.fromCharCode(65 + count); // A=65
 
     const now = localNow();
@@ -340,7 +341,7 @@ router.post('/:id/exhibits', (req: Request, res: Response) => {
     addTimelineEntry(caseRow.id, 'exhibit_added', `Exhibit ${exhibit_number} added — ${description}`, user.userId, user.fullName || user.username);
 
     const created = db.prepare('SELECT * FROM forensic_exhibits WHERE id = ?').get(result.lastInsertRowid);
-    res.status(201).json(created);
+    res.status(201).json(created || { id: result.lastInsertRowid });
   } catch (error: any) {
     console.error('Create exhibit error:', error);
     res.status(500).json({ error: 'Internal server error' });

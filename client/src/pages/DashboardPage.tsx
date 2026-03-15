@@ -900,7 +900,7 @@ export default function DashboardPage() {
           return b.action_count - a.action_count;
         });
         const chartRows = sorted.map(o => ({
-          name: o.full_name?.split(' ').map(w => w[0]?.toUpperCase() + w.slice(1).toLowerCase()).join(' ') || 'Unknown',
+          name: o.full_name?.split(' ').filter(Boolean).map(w => w[0]?.toUpperCase() + w.slice(1).toLowerCase()).join(' ') || 'Unknown',
           badge: o.badge_number || '',
           actions: o.action_count,
           role: o.role,

@@ -364,7 +364,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispa
       req.ip || 'unknown'
     );
 
-    const created = db.prepare('SELECT * FROM citations WHERE id = ?').get(result.lastInsertRowid);
+    const created = db.prepare('SELECT * FROM citations WHERE id = ?').get(result.lastInsertRowid) || { id: result.lastInsertRowid };
 
     // Notify supervisors of citation issued
     createNotificationForRoles(

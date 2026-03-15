@@ -17,7 +17,7 @@ router.use(authenticateToken);
 router.get('/heatmap', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const days = parseInt(req.query.days as string) || 30;
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
     const mode = (req.query.mode as string) || 'all';
     const typeFilter = req.query.type as string | undefined;
 

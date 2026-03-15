@@ -565,8 +565,8 @@ router.get('/recent', (req: Request, res: Response) => {
     const county = (req.query.county as string || '').trim();
     const source = (req.query.source as string || '').trim(); // 'manual', 'csv', 'api', or ''
     const statusFilter = (req.query.status as string || '').trim();
-    const page = Math.max(1, parseInt(req.query.page as string) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50));
+    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string, 10) || 50));
     const offset = (page - 1) * limit;
 
     const conditions: string[] = [];

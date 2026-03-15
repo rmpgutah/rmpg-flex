@@ -684,7 +684,7 @@ router.get('/training-compliance', requireRole('admin', 'manager'), (req: Reques
 router.get('/call-density', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const days = parseInt(req.query.days as string) || 30;
+    const days = parseInt(req.query.days as string, 10) || 30;
     const incidentType = req.query.type as string;
 
     const safeDays = Math.max(1, Math.min(365, Math.floor(days) || 30));
@@ -712,7 +712,7 @@ router.get('/call-density', (req: Request, res: Response) => {
 router.get('/statute-analytics', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string) || 90));
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 90));
     const offset = `-${days} days`;
 
     // Top cited statutes
@@ -767,7 +767,7 @@ router.get('/statute-analytics', (req: Request, res: Response) => {
 router.get('/patrol-compliance', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string) || 30));
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
     const offset = `-${days} days`;
 
     // Overall scan stats
@@ -874,7 +874,7 @@ router.post('/custom', requireRole('admin', 'manager'), (req: Request, res: Resp
     if (conditions.length > 0) sql += ` WHERE ${conditions.join(' AND ')}`;
     if (groupBy && allowedCols.includes(groupBy)) sql += ` GROUP BY ${q(groupBy)}`;
     if (sortBy && allowedCols.includes(sortBy)) sql += ` ORDER BY ${q(sortBy)} ${sortDir === 'asc' ? 'ASC' : 'DESC'}`;
-    sql += ` LIMIT ${Math.min(parseInt(queryLimit) || 500, 2000)}`;
+    sql += ` LIMIT ${Math.min(parseInt(queryLimit, 10) || 500, 2000)}`;
 
     const rows = db.prepare(sql).all(...params);
     res.json({ data: rows, columns: selectedCols, count: rows.length, sql: sql.replace(/\?/g, '…') });
@@ -1003,7 +1003,7 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
     const officerId = req.query.officerId as string;
     const startDate = req.query.startDate as string;
     const endDate = req.query.endDate as string;
-    const hours = parseInt(req.query.hours as string) || 8;
+    const hours = Math.max(1, Math.min(72, parseInt(req.query.hours as string, 10) || 8));
     const includeGeocode = req.query.geocode === 'true'; // opt-in (costs API calls)
 
     // ── Haversine distance (meters) ──────────────────────

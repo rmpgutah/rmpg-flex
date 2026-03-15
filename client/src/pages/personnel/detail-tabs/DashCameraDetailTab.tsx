@@ -53,7 +53,8 @@ export default function DashCameraDetailTab({ events, deviceMapping, loading }: 
   // Most common event type
   const typeCounts: Record<string, number> = {};
   events.forEach(e => { typeCounts[e.event_type] = (typeCounts[e.event_type] || 0) + 1; });
-  const mostCommonType = Object.entries(typeCounts).sort((a, b) => b[1] - a[1])[0];
+  const sortedTypes = Object.entries(typeCounts).sort((a, b) => b[1] - a[1]);
+  const mostCommonType = sortedTypes.length > 0 ? sortedTypes[0] : undefined;
 
   return (
     <div className="space-y-4">

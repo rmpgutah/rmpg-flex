@@ -153,8 +153,8 @@ router.get('/stats', (req: Request, res: Response) => {
 router.get('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const page = Math.max(1, parseInt(req.query.page as string) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50));
+    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string, 10) || 50));
     const offset = (page - 1) * limit;
 
     const conditions: string[] = [];
@@ -297,7 +297,7 @@ router.post('/', requireRole('admin', 'manager', 'contract_manager'), (req: Requ
     ).run(user.userId, 'invoice_created', 'invoice', result.lastInsertRowid, `Created invoice ${invoice_number} for client ${client.name}`, req.ip || 'unknown', now);
 
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(result.lastInsertRowid);
-    res.status(201).json({ data: invoice });
+    res.status(201).json({ data: invoice || { id: result.lastInsertRowid } });
   } catch (error: any) {
     console.error('Invoice create error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -674,7 +674,7 @@ router.post('/:id/line-items', requireRole('admin', 'manager', 'contract_manager
     recalculateInvoiceTotals(req.params.id);
 
     const item = db.prepare('SELECT * FROM invoice_line_items WHERE id = ?').get(result.lastInsertRowid);
-    res.status(201).json({ data: item });
+    res.status(201).json({ data: item || { id: result.lastInsertRowid } });
   } catch (error: any) {
     console.error('Add line item error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -778,7 +778,7 @@ router.post('/:id/payments', requireRole('admin', 'manager'), (req: Request, res
       FROM payments p LEFT JOIN users u ON p.recorded_by = u.id
       WHERE p.id = ?
     `).get(result.lastInsertRowid);
-    res.status(201).json({ data: payment });
+    res.status(201).json({ data: payment || { id: result.lastInsertRowid } });
   } catch (error: any) {
     console.error('Record payment error:', error);
     res.status(500).json({ error: 'Internal server error' });

@@ -212,7 +212,7 @@ export async function ensureValidToken(): Promise<string> {
   const accessToken = getDecryptedValue(CONFIG_KEYS.accessToken);
 
   // Token still valid (5-min buffer)
-  if (accessToken && expiresAt && Date.now() < parseInt(expiresAt) - 300_000) {
+  if (accessToken && expiresAt && Date.now() < parseInt(expiresAt, 10) - 300_000) {
     return accessToken;
   }
 

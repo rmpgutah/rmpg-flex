@@ -72,7 +72,7 @@ router.post('/config', requireRole('admin', 'manager'), (req: Request, res: Resp
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(config_key, config_value, category, sortOrder, now, now);
 
-    const item = db.prepare('SELECT * FROM system_config WHERE id = ?').get(result.lastInsertRowid);
+    const item = db.prepare('SELECT * FROM system_config WHERE id = ?').get(result.lastInsertRowid) || { id: result.lastInsertRowid, config_key, config_value, category };
 
     // Log activity
     db.prepare(`

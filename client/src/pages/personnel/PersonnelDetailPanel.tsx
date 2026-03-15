@@ -228,7 +228,7 @@ export default function PersonnelDetailPanel({
             <div>
               <h2 className="text-lg font-bold text-white">
                 {officer.last_name}, {officer.first_name}
-                {officer.middle_name ? ` ${officer.middle_name[0]}.` : ''}
+                {officer.middle_name && officer.middle_name.length > 0 ? ` ${officer.middle_name[0]}.` : ''}
               </h2>
               <div className="w-16 h-0.5 bg-brand-500 mt-1 mb-1.5" />
               <div className="flex items-center gap-3">

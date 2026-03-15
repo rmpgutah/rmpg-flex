@@ -114,7 +114,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       WHERE d.id = ?
     `).get(result.lastInsertRowid);
 
-    res.status(201).json(doc);
+    res.status(201).json(doc || { id: result.lastInsertRowid });
   } catch (error: any) {
     console.error('Create company document error:', error);
     res.status(500).json({ error: 'Internal server error' });

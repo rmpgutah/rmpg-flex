@@ -54,7 +54,7 @@ router.get('/leads', requireRole('admin', 'manager', 'contract_manager'), (req: 
     }
     if (score_min) {
       sql += ' AND l.lead_score >= ?';
-      params.push(parseInt(score_min as string) || 0);
+      params.push(parseInt(score_min as string, 10) || 0);
     }
     if (assigned_to) {
       if (assigned_to === 'unassigned') {
@@ -183,6 +183,7 @@ router.post('/leads', requireRole('admin', 'manager', 'contract_manager'), (req:
     `).run(leadId, req.user?.userId || null, now);
 
     const lead = db.prepare('SELECT * FROM crm_leads WHERE id = ?').get(leadId);
+    if (!lead) return res.status(404).json({ error: 'Lead not found after creation' });
     res.json(lead);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -428,7 +429,7 @@ router.post('/leads/:id/convert', requireRole('admin', 'manager', 'contract_mana
     auditLog(req, 'UPDATE', 'crm_leads' as any, String(id), `Converted to client #${clientId}`);
 
     const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(clientId);
-    res.json({ success: true, client, lead_id: Number(id), client_id: clientId });
+    res.json({ success: true, client: client || null, lead_id: Number(id), client_id: clientId });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -507,7 +508,7 @@ router.get('/lead-activity/:leadId', requireRole('admin', 'manager', 'contract_m
   try {
     const db = getDb();
     const { leadId } = req.params;
-    const limit = Math.min(parseInt(req.query.limit as string) || 100, 500);
+    const limit = Math.min(parseInt(req.query.limit as string, 10) || 100, 500);
 
     const rows = db.prepare(`
       SELECT a.*, u.full_name as created_by_name
@@ -555,6 +556,7 @@ router.post('/lead-activity', requireRole('admin', 'manager', 'contract_manager'
       WHERE a.id = ?
     `).get(activityId);
 
+    if (!activity) return res.status(404).json({ error: 'Activity not found' });
     res.json(activity);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -633,7 +635,7 @@ router.get('/scrape-log', requireRole('admin', 'manager', 'contract_manager'), (
   try {
     const db = getDb();
     const { source_key } = req.query;
-    const limit = Math.min(parseInt(req.query.limit as string) || 100, 500);
+    const limit = Math.min(parseInt(req.query.limit as string, 10) || 100, 500);
 
     let sql = 'SELECT * FROM lead_scrape_log WHERE 1=1';
     const params: any[] = [];
