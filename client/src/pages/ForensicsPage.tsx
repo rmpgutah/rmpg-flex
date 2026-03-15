@@ -840,8 +840,8 @@ export default function ForensicsPage() {
   }, []);
 
   // Derived state
-  const selectedNode = graph?.nodes.find(n => n.id === selectedNodeId) || null;
-  const selectedEdges = graph?.edges.filter(
+  const selectedNode = graph?.nodes?.find(n => n.id === selectedNodeId) || null;
+  const selectedEdges = graph?.edges?.filter(
     e => e.source === selectedNodeId || e.target === selectedNodeId
   ) || [];
 

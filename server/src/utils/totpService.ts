@@ -29,10 +29,11 @@ export function generateTotpSecret(username: string): { secret: OTPAuth.Secret; 
 // ─── AES-256-GCM Encryption ─────────────────────────
 
 function getEncryptionKey(): Buffer {
-  // Derive a 32-byte key from the configured hex string
-  const keyHex = twoFactorConfig().encryptionKey;
-  if (!keyHex) throw new Error('TOTP encryption key is not configured. Check config.twoFactor.encryptionKey.');
-  return Buffer.from(keyHex.slice(0, 64).padEnd(64, '0'), 'hex');
+  // Derive a 32-byte key using HKDF-SHA256 from the configured key material.
+  // This is safe regardless of input length and avoids the old slice+pad weakness.
+  const keyMaterial = twoFactorConfig().encryptionKey;
+  if (!keyMaterial) throw new Error('TOTP encryption key is not configured. Check config.twoFactor.encryptionKey.');
+  return Buffer.from(crypto.hkdfSync('sha256', keyMaterial, '', 'rmpg-totp-encryption', 32));
 }
 
 export function encryptSecret(plainSecret: string): { encrypted: string; iv: string; tag: string } {
@@ -75,40 +76,62 @@ export async function generateQRCodeDataUri(uri: string): Promise<string> {
 
 // ─── TOTP Replay Protection ──────────────────────────
 // Track used TOTP codes per user to prevent replay attacks.
+// Persisted to SQLite so replay protection survives server restarts.
 // Codes with window=1 are valid for ~90 seconds, so we keep
 // entries for 120 seconds to cover clock skew safely.
 
-const REPLAY_WINDOW_MS = 120_000; // 2 minutes
-const MAX_REPLAY_ENTRIES = 1000;   // cap to prevent unbounded growth
-const usedCodes = new Map<string, number>(); // "userId:code" → timestamp
+import { getDb } from '../models/database';
+
+const REPLAY_WINDOW_SECONDS = 120; // 2 minutes
+
+let replayTableInitialized = false;
+function ensureReplayTable(): void {
+  if (replayTableInitialized) return;
+  const db = getDb();
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS totp_used_codes (
+      user_id INTEGER NOT NULL,
+      code_hash TEXT NOT NULL,
+      expires_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, code_hash)
+    )
+  `);
+  replayTableInitialized = true;
+}
 
 // Clean up expired entries every 2 minutes
 setInterval(() => {
-  const cutoff = Date.now() - REPLAY_WINDOW_MS;
-  for (const [key, ts] of usedCodes) {
-    if (ts < cutoff) usedCodes.delete(key);
-  }
-}, REPLAY_WINDOW_MS).unref();
+  try {
+    ensureReplayTable();
+    const db = getDb();
+    const cutoff = Math.floor(Date.now() / 1000);
+    db.prepare('DELETE FROM totp_used_codes WHERE expires_at < ?').run(cutoff);
+  } catch { /* DB may not be ready yet */ }
+}, 120_000).unref();
+
+function hashCode(userId: number, code: string): string {
+  return crypto.createHash('sha256').update(`${userId}:${code}`).digest('hex');
+}
 
 /** Check if a TOTP code was already used for this user within the replay window. */
 export function isTotpCodeUsed(userId: number, code: string): boolean {
-  const key = `${userId}:${code}`;
-  const ts = usedCodes.get(key);
-  if (!ts) return false;
-  // Expired entries are treated as unused
-  return (Date.now() - ts) < REPLAY_WINDOW_MS;
+  ensureReplayTable();
+  const db = getDb();
+  const now = Math.floor(Date.now() / 1000);
+  const row = db.prepare(
+    'SELECT 1 FROM totp_used_codes WHERE user_id = ? AND code_hash = ? AND expires_at > ?'
+  ).get(userId, hashCode(userId, code), now);
+  return !!row;
 }
 
 /** Mark a TOTP code as used for this user. */
 export function markTotpCodeUsed(userId: number, code: string): void {
-  // Enforce size cap — evict oldest entries if at limit
-  if (usedCodes.size >= MAX_REPLAY_ENTRIES) {
-    const oldest = [...usedCodes.entries()].sort((a, b) => a[1] - b[1]);
-    for (let i = 0; i < Math.ceil(MAX_REPLAY_ENTRIES / 4); i++) {
-      usedCodes.delete(oldest[i][0]);
-    }
-  }
-  usedCodes.set(`${userId}:${code}`, Date.now());
+  ensureReplayTable();
+  const db = getDb();
+  const expiresAt = Math.floor(Date.now() / 1000) + REPLAY_WINDOW_SECONDS;
+  db.prepare(
+    'INSERT OR REPLACE INTO totp_used_codes (user_id, code_hash, expires_at) VALUES (?, ?, ?)'
+  ).run(userId, hashCode(userId, code), expiresAt);
 }
 
 // ─── TOTP Verification ──────────────────────────────
@@ -131,10 +154,10 @@ export function verifyTotpToken(secretBase32: string, token: string): boolean {
 export function generateBackupCodes(count: number = twoFactorConfig().backupCodeCount || 10): string[] {
   const codes: string[] = [];
   for (let i = 0; i < count; i++) {
-    // 8-character alphanumeric codes (uppercase for readability)
-    const bytes = crypto.randomBytes(5);
-    const code = bytes.toString('hex').slice(0, 8).toUpperCase();
-    codes.push(`${code.slice(0, 4)}-${code.slice(4)}`);
+    // 12-character hex codes (48 bits of entropy) formatted as XXXX-XXXX-XXXX
+    const bytes = crypto.randomBytes(6); // 6 bytes = 48 bits
+    const hex = bytes.toString('hex').toUpperCase(); // 12 hex chars
+    codes.push(`${hex.slice(0, 4)}-${hex.slice(4, 8)}-${hex.slice(8, 12)}`);
   }
   return codes;
 }
@@ -142,7 +165,7 @@ export function generateBackupCodes(count: number = twoFactorConfig().backupCode
 export function hashBackupCode(code: string): string {
   // Normalize: remove dashes, uppercase
   const normalized = code.replace(/-/g, '').toUpperCase();
-  return bcryptjs.hashSync(normalized, 10);
+  return bcryptjs.hashSync(normalized, 12);
 }
 
 export function verifyBackupCode(code: string, hash: string): boolean {

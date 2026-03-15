@@ -167,7 +167,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
         container.style.position = 'absolute';
         container.style.zIndex = String(zIndex);
         container.appendChild(content);
-        overlay.getPanes()?.overlayMouseTarget.appendChild(container);
+        overlay.getPanes()?.overlayMouseTarget?.appendChild(container);
       };
       overlay.draw = () => {
         if (!container) return;

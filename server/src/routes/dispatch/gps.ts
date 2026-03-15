@@ -4,6 +4,7 @@ import { requireRole } from '../../middleware/auth';
 import { broadcastUnitUpdate } from '../../utils/websocket';
 import { reverseGeocodeDetailed } from '../../utils/geocode';
 import { localNow } from '../../utils/timeUtils';
+import { auditLog } from '../../utils/auditLogger';
 
 // GPS source priority — higher number wins
 const GPS_SOURCE_PRIORITY: Record<string, number> = {
@@ -399,6 +400,10 @@ router.delete('/gps/breadcrumbs/cleanup', requireRole('admin'), (req: Request, r
     const result = db.prepare(
       `DELETE FROM gps_breadcrumbs WHERE recorded_at < datetime('now', 'localtime', '-' || ? || ' days')`
     ).run(days);
+
+    auditLog(req, 'gps_breadcrumbs_purged', 'gps_breadcrumbs', 0,
+      `Purged ${result.changes} GPS breadcrumb records older than ${days} days`);
+
     res.json({ deleted: result.changes });
   } catch (error: any) {
     console.error('Breadcrumb cleanup error:', error);

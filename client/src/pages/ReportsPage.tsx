@@ -314,13 +314,13 @@ export default function ReportsPage() {
   const stats = {
     totalCalls: incidentsData?.total || 0,
     incidentsFiled: incidentsData?.total || 0,
-    avgResponse: responseTimesData?.overall.avgTotalResponseMinutes
+    avgResponse: responseTimesData?.overall?.avgTotalResponseMinutes
       ? `${responseTimesData.overall.avgTotalResponseMinutes.toFixed(1)}m`
       : '0.0m',
-    slaMet: responseTimesData?.overall.totalCalls
-      ? `${Math.round((responseTimesData.dailyTrend.reduce((acc, d) => acc + (d.avg_response_minutes <= 5 ? d.count : 0), 0) / responseTimesData.overall.totalCalls) * 100)}%`
+    slaMet: responseTimesData?.overall?.totalCalls
+      ? `${Math.round((responseTimesData.dailyTrend?.reduce((acc, d) => acc + (d.avg_response_minutes <= 5 ? d.count : 0), 0) / responseTimesData.overall.totalCalls) * 100)}%`
       : '0%',
-    activeOfficers: dashboardData?.officersOnDuty.length || 0,
+    activeOfficers: dashboardData?.officersOnDuty?.length || 0,
   };
 
   // Prepare chart data

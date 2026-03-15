@@ -384,7 +384,7 @@ export default function CommunicationsPage() {
     if (selectedThread) {
       setTimeout(() => threadEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
     }
-  }, [selectedThread?.messages.length]);
+  }, [selectedThread?.messages?.length]);
 
   // Live sync — auto-refresh when any device modifies comms data (silent to avoid unmounting UI)
   const refreshComms = useCallback(() => {

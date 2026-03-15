@@ -10,15 +10,19 @@ const LONG_TEXT_FIELDS = new Set([
 ]);
 const MAX_LONG_TEXT_LENGTH = 100_000;
 
-// Sanitize strings to prevent XSS — only strip dangerous tag characters.
-// Do NOT encode quotes or apostrophes: they are normal data characters
-// (e.g. 6'2", O'Brien, "North" entrance) and encoding them corrupts stored data.
+// Sanitize strings to prevent XSS — encode all HTML-significant characters.
+// Ampersand, angle brackets, and quotes are all encoded to prevent both
+// element-context and attribute-context XSS. React's JSX escaping handles
+// rendering encoded values correctly in the frontend.
 function sanitizeStr(str: string, fieldName?: string): string {
   const maxLen = fieldName && LONG_TEXT_FIELDS.has(fieldName) ? MAX_LONG_TEXT_LENGTH : MAX_STRING_LENGTH;
   const truncated = str.length > maxLen ? str.slice(0, maxLen) : str;
   return truncated
+    .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
 }
 
 // Recursively sanitize an object's string values

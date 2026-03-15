@@ -33,15 +33,13 @@ if (!envSecret || envSecret === defaultSecret) {
   if (isProduction) {
     console.error('');
     console.error('╔═══════════════════════════════════════════════════════════╗');
-    console.error('║  CRITICAL SECURITY WARNING                               ║');
-    console.error('║  JWT_SECRET is not set or using default value!            ║');
-    console.error('║  Generate a strong secret: openssl rand -hex 64           ║');
+    console.error('║  FATAL: JWT_SECRET is not set or using default value!     ║');
+    console.error('║  The server CANNOT start without a secure JWT_SECRET.     ║');
+    console.error('║  Generate one:  openssl rand -hex 64                      ║');
     console.error('║  Set it in .env: JWT_SECRET=<your-secret>                 ║');
     console.error('╚═══════════════════════════════════════════════════════════╝');
     console.error('');
-    // In production, generate a random secret so the server still runs
-    // but tokens will invalidate on restart
-    jwtSecret = crypto.randomBytes(64).toString('hex');
+    process.exit(1);
   } else {
     // Development: use the default but warn
     jwtSecret = envSecret || crypto.randomBytes(64).toString('hex');

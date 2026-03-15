@@ -205,7 +205,7 @@ export function getOverlayMarkerClass() {
         this.container.addEventListener('click', this.clickCallback);
       }
       const panes = this.getPanes();
-      panes?.overlayMouseTarget.appendChild(this.container);
+      panes?.overlayMouseTarget?.appendChild(this.container);
     }
 
     draw() {

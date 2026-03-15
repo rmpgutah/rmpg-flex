@@ -129,6 +129,9 @@ export type AuditAction =
   | 'iped_hash_computed'
   | 'iped_hashset_imported'
   | 'iped_hashset_removed'
+  // GPS
+  | 'gps_breadcrumbs_purged'
+  | 'profile_updated'
   // ClearPathGPS
   | 'clearpathgps_credentials_updated'
   | 'clearpathgps_credentials_cleared'
@@ -218,7 +221,9 @@ export type AuditEntityType =
   | 'crm_lead_activity'
   | 'crm_proposals'
   | 'crm_proposal_templates'
-  | 'lead_scrape_sources';
+  | 'lead_scrape_sources'
+  | 'gps_breadcrumbs'
+  | 'profile';
 
 /**
  * Log an action to the activity_log table.

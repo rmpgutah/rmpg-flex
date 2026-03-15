@@ -154,7 +154,7 @@ export default function CadCommandLine({ context, onAction }: CadCommandLineProp
     }
   }, [handleSubmit, history, historyIdx, suggestions]);
 
-  const isMultiline = output?.text.includes('\n');
+  const isMultiline = output?.text?.includes('\n');
 
   return (
     <div className="cad-command-line">

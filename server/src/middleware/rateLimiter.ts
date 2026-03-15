@@ -93,17 +93,18 @@ export const authRateLimit = rateLimit({
 });
 
 // Rate limiter for 2FA verification — prevent brute-forcing TOTP codes
+// NIST SP 800-63B recommends max 5 failed attempts before lockout
 export const mfaRateLimit = rateLimit({
-  windowMs: 5 * 60 * 1000, // 5 minutes
-  maxRequests: 8,           // 8 attempts per window
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  maxRequests: 5,            // 5 attempts per window (NIST recommendation)
   keyGenerator: (req) => `mfa:${req.ip || 'unknown'}`,
-  message: 'Too many verification attempts. Please wait before trying again.',
+  message: 'Too many verification attempts. Please wait 15 minutes before trying again.',
 });
 
 // Rate limiter for token refresh — prevent token grinding
 export const refreshRateLimit = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
-  maxRequests: 15,          // 15 refreshes per minute (generous for normal use)
+  maxRequests: 5,           // 5 refreshes per minute (sufficient for normal use)
   keyGenerator: (req) => `refresh:${req.ip || 'unknown'}`,
   message: 'Too many refresh requests. Please try again shortly.',
 });

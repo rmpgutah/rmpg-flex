@@ -20,6 +20,7 @@ import { authRateLimit, mfaRateLimit, refreshRateLimit, passwordRateLimit } from
 import { validatePassword, getPasswordPolicyDescription, checkPasswordHistory, isPasswordExpired } from '../middleware/validatePassword';
 import config from '../config';
 import { localNow } from '../utils/timeUtils';
+import { auditLog } from '../utils/auditLogger';
 import {
   generateTotpSecret as legacyGenerateTotpSecret,
   generateQrCodeDataUrl,
@@ -750,7 +751,7 @@ router.post('/change-password', passwordRateLimit, authenticateToken, (req: Requ
     // Save to history
     addToPasswordHistory(user.id, user.password_hash);
 
-    const newHash = bcryptjs.hashSync(newPassword, 10);
+    const newHash = bcryptjs.hashSync(newPassword, 12);
     const now = localNow();
 
     // Update password history: prepend old hash, keep last N
@@ -827,7 +828,15 @@ router.put('/profile', authenticateToken, (req: Request, res: Response) => {
     const updates: string[] = [];
     const values: any[] = [];
 
-    if (email !== undefined) { updates.push('email = ?'); values.push(email); }
+    if (email !== undefined) {
+      const trimmedEmail = String(email).trim();
+      if (trimmedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(trimmedEmail)) {
+        res.status(400).json({ error: 'Invalid email address format.' });
+        return;
+      }
+      updates.push('email = ?');
+      values.push(trimmedEmail || null);
+    }
     if (phone !== undefined) { updates.push('phone = ?'); values.push(phone); }
     if (first_name !== undefined && last_name !== undefined) {
       // Server-side enforcement: names must not be empty once provided
@@ -851,6 +860,9 @@ router.put('/profile', authenticateToken, (req: Request, res: Response) => {
     values.push(user.id);
 
     db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+
+    const changedFields = updates.filter(u => u !== 'updated_at = ?').map(u => u.replace(' = ?', '')).join(', ');
+    auditLog(req, 'profile_updated', 'profile', user.id, `Profile updated: ${changedFields}`);
 
     const updated = db.prepare(`
       SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, status, avatar_url, profile_image, created_at
@@ -2093,7 +2105,7 @@ router.post('/login/change-password', authenticateTempToken, (req: Request, res:
     try { addToPasswordHistory(userId, user.password_hash); } catch { /* ignore */ }
 
     // Update password
-    const newHash = bcryptjs.hashSync(newPassword, 10);
+    const newHash = bcryptjs.hashSync(newPassword, 12);
     db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0, force_password_change = 0, password_changed_at = ?, updated_at = ? WHERE id = ?')
       .run(newHash, localNow(), localNow(), userId);
 
