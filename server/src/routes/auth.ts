@@ -228,7 +228,19 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
     };
 
     // ── Two-Factor Authentication gate ──────────────────
-    if (userFull?.totp_enabled) {
+    // Check both legacy flag (users.totp_enabled) AND new system (user_totp_secrets)
+    // to handle cases where they're out of sync
+    const hasVerifiedTotp = userFull?.totp_enabled || !!(db.prepare(
+      'SELECT 1 FROM user_totp_secrets WHERE user_id = ? AND is_verified = 1'
+    ).get(user.id));
+    // Also check legacy totp_secret_enc column
+    const hasLegacyTotp = !!(db.prepare(
+      'SELECT totp_secret_enc FROM users WHERE id = ? AND totp_secret_enc IS NOT NULL'
+    ).get(user.id) as any)?.totp_secret_enc;
+
+    const has2FA = hasVerifiedTotp || hasLegacyTotp;
+
+    if (has2FA) {
       // Check if this device is trusted — skip 2FA if so
       if (deviceFingerprint && isDeviceTrusted(user.id, deviceFingerprint)) {
         // Trusted device — bypass 2FA, proceed to token issuance below
@@ -247,7 +259,7 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
 
     // ── Check if 2FA setup is required for this role ────
     const requiredRoles = config.totp?.requiredRoles || [];
-    const must_setup_2fa = requiredRoles.length > 0 && requiredRoles.includes(user.role) && !userFull?.totp_enabled;
+    const must_setup_2fa = requiredRoles.length > 0 && requiredRoles.includes(user.role) && !has2FA;
 
     // ── Server-side 2FA setup enforcement ─────────────────
     // If the user's role requires 2FA but they haven't set it up,
@@ -1359,8 +1371,13 @@ router.post('/2fa/setup', authenticateAnyToken, async (req: Request, res: Respon
     ).get(userId) as { is_verified: number } | undefined;
 
     if (existing?.is_verified) {
-      res.status(400).json({ error: '2FA is already configured. Disable it first to reconfigure.' });
-      return;
+      // If coming from login flow (mfa_pending), allow re-setup — user proved identity with password
+      if (req.user!.type === 'mfa_pending') {
+        db.prepare('DELETE FROM user_totp_secrets WHERE user_id = ?').run(userId);
+      } else {
+        res.status(400).json({ error: '2FA is already configured. Disable it first to reconfigure.' });
+        return;
+      }
     }
 
     // Delete any unverified previous setup attempt
