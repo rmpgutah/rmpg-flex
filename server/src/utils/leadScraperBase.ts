@@ -386,6 +386,7 @@ export function scheduleLeadScrapers(): void {
         console.error(`[LeadScrapers] Scheduled poll failed for ${source.source_key}:`, err)
       );
     }, intervalMs);
+    if (handle.unref) handle.unref();
 
     pollerIntervals.set(source.source_key, handle);
     console.log(`[LeadScrapers] Scheduled ${source.source_key} every ${source.poll_interval_seconds}s`);

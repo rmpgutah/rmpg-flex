@@ -260,7 +260,7 @@ router.post('/register-verify', authenticateToken, async (req: Request, res: Res
 router.delete('/credentials/:id', authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const credId = parseInt(req.params.id as string);
+    const credId = parseInt(req.params.id as string, 10);
     if (isNaN(credId)) { res.status(400).json({ error: 'Invalid credential ID' }); return; }
     const cred = db.prepare(
       'SELECT id, name FROM webauthn_credentials WHERE id = ? AND user_id = ?'

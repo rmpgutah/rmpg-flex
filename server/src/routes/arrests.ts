@@ -192,7 +192,7 @@ router.put('/manual/:id', requireRole('admin', 'manager', 'officer', 'supervisor
   try {
     const db = getDb();
     const now = localNow();
-    const id = parseInt(req.params.id as string);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
 
     const existing = db.prepare('SELECT id FROM arrest_records WHERE id = ?').get(id);
@@ -258,7 +258,7 @@ router.put('/manual/:id', requireRole('admin', 'manager', 'officer', 'supervisor
 router.delete('/manual/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id as string);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
 
     const existing = db.prepare('SELECT id FROM arrest_records WHERE id = ?').get(id);
@@ -281,7 +281,7 @@ router.delete('/manual/:id', requireRole('admin', 'manager'), (req: Request, res
 router.get('/manual/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id as string);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
 
     const record = db.prepare('SELECT * FROM arrest_records WHERE id = ?').get(id) as any;
@@ -565,8 +565,8 @@ router.get('/recent', (req: Request, res: Response) => {
     const county = (req.query.county as string || '').trim();
     const source = (req.query.source as string || '').trim(); // 'manual', 'csv', 'api', or ''
     const statusFilter = (req.query.status as string || '').trim();
-    const page = Math.max(1, parseInt(req.query.page as string) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50));
+    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string, 10) || 50));
     const offset = (page - 1) * limit;
 
     const conditions: string[] = [];
@@ -680,7 +680,7 @@ router.put('/counties', requireRole('admin', 'manager'), (req: Request, res: Res
 router.get('/:id/cross-links', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id as string);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
     const links = db.prepare(
       'SELECT linked_type, linked_id, match_type, match_confidence, created_at FROM arrest_cross_links WHERE arrest_record_id = ?'
@@ -694,7 +694,7 @@ router.get('/:id/cross-links', (req: Request, res: Response) => {
 router.put('/:id/link-person', requireRole('admin', 'manager', 'officer', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id as string);
+    const id = parseInt(req.params.id as string, 10);
     const { person_id } = req.body;
     if (isNaN(id)) return res.status(400).json({ error: 'Invalid arrest record ID' });
     if (!person_id) return res.status(400).json({ error: 'person_id is required' });
@@ -730,7 +730,7 @@ router.put('/:id/link-person', requireRole('admin', 'manager', 'officer', 'super
 router.delete('/:id/link-person', requireRole('admin', 'manager', 'officer', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id as string);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return res.status(400).json({ error: 'Invalid arrest record ID' });
 
     const record = db.prepare('SELECT person_id FROM arrest_records WHERE id = ?').get(id) as any;

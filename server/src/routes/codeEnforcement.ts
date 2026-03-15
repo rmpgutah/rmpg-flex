@@ -161,7 +161,7 @@ router.put('/violations/:id', requireRole('admin', 'manager', 'supervisor', 'off
     }
     params.push(req.params.id);
     db.prepare(`UPDATE code_violations SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-    res.json({ data: { id: parseInt(req.params.id as string) } });
+    res.json({ data: { id: parseInt(req.params.id as string, 10) } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -183,7 +183,7 @@ router.put('/violations/:id/status', requireRole('admin', 'manager', 'supervisor
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, 'status_change', 'code_violation', ?, ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ status }), req.ip || 'unknown', now);
 
-    res.json({ data: { id: parseInt(req.params.id as string), status } });
+    res.json({ data: { id: parseInt(req.params.id as string, 10), status } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -275,7 +275,7 @@ router.put('/tows/:id', requireRole('admin', 'manager', 'supervisor', 'officer')
     }
     params.push(req.params.id);
     db.prepare(`UPDATE vehicle_tows SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-    res.json({ data: { id: parseInt(req.params.id as string) } });
+    res.json({ data: { id: parseInt(req.params.id as string, 10) } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -298,7 +298,7 @@ router.put('/tows/:id/status', requireRole('admin', 'manager', 'supervisor'), (r
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, 'status_change', 'vehicle_tow', ?, ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ status }), req.ip || 'unknown', now);
 
-    res.json({ data: { id: parseInt(req.params.id as string), status } });
+    res.json({ data: { id: parseInt(req.params.id as string, 10), status } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 

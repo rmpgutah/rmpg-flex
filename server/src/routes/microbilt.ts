@@ -341,7 +341,11 @@ router.post('/ofac/search', (req: Request, res: Response) => {
       addresses: e.address_list
         ? e.address_list.split(',').map((a: string) => {
             const parts = a.trim().split(', ');
-            return { address: parts[0] || '', city: parts[1] || '', country: parts[2] || '' };
+            return {
+              address: parts.length > 0 ? parts[0] : '',
+              city: parts.length > 1 ? parts[1] : '',
+              country: parts.length > 2 ? parts[2] : '',
+            };
           })
         : [],
     }));

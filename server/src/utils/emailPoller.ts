@@ -32,6 +32,7 @@ export function startEmailPoller(intervalMs?: number): void {
       console.error('[EmailPoller] Sync error:', err.message || err);
     });
   }, pollMs);
+  intervalHandle.unref();
 
   // Initial sync after a delay (let server finish startup)
   setTimeout(() => {

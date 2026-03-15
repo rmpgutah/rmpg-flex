@@ -78,6 +78,7 @@ export function startClearPathGpsMediaPoller(intervalMs?: number): void {
       console.error('[ClearPathGPS Media] Poll error:', err.message || err);
     });
   }, pollMs);
+  intervalHandle.unref();
 
   // Delay first run to let server finish startup
   setTimeout(() => {

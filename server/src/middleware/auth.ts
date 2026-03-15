@@ -191,16 +191,6 @@ export function authenticateAnyToken(req: Request, res: Response, next: NextFunc
   }
 }
 
-export function generateTempToken(payload: Omit<JwtPayload, 'type'>, pendingActions: string[] = []): string {
-  const expiryStr = (config as any).twoFactor?.tempTokenExpiry || '5m';
-  const options: SignOptions = { expiresIn: expiryStr as SignOptions['expiresIn'] };
-  return jwt.sign(
-    { ...payload, type: 'mfa_pending', pendingActions },
-    config.jwt.secret,
-    options
-  );
-}
-
 // Backwards compatibility
 export function generateToken(payload: Omit<JwtPayload, 'type'>): string {
   return generateAccessToken(payload);

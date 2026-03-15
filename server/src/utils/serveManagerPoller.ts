@@ -308,6 +308,7 @@ export function startServeManagerPoller(): void {
       console.error('[ServeManager] Poll error:', err.message || err);
     });
   }, pollMs);
+  intervalHandle.unref();
 }
 
 export function stopServeManagerPoller(): void {

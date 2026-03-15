@@ -684,7 +684,7 @@ router.get('/training-compliance', requireRole('admin', 'manager'), (req: Reques
 router.get('/call-density', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const days = parseInt(req.query.days as string) || 30;
+    const days = parseInt(req.query.days as string, 10) || 30;
     const incidentType = req.query.type as string;
 
     const safeDays = Math.max(1, Math.min(365, Math.floor(days) || 30));
@@ -712,7 +712,7 @@ router.get('/call-density', (req: Request, res: Response) => {
 router.get('/statute-analytics', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string) || 90));
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 90));
     const offset = `-${days} days`;
 
     // Top cited statutes
@@ -767,7 +767,7 @@ router.get('/statute-analytics', (req: Request, res: Response) => {
 router.get('/patrol-compliance', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string) || 30));
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
     const offset = `-${days} days`;
 
     // Overall scan stats
@@ -874,7 +874,7 @@ router.post('/custom', requireRole('admin', 'manager'), (req: Request, res: Resp
     if (conditions.length > 0) sql += ` WHERE ${conditions.join(' AND ')}`;
     if (groupBy && allowedCols.includes(groupBy)) sql += ` GROUP BY ${q(groupBy)}`;
     if (sortBy && allowedCols.includes(sortBy)) sql += ` ORDER BY ${q(sortBy)} ${sortDir === 'asc' ? 'ASC' : 'DESC'}`;
-    sql += ` LIMIT ${Math.min(parseInt(queryLimit) || 500, 2000)}`;
+    sql += ` LIMIT ${Math.min(parseInt(queryLimit, 10) || 500, 2000)}`;
 
     const rows = db.prepare(sql).all(...params);
     res.json({ data: rows, columns: selectedCols, count: rows.length, sql: sql.replace(/\?/g, '…') });
@@ -1003,7 +1003,7 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
     const officerId = req.query.officerId as string;
     const startDate = req.query.startDate as string;
     const endDate = req.query.endDate as string;
-    const hours = parseInt(req.query.hours as string) || 8;
+    const hours = parseInt(req.query.hours as string, 10) || 8;
     const includeGeocode = req.query.geocode === 'true'; // opt-in (costs API calls)
 
     // ── Haversine distance (meters) ──────────────────────
@@ -1040,11 +1040,11 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
     let whereExtra = '';
     if (unitId) {
       whereExtra += ' AND b.unit_id = ?';
-      params.push(parseInt(unitId));
+      params.push(parseInt(unitId, 10));
     }
     if (officerId) {
       whereExtra += ' AND b.officer_id = ?';
-      params.push(parseInt(officerId));
+      params.push(parseInt(officerId, 10));
     }
 
     const rows = db.prepare(`
@@ -1145,7 +1145,7 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
     const trails: UnitTrail[] = [];
 
     for (const [uid, trail] of Object.entries(trailMap)) {
-      const unitId = parseInt(uid);
+      const unitId = parseInt(uid, 10);
       const points: ProcessedPoint[] = [];
       let totalDistance = 0;
       let maxSpeed = 0;
@@ -1162,6 +1162,7 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
           distFromPrev = haversineM(prevAccepted.latitude, prevAccepted.longitude, row.latitude, row.longitude);
           const prevTime = new Date(prevAccepted.recorded_at).getTime();
           const curTime = new Date(row.recorded_at).getTime();
+          if (isNaN(prevTime) || isNaN(curTime)) continue; // skip points with invalid timestamps
           timeDelta = (curTime - prevTime) / 1000;
 
           // Jump detection
@@ -1260,7 +1261,9 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
         if (call.dispatched_at) {
           const dispatchTime = new Date(call.dispatched_at).getTime();
           const firstBcTime = new Date(firstPoint.time).getTime();
-          timeToFirstBreadcrumb = Math.round((firstBcTime - dispatchTime) / 1000);
+          if (!isNaN(dispatchTime) && !isNaN(firstBcTime)) {
+            timeToFirstBreadcrumb = Math.round((firstBcTime - dispatchTime) / 1000);
+          }
         }
 
         // Time from dispatch to onscene
@@ -1268,7 +1271,9 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
         if (call.dispatched_at && call.onscene_at) {
           const dispatchTime = new Date(call.dispatched_at).getTime();
           const onsceneTime = new Date(call.onscene_at).getTime();
-          timeToOnscene = Math.round((onsceneTime - dispatchTime) / 1000);
+          if (!isNaN(dispatchTime) && !isNaN(onsceneTime)) {
+            timeToOnscene = Math.round((onsceneTime - dispatchTime) / 1000);
+          }
         }
 
         responseSegments.push({

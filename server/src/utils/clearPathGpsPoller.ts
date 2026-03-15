@@ -35,6 +35,7 @@ export function startClearPathGpsPoller(intervalMs?: number): void {
       console.error('[ClearPathGPS] Poll error:', err.message || err);
     });
   }, pollMs);
+  intervalHandle.unref();
 
   // Run once after a short delay (let server finish startup)
   setTimeout(() => {

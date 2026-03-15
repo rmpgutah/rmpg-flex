@@ -23,8 +23,8 @@ router.get('/logs', (req: Request, res: Response) => {
       limit = '100'
     } = req.query;
 
-    const pageNum = parseInt(page as string);
-    const limitNum = parseInt(limit as string);
+    const pageNum = parseInt(page as string, 10) || 1;
+    const limitNum = parseInt(limit as string, 10) || 100;
     const offset = (pageNum - 1) * limitNum;
 
     const db = getDb();

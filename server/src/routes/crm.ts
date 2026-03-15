@@ -71,7 +71,7 @@ router.get('/dashboard', requireRole('admin', 'manager', 'contract_manager'), (_
 router.get('/recent-activity', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+    const limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 200);
 
     const rows = db.prepare(`
       SELECT a.*, u.full_name as created_by_name, c.name as client_name
@@ -210,7 +210,7 @@ router.get('/activity/:clientId', requireRole('admin', 'manager', 'contract_mana
   try {
     const db = getDb();
     const { clientId } = req.params;
-    const limit = Math.min(parseInt(req.query.limit as string) || 100, 500);
+    const limit = Math.min(parseInt(req.query.limit as string, 10) || 100, 500);
 
     const rows = db.prepare(`
       SELECT a.*, u.full_name as created_by_name
@@ -289,7 +289,7 @@ router.get('/contacts', requireRole('admin', 'manager', 'contract_manager'), (re
 router.get('/expiring-contracts', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const days = parseInt(req.query.days as string) || 90;
+    const days = parseInt(req.query.days as string, 10) || 90;
     const futureDate = new Date();
     futureDate.setDate(futureDate.getDate() + days);
     const future = futureDate.toISOString().slice(0, 10);

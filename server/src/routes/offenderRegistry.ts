@@ -177,7 +177,7 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request,
     }
     params.push(req.params.id);
     db.prepare(`UPDATE offender_alerts SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-    res.json({ data: { id: parseInt(req.params.id as string) } });
+    res.json({ data: { id: parseInt(req.params.id as string, 10) } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -191,7 +191,7 @@ router.put('/:id/clear', requireRole('admin', 'manager', 'supervisor'), (req: Re
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, 'clear', 'offender_alert', ?, '{}', ?, ?)`).run(req.user!.userId, req.params.id, req.ip || 'unknown', now);
 
-    res.json({ data: { id: parseInt(req.params.id as string), status: 'cleared' } });
+    res.json({ data: { id: parseInt(req.params.id as string, 10), status: 'cleared' } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 

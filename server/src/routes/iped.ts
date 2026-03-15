@@ -215,8 +215,8 @@ router.post('/jobs', requireRole('admin', 'manager'), async (req: Request, res: 
 router.get('/jobs', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const page = Math.max(1, parseInt(req.query.page as string) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 20));
+    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string, 10) || 20));
     const offset = (page - 1) * limit;
     const status = (req.query.status as string || '').trim();
 
@@ -251,7 +251,7 @@ router.get('/jobs', (req: Request, res: Response) => {
 router.get('/jobs/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id as string);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
 
     const job = db.prepare(`
@@ -279,7 +279,7 @@ router.get('/jobs/:id', (req: Request, res: Response) => {
 // ── POST /jobs/:id/cancel — Cancel running job ──────────────
 router.post('/jobs/:id/cancel', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id as string);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
     const cancelled = cancelIpedJob(id);
     res.json({ success: cancelled, message: cancelled ? 'Job cancelled' : 'Job not running' });
@@ -336,7 +336,7 @@ router.post('/hash/batch', requireRole('admin', 'manager'), async (req: Request,
 router.get('/hash/results', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const evidenceId = req.query.evidenceId ? parseInt(req.query.evidenceId as string) : null;
+    const evidenceId = req.query.evidenceId ? parseInt(req.query.evidenceId as string, 10) : null;
     const hashValue = (req.query.hash as string || '').trim();
     const flaggedOnly = req.query.flagged === 'true';
 

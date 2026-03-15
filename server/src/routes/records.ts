@@ -25,7 +25,7 @@ function screenPersonOfac(personId: number, firstName: string, lastName: string)
     });
 
     const matchInfo = hits.length > 0
-      ? JSON.stringify(hits.map(h => ({ name: h.sdn_name, program: h.program, list: h.source_list })))
+      ? JSON.stringify(hits.map((h: any) => ({ name: h.sdn_name, program: h.program, list: h.source_list })))
       : null;
 
     db.prepare(
@@ -40,7 +40,7 @@ function screenPersonOfac(personId: number, firstName: string, lastName: string)
           VALUES (0, 'system', 'high', ?, ?, 'person', ?, ?)
         `).run(
           `OFAC WATCHLIST MATCH: ${firstName} ${lastName}`,
-          `Person record #${personId} matches ${hits.length} OFAC entry(ies): ${hits.map(h => h.sdn_name).join(', ')}`,
+          `Person record #${personId} matches ${hits.length} OFAC entry(ies): ${hits.map((h: any) => h.sdn_name).join(', ')}`,
           personId,
           now,
         );

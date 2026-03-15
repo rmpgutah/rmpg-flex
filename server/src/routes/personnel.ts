@@ -967,6 +967,10 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       if (clock_out) {
         const start = new Date(clock_in).getTime();
         const end = new Date(clock_out).getTime();
+        if (isNaN(start) || isNaN(end)) {
+          res.status(400).json({ error: 'Invalid clock_in or clock_out date format' });
+          return;
+        }
         totalHours = Math.round(((end - start) / (1000 * 60 * 60)) * 10000) / 10000;
         if (totalHours < 0) totalHours = 0;
       }
@@ -1330,9 +1334,11 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       );
 
       const requirement = db.prepare('SELECT * FROM training_requirements WHERE id = ?').get(result.lastInsertRowid) as any;
+      let parsedRoles: any = [];
+      try { parsedRoles = typeof requirement.required_for_roles === 'string' ? JSON.parse(requirement.required_for_roles) : requirement.required_for_roles; } catch { parsedRoles = []; }
       res.status(201).json({
         ...requirement,
-        required_for_roles: typeof requirement.required_for_roles === 'string' ? JSON.parse(requirement.required_for_roles) : requirement.required_for_roles,
+        required_for_roles: parsedRoles,
         is_mandatory: !!requirement.is_mandatory,
       });
     } catch (error: any) {
@@ -1365,9 +1371,11 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       }
 
       const updated = db.prepare('SELECT * FROM training_requirements WHERE id = ?').get(req.params.id) as any;
+      let updatedRoles: any = [];
+      try { updatedRoles = typeof updated.required_for_roles === 'string' ? JSON.parse(updated.required_for_roles) : updated.required_for_roles; } catch { updatedRoles = []; }
       res.json({
         ...updated,
-        required_for_roles: typeof updated.required_for_roles === 'string' ? JSON.parse(updated.required_for_roles) : updated.required_for_roles,
+        required_for_roles: updatedRoles,
         is_mandatory: !!updated.is_mandatory,
       });
     } catch (error: any) {
@@ -2355,7 +2363,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
             console.warn('ffprobe duration update failed:', e?.message);
           }
         }
-      }).catch(() => {});
+      }).catch((err) => { console.error('[Personnel] Background operation failed:', err.message || err); });
 
       const video = db.prepare(`
         SELECT v.*, u.full_name as officer_name, c.camera_id as camera_serial
@@ -2791,7 +2799,10 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const tenureRows = db.prepare("SELECT hire_date FROM users WHERE hire_date IS NOT NULL AND status = 'active'").all() as any[];
       const now = Date.now();
       const avgTenure = tenureRows.length > 0
-        ? tenureRows.reduce((sum: number, r: any) => sum + (now - new Date(r.hire_date).getTime()) / (365.25 * 24 * 60 * 60 * 1000), 0) / tenureRows.length
+        ? tenureRows.reduce((sum: number, r: any) => {
+            const hireMs = new Date(r.hire_date).getTime();
+            return sum + (isNaN(hireMs) ? 0 : (now - hireMs) / (365.25 * 24 * 60 * 60 * 1000));
+          }, 0) / tenureRows.length
         : 0;
 
       // New hires / terminations in last 30 days

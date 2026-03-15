@@ -466,7 +466,7 @@ router.put('/:caseId/analyses/:analysisId', requireRole('admin', 'manager', 'sup
 
     if (status && status !== existing.status) {
       addTimelineEntry(
-        parseInt(req.params.caseId as string), 'analysis_update',
+        parseInt(req.params.caseId as string, 10), 'analysis_update',
         `${existing.analysis_type} analysis → ${status}`,
         user.userId, user.fullName || user.username,
       );
@@ -500,7 +500,7 @@ router.post('/:id/timeline', requireRole('admin', 'manager', 'supervisor', 'offi
     const { action = 'note', description } = req.body;
     if (!description?.trim()) return res.status(400).json({ error: 'Description is required' });
 
-    addTimelineEntry(parseInt(req.params.id as string), action, description.trim(), user.userId, user.fullName || user.username);
+    addTimelineEntry(parseInt(req.params.id as string, 10), action, description.trim(), user.userId, user.fullName || user.username);
     res.status(201).json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: 'Internal server error' });
@@ -633,7 +633,7 @@ router.post('/:id/hashes/compute', requireRole('admin', 'manager', 'supervisor',
         created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      evidenceId, attachmentId, parseInt(req.params.id as string), exhibitId,
+      evidenceId, attachmentId, parseInt(req.params.id as string, 10), exhibitId,
       fileName, filePath, fileSize, mimeType,
       hashes.md5, hashes.sha1, hashes.sha256, hashes.sha512,
       contentFingerprint,
@@ -683,7 +683,7 @@ router.post('/:id/hashes/manual', requireRole('admin', 'manager', 'supervisor', 
         created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      parseInt(req.params.id as string), exhibit_id || null, file_name.trim(), fp || null, file_size || null, mime_type || null,
+      parseInt(req.params.id as string, 10), exhibit_id || null, file_name.trim(), fp || null, file_size || null, mime_type || null,
       md5 || null, sha1 || null, sha256 || null, sha512 || null,
       hash_set_match ? 1 : 0, hash_set_name || null, hash_set_category || null, match_confidence || null,
       flagged ? 1 : 0, flag_reason || null, notes || null,
@@ -750,7 +750,7 @@ router.put('/:id/hashes/:hashId', requireRole('admin', 'manager', 'supervisor', 
     // Log flagging
     if (flagged !== undefined && flagged !== existing.flagged) {
       addTimelineEntry(
-        parseInt(req.params.id as string),
+        parseInt(req.params.id as string, 10),
         flagged ? 'hash_flagged' : 'hash_unflagged',
         `${existing.file_name} ${flagged ? 'FLAGGED' : 'unflagged'}${flag_reason ? `: ${flag_reason}` : ''}`,
         user.userId, user.fullName || user.username,
@@ -779,7 +779,7 @@ router.delete('/:id/hashes/:hashId', requireRole('admin', 'manager'), (req: Requ
 
     const user = (req as any).user;
     addTimelineEntry(
-      parseInt(req.params.id as string), 'hash_deleted',
+      parseInt(req.params.id as string, 10), 'hash_deleted',
       `Hash record deleted: ${existing.file_name}`,
       user.userId, user.fullName || user.username,
     );
@@ -902,7 +902,7 @@ function resolveLinkedRecord(type: string, id: number): any {
 router.get('/:id/links', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const caseId = parseInt(req.params.id as string);
+    const caseId = parseInt(req.params.id as string, 10);
 
     // Verify case exists
     const fc = db.prepare('SELECT id FROM forensic_cases WHERE id = ?').get(caseId);
@@ -942,7 +942,7 @@ router.get('/:id/links', (req: Request, res: Response) => {
 router.post('/:id/links', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const caseId = parseInt(req.params.id as string);
+    const caseId = parseInt(req.params.id as string, 10);
     const user = (req as any).user;
     const { linked_type, linked_id, relationship, relevance, notes } = req.body;
 
@@ -982,8 +982,8 @@ router.post('/:id/links', requireRole('admin', 'manager', 'supervisor', 'officer
 router.put('/:id/links/:linkId', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const caseId = parseInt(req.params.id as string);
-    const linkId = parseInt(req.params.linkId as string);
+    const caseId = parseInt(req.params.id as string, 10);
+    const linkId = parseInt(req.params.linkId as string, 10);
     const user = (req as any).user;
     const { relationship, relevance, notes } = req.body;
 
@@ -1021,8 +1021,8 @@ router.put('/:id/links/:linkId', requireRole('admin', 'manager', 'supervisor', '
 router.delete('/:id/links/:linkId', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const caseId = parseInt(req.params.id as string);
-    const linkId = parseInt(req.params.linkId as string);
+    const caseId = parseInt(req.params.id as string, 10);
+    const linkId = parseInt(req.params.linkId as string, 10);
     const user = (req as any).user;
 
     const existing = db.prepare('SELECT * FROM forensic_case_links WHERE id = ? AND forensic_case_id = ?').get(linkId, caseId) as any;
@@ -1046,7 +1046,7 @@ router.delete('/:id/links/:linkId', requireRole('admin', 'manager'), (req: Reque
 router.get('/:id/links/search', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const caseId = parseInt(req.params.id as string);
+    const caseId = parseInt(req.params.id as string, 10);
     const { type, q } = req.query;
 
     if (!type) return res.status(400).json({ error: 'type parameter required' });
@@ -1186,7 +1186,7 @@ router.get('/:id/links/search', (req: Request, res: Response) => {
 router.get('/:id/links/summary', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const caseId = parseInt(req.params.id as string);
+    const caseId = parseInt(req.params.id as string, 10);
 
     const fc = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(caseId) as any;
     if (!fc) return res.status(404).json({ error: 'Forensic case not found' });

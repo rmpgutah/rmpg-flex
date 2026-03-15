@@ -382,6 +382,8 @@ export default function WarrantsPage() {
 
   // ── Local warrants data ──
   const warrantDetailRef = useRef<HTMLDivElement>(null);
+  const scanPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [warrants, setWarrants] = useState<Warrant[]>([]);
   const [selectedWarrant, setSelectedWarrant] = useState<Warrant | null>(null);
   const [loading, setLoading] = useState(false);
@@ -662,27 +664,42 @@ export default function WarrantsPage() {
   }, [activeTab, allStatesSearched, searchAllStates]);
 
   const handleTriggerScan = useCallback(async () => {
+    // Clear any previous poll before starting a new one
+    if (scanPollRef.current) clearInterval(scanPollRef.current);
+    if (scanTimeoutRef.current) clearTimeout(scanTimeoutRef.current);
     setScanRunning(true);
     try {
       await apiFetch('/warrants/watch/scan', { method: 'POST' });
       // Poll for completion
-      const pollInterval = setInterval(async () => {
+      scanPollRef.current = setInterval(async () => {
         try {
           const res = await apiFetch<{ data: WatchRun[] }>('/warrants/watch/runs?limit=1');
           const latest = res.data?.[0];
           if (latest && latest.status !== 'running') {
-            clearInterval(pollInterval);
+            if (scanPollRef.current) { clearInterval(scanPollRef.current); scanPollRef.current = null; }
+            if (scanTimeoutRef.current) { clearTimeout(scanTimeoutRef.current); scanTimeoutRef.current = null; }
             setScanRunning(false);
             fetchWatchData();
           }
         } catch { /* keep polling */ }
       }, 5000);
       // Auto-stop polling after 30 minutes
-      setTimeout(() => clearInterval(pollInterval), 30 * 60 * 1000);
+      scanTimeoutRef.current = setTimeout(() => {
+        if (scanPollRef.current) { clearInterval(scanPollRef.current); scanPollRef.current = null; }
+        setScanRunning(false);
+      }, 30 * 60 * 1000);
     } catch {
       setScanRunning(false);
     }
   }, [fetchWatchData]);
+
+  // Cleanup scan polling on unmount
+  useEffect(() => {
+    return () => {
+      if (scanPollRef.current) clearInterval(scanPollRef.current);
+      if (scanTimeoutRef.current) clearTimeout(scanTimeoutRef.current);
+    };
+  }, []);
 
   // ============================================================
   // Utah Search
