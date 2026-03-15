@@ -57,6 +57,17 @@ export interface PanicRadioAlert {
   timestamp: number;
 }
 
+export interface SelcallPage {
+  from_user_id: number;
+  from_username: string;
+  from_full_name: string;
+  from_call_sign: string | null;
+  target_call_sign: string | null;
+  channel: string | null;
+  message: string;
+  timestamp: string;
+}
+
 export interface RadioState {
   currentChannel: string | null;
   isTransmitting: boolean;
@@ -71,6 +82,14 @@ export interface RadioState {
   panicAlert: PanicRadioAlert | null;
   /** Live transcript text while transmitting (interim + final) */
   liveTranscript: string;
+  /** Incoming selcall page notification */
+  incomingPage: SelcallPage | null;
+  /** Channels being scanned/monitored */
+  scanChannels: string[];
+  /** Whether scan mode is active */
+  scanActive: boolean;
+  /** Active call ID for dispatch-linked radio */
+  linkedCallId: string | null;
 }
 
 /** Hardcoded fallback channels used before API fetch resolves */
@@ -174,6 +193,10 @@ export function useRadio() {
     micSupported: canAccessMic(),
     liveTranscript: '',
     panicAlert: null,
+    incomingPage: null,
+    scanChannels: [],
+    scanActive: false,
+    linkedCallId: null,
   });
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -193,6 +216,13 @@ export function useRadio() {
   // If the user re-presses PTT within the window, the timer is cancelled
   // and transmission continues seamlessly.
   const releaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Hardware PTT key held state — prevents auto-repeat triggering multiple starts
+  const hardwarePttHeldRef = useRef(false);
+
+  // Ref mirrors linkedCallId for stale-closure-safe access in transmit callbacks
+  const linkedCallIdRef = useRef<string | null>(null);
+  useEffect(() => { linkedCallIdRef.current = state.linkedCallId; }, [state.linkedCallId]);
 
   // Ref mirrors user ID for stale-closure-safe comparisons in WS subscriptions
   const userIdRef = useRef<number>(0);
@@ -380,7 +410,7 @@ export function useRadio() {
       // activeTransmitters has this client registered. We MUST
       // send radio_transmit_start before recorder.start() so the
       // server is ready before the first audio chunk arrives.
-      send({ type: 'radio_transmit_start' });
+      send({ type: 'radio_transmit_start', data: { linked_call_id: linkedCallIdRef.current } });
 
       transmitStartTimeRef.current = Date.now();
       isTransmittingRef.current = true;
@@ -475,7 +505,7 @@ export function useRadio() {
     const sendEnd = () => {
       send({
         type: 'radio_transmit_end',
-        data: { transcript, duration },
+        data: { transcript, duration, linked_call_id: linkedCallIdRef.current },
       });
     };
 
@@ -542,6 +572,46 @@ export function useRadio() {
   // release delay.
   const stopTransmitFnRef = useRef(performStop);
   useEffect(() => { stopTransmitFnRef.current = performStop; }, [performStop]);
+
+  // ─── Selcall: Page a unit ─────────────────────────────────────
+  const sendPage = useCallback((targetCallSign: string, message?: string) => {
+    send({
+      type: 'selcall_page',
+      data: {
+        target_call_sign: targetCallSign,
+        message: message || 'You have been paged',
+      },
+    });
+  }, [send]);
+
+  // ─── Emergency Override ──────────────────────────────────────
+  const emergencyOverride = useCallback((channel?: string) => {
+    send({
+      type: 'emergency_override',
+      data: { channel: channel || state.currentChannel },
+    });
+  }, [send, state.currentChannel]);
+
+  // ─── Channel Scanning ────────────────────────────────────────
+  const startScan = useCallback((channels: string[]) => {
+    send({ type: 'scan_subscribe', data: { channels } });
+    setState(prev => ({ ...prev, scanActive: true, scanChannels: channels }));
+  }, [send]);
+
+  const stopScan = useCallback(() => {
+    send({ type: 'scan_unsubscribe' });
+    setState(prev => ({ ...prev, scanActive: false, scanChannels: [] }));
+  }, [send]);
+
+  // ─── Dispatch Link ───────────────────────────────────────────
+  const setLinkedCall = useCallback((callId: string | null) => {
+    setState(prev => ({ ...prev, linkedCallId: callId }));
+  }, []);
+
+  // ─── Dismiss incoming page ──────────────────────────────────
+  const dismissPage = useCallback(() => {
+    setState(prev => ({ ...prev, incomingPage: null }));
+  }, []);
 
   // ─── WebSocket subscriptions ────────────────────────────────
   useEffect(() => {
@@ -753,6 +823,61 @@ export function useRadio() {
       panicPlayerRef.current.appendChunk(data.audio);
     });
 
+    // ── Selcall page received ──────────────────────────────────
+    const unsubPage = subscribe('selcall_page', (msg: any) => {
+      const data = msg.data || msg;
+      // Play the paging tone
+      playRadioTone('receiveStart');
+      playRadioTone('receiveStart'); // double chirp for page
+
+      setState(prev => ({
+        ...prev,
+        incomingPage: {
+          from_user_id: data.from_user_id,
+          from_username: data.from_username,
+          from_full_name: data.from_full_name,
+          from_call_sign: data.from_call_sign,
+          target_call_sign: data.target_call_sign,
+          channel: data.channel,
+          message: data.message || '',
+          timestamp: data.timestamp,
+        },
+      }));
+
+      // Auto-dismiss page after 15 seconds
+      setTimeout(() => {
+        setState(prev => prev.incomingPage?.timestamp === data.timestamp ? { ...prev, incomingPage: null } : prev);
+      }, 15000);
+    });
+
+    // ── Emergency override notification ─────────────────────────
+    const unsubOverride = subscribe('emergency_override', (msg: any) => {
+      const data = msg.data || msg;
+      // Force-stop our transmission if we were transmitting
+      if (isTransmittingRef.current) {
+        performStop();
+      }
+      // Play emergency tone
+      playRadioTone('panicWarble');
+
+      setState(prev => ({
+        ...prev,
+        error: `EMERGENCY OVERRIDE by ${data.fullName || data.username || 'Supervisor'}`,
+        transmissionLog: [
+          {
+            id: `override-${Date.now()}`,
+            userId: data.userId || 0,
+            username: data.username || 'OVERRIDE',
+            fullName: `⚡ OVERRIDE: ${data.fullName || data.username || 'Unknown'}`,
+            channel: data.channel || prev.currentChannel || '',
+            startedAt: Date.now(),
+            duration: 0,
+          },
+          ...prev.transmissionLog,
+        ].slice(0, MAX_LOG_ENTRIES),
+      }));
+    });
+
     return () => {
       unsubState();
       unsubJoin();
@@ -762,10 +887,54 @@ export function useRadio() {
       unsubAudio();
       unsubPanic();
       unsubPanicAudio();
+      unsubPage();
+      unsubOverride();
       panicPlayerRef.current?.destroy();
       if (panicDismissTimer) clearTimeout(panicDismissTimer);
     };
   }, [subscribe, user?.id]);
+
+  // ─── Hardware PTT Key Support ─────────────────────────────────
+  // Sonim XP10: KEYCODE_PTT (Android keyCode 279) → yellow PTT button
+  // Also supports: F5 key for desktop PTT, Ctrl+Space as alternative
+  // The keydown/keyup pattern mirrors Space bar handling in RadioPage
+  // but is handled here so it works globally when on a channel.
+  useEffect(() => {
+    if (!state.currentChannel) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Skip if typing in input fields
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+      // Sonim KEYCODE_PTT (279) comes through as keyCode 279 on Android WebView
+      // F5 = desktop PTT alternative (common radio software convention)
+      const isPttKey = e.keyCode === 279 || e.key === 'F5';
+
+      if (isPttKey && !hardwarePttHeldRef.current) {
+        e.preventDefault();
+        hardwarePttHeldRef.current = true;
+        startTransmit();
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      const isPttKey = e.keyCode === 279 || e.key === 'F5';
+
+      if (isPttKey && hardwarePttHeldRef.current) {
+        e.preventDefault();
+        hardwarePttHeldRef.current = false;
+        stopTransmit();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [state.currentChannel, startTransmit, stopTransmit]);
 
   // ─── Cleanup on unmount ──────────────────────────────────────
   useEffect(() => {
@@ -775,6 +944,7 @@ export function useRadio() {
         clearTimeout(releaseTimerRef.current);
         releaseTimerRef.current = null;
       }
+      hardwarePttHeldRef.current = false;
       if (recognitionRef.current) {
         try { recognitionRef.current.stop(); } catch { /* ok */ }
         recognitionRef.current = null;
@@ -831,6 +1001,12 @@ export function useRadio() {
     leaveChannel,
     startTransmit,
     stopTransmit,
+    sendPage,
+    emergencyOverride,
+    startScan,
+    stopScan,
+    setLinkedCall,
+    dismissPage,
     isConnected,
   };
 }

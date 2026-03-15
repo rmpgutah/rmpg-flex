@@ -1429,6 +1429,18 @@ export type WSMessageType =
   | 'radio_channel_join'
   | 'radio_channel_leave'
   | 'radio_channel_state'
+  // MDC Selcall — unit paging, emergency override, channel scanning
+  | 'selcall_page'
+  | 'selcall_page_sent'
+  | 'emergency_override'
+  | 'emergency_override_denied'
+  | 'scan_subscribe'
+  | 'scan_subscribed'
+  | 'scan_unsubscribe'
+  | 'scan_unsubscribed'
+  // Dispatch — unit/call status updates
+  | 'units:status'
+  | 'calls:updated'
   // Private calls — full-duplex 1:1 voice
   | 'private_call_request'
   | 'private_call_ringing'
