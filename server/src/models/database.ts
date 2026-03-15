@@ -1018,6 +1018,20 @@ function createTables(): void {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
 
+    -- ── Security Alerts (system-wide, visible to admins) ──
+    CREATE TABLE IF NOT EXISTS security_alerts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      alert_type TEXT NOT NULL,
+      severity TEXT NOT NULL CHECK(severity IN ('low','medium','high','critical')),
+      title TEXT NOT NULL,
+      details TEXT,
+      source_ip TEXT,
+      user_id INTEGER,
+      acknowledged_by INTEGER,
+      acknowledged_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+
     -- ── WebAuthn / Security Key Credentials ─────────────
     CREATE TABLE IF NOT EXISTS webauthn_credentials (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -4220,6 +4234,10 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_security_notifs_user ON security_notifications(user_id);
     CREATE INDEX IF NOT EXISTS idx_security_notifs_read ON security_notifications(user_id, is_read);
     CREATE INDEX IF NOT EXISTS idx_security_notifs_created ON security_notifications(created_at);
+
+    -- Security alerts indexes
+    CREATE INDEX IF NOT EXISTS idx_security_alerts_created ON security_alerts(created_at);
+    CREATE INDEX IF NOT EXISTS idx_security_alerts_severity ON security_alerts(severity, acknowledged_at);
 
     -- Cases indexes
     CREATE INDEX IF NOT EXISTS idx_cases_number ON cases(case_number);

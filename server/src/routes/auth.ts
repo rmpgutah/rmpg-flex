@@ -3,6 +3,7 @@ import bcryptjs from 'bcryptjs';
 import crypto from 'crypto';
 import { getDb } from '../models/database';
 import { broadcast } from '../utils/websocket';
+import { checkLoginAnomalies } from '../utils/securityAlerts';
 import jwt from 'jsonwebtoken';
 import {
   authenticateToken,
@@ -96,6 +97,11 @@ function logLoginAttempt(
     INSERT INTO login_attempts (username, ip_address, success, failure_reason, user_agent, device_fingerprint)
     VALUES (?, ?, ?, ?, ?, ?)
   `).run(username, ip, success ? 1 : 0, reason || null, userAgent || null, fpHash);
+
+  // Check for brute-force patterns on failed login
+  if (!success) {
+    checkLoginAnomalies(ip, username);
+  }
 }
 
 // ─── Helper: Create session ───────────────────────────
