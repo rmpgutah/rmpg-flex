@@ -1681,20 +1681,20 @@ const clarkNvParser: CountyParser = {
         cells.push(tdMatch[1].replace(/<[^>]+>/g, '').trim());
       }
 
-      // Columns: InmateID(0), Name(1), ArrestDate(2), CaseNo(3), Age(4), Race(5), Sex(6)
-      if (cells.length < 5) continue;
+      // Columns: Select(0), InmateID(1), Name(2), ArrestDate(3), Select(4), CaseNo(5), Age(6), Race(7), Sex(8)
+      if (cells.length < 7) continue;
 
       // Skip header rows
-      if (cells[0] === 'Select' || cells[0] === 'ID' || cells[0] === 'Inmate' || cells[1] === 'Name' || cells[0] === 'Inmate ID') continue;
+      if (cells[1] === 'Inmate ID' || cells[2] === 'Name' || cells[0] === 'Select') continue;
 
-      const inmateId = cells[0] || '';
-      const fullName = (cells[1] || '').trim();
+      const inmateId = cells[1] || '';
+      const fullName = (cells[2] || '').trim();
       if (!fullName || !inmateId || !inmateId.match(/^\d+$/)) continue;
 
       const { first, middle, last } = splitName(fullName);
-      const gender = (cells[6] || cells[5] || '').charAt(0).toUpperCase();
-      const charge = (cells[3] || '').trim(); // Case No
-      const arrestDate = (cells[2] || '').trim();
+      const gender = (cells[8] || '').charAt(0).toUpperCase();
+      const charge = (cells[5] || '').trim(); // Case No
+      const arrestDate = (cells[3] || '').trim();
 
       entries.push({
         roster_id: inmateId,
@@ -1703,7 +1703,7 @@ const clarkNvParser: CountyParser = {
         last_name: last,
         middle_name: middle,
         gender,
-        age: parseInt(cells[4], 10) || null,
+        age: parseInt(cells[6], 10) || null,
         booking_date: arrestDate,
         charges: charge ? [charge] : [],
         bail_amount: '',
@@ -1722,37 +1722,38 @@ const clarkNvParser: CountyParser = {
  */
 async function fetchClarkNvRoster(): Promise<string> {
   const baseUrl = 'https://redrock.clarkcountynv.gov/ccdcincustody/incustodysearch.aspx';
-  const letters = 'abcdefghijklmnopqrstuvwxyz'.split('');
+  // Clark County requires 2+ character search prefix — single letters return empty.
+  // ASP.NET ViewState breaks after first search, so we need a fresh GET for each prefix.
+  // Use 2-letter combinations (AA..ZZ = 676 combos) to cover all last names.
   const allHtml: string[] = [];
   const seen = new Set<string>();
-
-  // First, get the search page to extract ViewState
-  let viewState = '';
-  let eventValidation = '';
-  let viewStateGen = '';
-  try {
-    const searchPage = await fetchPage(baseUrl);
-    const vsMatch = searchPage.match(/id="__VIEWSTATE"\s+value="([^"]*)"/);
-    const evMatch = searchPage.match(/id="__EVENTVALIDATION"\s+value="([^"]*)"/);
-    const vsgMatch = searchPage.match(/id="__VIEWSTATEGENERATOR"\s+value="([^"]*)"/);
-    viewState = vsMatch ? vsMatch[1] : '';
-    eventValidation = evMatch ? evMatch[1] : '';
-    viewStateGen = vsgMatch ? vsgMatch[1] : '';
-  } catch {
-    throw new Error('Failed to load Clark County search page');
+  const alpha = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const prefixes: string[] = [];
+  for (const a of alpha) {
+    for (const b of alpha) {
+      prefixes.push(a + b);
+    }
   }
 
-  for (const letter of letters) {
+  for (const prefix of prefixes) {
     try {
+      // Fresh GET for each search (ASP.NET ViewState is single-use)
+      const searchPage = await fetch(baseUrl, {
+        headers: { 'User-Agent': USER_AGENT },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      }).then(r => r.text());
+
+      const vsMatch = searchPage.match(/id="__VIEWSTATE"\s+value="([^"]*)"/);
+      const evMatch = searchPage.match(/id="__EVENTVALIDATION"\s+value="([^"]*)"/);
+      const vsgMatch = searchPage.match(/id="__VIEWSTATEGENERATOR"\s+value="([^"]*)"/);
+
       const params: Record<string, string> = {
-        __VIEWSTATE: viewState,
-        __EVENTVALIDATION: eventValidation,
-        txtName: letter,
+        __VIEWSTATE: vsMatch ? vsMatch[1] : '',
+        __EVENTVALIDATION: evMatch ? evMatch[1] : '',
+        txtName: prefix,
         SearchName: '  Submit  ',
       };
-      if (viewStateGen) params.__VIEWSTATEGENERATOR = viewStateGen;
-
-      const body = new URLSearchParams(params);
+      if (vsgMatch) params.__VIEWSTATEGENERATOR = vsgMatch[1];
 
       const res = await fetch(baseUrl, {
         method: 'POST',
@@ -1760,39 +1761,33 @@ async function fetchClarkNvRoster(): Promise<string> {
           'User-Agent': USER_AGENT,
           'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: body.toString(),
+        body: new URLSearchParams(params).toString(),
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
 
       if (!res.ok) continue;
       const html = await res.text();
 
-      // Update ViewState for next request
-      const vsMatch = html.match(/id="__VIEWSTATE"\s+value="([^"]*)"/);
-      const evMatch = html.match(/id="__EVENTVALIDATION"\s+value="([^"]*)"/);
-      const vsgMatch = html.match(/id="__VIEWSTATEGENERATOR"\s+value="([^"]*)"/);
-      if (vsMatch) viewState = vsMatch[1];
-      if (evMatch) eventValidation = evMatch[1];
-      if (vsgMatch) viewStateGen = vsgMatch[1];
-
-      // Extract result rows, deduplicate
+      // Extract result rows with inmate IDs, deduplicate
       const rows = html.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
+      let added = 0;
       for (const row of rows) {
         const idMatch = row.match(/<td[^>]*>(\d{5,})<\/td>/);
-        const key = idMatch ? idMatch[1] : row.substring(0, 80);
-        if (!seen.has(key)) {
-          seen.add(key);
+        if (idMatch && !seen.has(idMatch[1])) {
+          seen.add(idMatch[1]);
           allHtml.push(row);
+          added++;
         }
       }
-    } catch (err) {
-      console.error(`[Jail Roster] Clark NV search error for letter ${letter}:`, (err as Error).message);
+    } catch {
+      // Skip this prefix
     }
 
-    await sleep(REQUEST_DELAY_MS);
+    // Minimal delay — 200ms between requests to avoid overloading
+    await sleep(200);
   }
 
-  console.log(`[Jail Roster] Clark County NV: aggregated ${allHtml.length} unique rows`);
+  console.log(`[Jail Roster] Clark County NV: aggregated ${seen.size} unique inmates from ${prefixes.length} prefixes`);
   return allHtml.join('\n');
 }
 
@@ -1885,7 +1880,6 @@ async function fetchElPasoCoRoster(): Promise<string> {
     }
   }
 
-  let emptyCount = 0;
   for (const prefix of prefixes) {
     try {
       const url = `${apiUrl}?searchName=${prefix}&searchBooking=`;
@@ -1895,16 +1889,22 @@ async function fetchElPasoCoRoster(): Promise<string> {
       });
 
       if (!res.ok) continue;
-      const data = await res.json();
+      const text = await res.text();
+      if (!text || text.trim().length === 0) {
+        await sleep(200); // Fast skip for empty responses
+        continue;
+      }
+
+      let data: any[];
+      try {
+        data = JSON.parse(text);
+      } catch {
+        await sleep(200);
+        continue;
+      }
       if (!Array.isArray(data) || data.length === 0) {
-        emptyCount++;
-        // Fast-skip: if many consecutive empty results, reduce delay
-        if (emptyCount > 10) {
-          await sleep(200); // Faster for empty results
-          continue;
-        }
-      } else {
-        emptyCount = 0;
+        await sleep(200); // Fast skip for empty results
+        continue;
       }
 
       for (const inmate of data) {
@@ -1917,7 +1917,8 @@ async function fetchElPasoCoRoster(): Promise<string> {
     } catch {
       // Skip this prefix
     }
-    await sleep(REQUEST_DELAY_MS);
+    // 500ms between non-empty requests, 200ms between empty ones (handled above)
+    await sleep(500);
   }
 
   console.log(`[Jail Roster] El Paso County CO: aggregated ${allInmates.length} unique inmates`);
@@ -2018,51 +2019,41 @@ async function fetchAdaIdRoster(): Promise<string> {
   const allPages: string[] = [];
   const seenIds = new Set<string>();
 
-  // Get initial page for ASP.NET state
-  let viewState = '';
-  let eventValidation = '';
-  let viewStateGen = '';
-  try {
-    const page = await fetchPage(baseUrl);
-    const vsMatch = page.match(/id="__VIEWSTATE"\s+value="([^"]*)"/);
-    const evMatch = page.match(/id="__EVENTVALIDATION"\s+value="([^"]*)"/);
-    const vsgMatch = page.match(/id="__VIEWSTATEGENERATOR"\s+value="([^"]*)"/);
-    viewState = vsMatch ? vsMatch[1] : '';
-    eventValidation = evMatch ? evMatch[1] : '';
-    viewStateGen = vsgMatch ? vsgMatch[1] : '';
-  } catch (err) {
-    throw new Error(`Failed to load Ada County search page: ${(err as Error).message}`);
-  }
-
+  // ASP.NET ViewState breaks after first search — get fresh page for each letter.
+  // The search button is an <a> tag using __doPostBack, so we use __EVENTTARGET.
   for (const letter of letters) {
     try {
-      const params: Record<string, string> = {
-        __VIEWSTATE: viewState,
-        __VIEWSTATEGENERATOR: viewStateGen,
-        __EVENTVALIDATION: eventValidation,
-        'ctl00$ContentPlaceHolder1$txtFilter': letter,
-        'ctl00$ContentPlaceHolder1$btnFilter': 'Filter',
-      };
+      // Fresh GET to get valid ViewState
+      const page = await fetch(baseUrl, {
+        headers: { 'User-Agent': USER_AGENT },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      }).then(r => r.text());
 
-      const body = new URLSearchParams(params);
+      const vsMatch = page.match(/id="__VIEWSTATE"\s+value="([^"]*)"/);
+      const evMatch = page.match(/id="__EVENTVALIDATION"\s+value="([^"]*)"/);
+      const vsgMatch = page.match(/id="__VIEWSTATEGENERATOR"\s+value="([^"]*)"/);
+
+      const params: Record<string, string> = {
+        __VIEWSTATE: vsMatch ? vsMatch[1] : '',
+        __EVENTVALIDATION: evMatch ? evMatch[1] : '',
+        __EVENTTARGET: 'ctl00$ContentPlaceHolder1$btnFilter',
+        __EVENTARGUMENT: '',
+        'ctl00$ContentPlaceHolder1$txtFilter': letter,
+      };
+      if (vsgMatch) params.__VIEWSTATEGENERATOR = vsgMatch[1];
+
       const res = await fetch(baseUrl, {
         method: 'POST',
         headers: {
           'User-Agent': USER_AGENT,
           'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: body.toString(),
+        body: new URLSearchParams(params).toString(),
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
 
       if (!res.ok) continue;
       const html = await res.text();
-
-      // Update ViewState
-      const vsMatch = html.match(/id="__VIEWSTATE"\s+value="([^"]*)"/);
-      const evMatch = html.match(/id="__EVENTVALIDATION"\s+value="([^"]*)"/);
-      if (vsMatch) viewState = vsMatch[1];
-      if (evMatch) eventValidation = evMatch[1];
 
       // Count new unique inmates in this page
       const idMatches = html.matchAll(/ArrestClickJS\((\d+)/g);
