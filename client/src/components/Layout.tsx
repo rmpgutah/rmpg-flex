@@ -113,6 +113,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/crm': 'Overwatch',
   '/training': 'Training Management',
   '/training-docs': 'Training Documents',
+  '/serve': 'Process Server',
   '/admin': 'Admin',
 };
 
@@ -152,6 +153,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement', newWindow: true },
     { path: '/court', icon: Gavel, label: 'Court Tracker', newWindow: true },
     { path: '/offender-registry', icon: UserX, label: 'Offender Registry', newWindow: true },
+    { path: '/serve', icon: Briefcase, label: 'Process Server', newWindow: true },
   ]},
   { path: '/personnel', icon: Users, label: 'Personnel', group: 'records', shortcut: 'F8', children: [
     { path: '/personnel', icon: Users, label: 'Personnel' },

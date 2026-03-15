@@ -276,6 +276,7 @@ export default function MenuBar({
           { type: 'action', label: 'Citation', icon: FileWarning, action: () => navigate('/citations') },
           { type: 'action', label: 'Warrant', icon: Gavel, action: () => window.open('/warrants', '_blank') },
           { type: 'action', label: 'Trespass Order', icon: ShieldAlert, action: () => navigate('/trespass-orders') },
+          { type: 'action', label: 'Service Job', icon: Briefcase, action: () => navigate('/serve') },
           { type: 'separator' },
           { type: 'action', label: 'BOLO Alert', icon: AlertTriangle, action: () => navigate('/communications') },
           { type: 'action', label: 'Message', icon: MessageSquare, action: () => navigate('/communications') },
@@ -425,6 +426,7 @@ export default function MenuBar({
           { type: 'action', label: 'Code Enforcement', icon: Scale, action: () => navigate('/code-enforcement') },
           { type: 'action', label: 'Court Tracker', icon: Gavel, action: () => navigate('/court') },
           { type: 'action', label: 'Trespass Orders', icon: ShieldAlert, action: () => navigate('/trespass-orders') },
+          { type: 'action', label: 'Process Server', icon: Briefcase, action: () => navigate('/serve') },
         ],
       },
       {
