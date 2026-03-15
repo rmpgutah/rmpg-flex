@@ -183,7 +183,8 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
       user.userId, user.fullName || user.username,
     );
 
-    const created = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(result.lastInsertRowid) || { id: result.lastInsertRowid };
+    const created = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(result.lastInsertRowid);
+    if (!created) { res.status(500).json({ error: 'Failed to retrieve created forensic case' }); return; }
     res.status(201).json(created);
   } catch (error: any) {
     console.error('Create forensic case error:', error);
@@ -344,7 +345,8 @@ router.post('/:id/exhibits', requireRole('admin', 'manager', 'supervisor', 'offi
     addTimelineEntry(caseRow.id, 'exhibit_added', `Exhibit ${exhibit_number} added — ${description}`, user.userId, user.fullName || user.username);
 
     const created = db.prepare('SELECT * FROM forensic_exhibits WHERE id = ?').get(result.lastInsertRowid);
-    res.status(201).json(created || { id: result.lastInsertRowid });
+    if (!created) { res.status(500).json({ error: 'Failed to retrieve created exhibit' }); return; }
+    res.status(201).json(created);
   } catch (error: any) {
     console.error('Create exhibit error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -420,7 +422,8 @@ router.post('/:id/analyses', requireRole('admin', 'manager', 'supervisor', 'offi
 
     addTimelineEntry(caseRow.id, 'analysis_created', `${analysis_type} analysis created`, user.userId, user.fullName || user.username);
 
-    const created = db.prepare('SELECT * FROM forensic_analyses WHERE id = ?').get(result.lastInsertRowid) || { id: result.lastInsertRowid };
+    const created = db.prepare('SELECT * FROM forensic_analyses WHERE id = ?').get(result.lastInsertRowid);
+    if (!created) { res.status(500).json({ error: 'Failed to retrieve created analysis' }); return; }
     res.status(201).json(created);
   } catch (error: any) {
     console.error('Create analysis error:', error);
@@ -652,7 +655,8 @@ router.post('/:id/hashes/compute', requireRole('admin', 'manager', 'supervisor',
       user.userId, user.fullName || user.username,
     );
 
-    const record = db.prepare('SELECT * FROM digital_evidence_hashes WHERE id = ?').get(result.lastInsertRowid) || { id: result.lastInsertRowid };
+    const record = db.prepare('SELECT * FROM digital_evidence_hashes WHERE id = ?').get(result.lastInsertRowid);
+    if (!record) { res.status(500).json({ error: 'Failed to retrieve hash record' }); return; }
     res.status(201).json(record);
   } catch (error: any) {
     console.error('Compute hash error:', error);
@@ -702,7 +706,8 @@ router.post('/:id/hashes/manual', requireRole('admin', 'manager', 'supervisor', 
       user.userId, user.fullName || user.username,
     );
 
-    const record = db.prepare('SELECT * FROM digital_evidence_hashes WHERE id = ?').get(result.lastInsertRowid) || { id: result.lastInsertRowid };
+    const record = db.prepare('SELECT * FROM digital_evidence_hashes WHERE id = ?').get(result.lastInsertRowid);
+    if (!record) { res.status(500).json({ error: 'Failed to retrieve hash record' }); return; }
     res.status(201).json(record);
   } catch (error: any) {
     console.error('Manual hash add error:', error);
@@ -973,7 +978,8 @@ router.post('/:id/links', requireRole('admin', 'manager', 'supervisor', 'officer
       user.id, user.full_name
     );
 
-    const link = (db.prepare('SELECT * FROM forensic_case_links WHERE id = ?').get(result.lastInsertRowid) as any) || { id: result.lastInsertRowid };
+    const link = db.prepare('SELECT * FROM forensic_case_links WHERE id = ?').get(result.lastInsertRowid) as any;
+    if (!link) { res.status(500).json({ error: 'Failed to retrieve created link' }); return; }
     res.status(201).json({ ...link, resolved });
   } catch (error: any) {
     if (error.message?.includes('UNIQUE constraint')) {

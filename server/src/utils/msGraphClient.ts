@@ -195,8 +195,11 @@ export async function exchangeCodeForTokens(code: string, redirectUri: string): 
   // Decode the JWT to extract the mailbox (UPN is in the token payload)
   let mailbox = '';
   try {
-    const payload = JSON.parse(Buffer.from(data.access_token.split('.')[1], 'base64').toString());
-    mailbox = payload.upn || payload.preferred_username || payload.unique_name || '';
+    const parts = (data.access_token || '').split('.');
+    if (parts.length >= 2 && parts[1]) {
+      const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
+      mailbox = payload.upn || payload.preferred_username || payload.unique_name || '';
+    }
   } catch { /* token decode is best-effort */ }
 
   if (mailbox) {

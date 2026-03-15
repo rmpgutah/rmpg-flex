@@ -103,9 +103,19 @@ export function isTotpCodeUsed(userId: number, code: string): boolean {
 export function markTotpCodeUsed(userId: number, code: string): void {
   // Enforce size cap — evict oldest entries if at limit
   if (usedCodes.size >= MAX_REPLAY_ENTRIES) {
-    const oldest = [...usedCodes.entries()].sort((a, b) => a[1] - b[1]);
-    for (let i = 0; i < Math.ceil(MAX_REPLAY_ENTRIES / 4); i++) {
-      usedCodes.delete(oldest[i][0]);
+    // O(n) single-pass eviction: find the cutoff timestamp for oldest 25%
+    const evictCount = Math.ceil(MAX_REPLAY_ENTRIES / 4);
+    // Collect timestamps to find the Nth smallest without full sort
+    const timestamps: number[] = [];
+    for (const ts of usedCodes.values()) timestamps.push(ts);
+    timestamps.sort((a, b) => a - b); // sort only timestamps (small array of numbers)
+    const cutoff = timestamps[evictCount - 1];
+    let deleted = 0;
+    for (const [k, ts] of usedCodes) {
+      if (ts <= cutoff && deleted < evictCount) {
+        usedCodes.delete(k);
+        deleted++;
+      }
     }
   }
   usedCodes.set(`${userId}:${code}`, Date.now());

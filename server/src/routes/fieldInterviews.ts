@@ -153,7 +153,8 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
       now
     );
 
-    const created = (db.prepare('SELECT * FROM field_interviews WHERE id = ?').get(result.lastInsertRowid) as any) || { id: result.lastInsertRowid };
+    const created = db.prepare('SELECT * FROM field_interviews WHERE id = ?').get(result.lastInsertRowid) as any;
+    if (!created) { res.status(500).json({ error: 'Failed to retrieve created field interview' }); return; }
     // Broadcast minimal payload — no subject PII over WebSocket
     if (created.fi_number) {
       broadcast('alerts', 'fi_created', {

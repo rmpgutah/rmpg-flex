@@ -89,6 +89,7 @@ export function isPasswordExpired(
   if (!passwordChangedAt) return true; // Never changed = expired
 
   const changedAt = new Date(passwordChangedAt);
+  if (isNaN(changedAt.getTime())) return true; // Invalid date = treat as expired
   const expiryDate = new Date(changedAt.getTime() + expiryDays * 24 * 60 * 60 * 1000);
   return new Date() > expiryDate;
 }

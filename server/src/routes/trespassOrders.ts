@@ -216,6 +216,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
     );
 
     const created = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(result.lastInsertRowid) as any;
+    if (!created) { res.status(500).json({ error: 'Failed to retrieve created trespass order' }); return; }
     // Broadcast minimal payload — no subject PII over WebSocket
     broadcast('alerts', 'trespass_order_created', {
       id: created.id, order_number: created.order_number, property_name: created.property_name,

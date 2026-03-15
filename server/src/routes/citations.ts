@@ -50,17 +50,17 @@ router.get('/stats', (req: Request, res: Response) => {
     const finesIssued = db.prepare(`
       SELECT COALESCE(SUM(fine_amount), 0) as total FROM citations
       WHERE status != 'voided'
-    `).get() as any;
+    `).get() as any ?? { total: 0 };
 
     const finesCollected = db.prepare(`
       SELECT COALESCE(SUM(fine_amount), 0) as total FROM citations
       WHERE status = 'paid'
-    `).get() as any;
+    `).get() as any ?? { total: 0 };
 
     const todayCount = db.prepare(`
       SELECT COUNT(*) as count FROM citations
       WHERE violation_date = ? AND status != 'voided'
-    `).get(today) as any;
+    `).get(today) as any ?? { count: 0 };
 
     res.json({
       data: {
@@ -364,7 +364,8 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispa
       req.ip || 'unknown'
     );
 
-    const created = db.prepare('SELECT * FROM citations WHERE id = ?').get(result.lastInsertRowid) || { id: result.lastInsertRowid };
+    const created = db.prepare('SELECT * FROM citations WHERE id = ?').get(result.lastInsertRowid);
+    if (!created) { res.status(500).json({ error: 'Failed to retrieve created citation' }); return; }
 
     // Notify supervisors of citation issued
     createNotificationForRoles(

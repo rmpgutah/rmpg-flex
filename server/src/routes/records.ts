@@ -453,6 +453,7 @@ router.post('/persons', requireRole('admin', 'manager', 'supervisor', 'officer',
 
     // SELECT after screening so watchlist_match is included in response
     const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(result.lastInsertRowid);
+    if (!person) { res.status(500).json({ error: 'Failed to retrieve created person' }); return; }
     res.status(201).json(person);
   } catch (error: any) {
     console.error('Create person error:', error);
@@ -828,6 +829,7 @@ router.post('/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer'
     );
 
     const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(result.lastInsertRowid);
+    if (!vehicle) { res.status(500).json({ error: 'Failed to retrieve created vehicle' }); return; }
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
@@ -2178,6 +2180,7 @@ router.post('/client-persons', requireRole('admin', 'manager', 'supervisor', 'of
     );
 
     const link = db.prepare('SELECT * FROM client_persons WHERE id = ?').get(result.lastInsertRowid);
+    if (!link) { res.status(500).json({ error: 'Failed to retrieve created link' }); return; }
     res.status(201).json(link);
   } catch (error: any) {
     if (error.code === 'SQLITE_CONSTRAINT_UNIQUE' || (error.message && error.message.includes('UNIQUE'))) {

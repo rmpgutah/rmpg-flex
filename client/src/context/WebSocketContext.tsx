@@ -99,6 +99,8 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         heartbeatRef.current = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: 'ping' }));
+            // Clear any previous pong timeout before setting a new one
+            if (pongTimeoutRef.current) clearTimeout(pongTimeoutRef.current);
             // If no pong within 10s, connection is dead — close and reconnect
             pongTimeoutRef.current = setTimeout(() => {
               devWarn('[WS] Pong timeout — closing dead connection');

@@ -88,7 +88,8 @@ router.post('/clients', (req: Request, res: Response) => {
       account_manager || null, priority_client ? 1 : 0, client_since || null,
     );
 
-    const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(result.lastInsertRowid) || { id: result.lastInsertRowid };
+    const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(result.lastInsertRowid);
+    if (!client) { res.status(500).json({ error: 'Failed to retrieve created client' }); return; }
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)

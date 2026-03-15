@@ -298,7 +298,8 @@ router.post('/', requireRole('admin', 'manager', 'contract_manager'), (req: Requ
     ).run(user.userId, 'invoice_created', 'invoice', result.lastInsertRowid, `Created invoice ${invoice_number} for client ${client.name}`, req.ip || 'unknown', now);
 
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(result.lastInsertRowid);
-    res.status(201).json({ data: invoice || { id: result.lastInsertRowid } });
+    if (!invoice) { res.status(500).json({ error: 'Failed to retrieve created invoice' }); return; }
+    res.status(201).json({ data: invoice });
   } catch (error: any) {
     console.error('Invoice create error:', error);
     res.status(500).json({ error: 'Internal server error' });
