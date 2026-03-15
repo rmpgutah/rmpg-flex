@@ -112,8 +112,8 @@ router.get('/', (req: Request, res: Response) => {
       whereClause += ' AND fv.archived_at IS NULL';
     }
 
-    const pageNum = parseInt(page as string, 10) || 1;
-    const perPage = parseInt(per_page as string, 10) || 50;
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 50));
     const offset = (pageNum - 1) * perPage;
 
     const countRow = db.prepare(
@@ -917,8 +917,8 @@ router.get('/:id/fuel', (req: Request, res: Response) => {
       return;
     }
 
-    const pageNum = parseInt(page as string, 10) || 1;
-    const perPage = parseInt(per_page as string, 10) || 50;
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 50));
     const offset = (pageNum - 1) * perPage;
 
     const countRow = db.prepare('SELECT COUNT(*) as total FROM fleet_fuel_logs WHERE vehicle_id = ?').get(id) as any;
@@ -1352,8 +1352,8 @@ router.get('/:id/assignments', (req: Request, res: Response) => {
       return;
     }
 
-    const pageNum = parseInt(page as string, 10) || 1;
-    const perPage = parseInt(per_page as string, 10) || 50;
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 50));
     const offset = (pageNum - 1) * perPage;
 
     const countRow = db.prepare('SELECT COUNT(*) as total FROM fleet_assignments WHERE vehicle_id = ?').get(id) as any;

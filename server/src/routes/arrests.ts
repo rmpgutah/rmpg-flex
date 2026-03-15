@@ -168,7 +168,7 @@ router.post('/manual', requireRole('admin', 'manager', 'officer', 'supervisor'),
       b.date_of_birth || null, b.booking_date || now, b.release_date || null,
       charges, b.county || '', b.state || 'UT', b.status || 'active', b.booking_number || null, b.agency || null,
       b.gender || null, b.race || null, b.height || null, b.weight || null, b.hair_color || null, b.eye_color || null,
-      b.address || null, b.bail_amount != null && !isNaN(parseFloat(b.bail_amount)) ? parseFloat(b.bail_amount) : null, b.hold_reason || null, b.notes || null,
+      b.address || null, b.bail_amount != null && !isNaN(parseFloat(b.bail_amount)) && isFinite(parseFloat(b.bail_amount)) ? parseFloat(b.bail_amount) : null, b.hold_reason || null, b.notes || null,
       user?.id || null, now, now,
     );
 
@@ -220,7 +220,7 @@ router.put('/manual/:id', requireRole('admin', 'manager', 'officer', 'supervisor
 
     if (b.bail_amount !== undefined) {
       updates.push('bail_amount = ?');
-      params.push(b.bail_amount != null && !isNaN(parseFloat(b.bail_amount)) ? parseFloat(b.bail_amount) : null);
+      params.push(b.bail_amount != null && !isNaN(parseFloat(b.bail_amount)) && isFinite(parseFloat(b.bail_amount)) ? parseFloat(b.bail_amount) : null);
     }
 
     if (b.charges !== undefined) {

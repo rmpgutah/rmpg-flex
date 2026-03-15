@@ -4,6 +4,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { sendCsv } from '../utils/csvExport';
 import { localNow, localToday } from '../utils/timeUtils';
 import { searchUtahWarrants } from '../utils/utahWarrantScraper';
+import { searchOfacLocal } from '../utils/ofacScraper';
 
 const router = Router();
 
@@ -24,7 +25,7 @@ function screenPersonOfac(personId: number, firstName: string, lastName: string)
     });
 
     const matchInfo = hits.length > 0
-      ? JSON.stringify(hits.map(h => ({ name: h.sdn_name, program: h.program, list: h.source_list })))
+      ? JSON.stringify(hits.map((h: any) => ({ name: h.sdn_name, program: h.program, list: h.source_list })))
       : null;
 
     db.prepare(
@@ -39,7 +40,7 @@ function screenPersonOfac(personId: number, firstName: string, lastName: string)
           VALUES ('system', 'high', ?, ?, 'person', ?, ?)
         `).run(
           `OFAC WATCHLIST MATCH: ${firstName} ${lastName}`,
-          `Person record #${personId} matches ${hits.length} OFAC entry(ies): ${hits.map(h => h.sdn_name).join(', ')}`,
+          `Person record #${personId} matches ${hits.length} OFAC entry(ies): ${hits.map((h: any) => h.sdn_name).join(', ')}`,
           personId,
           now,
         );
@@ -87,8 +88,9 @@ router.get('/persons', (req: Request, res: Response) => {
     const params: any[] = [];
 
     if (flags) {
-      whereClause += ' AND flags LIKE ?';
-      params.push(`%"${flags}"%`);
+      whereClause += " AND flags LIKE ? ESCAPE '\\'";
+      const safeFlags = String(flags).replace(/[%_\\]/g, '\\$&');
+      params.push(`%"${safeFlags}"%`);
     }
 
     // Archive filter
@@ -159,8 +161,9 @@ router.get('/persons/export', (req: Request, res: Response) => {
     const params: any[] = [];
 
     if (flags) {
-      whereClause += ' AND flags LIKE ?';
-      params.push(`%"${flags}"%`);
+      whereClause += " AND flags LIKE ? ESCAPE '\\'";
+      const safeFlags = String(flags).replace(/[%_\\]/g, '\\$&');
+      params.push(`%"${safeFlags}"%`);
     }
 
     const rows = db.prepare(`
@@ -191,7 +194,7 @@ router.get('/persons/export', (req: Request, res: Response) => {
 router.get('/persons/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id) as any;
+    let person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id) as any;
 
     if (!person) {
       res.status(404).json({ error: 'Person not found' });

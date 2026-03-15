@@ -121,9 +121,9 @@ router.get('/stats', (req: Request, res: Response) => {
     res.json({
       byStatus,
       byType,
-      pendingReview: pendingReview.count,
-      thisMonth: thisMonth.count,
-      lastMonth: lastMonth.count,
+      pendingReview: pendingReview?.count ?? 0,
+      thisMonth: thisMonth?.count ?? 0,
+      lastMonth: lastMonth?.count ?? 0,
     });
   } catch (error: any) {
     console.error('Get incident stats error:', error);

@@ -144,6 +144,7 @@ export const config = {
     requireSpecial: envBool('PASSWORD_REQUIRE_SPECIAL', true),
     expiryDays: envInt('PASSWORD_EXPIRY_DAYS', 90),
     expiryWarningDays: envInt('PASSWORD_EXPIRY_WARNING_DAYS', 7),
+    historyCount: envInt('PASSWORD_HISTORY_COUNT', 5),
   },
 
   // Two-Factor Authentication (TOTP)

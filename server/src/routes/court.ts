@@ -84,8 +84,8 @@ router.get('/calendar', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { month, year } = req.query;
-    const y = parseInt(year as string, 10) || new Date().getFullYear();
-    const m = parseInt(month as string, 10) || (new Date().getMonth() + 1);
+    const y = Math.max(2000, Math.min(2100, parseInt(year as string, 10) || new Date().getFullYear()));
+    const m = Math.max(1, Math.min(12, parseInt(month as string, 10) || (new Date().getMonth() + 1)));
     const startDate = `${y}-${String(m).padStart(2, '0')}-01`;
     // Calculate actual last day of month (handles Feb, 30-day months, leap years)
     const lastDay = new Date(y, m, 0).getDate();

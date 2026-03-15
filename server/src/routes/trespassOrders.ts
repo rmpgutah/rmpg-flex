@@ -183,9 +183,12 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
     // Auto-calc expiration if duration_days provided
     let exp = expiration_date || null;
     if (!exp && duration_days) {
-      const eff = effective_date ? new Date(effective_date) : new Date();
-      eff.setDate(eff.getDate() + parseInt(duration_days, 10));
-      exp = eff.toISOString().split('T')[0];
+      const parsedDays = parseInt(duration_days, 10);
+      if (!isNaN(parsedDays) && parsedDays > 0 && parsedDays <= 3650) {
+        const eff = effective_date ? new Date(effective_date) : new Date();
+        eff.setDate(eff.getDate() + parsedDays);
+        exp = eff.toISOString().split('T')[0];
+      }
     }
 
     const result = db.prepare(`
