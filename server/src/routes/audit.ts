@@ -23,8 +23,8 @@ router.get('/logs', (req: Request, res: Response) => {
       limit = '100'
     } = req.query;
 
-    const pageNum = parseInt(page as string, 10) || 1;
-    const limitNum = parseInt(limit as string, 10) || 100;
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const limitNum = Math.min(500, Math.max(1, parseInt(limit as string, 10) || 100));
     const offset = (pageNum - 1) * limitNum;
 
     const db = getDb();
@@ -215,6 +215,7 @@ router.get('/export', (req: Request, res: Response) => {
       LEFT JOIN users u ON al.user_id = u.id
       ${whereClause}
       ORDER BY al.created_at DESC
+      LIMIT 50000
     `).all(...params);
 
     sendCsv(res, 'audit_log_export.csv', [

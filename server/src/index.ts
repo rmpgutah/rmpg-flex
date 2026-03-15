@@ -210,12 +210,29 @@ app.use('/api', apiRateLimit);
 
 // ─── Health Check ─────────────────────────────────────
 app.get('/api/health', (_req, res) => {
-  res.json({
-    status: 'ok',
+  // Verify database connectivity with a test query
+  let dbStatus: 'ok' | 'error' = 'ok';
+  let dbError: string | undefined;
+  try {
+    const db = getDb();
+    db.prepare('SELECT 1').get();
+  } catch (err: any) {
+    dbStatus = 'error';
+    dbError = err?.message || 'Database unreachable';
+  }
+
+  const overall = dbStatus === 'ok' ? 'ok' : 'degraded';
+  const statusCode = overall === 'ok' ? 200 : 503;
+
+  res.status(statusCode).json({
+    status: overall,
     name: 'RMPG Flex CAD/RMS Server',
     version: SERVER_VERSION,
     environment: config.nodeEnv,
     timestamp: new Date().toISOString(),
+    uptime: Math.floor(process.uptime()),
+    database: { status: dbStatus, ...(dbError && { error: dbError }) },
+    connections: { websocket: getConnectedClientCount() },
     features: {
       rateLimiting: true,
       securityHeaders: true,
