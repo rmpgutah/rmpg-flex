@@ -90,6 +90,17 @@ router.post('/gps', (req: Request, res: Response) => {
 
       unit = db.prepare('SELECT id, call_sign, status FROM units WHERE officer_id = ?').get(req.user!.userId) as any;
       console.log(`[GPS] Auto-created unit "${finalCallSign}" for user ${req.user!.userId} (${userInfo?.full_name || 'unknown'})`);
+
+      // Audit log: auto-created unit
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'unit_auto_created', 'unit', ?, ?, ?)
+      `).run(
+        req.user!.userId,
+        unit?.id ?? null,
+        `Auto-created unit "${finalCallSign}" via GPS tracking for ${userInfo?.full_name || 'unknown'}`,
+        req.ip || 'unknown',
+      );
     }
 
     // GPS tracking is mandatory for ALL logged-in users regardless of status.

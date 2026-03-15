@@ -394,6 +394,18 @@ router.put('/:fileId/link', requireRole('admin', 'manager', 'supervisor'), (req:
     }
 
     const attachment = db.prepare('SELECT * FROM attachments WHERE file_id = ?').get(req.params.fileId);
+
+    // Audit log: file reassignment
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'file_linked', 'attachment', ?, ?, ?)
+    `).run(
+      req.user!.userId,
+      req.params.fileId,
+      `Linked file to ${entity_type} #${entity_id}`,
+      req.ip || 'unknown',
+    );
+
     res.json(attachment);
   } catch (error: any) {
     console.error('Link attachment error:', error);
