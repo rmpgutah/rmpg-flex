@@ -1951,8 +1951,9 @@ const adaIdParser: CountyParser = {
     while ((match = blockRegex.exec(html)) !== null) {
       const jid = match[1];
       // Extract a chunk of HTML after this match to parse details
+      // Note: must be large enough to skip past base64 mugshot images (~15KB each)
       const startIdx = match.index;
-      const chunk = html.substring(startIdx, startIdx + 3000);
+      const chunk = html.substring(startIdx, startIdx + 25000);
 
       // Name: <strong>Last, First Middle</strong> inside myNameTitle
       const nameMatch = chunk.match(/myNameTitle[\s\S]*?<strong>([^<]+)<\/strong>/);
