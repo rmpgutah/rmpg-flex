@@ -440,6 +440,8 @@ export default function MapPage() {
     let cancelled = false;
     const MAX_RETRIES = 8;
     const RETRY_DELAYS = [2000, 4000, 8000, 12000, 16000, 20000, 25000, 30000]; // ms
+    let dismissObserver: MutationObserver | null = null;
+    let dismissTimer: ReturnType<typeof setTimeout> | null = null;
 
     function initMap() {
       if (!mapRef.current || authFailed || cancelled) return;
@@ -477,13 +479,13 @@ export default function MapPage() {
         document.head.appendChild(s);
       }
 
-      const dismissObserver = new MutationObserver(() => {
+      dismissObserver = new MutationObserver(() => {
         if (authFailed) return;
         const hardErr = mapRef.current?.querySelector('.gm-err-container');
         if (hardErr) {
           console.error('[MapPage] Google Maps hard error overlay detected');
           authFailed = true;
-          dismissObserver.disconnect();
+          dismissObserver?.disconnect();
           setMapError(
             'Google Maps failed to load.\n\n' +
             'Check Google Cloud Console:\n' +
@@ -501,7 +503,7 @@ export default function MapPage() {
         }
       });
       dismissObserver.observe(document.body, { childList: true, subtree: true });
-      const dismissTimer = setTimeout(() => dismissObserver.disconnect(), 10000);
+      dismissTimer = setTimeout(() => dismissObserver?.disconnect(), 10000);
 
       // AdvancedMarkerElement requires a cloud mapId on the Map constructor.
       // Without mapId, markers are created but silently never render.
@@ -584,8 +586,8 @@ export default function MapPage() {
     return () => {
       cancelled = true; // Stop any pending retries
       unsubOnline();
-      clearTimeout(dismissTimer);
-      dismissObserver.disconnect();
+      if (dismissTimer) clearTimeout(dismissTimer);
+      if (dismissObserver) dismissObserver.disconnect();
       if (tileMonitorCleanupRef.current) { tileMonitorCleanupRef.current(); tileMonitorCleanupRef.current = null; }
       if (offlineTileCleanupRef.current) { offlineTileCleanupRef.current(); offlineTileCleanupRef.current = null; }
       if (mapInstanceRef.current) unregisterMapInstance(mapInstanceRef.current);
