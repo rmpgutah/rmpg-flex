@@ -41,7 +41,7 @@ function mapDbCall(raw: any): CallForService {
     ...raw,
     id: String(raw.id),
     assigned_units: (() => {
-      try { return JSON.parse(raw.assigned_unit_callsigns || '[]'); } catch { return []; }
+      try { return JSON.parse(raw.assigned_unit_ids || '[]').map(String); } catch { return []; }
     })(),
     notes: (() => {
       try { return JSON.parse(raw.notes || '[]'); } catch { return []; }
@@ -359,7 +359,8 @@ export default function MdtPage() {
 
       setMsgUnread(msgResult?.unreadCount || 0);
 
-      const allCalls = (Array.isArray(callsRaw) ? callsRaw : []).map(mapDbCall);
+      const callsArray: any[] = Array.isArray((callsRaw as any)?.data) ? (callsRaw as any).data : Array.isArray(callsRaw) ? callsRaw : [];
+      const allCalls = callsArray.map(mapDbCall);
       const allUnits = Array.isArray(unitsRaw) ? unitsRaw : [];
 
       // Find my unit via GPS hook's unit ID
@@ -368,9 +369,9 @@ export default function MdtPage() {
 
       // My calls: calls where my unit is assigned
       if (unit) {
-        const myCallSign = unit.call_sign;
+        const myUnitId = String(unit.id);
         setMyCalls(allCalls.filter(c =>
-          isActiveStatus(c.status) && c.assigned_units?.includes(myCallSign)
+          isActiveStatus(c.status) && c.assigned_units?.includes(myUnitId)
         ));
       } else {
         setMyCalls([]);
@@ -579,7 +580,7 @@ export default function MdtPage() {
                 onClick={() => setActiveTab(tab)}
                 className="flex-1 px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider transition-colors whitespace-nowrap"
                 style={{
-                  background: activeTab === tab ? '#1a1a1a' : 'transparent',
+                  background: activeTab === tab ? '#141e2b' : 'transparent',
                   color: activeTab === tab ? (tab === 'ncic' ? '#22d3ee' : '#fff') : '#666',
                   borderBottom: activeTab === tab ? `2px solid ${tab === 'ncic' ? '#22d3ee' : '#22c55e'}` : '2px solid transparent',
                 }}

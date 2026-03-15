@@ -21,10 +21,13 @@ import { liveBroadcast } from './middleware/liveBroadcast';
 import { startPatrolMonitor } from './utils/patrolMonitor';
 import { startDailyReportScheduler } from './utils/dailyReportGenerator';
 import { startClearPathGpsPoller } from './utils/clearPathGpsPoller';
+import { startClearPathGpsMediaPoller } from './utils/clearPathGpsMediaPoller';
+import { startEmailPoller } from './utils/emailPoller';
 import { scheduleOfacSync, searchOfacLocal } from './utils/ofacScraper';
 import { scheduleUtahWarrantSync } from './utils/utahWarrantScraper';
 import { scheduleArrestSync } from './utils/arrestScraper';
 import { scheduleJailRosterSync } from './utils/jailRosterScraper';
+import { startServeManagerPoller } from './utils/serveManagerPoller';
 import { scheduleOverlayReprocessing } from './utils/videoOverlay';
 import { getDb } from './models/database';
 
@@ -46,6 +49,7 @@ try {
 // Import routes
 import authRoutes from './routes/auth';
 import securityDashboardRoutes from './routes/securityDashboard';
+import webauthnRoutes from './routes/webauthn';
 import dispatchRoutes from './routes/dispatch';
 import incidentRoutes from './routes/incidents';
 import recordsRoutes from './routes/records';
@@ -84,6 +88,14 @@ import companyDocumentsRoutes from './routes/companyDocuments';
 import ipedRoutes from './routes/iped';
 import forensicsRoutes from './routes/forensics';
 import skiptracerRoutes from './routes/skiptracer';
+import dashcamVideoRoutes from './routes/dashcamVideos';
+import coloradoDocRoutes from './routes/coloradoDoc';
+import sexOffenderRegistryRoutes from './routes/sexOffenderRegistry';
+import emailRoutes from './routes/email';
+import connectionsRoutes from './routes/connections';
+import crmRoutes from './routes/crm';
+import crmLeadsRoutes from './routes/crmLeads';
+import crmProposalsRoutes from './routes/crmProposals';
 
 const app = express();
 
@@ -218,6 +230,7 @@ app.use(liveBroadcast);
 // ─── API Routes ───────────────────────────────────────
 app.use('/api/auth', authRoutes);
 app.use('/api/auth/security', securityDashboardRoutes);
+app.use('/api/auth/webauthn', webauthnRoutes);
 app.use('/api/dispatch', dispatchRoutes);
 app.use('/api/incidents', incidentRoutes);
 app.use('/api/records', recordsRoutes);
@@ -230,6 +243,7 @@ app.use('/api/admin', systemConfigRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/patrol', patrolRoutes);
 app.use('/api/warrants', warrantRoutes);
+app.use('/api/fleet/dashcam-videos', dashcamVideoRoutes);
 app.use('/api/fleet', fleetRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/statutes', statuteRoutes);
@@ -257,6 +271,13 @@ app.use('/api/company-documents', companyDocumentsRoutes);
 app.use('/api/iped', ipedRoutes);
 app.use('/api/forensics', forensicsRoutes);
 app.use('/api/skiptracer', skiptracerRoutes);
+app.use('/api/colorado-doc', coloradoDocRoutes);
+app.use('/api/sex-offender-registry', sexOffenderRegistryRoutes);
+app.use('/api/email', emailRoutes);
+app.use('/api/connections', connectionsRoutes);
+app.use('/api/crm', crmRoutes);
+app.use('/api/crm', crmLeadsRoutes);
+app.use('/api/crm', crmProposalsRoutes);
 
 // Mount download page and file serving routes (outside /api)
 // Also mounts /updates/latest.yml, /updates/latest-mac.yml for electron-updater
@@ -425,6 +446,9 @@ try {
     // Start ClearPathGPS fleet position poller (if enabled)
     startClearPathGpsPoller();
 
+    // Start Microsoft Email inbox sync poller
+    startEmailPoller();
+
     // Start OFAC SDN data sync (downloads from U.S. Treasury, syncs daily)
     scheduleOfacSync();
 
@@ -436,6 +460,12 @@ try {
 
     // Start Utah county jail roster scraper (scrapes county jail websites/PDFs)
     scheduleJailRosterSync();
+
+    // Start ClearPathGPS media sync poller (dashcam video auto-download)
+    startClearPathGpsMediaPoller();
+
+    // Start ServeManager auto-poller (syncs jobs → creates dispatch calls)
+    startServeManagerPoller();
 
     // Check for pending video overlay processing (60s after startup)
     scheduleOverlayReprocessing();

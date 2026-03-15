@@ -29,6 +29,8 @@ export type CommandAction =
   | { type: 'hold_call'; callNumber: string; resume?: boolean }
   | { type: 'promote_incident'; callNumber: string }
   | { type: 'le_notify'; callNumber: string; agency?: string }
+  | { type: 'select_call'; callId: string }
+  | { type: 'set_mileage'; callNumber: string; mileage: number }
   | { type: 'show_help' }
   | { type: 'none' };
 

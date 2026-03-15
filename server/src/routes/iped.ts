@@ -37,6 +37,8 @@ import {
 
 const router = Router();
 router.use(authenticateToken);
+// Digital forensics (IPED) is highly sensitive investigation tooling
+router.use(requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'));
 
 // ── GET /status — Configuration and installation status ─────
 router.get('/status', (_req: Request, res: Response) => {

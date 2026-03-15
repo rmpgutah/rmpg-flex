@@ -166,13 +166,13 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
           </div>
         </div>
 
-        {/* Video Player with HUD */}
-        <div ref={containerRef} className="bg-black relative">
+        {/* Video Player with HUD — 16:9 standard framing */}
+        <div ref={containerRef} className="bg-black relative" style={{ aspectRatio: '16/9', maxHeight: '55vh' }}>
           <video
             ref={videoRef}
             controls
             autoPlay
-            className="w-full max-h-[55vh]"
+            className="w-full h-full object-contain"
             src={streamUrl}
           >
             Your browser does not support the video tag.
@@ -189,6 +189,11 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
             longitude={video.longitude}
             address={video.address || undefined}
           />
+          {video.overlay_status === 'complete' && hudVisible && (
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-black/70 px-3 py-1 text-[9px] text-green-400 font-mono pointer-events-none z-10">
+              OVERLAY BURNED INTO VIDEO
+            </div>
+          )}
         </div>
 
         {/* Toolbar */}

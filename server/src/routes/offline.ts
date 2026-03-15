@@ -20,7 +20,7 @@ router.use(authenticateToken);
 // Maps table name → columns to SELECT (controls what the desktop app receives)
 const SYNC_TABLES: Record<string, { columns: string; hasUpdatedAt: boolean; limit?: number }> = {
   users: {
-    columns: 'id, username, password_hash, first_name, last_name, full_name, email, role, badge_number, phone, status, avatar_url, created_at, updated_at',
+    columns: 'id, username, first_name, last_name, full_name, email, role, badge_number, phone, status, avatar_url, created_at, updated_at',
     hasUpdatedAt: true,
   },
   clients: {
@@ -28,7 +28,7 @@ const SYNC_TABLES: Record<string, { columns: string; hasUpdatedAt: boolean; limi
     hasUpdatedAt: true,
   },
   properties: {
-    columns: 'id, client_id, name, address, latitude, longitude, property_type, gate_code, alarm_code, post_orders, hazard_notes, is_active, created_at, updated_at',
+    columns: 'id, client_id, name, address, latitude, longitude, property_type, post_orders, hazard_notes, is_active, created_at, updated_at',
     hasUpdatedAt: true,
   },
   calls_for_service: {
@@ -328,17 +328,8 @@ router.get('/my-secret', (req: Request, res: Response) => {
       'SELECT secret FROM offline_pin_secrets WHERE user_id = ?'
     ).get(req.user!.userId);
 
-    // Also get the admin secret (needed for local PIN validation)
-    const adminUser = db.prepare(
-      `SELECT id FROM users WHERE role = 'admin' ORDER BY id ASC LIMIT 1`
-    ).get() as any;
-    const adminSecret = adminUser
-      ? db.prepare('SELECT secret FROM offline_pin_secrets WHERE user_id = ?').get(adminUser.id)
-      : null;
-
     res.json({
       secret: row ? (row as any).secret : null,
-      admin_secret: adminSecret ? (adminSecret as any).secret : null,
     });
   } catch (error: any) {
     console.error('[OFFLINE] Get my-secret error:', error.message);

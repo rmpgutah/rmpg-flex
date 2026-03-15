@@ -23,10 +23,11 @@ import {
 
 const router = Router();
 router.use(authenticateToken);
+// Jail roster data (bookings, inmates) is law enforcement only
+router.use(requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'));
 
 // ── GET /status ─────────────────────────────────────────────
 // Per-county sync status, stats, circuit breaker state
-// Available to all authenticated users
 
 router.get('/status', (_req: Request, res: Response) => {
   try {

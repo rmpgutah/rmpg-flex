@@ -7,6 +7,7 @@
 // ============================================================
 
 import { playToneAsync } from './dispatchTones';
+import { devLog } from './devLog';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -107,14 +108,14 @@ function selectFemaleVoice(): SpeechSynthesisVoice | null {
     const match = voices.find(test);
     if (match) {
       cachedVoice = match;
-      console.log(`[VoiceAlerts] Selected voice: "${match.name}" (${match.lang})`);
+      devLog(`[VoiceAlerts] Selected voice: "${match.name}" (${match.lang})`);
       return cachedVoice;
     }
   }
 
   // Ultimate fallback
   cachedVoice = voices[0];
-  console.log(`[VoiceAlerts] Fallback voice: "${voices[0].name}" (${voices[0].lang})`);
+  devLog(`[VoiceAlerts] Fallback voice: "${voices[0].name}" (${voices[0].lang})`);
   return cachedVoice;
 }
 
@@ -404,6 +405,78 @@ export async function announcePanicAlert(officerName?: string): Promise<void> {
   enqueuePhrases(phrases);
 }
 
+/**
+ * Announce a dispatch event: "DISPATCH — [CALL NUMBER] — [INCIDENT TYPE] — [LOCATION]"
+ * plus any safety flags on the call. Triggered on call_status_changed to 'dispatched'.
+ */
+export async function announceDispatchEvent(call: CallFlags & {
+  call_number?: string;
+  incident_type?: string;
+  location?: string;
+  priority?: string;
+}): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `dispatch:${call.id || 'unknown'}:${call.call_number || ''}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  // Play info tone for dispatch confirmation
+  await playToneAsync('info');
+  await delay(TONE_GAP_MS);
+
+  const phrases: VoicePhrase[] = [{ text: 'DISPATCH' }];
+  if (call.call_number) phrases.push({ text: `CALL ${call.call_number}` });
+  if (call.incident_type) {
+    const type = call.incident_type.replace(/_/g, ' ').toUpperCase();
+    phrases.push({ text: type });
+  }
+  if (call.priority === 'P1') phrases.push({ text: 'PRIORITY ONE' });
+  else if (call.priority === 'P2') phrases.push({ text: 'PRIORITY TWO' });
+  if (call.location) phrases.push({ text: `AT ${call.location}` });
+
+  // Append safety flags
+  const safetyPhrases = buildCallPhrases(call);
+  if (safetyPhrases.length > 0) phrases.push(...safetyPhrases);
+
+  enqueuePhrases(phrases);
+}
+
+/**
+ * Announce a new call arrival: "NEW CALL — [CALL NUMBER] — [INCIDENT TYPE]"
+ * Plays a tone and announces call details. Used on call_created events.
+ */
+export async function announceNewCall(call: CallFlags & {
+  call_number?: string;
+  incident_type?: string;
+  priority?: string;
+}): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `newcall:${call.id || 'unknown'}:${call.call_number || ''}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  // Play caution tone for new calls
+  await playToneAsync('caution');
+  await delay(TONE_GAP_MS);
+
+  const phrases: VoicePhrase[] = [{ text: 'NEW CALL' }];
+  if (call.call_number) phrases.push({ text: `CALL ${call.call_number}` });
+  if (call.incident_type) {
+    const type = call.incident_type.replace(/_/g, ' ').toUpperCase();
+    phrases.push({ text: type });
+  }
+  if (call.priority === 'P1') phrases.push({ text: 'PRIORITY ONE' });
+  else if (call.priority === 'P2') phrases.push({ text: 'PRIORITY TWO' });
+
+  // Append safety flags
+  const safetyPhrases = buildCallPhrases(call);
+  if (safetyPhrases.length > 0) phrases.push(...safetyPhrases);
+
+  enqueuePhrases(phrases);
+}
+
 // ─── Demo / Test ─────────────────────────────────────────────
 
 /**
@@ -486,7 +559,7 @@ export async function demoAllVoiceAlerts(): Promise<void> {
   ];
 
   for (const group of groups) {
-    console.log(`[VoiceAlerts Demo] ── ${group.label} ──`);
+    devLog(`[VoiceAlerts Demo] ── ${group.label} ──`);
     await playToneAsync(group.tone);
     await delay(TONE_GAP_MS);
 
@@ -499,7 +572,7 @@ export async function demoAllVoiceAlerts(): Promise<void> {
     await delay(800);
   }
 
-  console.log('[VoiceAlerts Demo] ── Complete ──');
+  devLog('[VoiceAlerts Demo] ── Complete ──');
 }
 
 // ─── Helpers ────────────────────────────────────────────────

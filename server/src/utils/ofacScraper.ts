@@ -640,7 +640,7 @@ export function scheduleOfacSync(): void {
     }
   }, 15_000); // Wait 15s after server start to avoid blocking startup
 
-  // Daily sync
+  // Daily sync — .unref() so it doesn't prevent graceful shutdown
   syncIntervalHandle = setInterval(async () => {
     try {
       console.log('[OFAC Sync] Daily scheduled sync...');
@@ -649,6 +649,7 @@ export function scheduleOfacSync(): void {
       console.error('[OFAC Sync] Scheduled sync failed:', (err as Error).message);
     }
   }, SYNC_INTERVAL_MS);
+  syncIntervalHandle.unref();
 }
 
 export function stopOfacSync(): void {

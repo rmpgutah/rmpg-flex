@@ -24,6 +24,10 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const reconnectDelayRef = useRef(WS_RECONNECT_DELAY);
   const [isConnected, setIsConnected] = useState(false);
 
+  // Ref mirror so onclose always reads the current auth state
+  const isAuthenticatedRef = useRef(isAuthenticated);
+  useEffect(() => { isAuthenticatedRef.current = isAuthenticated; }, [isAuthenticated]);
+
   const connect = useCallback(() => {
     if (!isAuthenticated || !token) return;
 
@@ -79,8 +83,8 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         setIsConnected(false);
         wsRef.current = null;
 
-        // Auto-reconnect with backoff
-        if (isAuthenticated) {
+        // Auto-reconnect with backoff — use ref to avoid stale closure
+        if (isAuthenticatedRef.current) {
           reconnectTimeoutRef.current = setTimeout(() => {
             reconnectDelayRef.current = Math.min(
               reconnectDelayRef.current * 1.5,
@@ -108,7 +112,9 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     return () => {
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
       }
+      reconnectDelayRef.current = WS_RECONNECT_DELAY;
       if (wsRef.current) {
         wsRef.current.close();
       }

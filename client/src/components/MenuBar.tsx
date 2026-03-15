@@ -189,17 +189,17 @@ export default function MenuBar({
     }
   }, [openMenu]);
 
-  // Close menus on Escape
+  // Close menus or 10-codes panel on Escape
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && openMenu) {
-        setOpenMenu(null);
-        setActiveSubmenu(null);
+      if (e.key === 'Escape') {
+        if (show10Codes) { setShow10Codes(false); return; }
+        if (openMenu) { setOpenMenu(null); setActiveSubmenu(null); }
       }
     };
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
-  }, [openMenu]);
+  }, [openMenu, show10Codes]);
 
   const closeMenus = useCallback(() => {
     setOpenMenu(null);
@@ -270,10 +270,10 @@ export default function MenuBar({
           { type: 'action', label: 'Call for Service', icon: Phone, shortcut: 'N', action: () => { navigate('/dispatch'); setTimeout(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n' })), 100); } },
           { type: 'action', label: 'Incident Report', icon: FileText, action: () => { navigate('/incidents'); setTimeout(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n' })), 100); } },
           { type: 'separator' },
-          { type: 'action', label: 'Field Interview', icon: Clipboard, action: () => navigate('/field-interviews') },
-          { type: 'action', label: 'Citation', icon: FileWarning, action: () => navigate('/citations') },
-          { type: 'action', label: 'Warrant', icon: Gavel, action: () => navigate('/warrants') },
-          { type: 'action', label: 'Trespass Order', icon: ShieldAlert, action: () => navigate('/trespass-orders') },
+          { type: 'action', label: 'Field Interview', icon: Clipboard, action: () => window.open('/field-interviews', '_blank', 'noopener') },
+          { type: 'action', label: 'Citation', icon: FileWarning, action: () => window.open('/citations', '_blank', 'noopener') },
+          { type: 'action', label: 'Warrant', icon: Gavel, action: () => window.open('/warrants', '_blank', 'noopener') },
+          { type: 'action', label: 'Trespass Order', icon: ShieldAlert, action: () => window.open('/trespass-orders', '_blank', 'noopener') },
           { type: 'separator' },
           { type: 'action', label: 'BOLO Alert', icon: AlertTriangle, action: () => navigate('/communications') },
           { type: 'action', label: 'Message', icon: MessageSquare, action: () => navigate('/communications') },
@@ -293,9 +293,9 @@ export default function MenuBar({
           { type: 'action', label: 'Incidents', icon: FileText, action: () => navigate('/incidents') },
           { type: 'action', label: 'Records', icon: Database, action: () => navigate('/records') },
           { type: 'action', label: 'Arrest Records', icon: Shield, action: () => navigate('/arrest-records') },
-          { type: 'action', label: 'Warrants', icon: Gavel, action: () => navigate('/warrants') },
-          { type: 'action', label: 'Citations', icon: FileWarning, action: () => navigate('/citations') },
-          { type: 'action', label: 'Evidence & Property', icon: Package, action: () => navigate('/evidence') },
+          { type: 'action', label: 'Warrants', icon: Gavel, action: () => window.open('/warrants', '_blank', 'noopener') },
+          { type: 'action', label: 'Citations', icon: FileWarning, action: () => window.open('/citations', '_blank', 'noopener') },
+          { type: 'action', label: 'Evidence & Property', icon: Package, action: () => window.open('/evidence', '_blank', 'noopener') },
           { type: 'separator' },
           { type: 'action', label: 'Case Management', icon: Briefcase, action: () => navigate('/cases') },
           { type: 'action', label: 'Criminal History', icon: FileSearch, action: () => navigate('/criminal-history') },
@@ -406,8 +406,8 @@ export default function MenuBar({
           { type: 'action', label: 'Arrest Records', icon: Shield, action: () => navigate('/arrest-records') },
           { type: 'separator' },
           { type: 'action', label: 'Criminal History', icon: FileSearch, action: () => navigate('/criminal-history') },
-          { type: 'action', label: 'Warrant Check', icon: Gavel, action: () => navigate('/warrants') },
-          { type: 'action', label: 'Offender Registry', icon: UserCheck, action: () => navigate('/offender-registry') },
+          { type: 'action', label: 'Warrant Check', icon: Gavel, action: () => window.open('/warrants', '_blank', 'noopener') },
+          { type: 'action', label: 'Offender Registry', icon: UserCheck, action: () => window.open('/offender-registry', '_blank', 'noopener') },
         ],
       },
       {
@@ -415,11 +415,11 @@ export default function MenuBar({
         label: 'Enforcement',
         icon: Shield,
         items: [
-          { type: 'action', label: 'Case Management', icon: Briefcase, action: () => navigate('/cases') },
-          { type: 'action', label: 'Evidence & Property', icon: Package, action: () => navigate('/evidence') },
-          { type: 'action', label: 'Code Enforcement', icon: Scale, action: () => navigate('/code-enforcement') },
-          { type: 'action', label: 'Court Tracker', icon: Gavel, action: () => navigate('/court') },
-          { type: 'action', label: 'Trespass Orders', icon: ShieldAlert, action: () => navigate('/trespass-orders') },
+          { type: 'action', label: 'Case Management', icon: Briefcase, action: () => window.open('/cases', '_blank', 'noopener') },
+          { type: 'action', label: 'Evidence & Property', icon: Package, action: () => window.open('/evidence', '_blank', 'noopener') },
+          { type: 'action', label: 'Code Enforcement', icon: Scale, action: () => window.open('/code-enforcement', '_blank', 'noopener') },
+          { type: 'action', label: 'Court Tracker', icon: Gavel, action: () => window.open('/court', '_blank', 'noopener') },
+          { type: 'action', label: 'Trespass Orders', icon: ShieldAlert, action: () => window.open('/trespass-orders', '_blank', 'noopener') },
         ],
       },
       {
@@ -447,6 +447,7 @@ export default function MenuBar({
         ],
       },
       { type: 'separator' },
+      { type: 'action', label: 'Overwatch', icon: Briefcase, action: () => navigate('/crm') },
       {
         type: 'submenu',
         label: 'Administration',
@@ -623,10 +624,10 @@ export default function MenuBar({
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60" onClick={() => setShow10Codes(false)}>
           <div
             className="panel-beveled w-[700px] max-h-[80vh] overflow-hidden flex flex-col"
-            style={{ background: '#1a1a1a' }}
+            style={{ background: '#141e2b' }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: '#141414' }}>
+            <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: '#0d1520' }}>
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
                 <Radio className="w-4 h-4 text-brand-400" />
                 10-Codes Quick Reference
@@ -769,7 +770,7 @@ export default function MenuBar({
                 </div>
               </div>
             </div>
-            <div className="p-2 border-t border-rmpg-700 text-center" style={{ background: '#141414' }}>
+            <div className="p-2 border-t border-rmpg-700 text-center" style={{ background: '#0d1520' }}>
               <span className="text-[9px] text-rmpg-500">Press <kbd className="px-1 py-0.5 bg-rmpg-800 border border-rmpg-600 text-rmpg-300 rounded text-[8px]">ESC</kbd> to close</span>
             </div>
           </div>

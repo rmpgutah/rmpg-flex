@@ -5,9 +5,12 @@
 // element using CSS positioning. Mirrors the FFmpeg burned
 // overlay layout so users see a real-time preview before
 // server-side processing completes.
+//
+// All sizes and positions scale proportionally with the
+// container width (baseline: 900px = scale 1.0).
 // ============================================================
 
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 
 // ── Props ───────────────────────────────────────────────────
 
@@ -54,22 +57,59 @@ function formatCoord(value: number, posDir: string, negDir: string): string {
   return `${Math.abs(value).toFixed(4)} ${dir}`;
 }
 
+// ── Scaling ─────────────────────────────────────────────────
+
+const BASE_WIDTH = 900; // Reference container width for scale 1.0
+
+/** Hook to observe container width and compute scale factor */
+function useContainerScale(containerRef: React.RefObject<HTMLDivElement | null>): number {
+  const [scale, setScale] = useState(1);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const observer = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        const w = entry.contentRect.width;
+        if (w > 0) setScale(Math.max(0.5, w / BASE_WIDTH));
+      }
+    });
+
+    observer.observe(el);
+    // Initial measurement
+    setScale(Math.max(0.5, el.clientWidth / BASE_WIDTH));
+    return () => observer.disconnect();
+  }, [containerRef]);
+
+  return scale;
+}
+
+/** Scale a pixel value */
+function sp(base: number, scale: number): number {
+  return Math.round(base * scale * 10) / 10;
+}
+
 // ── Shared Styles ───────────────────────────────────────────
 
-const LINE_BASE: React.CSSProperties = {
-  fontFamily: 'Consolas, "Courier New", monospace',
-  background: 'rgba(0,0,0,0.65)',
-  padding: '3px 8px',
-  whiteSpace: 'nowrap',
-  lineHeight: 1.4,
-};
+function lineBase(scale: number): React.CSSProperties {
+  return {
+    fontFamily: 'Consolas, "Courier New", monospace',
+    background: 'rgba(0,0,0,0.65)',
+    padding: `${sp(3, scale)}px ${sp(8, scale)}px`,
+    whiteSpace: 'nowrap',
+    lineHeight: 1.4,
+  };
+}
 
 // ── Component ───────────────────────────────────────────────
 
 export default function VideoHudOverlay(props: VideoHudOverlayProps) {
   const { type, visible, videoRef, recordedAt } = props;
   const timestampRef = useRef<HTMLSpanElement>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
   const animRef = useRef<number>(0);
+  const scale = useContainerScale(overlayRef);
 
   // Advancing timestamp synced to video playback
   const updateTimestamp = useCallback(() => {
@@ -94,9 +134,9 @@ export default function VideoHudOverlay(props: VideoHudOverlayProps) {
   const agency = (props.agencyName || 'ROCKY MOUNTAIN PROTECTIVE GROUP').toUpperCase();
 
   if (type === 'bodycam') {
-    return <BodyCamHud {...props} agency={agency} timestampRef={timestampRef} />;
+    return <BodyCamHud {...props} agency={agency} timestampRef={timestampRef} overlayRef={overlayRef} scale={scale} />;
   }
-  return <DashCamHud {...props} agency={agency} timestampRef={timestampRef} />;
+  return <DashCamHud {...props} agency={agency} timestampRef={timestampRef} overlayRef={overlayRef} scale={scale} />;
 }
 
 // ── Body Camera HUD Layout ─────────────────────────────────
@@ -112,7 +152,14 @@ function BodyCamHud({
   eventType,
   batteryPercent,
   storageGb,
-}: VideoHudOverlayProps & { agency: string; timestampRef: React.RefObject<HTMLSpanElement | null> }) {
+  overlayRef,
+  scale,
+}: VideoHudOverlayProps & {
+  agency: string;
+  timestampRef: React.RefObject<HTMLSpanElement | null>;
+  overlayRef: React.RefObject<HTMLDivElement | null>;
+  scale: number;
+}) {
   const cls = (classification || 'routine').toUpperCase();
   const classColor = { EVIDENCE: '#ffff00', FLAGGED: '#ffa500', RESTRICTED: '#ff4444', ROUTINE: '#ffffff' }[cls] || '#ffffff';
   const event = (eventType || 'MANUAL').toUpperCase();
@@ -121,38 +168,39 @@ function BodyCamHud({
   const badge = badgeNumber ? ` #${badgeNumber}` : '';
   const cam = cameraSerial ? `: ${cameraSerial}` : '';
   const caseStr = caseNumber ? ` | CASE: ${caseNumber}` : '';
+  const lb = lineBase(scale);
 
   return (
-    <div style={{
+    <div ref={overlayRef as React.LegacyRef<HTMLDivElement>} style={{
       position: 'absolute', inset: 0, pointerEvents: 'none',
       border: '1px solid rgba(255,165,0,0.4)',
       margin: 2, overflow: 'hidden',
     }}>
       {/* Top-left block */}
-      <div style={{ position: 'absolute', top: 8, left: 10, display: 'flex', flexDirection: 'column', gap: 1 }}>
-        <span style={{ ...LINE_BASE, fontSize: 16, color: '#fff', background: 'rgba(0,0,0,0.70)', padding: '4px 10px' }}>
+      <div style={{ position: 'absolute', top: `${sp(8, scale)}px`, left: `${sp(10, scale)}px`, display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <span style={{ ...lb, fontSize: sp(16, scale), color: '#fff', background: 'rgba(0,0,0,0.70)', padding: `${sp(4, scale)}px ${sp(10, scale)}px` }}>
           {agency}
         </span>
-        <span style={{ ...LINE_BASE, fontSize: 11, color: '#fff' }}>
+        <span style={{ ...lb, fontSize: sp(11, scale), color: '#fff' }}>
           BWC | OFC. {(officerName || 'UNKNOWN').toUpperCase()}{badge} | CAM{cam}
         </span>
-        <span ref={timestampRef as React.LegacyRef<HTMLSpanElement>} style={{ ...LINE_BASE, fontSize: 16, color: '#fff', background: 'rgba(0,0,0,0.70)', padding: '4px 10px' }}>
+        <span ref={timestampRef as React.LegacyRef<HTMLSpanElement>} style={{ ...lb, fontSize: sp(16, scale), color: '#fff', background: 'rgba(0,0,0,0.70)', padding: `${sp(4, scale)}px ${sp(10, scale)}px` }}>
           --/--/---- --:--:--H
         </span>
-        <span style={{ ...LINE_BASE, fontSize: 10.5, color: '#00ff00' }}>
+        <span style={{ ...lb, fontSize: sp(10.5, scale), color: '#00ff00' }}>
           * {event}{caseStr}
         </span>
-        <span style={{ ...LINE_BASE, fontSize: 11, color: classColor }}>
+        <span style={{ ...lb, fontSize: sp(11, scale), color: classColor }}>
           CLASSIFICATION: {cls}
         </span>
       </div>
 
       {/* Top-right: REC indicator */}
-      <RecIndicator />
+      <RecIndicator scale={scale} />
 
       {/* Bottom-right: Battery / Storage */}
-      <div style={{ position: 'absolute', bottom: 8, right: 10 }}>
-        <span style={{ ...LINE_BASE, fontSize: 9, color: '#00ff00', background: 'rgba(0,0,0,0.55)' }}>
+      <div style={{ position: 'absolute', bottom: `${sp(8, scale)}px`, right: `${sp(10, scale)}px` }}>
+        <span style={{ ...lb, fontSize: sp(9, scale), color: '#00ff00', background: 'rgba(0,0,0,0.55)' }}>
           BAT: {bat}% | STR: {stor.toFixed(1)} GB
         </span>
       </div>
@@ -175,7 +223,14 @@ function DashCamHud({
   micStatus,
   gpsLockStatus,
   cameraPosition,
-}: VideoHudOverlayProps & { agency: string; timestampRef: React.RefObject<HTMLSpanElement | null> }) {
+  overlayRef,
+  scale,
+}: VideoHudOverlayProps & {
+  agency: string;
+  timestampRef: React.RefObject<HTMLSpanElement | null>;
+  overlayRef: React.RefObject<HTMLDivElement | null>;
+  scale: number;
+}) {
   const camId = cameraId || 'MVR';
   const unit = unitCallSign ? `: ${unitCallSign}` : '';
   const veh = vehicleDescription ? `: ${vehicleDescription.toUpperCase()}` : '';
@@ -189,45 +244,46 @@ function DashCamHud({
     : 'NO GPS DATA';
 
   const addr = address ? address.toUpperCase() : 'NO ADDRESS DATA';
+  const lb = lineBase(scale);
 
   return (
-    <div style={{
+    <div ref={overlayRef as React.LegacyRef<HTMLDivElement>} style={{
       position: 'absolute', inset: 0, pointerEvents: 'none',
       border: '1px solid rgba(255,165,0,0.4)',
       margin: 2, overflow: 'hidden',
     }}>
       {/* Top-left block */}
-      <div style={{ position: 'absolute', top: 8, left: 10, display: 'flex', flexDirection: 'column', gap: 1 }}>
-        <span style={{ ...LINE_BASE, fontSize: 16, color: '#fff', background: 'rgba(0,0,0,0.70)', padding: '4px 10px' }}>
+      <div style={{ position: 'absolute', top: `${sp(8, scale)}px`, left: `${sp(10, scale)}px`, display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <span style={{ ...lb, fontSize: sp(16, scale), color: '#fff', background: 'rgba(0,0,0,0.70)', padding: `${sp(4, scale)}px ${sp(10, scale)}px` }}>
           {agency}
         </span>
-        <span style={{ ...LINE_BASE, fontSize: 11, color: '#fff' }}>
+        <span style={{ ...lb, fontSize: sp(11, scale), color: '#fff' }}>
           {camId} | UNIT{unit} | VEH{veh}
         </span>
         <span style={{ display: 'flex', alignItems: 'baseline', gap: 0 }}>
-          <span ref={timestampRef as React.LegacyRef<HTMLSpanElement>} style={{ ...LINE_BASE, fontSize: 17, color: '#fff', background: 'rgba(0,0,0,0.70)', padding: '4px 10px' }}>
+          <span ref={timestampRef as React.LegacyRef<HTMLSpanElement>} style={{ ...lb, fontSize: sp(17, scale), color: '#fff', background: 'rgba(0,0,0,0.70)', padding: `${sp(4, scale)}px ${sp(10, scale)}px` }}>
             --/--/---- --:--:--H
           </span>
           {speed && (
-            <span style={{ ...LINE_BASE, fontSize: 13, color: '#00ff00', background: 'rgba(0,0,0,0.70)', padding: '4px 8px' }}>
+            <span style={{ ...lb, fontSize: sp(13, scale), color: '#00ff00', background: 'rgba(0,0,0,0.70)', padding: `${sp(4, scale)}px ${sp(8, scale)}px` }}>
               {speed.replace(' | ', '')}
             </span>
           )}
         </span>
-        <span style={{ ...LINE_BASE, fontSize: 9, color: '#00ff00' }}>
+        <span style={{ ...lb, fontSize: sp(9, scale), color: '#00ff00' }}>
           REC * | MIC: {mic} | GPS: {gps} | CAM: {cam}
         </span>
       </div>
 
       {/* Top-right: REC indicator */}
-      <RecIndicator />
+      <RecIndicator scale={scale} />
 
       {/* Bottom-left block */}
-      <div style={{ position: 'absolute', bottom: 8, left: 10, display: 'flex', flexDirection: 'column', gap: 1 }}>
-        <span style={{ ...LINE_BASE, fontSize: 10.5, color: '#00ffff' }}>
+      <div style={{ position: 'absolute', bottom: `${sp(8, scale)}px`, left: `${sp(10, scale)}px`, display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <span style={{ ...lb, fontSize: sp(10.5, scale), color: '#00ffff' }}>
           {coordStr}
         </span>
-        <span style={{ ...LINE_BASE, fontSize: 10.5, color: '#fff' }}>
+        <span style={{ ...lb, fontSize: sp(10.5, scale), color: '#fff' }}>
           {addr}
         </span>
       </div>
@@ -237,12 +293,13 @@ function DashCamHud({
 
 // ── Blinking REC Indicator ──────────────────────────────────
 
-function RecIndicator() {
+function RecIndicator({ scale }: { scale: number }) {
+  const lb = lineBase(scale);
   return (
-    <div style={{ position: 'absolute', top: 8, right: 10 }}>
+    <div style={{ position: 'absolute', top: `${sp(8, scale)}px`, right: `${sp(10, scale)}px` }}>
       <span style={{
-        ...LINE_BASE,
-        fontSize: 11,
+        ...lb,
+        fontSize: sp(11, scale),
         color: '#ff0000',
         background: 'rgba(0,0,0,0.50)',
         animation: 'hud-rec-blink 1s step-end infinite',

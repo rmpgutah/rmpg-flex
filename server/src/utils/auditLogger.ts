@@ -103,7 +103,32 @@ export type AuditAction =
   // Invoices
   | 'invoice_created'
   | 'invoice_updated'
-  | 'payment_recorded';
+  | 'payment_recorded'
+  // Email
+  | 'CREATE'
+  | 'UPDATE'
+  | 'DELETE'
+  | 'SEND_EMAIL'
+  | 'REPLY_EMAIL'
+  | 'REPLY_ALL_EMAIL'
+  | 'FORWARD_EMAIL'
+  | 'DELETE_EMAIL'
+  | 'BATCH_EMAIL'
+  | 'MARK_ALL_READ'
+  | 'OAUTH_INITIATE'
+  // CRM
+  | 'crm_task_created'
+  | 'crm_task_updated'
+  | 'crm_task_deleted'
+  | 'crm_activity_logged'
+  // Dashcam
+  | 'dashcam_uploaded'
+  | 'dashcam_updated'
+  | 'dashcam_deleted'
+  | 'dashcam_linked'
+  | 'dashcam_unlinked'
+  // Search
+  | 'SEARCH';
 
 export type AuditEntityType =
   | 'user'
@@ -134,7 +159,15 @@ export type AuditEntityType =
   | 'checkpoint'
   | 'patrol_scan'
   | 'invoice'
-  | 'payment';
+  | 'payment'
+  | 'email'
+  | 'email_folder'
+  | 'system_config'
+  | 'crm_task'
+  | 'crm_activity'
+  | 'colorado_doc_offenders'
+  | 'dashcam_video'
+  | 'dashcam_video_link';
 
 /**
  * Log an action to the activity_log table.

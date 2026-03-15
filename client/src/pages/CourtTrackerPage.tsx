@@ -353,7 +353,7 @@ export default function CourtTrackerPage() {
                 </div>
                 <div>
                   <label className="text-[10px] font-mono text-rmpg-500 uppercase">Judge</label>
-                  <input value={formData.judge_name} onChange={e => setFormData(p => ({ ...p, judge: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                  <input value={formData.judge_name} onChange={e => setFormData(p => ({ ...p, judge_name: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
                 </div>
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">

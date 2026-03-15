@@ -248,7 +248,7 @@ export default function PersonFormModal({
       setIdImageFile(null);
       setIdImagePreview(null);
     }
-  }, [isOpen, editingPerson]);
+  }, [isOpen, editingPerson?.id]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;

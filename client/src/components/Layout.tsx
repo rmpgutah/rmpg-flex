@@ -41,6 +41,9 @@ import {
   Terminal,
   CreditCard,
   Microscope,
+  Mail,
+  GraduationCap,
+  ShieldAlert,
 } from 'lucide-react';
 import { Navigation2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -95,15 +98,19 @@ const PAGE_TITLES: Record<string, string> = {
   '/court': 'Court Tracker',
   '/dar': 'Daily Activity Reports',
   '/offender-registry': 'Offender Registry',
+  '/sex-offender-registry': 'Sex Offender Registry',
+  '/training': 'Training',
   '/reports': 'Reports',
   '/forensics': 'Forensic Lab',
   '/dash-cameras': 'Dash Cameras',
+  '/email': 'Email',
+  '/crm': 'Overwatch',
   '/audit': 'Audit Log',
   '/admin': 'Admin',
 };
 
 // Nav items — items with `children` render a dropdown menu in the toolbar
-interface NavChild { path: string; icon: React.ElementType; label: string; adminOnly?: boolean }
+interface NavChild { path: string; icon: React.ElementType; label: string; adminOnly?: boolean; newWindow?: boolean }
 interface NavItem {
   path: string;
   icon: React.ElementType;
@@ -132,22 +139,25 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/cases', icon: Briefcase, label: 'Case Management' },
   ]},
   { path: '/warrants', icon: AlertTriangle, label: 'Enforcement', group: 'records', children: [
-    { path: '/warrants', icon: AlertTriangle, label: 'Warrants' },
-    { path: '/citations', icon: FileWarning, label: 'Citations' },
-    { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders' },
-    { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement' },
-    { path: '/court', icon: Gavel, label: 'Court Tracker' },
-    { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
+    { path: '/warrants', icon: AlertTriangle, label: 'Warrants', newWindow: true },
+    { path: '/citations', icon: FileWarning, label: 'Citations', newWindow: true },
+    { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders', newWindow: true },
+    { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement', newWindow: true },
+    { path: '/court', icon: Gavel, label: 'Court Tracker', newWindow: true },
+    { path: '/offender-registry', icon: UserX, label: 'Offender Registry', newWindow: true },
+    { path: '/sex-offender-registry', icon: ShieldAlert, label: 'Sex Offender Registry', newWindow: true },
   ]},
   { path: '/personnel', icon: Users, label: 'Personnel', group: 'records', children: [
     { path: '/personnel', icon: Users, label: 'Personnel' },
     { path: '/fleet', icon: Car, label: 'Fleet' },
     { path: '/body-cameras', icon: Video, label: 'Body Cameras' },
     { path: '/dash-cameras', icon: Car, label: 'Dash Cameras' },
+    { path: '/training', icon: GraduationCap, label: 'Training' },
   ]},
   { path: '/communications', icon: MessageSquare, label: 'Comms', group: 'comms', children: [
     { path: '/communications', icon: MessageSquare, label: 'Comms' },
     { path: '/radio', icon: Radio, label: 'Radio' },
+    { path: '/email', icon: Mail, label: 'Email' },
     { path: '/patrol', icon: QrCode, label: 'Patrol' },
   ]},
   { path: '/reports', icon: BarChart3, label: 'Reports', group: 'analysis', children: [
@@ -160,8 +170,7 @@ const TOOLBAR_NAV: NavItem[] = [
   ]},
   { path: '/audit', icon: ScrollText, label: 'Audit', group: 'system', adminOnly: true },
   { path: '/admin', icon: Settings, label: 'Admin', group: 'system', adminOnly: true },
-  { path: '/crm', icon: Landmark, label: 'CRM', group: 'crm',
-    externalUrl: import.meta.env.DEV ? 'http://localhost:3002/sso' : 'https://crm.rmpgutah.us/sso' },
+  { path: '/crm', icon: Briefcase, label: 'Overwatch', group: 'analysis' },
 ];
 
 // Paths that client_viewer role is NOT allowed to see
@@ -249,6 +258,7 @@ export default function Layout() {
   // Live header stats
   const [activeCallCount, setActiveCallCount] = useState(0);
   const [activeBOLOs, setActiveBOLOs] = useState(0);
+  const [emailUnreadCount, setEmailUnreadCount] = useState(0);
 
   // Toolbar nav dropdowns
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
@@ -339,6 +349,10 @@ export default function Layout() {
       const bolos = await apiFetch<any>('/comms/bolos/active');
       setActiveBOLOs(Array.isArray(bolos) ? bolos.length : 0);
     } catch { /* silent */ }
+    try {
+      const email = await apiFetch<{ count: number }>('/email/unread-count');
+      setEmailUnreadCount(email.count || 0);
+    } catch { /* silent -- email may not be configured */ }
   }, []);
 
   // Fetch on mount and every 30 seconds
@@ -352,7 +366,12 @@ export default function Layout() {
   useEffect(() => {
     const unsub1 = subscribe('dispatch_update', () => fetchHeaderStats());
     const unsub2 = subscribe('bolo_alert', () => fetchHeaderStats());
-    return () => { unsub1(); unsub2(); };
+    const unsub3 = subscribe('email:new_messages', () => {
+      apiFetch<{ count: number }>('/email/unread-count')
+        .then(r => setEmailUnreadCount(r.count || 0))
+        .catch(() => {});
+    });
+    return () => { unsub1(); unsub2(); unsub3(); };
   }, [subscribe, fetchHeaderStats]);
 
   // Refresh header user data when personnel/admin changes occur (e.g. admin edits user profile)
@@ -391,7 +410,7 @@ export default function Layout() {
   const isMacElectron = isElectron && (window as any).electron?.platform === 'darwin';
 
   return (
-    <div className="flex flex-col h-screen text-white overflow-hidden" style={{ background: '#1a1a1a' }}>
+    <div className="flex flex-col h-screen text-white overflow-hidden" style={{ background: '#141e2b' }}>
       {/* Auto-Update Banner (Electron only) */}
       {isElectron && <UpdateBanner />}
 
@@ -411,9 +430,9 @@ export default function Layout() {
           <div
             className="w-full max-w-sm mx-4 p-6 space-y-4"
             style={{
-              background: '#1a1a1a',
-              border: '1px solid #303030',
-              borderTop: '3px solid #bc1010',
+              background: '#141e2b',
+              border: '1px solid #1e3048',
+              borderTop: '3px solid #1a5a9e',
               WebkitAppRegion: 'no-drag',
             } as React.CSSProperties}
           >
@@ -502,14 +521,14 @@ export default function Layout() {
             height: '52px',
             paddingLeft: isMacElectron ? '78px' : '12px',
             paddingRight: '12px',
-            background: 'linear-gradient(180deg, #252525 0%, #1a1a1a 100%)',
-            borderBottom: '1px solid #303030',
+            background: 'linear-gradient(180deg, #162236 0%, #141e2b 100%)',
+            borderBottom: '1px solid #1e3048',
             flexShrink: 0,
             WebkitAppRegion: isElectron ? 'drag' : undefined,
           } as React.CSSProperties}
         >
-          {/* Crimson accent at very top */}
-          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #6e0a0a, #bc1010, #6e0a0a)', zIndex: 1 }} />
+          {/* Blue accent at very top */}
+          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0f3460, #1a5a9e, #0f3460)', zIndex: 1 }} />
 
           {/* Left — Logo */}
           <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
@@ -518,7 +537,7 @@ export default function Layout() {
             </div>
             {/* Page title */}
             <div className="flex items-center gap-1.5">
-              <div className="w-px h-6" style={{ background: '#383838' }} />
+              <div className="w-px h-6" style={{ background: '#2a3e58' }} />
               <span className="text-[11px] font-mono font-bold tracking-wider text-rmpg-500">
                 {pageTitle.toUpperCase()}
               </span>
@@ -531,7 +550,7 @@ export default function Layout() {
             <PanicButton latitude={gps.latitude} longitude={gps.longitude} />
 
             {/* Vertical separator */}
-            <div className="w-px h-7" style={{ background: '#383838' }} />
+            <div className="w-px h-7" style={{ background: '#2a3e58' }} />
 
             {/* Profile Menu */}
             <div className="relative" ref={profileDropdownRef}>
@@ -549,13 +568,13 @@ export default function Layout() {
                     src={user.profile_image}
                     alt={user.first_name}
                     className="w-7 h-7 object-cover"
-                    style={{ border: '2px solid #484848', borderRadius: 2 }}
+                    style={{ border: '2px solid #3a5070', borderRadius: 2 }}
                   />
                 ) : (
                   <div
                     className="w-7 h-7 flex items-center justify-center text-[10px] font-bold"
                     style={{
-                      background: 'linear-gradient(135deg, #8a0c0c, #bc1010)',
+                      background: 'linear-gradient(135deg, #14427a, #1a5a9e)',
                       color: '#fff',
                       border: '2px solid #d93030',
                       borderRadius: 2,
@@ -581,7 +600,7 @@ export default function Layout() {
                   style={{
                     width: 10,
                     height: 10,
-                    color: '#707070',
+                    color: '#4a6280',
                     transform: profileDropdownOpen ? 'rotate(180deg)' : undefined,
                     transition: 'transform 0.15s',
                   }}
@@ -653,7 +672,7 @@ export default function Layout() {
           className="flex items-center justify-center gap-2 px-4"
           style={{
             height: '22px',
-            background: 'linear-gradient(90deg, #1a1a1a, #1e2a1e, #1a1a1a)',
+            background: 'linear-gradient(90deg, #141e2b, #1e2a1e, #141e2b)',
             borderBottom: '1px solid #2a3a2a',
             flexShrink: 0,
           }}
@@ -674,7 +693,7 @@ export default function Layout() {
         className="hidden md:flex items-center justify-between px-2"
         style={{
           height: '22px',
-          background: 'linear-gradient(180deg, #303030 0%, #252525 100%)',
+          background: 'linear-gradient(180deg, #1e3048 0%, #162236 100%)',
           borderBottom: '1px solid #202020',
           flexShrink: 0,
         }}
@@ -704,8 +723,8 @@ export default function Layout() {
         className="hidden md:flex items-center justify-between px-2"
         style={{
           height: '52px',
-          background: 'linear-gradient(180deg, #2a2a2a 0%, #1e1e1e 100%)',
-          borderBottom: '1px solid #303030',
+          background: 'linear-gradient(180deg, #2a3e58 0%, #1a2636 100%)',
+          borderBottom: '1px solid #1e3048',
           flexShrink: 0,
           overflow: 'visible',
         }}
@@ -734,6 +753,21 @@ export default function Layout() {
             const btnContent = (showChevron?: boolean) => (
               <div className="flex flex-col items-center gap-0.5 relative py-0.5 px-1">
                 <Icon style={{ width: 16, height: 16 }} className={isActive ? 'text-brand-400' : ''} />
+                {/* Email unread badge on Comms toolbar button */}
+                {item.path === '/communications' && emailUnreadCount > 0 && (
+                  <span
+                    className="absolute flex items-center justify-center font-bold"
+                    style={{
+                      top: 1, left: 30,
+                      minWidth: 14, height: 14, padding: '0 3px',
+                      fontSize: 8, lineHeight: 1,
+                      background: '#dc2626', color: '#fff',
+                      borderRadius: 7, border: '1px solid #141e2b',
+                    }}
+                  >
+                    {emailUnreadCount > 99 ? '99+' : emailUnreadCount}
+                  </span>
+                )}
                 <div className="flex items-center gap-0.5">
                   <span className="text-[9px] leading-none whitespace-nowrap">{item.label}</span>
                   {showChevron && <ChevronDown style={{ width: 7, height: 7, opacity: 0.5 }} />}
@@ -771,8 +805,8 @@ export default function Layout() {
                       <div
                         className="absolute top-full left-0 z-50 min-w-[160px] py-1"
                         style={{
-                          background: '#1e1e1e',
-                          border: '1px solid #383838',
+                          background: '#1a2636',
+                          border: '1px solid #2a3e58',
                           boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
                           marginTop: 1,
                         }}
@@ -787,7 +821,7 @@ export default function Layout() {
                           return (
                             <button
                               key={child.path}
-                              onClick={() => { navigate(child.path); setOpenDropdown(null); }}
+                              onClick={() => { if (child.newWindow) { window.open(child.path, '_blank', 'noopener'); } else { navigate(child.path); } setOpenDropdown(null); }}
                               className={`w-full flex items-center gap-2 px-3 py-1.5 text-left text-[10px] transition-colors ${
                                 childActive
                                   ? 'bg-brand-900/30 text-white'
@@ -880,7 +914,7 @@ export default function Layout() {
           {/* GPS Status Indicator (Mandatory — always on) */}
           <div
             className="flex items-center gap-1 px-2 py-0.5 panel-inset transition-colors"
-            style={{ background: gps.isTracking ? 'rgba(34, 197, 94, 0.1)' : gps.permissionDenied ? 'rgba(188, 16, 16, 0.15)' : '#141414' }}
+            style={{ background: gps.isTracking ? 'rgba(34, 197, 94, 0.1)' : gps.permissionDenied ? 'rgba(188, 16, 16, 0.15)' : '#0d1520' }}
             title={
               gps.isTracking
                 ? `GPS ON (Mandatory) — ${gps.unitCallSign || 'no unit'} — ${gps.accuracy ? Math.round(gps.accuracy) + 'm accuracy' : 'acquiring...'}`
@@ -893,12 +927,12 @@ export default function Layout() {
               style={{
                 width: 10,
                 height: 10,
-                color: gps.isTracking ? '#22c55e' : gps.permissionDenied ? '#d93030' : '#707070',
+                color: gps.isTracking ? '#22c55e' : gps.permissionDenied ? '#d93030' : '#4a6280',
                 transform: gps.heading != null ? `rotate(${gps.heading}deg)` : undefined,
                 transition: 'transform 0.3s ease, color 0.2s',
               }}
             />
-            <span className="text-[9px] font-mono font-bold" style={{ color: gps.isTracking ? '#22c55e' : gps.permissionDenied ? '#d93030' : '#707070' }}>
+            <span className="text-[9px] font-mono font-bold" style={{ color: gps.isTracking ? '#22c55e' : gps.permissionDenied ? '#d93030' : '#4a6280' }}>
               GPS
             </span>
             {gps.isTracking && (
@@ -937,7 +971,7 @@ export default function Layout() {
         </div>
 
         {/* Right — Page title in brackets */}
-        <div className="text-[10px] font-mono font-bold tracking-wider md:hidden" style={{ color: '#707070' }}>
+        <div className="text-[10px] font-mono font-bold tracking-wider md:hidden" style={{ color: '#4a6280' }}>
           [{pageTitle.toUpperCase()}]
         </div>
       </div>
@@ -953,7 +987,7 @@ export default function Layout() {
       />
 
       {/* Page Content (recessed panel — charcoal bg matching borders) */}
-      <main className="flex-1 overflow-auto min-h-0 panel-inset" style={{ background: '#1e1e1e' }}>
+      <main className="flex-1 overflow-auto min-h-0 panel-inset" style={{ background: '#1a2636' }}>
         <ErrorBoundary>
           <Outlet />
         </ErrorBoundary>

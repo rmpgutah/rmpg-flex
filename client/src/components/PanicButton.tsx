@@ -83,6 +83,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
   const [incomingAlert, setIncomingAlert] = useState<PanicAlert | null>(null);
   const alarmRef = useRef<{ stop: () => void } | null>(null);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoDismissRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ─── Hardware Button Panic Trigger ────────────────────────────
   // Supports multiple activation methods:
@@ -185,10 +186,12 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
       }
       // Play alarm
       alarmRef.current = playPanicAlarm(8000);
-      // Auto-dismiss after 30 seconds
-      setTimeout(() => {
+      // Auto-dismiss after 30 seconds (tracked in ref for cleanup)
+      if (autoDismissRef.current) clearTimeout(autoDismissRef.current);
+      autoDismissRef.current = setTimeout(() => {
         setIncomingAlert(null);
         alarmRef.current?.stop();
+        autoDismissRef.current = null;
       }, 30000);
     });
     return unsub;
@@ -198,6 +201,19 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
     setIncomingAlert(null);
     alarmRef.current?.stop();
     alarmRef.current = null;
+    if (autoDismissRef.current) {
+      clearTimeout(autoDismissRef.current);
+      autoDismissRef.current = null;
+    }
+  }, []);
+
+  // Cleanup all timers on unmount
+  useEffect(() => {
+    return () => {
+      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+      if (autoDismissRef.current) clearTimeout(autoDismissRef.current);
+      alarmRef.current?.stop();
+    };
   }, []);
 
   const handlePanicClick = () => {
@@ -251,7 +267,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
             <button
               onClick={handleCancel}
               className="px-2 py-1 text-[9px] font-bold uppercase"
-              style={{ background: '#303030', border: '1px solid #484848', color: '#a0a0a0' }}
+              style={{ background: '#1e3048', border: '1px solid #3a5070', color: '#8899aa' }}
             >
               Cancel
             </button>
@@ -307,12 +323,12 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
             </div>
 
             {/* Body */}
-            <div className="p-4 space-y-3" style={{ background: '#1a1a1a', borderTop: '2px solid #ff0000' }}>
+            <div className="p-4 space-y-3" style={{ background: '#141e2b', borderTop: '2px solid #ff0000' }}>
               <div className="text-center">
                 <div className="text-lg font-bold text-red-400 animate-emergency-blink">
                   {incomingAlert.user_name}
                 </div>
-                <div className="text-xs font-mono" style={{ color: '#a0a0a0' }}>
+                <div className="text-xs font-mono" style={{ color: '#8899aa' }}>
                   {incomingAlert.badge_number && `Badge: ${incomingAlert.badge_number} | `}
                   {incomingAlert.role?.toUpperCase()}
                   {incomingAlert.unit_call_sign && ` | Unit: ${incomingAlert.unit_call_sign}`}
@@ -346,28 +362,28 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
               )}
 
               {incomingAlert.message && (
-                <div className="text-xs text-center text-white p-2" style={{ background: '#111', border: '1px solid #383838' }}>
+                <div className="text-xs text-center text-white p-2" style={{ background: '#111', border: '1px solid #2a3e58' }}>
                   {incomingAlert.message}
                 </div>
               )}
 
               {/* Reverse-geocoded address */}
               {incomingAlert.location_address && (
-                <div className="text-center text-[10px] font-mono text-white p-1.5" style={{ background: '#111', border: '1px solid #383838' }}>
+                <div className="text-center text-[10px] font-mono text-white p-1.5" style={{ background: '#111', border: '1px solid #2a3e58' }}>
                   <MapPin style={{ width: 9, height: 9, display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />
                   {incomingAlert.location_address}
                 </div>
               )}
 
               {/* Raw GPS coordinates */}
-              {(incomingAlert.latitude && incomingAlert.longitude) && (
-                <div className="flex items-center justify-center gap-1 text-[10px] font-mono" style={{ color: '#707070' }}>
+              {(incomingAlert.latitude != null && incomingAlert.longitude != null) && (
+                <div className="flex items-center justify-center gap-1 text-[10px] font-mono" style={{ color: '#4a6280' }}>
                   <MapPin style={{ width: 10, height: 10 }} />
                   {incomingAlert.latitude.toFixed(5)}, {incomingAlert.longitude.toFixed(5)}
                 </div>
               )}
 
-              <div className="text-center text-[10px] font-mono" style={{ color: '#505050' }}>
+              <div className="text-center text-[10px] font-mono" style={{ color: '#4a6280' }}>
                 {new Date(incomingAlert.triggered_at).toLocaleTimeString('en-US', { hour12: false })}
               </div>
 

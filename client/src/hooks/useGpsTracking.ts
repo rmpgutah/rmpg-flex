@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiFetch } from './useApi';
+import { devLog } from '../utils/devLog';
 
 // ============================================================
 // GPS Tracking Hook — 1-Second Breadcrumb Collection
@@ -64,6 +65,9 @@ interface UseGpsTrackingOptions {
 }
 
 // ─── Constants ──────────────────────────────────────────────
+/** Whether the current device is likely a desktop/laptop (no GPS hardware). */
+const IS_DESKTOP = typeof window !== 'undefined' && !/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+
 /** How often to batch-send collected points to the server (15 seconds).
  *  Increased from 5s to reduce bandwidth on mobile WiFi / vehicle networks
  *  while still providing timely breadcrumb updates. */
@@ -74,6 +78,10 @@ const DEFAULT_BATCH_INTERVAL = 15000;
 const DEFAULT_MAX_ACCURACY = 200;
 /** Reject points that imply movement faster than this (m/s). 100 m/s ≈ 224 mph */
 const DEFAULT_MAX_SPEED = 100;
+/** Maximum in-memory queue size to prevent unbounded growth during network outages.
+ *  At 1 point/sec with 15s batch interval, normal operation uses ~15 points.
+ *  500 points covers ~8 minutes of offline operation before oldest are evicted. */
+const MAX_QUEUE_SIZE = 500;
 
 // ─── GPS Point Queue Item ───────────────────────────────────
 interface QueuedPoint {
@@ -212,6 +220,9 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   // ─── Electron IP fallback ────────────────────────────────
   const ipFallbackIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Network-change restart timer — stored so it can be cleared on unmount
+  const networkChangeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // ─── Point queue ──────────────────────────────────────────
   // Every watchPosition callback pushes here. The batch interval drains it.
   const queueRef = useRef<QueuedPoint[]>([]);
@@ -261,7 +272,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     try {
       await apiFetch('/dispatch/gps', {
         method: 'POST',
-        body: JSON.stringify({ points: allPoints }),
+        body: JSON.stringify({ points: allPoints, device_type: IS_DESKTOP ? 'desktop' : 'mobile' }),
       });
       // Success — clear the failover queue
       clearFailoverQueue();
@@ -271,8 +282,8 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         error: null,
       }));
     } catch (err) {
-      // Re-enqueue current points in memory, persist all to localStorage
-      queueRef.current = [...currentPoints, ...queueRef.current];
+      // Re-enqueue current points in memory (capped), persist to localStorage
+      queueRef.current = [...currentPoints, ...queueRef.current].slice(-MAX_QUEUE_SIZE);
       saveFailoverQueue(allPoints.slice(-LS_MAX_QUEUED_POINTS));
       setState((prev) => ({
         ...prev,
@@ -289,7 +300,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     try {
       await apiFetch('/dispatch/gps', {
         method: 'POST',
-        body: JSON.stringify({ points: [point] }),
+        body: JSON.stringify({ points: [point], device_type: IS_DESKTOP ? 'desktop' : 'mobile' }),
       });
       setState((prev) => ({
         ...prev,
@@ -373,6 +384,9 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         lastAcceptedRef.current = { lat: loc.latitude, lng: loc.longitude, time: Date.now() };
         latestPositionRef.current = point;
         queueRef.current.push(point);
+        if (queueRef.current.length > MAX_QUEUE_SIZE) {
+          queueRef.current = queueRef.current.slice(-MAX_QUEUE_SIZE);
+        }
 
         // Send first position immediately for map icon
         if (!firstPositionSentRef.current) {
@@ -388,7 +402,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   // Starts the periodic IP fallback poller (Electron desktop only)
   const startIpFallbackPoller = useCallback(() => {
     if (!IS_ELECTRON || ipFallbackIntervalRef.current) return;
-    console.log('[GPS] Browser geolocation unavailable — starting IP fallback poller');
+    devLog('[GPS] Browser geolocation unavailable — starting IP fallback poller');
     tryIpFallback(); // Immediate first attempt
     ipFallbackIntervalRef.current = setInterval(tryIpFallback, DEFAULT_BATCH_INTERVAL);
   }, [tryIpFallback]);
@@ -402,6 +416,20 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         permissionPending: false,
       }));
       return;
+    }
+
+    // Clean up any existing tracking to prevent stacking intervals on recursive restarts
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+    if (batchIntervalRef.current !== null) {
+      clearInterval(batchIntervalRef.current);
+      batchIntervalRef.current = null;
+    }
+    if (heartbeatRef.current !== null) {
+      clearInterval(heartbeatRef.current);
+      heartbeatRef.current = null;
     }
 
     setState((prev) => ({ ...prev, permissionPending: true, permissionDenied: false }));
@@ -453,8 +481,12 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         lastAcceptedRef.current = { lat: latitude, lng: longitude, time: Date.now() };
         latestPositionRef.current = point;
 
-        // Queue for next batch
+        // Queue for next batch — cap at MAX_QUEUE_SIZE to prevent
+        // unbounded memory growth during prolonged network outages
         queueRef.current.push(point);
+        if (queueRef.current.length > MAX_QUEUE_SIZE) {
+          queueRef.current = queueRef.current.slice(-MAX_QUEUE_SIZE);
+        }
 
         // Send first position immediately for real-time map icon
         if (!firstPositionSentRef.current) {
@@ -641,7 +673,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     const handleNetworkChange = () => {
       const newType = conn.type || conn.effectiveType || 'unknown';
       const newConnType = getConnectionType();
-      console.log(`[GPS] Network changed: ${prevType} → ${newType} (${newConnType})`);
+      devLog(`[GPS] Network changed: ${prevType} → ${newType} (${newConnType})`);
       setState((prev) => ({ ...prev, connectionType: newConnType }));
 
       // Flush any queued points before restarting
@@ -655,7 +687,9 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         watchIdRef.current = null;
       }
       // Short delay to let the new network stabilize, then restart
-      setTimeout(() => {
+      if (networkChangeTimerRef.current) clearTimeout(networkChangeTimerRef.current);
+      networkChangeTimerRef.current = setTimeout(() => {
+        networkChangeTimerRef.current = null;
         stopTracking();
         startTracking();
       }, 1000);
@@ -664,21 +698,27 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     };
 
     conn.addEventListener('change', handleNetworkChange);
-    return () => conn.removeEventListener('change', handleNetworkChange);
+    return () => {
+      conn.removeEventListener('change', handleNetworkChange);
+      if (networkChangeTimerRef.current) {
+        clearTimeout(networkChangeTimerRef.current);
+        networkChangeTimerRef.current = null;
+      }
+    };
   }, [sendBatch, stopTracking, startTracking]);
 
   // ─── Online/offline listener ───────────────────────────────
   // Handle browser online/offline events (covers WiFi disconnect/reconnect)
   useEffect(() => {
     const handleOnline = () => {
-      console.log('[GPS] Browser online — restarting tracking');
+      devLog('[GPS] Browser online — restarting tracking');
       setState((prev) => ({ ...prev, connectionType: getConnectionType() }));
       if (!isTracking) {
         startTracking();
       }
     };
     const handleOffline = () => {
-      console.log('[GPS] Browser offline — queueing locally');
+      devLog('[GPS] Browser offline — queueing locally');
       setState((prev) => ({ ...prev, connectionType: 'none' }));
     };
     window.addEventListener('online', handleOnline);

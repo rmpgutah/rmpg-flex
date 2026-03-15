@@ -106,8 +106,8 @@ export default function PinGeneratorModal({ isOpen, onClose, users }: PinGenerat
       <div
         className="w-full max-w-md mx-4"
         style={{
-          background: '#1a1a1a',
-          border: '1px solid #303030',
+          background: '#141e2b',
+          border: '1px solid #1e3048',
           borderTop: '3px solid #d97706',
         }}
       >
@@ -216,8 +216,8 @@ export default function PinGeneratorModal({ isOpen, onClose, users }: PinGenerat
                 onClick={handleCopy}
                 className="flex items-center gap-2 mx-auto px-3 py-1.5 text-xs transition-colors"
                 style={{
-                  background: copied ? 'rgba(34, 197, 94, 0.15)' : '#252525',
-                  border: `1px solid ${copied ? '#22c55e' : '#383838'}`,
+                  background: copied ? 'rgba(34, 197, 94, 0.15)' : '#162236',
+                  border: `1px solid ${copied ? '#22c55e' : '#2a3e58'}`,
                   color: copied ? '#22c55e' : '#888',
                 }}
               >

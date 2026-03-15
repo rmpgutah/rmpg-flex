@@ -86,7 +86,7 @@ export default function LocationGate({ permissionDenied, onRetry, connectionType
             onClick={onRetry}
             style={{
               padding: '3px 10px',
-              background: '#bc1010',
+              background: '#1a5a9e',
               color: '#fff',
               border: 'none',
               fontSize: 10,

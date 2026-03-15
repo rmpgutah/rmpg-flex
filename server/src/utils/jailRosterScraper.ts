@@ -1049,7 +1049,13 @@ async function syncCounty(county: string): Promise<void> {
     const duration = Date.now() - startTime;
     const errorMsg = (err as Error).message;
 
-    // Log error
+    // Don't increment errors or log when circuit breaker itself rejected the attempt
+    if (errorMsg.startsWith('Circuit breaker active')) {
+      console.log(`[Jail Roster] ${county}: circuit breaker still active, skipping`);
+      return;
+    }
+
+    // Log actual error
     db.prepare(`
       INSERT INTO jail_roster_sync_log (county, records_found, records_new, records_updated, records_released, details_fetched, status, error_message, duration_ms)
       VALUES (?, 0, 0, 0, 0, 0, 'error', ?, ?)

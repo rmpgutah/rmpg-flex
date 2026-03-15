@@ -7,11 +7,13 @@
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
 
 const router = Router();
 router.use(authenticateToken);
+// Offender registry is sensitive law enforcement data — restrict to LE roles
+router.use(requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'));
 
 // ─── GET /stats ──────────────────────────────────────────
 router.get('/stats', (req: Request, res: Response) => {
@@ -122,7 +124,7 @@ router.get('/:id', (req: Request, res: Response) => {
 });
 
 // ─── POST / ──────────────────────────────────────────────
-router.post('/', (req: Request, res: Response) => {
+router.post('/', requireRole('officer', 'supervisor', 'dispatcher', 'admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -155,7 +157,7 @@ router.post('/', (req: Request, res: Response) => {
 });
 
 // ─── PUT /:id ────────────────────────────────────────────
-router.put('/:id', (req: Request, res: Response) => {
+router.put('/:id', requireRole('officer', 'supervisor', 'admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -181,7 +183,7 @@ router.put('/:id', (req: Request, res: Response) => {
 });
 
 // ─── PUT /:id/clear ──────────────────────────────────────
-router.put('/:id/clear', (req: Request, res: Response) => {
+router.put('/:id/clear', requireRole('supervisor', 'admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();

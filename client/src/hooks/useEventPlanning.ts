@@ -83,6 +83,11 @@ export function useEventPlanning({ map, infoWindow }: UseEventPlanningOptions) {
   const clickListenerRef = useRef<google.maps.MapsEventListener | null>(null);
   const dblClickListenerRef = useRef<google.maps.MapsEventListener | null>(null);
 
+  // Refs to break stale closure in Google Maps listeners (listeners capture at registration time)
+  const addItemToPlanRef = useRef<(item: PlanItem) => void>(() => {});
+  const finishDrawingRef = useRef<() => void>(() => {});
+  const cancelDrawingRef = useRef<() => void>(() => {});
+
   const activePlan = plans.find((p) => p.id === activePlanId) ?? null;
 
   // ── Persist plans to localStorage ──────────────────────────
@@ -146,7 +151,7 @@ export function useEventPlanning({ map, infoWindow }: UseEventPlanningOptions) {
           createdAt: new Date().toISOString(),
         };
 
-        addItemToPlan(item);
+        addItemToPlanRef.current(item);
         stopDrawingListeners();
         setDrawMode(null);
         setIsDrawing(false);
@@ -176,7 +181,7 @@ export function useEventPlanning({ map, infoWindow }: UseEventPlanningOptions) {
 
       const dblListener = map.addListener('dblclick', (e: google.maps.MapMouseEvent) => {
         e.stop?.();
-        finishDrawing();
+        finishDrawingRef.current();
       });
 
       clickListenerRef.current = listener;
@@ -206,7 +211,7 @@ export function useEventPlanning({ map, infoWindow }: UseEventPlanningOptions) {
       createdAt: new Date().toISOString(),
     };
 
-    addItemToPlan(item);
+    addItemToPlanRef.current(item);
     stopDrawingListeners();
     setDrawMode(null);
     setIsDrawing(false);
@@ -245,6 +250,11 @@ export function useEventPlanning({ map, infoWindow }: UseEventPlanningOptions) {
         : p
     ));
   }, [activePlanId]);
+
+  // Keep refs in sync so Google Maps listeners always call the latest version
+  addItemToPlanRef.current = addItemToPlan;
+  finishDrawingRef.current = finishDrawing;
+  cancelDrawingRef.current = cancelDrawing;
 
   const removeItemFromPlan = useCallback((itemId: string) => {
     setPlans((prev) => prev.map((p) =>

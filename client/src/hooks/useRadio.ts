@@ -3,6 +3,7 @@ import { useWebSocket } from '../context/WebSocketContext';
 import { useAuth } from '../context/AuthContext';
 import { StreamPlayer } from '../utils/StreamPlayer';
 import { playRadioTone, playRadioToneAsync } from '../utils/radioTones';
+import { devLog } from '../utils/devLog';
 
 // ============================================================
 // RMPG Flex — Push-to-Talk Radio Hook
@@ -188,9 +189,18 @@ export function useRadio() {
   // and transmission continues seamlessly.
   const releaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Panic alert auto-dismiss timer — clears the panic banner after 30s
+  const panicAlertTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Ref mirrors user ID for stale-closure-safe comparisons in WS subscriptions
   const userIdRef = useRef<number>(0);
   useEffect(() => { userIdRef.current = Number(user?.id || 0); }, [user?.id]);
+
+  // Ref mirrors for stale-closure-safe access in startTransmit
+  const currentChannelRef = useRef<string | null>(null);
+  const activeSpeakerRef = useRef<ActiveSpeaker | null>(null);
+  useEffect(() => { currentChannelRef.current = state.currentChannel; }, [state.currentChannel]);
+  useEffect(() => { activeSpeakerRef.current = state.activeSpeaker; }, [state.activeSpeaker]);
 
   // ─── Join a radio channel ───────────────────────────────────
   const joinChannel = useCallback((channelId: string) => {
@@ -230,6 +240,10 @@ export function useRadio() {
 
     // Stop transmitting if active
     if (isTransmittingRef.current) {
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch { /* ok */ }
+        recognitionRef.current = null;
+      }
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         mediaRecorderRef.current.stop();
       }
@@ -260,7 +274,7 @@ export function useRadio() {
 
   // ─── Start transmitting (PTT key-down) ─────────────────────
   const startTransmit = useCallback(async () => {
-    if (!state.currentChannel) return;
+    if (!currentChannelRef.current) return;
 
     // If the user re-presses PTT during the 500ms release delay,
     // cancel the pending stop — transmission continues seamlessly.
@@ -285,7 +299,7 @@ export function useRadio() {
     }
 
     // Don't even try if someone else is already talking
-    if (state.activeSpeaker && state.activeSpeaker.userId !== Number(user?.id)) {
+    if (activeSpeakerRef.current && activeSpeakerRef.current.userId !== Number(user?.id)) {
       playRadioTone('channelDeny');
       setState(prev => ({ ...prev, channelBusy: true }));
       return;
@@ -320,13 +334,13 @@ export function useRadio() {
         if (event.data.size > 0) {
           chunkCount++;
           if (chunkCount === 1) {
-            console.log('[Radio TX] First audio chunk captured:', event.data.size, 'bytes, mimeType:', mimeType);
+            devLog('[Radio TX] First audio chunk captured:', event.data.size, 'bytes, mimeType:', mimeType);
           }
           const reader = new FileReader();
           reader.onload = () => {
             const base64 = (reader.result as string).split(',')[1];
             if (chunkCount <= 2) {
-              console.log('[Radio TX] Sending chunk #' + chunkCount + ', base64 length:', base64?.length || 0);
+              devLog('[Radio TX] Sending chunk #' + chunkCount + ', base64 length:', base64?.length || 0);
             }
             send({
               type: 'radio_audio',
@@ -366,10 +380,10 @@ export function useRadio() {
       // activeTransmitters has this client registered. We MUST
       // send radio_transmit_start before recorder.start() so the
       // server is ready before the first audio chunk arrives.
-      send({ type: 'radio_transmit_start' });
-
-      transmitStartTimeRef.current = Date.now();
+      // Set ref BEFORE send() to prevent double-transmit from rapid PTT taps
       isTransmittingRef.current = true;
+      transmitStartTimeRef.current = Date.now();
+      send({ type: 'radio_transmit_start' });
 
       // 200ms chunks — responsive near-real-time streaming (5 chunks/sec)
       recorder.start(200);
@@ -430,7 +444,7 @@ export function useRadio() {
           : message,
       }));
     }
-  }, [send, state.currentChannel, state.activeSpeaker, user?.id]);
+  }, [send, user?.id]);
 
   // ─── Stop transmitting (PTT key-up) ────────────────────────
   // Uses a 500ms "hang time" delay — the mic stays hot for half a
@@ -455,9 +469,6 @@ export function useRadio() {
       streamRef.current = null;
     }
     mediaRecorderRef.current = null;
-
-    // Tell server we're done
-    send({ type: 'radio_transmit_end' });
 
     // Calculate duration (only valid because guard above ensures we started)
     const duration = Math.max(0, Math.round((Date.now() - transmitStartTimeRef.current) / 1000));
@@ -612,7 +623,7 @@ export function useRadio() {
       if (data.userId) {
         setState(prev => {
           // Only log if it's a different user (we already log our own in stopTransmit)
-          if (data.userId === Number(user?.id)) {
+          if (data.userId === userIdRef.current) {
             return { ...prev, activeSpeaker: null, channelBusy: false };
           }
           return {
@@ -649,13 +660,13 @@ export function useRadio() {
 
       rxChunkCount++;
       if (rxChunkCount <= 2) {
-        console.log('[Radio RX] Chunk #' + rxChunkCount + ' from', data.fromUser || 'unknown',
+        devLog('[Radio RX] Chunk #' + rxChunkCount + ' from', data.fromUser || 'unknown',
           '| base64 length:', data.audio?.length || 0, '| mimeType:', data.mimeType);
       }
 
       // Lazily create stream player on first chunk
       if (!playerRef.current) {
-        console.log('[Radio RX] Creating StreamPlayer for', data.mimeType);
+        devLog('[Radio RX] Creating StreamPlayer for', data.mimeType);
         playerRef.current = new StreamPlayer();
         playerRef.current.init(data.mimeType);
       }
@@ -700,8 +711,10 @@ export function useRadio() {
       }));
 
       // Auto-dismiss panic banner after 30 seconds
-      setTimeout(() => {
+      if (panicAlertTimerRef.current) clearTimeout(panicAlertTimerRef.current);
+      panicAlertTimerRef.current = setTimeout(() => {
         setState(prev => prev.panicAlert === alertData ? { ...prev, panicAlert: null } : prev);
+        panicAlertTimerRef.current = null;
       }, 30000);
     });
 
@@ -737,6 +750,11 @@ export function useRadio() {
       if (releaseTimerRef.current) {
         clearTimeout(releaseTimerRef.current);
         releaseTimerRef.current = null;
+      }
+      // Cancel pending panic alert auto-dismiss
+      if (panicAlertTimerRef.current) {
+        clearTimeout(panicAlertTimerRef.current);
+        panicAlertTimerRef.current = null;
       }
       if (recognitionRef.current) {
         try { recognitionRef.current.stop(); } catch { /* ok */ }

@@ -6,6 +6,8 @@ import { localNow } from '../utils/timeUtils';
 const router = Router();
 
 router.use(authenticateToken);
+// System config is internal — restrict to operational roles
+router.use(requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'));
 
 // GET /api/admin/config/:category - Get config items by category
 router.get('/config/:category', (req: Request, res: Response) => {

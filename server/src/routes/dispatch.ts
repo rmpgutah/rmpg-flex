@@ -9,6 +9,16 @@ import { geocodeCallIfNeeded, reverseGeocodeAddress, reverseGeocodeDetailed } fr
 import { searchOfacLocal } from '../utils/ofacScraper';
 import { searchUtahWarrantsCache } from '../utils/utahWarrantScraper';
 import { identifyBeat } from '../utils/geofence';
+import { createNotification, createNotificationForRoles } from './notifications';
+
+// GPS source priority — higher number wins
+const GPS_SOURCE_PRIORITY: Record<string, number> = {
+  browser_desktop: 1,
+  browser: 1,       // legacy fallback
+  browser_mobile: 2,
+  clearpathgps: 3,
+};
+const GPS_STALE_MS = 30_000; // 30 seconds — stale source can be overridden by lower priority
 
 const router = Router();
 
@@ -825,7 +835,7 @@ router.post('/calls/:id/status', (req: Request, res: Response) => {
       return;
     }
 
-    const { status, notes, disposition } = req.body;
+    const { status, notes, disposition, starting_mileage, ending_mileage, responding_vehicle_id } = req.body;
     if (!status) {
       res.status(400).json({ error: 'status is required' });
       return;
@@ -865,33 +875,67 @@ router.post('/calls/:id/status', (req: Request, res: Response) => {
       updateQuery += `, disposition = ?`;
       updateParams.push(disposition);
     }
+    if (starting_mileage != null) {
+      updateQuery += `, starting_mileage = ?`;
+      updateParams.push(starting_mileage);
+    }
+    if (ending_mileage != null) {
+      updateQuery += `, ending_mileage = ?`;
+      updateParams.push(ending_mileage);
+    }
+    if (responding_vehicle_id) {
+      updateQuery += `, responding_vehicle_id = ?`;
+      updateParams.push(responding_vehicle_id);
+    }
     updateQuery += ` WHERE id = ?`;
     updateParams.push(call.id);
 
-    db.prepare(updateQuery).run(...updateParams);
+    // Transaction: update call + free units + activity log atomically
+    let freedUnitIds: number[] = [];
+    const statusTx = db.transaction(() => {
+      db.prepare(updateQuery).run(...updateParams);
 
-    // If cleared, closed, cancelled, or archived, free up units
-    if (['cleared', 'closed', 'cancelled', 'archived'].includes(status)) {
-      let unitIds: number[] = [];
-      try {
-        unitIds = JSON.parse(call.assigned_unit_ids || '[]');
-      } catch { /* ignore */ }
+      // If cleared, closed, cancelled, or archived, free up units
+      if (['cleared', 'closed', 'cancelled', 'archived'].includes(status)) {
+        let unitIds: number[] = [];
+        try {
+          unitIds = JSON.parse(call.assigned_unit_ids || '[]');
+        } catch { /* ignore */ }
 
-      for (const unitId of unitIds) {
-        db.prepare(`
-          UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = ? WHERE id = ? AND current_call_id = ?
-        `).run(now, unitId, call.id);
+        for (const unitId of unitIds) {
+          const result = db.prepare(`
+            UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = ? WHERE id = ? AND current_call_id = ?
+          `).run(now, unitId, call.id);
+          if (result.changes > 0) freedUnitIds.push(unitId);
+        }
       }
-    }
 
-    // Log activity
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'status_change', 'call', ?, ?, ?)
-    `).run(req.user!.userId, call.id, `${call.call_number} status changed to ${status}`, req.ip || 'unknown');
+      // Log activity
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'status_change', 'call', ?, ?, ?)
+      `).run(req.user!.userId, call.id, `${call.call_number} status changed to ${status}`, req.ip || 'unknown');
+    });
+    statusTx();
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
     broadcastDispatchUpdate({ action: 'call_status_changed', call: updated, status });
+
+    // Broadcast unit status changes so dispatch map reflects freed units
+    for (const unitId of freedUnitIds) {
+      const unitData = db.prepare(`SELECT u.*, usr.full_name as officer_name, usr.badge_number, usr.phone as officer_phone, c.call_number, c.incident_type as current_call_type, c.location_address as current_call_location FROM units u LEFT JOIN users usr ON u.officer_id = usr.id LEFT JOIN calls_for_service c ON u.current_call_id = c.id WHERE u.id = ?`).get(unitId);
+      if (unitData) broadcastUnitUpdate({ action: 'unit_status_changed', unit: unitData });
+    }
+
+    // Notify supervisors when a call is cleared or closed
+    if (['cleared', 'closed'].includes(status)) {
+      createNotificationForRoles(
+        ['admin', 'manager', 'supervisor'],
+        'dispatch', `Call Cleared: ${call.call_number}`,
+        `${call.incident_type} — status changed to ${status}`,
+        'call', call.id, 'normal', 'dispatch.call_cleared', req.user!.userId,
+      );
+    }
 
     res.json(updated);
   } catch (error: any) {
@@ -1134,6 +1178,412 @@ router.post('/calls/:id/le-notification', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('LE notification error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/dispatch/calls/:id/redispatch - Re-dispatch a PSO call for another visit
+router.post('/calls/:id/redispatch', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) {
+      res.status(404).json({ error: 'Call not found' });
+      return;
+    }
+
+    // Only allow re-dispatch on PSO Client Request incidents
+    if (call.incident_type !== 'pso_client_request') {
+      res.status(400).json({ error: 'Re-dispatch is only available for PSO Client Request calls' });
+      return;
+    }
+
+    // Only allow re-dispatch on completed/inactive calls
+    if (!['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(call.status)) {
+      res.status(400).json({ error: 'Call must be cleared, closed, cancelled, on hold, or archived to re-dispatch' });
+      return;
+    }
+
+    const now = localNow();
+    const currentAttempt = call.pso_attempt_number || 1;
+    const newAttempt = currentAttempt + 1;
+
+    // Ordinal suffix for note
+    const ordinal = (n: number) => {
+      const s = ['th', 'st', 'nd', 'rd'];
+      const v = n % 100;
+      return n + (s[(v - 20) % 10] || s[v] || s[0]);
+    };
+
+    // ── Snapshot current visit into history BEFORE resetting ──
+    // Get assigned unit call signs for the snapshot
+    let assignedCallSigns: string[] = [];
+    try {
+      const unitIds = JSON.parse(call.assigned_unit_ids || '[]');
+      if (unitIds.length) {
+        const units = db.prepare(`SELECT call_sign FROM units WHERE id IN (${unitIds.map(() => '?').join(',')})`).all(...unitIds) as any[];
+        assignedCallSigns = units.map((u: any) => u.call_sign).filter(Boolean);
+      }
+    } catch { /* ignore parse errors */ }
+
+    db.prepare(`
+      INSERT INTO call_visit_history
+        (call_id, visit_number, status, dispatched_at, enroute_at, onscene_at, cleared_at, closed_at,
+         assigned_units, responding_vehicle_id, starting_mileage, ending_mileage, disposition, note, created_by, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      req.params.id, currentAttempt, call.status,
+      call.dispatched_at, call.enroute_at, call.onscene_at, call.cleared_at, call.closed_at,
+      JSON.stringify(assignedCallSigns), call.responding_vehicle_id || null,
+      call.starting_mileage ?? null, call.ending_mileage ?? null,
+      call.disposition || null, null, req.user?.fullName || 'Dispatch', now
+    );
+
+    // Parse existing notes to append re-dispatch note
+    let notes: any[] = [];
+    if (call.notes) {
+      try { notes = JSON.parse(call.notes); } catch { notes = []; }
+    }
+    const { scheduled_note } = req.body || {};
+    const noteText = scheduled_note
+      ? `Re-dispatched — ${ordinal(newAttempt)} visit. Note: ${scheduled_note}`
+      : `Re-dispatched — ${ordinal(newAttempt)} visit`;
+    notes.push({
+      id: String(Date.now()),
+      author: req.user?.fullName || 'Dispatch',
+      text: noteText,
+      timestamp: now,
+      created_at: now,
+    });
+
+    // Reset status to pending, clear dispatch timestamps + mileage, increment attempt
+    db.prepare(`
+      UPDATE calls_for_service SET
+        status = 'pending',
+        dispatched_at = NULL,
+        enroute_at = NULL,
+        onscene_at = NULL,
+        cleared_at = NULL,
+        closed_at = NULL,
+        starting_mileage = NULL,
+        ending_mileage = NULL,
+        responding_vehicle_id = NULL,
+        pso_attempt_number = ?,
+        notes = ?,
+        updated_at = ?
+      WHERE id = ?
+    `).run(newAttempt, JSON.stringify(notes), now, req.params.id);
+
+    // Activity log
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'call_redispatched', 'call', ?, ?, ?)
+    `).run(req.user!.userId, req.params.id, `Re-dispatched PSO call ${call.call_number} — ${ordinal(newAttempt)} visit${scheduled_note ? `. ${scheduled_note}` : ''}`, req.ip || 'unknown');
+
+    const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    // Attach visit history to the response
+    const visitHistory = db.prepare('SELECT * FROM call_visit_history WHERE call_id = ? ORDER BY visit_number ASC').all(req.params.id);
+    broadcastDispatchUpdate({ action: 'call_updated', call: { ...updated, visit_history: visitHistory } });
+
+    res.json({ ...updated, visit_history: visitHistory });
+  } catch (error: any) {
+    console.error('Re-dispatch call error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/dispatch/calls/:id/visit-history - Get visit history for a PSO call
+router.get('/calls/:id/visit-history', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT id, incident_type FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) {
+      res.status(404).json({ error: 'Call not found' });
+      return;
+    }
+    const history = db.prepare('SELECT * FROM call_visit_history WHERE call_id = ? ORDER BY visit_number ASC').all(req.params.id);
+    res.json(history);
+  } catch (error: any) {
+    console.error('Visit history error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// CALL PERSONS — Link/unlink person records to dispatch calls
+// ═══════════════════════════════════════════════════════════
+
+// GET /api/dispatch/calls/:id/persons — List linked persons
+router.get('/calls/:id/persons', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT cp.*, p.first_name, p.last_name, p.middle_name, p.dob, p.phone,
+        p.address, p.city, p.state, p.zip, p.race, p.gender, p.height, p.weight,
+        p.hair_color, p.eye_color, p.flags, p.dl_number, p.dl_state,
+        u.full_name as added_by_name
+      FROM call_persons cp
+      LEFT JOIN persons p ON cp.person_id = p.id
+      LEFT JOIN users u ON cp.added_by = u.id
+      WHERE cp.call_id = ?
+      ORDER BY cp.created_at ASC
+    `).all(req.params.id);
+    res.json(rows);
+  } catch (error: any) {
+    console.error('Get call persons error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/dispatch/calls/:id/persons — Link a person to a call
+router.post('/calls/:id/persons', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT id, call_number FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) return res.status(404).json({ error: 'Call not found' });
+
+    const { person_id, role, notes } = req.body;
+    if (!person_id || !role) return res.status(400).json({ error: 'person_id and role are required' });
+
+    const person = db.prepare('SELECT id, first_name, last_name FROM persons WHERE id = ?').get(person_id) as any;
+    if (!person) return res.status(404).json({ error: 'Person not found' });
+
+    const existing = db.prepare('SELECT id FROM call_persons WHERE call_id = ? AND person_id = ?').get(call.id, person_id) as any;
+    if (existing) return res.status(409).json({ error: 'Person already linked to this call' });
+
+    const result = db.prepare(`
+      INSERT INTO call_persons (call_id, person_id, role, notes, added_by) VALUES (?, ?, ?, ?, ?)
+    `).run(call.id, person_id, role, notes || null, req.user!.userId);
+
+    const linked = db.prepare(`
+      SELECT cp.*, p.first_name, p.last_name, p.middle_name, p.dob, p.phone,
+        p.address, p.city, p.state, p.zip, p.race, p.gender, p.height, p.weight,
+        p.hair_color, p.eye_color, p.flags, p.dl_number, p.dl_state,
+        u.full_name as added_by_name
+      FROM call_persons cp
+      LEFT JOIN persons p ON cp.person_id = p.id
+      LEFT JOIN users u ON cp.added_by = u.id
+      WHERE cp.id = ?
+    `).get(result.lastInsertRowid);
+
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'person_linked', 'call', ?, ?, ?)
+    `).run(req.user!.userId, call.id,
+      `Linked ${person.first_name} ${person.last_name} as ${role} to call ${call.call_number}`,
+      req.ip || 'unknown');
+
+    broadcastDispatchUpdate({ type: 'call_person_linked', call_id: call.id, person: linked });
+    res.status(201).json(linked);
+  } catch (error: any) {
+    console.error('Link call person error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/dispatch/calls/:id/persons/:linkId — Update person link role/notes
+router.put('/calls/:id/persons/:linkId', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const link = db.prepare('SELECT * FROM call_persons WHERE id = ? AND call_id = ?').get(req.params.linkId, req.params.id) as any;
+    if (!link) return res.status(404).json({ error: 'Person link not found' });
+
+    const setClauses: string[] = [];
+    const setValues: any[] = [];
+    for (const field of ['role', 'notes']) {
+      if (req.body[field] !== undefined) {
+        setClauses.push(`${field} = ?`);
+        setValues.push(req.body[field] || null);
+      }
+    }
+    if (setClauses.length > 0) {
+      setValues.push(link.id);
+      db.prepare(`UPDATE call_persons SET ${setClauses.join(', ')} WHERE id = ?`).run(...setValues);
+    }
+
+    const updated = db.prepare(`
+      SELECT cp.*, p.first_name, p.last_name, p.middle_name, p.dob, p.phone,
+        p.address, p.city, p.state, p.zip, p.race, p.gender, p.height, p.weight,
+        p.hair_color, p.eye_color, p.flags, p.dl_number, p.dl_state,
+        u.full_name as added_by_name
+      FROM call_persons cp
+      LEFT JOIN persons p ON cp.person_id = p.id
+      LEFT JOIN users u ON cp.added_by = u.id
+      WHERE cp.id = ?
+    `).get(link.id);
+    res.json(updated);
+  } catch (error: any) {
+    console.error('Update call person error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/dispatch/calls/:id/persons/:linkId — Unlink person from call
+router.delete('/calls/:id/persons/:linkId', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const link = db.prepare('SELECT cp.*, p.first_name, p.last_name FROM call_persons cp LEFT JOIN persons p ON cp.person_id = p.id WHERE cp.id = ? AND cp.call_id = ?')
+      .get(req.params.linkId, req.params.id) as any;
+    if (!link) return res.status(404).json({ error: 'Person link not found' });
+
+    const call = db.prepare('SELECT call_number FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+
+    db.prepare('DELETE FROM call_persons WHERE id = ?').run(link.id);
+
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'person_unlinked', 'call', ?, ?, ?)
+    `).run(req.user!.userId, req.params.id,
+      `Unlinked ${link.first_name} ${link.last_name} from call ${call?.call_number || req.params.id}`,
+      req.ip || 'unknown');
+
+    broadcastDispatchUpdate({ type: 'call_person_unlinked', call_id: Number(req.params.id), link_id: link.id });
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Unlink call person error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// CALL VEHICLES — Link/unlink vehicle records to dispatch calls
+// ═══════════════════════════════════════════════════════════
+
+// GET /api/dispatch/calls/:id/vehicles — List linked vehicles
+router.get('/calls/:id/vehicles', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT cv.*, v.make, v.model, v.year, v.color, v.plate_number, v.state as plate_state,
+        v.vin, v.body_style, v.secondary_color,
+        op.first_name as owner_first_name, op.last_name as owner_last_name,
+        v.stolen_status, v.stolen_date,
+        u.full_name as added_by_name
+      FROM call_vehicles cv
+      LEFT JOIN vehicles_records v ON cv.vehicle_id = v.id
+      LEFT JOIN persons op ON v.owner_person_id = op.id
+      LEFT JOIN users u ON cv.added_by = u.id
+      WHERE cv.call_id = ?
+      ORDER BY cv.created_at ASC
+    `).all(req.params.id);
+    res.json(rows);
+  } catch (error: any) {
+    console.error('Get call vehicles error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/dispatch/calls/:id/vehicles — Link a vehicle to a call
+router.post('/calls/:id/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT id, call_number FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) return res.status(404).json({ error: 'Call not found' });
+
+    const { vehicle_id, role, notes } = req.body;
+    if (!vehicle_id || !role) return res.status(400).json({ error: 'vehicle_id and role are required' });
+
+    const vehicle = db.prepare('SELECT id, make, model, year, plate_number FROM vehicles_records WHERE id = ?').get(vehicle_id) as any;
+    if (!vehicle) return res.status(404).json({ error: 'Vehicle not found' });
+
+    const existing = db.prepare('SELECT id FROM call_vehicles WHERE call_id = ? AND vehicle_id = ?').get(call.id, vehicle_id) as any;
+    if (existing) return res.status(409).json({ error: 'Vehicle already linked to this call' });
+
+    const result = db.prepare(`
+      INSERT INTO call_vehicles (call_id, vehicle_id, role, notes, added_by) VALUES (?, ?, ?, ?, ?)
+    `).run(call.id, vehicle_id, role, notes || null, req.user!.userId);
+
+    const linked = db.prepare(`
+      SELECT cv.*, v.make, v.model, v.year, v.color, v.plate_number, v.state as plate_state,
+        v.vin, v.body_style, v.secondary_color,
+        op.first_name as owner_first_name, op.last_name as owner_last_name,
+        v.stolen_status, v.stolen_date,
+        u.full_name as added_by_name
+      FROM call_vehicles cv
+      LEFT JOIN vehicles_records v ON cv.vehicle_id = v.id
+      LEFT JOIN persons op ON v.owner_person_id = op.id
+      LEFT JOIN users u ON cv.added_by = u.id
+      WHERE cv.id = ?
+    `).get(result.lastInsertRowid);
+
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'vehicle_linked', 'call', ?, ?, ?)
+    `).run(req.user!.userId, call.id,
+      `Linked ${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''} PLT:${vehicle.plate_number || 'N/A'} as ${role} to call ${call.call_number}`,
+      req.ip || 'unknown');
+
+    broadcastDispatchUpdate({ type: 'call_vehicle_linked', call_id: call.id, vehicle: linked });
+    res.status(201).json(linked);
+  } catch (error: any) {
+    console.error('Link call vehicle error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/dispatch/calls/:id/vehicles/:linkId — Update vehicle link role/notes
+router.put('/calls/:id/vehicles/:linkId', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const link = db.prepare('SELECT * FROM call_vehicles WHERE id = ? AND call_id = ?').get(req.params.linkId, req.params.id) as any;
+    if (!link) return res.status(404).json({ error: 'Vehicle link not found' });
+
+    const setClauses: string[] = [];
+    const setValues: any[] = [];
+    for (const field of ['role', 'notes']) {
+      if (req.body[field] !== undefined) {
+        setClauses.push(`${field} = ?`);
+        setValues.push(req.body[field] || null);
+      }
+    }
+    if (setClauses.length > 0) {
+      setValues.push(link.id);
+      db.prepare(`UPDATE call_vehicles SET ${setClauses.join(', ')} WHERE id = ?`).run(...setValues);
+    }
+
+    const updated = db.prepare(`
+      SELECT cv.*, v.make, v.model, v.year, v.color, v.plate_number, v.state as plate_state,
+        v.vin, v.body_style, v.secondary_color,
+        op.first_name as owner_first_name, op.last_name as owner_last_name,
+        v.stolen_status, v.stolen_date,
+        u.full_name as added_by_name
+      FROM call_vehicles cv
+      LEFT JOIN vehicles_records v ON cv.vehicle_id = v.id
+      LEFT JOIN persons op ON v.owner_person_id = op.id
+      LEFT JOIN users u ON cv.added_by = u.id
+      WHERE cv.id = ?
+    `).get(link.id);
+    res.json(updated);
+  } catch (error: any) {
+    console.error('Update call vehicle error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/dispatch/calls/:id/vehicles/:linkId — Unlink vehicle from call
+router.delete('/calls/:id/vehicles/:linkId', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const link = db.prepare(`SELECT cv.*, v.make, v.model, v.year, v.plate_number
+      FROM call_vehicles cv LEFT JOIN vehicles_records v ON cv.vehicle_id = v.id
+      WHERE cv.id = ? AND cv.call_id = ?`).get(req.params.linkId, req.params.id) as any;
+    if (!link) return res.status(404).json({ error: 'Vehicle link not found' });
+
+    const call = db.prepare('SELECT call_number FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+
+    db.prepare('DELETE FROM call_vehicles WHERE id = ?').run(link.id);
+
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'vehicle_unlinked', 'call', ?, ?, ?)
+    `).run(req.user!.userId, req.params.id,
+      `Unlinked ${link.year || ''} ${link.make || ''} ${link.model || ''} from call ${call?.call_number || req.params.id}`,
+      req.ip || 'unknown');
+
+    broadcastDispatchUpdate({ type: 'call_vehicle_unlinked', call_id: Number(req.params.id), link_id: link.id });
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Unlink call vehicle error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1426,11 +1876,26 @@ router.post('/gps', (req: Request, res: Response) => {
       return;
     }
 
-    // Find unit assigned to current user
-    const unit = db.prepare('SELECT id, call_sign, status FROM units WHERE officer_id = ?').get(req.user!.userId) as any;
+    // Find unit assigned to current user — auto-create if none exists.
+    // GPS tracking is mandatory for ALL logged-in users, so every user
+    // needs a unit entry to store their position and broadcast updates.
+    let unit = db.prepare('SELECT id, call_sign, status FROM units WHERE officer_id = ?').get(req.user!.userId) as any;
     if (!unit) {
-      res.status(404).json({ error: 'No unit assigned to current user' });
-      return;
+      // Look up user info for a sensible call_sign
+      const userInfo = db.prepare('SELECT badge_number, username, full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
+      const callSign = userInfo?.badge_number || userInfo?.username || `P-${req.user!.userId}`;
+
+      // Avoid duplicate call_sign — append user ID if needed
+      const existing = db.prepare('SELECT id FROM units WHERE call_sign = ?').get(callSign) as any;
+      const finalCallSign = existing ? `${callSign}-${req.user!.userId}` : callSign;
+
+      db.prepare(`
+        INSERT INTO units (call_sign, officer_id, status)
+        VALUES (?, ?, 'available')
+      `).run(finalCallSign, req.user!.userId);
+
+      unit = db.prepare('SELECT id, call_sign, status FROM units WHERE officer_id = ?').get(req.user!.userId) as any;
+      console.log(`[GPS] Auto-created unit "${finalCallSign}" for user ${req.user!.userId} (${userInfo?.full_name || 'unknown'})`);
     }
 
     // GPS tracking is mandatory for ALL logged-in users regardless of status.
@@ -1439,12 +1904,30 @@ router.post('/gps', (req: Request, res: Response) => {
     // ── Use the LATEST point for live unit position and broadcast ──
     const latest = validPoints[validPoints.length - 1];
 
-    db.prepare(`
-      UPDATE units SET latitude = ?, longitude = ?
-      WHERE id = ?
-    `).run(latest.lat, latest.lng, unit.id);
+    // ── GPS Source Priority Check ──
+    // Determine incoming source: phone GPS > desktop WiFi
+    const deviceType = req.body.device_type || 'desktop';
+    const gpsSource = deviceType === 'mobile' ? 'browser_mobile' : 'browser_desktop';
+    const incomingPriority = GPS_SOURCE_PRIORITY[gpsSource] ?? 1;
 
-    // Fetch full unit info for broadcast
+    // Check current unit's GPS source and freshness
+    const currentGps = db.prepare('SELECT gps_source, gps_updated_at FROM units WHERE id = ?').get(unit.id) as any;
+    const currentPriority = GPS_SOURCE_PRIORITY[currentGps?.gps_source] ?? 0;
+    const currentAge = currentGps?.gps_updated_at
+      ? Date.now() - new Date(currentGps.gps_updated_at).getTime()
+      : Infinity; // no previous update → always accept
+
+    // Update live position only if: incoming priority >= current, OR current source is stale
+    const shouldUpdateLive = incomingPriority >= currentPriority || currentAge > GPS_STALE_MS;
+
+    if (shouldUpdateLive) {
+      db.prepare(`
+        UPDATE units SET latitude = ?, longitude = ?, gps_source = ?, gps_updated_at = ?
+        WHERE id = ?
+      `).run(latest.lat, latest.lng, gpsSource, localNow(), unit.id);
+    }
+
+    // Fetch full unit info for broadcast (always needed for breadcrumb metadata)
     const updated = db.prepare(`
       SELECT u.*, usr.full_name as officer_name, usr.badge_number,
         c.call_number, c.incident_type as current_call_type, c.location_address as current_call_location
@@ -1455,12 +1938,13 @@ router.post('/gps', (req: Request, res: Response) => {
     `).get(unit.id) as any;
 
     // ── Bulk-insert all breadcrumb points in a single transaction ──
+    // Breadcrumbs are ALWAYS recorded regardless of priority — both sessions contribute trail data
     const insertStmt = db.prepare(`
       INSERT INTO gps_breadcrumbs (unit_id, officer_id, latitude, longitude, accuracy, heading, speed,
         unit_status, call_sign, officer_name, badge_number, current_call_id, current_call_number, current_call_type,
         road_name, nearest_intersection, gps_source, source, recorded_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-        NULL, NULL, 'browser', ?,
+        NULL, NULL, ?, ?,
         COALESCE(?, datetime('now','localtime')))
     `);
 
@@ -1472,6 +1956,7 @@ router.post('/gps', (req: Request, res: Response) => {
           updated?.status ?? unit.status, updated?.call_sign ?? unit.call_sign,
           updated?.officer_name ?? null, updated?.badge_number ?? null,
           updated?.current_call_id ?? null, updated?.call_number ?? null, updated?.current_call_type ?? null,
+          gpsSource,
           pt.source || 'unknown',
           pt.timestamp ?? null,
         );
@@ -1480,8 +1965,10 @@ router.post('/gps', (req: Request, res: Response) => {
 
     insertMany(validPoints);
 
-    // Broadcast ONLY the latest position (not every batch point)
-    broadcastUnitUpdate({ action: 'unit_position_update', unit: updated });
+    // Broadcast ONLY when live position was actually updated (avoids flickering on dispatch map)
+    if (shouldUpdateLive) {
+      broadcastUnitUpdate({ action: 'unit_position_update', unit: updated });
+    }
 
     res.json({ ok: true, unit_id: unit.id, call_sign: unit.call_sign, inserted: validPoints.length });
 
@@ -2667,7 +3154,7 @@ router.get('/premise-history', (req: Request, res: Response) => {
 // Officer Safety Auto-Screening — searches persons and warrants
 // by name to detect active warrants, caution flags, criminal history.
 // Used by NewCallModal for real-time safety alerts during call creation.
-router.get('/safety-screen', (req: Request, res: Response) => {
+router.get('/safety-screen', async (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { name } = req.query;

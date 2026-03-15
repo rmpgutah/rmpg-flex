@@ -10,6 +10,7 @@ import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 import { queueOverlayProcessing, type DashCamOverlayConfig } from '../utils/videoOverlay';
+import { getDeviceHistory, isEnabled as cpgIsEnabled } from '../utils/clearPathGpsClient';
 
 const execAsync = promisify(exec);
 const __filename_f = fileURLToPath(import.meta.url);
@@ -41,8 +42,11 @@ const dashcamStorage = multer.diskStorage({
   },
 });
 
+const MAX_DASHCAM_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2 GB
+
 const dashcamUpload = multer({
   storage: dashcamStorage,
+  limits: { fileSize: MAX_DASHCAM_FILE_SIZE },
   fileFilter: (_req, file, cb) => {
     if (DASHCAM_MIME_TYPES.has(file.mimetype)) {
       cb(null, true);
@@ -285,7 +289,7 @@ router.get('/analytics', (req: Request, res: Response) => {
 router.get('/:id', (req: Request, res: Response, next: NextFunction) => {
   try {
     // Skip to real route handlers for paths that look like sub-routes, not vehicle IDs
-    const reservedPaths = ['maintenance', 'analytics', 'dashcam-videos', 'import', 'fuel', 'inspections'];
+    const reservedPaths = ['maintenance', 'analytics', 'dashcam-videos', 'dashcam-gps-lookup', 'import', 'fuel', 'inspections'];
     if (reservedPaths.includes(req.params.id as string)) {
       return next();
     }
@@ -1667,7 +1671,7 @@ router.post('/import/simply-fleet', requireRole('admin', 'manager'), (req: Reque
 router.get('/dashcam-videos', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { vehicle_id, unit_id, classification } = req.query;
+    const { vehicle_id, unit_id, classification, search, limit, offset } = req.query;
 
     let where = 'WHERE 1=1';
     const params: any[] = [];
@@ -1675,6 +1679,24 @@ router.get('/dashcam-videos', (req: Request, res: Response) => {
     if (vehicle_id) { where += ' AND v.vehicle_id = ?'; params.push(vehicle_id); }
     if (unit_id) { where += ' AND v.unit_id = ?'; params.push(unit_id); }
     if (classification) { where += ' AND v.classification = ?'; params.push(classification); }
+    if (search && typeof search === 'string' && search.trim()) {
+      where += ' AND (v.title LIKE ? OR v.case_number LIKE ? OR fv.vehicle_number LIKE ?)';
+      const term = `%${search.trim()}%`;
+      params.push(term, term, term);
+    }
+
+    // Count total matching rows (before pagination)
+    const countRow = db.prepare(`
+      SELECT COUNT(*) as cnt
+      FROM dashcam_videos v
+      LEFT JOIN fleet_vehicles fv ON v.vehicle_id = fv.id
+      LEFT JOIN units un ON v.unit_id = un.id
+      ${where}
+    `).get(...params) as any;
+    const total = countRow?.cnt || 0;
+
+    const queryLimit = Math.min(Number(limit) || 25, 200);
+    const queryOffset = Math.max(Number(offset) || 0, 0);
 
     const videos = db.prepare(`
       SELECT v.*, fv.vehicle_number, fv.make as vehicle_make, fv.model as vehicle_model, fv.year as vehicle_year,
@@ -1684,10 +1706,10 @@ router.get('/dashcam-videos', (req: Request, res: Response) => {
       LEFT JOIN units un ON v.unit_id = un.id
       ${where}
       ORDER BY v.recorded_at DESC, v.created_at DESC
-      LIMIT 200
-    `).all(...params);
+      LIMIT ? OFFSET ?
+    `).all(...params, queryLimit, queryOffset);
 
-    res.json(videos);
+    res.json({ videos, total });
   } catch (error: any) {
     console.error('Get dashcam videos error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -1744,7 +1766,8 @@ router.post('/dashcam-videos', requireRole('admin', 'manager'), (req: Request, r
 
         const { vehicle_id, unit_id, title, duration_seconds, recorded_at,
                 speed_mph, latitude, longitude, address,
-                case_number, classification, notes } = req.body;
+                case_number, classification, notes,
+                camera_position, mic_status } = req.body;
 
         if (!title) {
           if (file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
@@ -1785,15 +1808,16 @@ router.post('/dashcam-videos', requireRole('admin', 'manager'), (req: Request, r
         const result = db.prepare(`
           INSERT INTO dashcam_videos (vehicle_id, unit_id, title, file_path, file_size, duration_seconds,
             mime_type, recorded_at, speed_mph, latitude, longitude, address,
-            case_number, classification, notes, uploaded_by)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            case_number, classification, notes, camera_position, mic_status, uploaded_by)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           vehicle_id || null, unit_id || null, title, relativePath, verifiedSize,
           duration_seconds || null, file.mimetype,
           recorded_at || localNow(),
           resolvedSpeed, resolvedLat, resolvedLon, resolvedAddr,
           case_number || null, classification || 'routine',
-          notes || null, String(req.user!.userId),
+          notes || null, camera_position || 'FRONT', mic_status || 'ON',
+          String(req.user!.userId),
         );
 
         const videoId = result.lastInsertRowid;
@@ -1829,6 +1853,8 @@ router.post('/dashcam-videos', requireRole('admin', 'manager'), (req: Request, r
           latitude: resolvedLat,
           longitude: resolvedLon,
           address: resolvedAddr || '',
+          cameraPosition: camera_position || 'FRONT',
+          micStatus: mic_status || 'ON',
         };
         queueOverlayProcessing(videoId, 'dashcam', fullFilePath, overlayConfig);
 
@@ -2066,5 +2092,73 @@ function safeParseJson(value: string | null | undefined, fallback: any): any {
     return fallback;
   }
 }
+
+// ── ClearPathGPS GPS lookup for dash cam uploads ────────────
+// Given a unit_id and timestamp, find the closest GPS point from ClearPathGPS history.
+router.get('/dashcam-gps-lookup', requireRole('admin', 'manager', 'supervisor', 'officer'), async (req: Request, res: Response) => {
+  try {
+    const { unit_id, timestamp } = req.query;
+    if (!unit_id || !timestamp) {
+      return res.status(400).json({ error: 'unit_id and timestamp are required' });
+    }
+
+    if (!await cpgIsEnabled()) {
+      return res.status(404).json({ error: 'ClearPathGPS integration is not enabled' });
+    }
+
+    const db = getDb();
+
+    // Find the CPG device mapped to this unit
+    const mapping = db.prepare(
+      `SELECT cpg_device_id FROM cpg_device_mappings WHERE unit_id = ? AND is_active = 1`
+    ).get(Number(unit_id)) as { cpg_device_id: string } | undefined;
+
+    if (!mapping) {
+      return res.status(404).json({ error: 'No ClearPathGPS device mapped to this unit' });
+    }
+
+    // Query a 5-minute window around the timestamp to find the closest GPS point
+    const ts = new Date(String(timestamp));
+    if (isNaN(ts.getTime())) {
+      return res.status(400).json({ error: 'Invalid timestamp' });
+    }
+
+    const from = new Date(ts.getTime() - 5 * 60 * 1000).toISOString();
+    const to = new Date(ts.getTime() + 5 * 60 * 1000).toISOString();
+
+    const events = await getDeviceHistory(mapping.cpg_device_id, from, to);
+
+    // Flatten all eventData points and find the closest to the target timestamp
+    let closest: { latitude: number; longitude: number; speedMph: number; address: string; heading: number } | null = null;
+    let closestDelta = Infinity;
+
+    for (const event of events) {
+      if (!event.eventData) continue;
+      for (const pt of event.eventData) {
+        const ptTime = new Date(pt.timestamp).getTime();
+        const delta = Math.abs(ptTime - ts.getTime());
+        if (delta < closestDelta && pt.latitude && pt.longitude) {
+          closestDelta = delta;
+          closest = {
+            latitude: pt.latitude,
+            longitude: pt.longitude,
+            speedMph: pt.speedMph,
+            address: pt.address || pt.streetAddress || '',
+            heading: pt.heading,
+          };
+        }
+      }
+    }
+
+    if (!closest) {
+      return res.status(404).json({ error: 'No GPS data found near that timestamp' });
+    }
+
+    res.json(closest);
+  } catch (err: any) {
+    console.error('[fleet] GPS lookup error:', err.message);
+    res.status(500).json({ error: 'GPS lookup failed' });
+  }
+});
 
 export default router;

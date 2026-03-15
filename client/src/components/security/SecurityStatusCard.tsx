@@ -34,7 +34,7 @@ export default function SecurityStatusCard() {
 
   if (loading) {
     return (
-      <div className="panel-beveled p-4 flex items-center justify-center" style={{ background: '#1a1a1a' }}>
+      <div className="panel-beveled p-4 flex items-center justify-center" style={{ background: '#141e2b' }}>
         <RefreshCw className="w-4 h-4 animate-spin" style={{ color: '#6b7280' }} />
       </div>
     );
@@ -94,7 +94,7 @@ export default function SecurityStatusCard() {
   const score = computeScore(status);
 
   return (
-    <div className="panel-beveled" style={{ background: '#1a1a1a' }}>
+    <div className="panel-beveled" style={{ background: '#141e2b' }}>
       {/* Header */}
       <div className="panel-title-bar flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -124,7 +124,7 @@ export default function SecurityStatusCard() {
       )}
 
       {/* Status items */}
-      <div className="divide-y" style={{ borderColor: '#2a2a2a' }}>
+      <div className="divide-y" style={{ borderColor: '#2a3e58' }}>
         {items.map(item => (
           <div key={item.label} className="flex items-center gap-3 px-3 py-2">
             <span className={ledClass(item.led)} />
@@ -132,7 +132,7 @@ export default function SecurityStatusCard() {
               {item.icon}
             </div>
             <div className="flex-1 min-w-0">
-              <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: '#a0a0a0' }}>
+              <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: '#8899aa' }}>
                 {item.label}
               </span>
             </div>
@@ -152,7 +152,7 @@ export default function SecurityStatusCard() {
       {status.passwordChangedAt && (
         <div
           className="px-3 py-1.5 text-[9px] font-mono"
-          style={{ borderTop: '1px solid #2a2a2a', color: '#4b5563' }}
+          style={{ borderTop: '1px solid #2a3e58', color: '#4b5563' }}
         >
           Password last changed: {new Date(status.passwordChangedAt).toLocaleDateString()}
         </div>

@@ -244,8 +244,8 @@ export default function CitationsPage() {
       if (searchQuery.trim()) params.set('q', searchQuery.trim());
 
       const res = await apiFetch<{ data: Citation[]; pagination: any }>(`/citations?${params}`);
-      setCitations(res.data);
-      setTotalPages(res.pagination.totalPages || 1);
+      setCitations(Array.isArray(res?.data) ? res.data : []);
+      setTotalPages(res?.pagination?.totalPages || 1);
     } catch (err: any) {
       if (!options?.silent) setError(err.message || 'Failed to load citations');
     } finally {

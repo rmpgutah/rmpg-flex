@@ -30,9 +30,9 @@ interface ThresholdConfig {
 export const THRESHOLDS: ThresholdConfig = {
   pending: {
     P1: 60,     // 1 minute — emergency
-    P2: 180,    // 3 minutes — urgent
+    P2: 14400,  // 4 hours — urgent / PSO Priority One requests
     P3: 300,    // 5 minutes — routine
-    P4: 600,    // 10 minutes — scheduled
+    P4: 259200, // 72 hours — scheduled / PSO (warning 24h, critical 48h, overdue 72h)
   },
   dispatched: 180,  // 3 minutes
   onscene: 2700,    // 45 minutes
@@ -73,7 +73,9 @@ export function getStatusElapsed(call: CallForService): number {
       refTime = call.created_at;
   }
 
-  return Math.max(0, Math.floor((now - new Date(refTime).getTime()) / 1000));
+  if (!refTime) return 0;
+  const elapsed = Math.floor((now - new Date(refTime).getTime()) / 1000);
+  return Number.isFinite(elapsed) ? Math.max(0, elapsed) : 0;
 }
 
 /**
@@ -97,17 +99,17 @@ export function getThreshold(call: CallForService): number {
 
 /**
  * Determine the severity level based on elapsed time vs threshold.
- *   normal:   < 60% of threshold
- *   warning:  60-90% of threshold
- *   critical: 90-100% of threshold
- *   overdue:  > 100% of threshold
+ *   normal:   < 1/3 of threshold
+ *   warning:  1/3 – 2/3 of threshold  (P4/72h: warning at 24h)
+ *   critical: 2/3 – 100% of threshold (P4/72h: critical at 48h)
+ *   overdue:  > 100% of threshold     (P4/72h: overdue at 72h)
  */
 export function getTimerSeverity(elapsed: number, threshold: number): TimerSeverity {
   if (threshold === Infinity) return 'normal';
   const ratio = elapsed / threshold;
   if (ratio >= 1.0) return 'overdue';
-  if (ratio >= 0.9) return 'critical';
-  if (ratio >= 0.6) return 'warning';
+  if (ratio >= 2 / 3) return 'critical';
+  if (ratio >= 1 / 3) return 'warning';
   return 'normal';
 }
 
@@ -116,7 +118,7 @@ export function getTimerSeverity(elapsed: number, threshold: number): TimerSever
  * For times > 1 hour, shows H:MM:SS.
  */
 export function formatTimer(seconds: number): string {
-  if (seconds < 0) return '0:00';
+  if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
 
   const hours = Math.floor(seconds / 3600);
   const mins = Math.floor((seconds % 3600) / 60);

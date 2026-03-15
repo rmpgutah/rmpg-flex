@@ -25,6 +25,8 @@ import config from '../config';
 
 const router = Router();
 router.use(authenticateToken);
+// Skip tracing is an investigation tool — restrict to LE roles
+router.use(requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'));
 
 // ============================================================
 // Encryption helpers (same pattern as microbilt.ts)

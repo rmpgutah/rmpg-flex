@@ -366,6 +366,7 @@ router.post('/', upload.array('files', 10), (req: Request, res: Response) => {
 });
 
 // ─── PUT /api/uploads/:fileId/link ─── Link file to entity ───
+// Only the original uploader or admin/manager may re-link a file
 router.put('/:fileId/link', (req: Request, res: Response) => {
   try {
     const db = getDb();
@@ -376,17 +377,26 @@ router.put('/:fileId/link', (req: Request, res: Response) => {
       return;
     }
 
-    const result = db.prepare(`
-      UPDATE attachments SET entity_type = ?, entity_id = ? WHERE file_id = ?
-    `).run(entity_type, parseInt(entity_id, 10), req.params.fileId);
-
-    if (result.changes === 0) {
+    const attachment = db.prepare('SELECT * FROM attachments WHERE file_id = ?').get(req.params.fileId) as any;
+    if (!attachment) {
       res.status(404).json({ error: 'File not found' });
       return;
     }
 
-    const attachment = db.prepare('SELECT * FROM attachments WHERE file_id = ?').get(req.params.fileId);
-    res.json(attachment);
+    // Ownership check — uploader or admin/manager
+    const callerRole = req.user?.role;
+    const isOwner = attachment.uploaded_by === req.user?.userId;
+    if (!isOwner && callerRole !== 'admin' && callerRole !== 'manager') {
+      res.status(403).json({ error: 'Only the uploader or an admin can re-link files' });
+      return;
+    }
+
+    db.prepare(`
+      UPDATE attachments SET entity_type = ?, entity_id = ? WHERE file_id = ?
+    `).run(entity_type, parseInt(entity_id, 10), req.params.fileId);
+
+    const updated = db.prepare('SELECT * FROM attachments WHERE file_id = ?').get(req.params.fileId);
+    res.json(updated);
   } catch (error: any) {
     console.error('Link attachment error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -394,6 +404,7 @@ router.put('/:fileId/link', (req: Request, res: Response) => {
 });
 
 // ─── DELETE /api/uploads/:fileId ─── Delete a file ───
+// Only the original uploader or admin/manager may delete a file
 router.delete('/:fileId', (req: Request, res: Response) => {
   try {
     const db = getDb();
@@ -401,6 +412,14 @@ router.delete('/:fileId', (req: Request, res: Response) => {
 
     if (!attachment) {
       res.status(404).json({ error: 'File not found' });
+      return;
+    }
+
+    // Ownership check — uploader or admin/manager
+    const callerRole = req.user?.role;
+    const isOwner = attachment.uploaded_by === req.user?.userId;
+    if (!isOwner && callerRole !== 'admin' && callerRole !== 'manager') {
+      res.status(403).json({ error: 'Only the uploader or an admin can delete files' });
       return;
     }
 

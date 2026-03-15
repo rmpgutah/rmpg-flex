@@ -178,8 +178,8 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
               disabled={isSyncing}
               className="mt-2 flex items-center gap-1 px-2 py-1 text-[10px] transition-colors"
               style={{
-                background: '#252525',
-                border: '1px solid #383838',
+                background: '#162236',
+                border: '1px solid #2a3e58',
                 color: isSyncing ? '#555' : '#888',
               }}
             >
@@ -222,8 +222,8 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
               disabled={generatingAll}
               className="flex items-center gap-1 px-3 py-1.5 text-[10px] transition-colors"
               style={{
-                background: '#252525',
-                border: '1px solid #383838',
+                background: '#162236',
+                border: '1px solid #2a3e58',
                 color: generatingAll ? '#555' : '#888',
               }}
             >
@@ -287,8 +287,8 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
                         disabled={generatingSingle === s.user_id}
                         className="text-[10px] px-2 py-0.5 transition-colors"
                         style={{
-                          background: '#252525',
-                          border: '1px solid #383838',
+                          background: '#162236',
+                          border: '1px solid #2a3e58',
                           color: generatingSingle === s.user_id ? '#555' : '#d97706',
                         }}
                       >
@@ -303,7 +303,7 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
                         onClick={() => handleGenerateSecret(s.user_id)}
                         disabled={generatingSingle === s.user_id}
                         className="text-[10px] px-2 py-0.5 text-rmpg-500 hover:text-amber-400 transition-colors"
-                        style={{ background: '#1a1a1a', border: '1px solid #2a2a2a' }}
+                        style={{ background: '#141e2b', border: '1px solid #2a3e58' }}
                         title="Rotate secret (invalidates current PINs)"
                       >
                         {generatingSingle === s.user_id ? (

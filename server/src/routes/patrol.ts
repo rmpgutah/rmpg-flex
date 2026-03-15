@@ -8,6 +8,8 @@ import { localNow } from '../utils/timeUtils';
 const router = Router();
 
 router.use(authenticateToken);
+// Patrol operations (checkpoints, scans, compliance) are LE operational data
+router.use(requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'));
 
 // GET /api/patrol/checkpoints - List all checkpoints
 router.get('/checkpoints', (req: Request, res: Response) => {

@@ -37,8 +37,13 @@ let wss: WebSocketServer | null = null;
 // Authentication timeout — disconnect clients that don't authenticate within 10 seconds
 const AUTH_TIMEOUT_MS = 10_000;
 
-// All channels every authenticated client auto-subscribes to
+// All channels law-enforcement roles auto-subscribe to
 const DEFAULT_CHANNELS = ['dispatch', 'alerts', 'records', 'personnel', 'fleet', 'incidents', 'citations', 'patrol', 'admin', 'presence'];
+
+// Roles that should NOT receive law enforcement real-time data.
+// These roles get a restricted channel set (billing/scheduling/presence only).
+const RESTRICTED_WS_ROLES = new Set(['contract_manager', 'client_viewer']);
+const RESTRICTED_CHANNELS = ['admin', 'presence'];
 
 // ─── Radio State ────────────────────────────────────────────
 // Tracks which radio channel each client is on, and who is
@@ -158,6 +163,12 @@ function authenticateClient(client: WSClient, token: string): boolean {
     client.fullName = decoded.fullName;
     client.role = decoded.role;
     client.authenticated = true;
+
+    // Restrict channels for non-law-enforcement roles (billing, read-only viewers).
+    // These roles only receive admin/presence updates — no dispatch, records, etc.
+    if (RESTRICTED_WS_ROLES.has(decoded.role)) {
+      client.channels = new Set(RESTRICTED_CHANNELS);
+    }
 
     client.ws.send(JSON.stringify({
       type: 'authenticated',

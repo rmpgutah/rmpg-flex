@@ -1,8 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken } from '../middleware/auth';
-import { broadcast } from '../utils/websocket';
+import { sendToUser } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
+import { sendNotificationEmail } from '../utils/emailSender';
 
 const router = Router();
 
@@ -17,7 +18,8 @@ export function createNotification(
   body: string | null,
   entityType: string | null,
   entityId: number | null,
-  priority: 'normal' | 'high' | 'critical'
+  priority: 'normal' | 'high' | 'critical',
+  triggerEvent?: string,
 ): void {
   try {
     const db = getDb();
@@ -31,9 +33,92 @@ export function createNotification(
       'SELECT * FROM notifications WHERE id = ?'
     ).get(result.lastInsertRowid);
 
-    broadcast('notifications', 'notification', { userId, notification });
+    // Send directly to target user — not broadcast to all clients
+    sendToUser(userId, 'notification', notification);
+
+    // ── Email delivery via notification rules ──
+    // If a triggerEvent is provided, check for matching notification rules
+    // that include email delivery (notification_type = 'email' or 'both').
+    if (triggerEvent) {
+      try {
+        const emailRules = db.prepare(`
+          SELECT * FROM notification_rules
+          WHERE trigger_event = ? AND is_active = 1
+            AND notification_type IN ('email', 'both')
+        `).all(triggerEvent) as any[];
+
+        for (const rule of emailRules) {
+          // Check if this user is a target of the rule
+          let isTarget = false;
+
+          // Check target_user_ids
+          try {
+            const userIds = JSON.parse(rule.target_user_ids || '[]');
+            if (Array.isArray(userIds) && userIds.includes(userId)) {
+              isTarget = true;
+            }
+          } catch { /* ignore parse errors */ }
+
+          // Check target_roles
+          if (!isTarget) {
+            try {
+              const roles = JSON.parse(rule.target_roles || '[]');
+              if (Array.isArray(roles) && roles.length > 0) {
+                const user = db.prepare('SELECT role FROM users WHERE id = ?').get(userId) as any;
+                if (user && roles.includes(user.role)) {
+                  isTarget = true;
+                }
+              }
+            } catch { /* ignore parse errors */ }
+          }
+
+          if (isTarget) {
+            sendNotificationEmail(userId, title, body || '').catch(err => {
+              console.error(`[Notifications] Email delivery failed for user ${userId}:`, err.message);
+            });
+          }
+        }
+      } catch (emailErr: any) {
+        // Email delivery is best-effort — never block in-app notification
+        console.error('[Notifications] Email rule check failed:', emailErr.message);
+      }
+    }
   } catch (error) {
     console.error('Error creating notification:', error);
+  }
+}
+
+// ─── HELPER: NOTIFY ALL USERS IN GIVEN ROLES ────────
+
+/**
+ * Create a notification for every active user whose role matches one of
+ * the supplied roles. Optionally excludes a single user (the actor) so
+ * they don't notify themselves.
+ */
+export function createNotificationForRoles(
+  roles: string[],
+  type: string,
+  title: string,
+  body: string | null,
+  entityType: string | null,
+  entityId: number | null,
+  priority: 'normal' | 'high' | 'critical',
+  triggerEvent?: string,
+  excludeUserId?: number,
+): void {
+  try {
+    const db = getDb();
+    const placeholders = roles.map(() => '?').join(',');
+    const users = db.prepare(
+      `SELECT id FROM users WHERE role IN (${placeholders}) AND status = 'active'`
+    ).all(...roles) as { id: number }[];
+
+    for (const user of users) {
+      if (excludeUserId && user.id === excludeUserId) continue;
+      createNotification(user.id, type, title, body, entityType, entityId, priority, triggerEvent);
+    }
+  } catch (err: any) {
+    console.error('[Notifications] createNotificationForRoles failed:', err.message);
   }
 }
 

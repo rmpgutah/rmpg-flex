@@ -11,12 +11,21 @@ import { useNavigate } from 'react-router-dom';
 import { loadGoogleMaps, DARK_MAP_STYLE, registerMapInstance, unregisterMapInstance, onOnlineRetryMaps } from '../utils/googleMapsLoader';
 import type { CallForService, Unit } from '../types';
 
-interface DispatchMiniMapProps {
+interface RouteInfo {
+  unitCallSign: string;
+  callNumber: string;
+  eta: string;
+  distance: string;
+}
+
+export interface DispatchMiniMapProps {
   call: CallForService | null;
   units: Unit[];
   onClose?: () => void;
   /** When true, fills parent container height instead of fixed 180px */
   fullHeight?: boolean;
+  /** Callback with ETA/distance info when a route is calculated */
+  onRouteUpdate?: React.Dispatch<React.SetStateAction<RouteInfo | null>>;
 }
 
 const DEFAULT_CENTER = { lat: 40.7608, lng: -111.891 }; // Salt Lake City fallback
@@ -52,7 +61,7 @@ function buildUnitMarker(callSign: string): HTMLElement {
   return el;
 }
 
-export default function DispatchMiniMap({ call, units, onClose, fullHeight }: DispatchMiniMapProps) {
+export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRouteUpdate }: DispatchMiniMapProps) {
   const navigate = useNavigate();
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
@@ -186,7 +195,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight }: Di
   }
 
   return (
-    <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid #1a1a1a' }}>
+    <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid #141e2b' }}>
       {/* Toolbar */}
       <div style={{
         position: 'absolute', top: 4, left: 4, right: 4, zIndex: 10,
@@ -227,7 +236,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight }: Di
       {!loaded && !error && (
         <div style={{
           position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: '#0a0a0a',
+          background: '#080e18',
         }}>
           <RefreshCw style={{ width: 14, height: 14, color: '#555' }} className="animate-spin" />
         </div>

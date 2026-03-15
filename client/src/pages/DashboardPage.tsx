@@ -278,7 +278,7 @@ export default function DashboardPage() {
       <div className="panel-beveled bg-surface-base overflow-hidden">
         <div className={`flex items-center gap-4 ${isMobile ? 'px-3 py-2' : 'px-4 py-3'} relative`}>
           {/* Crimson accent line */}
-          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #6e0a0a, #bc1010 30%, #bc1010 70%, #6e0a0a)' }} />
+          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0f3460, #1a5a9e 30%, #1a5a9e 70%, #0f3460)' }} />
           {!isMobile && <RmpgLogo height={68} />}
           {isMobile && <RmpgLogo height={36} iconOnly />}
           <div className="flex-1">
@@ -434,9 +434,9 @@ export default function DashboardPage() {
               <Tooltip
                 contentStyle={{
                   backgroundColor: 'var(--surface-base)',
-                  border: '1px solid #383838',
+                  border: '1px solid #2a3e58',
                   borderRadius: '0px',
-                  color: '#e0e0e0',
+                  color: '#c0d0e0',
                   fontSize: '11px',
                 }}
               />
