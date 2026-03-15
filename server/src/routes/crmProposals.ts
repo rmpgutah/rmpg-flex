@@ -27,7 +27,7 @@ function generateProposalNumber(db: ReturnType<typeof getDb>): string {
   let nextNum = 1;
   if (row) {
     const match = row.proposal_number.match(/PROP-\d{4}-(\d+)/);
-    if (match) nextNum = parseInt(match[1]) + 1;
+    if (match) nextNum = parseInt(match[1], 10) + 1;
   }
 
   return `${prefix}${String(nextNum).padStart(4, '0')}`;

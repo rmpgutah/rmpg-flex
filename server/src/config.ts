@@ -142,6 +142,7 @@ export const config = {
     requireLowercase: envBool('PASSWORD_REQUIRE_LOWERCASE', true),
     requireNumber: envBool('PASSWORD_REQUIRE_NUMBER', true),
     requireSpecial: envBool('PASSWORD_REQUIRE_SPECIAL', true),
+    historyCount: envInt('PASSWORD_HISTORY_COUNT', 5),
     expiryDays: envInt('PASSWORD_EXPIRY_DAYS', 90),
     expiryWarningDays: envInt('PASSWORD_EXPIRY_WARNING_DAYS', 7),
   },

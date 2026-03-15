@@ -271,12 +271,14 @@ router.post('/scan', (req: Request, res: Response) => {
     let status = 'on_time';
     if (lastScan) {
       const lastScanTime = new Date(lastScan.scanned_at).getTime();
-      const now = Date.now();
-      const intervalMs = checkpoint.scan_required_interval_minutes * 60 * 1000;
-      const timeSinceLastScan = now - lastScanTime;
+      if (!isNaN(lastScanTime)) {
+        const now = Date.now();
+        const intervalMs = checkpoint.scan_required_interval_minutes * 60 * 1000;
+        const timeSinceLastScan = now - lastScanTime;
 
-      if (timeSinceLastScan > intervalMs) {
-        status = 'late';
+        if (timeSinceLastScan > intervalMs) {
+          status = 'late';
+        }
       }
     }
 
@@ -409,7 +411,7 @@ router.get('/scans', (req: Request, res: Response) => {
       ${whereClause}
       ORDER BY ps.scanned_at DESC
       LIMIT ?
-    `).all(...params, parseInt(limit as string) || 50);
+    `).all(...params, parseInt(limit as string, 10) || 50);
 
     res.json(scans);
   } catch (error) {
@@ -464,9 +466,11 @@ router.get('/compliance', (req: Request, res: Response) => {
 
       let nextScanDue = null;
       if (lastScan) {
-        const lastScanTime = new Date(lastScan.scanned_at);
-        const nextDue = new Date(lastScanTime.getTime() + checkpoint.scan_required_interval_minutes * 60 * 1000);
-        nextScanDue = nextDue.toISOString();
+        const lastScanTimeMs = new Date(lastScan.scanned_at).getTime();
+        if (!isNaN(lastScanTimeMs)) {
+          const nextDue = new Date(lastScanTimeMs + checkpoint.scan_required_interval_minutes * 60 * 1000);
+          nextScanDue = nextDue.toISOString();
+        }
       }
 
       return {

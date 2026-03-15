@@ -2780,6 +2780,7 @@ function scheduleCounty(county: string, initialDelayMs = 0): void {
       }
       syncCounty(county);
     }, intervalMs);
+    if (handle.unref) handle.unref();
     countyIntervals.set(county, handle);
   };
 
@@ -3008,6 +3009,7 @@ export function updateCountyConfig(county: string, updates: { enabled?: boolean;
         const intervalMs = (config.scrape_interval_minutes || 30) * 60_000;
         syncCounty(county); // Immediate first scrape
         const handle = setInterval(() => syncCounty(county), intervalMs);
+        if (handle.unref) handle.unref();
         countyIntervals.set(county, handle);
       }
     }

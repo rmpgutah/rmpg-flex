@@ -811,7 +811,7 @@ function handleRadioTransmitStart(clientId: string): void {
 }
 
 /** Handle PTT key-up — stop transmitting */
-function handleRadioTransmitEnd(clientId: string): void {
+function handleRadioTransmitEnd(clientId: string, data?: { transcript?: string; duration?: number; linked_call_id?: number }): void {
   const client = clients.get(clientId);
   if (!client || !client.radioChannel) return;
 

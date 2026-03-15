@@ -22,6 +22,7 @@ export function startPatrolMonitor(intervalMs: number = 5 * 60 * 1000): void {
       console.error('[Patrol Monitor] Error during scan check:', err);
     }
   }, intervalMs);
+  intervalHandle.unref();
 
   // Run once immediately
   setTimeout(() => {

@@ -25,7 +25,8 @@ function generateInvoiceNumber(): string {
   let seq = 1;
   if (last) {
     const parts = last.invoice_number.split('-');
-    seq = parseInt(parts[2], 10) + 1;
+    const parsed = parts.length >= 3 ? parseInt(parts[2], 10) : NaN;
+    seq = isNaN(parsed) ? 1 : parsed + 1;
   }
   return `${prefix}${String(seq).padStart(4, '0')}`;
 }
@@ -153,8 +154,8 @@ router.get('/stats', (req: Request, res: Response) => {
 router.get('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const page = Math.max(1, parseInt(req.query.page as string) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50));
+    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string, 10) || 50));
     const offset = (page - 1) * limit;
 
     const conditions: string[] = [];

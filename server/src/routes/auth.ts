@@ -413,7 +413,7 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
         status: user.status,
         must_change_password: !!user.must_change_password,
         totp_enabled: false,
-        requires_2fa_setup: must_setup_2fa,
+        requires_2fa_setup: needs2FASetup,
       },
     });
   } catch (error: any) {
@@ -1087,7 +1087,7 @@ router.post('/verify-2fa', mfaRateLimit, (req: Request, res: Response) => {
       // Legacy system: secret stored as iv:tag:ciphertext in users table
       let secret: string;
       try {
-        secret = decryptSecret(user.totp_secret_enc);
+        secret = legacyDecryptSecret(user.totp_secret_enc);
       } catch (decryptErr: any) {
         console.error('2FA decryption failed (legacy system):', decryptErr.message);
         res.status(401).json({ error: '2FA secret could not be decrypted. Please re-enroll 2FA.' });

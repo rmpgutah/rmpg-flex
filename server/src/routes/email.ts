@@ -477,7 +477,7 @@ router.get('/messages/:id', async (req: Request, res: Response) => {
 
     // Mark as read in Graph
     if (!msg.isRead) {
-      client.api(`/me/messages/${req.params.id}`).update({ isRead: true }).catch(() => {});
+      client.api(`/me/messages/${req.params.id}`).update({ isRead: true }).catch((err) => { console.error('[Email] Background operation failed:', err.message || err); });
       // Also update cache
       const db = getDb();
       db.prepare('UPDATE email_cache SET is_read = 1 WHERE graph_id = ?').run(req.params.id);
@@ -803,7 +803,7 @@ router.put('/templates/:id', (req: Request, res: Response) => {
       WHERE id = ?
     `).run(name, category, subject, body, now, req.params.id);
 
-    auditLog(req, 'UPDATE', 'email_template', parseInt(String(req.params.id)), `Updated template: ${name}`);
+    auditLog(req, 'UPDATE', 'email_template', parseInt(String(req.params.id), 10), `Updated template: ${name}`);
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -819,7 +819,7 @@ router.delete('/templates/:id', (req: Request, res: Response) => {
     if (template.is_system) { res.status(400).json({ error: 'Cannot delete system templates' }); return; }
 
     db.prepare('DELETE FROM email_templates WHERE id = ?').run(req.params.id);
-    auditLog(req, 'DELETE', 'email_template', parseInt(String(req.params.id)), `Deleted template: ${template.name}`);
+    auditLog(req, 'DELETE', 'email_template', parseInt(String(req.params.id), 10), `Deleted template: ${template.name}`);
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

@@ -162,7 +162,7 @@ router.put('/:id', (req: Request, res: Response) => {
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, 'update', 'case', ?, ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ fields: Object.keys(req.body) }), req.ip || 'unknown', now);
 
-    res.json({ data: { id: parseInt(req.params.id as string) } });
+    res.json({ data: { id: parseInt(req.params.id as string, 10) } });
   } catch (error: any) {
     console.error('Update case error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -192,7 +192,7 @@ router.put('/:id/status', (req: Request, res: Response) => {
       VALUES (?, 'status_change', 'case', ?, ?, ?, ?)`).run(
       req.user!.userId, req.params.id, JSON.stringify({ from: existing.status, to: status }), req.ip || 'unknown', now);
 
-    res.json({ data: { id: parseInt(req.params.id as string), status } });
+    res.json({ data: { id: parseInt(req.params.id as string, 10), status } });
   } catch (error: any) {
     console.error('Update case status error:', error);
     res.status(500).json({ error: 'Internal server error' });

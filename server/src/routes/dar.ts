@@ -270,7 +270,7 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (re
     }
     params.push(req.params.id);
     db.prepare(`UPDATE daily_activity_reports SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-    res.json({ data: { id: parseInt(req.params.id as string) } });
+    res.json({ data: { id: parseInt(req.params.id as string, 10) } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -285,7 +285,7 @@ router.put('/:id/submit', requireRole('admin', 'manager', 'supervisor', 'officer
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, 'submit', 'dar', ?, '{}', ?, ?)`).run(req.user!.userId, req.params.id, req.ip || 'unknown', now);
 
-    res.json({ data: { id: parseInt(req.params.id as string), status: 'submitted' } });
+    res.json({ data: { id: parseInt(req.params.id as string, 10), status: 'submitted' } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -303,7 +303,7 @@ router.put('/:id/approve', requireRole('admin', 'manager', 'supervisor'), (req: 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, 'approve', 'dar', ?, '{}', ?, ?)`).run(req.user!.userId, req.params.id, req.ip || 'unknown', now);
 
-    res.json({ data: { id: parseInt(req.params.id as string), status: 'approved' } });
+    res.json({ data: { id: parseInt(req.params.id as string, 10), status: 'approved' } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -320,7 +320,7 @@ router.put('/:id/return', requireRole('admin', 'manager', 'supervisor'), (req: R
       reviewed_by_name = ?, reviewed_at = ?, review_notes = ?, updated_at = ? WHERE id = ?`)
       .run(req.user!.userId, user?.full_name || '', now, review_notes, now, req.params.id);
 
-    res.json({ data: { id: parseInt(req.params.id as string), status: 'returned' } });
+    res.json({ data: { id: parseInt(req.params.id as string, 10), status: 'returned' } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 

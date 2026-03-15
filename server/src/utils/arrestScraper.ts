@@ -835,6 +835,7 @@ function scheduleNextSync(): void {
       scheduleNextSync();
     }
   }, delay);
+  if (syncIntervalHandle && syncIntervalHandle.unref) syncIntervalHandle.unref();
 }
 
 export function scheduleArrestSync(): void {

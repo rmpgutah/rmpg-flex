@@ -107,9 +107,10 @@ router.post('/gps', (req: Request, res: Response) => {
     // Check current unit's GPS source and freshness
     const currentGps = db.prepare('SELECT gps_source, gps_updated_at FROM units WHERE id = ?').get(unit.id) as any;
     const currentPriority = GPS_SOURCE_PRIORITY[currentGps?.gps_source] ?? 0;
-    const currentAge = currentGps?.gps_updated_at
-      ? Date.now() - new Date(currentGps.gps_updated_at).getTime()
-      : Infinity; // no previous update → always accept
+    const updatedAtMs = currentGps?.gps_updated_at ? new Date(currentGps.gps_updated_at).getTime() : NaN;
+    const currentAge = !isNaN(updatedAtMs)
+      ? Date.now() - updatedAtMs
+      : Infinity; // no previous update or invalid date → always accept
 
     // Update live position only if: incoming priority >= current, OR current source is stale
     const shouldUpdateLive = incomingPriority >= currentPriority || currentAge > GPS_STALE_MS;
@@ -214,9 +215,9 @@ router.get('/gps/my-unit', (req: Request, res: Response) => {
 router.get('/gps/trail/:unitId', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const unitId = parseInt(req.params.unitId as string);
+    const unitId = parseInt(req.params.unitId as string, 10);
     if (isNaN(unitId)) { res.status(400).json({ error: 'Invalid unit ID' }); return; }
-    const hours = Math.min(Math.max(parseInt(req.query.hours as string) || 8, 1), 72);
+    const hours = Math.min(Math.max(parseInt(req.query.hours as string, 10) || 8, 1), 72);
 
     const rows = db.prepare(`
       SELECT latitude, longitude, accuracy, heading, speed,
@@ -258,10 +259,10 @@ router.get('/gps/trail/:unitId', (req: Request, res: Response) => {
 
       if (dist < MIN_DISTANCE) continue;
 
-      const dtSec = Math.max(
-        (new Date(row.recorded_at).getTime() - new Date(prev.recorded_at).getTime()) / 1000,
-        0.5
-      );
+      const rowTime = new Date(row.recorded_at).getTime();
+      const prevTime = new Date(prev.recorded_at).getTime();
+      if (isNaN(rowTime) || isNaN(prevTime)) continue; // skip points with invalid timestamps
+      const dtSec = Math.max((rowTime - prevTime) / 1000, 0.5);
       if (dist / dtSec > MAX_SPEED) continue;
 
       filtered.push(row);
@@ -280,7 +281,7 @@ router.get('/gps/trail/:unitId', (req: Request, res: Response) => {
 router.get('/gps/trails', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const hours = parseInt(req.query.hours as string) || 8;
+    const hours = parseInt(req.query.hours as string, 10) || 8;
 
     // Haversine distance in meters between two lat/lng pairs
     const haversineM = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
@@ -362,6 +363,7 @@ router.get('/gps/trails', (req: Request, res: Response) => {
       // ── Jump detection: check implied speed between consecutive accepted points ──
       const prevTime = new Date(prev.time).getTime();
       const curTime  = new Date(pt.time).getTime();
+      if (isNaN(prevTime) || isNaN(curTime)) continue; // skip points with invalid timestamps
       const dtSec    = Math.max((curTime - prevTime) / 1000, 0.5); // floor at 0.5s to avoid /0
 
       if (dist / dtSec > MAX_SPEED) continue; // impossible jump — skip
@@ -380,7 +382,7 @@ router.get('/gps/trails', (req: Request, res: Response) => {
 router.delete('/gps/breadcrumbs/cleanup', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const days = Math.max(1, parseInt(req.query.days as string) || 7);
+    const days = Math.max(1, parseInt(req.query.days as string, 10) || 7);
 
     // Use SQLite datetime() to match the stored format (datetime('now','localtime'))
     const result = db.prepare(

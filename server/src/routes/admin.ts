@@ -877,7 +877,7 @@ router.post('/users/:id/reset-2fa', requireRole('admin'), (req: Request, res: Re
 router.post('/users/:id/force-password-change', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const userId = parseInt(req.params.id as string);
+    const userId = parseInt(req.params.id as string, 10);
     const ip = String(req.ip || 'unknown');
 
     const user = db.prepare('SELECT id, username, full_name FROM users WHERE id = ?').get(userId) as any;
@@ -956,7 +956,7 @@ router.get('/security/overview', requireRole('admin'), (_req: Request, res: Resp
 router.post('/users/:id/reset-2fa', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const userId = parseInt(req.params.id as string);
+    const userId = parseInt(req.params.id as string, 10);
     if (isNaN(userId)) { res.status(400).json({ error: 'Invalid user ID' }); return; }
     const ip = String(req.ip || 'unknown');
     const userAgent = String(req.headers['user-agent'] || 'unknown');
@@ -999,7 +999,7 @@ router.post('/users/:id/reset-2fa', requireRole('admin'), (req: Request, res: Re
       userId,
       'Two-Factor Authentication Reset',
       `Your RMPG Flex two-factor authentication has been reset by an administrator.\n\nYou will be required to set up 2FA again on your next login.\n\nTime: ${localNow()}\n\nIf you did not request this, contact your administrator immediately.`
-    ).catch(() => {});
+    ).catch((err) => { console.error('[Admin] Background operation failed:', err.message || err); });
 
     res.json({ message: `2FA reset for ${user.full_name}. They will be prompted to set up 2FA on next login.` });
   } catch (error: any) {
@@ -1015,7 +1015,7 @@ router.post('/users/:id/reset-2fa', requireRole('admin'), (req: Request, res: Re
 router.post('/users/:id/force-password-change', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const userId = parseInt(req.params.id as string);
+    const userId = parseInt(req.params.id as string, 10);
     if (isNaN(userId)) { res.status(400).json({ error: 'Invalid user ID' }); return; }
     const ip = String(req.ip || 'unknown');
 
@@ -1055,7 +1055,7 @@ router.post('/users/:id/force-password-change', requireRole('admin'), (req: Requ
 router.post('/users/:id/revoke-sessions', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const userId = parseInt(req.params.id as string);
+    const userId = parseInt(req.params.id as string, 10);
     if (isNaN(userId)) { res.status(400).json({ error: 'Invalid user ID' }); return; }
     const ip = String(req.ip || 'unknown');
 
@@ -1093,7 +1093,7 @@ router.post('/users/:id/revoke-sessions', requireRole('admin'), (req: Request, r
 router.put('/users/:id/role', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const userId = parseInt(req.params.id as string);
+    const userId = parseInt(req.params.id as string, 10);
     if (isNaN(userId)) { res.status(400).json({ error: 'Invalid user ID' }); return; }
     const { role } = req.body;
     const ip = String(req.ip || 'unknown');
@@ -1138,7 +1138,7 @@ router.put('/users/:id/role', requireRole('admin'), (req: Request, res: Response
       userId,
       'Role Changed',
       `Your RMPG Flex role has been changed from ${oldRole} to ${role} by an administrator.\n\nTime: ${localNow()}\n\nIf you believe this is an error, contact your administrator.`
-    ).catch(() => {});
+    ).catch((err) => { console.error('[Admin] Background operation failed:', err.message || err); });
 
     res.json({ message: `${user.full_name}'s role changed from ${oldRole} to ${role}.`, oldRole, newRole: role });
   } catch (error: any) {
@@ -1153,7 +1153,7 @@ router.put('/users/:id/role', requireRole('admin'), (req: Request, res: Response
 router.put('/users/:id/status', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const userId = parseInt(req.params.id as string);
+    const userId = parseInt(req.params.id as string, 10);
     if (isNaN(userId)) { res.status(400).json({ error: 'Invalid user ID' }); return; }
     const { status } = req.body;
     const ip = String(req.ip || 'unknown');

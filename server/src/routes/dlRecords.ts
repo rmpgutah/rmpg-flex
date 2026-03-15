@@ -20,8 +20,8 @@ router.use(authenticateToken);
 router.get('/', requireRole('admin', 'manager', 'officer', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const page = Math.max(1, parseInt(req.query.page as string) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50));
+    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string, 10) || 50));
     const offset = (page - 1) * limit;
     const search = (req.query.search as string || '').trim();
 
@@ -56,7 +56,7 @@ router.get('/', requireRole('admin', 'manager', 'officer', 'supervisor'), (req: 
 router.get('/:id', requireRole('admin', 'manager', 'officer', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id as string);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID' }); return; }
 
     const record = db.prepare('SELECT * FROM dl_records WHERE id = ?').get(id);
@@ -138,7 +138,7 @@ router.post('/', requireRole('admin', 'manager', 'officer'), (req: Request, res:
 router.delete('/:id', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id as string);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID' }); return; }
 
     const existing = db.prepare('SELECT id, dl_number, dl_state, full_name FROM dl_records WHERE id = ?').get(id) as any;

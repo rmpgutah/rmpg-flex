@@ -216,7 +216,7 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request,
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
       VALUES (?, 'update', 'sex_offender_registry', ?, '{}', ?)`).run(req.user!.userId, req.params.id, now);
 
-    res.json({ data: { id: parseInt(req.params.id as string) } });
+    res.json({ data: { id: parseInt(req.params.id as string, 10) } });
   } catch (error: any) {
     console.error('SOR update error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -260,7 +260,7 @@ router.put('/:id/verify', requireRole('admin', 'manager', 'supervisor', 'officer
       JSON.stringify({ status: status || 'verified', next_due: nextDueStr }), now,
     );
 
-    res.json({ data: { id: parseInt(req.params.id as string), last_verification: now, next_verification_due: nextDueStr } });
+    res.json({ data: { id: parseInt(req.params.id as string, 10), last_verification: now, next_verification_due: nextDueStr } });
   } catch (error: any) {
     console.error('SOR verify error:', error);
     res.status(500).json({ error: 'Internal server error' });

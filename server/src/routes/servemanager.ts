@@ -333,8 +333,8 @@ router.get('/jobs', async (req: Request, res: Response) => {
     }
 
     // Cache mode
-    const pageNum = Math.max(1, parseInt(String(page)));
-    const limit = Math.min(100, Math.max(1, parseInt(String(per_page))));
+    const pageNum = Math.max(1, parseInt(String(page), 10));
+    const limit = Math.min(100, Math.max(1, parseInt(String(per_page), 10)));
     const offset = (pageNum - 1) * limit;
 
     const conditions: string[] = [];
@@ -488,7 +488,7 @@ router.get('/jobs/:jobId/attempts', async (req: Request, res: Response) => {
       const result = await smGet('/attempts', { 'filter[job_id]': jobId });
       if (Array.isArray(result.data)) {
         for (const attempt of result.data) {
-          upsertAttemptFromApi({ ...attempt, job_id: parseInt(jobId) });
+          upsertAttemptFromApi({ ...attempt, job_id: parseInt(jobId, 10) });
         }
       }
       res.json(result);
