@@ -4164,6 +4164,100 @@ function createIndexes(): void {
     );
     CREATE INDEX IF NOT EXISTS idx_lead_scrape_log_source ON lead_scrape_log(source_key);
     CREATE INDEX IF NOT EXISTS idx_lead_scrape_log_date ON lead_scrape_log(created_at);
+
+    -- ─── PROCESS SERVER FIELD SUITE ─────────────────────────────────
+
+    CREATE TABLE IF NOT EXISTS serve_queue (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sm_job_id INTEGER,
+      officer_id INTEGER REFERENCES users(id),
+      serve_date TEXT NOT NULL,
+      recipient_name TEXT NOT NULL,
+      recipient_address TEXT,
+      recipient_city TEXT,
+      recipient_state TEXT DEFAULT 'UT',
+      recipient_zip TEXT,
+      recipient_lat REAL,
+      recipient_lng REAL,
+      document_type TEXT NOT NULL DEFAULT 'summons',
+      case_number TEXT,
+      court_name TEXT,
+      jurisdiction TEXT,
+      client_name TEXT,
+      attorney_name TEXT,
+      priority TEXT NOT NULL DEFAULT 'normal' CHECK(priority IN ('low','normal','high','rush')),
+      time_window TEXT DEFAULT 'anytime' CHECK(time_window IN ('morning','afternoon','evening','anytime')),
+      deadline TEXT,
+      attempt_count INTEGER NOT NULL DEFAULT 0,
+      max_attempts INTEGER NOT NULL DEFAULT 3,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','in_progress','served','failed','skipped','archived')),
+      sort_order INTEGER DEFAULT 0,
+      service_instructions TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_serve_queue_officer ON serve_queue(officer_id, serve_date);
+    CREATE INDEX IF NOT EXISTS idx_serve_queue_status ON serve_queue(status);
+    CREATE INDEX IF NOT EXISTS idx_serve_queue_sm ON serve_queue(sm_job_id);
+
+    CREATE TABLE IF NOT EXISTS serve_attempts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      serve_queue_id INTEGER NOT NULL REFERENCES serve_queue(id),
+      officer_id INTEGER NOT NULL REFERENCES users(id),
+      attempt_number INTEGER NOT NULL,
+      attempt_type TEXT NOT NULL CHECK(attempt_type IN ('personal','substitute','posting','failed')),
+      result TEXT NOT NULL CHECK(result IN ('served','no_answer','refused','wrong_address','moved','other')),
+      latitude REAL,
+      longitude REAL,
+      gps_accuracy REAL,
+      address_verified INTEGER DEFAULT 0,
+      person_served_name TEXT,
+      person_served_relationship TEXT,
+      person_served_description TEXT,
+      photo_ids TEXT DEFAULT '[]',
+      signature_data TEXT,
+      notes TEXT,
+      attempt_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_serve_attempts_queue ON serve_attempts(serve_queue_id);
+    CREATE INDEX IF NOT EXISTS idx_serve_attempts_officer ON serve_attempts(officer_id);
+
+    CREATE TABLE IF NOT EXISTS serve_routes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      officer_id INTEGER NOT NULL REFERENCES users(id),
+      route_date TEXT NOT NULL,
+      planned_stops TEXT DEFAULT '[]',
+      actual_stops TEXT DEFAULT '[]',
+      planned_mileage REAL,
+      actual_mileage REAL,
+      planned_duration_minutes INTEGER,
+      actual_duration_minutes INTEGER,
+      fuel_cost REAL,
+      start_location TEXT,
+      start_lat REAL,
+      start_lng REAL,
+      start_time TEXT,
+      end_time TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_serve_routes_officer ON serve_routes(officer_id, route_date);
+
+    CREATE TABLE IF NOT EXISTS serve_skip_traces (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      serve_queue_id INTEGER NOT NULL REFERENCES serve_queue(id),
+      officer_id INTEGER NOT NULL REFERENCES users(id),
+      search_type TEXT NOT NULL DEFAULT 'byname',
+      query_params TEXT,
+      lookup_cost REAL DEFAULT 0,
+      results_json TEXT,
+      addresses_found TEXT DEFAULT '[]',
+      address_added_to_route INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_serve_skip_queue ON serve_skip_traces(serve_queue_id);
   `);
 }
 
