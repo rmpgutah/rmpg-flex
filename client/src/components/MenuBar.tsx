@@ -163,9 +163,6 @@ export default function MenuBar({
   const [notificationsEnabled, setNotificationsEnabled] = useState(() => {
     return localStorage.getItem('rmpg-notifications') !== 'false';
   });
-  const [voiceAlertsEnabled, setVoiceAlertsEnabled] = useState(() => {
-    return localStorage.getItem('rmpg-voice-alerts') !== 'false';
-  });
   const [compactMode, setCompactMode] = useState(() => {
     return localStorage.getItem('rmpg-compact') === 'true';
   });

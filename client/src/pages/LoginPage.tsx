@@ -74,16 +74,6 @@ export default function LoginPage() {
     }
   }, []);
 
-  // 2FA setup state
-  const [qrCodeUri, setQrCodeUri] = useState('');
-  const [manualKey, setManualKey] = useState('');
-  const [setupCode, setSetupCode] = useState('');
-  const [showManualKey, setShowManualKey] = useState(false);
-
-  // Password change state
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-
   const usernameRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
   const totpRef = useRef<HTMLInputElement>(null);
@@ -239,42 +229,6 @@ export default function LoginPage() {
     setLoginStep('username');
   };
 
-  // ── 2FA Setup handlers ────────────────────────────
-  const handleStartSetup = async () => {
-    clearError();
-    try {
-      const result = await setup2FA();
-      setQrCodeUri(result.qrCodeDataUri);
-      setManualKey(result.manualKey);
-      setLoginStep('confirm_setup_2fa');
-    } catch (err: unknown) {
-      // Error is set in context by setup2FA — log for debugging
-      console.error('2FA setup failed:', err instanceof Error ? err.message : err);
-    }
-  };
-
-  const handleConfirmSetup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    clearError();
-    try {
-      await confirmSetup2FA(setupCode);
-    } catch {
-      setSetupCode('');
-    }
-  };
-
-  // ── Password change handler ───────────────────────
-  const handlePasswordChange = async (e: React.FormEvent) => {
-    e.preventDefault();
-    clearError();
-    if (newPassword !== confirmPassword) return;
-    try {
-      await changePasswordDuringLogin(newPassword);
-    } catch {
-      // Error handled
-    }
-  };
-
   // ── WebAuthn / Security Key handler ──────────────
   const handleSecurityKeyAuth = async () => {
     clearError();
@@ -282,15 +236,6 @@ export default function LoginPage() {
       await verifyWebAuthn(trustThisDevice);
     } catch {
       // Error handled by context
-    }
-  };
-
-  const handleBackupCodesAck = () => {
-    if (requiresPasswordChange) {
-      setLoginStep('password_change');
-    } else {
-      // Complete — tokens already stored
-      window.location.reload();
     }
   };
 
@@ -764,10 +709,31 @@ export default function LoginPage() {
                     className="text-[10px] uppercase tracking-wide font-bold mb-1"
                     style={{ color: '#8a9aaa' }}
                   >
-                    <KeyRound className="w-3.5 h-3.5" />
-                    {webauthnError ? 'RETRY SECURITY KEY' : 'ACTIVATE SECURITY KEY'}
-                  </button>
-                )}
+                    Security Key
+                  </p>
+                  <p className="text-[9px]" style={{ color: '#5a6e80' }}>
+                    {webauthnError ? 'Authentication failed — try again' : 'Touch your security key when it flashes'}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleSecurityKeyAuth}
+                  disabled={loginBusy}
+                  className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {loginBusy ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Waiting...
+                    </>
+                  ) : (
+                    <>
+                      <KeyRound className="w-3.5 h-3.5" />
+                      {webauthnError ? 'RETRY SECURITY KEY' : 'ACTIVATE SECURITY KEY'}
+                    </>
+                  )}
+                </button>
 
                 <div className="pt-2">
                   <button

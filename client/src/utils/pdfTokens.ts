@@ -210,13 +210,3 @@ export function getProportionalColumns(doc: jsPDF, ratios: number[]): number[] {
 }
 
 // ── NIBRS Grid Layout Helpers ─────────────────────────────────
-
-/** X-position where grid content starts (after sidebar tab) */
-export function getGridStartX(): number {
-  return LAYOUT.PAGE_MARGIN + LAYOUT.SIDEBAR_TAB_W;
-}
-
-/** Available width for grid cells (page minus margins minus sidebar tab) */
-export function getGridContentWidth(doc: jsPDF): number {
-  return doc.internal.pageSize.getWidth() - 2 * LAYOUT.PAGE_MARGIN - LAYOUT.SIDEBAR_TAB_W;
-}

@@ -78,60 +78,40 @@ export default function LocationGate({ permissionDenied, onRetry, connectionType
     );
   }
 
-      {/* Permission denied warning bar */}
-      {!dismissed && permissionDenied && (
-        <div style={{
-          background: 'rgba(188, 16, 16, 0.12)',
-          borderBottom: '1px solid #5a1010',
-          padding: '8px 16px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          fontSize: 11,
-        }}>
-          {connectionType === 'none' ? (
-            <WifiOff size={14} color="#d93030" style={{ flexShrink: 0 }} />
-          ) : (
-            <AlertTriangle size={14} color="#d93030" style={{ flexShrink: 0 }} />
-          )}
-          <span style={{ color: '#ccc', flex: 1 }}>
-            <strong style={{ color: '#d93030' }}>Location disabled</strong>
-            {' — '}GPS tracking is not active. Enable location access in your browser or device settings for full functionality.
-          </span>
-          <button
-            onClick={onRetry}
-            style={{
-              padding: '3px 10px',
-              background: '#bc1010',
-              color: '#fff',
-              border: 'none',
-              fontSize: 10,
-              fontWeight: 700,
-              letterSpacing: 0.5,
-              cursor: 'pointer',
-              textTransform: 'uppercase',
-              flexShrink: 0,
-            }}
-          >
-            Retry
-          </button>
-          <button
-            onClick={() => setDismissed(true)}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: '#666',
-              cursor: 'pointer',
-              padding: 2,
-              display: 'flex',
-              flexShrink: 0,
-            }}
-            title="Dismiss"
-          >
-            <X size={14} />
-          </button>
-        </div>
-      )}
-    </>
-  );
+  // WiFi tracking indicator
+  if (showWifiIndicator) {
+    return (
+      <div style={{
+        background: 'rgba(59, 130, 246, 0.08)',
+        borderBottom: '1px solid #1e3a5f',
+        padding: '4px 16px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        fontSize: 10,
+      }}>
+        <Wifi size={12} color="#3b82f6" style={{ flexShrink: 0 }} />
+        <span style={{ color: '#8a9aaa', flex: 1 }}>
+          Tracking via <strong style={{ color: '#3b82f6' }}>WiFi positioning</strong> — accuracy may be reduced
+        </span>
+        <button
+          onClick={() => setWifiDismissed(true)}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#5a6e80',
+            cursor: 'pointer',
+            padding: 2,
+            display: 'flex',
+            flexShrink: 0,
+          }}
+          title="Dismiss"
+        >
+          <X size={12} />
+        </button>
+      </div>
+    );
+  }
+
+  return null;
 }

@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { localNow } from '../utils/timeUtils';
 
 const router = Router();
 router.use(authenticateToken);
@@ -159,7 +160,8 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
 
     fields.push("updated_by = ?");
     values.push(req.user!.userId);
-    fields.push("updated_at = datetime('now','localtime')");
+    fields.push("updated_at = ?");
+    values.push(localNow());
 
     values.push(id);
     db.prepare(`UPDATE company_documents SET ${fields.join(', ')} WHERE id = ?`).run(...values);

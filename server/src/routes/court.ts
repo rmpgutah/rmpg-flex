@@ -20,7 +20,8 @@ function nextEventNumber(): string {
   const last = db.prepare(
     "SELECT event_number FROM court_events WHERE event_number LIKE ? ORDER BY id DESC LIMIT 1"
   ).get(`${prefix}%`) as { event_number: string } | undefined;
-  const seq = last ? parseInt(last.event_number.replace(prefix, ''), 10) + 1 : 1;
+  const parsed = last ? parseInt(last.event_number.replace(prefix, ''), 10) : 0;
+  const seq = (isNaN(parsed) ? 0 : parsed) + 1;
   return `${prefix}${String(seq).padStart(4, '0')}`;
 }
 
@@ -86,7 +87,9 @@ router.get('/calendar', (req: Request, res: Response) => {
     const y = parseInt(year as string, 10) || new Date().getFullYear();
     const m = parseInt(month as string, 10) || (new Date().getMonth() + 1);
     const startDate = `${y}-${String(m).padStart(2, '0')}-01`;
-    const endDate = `${y}-${String(m).padStart(2, '0')}-31`;
+    // Calculate actual last day of month (handles Feb, 30-day months, leap years)
+    const lastDay = new Date(y, m, 0).getDate();
+    const endDate = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
     const rows = db.prepare(`
       SELECT id, event_number, event_type, status, event_date, event_time, defendant_name, court_name
@@ -191,7 +194,7 @@ router.put('/events/:id/outcome', requireRole('admin', 'manager', 'supervisor'),
     db.prepare(`
       UPDATE court_events SET outcome = ?, sentence = ?, fine_amount = ?, notes = ?,
         status = 'completed', updated_at = ? WHERE id = ?
-    `).run(outcome, sentence || null, fine_amount || null, notes || null, now, req.params.id);
+    `).run(outcome, sentence || null, fine_amount ?? null, notes || null, now, req.params.id);
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, 'outcome', 'court_event', ?, ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ outcome }), req.ip || 'unknown', now);

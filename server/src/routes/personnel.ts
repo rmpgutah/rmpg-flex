@@ -712,7 +712,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const result = db.prepare(`
         INSERT INTO time_entries (officer_id, schedule_id, clock_in, clock_in_latitude, clock_in_longitude)
         VALUES (?, ?, ?, ?, ?)
-      `).run(targetId, schedule_id || null, now, latitude || null, longitude || null);
+      `).run(targetId, schedule_id || null, now, latitude ?? null, longitude ?? null);
 
       // Update schedule status if linked
       if (schedule_id) {
@@ -1324,7 +1324,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         category || 'other',
         JSON.stringify(required_for_roles || []),
         renewal_period_months || null,
-        minimum_hours || 0,
+        minimum_hours ?? 0,
         is_mandatory ? 1 : 0,
         description || null,
       );
@@ -1425,7 +1425,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         officer_id, course_name, category || 'other', provider || null,
-        completed_date || null, expiry_date || null, score || null, hours || 0,
+        completed_date || null, expiry_date || null, score ?? null, hours ?? 0,
         certificate_number || null, status || 'scheduled', notes || null,
       );
 

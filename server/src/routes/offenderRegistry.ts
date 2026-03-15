@@ -140,7 +140,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor'), (req: Request, r
       VALUES (?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(person_id, alert_type, description, severity,
       JSON.stringify(restricted_properties || []), JSON.stringify(restricted_zones || []),
-      restriction_radius_ft || null, now, expiration_date || null,
+      restriction_radius_ft ?? null, now, expiration_date || null,
       source_incident_id || null, source_citation_id || null, source_case_id || null,
       req.user!.userId, notes || null, now, now);
 

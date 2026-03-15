@@ -418,7 +418,7 @@ router.get('/graph', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
 });
 
 // GET /connections/search?q=term — cross-entity search
-router.get('/search', (req: Request, res: Response) => {
+router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { q } = req.query;

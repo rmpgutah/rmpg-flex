@@ -369,16 +369,16 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
         ?, ?, ?, ?, ?)
     `).run(
       incidentNumber, call_id || null, incident_type, priority || 'P3',
-      location_address || null, property_id || null, latitude || null,
-      longitude || null, narrative || null, req.user!.userId,
+      location_address || null, property_id || null, latitude ?? null,
+      longitude ?? null, narrative || null, req.user!.userId,
       occurred_date || null, occurred_time || null, end_date || null, end_time || null,
       weather_conditions || null, lighting_conditions || null,
-      injuries ?? 'none', injury_description || null, damage_estimate || null, damage_description || null,
+      injuries ?? 'none', injury_description || null, damage_estimate ?? null, damage_description || null,
       weapons_involved || null,
       alcohol_involved ? 1 : 0, drugs_involved ? 1 : 0, domestic_violence ? 1 : 0,
       disposition || null, autoZoneBeat, autoSectionId, autoZoneId, autoBeatId,
       responding_le_agency || null, le_case_number || null,
-      statute_id || null, statute_citation || null, citation_fine || null,
+      statute_id || null, statute_citation || null, citation_fine ?? null,
       resolvedClientId,
       road_conditions || null, traffic_control || null, vehicle_1_info || null, vehicle_2_info || null, diagram_notes || null,
       patient_status || null, ems_transport || null, patient_vitals || null, treatment_rendered || null,
@@ -1016,10 +1016,10 @@ router.post('/:id/evidence', requireRole('admin', 'manager', 'supervisor', 'offi
     `).run(
       evidenceNumber, incident.id, description, evidence_type,
       storage_location || null, req.user!.userId,
-      collected_date || null, packaging_type || null, dimensions || null, weight || null,
+      collected_date || null, packaging_type || null, dimensions || null, weight ?? null,
       photo_taken ? 1 : 0, lab_submitted ? 1 : 0, lab_case_number || null, lab_name || null,
       disposal_method || null, disposal_date || null, disposal_authorized_by || null,
-      serial_number || null, brand || null, model || null, estimated_value || null, category || null
+      serial_number || null, brand || null, model || null, estimated_value ?? null, category || null
     );
 
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(result.lastInsertRowid);

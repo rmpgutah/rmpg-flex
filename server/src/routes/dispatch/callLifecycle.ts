@@ -264,7 +264,7 @@ router.post('/calls/:id/generate-incident', requireRole('admin', 'manager', 'sup
     `).run(
       incidentNumber, call.id, call.incident_type, call.priority,
       call.location_address || call.property_address || null,
-      call.property_id || null, call.latitude || null, call.longitude || null,
+      call.property_id || null, call.latitude ?? null, call.longitude ?? null,
       narrative, req.user!.userId
     );
 

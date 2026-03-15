@@ -54,8 +54,5 @@
     "typescript": "^5.7.0",
     "vite": "^6.0.0",
     "vitest": "^4.0.18"
-  },
-  "overrides": {
-    "dompurify": "file:./stubs/dompurify"
   }
 }

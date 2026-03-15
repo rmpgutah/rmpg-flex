@@ -83,7 +83,7 @@ export function formatDate(dateStr: string | null | undefined): string {
 /**
  * Format a server timestamp for display as date only (e.g., "Feb 26, 2026").
  */
-export function formatDate(dateStr: string | null | undefined): string {
+export function formatDateLong(dateStr: string | null | undefined): string {
   const d = parseTimestamp(dateStr);
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }

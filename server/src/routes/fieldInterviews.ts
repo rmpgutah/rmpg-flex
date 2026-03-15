@@ -20,7 +20,8 @@ function generateFiNumber(db: ReturnType<typeof getDb>): string {
   let seq = 1;
   if (row) {
     const parts = row.fi_number.split('-');
-    seq = parseInt(parts[2], 10) + 1;
+    const parsed = parseInt(parts[2], 10);
+    seq = (isNaN(parsed) ? 0 : parsed) + 1;
   }
   return `${prefix}${String(seq).padStart(4, '0')}`;
 }
@@ -140,7 +141,7 @@ router.post('/', (req: Request, res: Response) => {
       fi_number, person_id || null, subject_first_name, subject_last_name, subject_dob,
       subject_gender, subject_race, subject_height, subject_weight,
       subject_hair, subject_eye, subject_clothing, subject_description,
-      location, latitude || null, longitude || null, property_id || null,
+      location, latitude ?? null, longitude ?? null, property_id || null,
       contact_reason, contact_type, action_taken,
       narrative, vehicle_plate, vehicle_description, vehicle_id || null,
       associated_call_id || null, associated_incident_id || null,
@@ -207,7 +208,7 @@ router.put('/:id', (req: Request, res: Response) => {
     for (const f of fields) {
       if (req.body[f] !== undefined) {
         setClauses.push(`${f} = ?`);
-        params.push(req.body[f] || null);
+        params.push(req.body[f] ?? null);
       }
     }
     if (setClauses.length === 0) return res.status(400).json({ error: 'No fields to update' });

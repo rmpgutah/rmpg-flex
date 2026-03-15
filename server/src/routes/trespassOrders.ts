@@ -253,7 +253,7 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (re
     for (const f of fields) {
       if (req.body[f] !== undefined) {
         setClauses.push(`${f} = ?`);
-        params.push(req.body[f] || null);
+        params.push(req.body[f] ?? null);
       }
     }
 

@@ -73,8 +73,8 @@ router.post('/checkpoints', requireRole('admin', 'manager', 'supervisor'), (req:
       name,
       description || null,
       qr_code,
-      latitude || null,
-      longitude || null,
+      latitude ?? null,
+      longitude ?? null,
       scan_required_interval_minutes,
       is_active !== undefined ? (is_active ? 1 : 0) : 1,
       localNow()
@@ -288,8 +288,8 @@ router.post('/scan', (req: Request, res: Response) => {
       checkpoint.id,
       req.user!.userId,
       localNow(),
-      latitude || null,
-      longitude || null,
+      latitude ?? null,
+      longitude ?? null,
       notes || null,
       status
     );

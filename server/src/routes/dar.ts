@@ -21,7 +21,8 @@ function nextDarNumber(): string {
   const last = db.prepare(
     "SELECT dar_number FROM daily_activity_reports WHERE dar_number LIKE ? ORDER BY id DESC LIMIT 1"
   ).get(`${prefix}%`) as { dar_number: string } | undefined;
-  const seq = last ? parseInt(last.dar_number.replace(prefix, ''), 10) + 1 : 1;
+  const parsed = last ? parseInt(last.dar_number.replace(prefix, ''), 10) : 0;
+  const seq = (isNaN(parsed) ? 0 : parsed) + 1;
   return `${prefix}${String(seq).padStart(4, '0')}`;
 }
 
@@ -132,9 +133,9 @@ router.post('/auto-populate', (req: Request, res: Response) => {
     let fieldInterviews: any[] = [];
     try {
       fieldInterviews = db.prepare(`
-        SELECT id, subject_first_name, subject_last_name, location, reason
+        SELECT id, subject_first_name, subject_last_name, location, contact_reason
         FROM field_interviews
-        WHERE DATE(interview_date) = ? AND officer_id = ?
+        WHERE DATE(created_at) = ? AND officer_id = ?
       `).all(shift_date, officer_id);
     } catch { /* table may not exist */ }
 
@@ -199,7 +200,7 @@ router.post('/auto-populate', (req: Request, res: Response) => {
         calls_handled: calls.map((c: any) => ({ call_id: c.id, number: c.call_number, type: c.incident_type, time: c.created_at, disposition: c.disposition })),
         incidents_created: incidents.map((i: any) => ({ incident_id: i.id, number: i.incident_number, type: i.incident_type })),
         citations_issued: citations.map((c: any) => ({ citation_id: c.id, number: c.citation_number, type: c.type })),
-        field_interviews: fieldInterviews.map((fi: any) => ({ name: `${fi.subject_first_name} ${fi.subject_last_name}`, location: fi.location, reason: fi.reason })),
+        field_interviews: fieldInterviews.map((fi: any) => ({ name: `${fi.subject_first_name} ${fi.subject_last_name}`, location: fi.location, reason: fi.contact_reason })),
         patrols_completed: patrols.map((p: any) => ({ checkpoint: p.checkpoint, time: p.scanned_at, status: p.status })),
         auto_narrative: autoNarrative,
       },

@@ -26,7 +26,8 @@ function generateLabCaseNumber(): string {
   const last = db.prepare(
     `SELECT lab_case_number FROM forensic_cases WHERE lab_case_number LIKE ? ORDER BY id DESC LIMIT 1`,
   ).get(`${prefix}%`) as { lab_case_number: string } | undefined;
-  const seq = last ? parseInt(last.lab_case_number.replace(prefix, ''), 10) + 1 : 1;
+  const parsed = last ? parseInt(last.lab_case_number.replace(prefix, ''), 10) : 0;
+  const seq = (isNaN(parsed) ? 0 : parsed) + 1;
   return `${prefix}${String(seq).padStart(4, '0')}`;
 }
 

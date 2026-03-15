@@ -112,7 +112,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
   const [disablePassword, setDisablePassword] = useState('');
   const [securityBusy, setSecurityBusy] = useState(false);
   const [securityMsg, setSecurityMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [securityView, setSecurityView] = useState<'main' | 'devices' | 'history' | 'keys'>('main');
+  const [securityView, setSecurityView] = useState<'main' | 'overview' | 'devices' | 'history' | 'keys' | 'setup-2fa' | 'regen-backup'>('main');
 
   // WebAuthn / Security Keys
   const [webauthnStatus, setWebauthnStatus] = useState<{
@@ -126,7 +126,6 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
   const [showKeyNameInput, setShowKeyNameInput] = useState(false);
 
   // Security tab state (remote)
-  const [securityView, setSecurityView] = useState<'overview' | 'setup-2fa' | 'regen-backup' | 'devices' | 'history'>('overview');
   const [tfaStatus, setTfaStatus] = useState<{ enabled: boolean; backupCodesRemaining: number } | null>(null);
   const [regenLoading, setRegenLoading] = useState(false);
   const [regenPassword, setRegenPassword] = useState('');

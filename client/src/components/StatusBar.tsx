@@ -10,9 +10,6 @@ import BatteryIndicator from './BatteryIndicator';
 const APP_VERSION: string =
   typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0';
 
-const APP_VERSION: string =
-  typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0';
-
 interface StatusBarProps {
   isConnected: boolean;
   user: { first_name: string; last_name: string; role: string; badge_number?: string } | null;

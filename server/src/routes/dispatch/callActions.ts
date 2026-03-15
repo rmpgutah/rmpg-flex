@@ -671,8 +671,8 @@ router.post('/calls/:id/promote-to-incident', requireRole('admin', 'manager', 's
       call.priority || 'P3',
       call.location_address || null,
       call.property_id || null,
-      call.latitude || null,
-      call.longitude || null,
+      call.latitude ?? null,
+      call.longitude ?? null,
       call.description || null,
       req.user!.userId,
       call.zone_beat || null,
@@ -821,7 +821,7 @@ router.put('/calls/:id/persons/:linkId', requireRole('admin', 'manager', 'superv
     for (const field of ['role', 'notes']) {
       if (req.body[field] !== undefined) {
         setClauses.push(`${field} = ?`);
-        setValues.push(req.body[field] || null);
+        setValues.push(req.body[field] ?? null);
       }
     }
     if (setClauses.length > 0) {
@@ -961,7 +961,7 @@ router.put('/calls/:id/vehicles/:linkId', requireRole('admin', 'manager', 'super
     for (const field of ['role', 'notes']) {
       if (req.body[field] !== undefined) {
         setClauses.push(`${field} = ?`);
-        setValues.push(req.body[field] || null);
+        setValues.push(req.body[field] ?? null);
       }
     }
     if (setClauses.length > 0) {

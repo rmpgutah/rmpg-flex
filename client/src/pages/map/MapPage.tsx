@@ -1869,7 +1869,7 @@ export default function MapPage() {
               >
                 <PanelLeftClose style={{ width: 10, height: 10 }} />
               </button>
-            </PanelTitleBar>
+            </div>
 
             <div className="p-1.5 space-y-0.5">
               {[
@@ -3035,7 +3035,6 @@ export default function MapPage() {
             <Crosshair className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} ${isLightMapStyle(mapStyle) ? 'text-gray-600' : 'text-rmpg-300'}`} />
           </button>
         </div>
-        </div>{/* end inner map canvas wrapper */}
       </div>
 
       {/* ── Right Sidebar - Unit/Call List (Desktop only, responsive width) ── */}

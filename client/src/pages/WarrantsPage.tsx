@@ -443,7 +443,6 @@ export default function WarrantsPage() {
   const [scanRunning, setScanRunning] = useState(false);
 
   // ── Utah Search state ──
-  const [utahSearchQuery, setUtahSearchQuery] = useState('');
   const [utahResults, setUtahResults] = useState<UtahWarrantResult[]>([]);
   const [utahSearching, setUtahSearching] = useState(false);
   const [utahSearched, setUtahSearched] = useState(false);

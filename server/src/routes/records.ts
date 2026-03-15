@@ -1129,7 +1129,7 @@ router.post('/properties', requireRole('admin', 'manager', 'supervisor', 'office
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       client_id, name, address, city || null, state || null, zip || null,
-      latitude || null, longitude || null,
+      latitude ?? null, longitude ?? null,
       property_type || null, gate_code || null, alarm_code || null,
       emergency_contact || null, post_orders || null, hazard_notes || null,
       access_instructions || null, is_active !== undefined ? (is_active ? 1 : 0) : 1,
@@ -1703,10 +1703,10 @@ router.post('/evidence', requireRole('admin', 'manager', 'supervisor', 'officer'
     `).run(
       evidenceNumber, incident_id || null, description, evidence_type,
       storage_location || null, req.user!.userId,
-      collected_date || null, packaging_type || null, dimensions || null, weight || null,
+      collected_date || null, packaging_type || null, dimensions || null, weight ?? null,
       photo_taken ? 1 : 0, lab_submitted ? 1 : 0, lab_case_number || null, lab_name || null,
       disposal_method || null, disposal_date || null, disposal_authorized_by || null,
-      serial_number || null, brand || null, model || null, estimated_value || null, category || null,
+      serial_number || null, brand || null, model || null, estimated_value ?? null, category || null,
       notes || null
     );
 
@@ -2056,13 +2056,13 @@ router.put('/criminal-history/:id', requireRole('admin', 'manager', 'supervisor'
         sentence = ?,
         source = ?,
         notes = ?,
-        updated_at = datetime('now','localtime')
+        updated_at = ?
       WHERE id = ?
     `).run(
       record_type, offense, offense_level || null, statute || null,
       case_number || null, agency || null, jurisdiction || null,
       offense_date || null, disposition || null, disposition_date || null,
-      sentence || null, source || null, notes || null, req.params.id,
+      sentence || null, source || null, notes || null, localNow(), req.params.id,
     );
 
     const updated = db.prepare('SELECT * FROM criminal_history WHERE id = ?').get(req.params.id);

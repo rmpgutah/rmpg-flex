@@ -30,7 +30,8 @@ function nextNumber(table: string, prefix: string, col: string): string {
   const yr = new Date().getFullYear();
   const pfx = `${prefix}-${yr}-`;
   const last = db.prepare(sql).get(`${pfx}%`) as any;
-  const seq = last ? parseInt(last[col].replace(pfx, ''), 10) + 1 : 1;
+  const parsed = last ? parseInt(last[col].replace(pfx, ''), 10) : 0;
+  const seq = (isNaN(parsed) ? 0 : parsed) + 1;
   return `${pfx}${String(seq).padStart(4, '0')}`;
 }
 
