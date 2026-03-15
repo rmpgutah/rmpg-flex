@@ -2345,3 +2345,123 @@ export interface CpgDeviceMapping {
   created_at?: string;
   updated_at?: string;
 }
+
+// ── Process Server Types ─────────────────────────────────
+
+export interface ServeJob {
+  id: number;
+  sm_job_id: number | null;
+  officer_id: number;
+  serve_date: string;
+  recipient_name: string;
+  recipient_address: string | null;
+  recipient_city: string | null;
+  recipient_state: string;
+  recipient_zip: string | null;
+  recipient_lat: number | null;
+  recipient_lng: number | null;
+  document_type: string;
+  case_number: string | null;
+  court_name: string | null;
+  jurisdiction: string | null;
+  client_name: string | null;
+  attorney_name: string | null;
+  priority: 'low' | 'normal' | 'high' | 'rush';
+  time_window: 'morning' | 'afternoon' | 'evening' | 'anytime';
+  deadline: string | null;
+  attempt_count: number;
+  max_attempts: number;
+  status: 'pending' | 'in_progress' | 'served' | 'failed' | 'skipped' | 'archived';
+  sort_order: number;
+  service_instructions: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  attempts?: ServeAttempt[];
+  skipTraces?: ServeSkipTrace[];
+}
+
+export interface ServeAttempt {
+  id: number;
+  serve_queue_id: number;
+  officer_id: number;
+  attempt_number: number;
+  attempt_type: 'personal' | 'substitute' | 'posting' | 'failed';
+  result: 'served' | 'no_answer' | 'refused' | 'wrong_address' | 'moved' | 'other';
+  latitude: number | null;
+  longitude: number | null;
+  gps_accuracy: number | null;
+  address_verified: boolean;
+  person_served_name: string | null;
+  person_served_relationship: string | null;
+  person_served_description: string | null;
+  photo_ids: string[];
+  signature_data: string | null;
+  notes: string | null;
+  attempt_at: string;
+  created_at: string;
+}
+
+export interface ServeAttemptData {
+  attempt_type: ServeAttempt['attempt_type'];
+  result: ServeAttempt['result'];
+  latitude?: number;
+  longitude?: number;
+  gps_accuracy?: number;
+  address_verified?: boolean;
+  person_served_name?: string;
+  person_served_relationship?: string;
+  person_served_description?: string;
+  photo_ids?: string[];
+  signature_data?: string;
+  notes?: string;
+}
+
+export interface ServeRoute {
+  id: number;
+  officer_id: number;
+  route_date: string;
+  planned_stops: ServeRouteStop[];
+  actual_stops: ServeRouteStop[];
+  planned_mileage: number | null;
+  actual_mileage: number | null;
+  planned_duration_minutes: number | null;
+  actual_duration_minutes: number | null;
+  fuel_cost: number | null;
+  start_location: string | null;
+  start_lat: number | null;
+  start_lng: number | null;
+  start_time: string | null;
+  end_time: string | null;
+}
+
+export interface ServeRouteStop {
+  serve_queue_id: number;
+  lat: number;
+  lng: number;
+  address: string;
+  recipient_name: string;
+  order: number;
+  arrived_at?: string;
+  departed_at?: string;
+  status?: string;
+}
+
+export interface ServeSkipTrace {
+  id: number;
+  serve_queue_id: number;
+  officer_id: number;
+  search_type: string;
+  lookup_cost: number;
+  addresses_found: ServeSkipAddress[];
+  created_at: string;
+}
+
+export interface ServeSkipAddress {
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+  type: string;
+  last_seen: string | null;
+}
