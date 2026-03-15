@@ -63,7 +63,8 @@ router.get('/dashboard', requireRole('admin', 'manager', 'contract_manager'), (_
       total_paid_mtd: paidMtd,
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('CRM error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -84,7 +85,8 @@ router.get('/recent-activity', requireRole('admin', 'manager', 'contract_manager
 
     res.json(rows);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('CRM error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -119,7 +121,8 @@ router.get('/tasks', requireRole('admin', 'manager', 'contract_manager'), (req: 
 
     res.json(db.prepare(sql).all(...params));
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('CRM error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -145,7 +148,8 @@ router.post('/tasks', requireRole('admin', 'manager', 'contract_manager'), (req:
     const task = db.prepare('SELECT * FROM crm_tasks WHERE id = ?').get(taskId);
     res.json(task);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('CRM error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -186,7 +190,8 @@ router.put('/tasks/:id', requireRole('admin', 'manager', 'contract_manager'), (r
     const task = db.prepare('SELECT * FROM crm_tasks WHERE id = ?').get(id);
     res.json(task);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('CRM error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -201,7 +206,8 @@ router.delete('/tasks/:id', requireRole('admin', 'manager'), (req: Request, res:
     auditLog(req, 'crm_task_deleted', 'crm_task', String(id), `Deleted task: ${existing.title}`);
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('CRM error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -223,7 +229,8 @@ router.get('/activity/:clientId', requireRole('admin', 'manager', 'contract_mana
 
     res.json(rows);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('CRM error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -250,7 +257,8 @@ router.post('/activity', requireRole('admin', 'manager', 'contract_manager'), (r
     `).get(activityId);
     res.json(activity);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('CRM error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -281,7 +289,8 @@ router.get('/contacts', requireRole('admin', 'manager', 'contract_manager'), (re
     sql += ' ORDER BY c.name, p.last_name, p.first_name';
     res.json(db.prepare(sql).all(...params));
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('CRM error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -308,7 +317,8 @@ router.get('/expiring-contracts', requireRole('admin', 'manager', 'contract_mana
 
     res.json(rows);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('CRM error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -332,7 +342,8 @@ router.get('/reports/revenue', requireRole('admin', 'manager', 'contract_manager
     `).all();
     res.json(rows);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('CRM error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -361,7 +372,8 @@ router.get('/reports/pipeline', requireRole('admin', 'manager', 'contract_manage
       conversion_rate: decided > 0 ? Math.round((won / decided) * 100) : 0,
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('CRM error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -383,7 +395,8 @@ router.get('/reports/retention', requireRole('admin', 'manager', 'contract_manag
     `).all();
     res.json(rows);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('CRM error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -409,7 +422,8 @@ router.get('/reports/lead-source-roi', requireRole('admin', 'manager', 'contract
 
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('CRM error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -454,7 +468,8 @@ router.get('/reports/metrics', requireRole('admin', 'manager', 'contract_manager
       proposals_accepted: proposalsAccepted,
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('CRM error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

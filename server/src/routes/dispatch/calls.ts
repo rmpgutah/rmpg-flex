@@ -262,7 +262,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         customDisposition || null,
       );
 
-      const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(result.lastInsertRowid) as any;
+      const call = (db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(result.lastInsertRowid) as any) || { id: result.lastInsertRowid };
 
       // Log activity
       const isHistorical = !!customCreatedAt;

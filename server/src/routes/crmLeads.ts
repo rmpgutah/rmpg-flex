@@ -87,7 +87,8 @@ router.get('/leads', requireRole('admin', 'manager', 'contract_manager'), (req: 
     const rows = db.prepare(sql).all(...params);
     res.json(rows);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('CRM leads error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -120,7 +121,8 @@ router.get('/leads/:id', requireRole('admin', 'manager', 'contract_manager'), (r
 
     res.json({ ...lead, activity });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('CRM leads error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -186,7 +188,8 @@ router.post('/leads', requireRole('admin', 'manager', 'contract_manager'), (req:
     if (!lead) return res.status(404).json({ error: 'Lead not found after creation' });
     res.json(lead);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('CRM leads error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -249,7 +252,8 @@ router.put('/leads/:id', requireRole('admin', 'manager', 'contract_manager'), (r
     `).get(id);
     res.json(lead);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('CRM leads error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -270,7 +274,8 @@ router.delete('/leads/:id', requireRole('admin', 'manager'), (req: Request, res:
     auditLog(req, 'DELETE', 'crm_leads' as any, String(id), `Deleted lead: ${existing.business_name}`);
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('CRM leads error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -321,7 +326,8 @@ router.put('/leads/:id/stage', requireRole('admin', 'manager', 'contract_manager
     `).get(id);
     res.json(lead);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('CRM leads error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -363,7 +369,8 @@ router.put('/leads/:id/assign', requireRole('admin', 'manager', 'contract_manage
     `).get(id);
     res.json(lead);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('CRM leads error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -431,7 +438,8 @@ router.post('/leads/:id/convert', requireRole('admin', 'manager', 'contract_mana
     const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(clientId);
     res.json({ success: true, client: client || null, lead_id: Number(id), client_id: clientId });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('CRM leads error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -481,7 +489,8 @@ router.post('/leads/bulk-action', requireRole('admin', 'manager', 'contract_mana
     auditLog(req, 'UPDATE', 'crm_leads' as any, lead_ids.join(','), `Bulk ${action}: ${updated} leads`);
     res.json({ success: true, updated });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('CRM leads error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -499,7 +508,8 @@ router.get('/leads/pipeline-summary', requireRole('admin', 'manager', 'contract_
     `).all();
     res.json(rows);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('CRM leads error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -521,7 +531,8 @@ router.get('/lead-activity/:leadId', requireRole('admin', 'manager', 'contract_m
 
     res.json(rows);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('CRM leads error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -559,7 +570,8 @@ router.post('/lead-activity', requireRole('admin', 'manager', 'contract_manager'
     if (!activity) return res.status(404).json({ error: 'Activity not found' });
     res.json(activity);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('CRM leads error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -570,7 +582,8 @@ router.get('/scrape-sources', requireRole('admin', 'manager', 'contract_manager'
     const rows = db.prepare('SELECT * FROM lead_scrape_sources ORDER BY source_key').all();
     res.json(rows);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('CRM leads error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -604,7 +617,8 @@ router.put('/scrape-sources/:key', requireRole('admin', 'manager'), (req: Reques
     const source = db.prepare('SELECT * FROM lead_scrape_sources WHERE source_key = ?').get(key);
     res.json(source);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('CRM leads error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -626,7 +640,8 @@ router.post('/scrape-sources/:key/poll-now', requireRole('admin', 'manager'), as
     const result = await runScraper(sourceKey);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('CRM leads error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -651,7 +666,8 @@ router.get('/scrape-log', requireRole('admin', 'manager', 'contract_manager'), (
     const rows = db.prepare(sql).all(...params);
     res.json(rows);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('CRM leads error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

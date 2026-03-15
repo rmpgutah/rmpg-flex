@@ -684,7 +684,7 @@ router.post('/calls/:id/promote-to-incident', requireRole('admin', 'manager', 's
       call.injuries_reported || 0
     );
 
-    const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(result.lastInsertRowid);
+    const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(result.lastInsertRowid) || { id: result.lastInsertRowid };
     res.status(201).json(incident);
   } catch (error: any) {
     console.error('Promote to incident error:', error);
@@ -792,7 +792,7 @@ router.post('/calls/:id/persons', requireRole('admin', 'manager', 'supervisor', 
       LEFT JOIN persons p ON cp.person_id = p.id
       LEFT JOIN users u ON cp.added_by = u.id
       WHERE cp.id = ?
-    `).get(result.lastInsertRowid);
+    `).get(result.lastInsertRowid) || { id: result.lastInsertRowid };
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
@@ -932,7 +932,7 @@ router.post('/calls/:id/vehicles', requireRole('admin', 'manager', 'supervisor',
       LEFT JOIN persons op ON v.owner_person_id = op.id
       LEFT JOIN users u ON cv.added_by = u.id
       WHERE cv.id = ?
-    `).get(result.lastInsertRowid);
+    `).get(result.lastInsertRowid) || { id: result.lastInsertRowid };
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)

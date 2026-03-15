@@ -125,7 +125,8 @@ router.get('/status', (_req: Request, res: Response) => {
     const cached = db.prepare('SELECT COUNT(*) as count FROM email_cache').get() as { count: number };
     res.json({ ...status, cachedMessages: cached?.count || 0 });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -135,7 +136,8 @@ router.get('/signature', (req: Request, res: Response) => {
     const signature = getUserSignature(req.user!.userId);
     res.json({ signature: signature || '' });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -153,7 +155,8 @@ router.put('/signature', (req: Request, res: Response) => {
     }
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -166,7 +169,8 @@ router.get('/unread-count', (_req: Request, res: Response) => {
     ).get() as { count: number };
     res.json({ count: row?.count || 0 });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -200,7 +204,8 @@ router.get('/folders', async (req: Request, res: Response) => {
       })));
     }
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -216,7 +221,8 @@ router.get('/folders/:id/children', async (req: Request, res: Response) => {
       .get();
     res.json(result.value || []);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -236,7 +242,8 @@ router.post('/folders', async (req: Request, res: Response) => {
     auditLog(req, 'CREATE', 'email_folder', 0, JSON.stringify({ displayName, parentFolderId }));
     res.json(folder);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -252,7 +259,8 @@ router.patch('/folders/:id', async (req: Request, res: Response) => {
     auditLog(req, 'UPDATE', 'email_folder', 0, JSON.stringify({ folderId: req.params.id, displayName }));
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -265,7 +273,8 @@ router.delete('/folders/:id', async (req: Request, res: Response) => {
     auditLog(req, 'DELETE', 'email_folder', 0, JSON.stringify({ folderId: req.params.id }));
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -382,7 +391,8 @@ router.get('/messages', async (req: Request, res: Response) => {
       total,
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -427,7 +437,8 @@ router.post('/messages/batch', async (req: Request, res: Response) => {
     auditLog(req, 'BATCH_EMAIL', 'email', 0, JSON.stringify({ action, count: ids.length, success, failed }));
     res.json({ success, failed });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -457,7 +468,8 @@ router.post('/messages/mark-all-read', async (req: Request, res: Response) => {
     auditLog(req, 'MARK_ALL_READ', 'email', 0, JSON.stringify({ folder, count: success }));
     res.json({ success: true, marked: success });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -507,7 +519,8 @@ router.get('/messages/:id', async (req: Request, res: Response) => {
       sentAt: msg.sentDateTime,
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -531,7 +544,8 @@ router.get('/messages/:id/attachments', async (req: Request, res: Response) => {
       contentId: a.contentId,
     })));
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -551,7 +565,8 @@ router.get('/messages/:id/attachments/:aid', async (req: Request, res: Response)
     res.setHeader('Content-Length', content.length.toString());
     res.send(content);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -593,7 +608,8 @@ router.post('/send', async (req: Request, res: Response) => {
       res.status(500).json({ error: 'Failed to send email' });
     }
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -613,7 +629,8 @@ router.post('/messages/:id/reply', async (req: Request, res: Response) => {
     auditLog(req, 'REPLY_EMAIL', 'email', 0, JSON.stringify({ messageId: req.params.id }));
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -633,7 +650,8 @@ router.post('/messages/:id/reply-all', async (req: Request, res: Response) => {
     auditLog(req, 'REPLY_ALL_EMAIL', 'email', 0, JSON.stringify({ messageId: req.params.id }));
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -659,7 +677,8 @@ router.post('/messages/:id/forward', async (req: Request, res: Response) => {
     auditLog(req, 'FORWARD_EMAIL', 'email', 0, JSON.stringify({ messageId: req.params.id, to: toList }));
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -690,7 +709,8 @@ router.patch('/messages/:id', async (req: Request, res: Response) => {
 
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -713,7 +733,8 @@ router.delete('/messages/:id', async (req: Request, res: Response) => {
     auditLog(req, 'DELETE_EMAIL', 'email', 0, JSON.stringify({ messageId: req.params.id }));
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -736,7 +757,8 @@ router.post('/messages/:id/move', async (req: Request, res: Response) => {
 
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -756,7 +778,8 @@ router.get('/templates', (_req: Request, res: Response) => {
     `).all();
     res.json({ data: templates });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -768,7 +791,8 @@ router.get('/templates/:id', (req: Request, res: Response) => {
     if (!template) { res.status(404).json({ error: 'Template not found' }); return; }
     res.json(template);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -787,7 +811,8 @@ router.post('/templates', (req: Request, res: Response) => {
     auditLog(req, 'CREATE', 'email_template', result.lastInsertRowid as number, `Created template: ${name}`);
     res.json({ success: true, id: result.lastInsertRowid });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -806,7 +831,8 @@ router.put('/templates/:id', (req: Request, res: Response) => {
     auditLog(req, 'UPDATE', 'email_template', parseInt(String(req.params.id), 10), `Updated template: ${name}`);
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -822,7 +848,8 @@ router.delete('/templates/:id', (req: Request, res: Response) => {
     auditLog(req, 'DELETE', 'email_template', parseInt(String(req.params.id), 10), `Deleted template: ${template.name}`);
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -880,7 +907,8 @@ router.get('/contacts/search', (req: Request, res: Response) => {
 
     res.json({ data: unique });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -910,7 +938,8 @@ router.post('/link', (req: Request, res: Response) => {
 
     res.json({ success: true, id: result.lastInsertRowid });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -934,7 +963,8 @@ router.get('/links/:emailGraphId', (req: Request, res: Response) => {
     `).all(String(req.params.emailGraphId));
     res.json({ data: links });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -953,7 +983,8 @@ router.get('/links/incident/:incidentId', (req: Request, res: Response) => {
     `).all(req.params.incidentId);
     res.json({ data: links });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -964,7 +995,8 @@ router.delete('/link/:id', (req: Request, res: Response) => {
     db.prepare('DELETE FROM email_incident_links WHERE id = ?').run(req.params.id);
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1001,7 +1033,8 @@ router.post('/schedule', (req: Request, res: Response) => {
 
     res.json({ success: true, id: result.lastInsertRowid });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1019,7 +1052,8 @@ router.get('/scheduled', (req: Request, res: Response) => {
     `).all(String(status), req.user!.userId);
     res.json({ data: rows });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1035,7 +1069,8 @@ router.delete('/scheduled/:id', (req: Request, res: Response) => {
     db.prepare("UPDATE scheduled_emails SET status = 'cancelled' WHERE id = ?").run(req.params.id);
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1060,7 +1095,8 @@ router.put('/admin/credentials', requireRole('admin'), (req: Request, res: Respo
     auditLog(req, 'UPDATE', 'system_config', 0, 'ms_email_credentials_saved');
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1081,7 +1117,8 @@ router.delete('/admin/credentials', requireRole('admin'), (req: Request, res: Re
     auditLog(req, 'DELETE', 'system_config', 0, 'ms_email_credentials_cleared');
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1103,7 +1140,8 @@ router.get('/admin/oauth/authorize', requireRole('admin'), (req: Request, res: R
     auditLog(req, 'OAUTH_INITIATE', 'system_config', 0, 'ms_email_oauth_started');
     res.json({ url });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1118,7 +1156,8 @@ router.post('/admin/test-connection', requireRole('admin'), async (req: Request,
       smtp: smtpResult,
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1144,7 +1183,8 @@ router.put('/admin/enable', requireRole('admin'), (req: Request, res: Response) 
 
     res.json({ success: true, ...getStatus() });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1164,7 +1204,8 @@ router.put('/admin/smtp-settings', requireRole('admin'), (req: Request, res: Res
     auditLog(req, 'UPDATE', 'system_config', 0, 'ms_email_smtp_settings_updated');
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1174,7 +1215,8 @@ router.post('/admin/sync-now', requireRole('admin'), async (req: Request, res: R
     const result = await syncNow();
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Email route error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

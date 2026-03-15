@@ -88,7 +88,7 @@ router.post('/clients', (req: Request, res: Response) => {
       account_manager || null, priority_client ? 1 : 0, client_since || null,
     );
 
-    const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(result.lastInsertRowid);
+    const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(result.lastInsertRowid) || { id: result.lastInsertRowid };
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
@@ -293,7 +293,7 @@ router.post('/call-templates', (req: Request, res: Response) => {
       sortOrder, req.user!.userId,
     );
 
-    const template = db.prepare('SELECT * FROM call_templates WHERE id = ?').get(result.lastInsertRowid);
+    const template = db.prepare('SELECT * FROM call_templates WHERE id = ?').get(result.lastInsertRowid) || { id: result.lastInsertRowid };
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)

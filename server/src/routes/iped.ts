@@ -45,7 +45,8 @@ router.get('/status', (_req: Request, res: Response) => {
     const stats = getIpedUsageStats();
     res.json({ ...cfg, ...stats });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('IPED error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -68,7 +69,8 @@ router.put('/config', requireRole('admin'), (req: Request, res: Response) => {
     setIpedConfigValues(values);
     res.json({ success: true, message: 'IPED configuration saved' });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('IPED error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -78,7 +80,8 @@ router.delete('/config', requireRole('admin'), (_req: Request, res: Response) =>
     clearIpedConfig();
     res.json({ success: true, message: 'IPED configuration cleared' });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('IPED error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -88,7 +91,8 @@ router.post('/validate', requireRole('admin'), (_req: Request, res: Response) =>
     const result = validateIpedInstallation();
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('IPED error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -98,7 +102,8 @@ router.post('/test-api', requireRole('admin'), async (_req: Request, res: Respon
     const result = await testIpedApiConnection();
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('IPED error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -133,7 +138,8 @@ router.get('/download/info', (_req: Request, res: Response) => {
       githubUrl: 'https://github.com/sepinf-inc/IPED/releases',
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('IPED error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -186,7 +192,8 @@ router.post('/jobs', requireRole('admin', 'manager'), async (req: Request, res: 
       } catch (err: any) {
         db.prepare("UPDATE iped_jobs SET status = 'failed', completed_at = ?, error_message = ?, updated_at = ? WHERE id = ?")
           .run(localNow(), err.message, localNow(), jobId);
-        return res.status(500).json({ error: err.message, jobId });
+        console.error('IPED job error:', err.message);
+        return res.status(500).json({ error: 'Processing failed', jobId });
       }
     }
 
@@ -207,7 +214,8 @@ router.post('/jobs', requireRole('admin', 'manager'), async (req: Request, res: 
 
     res.json({ success: true, jobId, status: 'queued' });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('IPED error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -243,7 +251,8 @@ router.get('/jobs', (req: Request, res: Response) => {
 
     res.json({ jobs, total, page, limit, totalPages: Math.ceil(total / limit) });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('IPED error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -272,7 +281,8 @@ router.get('/jobs/:id', (req: Request, res: Response) => {
 
     res.json({ ...job, hashes, progress });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('IPED error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -284,7 +294,8 @@ router.post('/jobs/:id/cancel', requireRole('admin', 'manager'), (req: Request, 
     const cancelled = cancelIpedJob(id);
     res.json({ success: cancelled, message: cancelled ? 'Job cancelled' : 'Job not running' });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('IPED error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -315,7 +326,8 @@ router.post('/hash/compute', async (req: Request, res: Response) => {
 
     res.json({ ...hashes, matches, flagged: matches.length > 0 });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('IPED error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -328,7 +340,8 @@ router.post('/hash/batch', requireRole('admin', 'manager'), async (req: Request,
     const result = await hashEvidenceAttachments(evidenceId);
     res.json({ success: true, ...result });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('IPED error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -358,7 +371,8 @@ router.get('/hash/results', (req: Request, res: Response) => {
 
     res.json({ results, count: results.length });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('IPED error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -373,7 +387,8 @@ router.post('/hash/check', requireRole('admin'), (req: Request, res: Response) =
 
     res.json({ matches, hit: matches.length > 0 });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('IPED error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -382,7 +397,8 @@ router.get('/hash-sets', requireRole('admin'), (_req: Request, res: Response) =>
   try {
     res.json({ sets: getHashSetSummary() });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('IPED error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -397,7 +413,8 @@ router.post('/hash-sets/import', requireRole('admin'), (req: Request, res: Respo
     const count = importHashSet(filePath, setName, category, hashType || 'md5');
     res.json({ success: true, imported: count, setName, category });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('IPED error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -411,7 +428,8 @@ router.post('/hash-sets/import-iped', requireRole('admin'), async (req: Request,
     const output = await importToIpedHashDb(filePath);
     res.json({ success: true, output });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('IPED error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -421,7 +439,8 @@ router.delete('/hash-sets/:name', requireRole('admin'), (req: Request, res: Resp
     const removed = removeHashSet(req.params.name as string);
     res.json({ success: true, removed });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('IPED error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -473,7 +492,8 @@ router.get('/usage', (_req: Request, res: Response) => {
   try {
     res.json(getIpedUsageStats());
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('IPED error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
