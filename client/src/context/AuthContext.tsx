@@ -369,10 +369,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setError(null);
 
     try {
-      const res = await fetch('/api/auth/verify-2fa', {
+      const res = await fetch('/api/auth/login/verify-2fa', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tempToken, code, deviceFingerprint: deviceFingerprintRef.current, trustDevice: !!trustDevice }),
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${tempToken}`,
+        },
+        body: JSON.stringify({ code, deviceFingerprint: deviceFingerprintRef.current, trustDevice: !!trustDevice }),
       });
 
       if (res.ok) {

@@ -1663,25 +1663,49 @@ router.post('/login/verify-2fa', authenticateTempToken, (req: Request, res: Resp
 
     const db = getDb();
 
-    // Get the user's TOTP secret from separate table
+    // Get the user's TOTP secret — try new system first, then legacy fallback
     const totpRecord = db.prepare(`
       SELECT encrypted_secret, encryption_iv, encryption_tag
       FROM user_totp_secrets WHERE user_id = ? AND is_verified = 1
     `).get(userId) as any;
 
-    if (!totpRecord) {
-      res.status(400).json({ error: '2FA is not configured for this account' });
-      return;
+    let isValid = false;
+
+    if (totpRecord) {
+      // New system: secret in separate table with 3-column encryption
+      try {
+        const secretBase32 = decryptSecretV2(
+          totpRecord.encrypted_secret,
+          totpRecord.encryption_iv,
+          totpRecord.encryption_tag
+        );
+        isValid = verifyTotpToken(secretBase32, code);
+      } catch (decryptErr: any) {
+        console.error('2FA decryption failed (new system):', decryptErr.message);
+        res.status(401).json({ error: '2FA secret could not be decrypted. Please re-enroll 2FA.' });
+        return;
+      }
+    } else {
+      // Legacy fallback: secret stored as iv:tag:ciphertext in users.totp_secret_enc
+      const legacyUser = db.prepare(
+        'SELECT totp_secret_enc FROM users WHERE id = ?'
+      ).get(userId) as { totp_secret_enc: string | null } | undefined;
+
+      if (legacyUser?.totp_secret_enc) {
+        try {
+          const secret = decryptSecret(legacyUser.totp_secret_enc);
+          isValid = verifyTotpCode(secret, code);
+        } catch (decryptErr: any) {
+          console.error('2FA decryption failed (legacy system):', decryptErr.message);
+          res.status(401).json({ error: '2FA secret could not be decrypted. Please re-enroll 2FA.' });
+          return;
+        }
+      } else {
+        res.status(400).json({ error: '2FA is not configured for this account' });
+        return;
+      }
     }
 
-    // Decrypt and verify
-    const secretBase32 = decryptSecretV2(
-      totpRecord.encrypted_secret,
-      totpRecord.encryption_iv,
-      totpRecord.encryption_tag
-    );
-
-    const isValid = verifyTotpToken(secretBase32, code);
     if (!isValid) {
       res.status(401).json({ error: 'Invalid verification code' });
       return;
