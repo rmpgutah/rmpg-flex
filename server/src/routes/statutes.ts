@@ -183,7 +183,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(stateCode || 'UT', stateName || 'Utah', title || 0, chapter || null, section || '', subsection || null, citation, short_title, description || null, definition || null, offense_level || null, category, subcategory || null);
 
-    const statute = db.prepare('SELECT * FROM utah_statutes WHERE id = ?').get(result.lastInsertRowid);
+    const statute = db.prepare('SELECT * FROM utah_statutes WHERE id = ?').get(result.lastInsertRowid) || { id: result.lastInsertRowid };
     res.status(201).json(statute);
   } catch (error: any) {
     console.error('Create statute error:', error);
@@ -286,7 +286,7 @@ router.post('/entity', (req: Request, res: Response) => {
       FROM entity_statutes es
       JOIN utah_statutes s ON es.statute_id = s.id
       WHERE es.id = ?
-    `).get(result.lastInsertRowid);
+    `).get(result.lastInsertRowid) || { id: result.lastInsertRowid };
 
     res.status(201).json(link);
   } catch (error: any) {

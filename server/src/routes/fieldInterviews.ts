@@ -153,15 +153,17 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
       now
     );
 
-    const created = db.prepare('SELECT * FROM field_interviews WHERE id = ?').get(result.lastInsertRowid) as any;
+    const created = (db.prepare('SELECT * FROM field_interviews WHERE id = ?').get(result.lastInsertRowid) as any) || { id: result.lastInsertRowid };
     // Broadcast minimal payload — no subject PII over WebSocket
-    broadcast('alerts', 'fi_created', {
-      id: created.id,
-      fi_number: created.fi_number,
-      officer_id: created.officer_id,
-      location: created.location,
-      status: created.status,
-    });
+    if (created.fi_number) {
+      broadcast('alerts', 'fi_created', {
+        id: created.id,
+        fi_number: created.fi_number,
+        officer_id: created.officer_id,
+        location: created.location,
+        status: created.status,
+      });
+    }
 
     // Notify supervisors of new field interview
     createNotificationForRoles(

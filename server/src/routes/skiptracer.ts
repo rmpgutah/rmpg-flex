@@ -226,7 +226,8 @@ router.put('/config', requireRole('admin'), (req: Request, res: Response) => {
 
     res.json({ success: true });
   } catch (err: any) {
-    console.error(`[${req.path}]`, err.message); res.status(500).json({ error: 'Internal server error' });
+    console.error('Skip tracer error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -240,7 +241,8 @@ router.delete('/config', requireRole('admin'), (req: Request, res: Response) => 
 
     res.json({ success: true });
   } catch (err: any) {
-    console.error(`[${req.path}]`, err.message); res.status(500).json({ error: 'Internal server error' });
+    console.error('Skip tracer error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -277,8 +279,7 @@ router.post('/test', requireRole('admin'), async (req: Request, res: Response) =
       });
     }
   } catch (err: any) {
-    console.error('[skiptracer] API test error:', err.message);
-    res.json({ success: false, error: 'Connection failed' });
+    res.json({ success: false, error: err.message });
   }
 });
 
@@ -296,7 +297,8 @@ router.get('/search/byname', async (req: Request, res: Response) => {
     auditLog(req, 'skiptracer_search', 'skiptracer', 0, `Skip trace by name: ${name}`);
     res.json(data);
   } catch (err: any) {
-    console.error(`[${req.path}]`, err.message); res.status(500).json({ error: 'Internal server error' });
+    console.error('Skip tracer error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -314,7 +316,8 @@ router.get('/search/byaddress', async (req: Request, res: Response) => {
     auditLog(req, 'skiptracer_search', 'skiptracer', 0, `Skip trace by address: ${address}`);
     res.json(data);
   } catch (err: any) {
-    console.error(`[${req.path}]`, err.message); res.status(500).json({ error: 'Internal server error' });
+    console.error('Skip tracer error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -332,7 +335,8 @@ router.get('/search/bynameaddress', async (req: Request, res: Response) => {
     auditLog(req, 'skiptracer_search', 'skiptracer', 0, `Skip trace by name+address: ${name}`);
     res.json(data);
   } catch (err: any) {
-    console.error(`[${req.path}]`, err.message); res.status(500).json({ error: 'Internal server error' });
+    console.error('Skip tracer error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -350,7 +354,8 @@ router.get('/search/byphone', async (req: Request, res: Response) => {
     auditLog(req, 'skiptracer_search', 'skiptracer', 0, `Skip trace by phone: ${phone}`);
     res.json(data);
   } catch (err: any) {
-    console.error(`[${req.path}]`, err.message); res.status(500).json({ error: 'Internal server error' });
+    console.error('Skip tracer error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -368,7 +373,8 @@ router.get('/search/byemail', async (req: Request, res: Response) => {
     auditLog(req, 'skiptracer_search', 'skiptracer', 0, `Skip trace by email: ${email}`);
     res.json(data);
   } catch (err: any) {
-    console.error(`[${req.path}]`, err.message); res.status(500).json({ error: 'Internal server error' });
+    console.error('Skip tracer error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -382,7 +388,8 @@ router.get('/person/:id', async (req: Request, res: Response) => {
     persistSearch('personDetailsByID', { id }, data, req.user!.userId);
     res.json(data);
   } catch (err: any) {
-    console.error(`[${req.path}]`, err.message); res.status(500).json({ error: 'Internal server error' });
+    console.error('Skip tracer error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -406,7 +413,8 @@ router.get('/history', async (req: Request, res: Response) => {
 
     res.json({ searches: rows, total, limit, offset });
   } catch (err: any) {
-    console.error(`[${req.path}]`, err.message); res.status(500).json({ error: 'Internal server error' });
+    console.error('Skip tracer error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -433,7 +441,8 @@ router.get('/stats', async (_req: Request, res: Response) => {
 
     res.json({ ...stats, byType });
   } catch (err: any) {
-    console.error('[skiptracer/stats]', err.message); res.status(500).json({ error: 'Internal server error' });
+    console.error('Skip tracer error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

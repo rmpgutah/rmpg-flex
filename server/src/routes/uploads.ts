@@ -347,7 +347,7 @@ router.post('/', upload.array('files', 10), (req: Request, res: Response) => {
       );
 
       const attachment = db.prepare('SELECT * FROM attachments WHERE id = ?').get(result.lastInsertRowid);
-      results.push(attachment);
+      if (attachment) results.push(attachment);
     }
 
     // Log the upload

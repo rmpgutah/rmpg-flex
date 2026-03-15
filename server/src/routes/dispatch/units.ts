@@ -48,7 +48,7 @@ router.post('/units', requireRole('admin', 'manager', 'dispatcher'), (req: Reque
       VALUES (?, ?, ?, ?, ?)
     `).run(call_sign, officer_id || null, status || 'off_duty', localNow(), localNow());
 
-    const unit = db.prepare('SELECT u.*, usr.full_name as officer_name FROM units u LEFT JOIN users usr ON u.officer_id = usr.id WHERE u.id = ?').get(result.lastInsertRowid);
+    const unit = db.prepare('SELECT u.*, usr.full_name as officer_name FROM units u LEFT JOIN users usr ON u.officer_id = usr.id WHERE u.id = ?').get(result.lastInsertRowid) || { id: result.lastInsertRowid };
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'unit_created', 'unit', ?, ?, ?)`).run(

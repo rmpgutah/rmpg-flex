@@ -81,7 +81,8 @@ router.get('/proposals', requireRole('admin', 'manager', 'contract_manager'), (r
     const rows = db.prepare(sql).all(...params);
     res.json(rows);
   } catch (err: any) {
-    console.error(`[route]`, err.message); res.status(500).json({ error: 'Internal server error' });
+    console.error('CRM proposals error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -112,7 +113,8 @@ router.get('/proposals/:id', requireRole('admin', 'manager', 'contract_manager')
 
     res.json(proposal);
   } catch (err: any) {
-    console.error(`[route]`, err.message); res.status(500).json({ error: 'Internal server error' });
+    console.error('CRM proposals error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -218,7 +220,8 @@ router.post('/proposals', requireRole('admin', 'manager', 'contract_manager'), (
     const proposal = createProposal();
     res.json(proposal);
   } catch (err: any) {
-    console.error(`[route]`, err.message); res.status(500).json({ error: 'Internal server error' });
+    console.error('CRM proposals error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -275,7 +278,8 @@ router.put('/proposals/:id', requireRole('admin', 'manager', 'contract_manager')
 
     res.json(proposal);
   } catch (err: any) {
-    console.error(`[route]`, err.message); res.status(500).json({ error: 'Internal server error' });
+    console.error('CRM proposals error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -298,7 +302,8 @@ router.delete('/proposals/:id', requireRole('admin', 'manager'), (req: Request, 
     auditLog(req, 'DELETE', 'crm_proposals' as any, String(id), `Deleted proposal ${existing.proposal_number}`);
     res.json({ success: true });
   } catch (err: any) {
-    console.error(`[route]`, err.message); res.status(500).json({ error: 'Internal server error' });
+    console.error('CRM proposals error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -374,7 +379,8 @@ router.put('/proposals/:id/stage', requireRole('admin', 'manager', 'contract_man
 
     res.json(proposal);
   } catch (err: any) {
-    console.error(`[route]`, err.message); res.status(500).json({ error: 'Internal server error' });
+    console.error('CRM proposals error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -385,7 +391,8 @@ router.get('/proposal-templates', requireRole('admin', 'manager', 'contract_mana
     const rows = db.prepare('SELECT * FROM crm_proposal_templates WHERE is_active = 1 ORDER BY name').all();
     res.json(rows);
   } catch (err: any) {
-    console.error(`[route]`, err.message); res.status(500).json({ error: 'Internal server error' });
+    console.error('CRM proposals error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -423,7 +430,8 @@ router.post('/proposal-templates', requireRole('admin'), (req: Request, res: Res
     const template = db.prepare('SELECT * FROM crm_proposal_templates WHERE id = ?').get(templateId);
     res.json(template);
   } catch (err: any) {
-    console.error(`[route]`, err.message); res.status(500).json({ error: 'Internal server error' });
+    console.error('CRM proposals error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -469,7 +477,8 @@ router.put('/proposal-templates/:id', requireRole('admin'), (req: Request, res: 
     const template = db.prepare('SELECT * FROM crm_proposal_templates WHERE id = ?').get(id);
     res.json(template);
   } catch (err: any) {
-    console.error(`[route]`, err.message); res.status(500).json({ error: 'Internal server error' });
+    console.error('CRM proposals error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -490,7 +499,8 @@ router.delete('/proposal-templates/:id', requireRole('admin'), (req: Request, re
     auditLog(req, 'DELETE', 'crm_proposals' as any, String(id), `Soft-deleted proposal template: ${existing.name}`);
     res.json({ success: true });
   } catch (err: any) {
-    console.error(`[route]`, err.message); res.status(500).json({ error: 'Internal server error' });
+    console.error('CRM proposals error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

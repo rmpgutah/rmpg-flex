@@ -274,7 +274,7 @@ router.post('/calls/:id/generate-incident', requireRole('admin', 'manager', 'sup
       LEFT JOIN users o ON i.officer_id = o.id
       LEFT JOIN calls_for_service c ON i.call_id = c.id
       WHERE i.id = ?
-    `).get(result.lastInsertRowid);
+    `).get(result.lastInsertRowid) || { id: result.lastInsertRowid };
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
@@ -366,7 +366,7 @@ router.post('/calls/:id/timeline', requireRole('admin', 'manager', 'dispatcher',
       VALUES (?, ?, 'call', ?, ?, ?, ?)
     `).run(req.user!.userId, action || 'note_added', call.id, details, req.ip || 'unknown', timestamp);
 
-    const entry = db.prepare('SELECT al.*, u.full_name as user_name FROM activity_log al LEFT JOIN users u ON al.user_id = u.id WHERE al.id = ?').get(result.lastInsertRowid);
+    const entry = db.prepare('SELECT al.*, u.full_name as user_name FROM activity_log al LEFT JOIN users u ON al.user_id = u.id WHERE al.id = ?').get(result.lastInsertRowid) || { id: result.lastInsertRowid };
     res.status(201).json(entry);
   } catch (error: any) {
     console.error('Add timeline entry error:', error);
