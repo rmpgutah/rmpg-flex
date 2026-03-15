@@ -47,6 +47,16 @@ export default function RadioPage() {
     leaveChannel,
     startTransmit,
     stopTransmit,
+    sendPage,
+    emergencyOverride,
+    startScan,
+    stopScan,
+    scanActive,
+    scanChannels,
+    incomingPage,
+    setLinkedCall,
+    linkedCallId,
+    dismissPage,
     isConnected,
     radioChannels: RADIO_CHANNELS,
   } = useRadio();
@@ -86,7 +96,7 @@ export default function RadioPage() {
       // Block PTT during private calls
       if (isInCall) return;
 
-      if (e.code === 'Space' && !spaceHeldRef.current) {
+      if ((e.code === 'Space' || e.key === 'F5' || e.keyCode === 279) && !spaceHeldRef.current) {
         e.preventDefault();
         spaceHeldRef.current = true;
         startTransmit();
@@ -94,7 +104,7 @@ export default function RadioPage() {
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.code === 'Space' && spaceHeldRef.current) {
+      if ((e.code === 'Space' || e.key === 'F5' || e.keyCode === 279) && spaceHeldRef.current) {
         e.preventDefault();
         spaceHeldRef.current = false;
         stopTransmit();
@@ -315,6 +325,38 @@ export default function RadioPage() {
           <div className="text-[9px] font-mono text-red-400 flex-shrink-0 uppercase tracking-widest">
             LIVE
           </div>
+        </div>
+      )}
+
+      {/* ─── Incoming Page Banner ──────────────────────────────── */}
+      {incomingPage && (
+        <div
+          className="flex items-center gap-3 px-4 py-2"
+          style={{
+            background: 'rgba(59, 130, 246, 0.15)',
+            borderBottom: '2px solid #3b82f6',
+            flexShrink: 0,
+          }}
+        >
+          <Radio style={{ width: 16, height: 16, color: '#60a5fa', flexShrink: 0 }} />
+          <div className="flex-1">
+            <div className="text-[10px] font-mono font-bold text-blue-300 tracking-wider">
+              PAGE FROM {incomingPage.from_full_name || incomingPage.from_username}
+              {incomingPage.from_call_sign ? ` (${incomingPage.from_call_sign})` : ''}
+            </div>
+            {incomingPage.message && (
+              <div className="text-[10px] font-mono text-blue-400/80 mt-0.5">
+                {incomingPage.message}
+              </div>
+            )}
+          </div>
+          <button
+            onClick={dismissPage}
+            className="text-[9px] font-mono text-blue-400 hover:text-white px-2 py-0.5"
+            style={{ border: '1px solid #3b82f680' }}
+          >
+            DISMISS
+          </button>
         </div>
       )}
 
@@ -544,14 +586,36 @@ export default function RadioPage() {
               })}
             </div>
 
-            {/* Right — leave button */}
-            <button
-              onClick={leaveChannel}
-              className="flex items-center gap-1 px-2 py-1 text-[10px] font-mono font-bold text-rmpg-400 hover:text-red-400 transition-colors ml-2"
-              style={{ border: '1px solid #2a3e58' }}
-            >
-              LEAVE
-            </button>
+            {/* Right — leave + scan buttons */}
+            <div className="flex items-center gap-1 ml-2">
+              <button
+                onClick={leaveChannel}
+                className="flex items-center gap-1 px-2 py-1 text-[10px] font-mono font-bold text-rmpg-400 hover:text-red-400 transition-colors"
+                style={{ border: '1px solid #2a3e58' }}
+              >
+                LEAVE
+              </button>
+              {/* Scan toggle */}
+              <button
+                onClick={() => {
+                  if (scanActive) {
+                    stopScan();
+                  } else {
+                    // Scan all channels except current
+                    const others = RADIO_CHANNELS.filter(c => c.id !== currentChannel).map(c => c.id);
+                    startScan(others);
+                  }
+                }}
+                className="flex items-center gap-1 px-2 py-1 text-[10px] font-mono font-bold transition-colors"
+                style={{
+                  border: `1px solid ${scanActive ? '#22c55e' : '#2a3e58'}`,
+                  color: scanActive ? '#22c55e' : '#5a6e80',
+                  background: scanActive ? 'rgba(34, 197, 94, 0.1)' : 'transparent',
+                }}
+              >
+                {scanActive ? 'SCAN ON' : 'SCAN'}
+              </button>
+            </div>
           </div>
 
           {/* ── Main Content ────────────────────────────────── */}

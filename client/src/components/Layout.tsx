@@ -311,6 +311,10 @@ export default function Layout() {
   const [activeBOLOs, setActiveBOLOs] = useState(0);
   const [emailUnreadCount, setEmailUnreadCount] = useState(0);
 
+  // Mobile context bar — officer's current radio channel + assigned call
+  const [mobileRadioChannel, setMobileRadioChannel] = useState<string | null>(null);
+  const [mobileActiveCallNumber, setMobileActiveCallNumber] = useState<string | null>(null);
+
   // Toolbar nav dropdowns
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   // Close dropdown on route change
@@ -423,6 +427,47 @@ export default function Layout() {
     });
     return () => unsub();
   }, [subscribe, refreshUser]);
+
+  // Track officer's radio channel and active call for MobileContextBar
+  useEffect(() => {
+    // Radio channel: listen for channel state (sent when joining a channel)
+    const unsubRadioState = subscribe('radio_channel_state', (msg: any) => {
+      const data = msg.data || msg;
+      setMobileRadioChannel(data.radioChannel || null);
+    });
+    // Clear radio channel when disconnected
+    const unsubRadioLeave = subscribe('radio_channel_leave', (msg: any) => {
+      const data = msg.data || msg;
+      // Only clear if it's our own leave (userId matches)
+      if (data.userId === Number(user?.id)) {
+        setMobileRadioChannel(null);
+      }
+    });
+
+    // Active call: listen for unit status changes to track assigned call
+    const unsubUnitStatus = subscribe('units:status', (msg: any) => {
+      const data = msg.data || msg;
+      // Check if this status update is for our unit
+      if (data.call_sign === gps.unitCallSign) {
+        setMobileActiveCallNumber(data.active_call_number || null);
+      }
+    });
+    // Also listen for call updates
+    const unsubCallUpdate = subscribe('calls:updated', (msg: any) => {
+      const data = msg.data || msg;
+      // If a call has our unit assigned, track it
+      if (data.assigned_unit === gps.unitCallSign && data.status !== 'closed') {
+        setMobileActiveCallNumber(data.call_number || null);
+      }
+    });
+
+    return () => {
+      unsubRadioState();
+      unsubRadioLeave();
+      unsubUnitStatus();
+      unsubCallUpdate();
+    };
+  }, [subscribe, user?.id, gps.unitCallSign]);
 
   // Close profile dropdown on outside click
   useEffect(() => {
@@ -543,8 +588,8 @@ export default function Layout() {
           />
           <MobileContextBar
             unitCallSign={gps.unitCallSign}
-            radioChannel={null}
-            activeCallNumber={null}
+            radioChannel={mobileRadioChannel}
+            activeCallNumber={mobileActiveCallNumber}
             isConnected={isConnected}
             gpsTracking={gps.isTracking}
           />

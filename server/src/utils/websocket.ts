@@ -29,12 +29,16 @@ interface WSClient {
   role?: string;
   authenticated: boolean;
   channels: Set<string>;
+  /** Unit call sign (e.g. "1A12") for MDC selcall addressing */
+  unitCallSign?: string;
   /** Current radio channel (null = not on radio) */
   radioChannel: string | null;
   /** Active private call ID (null = not in a call) */
   privateCallId: string | null;
   /** Client ID of private call partner */
   privateCallPartner: string | null;
+  /** Channels being scanned (monitored) in addition to the primary radio channel */
+  scanChannels?: string[];
 }
 
 const clients: Map<string, WSClient> = new Map();
@@ -354,6 +358,24 @@ function handleClientMessage(clientId: string, message: any): void {
       relayRadioAudio(clientId, message.data);
       break;
 
+    // ─── MDC Selcall ────────────────────────────────────────
+    case 'selcall_page':
+      if (!client.authenticated) return;
+      handleSelcallPage(clientId, message.data);
+      break;
+    case 'emergency_override':
+      if (!client.authenticated) return;
+      handleEmergencyOverride(clientId, message.data);
+      break;
+    case 'scan_subscribe':
+      if (!client.authenticated) return;
+      handleScanSubscribe(clientId, message.data);
+      break;
+    case 'scan_unsubscribe':
+      if (!client.authenticated) return;
+      handleScanUnsubscribe(clientId);
+      break;
+
     // ─── Private Calls (Full-Duplex) ─────────────────────
     case 'private_call_request':
       if (!client.authenticated) return;
@@ -628,6 +650,15 @@ function broadcastToRadioChannel(radioChannel: string, type: string, data: any, 
     ) {
       safeSend(client.ws, payload);
     }
+
+    // Also send to clients scanning this channel (for audio relay too)
+    const scanChannels = client.scanChannels;
+    if (scanChannels?.includes(radioChannel) && id !== excludeClientId) {
+      // Already sent above if client is on the channel, skip duplicates
+      if (client.radioChannel !== radioChannel) {
+        safeSend(client.ws, payload);
+      }
+    }
   });
 }
 
@@ -794,6 +825,7 @@ function handleRadioTransmitEnd(clientId: string, data?: any): void {
 
   const transcript = data?.transcript || null;
   const duration = data?.duration || 0;
+  const linkedCallId = data?.linked_call_id || null;
 
   // ── Save buffered audio to file ───────────────────────────
   let audioFilePath: string | null = null;
@@ -832,8 +864,8 @@ function handleRadioTransmitEnd(clientId: string, data?: any): void {
   try {
     const db = database.getDb();
     db.prepare(
-      `INSERT INTO radio_transcripts (user_id, username, full_name, channel, transcript, duration, audio_file, file_size, transmitted_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))`
+      `INSERT INTO radio_transcripts (user_id, username, full_name, channel, transcript, duration, audio_file, file_size, linked_call_id, transmitted_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))`
     ).run(
       client.userId,
       client.username || 'Unknown',
@@ -842,7 +874,8 @@ function handleRadioTransmitEnd(clientId: string, data?: any): void {
       transcript,
       duration,
       audioFilePath,
-      fileSize > 1024 ? fileSize : null
+      fileSize > 1024 ? fileSize : null,
+      linkedCallId
     );
   } catch (err) {
     console.error('Failed to save radio transcript:', err);
@@ -922,11 +955,16 @@ function relayRadioAudio(senderClientId: string, data: any): void {
 
   let recipientCount = 0;
   clients.forEach((client, id) => {
-    if (
-      id !== senderClientId &&
-      client.authenticated &&
-      client.radioChannel === channel
-    ) {
+    if (id === senderClientId || !client.authenticated) return;
+
+    // Send to clients on the same radio channel
+    if (client.radioChannel === channel) {
+      if (safeSend(client.ws, payload)) recipientCount++;
+      return; // already sent, skip scan check to avoid duplicate
+    }
+
+    // Also relay to clients scanning this channel
+    if (client.scanChannels?.includes(channel)) {
       if (safeSend(client.ws, payload)) recipientCount++;
     }
   });
@@ -955,6 +993,144 @@ function handleRadioDisconnect(clientId: string): void {
       loggedTransmissions.delete(key);
     }
   }
+}
+
+// ─── MDC Selcall System ──────────────────────────────────────
+// Motorola MDC-1200 inspired features: unit paging, emergency
+// override, silent monitor, and cross-patch.
+
+/** Page a specific unit — sends an alert tone + notification to target */
+function handleSelcallPage(senderClientId: string, data: any): void {
+  const sender = clients.get(senderClientId);
+  if (!sender || !sender.authenticated) return;
+
+  const targetUserId = data?.target_user_id;
+  const targetCallSign = data?.target_call_sign;
+  const message = data?.message || '';
+  const channel = data?.channel || sender.radioChannel;
+
+  if (!targetUserId && !targetCallSign) return;
+
+  console.log(`[Selcall] ${sender.username} paging ${targetCallSign || `user:${targetUserId}`} on ${channel || 'direct'}`);
+
+  // Find target client(s) — a user may have multiple sessions
+  const targets: string[] = [];
+  clients.forEach((client, id) => {
+    if (!client.authenticated) return;
+    if (targetUserId && client.userId === targetUserId) targets.push(id);
+    else if (targetCallSign && client.unitCallSign === targetCallSign) targets.push(id);
+  });
+
+  const pagePayload = JSON.stringify({
+    type: 'selcall_page',
+    data: {
+      from_user_id: sender.userId,
+      from_username: sender.username,
+      from_full_name: sender.fullName,
+      from_call_sign: sender.unitCallSign || null,
+      target_call_sign: targetCallSign || null,
+      channel,
+      message,
+      timestamp: new Date().toISOString(),
+    },
+    timestamp: new Date().toISOString(),
+  });
+
+  targets.forEach(id => {
+    const client = clients.get(id);
+    if (client) safeSend(client.ws, pagePayload);
+  });
+
+  // Confirm to sender
+  safeSend(sender.ws, JSON.stringify({
+    type: 'selcall_page_sent',
+    data: { target_call_sign: targetCallSign, target_user_id: targetUserId, delivered: targets.length },
+    timestamp: new Date().toISOString(),
+  }));
+}
+
+/** Emergency override — force-interrupts the current transmitter on a channel */
+function handleEmergencyOverride(clientId: string, data: any): void {
+  const client = clients.get(clientId);
+  if (!client || !client.authenticated) return;
+
+  const channel = data?.channel || client.radioChannel;
+  if (!channel) return;
+
+  // Check role — only supervisors+ or dispatchers can emergency override
+  const allowedRoles = ['admin', 'manager', 'supervisor', 'dispatcher'];
+  if (!allowedRoles.includes(client.role || '')) {
+    safeSend(client.ws, JSON.stringify({
+      type: 'emergency_override_denied',
+      data: { reason: 'Insufficient role for emergency override' },
+      timestamp: new Date().toISOString(),
+    }));
+    return;
+  }
+
+  console.log(`[Radio] EMERGENCY OVERRIDE by ${client.username} on ${channel}`);
+
+  // Force-end current transmitter
+  const currentTransmitter = activeTransmitters.get(channel);
+  if (currentTransmitter && currentTransmitter !== clientId) {
+    const transmitter = clients.get(currentTransmitter);
+    if (transmitter) {
+      // Notify the interrupted user
+      safeSend(transmitter.ws, JSON.stringify({
+        type: 'radio_transmit_end',
+        data: { forced: true, reason: 'Emergency override' },
+        timestamp: new Date().toISOString(),
+      }));
+    }
+    activeTransmitters.delete(channel);
+    loggedTransmissions.delete(`${channel}:${currentTransmitter}`);
+
+    // Clean up audio buffer
+    const bufKey = `${channel}:${currentTransmitter}`;
+    audioBuffers.delete(bufKey);
+    const bufTimer = audioBufferTimers.get(bufKey);
+    if (bufTimer) { clearTimeout(bufTimer); audioBufferTimers.delete(bufKey); }
+  }
+
+  // Broadcast emergency override notification to all channel members
+  broadcastToRadioChannel(channel, 'emergency_override', {
+    userId: client.userId,
+    username: client.username,
+    fullName: client.fullName,
+    channel,
+  });
+}
+
+/** Channel scan subscription — client wants to monitor additional channels */
+function handleScanSubscribe(clientId: string, data: any): void {
+  const client = clients.get(clientId);
+  if (!client || !client.authenticated) return;
+
+  const channels: string[] = data?.channels || [];
+  const validChannels = getRadioChannelNames();
+  const validScanChannels = channels.filter(ch => validChannels.includes(ch) && ch !== client.radioChannel);
+
+  // Store scan channels on the client
+  client.scanChannels = validScanChannels;
+
+  safeSend(client.ws, JSON.stringify({
+    type: 'scan_subscribed',
+    data: { channels: validScanChannels },
+    timestamp: new Date().toISOString(),
+  }));
+}
+
+/** Unsubscribe from channel scanning */
+function handleScanUnsubscribe(clientId: string): void {
+  const client = clients.get(clientId);
+  if (!client) return;
+  client.scanChannels = [];
+
+  safeSend(client.ws, JSON.stringify({
+    type: 'scan_unsubscribed',
+    data: {},
+    timestamp: new Date().toISOString(),
+  }));
 }
 
 // ─── Private Call System (Full-Duplex) ──────────────────────

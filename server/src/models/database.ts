@@ -2687,6 +2687,7 @@ function migrateSchema(): void {
   // Radio audio recording — store audio file path alongside transcripts
   addCol('radio_transcripts', 'audio_file', 'TEXT');
   addCol('radio_transcripts', 'file_size', 'INTEGER');
+  addCol('radio_transcripts', 'linked_call_id', 'TEXT');
 
   // ── Backfill dispatch district names on existing calls ──────────
   try {
