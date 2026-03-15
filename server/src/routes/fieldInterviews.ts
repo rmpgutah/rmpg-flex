@@ -151,6 +151,7 @@ router.post('/', (req: Request, res: Response) => {
     );
 
     const created = db.prepare('SELECT * FROM field_interviews WHERE id = ?').get(result.lastInsertRowid) as any;
+    if (!created) { res.status(500).json({ error: 'Failed to retrieve created field interview' }); return; }
     // Broadcast minimal payload — no subject PII over WebSocket
     broadcast('alerts', 'fi_created', {
       id: created.id,

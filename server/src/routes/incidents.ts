@@ -80,8 +80,8 @@ router.get('/', (req: Request, res: Response) => {
       pagination: {
         page: pageNum,
         limit: limitNum,
-        total: countRow.total,
-        totalPages: Math.ceil(countRow.total / limitNum),
+        total: countRow?.total ?? 0,
+        totalPages: Math.ceil((countRow?.total ?? 0) / limitNum),
       },
     });
   } catch (error: any) {
@@ -387,6 +387,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
     );
 
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(result.lastInsertRowid);
+    if (!incident) { res.status(500).json({ error: 'Failed to retrieve created incident' }); return; }
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
@@ -737,6 +738,7 @@ router.post('/:id/persons', requireRole('admin', 'manager', 'supervisor', 'offic
       LEFT JOIN users u ON ip.added_by = u.id
       WHERE ip.id = ?
     `).get(result.lastInsertRowid);
+    if (!linked) { res.status(500).json({ error: 'Failed to retrieve linked person' }); return; }
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
@@ -873,6 +875,7 @@ router.post('/:id/vehicles', requireRole('admin', 'manager', 'supervisor', 'offi
       LEFT JOIN users u ON iv.added_by = u.id
       WHERE iv.id = ?
     `).get(result.lastInsertRowid);
+    if (!linked) { res.status(500).json({ error: 'Failed to retrieve linked vehicle' }); return; }
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
@@ -1023,6 +1026,7 @@ router.post('/:id/evidence', requireRole('admin', 'manager', 'supervisor', 'offi
     );
 
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(result.lastInsertRowid);
+    if (!evidence) { res.status(500).json({ error: 'Failed to retrieve created evidence' }); return; }
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
@@ -1112,6 +1116,7 @@ router.post('/:id/supplements', requireRole('admin', 'manager', 'supervisor', 'o
       LEFT JOIN users u ON sr.author_id = u.id
       WHERE sr.id = ?
     `).get(result.lastInsertRowid);
+    if (!supplement) { res.status(500).json({ error: 'Failed to retrieve created supplement' }); return; }
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)

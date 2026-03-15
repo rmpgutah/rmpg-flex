@@ -89,6 +89,7 @@ router.post('/clients', (req: Request, res: Response) => {
     );
 
     const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(result.lastInsertRowid);
+    if (!client) { res.status(500).json({ error: 'Failed to retrieve created client' }); return; }
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)

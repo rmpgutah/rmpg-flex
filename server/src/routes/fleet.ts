@@ -400,6 +400,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       LEFT JOIN units u ON fv.assigned_unit_id = u.id
       WHERE fv.id = ?
     `).get(result.lastInsertRowid) as any;
+    if (!created) { res.status(500).json({ error: 'Failed to retrieve created fleet vehicle' }); return; }
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
@@ -806,6 +807,7 @@ router.post('/:id/maintenance', requireRole('admin', 'manager', 'supervisor'), (
     db.prepare(`UPDATE fleet_vehicles SET ${fleetSetClauses.join(', ')} WHERE id = ?`).run(...fleetSetValues);
 
     const record = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(result.lastInsertRowid);
+    if (!record) { res.status(500).json({ error: 'Failed to retrieve maintenance record' }); return; }
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
@@ -1029,6 +1031,7 @@ router.post('/:id/fuel', requireRole('admin', 'manager', 'supervisor', 'officer'
     }
 
     const record = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(result.lastInsertRowid);
+    if (!record) { res.status(500).json({ error: 'Failed to retrieve fuel log' }); return; }
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
@@ -1235,6 +1238,7 @@ router.post('/:id/inspections', requireRole('admin', 'manager', 'supervisor', 'o
     }
 
     const record = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(result.lastInsertRowid) as any;
+    if (!record) { res.status(500).json({ error: 'Failed to retrieve inspection record' }); return; }
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
@@ -1497,6 +1501,7 @@ router.post('/:id/personnel-notes', requireRole('admin', 'manager', 'supervisor'
     `).run(id, officer_id || null, officer_name || null, note.trim(), req.user!.userId, creator?.full_name || 'Unknown', localNow());
 
     const created = db.prepare('SELECT * FROM fleet_personnel_notes WHERE id = ?').get(result.lastInsertRowid) as any;
+    if (!created) { res.status(500).json({ error: 'Failed to retrieve created note' }); return; }
 
     res.status(201).json(created);
   } catch (error: any) {

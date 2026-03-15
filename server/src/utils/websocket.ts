@@ -194,7 +194,11 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
 
       try {
         const message = JSON.parse(data.toString());
-        handleClientMessage(clientId, message);
+        try {
+          handleClientMessage(clientId, message);
+        } catch (handlerErr) {
+          console.error(`[WS] Error handling message type=${message?.type}:`, handlerErr);
+        }
       } catch {
         // Log malformed messages (potential abuse detection)
         const client = clients.get(clientId);

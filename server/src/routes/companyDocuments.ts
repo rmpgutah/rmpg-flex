@@ -113,6 +113,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       LEFT JOIN attachments a ON d.file_id = a.file_id
       WHERE d.id = ?
     `).get(result.lastInsertRowid);
+    if (!doc) { res.status(500).json({ error: 'Failed to retrieve created document' }); return; }
 
     res.status(201).json(doc);
   } catch (error: any) {

@@ -73,6 +73,7 @@ router.post('/config', requireRole('admin', 'manager'), (req: Request, res: Resp
     `).run(config_key, config_value, category, sortOrder, now, now);
 
     const item = db.prepare('SELECT * FROM system_config WHERE id = ?').get(result.lastInsertRowid);
+    if (!item) { res.status(500).json({ error: 'Failed to retrieve created config' }); return; }
 
     // Log activity
     db.prepare(`
