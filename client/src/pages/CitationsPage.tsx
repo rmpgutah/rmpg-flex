@@ -556,32 +556,35 @@ export default function CitationsPage() {
     <>
       {/* Search & filters header */}
       <div className="p-3 border-b border-rmpg-700 space-y-2">
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1">
+        <div className={`flex items-center gap-2 ${isMobile ? 'flex-col' : ''}`}>
+          <div className={`relative ${isMobile ? 'w-full' : 'flex-1'}`}>
             <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-rmpg-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
               placeholder="Search citations..."
-              className="input-dark w-full py-1.5 pl-8 pr-3 text-xs"
+              className={`input-dark w-full pl-8 pr-3 ${isMobile ? 'py-2.5 text-sm' : 'py-1.5 text-xs'}`}
+              style={isMobile ? { minHeight: 44 } : undefined}
             />
           </div>
-          <button onClick={handleNewCitation} className="toolbar-btn toolbar-btn-primary" title="New Citation">
-            <Plus size={12} /> New
-          </button>
-          <button onClick={() => { fetchCitations(); fetchStats(); }} className="text-rmpg-400 hover:text-rmpg-200 p-1 transition-colors" title="Refresh">
-            <RefreshCw size={14} />
-          </button>
+          <div className={`flex items-center gap-2 ${isMobile ? 'w-full' : ''}`}>
+            <button onClick={handleNewCitation} className={`toolbar-btn toolbar-btn-primary ${isMobile ? 'flex-1 justify-center' : ''}`} title="New Citation" style={isMobile ? { minHeight: 48 } : undefined}>
+              <Plus size={isMobile ? 16 : 12} /> New
+            </button>
+            <button onClick={() => { fetchCitations(); fetchStats(); }} className="text-rmpg-400 hover:text-rmpg-200 p-1 transition-colors" title="Refresh" style={isMobile ? { minHeight: 48, minWidth: 48 } : undefined}>
+              <RefreshCw size={isMobile ? 18 : 14} />
+            </button>
+          </div>
         </div>
         {/* Filter row */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <Filter size={10} className="text-rmpg-500" />
-          <select value={filterType} onChange={e => { setFilterType(e.target.value as any); setPage(1); }} className="input-dark py-1 px-2 text-[10px]">
+        <div className={`flex items-center ${isMobile ? 'flex-col gap-1.5' : 'gap-2 flex-wrap'}`}>
+          {!isMobile && <Filter size={10} className="text-rmpg-500" />}
+          <select value={filterType} onChange={e => { setFilterType(e.target.value as any); setPage(1); }} className={`input-dark px-2 ${isMobile ? 'w-full py-2 text-xs' : 'py-1 text-[10px]'}`} style={isMobile ? { minHeight: 44 } : undefined}>
             <option value="">All Types</option>
             {CITATION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
-          <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value as any); setPage(1); }} className="input-dark py-1 px-2 text-[10px]">
+          <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value as any); setPage(1); }} className={`input-dark px-2 ${isMobile ? 'w-full py-2 text-xs' : 'py-1 text-[10px]'}`} style={isMobile ? { minHeight: 44 } : undefined}>
             <option value="">All Statuses</option>
             {CITATION_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
@@ -609,9 +612,10 @@ export default function CitationsPage() {
             <button
               key={c.id}
               onClick={() => handleSelectCitation(c)}
-              className={`w-full text-left px-3 py-2 border-b border-rmpg-700/50 hover:bg-rmpg-700/20 transition-colors ${
+              className={`w-full text-left px-3 ${isMobile ? 'py-3' : 'py-2'} border-b border-rmpg-700/50 hover:bg-rmpg-700/20 transition-colors ${
                 selectedCitation?.id === c.id && mode === 'list' ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : ''
               }`}
+              style={isMobile ? { minHeight: 56 } : undefined}
             >
               <div className="flex items-center gap-2 mb-0.5">
                 <span className="text-[11px] font-mono font-bold text-white">{c.citation_number}</span>
@@ -637,12 +641,12 @@ export default function CitationsPage() {
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between px-3 py-2 border-t border-rmpg-700 text-[10px] text-rmpg-400">
-          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} className="hover:text-rmpg-200 disabled:opacity-30">
+        <div className={`flex items-center justify-between px-3 py-2 border-t border-rmpg-700 ${isMobile ? 'text-xs' : 'text-[10px]'} text-rmpg-400`}>
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} className="hover:text-rmpg-200 disabled:opacity-30" style={isMobile ? { minHeight: 48, minWidth: 48 } : undefined}>
             Prev
           </button>
           <span>Page {page} of {totalPages}</span>
-          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="hover:text-rmpg-200 disabled:opacity-30">
+          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="hover:text-rmpg-200 disabled:opacity-30" style={isMobile ? { minHeight: 48, minWidth: 48 } : undefined}>
             Next
           </button>
         </div>
@@ -858,17 +862,18 @@ export default function CitationsPage() {
         {/* Type selector */}
         <section>
           <h3 className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2">Citation Type</h3>
-          <div className="flex gap-2 flex-wrap">
+          <div className={`flex ${isMobile ? 'flex-col' : 'flex-wrap'} gap-2`}>
             {CITATION_TYPES.map(t => (
               <button
                 key={t.value}
                 type="button"
                 onClick={() => updateField('type', t.value)}
-                className={`px-3 py-1.5 text-xs font-bold uppercase transition-colors border ${
+                className={`px-3 ${isMobile ? 'py-3 text-sm' : 'py-1.5 text-xs'} font-bold uppercase transition-colors border ${
                   form.type === t.value
                     ? TYPE_BADGE[t.value] + ' ring-1 ring-brand-500/50'
                     : 'border-rmpg-600 text-rmpg-400 bg-rmpg-800/40 hover:bg-rmpg-700/50'
                 }`}
+                style={isMobile ? { minHeight: 48 } : undefined}
               >
                 {t.label}
               </button>
@@ -1148,20 +1153,21 @@ export default function CitationsPage() {
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-end gap-3 px-4 py-3 border-t border-rmpg-700">
-        <button onClick={handleCancelForm} className="px-4 py-2 text-xs font-bold uppercase text-rmpg-300 hover:text-rmpg-100 transition-colors">
-          Cancel
-        </button>
+      <div className={`flex items-center ${isMobile ? 'flex-col gap-2' : 'justify-end gap-3'} px-4 py-3 border-t border-rmpg-700`}>
         <button
           onClick={handleSave}
           disabled={saving}
-          className="toolbar-btn toolbar-btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+          className={`toolbar-btn toolbar-btn-primary disabled:opacity-50 disabled:cursor-not-allowed ${isMobile ? 'w-full justify-center' : ''}`}
+          style={isMobile ? { minHeight: 48, fontSize: 14 } : undefined}
         >
           {saving ? (
             <><Loader2 size={14} className="animate-spin" /> Saving...</>
           ) : (
             <><Check size={14} /> {isEdit ? 'Save Changes' : 'Create Citation'}</>
           )}
+        </button>
+        <button onClick={handleCancelForm} className={`px-4 py-2 text-xs font-bold uppercase text-rmpg-300 hover:text-rmpg-100 transition-colors ${isMobile ? 'w-full text-center' : ''}`} style={isMobile ? { minHeight: 48 } : undefined}>
+          Cancel
         </button>
       </div>
     </div>

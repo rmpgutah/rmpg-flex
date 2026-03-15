@@ -266,22 +266,25 @@ export default function FieldInterviewsPage() {
       </PanelTitleBar>
 
       {/* Toolbar */}
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-rmpg-700" style={{ background: '#141e2b' }}>
-        <div className="relative flex-1 max-w-xs">
+      <div className={`flex ${isMobile ? 'flex-col gap-1.5' : 'items-center gap-2'} px-3 py-1.5 border-b border-rmpg-700`} style={{ background: '#141e2b' }}>
+        <div className={`relative ${isMobile ? 'w-full' : 'flex-1 max-w-xs'}`}>
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
           <input
-            type="text" placeholder="Search FIs..." className="input-dark pl-7 text-xs w-full"
+            type="text" placeholder="Search FIs..." className={`input-dark pl-7 w-full ${isMobile ? 'text-sm py-2.5' : 'text-xs'}`}
             value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPage(1); }}
+            style={isMobile ? { minHeight: 44 } : undefined}
           />
         </div>
-        <select className="select-dark text-xs" value={filterReason} onChange={e => { setFilterReason(e.target.value); setPage(1); }}>
-          <option value="">All Reasons</option>
-          {CONTACT_REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-        </select>
-        <label className="flex items-center gap-1 text-[10px] text-rmpg-400 cursor-pointer">
-          <input type="checkbox" checked={showArchived} onChange={e => { setShowArchived(e.target.checked); setPage(1); }} className="accent-brand-500" />
-          Archived
-        </label>
+        <div className={`flex items-center ${isMobile ? 'gap-2' : 'gap-2'}`}>
+          <select className={`select-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs'}`} value={filterReason} onChange={e => { setFilterReason(e.target.value); setPage(1); }} style={isMobile ? { minHeight: 44 } : undefined}>
+            <option value="">All Reasons</option>
+            {CONTACT_REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+          </select>
+          <label className={`flex items-center gap-1 ${isMobile ? 'text-xs' : 'text-[10px]'} text-rmpg-400 cursor-pointer`} style={isMobile ? { minHeight: 44 } : undefined}>
+            <input type="checkbox" checked={showArchived} onChange={e => { setShowArchived(e.target.checked); setPage(1); }} className="accent-brand-500" style={isMobile ? { width: 20, height: 20 } : undefined} />
+            Archived
+          </label>
+        </div>
       </div>
 
       {/* Error Banner */}
@@ -312,7 +315,8 @@ export default function FieldInterviewsPage() {
               <div
                 key={fi.id}
                 onClick={() => setSelectedFi(fi)}
-                className={`px-3 py-2 cursor-pointer border-b border-rmpg-800 transition-colors hover:bg-surface-raised ${selectedFi?.id === fi.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'border-l-2 border-l-transparent'}`}
+                className={`px-3 ${isMobile ? 'py-3' : 'py-2'} cursor-pointer border-b border-rmpg-800 transition-colors hover:bg-surface-raised ${selectedFi?.id === fi.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'border-l-2 border-l-transparent'}`}
+                style={isMobile ? { minHeight: 56 } : undefined}
               >
                 <div className="flex items-center justify-between mb-0.5">
                   <span className="text-[11px] font-bold font-mono text-brand-400">{fi.fi_number}</span>
@@ -342,10 +346,10 @@ export default function FieldInterviewsPage() {
           )}
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-2 py-2 text-[10px] text-rmpg-400">
-              <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="toolbar-btn" style={{ fontSize: '10px' }}>Prev</button>
+            <div className={`flex items-center justify-center gap-2 py-2 ${isMobile ? 'text-xs' : 'text-[10px]'} text-rmpg-400`}>
+              <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined, minWidth: isMobile ? 48 : undefined }}>Prev</button>
               <span>Page {page} of {totalPages}</span>
-              <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} className="toolbar-btn" style={{ fontSize: '10px' }}>Next</button>
+              <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined, minWidth: isMobile ? 48 : undefined }}>Next</button>
             </div>
           )}
         </div>
@@ -358,21 +362,21 @@ export default function FieldInterviewsPage() {
                 <h2 className="text-sm font-bold text-white font-mono">{selectedFi.fi_number}</h2>
                 <span className="text-[10px] text-rmpg-400">Created {formatDateTime(selectedFi.created_at)}</span>
               </div>
-              <div className="flex items-center gap-1">
-                <button onClick={() => handleEdit(selectedFi)} className="toolbar-btn" style={{ fontSize: '10px' }}>
-                  <FileText style={{ width: 10, height: 10 }} /> Edit
+              <div className={`flex items-center ${isMobile ? 'gap-2' : 'gap-1'}`}>
+                <button onClick={() => handleEdit(selectedFi)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
+                  <FileText style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Edit
                 </button>
                 {selectedFi.status === 'active' ? (
-                  <button onClick={() => handleArchive(selectedFi)} className="toolbar-btn" style={{ fontSize: '10px' }}>
-                    <Archive style={{ width: 10, height: 10 }} /> Archive
+                  <button onClick={() => handleArchive(selectedFi)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
+                    <Archive style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Archive
                   </button>
                 ) : (
-                  <button onClick={() => handleUnarchive(selectedFi)} className="toolbar-btn" style={{ fontSize: '10px' }}>
-                    <RotateCcw style={{ width: 10, height: 10 }} /> Restore
+                  <button onClick={() => handleUnarchive(selectedFi)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
+                    <RotateCcw style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Restore
                   </button>
                 )}
-                <button onClick={() => setSelectedFi(null)} className="toolbar-btn" style={{ fontSize: '10px' }}>
-                  <X style={{ width: 10, height: 10 }} />
+                <button onClick={() => setSelectedFi(null)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
+                  <X style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} />
                 </button>
               </div>
             </div>
@@ -532,12 +536,12 @@ export default function FieldInterviewsPage() {
                 <textarea className="input-dark text-xs w-full" rows={4} value={formData.narrative} onChange={e => update('narrative', e.target.value)} /></div>
 
               {/* Actions */}
-              <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
-                <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn">Cancel</button>
-                <button type="submit" disabled={submitting} className="toolbar-btn" style={{ background: 'rgba(26,90,158,0.3)', borderColor: 'rgba(26,90,158,0.5)' }}>
-                  {submitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 10, height: 10 }} />}
+              <div className={`flex ${isMobile ? 'flex-col gap-2' : 'justify-end gap-2'} pt-2 border-t border-rmpg-700`}>
+                <button type="submit" disabled={submitting} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={{ background: 'rgba(26,90,158,0.3)', borderColor: 'rgba(26,90,158,0.5)', minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 14 : undefined }}>
+                  {submitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} />}
                   {editingFi ? 'Update' : 'Create'} FI Card
                 </button>
+                <button type="button" onClick={() => setFormOpen(false)} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={isMobile ? { minHeight: 48, fontSize: 14 } : undefined}>Cancel</button>
               </div>
             </form>
           </div>

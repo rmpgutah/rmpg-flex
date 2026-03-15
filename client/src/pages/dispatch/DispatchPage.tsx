@@ -1575,8 +1575,8 @@ export default function DispatchPage() {
   if (isMobile) {
     return (
       <div className="flex flex-col h-full relative">
-        {/* Filter pill tabs */}
-        <div className="mobile-pill-tabs">
+        {/* Filter pill tabs — min 44px touch targets */}
+        <div className="mobile-pill-tabs" style={{ gap: 6, padding: '8px 12px' }}>
           {([
             { id: 'all', label: 'All', count: tabCounts.all },
             { id: 'pending', label: 'Pending', count: tabCounts.pending },
@@ -1588,6 +1588,7 @@ export default function DispatchPage() {
               key={tab.id}
               onClick={() => setFilterTab(tab.id as FilterTab)}
               className={`mobile-pill-tab ${filterTab === tab.id ? 'active' : ''}`}
+              style={{ minHeight: 44, padding: '8px 14px', fontSize: 13 }}
             >
               {tab.label}
               {tab.count > 0 && (
@@ -1611,33 +1612,34 @@ export default function DispatchPage() {
           renderCard={(call) => (
             <div
               className={`mobile-card priority-${call.priority} ${selectedCall?.id === call.id ? 'selected' : ''}`}
+              style={{ minHeight: 56 }}
             >
               {/* Header row */}
-              <div className="flex items-center justify-between mb-1.5">
+              <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   {call.priority === 'P1' && (
-                    <AlertTriangle className="w-3.5 h-3.5 text-red-500 animate-emergency-blink" />
+                    <AlertTriangle className="w-4 h-4 text-red-500 animate-emergency-blink" />
                   )}
-                  <span className="text-sm font-bold text-green-400 font-mono">{call.call_number}</span>
+                  <span className="text-base font-bold text-green-400 font-mono">{call.call_number}</span>
                 </div>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-2">
                   <StatusBadge status={call.priority} type="priority" size="sm" />
                   <StatusBadge status={call.status} type="call_status" size="sm" />
                 </div>
               </div>
               {/* Type */}
-              <div className="text-sm font-medium text-brand-400 mb-1">
+              <div className="text-sm font-medium text-brand-400 mb-1.5">
                 {formatIncidentType(call.incident_type)}
               </div>
               {/* Location */}
-              <div className="flex items-center gap-1.5 text-xs text-rmpg-300 mb-1.5">
-                <MapPin className="w-3 h-3 flex-shrink-0" />
+              <div className="flex items-center gap-2 text-sm text-rmpg-300 mb-2">
+                <MapPin className="w-4 h-4 flex-shrink-0" />
                 <span className="truncate">{call.location || 'Unknown'}</span>
               </div>
               {/* Footer */}
-              <div className="flex items-center justify-between text-xs text-rmpg-400">
-                <div className="flex items-center gap-1 font-mono">
-                  <Clock className="w-3 h-3" />
+              <div className="flex items-center justify-between text-sm text-rmpg-400">
+                <div className="flex items-center gap-1.5 font-mono">
+                  <Clock className="w-3.5 h-3.5" />
                   <span>{formatElapsed(call.created_at)}</span>
                 </div>
                 {call.assigned_units.length > 0 && (
@@ -1668,6 +1670,129 @@ export default function DispatchPage() {
                   <span className="flex items-center gap-1 px-2 py-1 text-[10px] font-bold font-mono text-red-400 bg-red-900/30 border border-red-700/50 animate-pulse">
                     <AlertTriangle style={{ width: 10, height: 10 }} /> {callWarnings.length} ALERT{callWarnings.length !== 1 ? 'S' : ''}
                   </span>
+                )}
+              </div>
+
+              {/* Mobile Status Action Buttons — large touch targets for gloved use */}
+              <div className="flex flex-wrap gap-2">
+                {selectedCall.status === 'pending' && (
+                  <button
+                    onClick={() => handleStatusChange(selectedCall.id, 'dispatched')}
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded"
+                    style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0' }}
+                  >
+                    <Send style={{ width: 16, height: 16 }} /> Dispatch
+                  </button>
+                )}
+                {selectedCall.status === 'dispatched' && (
+                  <button
+                    onClick={() => handleStatusChange(selectedCall.id, 'enroute')}
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded"
+                    style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0' }}
+                  >
+                    <Navigation style={{ width: 16, height: 16 }} /> En Route
+                  </button>
+                )}
+                {selectedCall.status === 'enroute' && (
+                  <button
+                    onClick={() => handleStatusChange(selectedCall.id, 'onscene')}
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded"
+                    style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0' }}
+                  >
+                    <Eye style={{ width: 16, height: 16 }} /> On Scene
+                  </button>
+                )}
+                {['dispatched', 'enroute', 'onscene'].includes(selectedCall.status) && (
+                  <>
+                    <button
+                      onClick={() => handleClearWithDisposition(selectedCall.id)}
+                      className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded"
+                      style={{ minHeight: 48, minWidth: 80, background: '#16a34a20', border: '1px solid #16a34a50', color: '#4ade80' }}
+                    >
+                      <CheckCircle style={{ width: 16, height: 16 }} /> Clear
+                    </button>
+                    <button
+                      onClick={() => handleHoldCall(selectedCall.id)}
+                      className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded"
+                      style={{ minHeight: 48, minWidth: 80, background: '#f59e0b20', border: '1px solid #f59e0b50', color: '#f59e0b' }}
+                    >
+                      ⏸ Hold
+                    </button>
+                    <button
+                      onClick={() => handleStatusChange(selectedCall.id, 'cancelled')}
+                      className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded"
+                      style={{ minHeight: 48, minWidth: 80, background: '#dc262620', border: '1px solid #dc262650', color: '#ef7a7a' }}
+                    >
+                      <XCircle style={{ width: 16, height: 16 }} /> Cancel
+                    </button>
+                  </>
+                )}
+                {selectedCall.status === 'on_hold' && (
+                  <button
+                    onClick={() => handleResumeCall(selectedCall.id)}
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded"
+                    style={{ minHeight: 48, minWidth: 80, background: '#f59e0b', color: '#000' }}
+                  >
+                    ▶ Resume
+                  </button>
+                )}
+                {selectedCall.status === 'cleared' && (
+                  <>
+                    <button
+                      onClick={() => handleStatusChange(selectedCall.id, 'closed')}
+                      className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded"
+                      style={{ minHeight: 48, minWidth: 80, background: '#374151', border: '1px solid #4b5563', color: '#d1d5db' }}
+                    >
+                      Close
+                    </button>
+                    <button
+                      onClick={handleGenerateIncident}
+                      disabled={isGenerating}
+                      className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded"
+                      style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0' }}
+                    >
+                      {isGenerating ? <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" /> : <FileText style={{ width: 16, height: 16 }} />}
+                      Report
+                    </button>
+                  </>
+                )}
+                {selectedCall.status === 'closed' && (
+                  <button
+                    onClick={handleGenerateIncident}
+                    disabled={isGenerating}
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-white rounded"
+                    style={{ minHeight: 48, minWidth: 80, background: '#1a5a9e', border: '1px solid #2a6ab0' }}
+                  >
+                    {isGenerating ? <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" /> : <FileText style={{ width: 16, height: 16 }} />}
+                    Report
+                  </button>
+                )}
+                {['dispatched', 'enroute', 'onscene', 'cleared', 'closed'].includes(selectedCall.status) && (
+                  <button
+                    onClick={() => handleRevertStatus(selectedCall.id)}
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded"
+                    style={{ minHeight: 48, minWidth: 80, background: '#f59e0b20', border: '1px solid #f59e0b50', color: '#f59e0b' }}
+                  >
+                    <Undo2 style={{ width: 16, height: 16 }} /> Back
+                  </button>
+                )}
+                {selectedCall.status !== 'archived' && (
+                  <button
+                    onClick={() => handleArchive(selectedCall.id)}
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded"
+                    style={{ minHeight: 48, minWidth: 80, background: '#37415120', border: '1px solid #4b556350', color: '#9ca3af' }}
+                  >
+                    <Archive style={{ width: 16, height: 16 }} /> Archive
+                  </button>
+                )}
+                {selectedCall.status === 'archived' && (
+                  <button
+                    onClick={() => handleUnarchive(selectedCall.id)}
+                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded"
+                    style={{ minHeight: 48, minWidth: 80, background: '#37415120', border: '1px solid #4b556350', color: '#9ca3af' }}
+                  >
+                    <RotateCcw style={{ width: 16, height: 16 }} /> Restore
+                  </button>
                 )}
               </div>
 
@@ -1753,11 +1878,11 @@ export default function DispatchPage() {
                   </div>
                 )}
 
-                {/* Notes */}
-                {selectedCall.notes && selectedCall.notes.length > 0 && (
-                  <div className="panel-inset p-3">
-                    <div className="field-label mb-2">Notes</div>
-                    <div className="space-y-2">
+                {/* Notes + Add Note */}
+                <div className="panel-inset p-3">
+                  <div className="field-label mb-2">Notes</div>
+                  {selectedCall.notes && selectedCall.notes.length > 0 && (
+                    <div className="space-y-2 mb-3">
                       {selectedCall.notes.map((note) => (
                         <div key={note.id} className="text-xs">
                           <div className="flex items-center gap-2 text-rmpg-400">
@@ -1768,8 +1893,28 @@ export default function DispatchPage() {
                         </div>
                       ))}
                     </div>
+                  )}
+                  {/* Add note input — mobile */}
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      className="flex-1 bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-200 px-3 rounded"
+                      style={{ minHeight: 44 }}
+                      placeholder="Add note…"
+                      value={newNote}
+                      onChange={(e) => setNewNote(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddNote(); } }}
+                    />
+                    <button
+                      onClick={handleAddNote}
+                      disabled={!newNote.trim()}
+                      className="flex items-center justify-center px-4 py-3 text-xs font-bold text-white rounded"
+                      style={{ minHeight: 44, minWidth: 56, background: !newNote.trim() ? '#374151' : '#1a5a9e', border: '1px solid #2a6ab0' }}
+                    >
+                      <Send style={{ width: 16, height: 16 }} />
+                    </button>
                   </div>
-                )}
+                </div>
 
                 {/* PSO Details + Schedule Return Visit (mobile) */}
                 {selectedCall.incident_type === 'pso_client_request' && (

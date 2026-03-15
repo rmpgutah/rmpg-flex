@@ -995,37 +995,42 @@ export default function WarrantsPage() {
           {/* LEFT: Warrant List */}
           <div className={`${isMobile ? (selectedWarrant ? 'hidden' : 'flex-1') : 'w-[55%]'} flex flex-col ${!isMobile ? 'border-r border-rmpg-600' : ''}`}>
             {/* Filters */}
-            <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700 bg-surface-sunken">
+            <div className={`flex ${isMobile ? 'flex-col gap-1.5' : 'items-center gap-2'} px-3 py-2 border-b border-rmpg-700 bg-surface-sunken`}>
               <div className="relative flex-1">
                 <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
                 <input
                   type="text"
-                  className="input-dark text-xs w-full pl-7"
+                  className={`input-dark w-full pl-7 ${isMobile ? 'text-sm py-2.5' : 'text-xs'}`}
                   placeholder="Search by subject name..."
                   value={searchQuery}
                   onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
+                  style={isMobile ? { minHeight: 44 } : undefined}
                 />
               </div>
-              <select
-                className="input-dark text-xs w-28"
-                value={filterStatus}
-                onChange={(e) => { setFilterStatus(e.target.value); setPage(1); }}
-              >
-                <option value="">All Status</option>
-                {WARRANT_STATUSES.map((s) => (
-                  <option key={s.value} value={s.value}>{s.label}</option>
-                ))}
-              </select>
-              <select
-                className="input-dark text-xs w-24"
-                value={filterType}
-                onChange={(e) => { setFilterType(e.target.value); setPage(1); }}
-              >
-                <option value="">All Types</option>
-                {WARRANT_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
-                ))}
-              </select>
+              <div className={`flex ${isMobile ? 'gap-1.5' : 'gap-2'}`}>
+                <select
+                  className={`input-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-28'}`}
+                  value={filterStatus}
+                  onChange={(e) => { setFilterStatus(e.target.value); setPage(1); }}
+                  style={isMobile ? { minHeight: 44 } : undefined}
+                >
+                  <option value="">All Status</option>
+                  {WARRANT_STATUSES.map((s) => (
+                    <option key={s.value} value={s.value}>{s.label}</option>
+                  ))}
+                </select>
+                <select
+                  className={`input-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-24'}`}
+                  value={filterType}
+                  onChange={(e) => { setFilterType(e.target.value); setPage(1); }}
+                  style={isMobile ? { minHeight: 44 } : undefined}
+                >
+                  <option value="">All Types</option>
+                  {WARRANT_TYPES.map((t) => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             {/* Error */}
@@ -1049,6 +1054,43 @@ export default function WarrantsPage() {
                   description={!showArchived ? 'Create a new warrant to get started' : undefined}
                   action={!showArchived ? { label: 'New Warrant', onClick: openNewForm } : undefined}
                 />
+              ) : isMobile ? (
+                /* Mobile: card-style list for better touch targets */
+                <div>
+                  {warrants.filter((w) => {
+                    if (!searchQuery.trim()) return true;
+                    const q = searchQuery.toLowerCase();
+                    return (
+                      (w.warrant_number || '').toLowerCase().includes(q) ||
+                      (w.charge_description || '').toLowerCase().includes(q) ||
+                      (w.subject_first_name || '').toLowerCase().includes(q) ||
+                      (w.subject_last_name || '').toLowerCase().includes(q) ||
+                      (w.subject_name || '').toLowerCase().includes(q)
+                    );
+                  }).map((w) => (
+                    <button
+                      key={w.id}
+                      onClick={() => fetchWarrantDetail(w.id)}
+                      className={`w-full text-left px-3 py-3 border-b border-rmpg-800 transition-colors hover:bg-surface-raised ${selectedWarrant?.id === w.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'border-l-2 border-l-transparent'}`}
+                      style={{ minHeight: 56 }}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-mono font-bold text-white">{w.warrant_number || '-'}</span>
+                        <div className="flex items-center gap-1">
+                          <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded border ${TYPE_COLORS[w.type] || TYPE_COLORS.other}`}>
+                            {w.type.toUpperCase()}
+                          </span>
+                          <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded border ${STATUS_COLORS[w.status] || ''}`}>
+                            {w.status.toUpperCase()}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-sm text-rmpg-200 font-medium">{w.subject_name || 'Unknown'}</div>
+                      <div className="text-xs text-rmpg-400 truncate mt-0.5">{w.charge_description}</div>
+                      <div className="text-[10px] text-rmpg-500 mt-0.5">{formatDate(w.created_at)}{w.offense_level ? ` \u2022 ${w.offense_level}` : ''}</div>
+                    </button>
+                  ))}
+                </div>
               ) : (
                 <table className="table-dark">
                   <thead>
@@ -1104,12 +1146,12 @@ export default function WarrantsPage() {
             {/* Pagination */}
             {totalPages > 1 && (
               <div className="flex items-center justify-between px-3 py-1.5 border-t border-rmpg-700 bg-surface-sunken">
-                <span className="text-[10px] text-rmpg-400">
+                <span className={`${isMobile ? 'text-xs' : 'text-[10px]'} text-rmpg-400`}>
                   Page {page} of {totalPages} ({totalCount} results)
                 </span>
                 <div className="flex gap-1">
-                  <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1} className="toolbar-btn text-[9px]">Prev</button>
-                  <button onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page >= totalPages} className="toolbar-btn text-[9px]">Next</button>
+                  <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1} className="toolbar-btn text-[9px]" style={isMobile ? { minHeight: 48, minWidth: 48 } : undefined}>Prev</button>
+                  <button onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page >= totalPages} className="toolbar-btn text-[9px]" style={isMobile ? { minHeight: 48, minWidth: 48 } : undefined}>Next</button>
                 </div>
               </div>
             )}
@@ -1117,35 +1159,35 @@ export default function WarrantsPage() {
 
           {/* RIGHT: Warrant Detail */}
           <div ref={warrantDetailRef} className={`${isMobile ? (selectedWarrant ? 'flex-1' : 'hidden') : 'flex-1'} flex flex-col overflow-hidden`}>
-            <div className="flex items-center gap-1 px-3 py-1 border-b border-[#1e3048] bg-[var(--grid-header-bg)]">
+            <div className={`flex ${isMobile ? 'flex-wrap gap-1' : 'items-center gap-1'} px-3 py-1 border-b border-[#1e3048] bg-[var(--grid-header-bg)]`}>
               <Gavel className="w-3 h-3 text-brand-400" />
               <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">Warrant Detail</span>
               <span className="flex-1" />
               {isMobile && selectedWarrant && (
-                <button onClick={() => setSelectedWarrant(null)} className="toolbar-btn text-[9px]">← Back</button>
+                <button onClick={() => setSelectedWarrant(null)} className="toolbar-btn text-[9px]" style={isMobile ? { minHeight: 44 } : undefined}>← Back</button>
               )}
               <PrintRecordButton recordType="warrant" recordData={selectedWarrant} identifier={selectedWarrant?.warrant_number} entityType="warrant" entityId={selectedWarrant?.id} label="Print" />
               {selectedWarrant && !selectedWarrant.archived_at && (
                 <>
                   {selectedWarrant.status === 'active' && (
                     <>
-                      <button onClick={() => { setServeLocation(''); setServeModalOpen(true); }} className="toolbar-btn toolbar-btn-primary text-[9px]">
+                      <button onClick={() => { setServeLocation(''); setServeModalOpen(true); }} className="toolbar-btn toolbar-btn-primary text-[9px]" style={isMobile ? { minHeight: 48 } : undefined}>
                         <CheckCircle className="w-3 h-3" /> Serve
                       </button>
-                      <button onClick={() => openEditForm(selectedWarrant)} className="toolbar-btn text-[9px]">
+                      <button onClick={() => openEditForm(selectedWarrant)} className="toolbar-btn text-[9px]" style={isMobile ? { minHeight: 48 } : undefined}>
                         <Edit className="w-3 h-3" /> Edit
                       </button>
-                      <button onClick={() => handleUpdateStatus(selectedWarrant.id, 'recalled')} className="toolbar-btn text-[9px] text-amber-400">
+                      <button onClick={() => handleUpdateStatus(selectedWarrant.id, 'recalled')} className="toolbar-btn text-[9px] text-amber-400" style={isMobile ? { minHeight: 48 } : undefined}>
                         <XCircle className="w-3 h-3" /> Recall
                       </button>
                     </>
                   )}
                   {selectedWarrant.status !== 'active' && (
                     <>
-                      <button onClick={() => handleArchive(selectedWarrant.id)} className="toolbar-btn text-[9px]" title="Archive this warrant">
+                      <button onClick={() => handleArchive(selectedWarrant.id)} className="toolbar-btn text-[9px]" title="Archive this warrant" style={isMobile ? { minHeight: 48 } : undefined}>
                         <Archive className="w-3 h-3" /> Archive
                       </button>
-                      <button onClick={() => setDeletingWarrant(selectedWarrant)} className="toolbar-btn text-[9px] text-red-400" title="Permanently delete">
+                      <button onClick={() => setDeletingWarrant(selectedWarrant)} className="toolbar-btn text-[9px] text-red-400" title="Permanently delete" style={isMobile ? { minHeight: 48 } : undefined}>
                         <Trash2 className="w-3 h-3" /> Delete
                       </button>
                     </>
@@ -1153,7 +1195,7 @@ export default function WarrantsPage() {
                 </>
               )}
               {selectedWarrant?.archived_at && (
-                <button onClick={() => handleUnarchive(selectedWarrant.id)} className="toolbar-btn text-[9px] text-amber-400">
+                <button onClick={() => handleUnarchive(selectedWarrant.id)} className="toolbar-btn text-[9px] text-amber-400" style={isMobile ? { minHeight: 48 } : undefined}>
                   <RotateCcw className="w-3 h-3" /> Unarchive
                 </button>
               )}

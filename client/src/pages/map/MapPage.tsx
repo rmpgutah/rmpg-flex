@@ -1538,9 +1538,9 @@ export default function MapPage() {
   // ============================================================
 
   return (
-    <div className="relative h-full flex">
-      {/* Map Container */}
-      <div className="flex-1 relative">
+    <div className={`relative h-full flex ${isMobile ? 'overflow-hidden' : ''}`}>
+      {/* Map Container — full-bleed on mobile, flex-1 on desktop */}
+      <div className="flex-1 relative" style={isMobile ? { flex: 1, minHeight: 0 } : undefined}>
         <div
           ref={mapRef}
           className="absolute inset-0 bg-surface-deep"
@@ -1553,7 +1553,7 @@ export default function MapPage() {
             Positioned top-left to avoid conflicts with route info panel (bottom-left). */}
         {mapLoaded && tilesStalled && (
           <div
-            className="absolute top-12 left-3 z-[10] flex items-center gap-2 px-3 py-2"
+            className={`absolute left-3 z-[10] flex items-center gap-2 px-3 py-2 ${isMobile ? 'top-16' : 'top-12'}`}
             style={{
               background: 'rgba(6,12,20,0.95)',
               border: '1px solid #f59e0b40',
@@ -1589,8 +1589,8 @@ export default function MapPage() {
           </div>
         )}
 
-        {/* RMPG Brand Watermark */}
-        <div className="absolute top-2 left-2 z-10 pointer-events-none opacity-40">
+        {/* RMPG Brand Watermark — pushed down on mobile to avoid search bar */}
+        <div className={`absolute left-2 z-10 pointer-events-none opacity-40 ${isMobile ? 'top-14' : 'top-2'}`}>
           <RmpgLogo height={20} iconOnly />
         </div>
 
@@ -1691,6 +1691,62 @@ export default function MapPage() {
           <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-[1000]">
             <div className="bg-red-900/95 border border-red-600 px-4 py-2 backdrop-blur-sm shadow-xl" style={{ borderRadius: 2 }}>
               <span className="text-white text-sm">{error}</span>
+            </div>
+          </div>
+        )}
+
+        {/* ── Mobile Address Search Bar - Top (full width) ── */}
+        {isMobile && (
+          <div className="absolute top-2 left-2 right-2 z-[1001]">
+            <div className="relative">
+              <div className="relative flex items-center">
+                <Search className="absolute left-3 w-4 h-4 text-white/50 pointer-events-none" />
+                <input
+                  type="text"
+                  value={addressSearch}
+                  onChange={(e) => handleAddressSearch(e.target.value)}
+                  onFocus={() => addressResults.length > 0 && setShowAddressResults(true)}
+                  onBlur={() => setTimeout(() => setShowAddressResults(false), 200)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') { setShowAddressResults(false); setAddressSearch(''); setAddressResults([]); }
+                  }}
+                  placeholder="Search address..."
+                  className="w-full text-[13px] pl-10 pr-10 bg-black/60 border border-white/15 text-white placeholder:text-white/40 focus:border-white/40 focus:bg-black/70 focus:outline-none backdrop-blur-md shadow-lg font-mono"
+                  style={{ borderRadius: 2, height: 44 }}
+                />
+                {addressSearch && (
+                  <button
+                    onClick={() => {
+                      setAddressSearch('');
+                      setAddressResults([]);
+                      setShowAddressResults(false);
+                      if (addressMarkerRef.current) {
+                        removeMarker(addressMarkerRef.current);
+                        addressMarkerRef.current = null;
+                      }
+                    }}
+                    className="absolute right-3 text-white/40 hover:text-white/80 p-1"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+              {showAddressResults && addressResults.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-black/90 border border-white/15 shadow-2xl backdrop-blur-md overflow-hidden" style={{ borderRadius: 2 }}>
+                  {addressResults.map((r) => (
+                    <button
+                      key={r.place_id}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => handleAddressSelect(r.place_id, r.description)}
+                      className="w-full text-left px-4 py-3 text-[12px] text-white/80 hover:bg-white/10 hover:text-white transition-colors border-b border-white/10 last:border-0 flex items-center gap-2"
+                      style={{ minHeight: 44 }}
+                    >
+                      <MapPin className="w-4 h-4 text-blue-400 shrink-0" />
+                      <span className="truncate">{r.description}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -2795,8 +2851,8 @@ export default function MapPage() {
           </div>
         </div>}
 
-        {/* ── Stats Bar - Top Left (after layers panel) ── */}
-        <div
+        {/* ── Stats Bar - Top Left (after layers panel, desktop only) ── */}
+        {!isMobile && <div
           className="absolute top-2 z-[1000] transition-all"
           style={{ left: layersPanelOpen ? 'calc(clamp(160px, 14vw, 200px) + 24px)' : 52 }}
         >
@@ -2851,18 +2907,20 @@ export default function MapPage() {
               )}
             </div>
           </div>
-        </div>
+        </div>}
 
-        {/* ── Route Info Panel (bottom-left) ── */}
+        {/* ── Route Info Panel (bottom-left, top on mobile) ── */}
         {activeRoute && (
           <div
-            className="absolute bottom-12 left-4 z-[1000] backdrop-blur-md"
+            className="absolute z-[1000] backdrop-blur-md"
             style={{
+              ...(isMobile
+                ? { top: 56, left: 8, right: 8 }
+                : { bottom: 48, left: 16, minWidth: 200 }),
               background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.92)' : 'rgba(6,12,20,0.95)',
               border: isLightMapStyle(mapStyle) ? '1px solid rgba(59,130,246,0.3)' : '1px solid #3b82f650',
               padding: '8px 14px',
               fontFamily: "'JetBrains Mono', 'Courier New', monospace",
-              minWidth: 200,
               borderRadius: 2,
               boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
             }}
@@ -2890,7 +2948,47 @@ export default function MapPage() {
         )}
 
         {/* ── Bottom Right Buttons (Recenter + GPS Locate) ── */}
-        <div className="absolute bottom-4 right-4 z-[1000] flex flex-col gap-2" style={{ marginRight: sidebarOpen ? 'clamp(200px, 20vw, 280px)' : 36 }}>
+        <div
+          className="absolute z-[1000] flex flex-col gap-2"
+          style={isMobile
+            ? { bottom: 'calc(88px + env(safe-area-inset-bottom))', right: 16 }
+            : { bottom: 16, right: 16, marginRight: sidebarOpen ? 'clamp(200px, 20vw, 280px)' : 36 }
+          }
+        >
+          {/* Zoom controls (mobile only — desktop has them top-right) */}
+          {isMobile && (
+            <div
+              className="flex flex-col overflow-hidden"
+              style={{
+                borderRadius: 2,
+                background: 'rgba(13, 21, 32, 0.9)',
+                border: '1px solid #1e3048',
+              }}
+            >
+              <button
+                onClick={() => {
+                  const map = mapInstanceRef.current;
+                  if (map) map.setZoom((map.getZoom() || 12) + 1);
+                }}
+                className="flex items-center justify-center transition-colors hover:bg-white/10 active:bg-white/20"
+                style={{ width: 48, height: 48, borderBottom: '1px solid #1e3048' }}
+                title="Zoom in"
+              >
+                <Plus className="w-5 h-5 text-white/80" />
+              </button>
+              <button
+                onClick={() => {
+                  const map = mapInstanceRef.current;
+                  if (map) map.setZoom((map.getZoom() || 12) - 1);
+                }}
+                className="flex items-center justify-center transition-colors hover:bg-white/10 active:bg-white/20"
+                style={{ width: 48, height: 48 }}
+                title="Zoom out"
+              >
+                <Minus className="w-5 h-5 text-white/80" />
+              </button>
+            </div>
+          )}
           {/* Center on my GPS position */}
           {gps.isTracking && gps.latitude != null && gps.longitude != null && (
             <button
@@ -2900,15 +2998,18 @@ export default function MapPage() {
                   mapInstanceRef.current?.setZoom(16);
                 }
               }}
-              className={`p-2.5 backdrop-blur-md shadow-xl transition-colors ${
+              className={`backdrop-blur-md shadow-xl transition-colors ${
                 isLightMapStyle(mapStyle)
                   ? 'bg-white/90 border border-blue-300 hover:bg-blue-50'
                   : 'bg-surface-deep/95 border border-blue-500/50 hover:bg-blue-900/30'
               }`}
-              style={{ borderRadius: 2 }}
+              style={isMobile
+                ? { borderRadius: 2, width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }
+                : { borderRadius: 2, padding: 10 }
+              }
               title={`Center on my position${gps.unitCallSign ? ` (${gps.unitCallSign})` : ''}`}
             >
-              <Navigation2 className={`w-4 h-4 ${isLightMapStyle(mapStyle) ? 'text-blue-600' : 'text-blue-400'}`} />
+              <Navigation2 className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} ${isLightMapStyle(mapStyle) ? 'text-blue-600' : 'text-blue-400'}`} />
             </button>
           )}
           {/* Reset to default view */}
@@ -2917,15 +3018,18 @@ export default function MapPage() {
               mapInstanceRef.current?.panTo({ lat: 40.7608, lng: -111.8910 });
               mapInstanceRef.current?.setZoom(12);
             }}
-            className={`p-2.5 backdrop-blur-md shadow-xl transition-colors ${
+            className={`backdrop-blur-md shadow-xl transition-colors ${
               isLightMapStyle(mapStyle)
                 ? 'bg-white/90 border border-gray-300 hover:bg-gray-100'
                 : 'bg-surface-deep/95 border border-rmpg-600 hover:bg-rmpg-700/40'
             }`}
-            style={{ borderRadius: 2 }}
+            style={isMobile
+              ? { borderRadius: 2, width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }
+              : { borderRadius: 2, padding: 10 }
+            }
             title="Reset view"
           >
-            <Crosshair className={`w-4 h-4 ${isLightMapStyle(mapStyle) ? 'text-gray-600' : 'text-rmpg-300'}`} />
+            <Crosshair className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} ${isLightMapStyle(mapStyle) ? 'text-gray-600' : 'text-rmpg-300'}`} />
           </button>
         </div>
       </div>
@@ -3123,11 +3227,24 @@ export default function MapPage() {
         <>
           <button
             className="mobile-fab"
-            style={{ bottom: 'calc(80px + env(safe-area-inset-bottom))', right: 16 }}
+            style={{
+              position: 'absolute',
+              bottom: 'calc(88px + env(safe-area-inset-bottom))',
+              left: 16,
+              zIndex: 20,
+              width: 48,
+              height: 48,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'rgba(13, 21, 32, 0.9)',
+              border: '1px solid #1e3048',
+              borderRadius: 2,
+            }}
             onClick={() => setMobileLayersOpen(!mobileLayersOpen)}
             aria-label="Toggle layers"
           >
-            <Layers style={{ width: 22, height: 22 }} />
+            <Layers style={{ width: 22, height: 22, color: '#3b82f6' }} />
           </button>
 
           <MobileBottomSheet

@@ -361,7 +361,7 @@ export default function DashboardPage() {
       )}
 
       {/* Stats Cards Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3'}`}>
         <StatsCard
           icon={Phone}
           label="Active Calls"
@@ -405,7 +405,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Priority Breakdown — Clickable beveled panels with LED dots */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+      <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2'}`}>
         {[
           { key: 'P1', label: 'P1 Emergency', led: 'led-red', border: 'border-l-red-500', count: stats.calls_by_priority.P1 },
           { key: 'P2', label: 'P2 Urgent', led: 'led-amber', border: 'border-l-amber-500', count: stats.calls_by_priority.P2 },
@@ -415,13 +415,13 @@ export default function DashboardPage() {
           <div
             key={key}
             onClick={() => navigate('/dispatch')}
-            className={`flex items-center gap-3 p-2 panel-beveled border-l-4 ${border} cursor-pointer hover:bg-surface-raised transition-all duration-150 group bg-surface-base`}
+            className={`flex items-center gap-3 ${isMobile ? 'p-3 min-h-[56px]' : 'p-2'} panel-beveled border-l-4 ${border} cursor-pointer hover:bg-surface-raised transition-all duration-150 group bg-surface-base`}
             title={`View ${key} calls in Dispatch`}
           >
             <span className={`led-dot ${led}`} />
             <div className="flex-1">
-              <div className="text-lg font-bold text-green-400 font-mono">{count}</div>
-              <div className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wide">{label}</div>
+              <div className={`${isMobile ? 'text-2xl' : 'text-lg'} font-bold text-green-400 font-mono`}>{count}</div>
+              <div className={`${isMobile ? 'text-[10px]' : 'text-[9px]'} text-rmpg-400 uppercase font-bold tracking-wide`}>{label}</div>
             </div>
             <ArrowRight className="w-3 h-3 text-rmpg-500 opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
@@ -573,17 +573,17 @@ export default function DashboardPage() {
           <div className="border-t border-rmpg-700 px-3 py-2 space-y-1.5">
             <h4 className="text-[9px] font-bold text-rmpg-500 uppercase tracking-wider">Quick Actions</h4>
             <div className="grid grid-cols-2 gap-1.5">
-              <button className="toolbar-btn toolbar-btn-primary justify-center text-[10px]" onClick={() => navigate('/dispatch')}>
-                <Plus style={{ width: 10, height: 10 }} /> New Call
+              <button className={`toolbar-btn toolbar-btn-primary justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/dispatch')}>
+                <Plus style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> New Call
               </button>
-              <button className="toolbar-btn justify-center text-[10px]" onClick={() => navigate('/incidents')}>
-                <FileText style={{ width: 10, height: 10 }} /> Incident
+              <button className={`toolbar-btn justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/incidents')}>
+                <FileText style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Incident
               </button>
-              <button className="toolbar-btn justify-center text-[10px]" onClick={() => navigate('/map')}>
-                <MapPin style={{ width: 10, height: 10 }} /> Map
+              <button className={`toolbar-btn justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/map')}>
+                <MapPin style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Map
               </button>
-              <button className="toolbar-btn justify-center text-[10px]" onClick={() => window.open('/warrants', '_blank')}>
-                <Gavel style={{ width: 10, height: 10 }} /> Warrants
+              <button className={`toolbar-btn justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => window.open('/warrants', '_blank')}>
+                <Gavel style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Warrants
               </button>
             </div>
           </div>
@@ -591,7 +591,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Shift Summary Row */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+      <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2'}`}>
         {[
           { icon: Phone, label: 'Calls Handled', value: stats.calls_today, color: '#3b82f6', path: '/dispatch' },
           { icon: FileText, label: 'Incidents Filed', value: stats.incidents_today, color: '#22c55e', path: '/incidents' },
@@ -603,13 +603,13 @@ export default function DashboardPage() {
           <div
             key={label}
             onClick={() => navigate(path)}
-            className="panel-beveled bg-surface-sunken p-2.5 cursor-pointer hover:bg-surface-raised transition-colors group"
+            className={`panel-beveled bg-surface-sunken ${isMobile ? 'p-3 min-h-[64px]' : 'p-2.5'} cursor-pointer hover:bg-surface-raised transition-colors group`}
           >
             <div className="flex items-center gap-2 mb-1">
-              <Icon className="w-3.5 h-3.5" style={{ color }} />
-              <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide truncate">{label}</span>
+              <Icon className={`${isMobile ? 'w-4 h-4' : 'w-3.5 h-3.5'}`} style={{ color }} />
+              <span className={`${isMobile ? 'text-[10px]' : 'text-[9px]'} text-rmpg-500 uppercase font-bold tracking-wide truncate`}>{label}</span>
             </div>
-            <div className="text-lg font-bold font-mono" style={{ color }}>{value}</div>
+            <div className={`${isMobile ? 'text-2xl' : 'text-lg'} font-bold font-mono`} style={{ color }}>{value}</div>
           </div>
         ))}
       </div>
@@ -635,7 +635,7 @@ export default function DashboardPage() {
             <PanelTitleBar title="PSO OPERATIONS — THIS MONTH" icon={Briefcase} />
             <div className="p-3 space-y-3">
               {/* PSO Stats Cards */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+              <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2'}`}>
                 <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px] border-l-brand-500">
                   <div className="flex items-center gap-1.5 mb-1">
                     <Briefcase className="w-3 h-3 text-brand-400" />
@@ -843,7 +843,7 @@ export default function DashboardPage() {
                   <tr className="border-b border-rmpg-600">
                     <th className="px-3 py-2 text-left text-rmpg-400 font-semibold uppercase text-[10px]">Officer</th>
                     <th className="px-3 py-2 text-left text-rmpg-400 font-semibold uppercase text-[10px]">Credential</th>
-                    <th className="px-3 py-2 text-left text-rmpg-400 font-semibold uppercase text-[10px]">Expiry Date</th>
+                    {!isMobile && <th className="px-3 py-2 text-left text-rmpg-400 font-semibold uppercase text-[10px]">Expiry Date</th>}
                     <th className="px-3 py-2 text-left text-rmpg-400 font-semibold uppercase text-[10px]">Days Left</th>
                     <th className="px-3 py-2 text-left text-rmpg-400 font-semibold uppercase text-[10px]">Status</th>
                   </tr>
@@ -857,10 +857,10 @@ export default function DashboardPage() {
                     const isUrgent = daysLeft <= 30;
 
                     return (
-                      <tr key={cred.id ?? idx} className="border-b border-rmpg-700/50 hover:bg-rmpg-800/50">
+                      <tr key={cred.id ?? idx} className={`border-b border-rmpg-700/50 hover:bg-rmpg-800/50 ${isMobile ? 'min-h-[48px]' : ''}`}>
                         <td className="px-3 py-2 text-rmpg-200">{cred.officer_name || cred.user_name || '-'}</td>
                         <td className="px-3 py-2 text-rmpg-200">{cred.credential_type || cred.type || '-'}</td>
-                        <td className="px-3 py-2 text-rmpg-200 font-mono">{exp.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}</td>
+                        {!isMobile && <td className="px-3 py-2 text-rmpg-200 font-mono">{exp.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}</td>}
                         <td className="px-3 py-2 font-mono font-bold" style={{ color: isExpired ? '#ef4444' : isUrgent ? '#f59e0b' : '#22c55e' }}>
                           {isExpired ? `${Math.abs(daysLeft)}d overdue` : `${daysLeft}d`}
                         </td>

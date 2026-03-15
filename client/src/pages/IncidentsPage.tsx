@@ -54,6 +54,7 @@ import PrintButton from '../components/PrintButton';
 import { useToast } from '../components/ToastProvider';
 import FloatingSaveBar from '../components/FloatingSaveBar';
 import { formatDate, formatDateTime } from '../utils/dateUtils';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 // ============================================================
 // Backend -> Frontend mapping
@@ -134,6 +135,7 @@ export default function IncidentsPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
+  const isMobile = useIsMobile();
 
   // ---------- data state ----------
   const [incidents, setIncidents] = useState<Incident[]>([]);
@@ -730,7 +732,7 @@ export default function IncidentsPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-rmpg-300" />
           <input
             type="text"
-            className="input-dark pl-9"
+            className={`input-dark pl-9 ${isMobile ? 'min-h-[44px] text-sm' : ''}`}
             placeholder={showArchived ? "Search archived incidents..." : "Search incidents..."}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -740,7 +742,7 @@ export default function IncidentsPage() {
 
       {/* Quick Stats Bar */}
       {!showArchived && !loading && (
-        <div className="px-4 py-1.5 border-b border-rmpg-700/50 flex items-center gap-4 text-[10px] font-mono flex-shrink-0" style={{ background: '#0d1520' }}>
+        <div className={`px-4 py-1.5 border-b border-rmpg-700/50 flex ${isMobile ? 'flex-wrap gap-2' : 'items-center gap-4'} text-[10px] font-mono flex-shrink-0`} style={{ background: '#0d1520' }}>
           <div className="flex items-center gap-1">
             <div className="w-2 h-2 rounded-full bg-amber-500" />
             <span className="text-rmpg-400">Draft:</span>
@@ -780,11 +782,11 @@ export default function IncidentsPage() {
           <table className="table-dark">
             <thead className="sticky top-0 z-10">
               <tr>
-                <th>IR #</th><th>Type</th><th>Priority</th><th>Status</th><th>Location</th><th>Officer</th><th>Date</th>
+                <th>IR #</th><th>Type</th><th>Priority</th><th>Status</th>{!isMobile && <th>Location</th>}{!isMobile && <th>Officer</th>}<th>Date</th>
               </tr>
             </thead>
             <tbody>
-              {Array.from({ length: 8 }).map((_, i) => <TableRowSkeleton key={i} cols={7} />)}
+              {Array.from({ length: 8 }).map((_, i) => <TableRowSkeleton key={i} cols={isMobile ? 5 : 7} />)}
             </tbody>
           </table>
         ) : error ? (
@@ -818,16 +820,16 @@ export default function IncidentsPage() {
                     Status <SortIcon colKey="status" sortKey={sortKey} sortAsc={sortAsc} />
                   </div>
                 </th>
-                <th className="cursor-pointer select-none" onClick={() => handleSort('location')}>
+                {!isMobile && <th className="cursor-pointer select-none" onClick={() => handleSort('location')}>
                   <div className="flex items-center gap-1">
                     Location <SortIcon colKey="location" sortKey={sortKey} sortAsc={sortAsc} />
                   </div>
-                </th>
-                <th className="cursor-pointer select-none" onClick={() => handleSort('officer_name')}>
+                </th>}
+                {!isMobile && <th className="cursor-pointer select-none" onClick={() => handleSort('officer_name')}>
                   <div className="flex items-center gap-1">
                     Officer <SortIcon colKey="officer_name" sortKey={sortKey} sortAsc={sortAsc} />
                   </div>
-                </th>
+                </th>}
                 <th className="cursor-pointer select-none" onClick={() => handleSort('occurred_at')}>
                   <div className="flex items-center gap-1">
                     Date <SortIcon colKey="occurred_at" sortKey={sortKey} sortAsc={sortAsc} />
@@ -843,7 +845,7 @@ export default function IncidentsPage() {
                     setSelectedIncident(inc);
                     setIsEditing(false);
                   }}
-                  className={`cursor-pointer ${
+                  className={`cursor-pointer ${isMobile ? 'min-h-[48px]' : ''} ${
                     selectedIncident?.id === inc.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : ''
                   }`}
                 >
@@ -855,14 +857,14 @@ export default function IncidentsPage() {
                   <td>
                     <StatusBadge status={inc.status} type="incident_status" size="sm" />
                   </td>
-                  <td className="text-xs text-rmpg-300 max-w-[200px] truncate">{inc.location}</td>
-                  <td className="text-xs text-rmpg-200">{inc.officer_name}</td>
+                  {!isMobile && <td className="text-xs text-rmpg-300 max-w-[200px] truncate">{inc.location}</td>}
+                  {!isMobile && <td className="text-xs text-rmpg-200">{inc.officer_name}</td>}
                   <td className="text-xs text-rmpg-300 font-mono">{formatDate(inc.occurred_at)}</td>
                 </tr>
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="text-center text-rmpg-400 py-12">
+                  <td colSpan={isMobile ? 5 : 7} className="text-center text-rmpg-400 py-12">
                     No incidents found
                   </td>
                 </tr>
@@ -1880,7 +1882,7 @@ export default function IncidentsPage() {
                 <select
                   value={custodyAction}
                   onChange={(e) => setCustodyAction(e.target.value)}
-                  className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-600 text-white"
+                  className={`w-full px-2 ${isMobile ? 'py-2.5 text-sm min-h-[44px]' : 'py-1.5 text-xs'} bg-surface-sunken border border-rmpg-600 text-white`}
                   style={{ borderRadius: 2 }}
                 >
                   <option value="transfer">Transfer</option>
@@ -1897,7 +1899,7 @@ export default function IncidentsPage() {
                   <input
                     value={custodyTransfer.currentLocation}
                     readOnly
-                    className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-400"
+                    className={`w-full px-2 ${isMobile ? 'py-2.5 text-sm min-h-[44px]' : 'py-1.5 text-xs'} bg-surface-sunken border border-rmpg-700 text-rmpg-400`}
                     style={{ borderRadius: 2 }}
                   />
                 </div>
@@ -1908,7 +1910,7 @@ export default function IncidentsPage() {
                   value={custodyToLocation}
                   onChange={(e) => setCustodyToLocation(e.target.value)}
                   placeholder="Evidence room, lab, officer name..."
-                  className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-600 text-white placeholder-rmpg-500"
+                  className={`w-full px-2 ${isMobile ? 'py-2.5 text-sm min-h-[44px]' : 'py-1.5 text-xs'} bg-surface-sunken border border-rmpg-600 text-white placeholder-rmpg-500`}
                   style={{ borderRadius: 2 }}
                   autoFocus
                 />
@@ -1919,23 +1921,23 @@ export default function IncidentsPage() {
                   value={custodyNotes}
                   onChange={(e) => setCustodyNotes(e.target.value)}
                   placeholder="Optional notes..."
-                  rows={2}
-                  className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-600 text-white placeholder-rmpg-500 resize-none"
+                  rows={isMobile ? 3 : 2}
+                  className={`w-full px-2 ${isMobile ? 'py-2.5 text-sm min-h-[80px]' : 'py-1.5 text-xs'} bg-surface-sunken border border-rmpg-600 text-white placeholder-rmpg-500 resize-none`}
                   style={{ borderRadius: 2 }}
                 />
               </div>
             </div>
-            <div className="px-4 py-2.5 border-t border-rmpg-600 flex justify-end gap-2">
+            <div className={`px-4 py-2.5 border-t border-rmpg-600 flex ${isMobile ? 'flex-col' : 'justify-end'} gap-2`}>
               <button
                 onClick={() => setCustodyTransfer(null)}
-                className="toolbar-btn px-3 py-1.5 text-[11px]"
+                className={`toolbar-btn ${isMobile ? 'w-full min-h-[48px] text-sm justify-center' : 'px-3 py-1.5 text-[11px]'}`}
               >
                 Cancel
               </button>
               <button
                 onClick={handleCustodyTransfer}
                 disabled={custodySubmitting}
-                className="toolbar-btn toolbar-btn-primary px-3 py-1.5 text-[11px] flex items-center gap-1"
+                className={`toolbar-btn toolbar-btn-primary ${isMobile ? 'w-full min-h-[48px] text-sm justify-center' : 'px-3 py-1.5 text-[11px]'} flex items-center gap-1`}
               >
                 {custodySubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
                 Record Action

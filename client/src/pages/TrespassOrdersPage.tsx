@@ -256,23 +256,26 @@ export default function TrespassOrdersPage() {
       </PanelTitleBar>
 
       {/* Toolbar */}
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-rmpg-700" style={{ background: '#141e2b' }}>
-        <div className="relative flex-1 max-w-xs">
+      <div className={`flex ${isMobile ? 'flex-col gap-1.5' : 'items-center gap-2'} px-3 py-1.5 border-b border-rmpg-700`} style={{ background: '#141e2b' }}>
+        <div className={`relative ${isMobile ? 'w-full' : 'flex-1 max-w-xs'}`}>
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
-          <input type="text" placeholder="Search orders..." className="input-dark pl-7 text-xs w-full"
-            value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPage(1); }} />
+          <input type="text" placeholder="Search orders..." className={`input-dark pl-7 w-full ${isMobile ? 'text-sm py-2.5' : 'text-xs'}`}
+            value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPage(1); }}
+            style={isMobile ? { minHeight: 44 } : undefined} />
         </div>
-        <select className="select-dark text-xs" value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }}>
-          <option value="">All Statuses</option>
-          <option value="active">Active</option>
-          <option value="served">Served</option>
-          <option value="expired">Expired</option>
-          <option value="lifted">Lifted</option>
-          <option value="violated">Violated</option>
-        </select>
-        <label className="flex items-center gap-1 text-[10px] text-rmpg-400 cursor-pointer">
-          <input type="checkbox" checked={showArchived} onChange={e => { setShowArchived(e.target.checked); setPage(1); }} className="accent-brand-500" /> Archived
-        </label>
+        <div className={`flex items-center ${isMobile ? 'gap-2' : 'gap-2'}`}>
+          <select className={`select-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs'}`} value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }} style={isMobile ? { minHeight: 44 } : undefined}>
+            <option value="">All Statuses</option>
+            <option value="active">Active</option>
+            <option value="served">Served</option>
+            <option value="expired">Expired</option>
+            <option value="lifted">Lifted</option>
+            <option value="violated">Violated</option>
+          </select>
+          <label className={`flex items-center gap-1 ${isMobile ? 'text-xs' : 'text-[10px]'} text-rmpg-400 cursor-pointer`} style={isMobile ? { minHeight: 44 } : undefined}>
+            <input type="checkbox" checked={showArchived} onChange={e => { setShowArchived(e.target.checked); setPage(1); }} className="accent-brand-500" style={isMobile ? { width: 20, height: 20 } : undefined} /> Archived
+          </label>
+        </div>
       </div>
 
       {/* Content */}
@@ -291,7 +294,8 @@ export default function TrespassOrdersPage() {
           ) : (
             orders.map(order => (
               <div key={order.id} onClick={() => setSelectedOrder(order)}
-                className={`px-3 py-2 cursor-pointer border-b border-rmpg-800 transition-colors hover:bg-surface-raised ${selectedOrder?.id === order.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'border-l-2 border-l-transparent'}`}
+                className={`px-3 ${isMobile ? 'py-3' : 'py-2'} cursor-pointer border-b border-rmpg-800 transition-colors hover:bg-surface-raised ${selectedOrder?.id === order.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'border-l-2 border-l-transparent'}`}
+                style={isMobile ? { minHeight: 56 } : undefined}
               >
                 <div className="flex items-center justify-between mb-0.5">
                   <span className="text-[11px] font-bold font-mono text-brand-400">{order.order_number}</span>
@@ -325,10 +329,10 @@ export default function TrespassOrdersPage() {
             ))
           )}
           {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-2 py-2 text-[10px] text-rmpg-400">
-              <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="toolbar-btn" style={{ fontSize: '10px' }}>Prev</button>
+            <div className={`flex items-center justify-center gap-2 py-2 ${isMobile ? 'text-xs' : 'text-[10px]'} text-rmpg-400`}>
+              <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined, minWidth: isMobile ? 48 : undefined }}>Prev</button>
               <span>Page {page} of {totalPages}</span>
-              <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} className="toolbar-btn" style={{ fontSize: '10px' }}>Next</button>
+              <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined, minWidth: isMobile ? 48 : undefined }}>Next</button>
             </div>
           )}
         </div>
@@ -341,21 +345,21 @@ export default function TrespassOrdersPage() {
                 <h2 className="text-sm font-bold text-white font-mono">{selectedOrder.order_number}</h2>
                 <span className="text-[10px] text-rmpg-400">Issued {new Date(selectedOrder.created_at).toLocaleString()}</span>
               </div>
-              <div className="flex items-center gap-1">
-                <button onClick={() => handleEdit(selectedOrder)} className="toolbar-btn" style={{ fontSize: '10px' }}>Edit</button>
+              <div className={`flex items-center ${isMobile ? 'gap-2 flex-wrap' : 'gap-1'}`}>
+                <button onClick={() => handleEdit(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>Edit</button>
                 {selectedOrder.status === 'active' && (
                   <>
-                    <button onClick={() => handleServe(selectedOrder)} className="toolbar-btn" style={{ fontSize: '10px', color: '#f59e0b' }}>
-                      <CheckCircle style={{ width: 10, height: 10 }} /> Serve
+                    <button onClick={() => handleServe(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: '#f59e0b', minHeight: isMobile ? 48 : undefined }}>
+                      <CheckCircle style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Serve
                     </button>
-                    <button onClick={() => handleLift(selectedOrder)} className="toolbar-btn" style={{ fontSize: '10px', color: '#22c55e' }}>Lift</button>
-                    <button onClick={() => handleViolate(selectedOrder)} className="toolbar-btn" style={{ fontSize: '10px', color: '#a855f7' }}>
-                      <AlertTriangle style={{ width: 10, height: 10 }} /> Violated
+                    <button onClick={() => handleLift(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: '#22c55e', minHeight: isMobile ? 48 : undefined }}>Lift</button>
+                    <button onClick={() => handleViolate(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: '#a855f7', minHeight: isMobile ? 48 : undefined }}>
+                      <AlertTriangle style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Violated
                     </button>
                   </>
                 )}
-                <button onClick={() => setSelectedOrder(null)} className="toolbar-btn" style={{ fontSize: '10px' }}>
-                  <X style={{ width: 10, height: 10 }} />
+                <button onClick={() => setSelectedOrder(null)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
+                  <X style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} />
                 </button>
               </div>
             </div>
@@ -518,12 +522,12 @@ export default function TrespassOrdersPage() {
               <div><label className="field-label">Notes</label>
                 <textarea className="input-dark text-xs w-full" rows={2} value={formData.notes} onChange={e => update('notes', e.target.value)} /></div>
 
-              <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
-                <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn">Cancel</button>
-                <button type="submit" disabled={submitting} className="toolbar-btn" style={{ background: 'rgba(26,90,158,0.3)', borderColor: 'rgba(26,90,158,0.5)' }}>
-                  {submitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 10, height: 10 }} />}
+              <div className={`flex ${isMobile ? 'flex-col gap-2' : 'justify-end gap-2'} pt-2 border-t border-rmpg-700`}>
+                <button type="submit" disabled={submitting} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={{ background: 'rgba(26,90,158,0.3)', borderColor: 'rgba(26,90,158,0.5)', minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 14 : undefined }}>
+                  {submitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} />}
                   {editingOrder ? 'Update' : 'Create'} Order
                 </button>
+                <button type="button" onClick={() => setFormOpen(false)} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={isMobile ? { minHeight: 48, fontSize: 14 } : undefined}>Cancel</button>
               </div>
             </form>
           </div>
