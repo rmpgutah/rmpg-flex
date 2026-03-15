@@ -169,7 +169,7 @@ router.post('/leads', requireRole('admin', 'manager', 'contract_manager'), (req:
       address || null, city || null, state || 'UT', zip || null,
       latitude ?? null, longitude ?? null,
       estimated_value ?? null, permit_number || null, registration_date || null,
-      license_number || null, project_type || null, property_size || null, notes || null,
+      license_number || null, project_type || null, property_size ?? null, notes || null,
       pipeline_stage || 'new', score, assigned_to || null, now, now,
     );
 

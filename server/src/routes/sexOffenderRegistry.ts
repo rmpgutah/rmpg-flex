@@ -141,7 +141,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor'), (req: Request, r
     `).run(
       person_id || null, registry_id || null, first_name, last_name, middle_name || null,
       typeof aliases === 'string' ? aliases : JSON.stringify(aliases || []),
-      dob || null, gender || null, race || null, height || null, weight || null,
+      dob || null, gender || null, race || null, height ?? null, weight ?? null,
       hair_color || null, eye_color || null, scars_marks_tattoos || null, photo_url || null,
       tier || 1, risk_level || null, registration_status || 'compliant',
       registration_date || null, expiration_date || null,
@@ -300,7 +300,7 @@ router.post('/import', requireRole('admin'), (req: Request, res: Response) => {
             r.registry_id || null, r.first_name, r.last_name, r.middle_name || null,
             typeof r.aliases === 'string' ? r.aliases : JSON.stringify(r.aliases || []),
             r.dob || null, r.gender || null, r.race || null,
-            r.height || null, r.weight || null, r.hair_color || null, r.eye_color || null,
+            r.height ?? null, r.weight ?? null, r.hair_color || null, r.eye_color || null,
             r.scars_marks_tattoos || null, r.photo_url || null,
             r.tier || 1, r.risk_level || null, r.registration_status || 'compliant',
             r.registration_date || null, r.expiration_date || null,

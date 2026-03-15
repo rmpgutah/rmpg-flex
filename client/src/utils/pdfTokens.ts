@@ -34,10 +34,6 @@ export const COLOR = {
   AMOUNT_CREDIT:   [0, 120, 60]     as const,
   AMOUNT_DEBIT:    [180, 0, 0]      as const,
 
-  // Form grid
-  BORDER_FORM_GRID: [180, 180, 180] as const,  // Form grid cell borders
-  BG_SIDEBAR_TAB:   [240, 240, 240] as const,  // Sidebar tab background
-
   // Watermark
   WATERMARK:       [120, 120, 120]  as const,
 

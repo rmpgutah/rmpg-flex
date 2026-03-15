@@ -515,11 +515,11 @@ router.put('/calls/:id/mileage', requireRole('admin', 'manager', 'dispatcher', '
 
     if (starting_mileage !== undefined) {
       updates.push('starting_mileage = ?');
-      params.push(starting_mileage || null);
+      params.push(starting_mileage ?? null);
     }
     if (ending_mileage !== undefined) {
       updates.push('ending_mileage = ?');
-      params.push(ending_mileage || null);
+      params.push(ending_mileage ?? null);
     }
 
     if (updates.length === 0) {

@@ -385,7 +385,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       vin || null,
       plate_number || null,
       plate_state || null,
-      current_mileage || null,
+      current_mileage ?? null,
       insurance_expiry || null,
       registration_expiry || null,
       equipmentJson,
@@ -781,7 +781,7 @@ router.post('/:id/maintenance', requireRole('admin', 'manager', 'supervisor'), (
       performed_by || null,
       performed_at || localNow(),
       next_due_date || null,
-      next_due_mileage || null,
+      next_due_mileage ?? null,
       localNow()
     );
 
@@ -1218,7 +1218,7 @@ router.post('/:id/inspections', requireRole('admin', 'manager', 'supervisor', 'o
       inspector_name,
       inspection_date,
       overall_result,
-      mileage || null,
+      mileage ?? null,
       itemsJson,
       notes || null,
       req.user!.userId,
@@ -1593,8 +1593,8 @@ router.post('/import/simply-fleet', requireRole('admin', 'manager'), (req: Reque
             f.odometer ?? null,
             f.station || null,
             f.notes || null,
-            f.distance || null,
-            f.efficiency || null,
+            f.distance ?? null,
+            f.efficiency ?? null,
             req.user!.userId,
             now,
           );

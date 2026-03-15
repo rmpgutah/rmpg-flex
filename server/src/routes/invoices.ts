@@ -25,7 +25,8 @@ function generateInvoiceNumber(): string {
   let seq = 1;
   if (last) {
     const parts = last.invoice_number.split('-');
-    seq = parseInt(parts[2], 10) + 1;
+    const parsed = parseInt(parts[2], 10);
+    seq = (isNaN(parsed) ? 0 : parsed) + 1;
   }
   return `${prefix}${String(seq).padStart(4, '0')}`;
 }

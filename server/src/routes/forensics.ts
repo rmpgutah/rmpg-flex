@@ -680,9 +680,9 @@ router.post('/:id/hashes/manual', (req: Request, res: Response) => {
         created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      parseInt(req.params.id as string), exhibit_id || null, file_name.trim(), fp || null, file_size || null, mime_type || null,
+      parseInt(req.params.id as string), exhibit_id || null, file_name.trim(), fp || null, file_size ?? null, mime_type || null,
       md5 || null, sha1 || null, sha256 || null, sha512 || null,
-      hash_set_match ? 1 : 0, hash_set_name || null, hash_set_category || null, match_confidence || null,
+      hash_set_match ? 1 : 0, hash_set_name || null, hash_set_category || null, match_confidence ?? null,
       flagged ? 1 : 0, flag_reason || null, notes || null,
       now, now,
     );

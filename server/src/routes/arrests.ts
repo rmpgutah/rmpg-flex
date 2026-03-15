@@ -167,7 +167,7 @@ router.post('/manual', requireRole('admin', 'manager', 'officer', 'supervisor'),
       fullName, first || b.first_name || '', last || b.last_name || '', middle || b.middle_name || '',
       b.date_of_birth || null, b.booking_date || now, b.release_date || null,
       charges, b.county || '', b.state || 'UT', b.status || 'active', b.booking_number || null, b.agency || null,
-      b.gender || null, b.race || null, b.height || null, b.weight || null, b.hair_color || null, b.eye_color || null,
+      b.gender || null, b.race || null, b.height ?? null, b.weight ?? null, b.hair_color || null, b.eye_color || null,
       b.address || null, b.bail_amount != null && !isNaN(parseFloat(b.bail_amount)) ? parseFloat(b.bail_amount) : null, b.hold_reason || null, b.notes || null,
       user?.id || null, now, now,
     );

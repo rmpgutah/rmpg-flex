@@ -709,6 +709,7 @@ export function addSignatureBlock(
 
   // ── ROW 1: Signature area (solid bordered) ──
   const row1Y = y + roleBarH;
+  const sigLineY = row1Y + sigRowH - 3;
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(BORDER.SECTION_OUTER);
   doc.rect(x, row1Y, width, sigRowH);
