@@ -1,11 +1,18 @@
 #!/usr/bin/env npx tsx
 // One-off script to send update notification email after deployment.
-// Usage: cd server && npx tsx ../scripts/send-update-email.ts
+// Usage: cd /opt/rmpg-flex && npx tsx scripts/send-update-email.ts
 //
 // Requires the server's database and email configuration to be available
 // (run from the production VPS after deploy).
 
-import { sendEmail } from '../server/src/utils/emailSender';
+// Set timezone before anything else (matches server/src/index.ts)
+process.env.TZ = process.env.SERVER_TIMEZONE || 'America/Denver';
+
+import { initDatabase } from './server/src/models/database';
+import { sendEmail } from './server/src/utils/emailSender';
+
+// Initialize database so email config can be read from system_config table
+initDatabase();
 
 const RECIPIENT = 'chzamo@rmpgutah.us';
 const SUBJECT = '[RMPG Flex] Development Update — March 15, 2026';
