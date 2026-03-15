@@ -48,7 +48,7 @@ router.get('/leads', requireRole('admin', 'manager', 'contract_manager'), (req: 
       params.push(source);
     }
     if (pipeline_stage) {
-      const stages = (pipeline_stage as string).split(',');
+      const stages = (pipeline_stage as string).split(',').slice(0, 20);
       sql += ` AND l.pipeline_stage IN (${stages.map(() => '?').join(',')})`;
       params.push(...stages);
     }

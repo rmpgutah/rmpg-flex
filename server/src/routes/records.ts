@@ -88,8 +88,9 @@ router.get('/persons', (req: Request, res: Response) => {
     const params: any[] = [];
 
     if (flags) {
-      whereClause += ' AND flags LIKE ?';
-      params.push(`%"${flags}"%`);
+      whereClause += " AND flags LIKE ? ESCAPE '\\'";
+      const safeFlags = String(flags).replace(/[%_\\]/g, '\\$&');
+      params.push(`%"${safeFlags}"%`);
     }
 
     // Archive filter
@@ -160,8 +161,9 @@ router.get('/persons/export', (req: Request, res: Response) => {
     const params: any[] = [];
 
     if (flags) {
-      whereClause += ' AND flags LIKE ?';
-      params.push(`%"${flags}"%`);
+      whereClause += " AND flags LIKE ? ESCAPE '\\'";
+      const safeFlags = String(flags).replace(/[%_\\]/g, '\\$&');
+      params.push(`%"${safeFlags}"%`);
     }
 
     const rows = db.prepare(`

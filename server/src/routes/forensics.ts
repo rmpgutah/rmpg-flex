@@ -579,6 +579,11 @@ router.post('/:id/hashes/compute', requireRole('admin', 'manager', 'supervisor',
     // Option 2: Hash a file by direct path (for disk evidence, forensic images)
     if (!filePath && rawFilePath) {
       filePath = path.resolve(rawFilePath);
+      // Prevent path traversal — only allow files within the uploads directory
+      const uploadsDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../uploads');
+      if (!filePath.startsWith(uploadsDir)) {
+        return res.status(403).json({ error: 'Access denied: file path must be within the uploads directory' });
+      }
       if (!fileName) {
         fileName = path.basename(filePath);
       }

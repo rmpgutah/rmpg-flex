@@ -411,7 +411,7 @@ router.get('/scans', (req: Request, res: Response) => {
       ${whereClause}
       ORDER BY ps.scanned_at DESC
       LIMIT ?
-    `).all(...params, parseInt(limit as string, 10) || 50);
+    `).all(...params, Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50)));
 
     res.json(scans);
   } catch (error) {

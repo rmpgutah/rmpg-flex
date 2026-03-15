@@ -146,7 +146,7 @@ router.get('/', (req: Request, res: Response) => {
     } = req.query;
 
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const limitNum = Math.min(parseInt(limit as string, 10) || 50, 200);
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
     let whereClause = 'WHERE 1=1';
