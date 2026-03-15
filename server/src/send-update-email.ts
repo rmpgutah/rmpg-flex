@@ -1,14 +1,11 @@
-#!/usr/bin/env npx tsx
-// One-off script to send update notification email after deployment.
-// Usage: cd /opt/rmpg-flex/server && npx tsx ../scripts/send-update-email.ts
-//
-// IMPORTANT: Must be run from the server/ directory so module resolution works.
+// One-off script to send update notification email.
+// Usage: cd /opt/rmpg-flex/server && npx tsx src/send-update-email.ts
 
-// Set timezone before anything else (matches server/src/index.ts)
+// Set timezone before anything else (matches index.ts)
 process.env.TZ = process.env.SERVER_TIMEZONE || 'America/Denver';
 
-import { initDatabase } from '../server/src/models/database.js';
-import { sendEmail } from '../server/src/utils/emailSender.js';
+import { initDatabase } from './models/database';
+import { sendEmail } from './utils/emailSender';
 
 // Initialize database so email config can be read from system_config table
 initDatabase();
