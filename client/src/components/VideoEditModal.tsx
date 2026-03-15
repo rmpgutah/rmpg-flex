@@ -103,7 +103,7 @@ export default function VideoEditModal({ isOpen, onClose, onSave, video, isSubmi
       </div>
 
       {/* Classification + Retention */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="field-label mb-1 block">Classification</label>
           <select
@@ -131,7 +131,7 @@ export default function VideoEditModal({ isOpen, onClose, onSave, video, isSubmi
       </div>
 
       {/* Case Number + Recorded At */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="field-label mb-1 block">Case Number</label>
           <input

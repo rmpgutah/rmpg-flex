@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Search,
   Plus,
@@ -15,6 +15,10 @@ import {
   KeyRound,
   AlertTriangle,
   RefreshCw,
+  Monitor,
+  LogOut,
+  Globe,
+  Clock,
 } from 'lucide-react';
 import type { User, UserRole } from '../../types';
 import type { UserFormData } from '../../components/UserFormModal';
@@ -32,6 +36,20 @@ export interface AuditEntry {
   details: string;
   timestamp: string;
 }
+
+interface UserSession {
+  id: number;
+  user_id: number;
+  session_id: string;
+  ip_address: string;
+  user_agent: string;
+  device_name: string;
+  is_active: number;
+  created_at: string;
+  last_used_at: string;
+}
+
+const ALL_ROLES: UserRole[] = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'];
 
 const ROLE_COLORS: Record<UserRole, string> = {
   admin: 'bg-red-900/50 text-red-400 border-red-700/50',
@@ -94,9 +112,13 @@ export default function AdminUsersTab({
   LoadingSpinner,
 }: AdminUsersTabProps) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [userDetailTab, setUserDetailTab] = useState<'profile' | 'personal' | 'credentials' | 'activity' | 'email' | 'security'>('profile');
+  const [userDetailTab, setUserDetailTab] = useState<'profile' | 'personal' | 'credentials' | 'security' | 'activity' | 'email'>('profile');
   const [securityActionLoading, setSecurityActionLoading] = useState<string | null>(null);
   const [securityMsg, setSecurityMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [userSessions, setUserSessions] = useState<UserSession[]>([]);
+  const [loadingSessions, setLoadingSessions] = useState(false);
+  const [roleEditing, setRoleEditing] = useState(false);
+  const [pendingRole, setPendingRole] = useState<UserRole | null>(null);
 
   const handleReset2FA = async (userId: string) => {
     setSecurityActionLoading('reset-2fa');
@@ -106,6 +128,59 @@ export default function AdminUsersTab({
       setSecurityMsg({ type: 'success', text: '2FA has been reset. User will be prompted to set up 2FA on next login.' });
     } catch (err: any) {
       setSecurityMsg({ type: 'error', text: err.message || 'Failed to reset 2FA' });
+    }
+    setSecurityActionLoading(null);
+  };
+
+  // Load active sessions for a user when the Security tab is shown
+  const loadUserSessions = useCallback(async (userId: string) => {
+    setLoadingSessions(true);
+    try {
+      const sessions = await apiFetch<UserSession[]>('/admin/sessions');
+      setUserSessions((sessions || []).filter((s: UserSession) => String(s.user_id || (s as any).userId) === String(userId) && s.is_active));
+    } catch {
+      setUserSessions([]);
+    }
+    setLoadingSessions(false);
+  }, []);
+
+  // Load sessions when security tab is opened
+  useEffect(() => {
+    if (selectedUser && userDetailTab === 'security') {
+      loadUserSessions(selectedUser.id);
+    }
+  }, [selectedUser?.id, userDetailTab, loadUserSessions]);
+
+  const handleRevokeAllSessions = async (userId: string) => {
+    setSecurityActionLoading('revoke-sessions');
+    setSecurityMsg(null);
+    try {
+      const result = await apiFetch<{ message: string; count: number }>(`/admin/users/${userId}/revoke-sessions`, { method: 'POST' });
+      setSecurityMsg({ type: 'success', text: result.message || `All sessions revoked.` });
+      setUserSessions([]);
+    } catch (err: any) {
+      setSecurityMsg({ type: 'error', text: err.message || 'Failed to revoke sessions' });
+    }
+    setSecurityActionLoading(null);
+  };
+
+  const handleRoleChange = async (userId: string, newRole: UserRole) => {
+    setSecurityActionLoading('role-change');
+    setSecurityMsg(null);
+    try {
+      const result = await apiFetch<{ message: string }>(`/admin/users/${userId}/role`, {
+        method: 'PUT',
+        body: JSON.stringify({ role: newRole }),
+      });
+      setSecurityMsg({ type: 'success', text: result.message || `Role changed to ${newRole}` });
+      setRoleEditing(false);
+      setPendingRole(null);
+      // Update local state
+      if (selectedUser) {
+        setSelectedUser({ ...selectedUser, role: newRole } as any);
+      }
+    } catch (err: any) {
+      setSecurityMsg({ type: 'error', text: err.message || 'Failed to change role' });
     }
     setSecurityActionLoading(null);
   };
@@ -180,7 +255,7 @@ export default function AdminUsersTab({
                         <span className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-semibold uppercase border ${ROLE_COLORS[user.role]}`}>
                           {toDisplayLabel(user.role)}
                         </span>
-                        {user.totpEnabled ? (
+                        {(user as any).totpEnabled ? (
                           <span className="inline-flex items-center gap-0.5 px-1 py-0.5 text-[8px] font-bold uppercase bg-green-900/40 text-green-400 border border-green-700/40">
                             <Shield className="w-2 h-2" />2FA
                           </span>
@@ -346,7 +421,7 @@ export default function AdminUsersTab({
               <>
                 <div className="panel-beveled p-3 bg-surface-base">
                   <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Employment Information</h3>
-                  <div className="grid grid-cols-3 gap-3 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                     <div><span className="text-rmpg-400">Department:</span> <span className="text-rmpg-200 ml-1">{selectedUser.department || '--'}</span></div>
                     <div><span className="text-rmpg-400">Rank:</span> <span className="text-rmpg-200 ml-1">{selectedUser.rank || '--'}</span></div>
                     <div><span className="text-rmpg-400">Badge #:</span> <span className="text-rmpg-200 font-mono ml-1">{selectedUser.badge_number || '--'}</span></div>
@@ -364,7 +439,7 @@ export default function AdminUsersTab({
 
                 <div className="panel-beveled p-3 bg-surface-base">
                   <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Contact Information</h3>
-                  <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                     <div><span className="text-rmpg-400">Email:</span> <span className="text-rmpg-200 ml-1">{selectedUser.email || '--'}</span></div>
                     <div><span className="text-rmpg-400">Phone:</span> <span className="text-rmpg-200 ml-1">{selectedUser.phone || '--'}</span></div>
                     <div className="col-span-2"><span className="text-rmpg-400">Address:</span> <span className="text-rmpg-200 ml-1">{[selectedUser.address, selectedUser.city, selectedUser.state, selectedUser.zip].filter(Boolean).join(', ') || '--'}</span></div>
@@ -373,7 +448,7 @@ export default function AdminUsersTab({
 
                 <div className="panel-beveled p-3 bg-surface-base">
                   <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Account Statistics</h3>
-                  <div className="grid grid-cols-3 gap-3 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                     <div><span className="text-rmpg-400">Last Login:</span> <span className="text-rmpg-200 ml-1">{selectedUser.last_login || selectedUser.last_login_display || '--'}</span></div>
                     <div><span className="text-rmpg-400">Login Count:</span> <span className="text-rmpg-200 ml-1">{selectedUser.login_count ?? '--'}</span></div>
                     <div><span className="text-rmpg-400">Created:</span> <span className="text-rmpg-200 ml-1">{selectedUser.created_at ? new Date(selectedUser.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '--'}</span></div>
@@ -394,7 +469,7 @@ export default function AdminUsersTab({
               <>
                 <div className="panel-beveled p-3 bg-surface-base">
                   <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Personal Information</h3>
-                  <div className="grid grid-cols-3 gap-3 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                     <div><span className="text-rmpg-400">Date of Birth:</span> <span className="text-rmpg-200 ml-1">{selectedUser.date_of_birth || '--'}</span></div>
                     <div><span className="text-rmpg-400">Blood Type:</span> <span className="text-rmpg-200 ml-1">{selectedUser.blood_type || '--'}</span></div>
                     <div><span className="text-rmpg-400">Allergies:</span> <span className="text-rmpg-200 ml-1">{selectedUser.allergies || '--'}</span></div>
@@ -404,7 +479,7 @@ export default function AdminUsersTab({
 
                 <div className="panel-beveled p-3 bg-surface-base">
                   <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Driver License</h3>
-                  <div className="grid grid-cols-3 gap-3 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                     <div><span className="text-rmpg-400">DL #:</span> <span className="text-rmpg-200 font-mono ml-1">{selectedUser.dl_number || '--'}</span></div>
                     <div><span className="text-rmpg-400">State:</span> <span className="text-rmpg-200 ml-1">{selectedUser.dl_state || '--'}</span></div>
                     <div><span className="text-rmpg-400">Expiry:</span> <span className="text-rmpg-200 ml-1">{selectedUser.dl_expiry || '--'}</span></div>
@@ -413,7 +488,7 @@ export default function AdminUsersTab({
 
                 <div className="panel-beveled p-3 border-l-2 border-l-red-600 bg-surface-base">
                   <h3 className="text-[10px] text-red-400 uppercase font-bold tracking-wider mb-3">Emergency Contact</h3>
-                  <div className="grid grid-cols-3 gap-3 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                     <div><span className="text-rmpg-400">Name:</span> <span className="text-rmpg-200 ml-1">{selectedUser.emergency_contact_name || '--'}</span></div>
                     <div><span className="text-rmpg-400">Phone:</span> <span className="text-rmpg-200 ml-1">{selectedUser.emergency_contact_phone || '--'}</span></div>
                     <div><span className="text-rmpg-400">Relationship:</span> <span className="text-rmpg-200 ml-1">{selectedUser.emergency_contact_relationship || '--'}</span></div>
@@ -442,7 +517,7 @@ export default function AdminUsersTab({
 
                 <div className="panel-beveled p-3 bg-surface-base">
                   <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Password</h3>
-                  <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                     <div><span className="text-rmpg-400">Last Changed:</span> <span className="text-rmpg-200 ml-1">{selectedUser.last_password_change || '--'}</span></div>
                   </div>
                 </div>
@@ -452,17 +527,67 @@ export default function AdminUsersTab({
             {/* Security Tab */}
             {userDetailTab === 'security' && (
               <>
+                {/* Role Management */}
+                <div className="panel-beveled p-3 bg-surface-base">
+                  <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Role & Privileges</h3>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className={`inline-flex items-center px-2 py-1 text-[10px] font-semibold uppercase border ${ROLE_COLORS[selectedUser.role]}`}>
+                        {toDisplayLabel(selectedUser.role)}
+                      </span>
+                      {!roleEditing && (
+                        <button onClick={() => { setRoleEditing(true); setPendingRole(selectedUser.role); }} className="toolbar-btn text-[9px]">
+                          <Edit className="w-3 h-3" /> Change Role
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {roleEditing && (
+                    <div className="mt-3 flex items-center gap-2">
+                      <select
+                        className="input-dark text-xs flex-1"
+                        value={pendingRole || selectedUser.role}
+                        onChange={(e) => setPendingRole(e.target.value as UserRole)}
+                      >
+                        {ALL_ROLES.map(r => (
+                          <option key={r} value={r}>{toDisplayLabel(r)}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => pendingRole && handleRoleChange(selectedUser.id, pendingRole)}
+                        disabled={securityActionLoading === 'role-change' || pendingRole === selectedUser.role}
+                        className="toolbar-btn toolbar-btn-primary text-[9px]"
+                      >
+                        {securityActionLoading === 'role-change' ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
+                        Apply
+                      </button>
+                      <button onClick={() => { setRoleEditing(false); setPendingRole(null); }} className="toolbar-btn text-[9px]">
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+                  <div className="mt-2 text-[9px] text-rmpg-500">
+                    <strong>Privileges:</strong> {selectedUser.role === 'admin' ? 'Full system access — all modules, user management, system settings'
+                      : selectedUser.role === 'manager' ? 'Manage users, view all modules, reports, clients, billing'
+                      : selectedUser.role === 'supervisor' ? 'Oversee officers, approve reports, view dispatch and patrol'
+                      : selectedUser.role === 'officer' ? 'Field operations — incidents, arrests, citations, patrol, MDT'
+                      : selectedUser.role === 'dispatcher' ? 'Dispatch operations — calls, units, GPS tracking, comms'
+                      : 'Contract and process service management'
+                    }
+                  </div>
+                </div>
+
                 {/* 2FA Status */}
                 <div className="panel-beveled p-3 bg-surface-base">
                   <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Two-Factor Authentication</h3>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      {selectedUser.totpEnabled ? (
+                      {(selectedUser as any).totpEnabled ? (
                         <>
                           <span className="led-dot led-green" />
                           <span className="text-xs text-green-400 font-semibold">Enabled</span>
                         </>
-                      ) : selectedUser.totpSetupRequired ? (
+                      ) : (selectedUser as any).totpSetupRequired ? (
                         <>
                           <span className="led-dot led-amber" />
                           <span className="text-xs text-amber-400 font-semibold">Setup Required</span>
@@ -489,36 +614,35 @@ export default function AdminUsersTab({
                   </div>
                   <p className="text-[9px] mt-2" style={{ color: '#4b5563' }}>
                     Resetting 2FA will delete the user's TOTP secret, backup codes, and trusted devices.
-                    They will be required to set up 2FA again on their next login.
                   </p>
                 </div>
 
                 {/* Password Security */}
                 <div className="panel-beveled p-3 bg-surface-base">
                   <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Password Security</h3>
-                  <div className="grid grid-cols-2 gap-3 text-xs mb-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs mb-3">
                     <div>
                       <span className="text-rmpg-400">Last Changed:</span>
                       <span className="text-rmpg-200 ml-1">
-                        {selectedUser.passwordChangedAt
-                          ? new Date(selectedUser.passwordChangedAt).toLocaleDateString()
+                        {(selectedUser as any).passwordChangedAt
+                          ? new Date((selectedUser as any).passwordChangedAt).toLocaleDateString()
                           : selectedUser.last_password_change || '--'}
                       </span>
                     </div>
                     <div>
                       <span className="text-rmpg-400">Expires:</span>
                       <span className={`ml-1 font-semibold ${
-                        selectedUser.passwordExpiringSoon ? 'text-amber-400' : 'text-rmpg-200'
+                        (selectedUser as any).passwordExpiringSoon ? 'text-amber-400' : 'text-rmpg-200'
                       }`}>
-                        {selectedUser.passwordExpiresAt
-                          ? new Date(selectedUser.passwordExpiresAt).toLocaleDateString()
+                        {(selectedUser as any).passwordExpiresAt
+                          ? new Date((selectedUser as any).passwordExpiresAt).toLocaleDateString()
                           : 'No expiry set'}
                       </span>
                     </div>
                     <div>
                       <span className="text-rmpg-400">Force Change:</span>
-                      <span className={`ml-1 font-semibold ${selectedUser.forcePasswordChange ? 'text-amber-400' : 'text-rmpg-200'}`}>
-                        {selectedUser.forcePasswordChange ? 'Yes — on next login' : 'No'}
+                      <span className={`ml-1 font-semibold ${(selectedUser as any).forcePasswordChange ? 'text-amber-400' : 'text-rmpg-200'}`}>
+                        {(selectedUser as any).forcePasswordChange ? 'Yes \u2014 on next login' : 'No'}
                       </span>
                     </div>
                   </div>
@@ -534,6 +658,63 @@ export default function AdminUsersTab({
                     )}
                     Force Password Change
                   </button>
+                </div>
+
+                {/* Active Sessions */}
+                <div className="panel-beveled p-3 bg-surface-base">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">
+                      Active Sessions ({userSessions.length})
+                    </h3>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => loadUserSessions(selectedUser.id)}
+                        disabled={loadingSessions}
+                        className="toolbar-btn text-[9px] flex items-center gap-1"
+                      >
+                        <RefreshCw className={`w-3 h-3 ${loadingSessions ? 'animate-spin' : ''}`} />
+                        Refresh
+                      </button>
+                      {userSessions.length > 0 && (
+                        <button
+                          onClick={() => {
+                            if (window.confirm(`Revoke all ${userSessions.length} active sessions for ${selectedUser.first_name} ${selectedUser.last_name}? They will be logged out from all devices.`))
+                              handleRevokeAllSessions(selectedUser.id);
+                          }}
+                          disabled={securityActionLoading === 'revoke-sessions'}
+                          className="toolbar-btn text-[9px] text-red-400 hover:text-red-300 hover:bg-red-900/30 flex items-center gap-1"
+                        >
+                          {securityActionLoading === 'revoke-sessions' ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <LogOut className="w-3 h-3" />
+                          )}
+                          Revoke All
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {loadingSessions ? (
+                    <div className="flex items-center gap-2 py-3"><Loader2 className="w-3 h-3 animate-spin text-brand-400" /><span className="text-[11px] text-rmpg-400">Loading sessions...</span></div>
+                  ) : userSessions.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {userSessions.map((session) => (
+                        <div key={session.session_id} className="flex items-center gap-3 px-2.5 py-2 bg-surface-raised border border-rmpg-700 text-xs">
+                          <Monitor className="w-3.5 h-3.5 text-rmpg-400 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-rmpg-200 font-medium truncate">{session.device_name || 'Unknown Device'}</div>
+                            <div className="flex items-center gap-3 text-[9px] text-rmpg-500 mt-0.5">
+                              <span className="flex items-center gap-1"><Globe className="w-2.5 h-2.5" />{session.ip_address}</span>
+                              <span className="flex items-center gap-1"><Clock className="w-2.5 h-2.5" />{session.last_used_at ? new Date(session.last_used_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '--'}</span>
+                            </div>
+                          </div>
+                          <span className="led-dot led-green flex-shrink-0" title="Active" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-rmpg-500 py-2">No active sessions</p>
+                  )}
                 </div>
 
                 {/* Action result message */}

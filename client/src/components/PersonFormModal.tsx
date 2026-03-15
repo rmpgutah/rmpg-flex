@@ -12,6 +12,7 @@ interface PersonFormModalProps {
   onSubmit: (data: PersonFormData) => void;
   isSubmitting: boolean;
   editingPerson?: Person;
+  submitError?: string | null;
 }
 
 export interface PersonFormData {
@@ -163,6 +164,7 @@ export default function PersonFormModal({
   onSubmit,
   isSubmitting,
   editingPerson,
+  submitError,
 }: PersonFormModalProps) {
   const [form, setForm] = useState<PersonFormData>(EMPTY_FORM);
   const { isDirty, snapshot } = useFormDirty(form, isOpen);
@@ -339,6 +341,13 @@ export default function PersonFormModal({
       maxWidth="max-w-4xl"
       isDirty={isDirty}
     >
+      {/* Submit Error */}
+      {submitError && (
+        <div className="px-3 py-2 -mt-2 mb-2 bg-red-900/30 border border-red-700 text-red-400 text-xs">
+          {submitError}
+        </div>
+      )}
+
       {/* Section Tabs */}
       <div className="flex gap-1 -mt-2 mb-3 border-b border-rmpg-700 pb-2">
         {sections.map((s) => (
@@ -360,7 +369,7 @@ export default function PersonFormModal({
       {/* ── BASIC INFO ── */}
       {activeSection === 'basic' && (
         <>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">First Name *</label>
               <input name="first_name" type="text" required className="input-dark mt-1" value={form.first_name} onChange={handleChange} />
@@ -375,7 +384,7 @@ export default function PersonFormModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Alias / Nickname</label>
               <input name="alias_nickname" type="text" className="input-dark mt-1" placeholder="AKA, street name" value={form.alias_nickname} onChange={handleChange} />
@@ -393,7 +402,7 @@ export default function PersonFormModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Race / Ethnicity</label>
               <select name="race" className="select-dark mt-1" value={form.race} onChange={handleChange}>
@@ -414,7 +423,7 @@ export default function PersonFormModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Place of Birth</label>
               <input name="place_of_birth" type="text" className="input-dark mt-1" placeholder="City, State or Country" value={form.place_of_birth} onChange={handleChange} />
@@ -435,7 +444,7 @@ export default function PersonFormModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Blood Type</label>
               <select name="blood_type" className="select-dark mt-1" value={form.blood_type} onChange={handleChange}>
@@ -454,7 +463,7 @@ export default function PersonFormModal({
       {/* ── PHYSICAL DESCRIPTION ── */}
       {activeSection === 'physical' && (
         <>
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Height (ft)</label>
               <select name="height_feet" className="select-dark mt-1" value={form.height_feet} onChange={handleChange}>
@@ -489,7 +498,7 @@ export default function PersonFormModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Hair Color</label>
               <select name="hair_color" className="select-dark mt-1" value={form.hair_color} onChange={handleChange}>
@@ -506,7 +515,7 @@ export default function PersonFormModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Hair Length</label>
               <select name="hair_length" className="select-dark mt-1" value={form.hair_length} onChange={handleChange}>
@@ -537,7 +546,7 @@ export default function PersonFormModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Shoe Size</label>
               <input name="shoe_size" type="text" className="input-dark mt-1" placeholder="e.g. 10.5" value={form.shoe_size} onChange={handleChange} />
@@ -559,7 +568,7 @@ export default function PersonFormModal({
       {/* ── IDENTIFICATION ── */}
       {activeSection === 'id' && (
         <>
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div className="col-span-2">
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Driver License #</label>
               <input name="dl_number" type="text" className="input-dark mt-1" value={form.dl_number} onChange={handleChange} />
@@ -577,7 +586,7 @@ export default function PersonFormModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">DL Expiry</label>
               <input name="dl_expiry" type="date" className="input-dark mt-1" value={form.dl_expiry} onChange={handleChange} />
@@ -589,7 +598,7 @@ export default function PersonFormModal({
             <label className="text-[10px] text-red-400 uppercase font-bold tracking-wider mb-2 block flex items-center gap-1.5">
               <CreditCard className="w-3 h-3" /> Confidential Information
             </label>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Full SSN</label>
                 <div className="relative mt-1">
@@ -624,7 +633,7 @@ export default function PersonFormModal({
           {/* Other ID */}
           <div className="border-t border-rmpg-600 pt-3 mt-3">
             <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 block">Other ID / Government ID</label>
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">ID Type</label>
                 <select name="id_type" className="select-dark mt-1" value={form.id_type} onChange={handleChange}>
@@ -716,7 +725,7 @@ export default function PersonFormModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Employer</label>
               <input name="employer" type="text" className="input-dark mt-1" value={form.employer} onChange={handleChange} />
@@ -754,7 +763,7 @@ export default function PersonFormModal({
               }}
             />
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">City</label>
               <input name="city" type="text" className="input-dark mt-1" value={form.city} onChange={handleChange} />
@@ -769,7 +778,7 @@ export default function PersonFormModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Phone</label>
               <input name="phone" type="text" className="input-dark mt-1" value={form.phone} onChange={handleChange} />
@@ -786,7 +795,7 @@ export default function PersonFormModal({
 
           <div className="border-t border-rmpg-700 pt-3">
             <label className="text-[10px] text-red-400 uppercase font-semibold mb-2 block">Emergency Contact</label>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Contact Name</label>
                 <input name="emergency_contact_name" type="text" className="input-dark mt-1" value={form.emergency_contact_name} onChange={handleChange} />
@@ -807,7 +816,7 @@ export default function PersonFormModal({
       {/* ── OTHER / ALERTS ── */}
       {activeSection === 'other' && (
         <>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Gang Affiliation</label>
               <select name="gang_affiliation" className="select-dark mt-1" value={form.gang_affiliation} onChange={handleChange}>

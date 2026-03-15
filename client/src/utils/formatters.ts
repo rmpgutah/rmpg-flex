@@ -175,12 +175,27 @@ export function toTitleCase(str: string): string {
   return str.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+/** Common law-enforcement / system acronyms that should remain ALL-CAPS */
+const ACRONYMS = new Set([
+  'pso', 'cfs', 'dv', 'ems', 'leo', 'ncic', 'bolo', 'atl', 'mdt',
+  'sla', 'id', 'dui', 'dwi', 'hoa', 'llc', 'eta', 'rmpg', 'gps',
+  'ip', 'pdf', 'api', 'url', 'vpn', 'opr', 'le', 'sop',
+]);
+
 /**
  * Convert snake_case or kebab-case to a display label:
- * "active_warrant" → "Active Warrant"
+ * "pso_client_request" → "PSO Client Request"
+ * "active_warrant"     → "Active Warrant"
+ * Automatically uppercases known acronyms (PSO, CFS, DV, etc.)
  */
 export function toDisplayLabel(str: string): string {
-  return str.replace(/[_-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  return str
+    .replace(/[_-]/g, ' ')
+    .replace(/\b\w+/g, (word) =>
+      ACRONYMS.has(word.toLowerCase())
+        ? word.toUpperCase()
+        : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+    );
 }
 
 /**

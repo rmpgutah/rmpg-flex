@@ -29,10 +29,11 @@
 
 export class StreamPlayer {
   private audioContext: AudioContext | null = null;
-  private allChunks: Uint8Array[] = [];
+  private buffer: Uint8Array = new Uint8Array(64 * 1024); // 64KB initial
   private totalBytes = 0;
   private mimeType: string = 'audio/webm;codecs=opus';
   private chunkCount = 0;
+  private static readonly MAX_BUFFER_BYTES = 50 * 1024 * 1024; // 50MB cap
 
   /** How many seconds of audio we've already scheduled for playback */
   private playedUpTo = 0;
@@ -92,8 +93,19 @@ export class StreamPlayer {
       bytes[i] = binary.charCodeAt(i);
     }
 
-    // Store the chunk
-    this.allChunks.push(bytes);
+    // Store the chunk in the pre-allocated buffer (grow by doubling if needed)
+    const needed = this.totalBytes + bytes.length;
+    if (needed > StreamPlayer.MAX_BUFFER_BYTES) {
+      console.warn('[StreamPlayer] Buffer cap reached, ignoring chunk');
+      return;
+    }
+    if (needed > this.buffer.length) {
+      const newSize = Math.min(Math.max(this.buffer.length * 2, needed), StreamPlayer.MAX_BUFFER_BYTES);
+      const newBuf = new Uint8Array(newSize);
+      newBuf.set(this.buffer.subarray(0, this.totalBytes));
+      this.buffer = newBuf;
+    }
+    this.buffer.set(bytes, this.totalBytes);
     this.totalBytes += bytes.length;
     this.chunkCount++;
 
@@ -125,13 +137,8 @@ export class StreamPlayer {
   private async decodeAndPlay() {
     if (!this.audioContext) return;
 
-    // Combine all chunks into a single buffer
-    const combined = new Uint8Array(this.totalBytes);
-    let offset = 0;
-    for (const chunk of this.allChunks) {
-      combined.set(chunk, offset);
-      offset += chunk.length;
-    }
+    // Slice the pre-allocated buffer to the actual data length (no concatenation needed)
+    const combined = this.buffer.subarray(0, this.totalBytes);
 
     try {
       // decodeAudioData() can decode a complete WebM file (all chunks
@@ -139,7 +146,7 @@ export class StreamPlayer {
       const arrayBuffer = combined.buffer.slice(
         combined.byteOffset,
         combined.byteOffset + combined.byteLength
-      );
+      ) as ArrayBuffer;
       const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
 
       // Calculate what's new
@@ -215,7 +222,7 @@ export class StreamPlayer {
     }
 
     this.audioContext = null;
-    this.allChunks = [];
+    this.buffer = new Uint8Array(64 * 1024);
     this.totalBytes = 0;
     this.chunkCount = 0;
     this.playedUpTo = 0;

@@ -8,6 +8,8 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
+import { auditLog } from '../utils/auditLogger';
+import { broadcastAdminUpdate, broadcastFleetUpdate } from '../utils/websocket';
 import {
   CONFIG_KEYS,
   getConfigValue,
@@ -26,6 +28,12 @@ import {
   stopClearPathGpsPoller,
   restartClearPathGpsPoller,
 } from '../utils/clearPathGpsPoller';
+import {
+  startClearPathGpsMediaPoller,
+  stopClearPathGpsMediaPoller,
+  restartClearPathGpsMediaPoller,
+  triggerMediaSync,
+} from '../utils/clearPathGpsMediaPoller';
 
 const router = Router();
 router.use(authenticateToken);
@@ -48,12 +56,22 @@ router.get('/status', requireRole('admin', 'manager'), (_req: Request, res: Resp
       'SELECT MAX(last_synced_at) as ts FROM cpg_device_mappings WHERE is_active = 1'
     ).get() as any)?.ts || null;
 
+    // Media sync status
+    const mediaSyncEnabled = getConfigValue('clearpathgps_media_sync_enabled') === 'true';
+    const mediaPollInterval = getConfigValue('clearpathgps_media_poll_interval') || '300';
+    const lastMediaSync = (db.prepare(
+      'SELECT MAX(last_media_synced_at) as ts FROM cpg_device_mappings WHERE is_active = 1'
+    ).get() as any)?.ts || null;
+
     res.json({
       configured,
       enabled,
       poll_interval_seconds: parseInt(pollInterval, 10),
       active_mappings: mappingCount,
       last_sync: lastSync,
+      media_sync_enabled: mediaSyncEnabled,
+      media_poll_interval_seconds: parseInt(mediaPollInterval, 10),
+      last_media_sync: lastMediaSync,
     });
   } catch (error: any) {
     console.error('ClearPathGPS status error:', error);
@@ -78,10 +96,8 @@ router.put('/credentials', requireRole('admin'), (req: Request, res: Response) =
     setConfigValue(CONFIG_KEYS.accountId, account_id, true);
     clearCachedAuth();
 
-    const db = getDb();
-    db.prepare(
-      "INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'clearpathgps_credentials_updated', 'integration', 0, ?, ?)"
-    ).run(req.user!.userId, 'Updated ClearPathGPS credentials', req.ip || 'unknown');
+    auditLog(req, 'clearpathgps_credentials_updated', 'integration', 0, 'Updated ClearPathGPS credentials');
+    broadcastAdminUpdate({ type: 'clearpathgps_credentials_updated' });
 
     res.json({ message: 'Credentials saved' });
   } catch (error: any) {
@@ -99,10 +115,8 @@ router.delete('/credentials', requireRole('admin'), (req: Request, res: Response
     clearCachedAuth();
     stopClearPathGpsPoller();
 
-    const db = getDb();
-    db.prepare(
-      "INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'clearpathgps_credentials_cleared', 'integration', 0, ?, ?)"
-    ).run(req.user!.userId, 'Cleared ClearPathGPS credentials', req.ip || 'unknown');
+    auditLog(req, 'clearpathgps_credentials_cleared', 'integration', 0, 'Cleared ClearPathGPS credentials');
+    broadcastAdminUpdate({ type: 'clearpathgps_credentials_cleared' });
 
     res.json({ message: 'Credentials and configuration cleared' });
   } catch (error: any) {
@@ -165,10 +179,8 @@ router.put('/enable', requireRole('admin'), (req: Request, res: Response) => {
       }
     }
 
-    const db = getDb();
-    db.prepare(
-      "INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'clearpathgps_toggled', 'integration', 0, ?, ?)"
-    ).run(req.user!.userId, `ClearPathGPS ${enabled ? 'enabled' : 'disabled'}`, req.ip || 'unknown');
+    auditLog(req, 'clearpathgps_toggled', 'integration', 0, `ClearPathGPS ${enabled ? 'enabled' : 'disabled'}`);
+    broadcastAdminUpdate({ type: 'clearpathgps_toggled', enabled });
 
     res.json({ message: `ClearPathGPS ${enabled ? 'enabled' : 'disabled'}` });
   } catch (error: any) {
@@ -261,9 +273,9 @@ router.post('/mappings', requireRole('admin'), (req: Request, res: Response) => 
     // Set unit's GPS source to clearpathgps
     db.prepare("UPDATE units SET gps_source = 'clearpathgps' WHERE id = ?").run(unit_id);
 
-    db.prepare(
-      "INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'clearpathgps_mapping_created', 'cpg_device_mapping', ?, ?, ?)"
-    ).run(req.user!.userId, unit_id, `Mapped device ${cpg_display_name || cpg_device_id} → ${unit.call_sign}`, req.ip || 'unknown');
+    auditLog(req, 'clearpathgps_mapping_created', 'integration', unit_id,
+      `Mapped device ${cpg_display_name || cpg_device_id} → ${unit.call_sign}`);
+    broadcastFleetUpdate({ type: 'clearpathgps_mapping_created', unitId: unit_id, callSign: unit.call_sign });
 
     res.json({ message: 'Mapping created', unit_call_sign: unit.call_sign });
   } catch (error: any) {
@@ -295,9 +307,9 @@ router.delete('/mappings/:id', requireRole('admin'), (req: Request, res: Respons
     // Reset unit's GPS source back to browser
     db.prepare("UPDATE units SET gps_source = 'browser' WHERE id = ?").run(mapping.unit_id);
 
-    db.prepare(
-      "INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'clearpathgps_mapping_removed', 'cpg_device_mapping', ?, ?, ?)"
-    ).run(req.user!.userId, mapping.unit_id, `Unmapped device ${mapping.cpg_display_name || mapping.cpg_device_id}`, req.ip || 'unknown');
+    auditLog(req, 'clearpathgps_mapping_removed', 'integration', mapping.unit_id,
+      `Unmapped device ${mapping.cpg_display_name || mapping.cpg_device_id}`);
+    broadcastFleetUpdate({ type: 'clearpathgps_mapping_removed', unitId: mapping.unit_id });
 
     res.json({ message: 'Mapping removed' });
   } catch (error: any) {
@@ -332,10 +344,8 @@ router.put('/settings', requireRole('admin'), (req: Request, res: Response) => {
       setConfigValue('clearpathgps_history_backfill', String(history_backfill), false);
     }
 
-    const db = getDb();
-    db.prepare(
-      "INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'clearpathgps_settings_updated', 'integration', 0, ?, ?)"
-    ).run(req.user!.userId, `History backfill: ${history_backfill}`, req.ip || 'unknown');
+    auditLog(req, 'clearpathgps_settings_updated', 'integration', 0, `History backfill: ${history_backfill}`);
+    broadcastAdminUpdate({ type: 'clearpathgps_settings_updated' });
 
     res.json({ message: 'Settings updated' });
   } catch (error: any) {
@@ -354,7 +364,7 @@ router.get('/history/:deviceId', requireRole('admin', 'manager'), async (req: Re
       return;
     }
 
-    const { deviceId } = req.params;
+    const deviceId = req.params.deviceId as string;
     const from = req.query.from as string;
     const to = req.query.to as string;
 
@@ -363,7 +373,7 @@ router.get('/history/:deviceId', requireRole('admin', 'manager'), async (req: Re
       return;
     }
 
-    const events = await getDeviceHistory(deviceId as string, from as string, to as string);
+    const events = await getDeviceHistory(deviceId, String(from), String(to));
     res.json({ events, count: events.length });
   } catch (error: any) {
     console.error('ClearPathGPS fetch history error:', error);
@@ -488,6 +498,120 @@ router.get('/dashcam-events/:id', requireRole('admin', 'manager'), (req: Request
   } catch (error: any) {
     console.error('ClearPathGPS fetch dashcam event error:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// GET /api/clearpathgps/media-status — media sync status
+// ============================================================
+router.get('/media-status', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    const mediaSyncEnabled = getConfigValue('clearpathgps_media_sync_enabled') === 'true';
+    const mediaPollInterval = getConfigValue('clearpathgps_media_poll_interval') || '300';
+
+    const lastSync = (db.prepare(
+      'SELECT MAX(last_media_synced_at) as ts FROM cpg_device_mappings WHERE is_active = 1'
+    ).get() as any)?.ts || null;
+
+    const stats = db.prepare(`
+      SELECT COUNT(*) as total_clips,
+             COALESCE(SUM(file_size), 0) as total_bytes
+      FROM dashcam_videos
+      WHERE source = 'clearpathgps'
+    `).get() as any;
+
+    const errorCount = (db.prepare(`
+      SELECT COALESCE(SUM(media_sync_errors), 0) as total
+      FROM cpg_device_mappings WHERE is_active = 1
+    `).get() as any)?.total || 0;
+
+    // Per-device sync status
+    const devices = db.prepare(`
+      SELECT m.cpg_device_id, m.cpg_display_name, m.last_media_synced_at,
+             m.media_sync_errors, u.call_sign
+      FROM cpg_device_mappings m
+      LEFT JOIN units u ON m.unit_id = u.id
+      WHERE m.is_active = 1
+    `).all();
+
+    res.json({
+      media_sync_enabled: mediaSyncEnabled,
+      media_poll_interval_seconds: parseInt(mediaPollInterval, 10),
+      last_media_sync: lastSync,
+      total_synced_clips: stats.total_clips || 0,
+      total_synced_bytes: stats.total_bytes || 0,
+      sync_errors: errorCount,
+      devices,
+    });
+  } catch (error: any) {
+    console.error('ClearPathGPS media status error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// PUT /api/clearpathgps/media-settings — toggle + configure sync
+// ============================================================
+router.put('/media-settings', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const { media_sync_enabled, media_poll_interval_seconds } = req.body;
+
+    if (media_sync_enabled !== undefined) {
+      setConfigValue('clearpathgps_media_sync_enabled', String(!!media_sync_enabled));
+    }
+
+    if (media_poll_interval_seconds !== undefined) {
+      const interval = Math.max(60, Math.min(900, parseInt(String(media_poll_interval_seconds), 10) || 300));
+      setConfigValue('clearpathgps_media_poll_interval', String(interval));
+    }
+
+    // Start/stop/restart the media poller based on new settings
+    const nowEnabled = getConfigValue('clearpathgps_media_sync_enabled') === 'true';
+    if (nowEnabled && isConfigured() && isEnabled()) {
+      restartClearPathGpsMediaPoller();
+    } else {
+      stopClearPathGpsMediaPoller();
+    }
+
+    auditLog(req, 'clearpathgps_media_settings_updated', 'integration', 0,
+      `Media sync ${nowEnabled ? 'enabled' : 'disabled'}, interval: ${media_poll_interval_seconds}s`,
+    );
+
+    broadcastAdminUpdate({ type: 'clearpathgps_media_toggled', enabled: nowEnabled });
+
+    res.json({ success: true, media_sync_enabled: nowEnabled });
+  } catch (error: any) {
+    console.error('ClearPathGPS media settings error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// POST /api/clearpathgps/media-sync-now — trigger immediate sync
+// ============================================================
+router.post('/media-sync-now', requireRole('admin'), async (req: Request, res: Response) => {
+  try {
+    if (!isConfigured() || !isEnabled()) {
+      res.status(400).json({ error: 'ClearPathGPS is not configured or not enabled' });
+      return;
+    }
+
+    auditLog(req, 'clearpathgps_media_sync_triggered', 'integration', 0, 'Manual media sync triggered');
+
+    // Run sync in background, return immediately
+    const result = await triggerMediaSync();
+
+    res.json({
+      success: true,
+      message: `Media sync completed: ${result.synced} clip(s) synced, ${result.errors} error(s)`,
+      synced: result.synced,
+      errors: result.errors,
+    });
+  } catch (error: any) {
+    console.error('ClearPathGPS media sync-now error:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
   }
 });
 

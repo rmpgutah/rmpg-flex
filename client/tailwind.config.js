@@ -31,31 +31,31 @@ export default {
       colors: {
         // ── Surface tokens (CSS variable backed) ──────────
         surface: {
-          base:    'var(--surface-base)',     // #1a1a1a
-          raised:  'var(--surface-raised)',   // #1e1e1e
-          sunken:  'var(--surface-sunken)',   // #141414
-          overlay: 'var(--surface-overlay)',  // #111111
-          deep:    'var(--surface-deep)',     // #0a0a0a
+          base:    'var(--surface-base)',     // #141e2b
+          raised:  'var(--surface-raised)',   // #1a2636
+          sunken:  'var(--surface-sunken)',   // #0d1520
+          overlay: 'var(--surface-overlay)',  // #0a1018
+          deep:    'var(--surface-deep)',     // #060c14
         },
 
         // ── RMPG Brand ─────────────────────────────────────
-        // Derived from the official Rocky Mountain Protective Group logo.
-        //   Logo red (eagle feathers / mountain peaks): #bc1010
-        //   Logo charcoal (eagle body / mountain base):  #303030
-        //   Logo gold (eagle beak accent):               #d4a017
-        //   Logo light grey (text):                      #d0d0d0
+        // Spillman Flex / Motorola Solutions blue theme
+        //   Primary blue (toolbar / accents):   #1a5a9e
+        //   Logo charcoal (body / base):        #303030
+        //   Logo gold (field labels / accents):  #d4a017
+        //   Logo light grey (text):              #d0d0d0
 
         brand: {
-          50:  '#fdf1f1',    // Lightest tint
-          100: '#fce0e0',
-          200: '#f7b8b8',
-          300: '#ef7a7a',
-          400: '#d93030',    // Lighter accent
-          500: '#bc1010',    // Primary — logo eagle red
-          600: '#a00e0e',    // Slightly deeper
-          700: '#8a0c0c',    // Deep crimson
-          800: '#6e0a0a',    // Very deep
-          900: '#520808',    // Darkest crimson
+          50:  '#f0f5fa',    // Lightest tint
+          100: '#d6e4f0',
+          200: '#a8c8e8',
+          300: '#6ba3d4',
+          400: '#3b8ad4',    // Lighter accent
+          500: '#1a5a9e',    // Primary — Motorola blue
+          600: '#164d87',    // Slightly deeper
+          700: '#124070',    // Deep blue
+          800: '#0e3359',    // Very deep
+          900: '#0a2642',    // Darkest blue
         },
 
         // Warm gold accent — eagle beak / mountain highlights
@@ -67,23 +67,23 @@ export default {
           700: '#936c0a',
         },
 
-        // Neutral charcoal greys — logo body / mountain base
+        // Neutral steel-blue greys — Spillman Flex dark theme
         rmpg: {
-          50:  '#f0f0f0',    // Light background
-          100: '#e0e0e0',    // Light grey (logo text)
-          200: '#c8c8c8',    // Medium light (logo text)
-          300: '#a0a0a0',    // Medium grey
-          400: '#707070',    // Grey
-          500: '#484848',    // Mid-dark grey
-          600: '#383838',    // Dark charcoal
-          700: '#303030',    // Logo charcoal (eagle/mountain)
-          800: '#202020',    // Deeper
-          900: '#141414',    // Near black
-          950: '#0a0e14',    // App background
+          50:  '#e8edf2',    // Light background
+          100: '#d0d8e0',    // Light grey
+          200: '#b0bcc8',    // Medium light
+          300: '#8a9aaa',    // Medium grey
+          400: '#5a6e80',    // Grey
+          500: '#3a4e60',    // Mid-dark
+          600: '#2a3a4e',    // Dark steel-blue
+          700: '#1e3048',    // Deep steel-blue
+          800: '#162236',    // Deeper
+          900: '#0d1520',    // Near black
+          950: '#060c14',    // App background
         },
 
         dispatch: {
-          emergency: '#bc1010',    // Brand red
+          emergency: '#dc2626',    // Safety red (not brand)
           urgent:    '#d4a017',    // Brand gold
           routine:   '#4a90c4',    // Muted steel blue
           scheduled: '#6b7280',
@@ -101,7 +101,7 @@ export default {
           dispatched: '#d4a017',   // Brand gold
           enroute:    '#4a90c4',   // Steel blue
           onscene:    '#a855f7',
-          busy:       '#bc1010',   // Brand red
+          busy:       '#dc2626',   // Safety red
           offduty:    '#6b7280',
         },
       },

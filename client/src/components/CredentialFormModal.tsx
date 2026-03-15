@@ -148,7 +148,7 @@ export default function CredentialFormModal({
       </div>
 
       {/* Number / Authority */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
             Credential Number
@@ -176,7 +176,7 @@ export default function CredentialFormModal({
       </div>
 
       {/* Dates */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
             Issued Date

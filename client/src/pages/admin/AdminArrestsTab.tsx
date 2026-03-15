@@ -313,7 +313,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
       </div>
 
       {/* ═══ Stats Grid ═══ */}
-      <div className="grid grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {[
           { label: 'Total Records', value: status?.recordsCount || 0, icon: Database },
           { label: 'Manual Entries', value: status?.manualCount || 0, icon: User },
@@ -474,7 +474,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
             booking_number, agency, gender, race, bail_amount, status</span>. At minimum, a name column is required.
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
               <label className="text-[9px] text-rmpg-400 uppercase">Default County</label>
               <select
@@ -664,7 +664,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
                     {syncing ? 'Syncing...' : 'Sync Now'}
                   </button>
                   <button onClick={async () => {
-                    await apiFetch('/arrests/credentials', { method: 'DELETE' }); fetchStatus();
+                    try { await apiFetch('/arrests/credentials', { method: 'DELETE' }); fetchStatus(); } catch { /* handled by apiFetch */ }
                   }} className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 text-red-400 hover:text-red-300">
                     <Trash2 className="w-3 h-3" /> Clear Key
                   </button>
@@ -708,7 +708,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
             ) : scraperStatus ? (
               <>
                 {/* Scraper Stats Row */}
-                <div className="grid grid-cols-4 gap-2 mt-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2">
                   {[
                     { label: 'Scraped Records', value: scraperStatus.totals?.scraped_records || 0, color: 'text-emerald-400' },
                     { label: 'In Custody', value: scraperStatus.totals?.in_custody || 0, color: 'text-red-400' },
@@ -725,7 +725,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
                 {/* County Cards */}
                 <div className="space-y-2">
                   {(scraperStatus.counties || []).map((county: any) => {
-                    const isCircuitBroken = county.consecutive_errors >= 3;
+                    const isCircuitBroken = county.consecutive_errors >= 5;
                     const lastSyncAgo = county.last_scrape_at
                       ? Math.round((Date.now() - new Date(county.last_scrape_at).getTime()) / 60000) : null;
                     const isStale = lastSyncAgo !== null && lastSyncAgo > (county.scrape_interval_minutes || 30) * 2;

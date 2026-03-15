@@ -161,7 +161,7 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
       </div>
 
       {/* Departments Grid */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {topLevel.length === 0 && (
           <div className="col-span-2 text-center py-8 text-rmpg-500 text-xs">
             No departments found. Create one to get started.
@@ -232,7 +232,7 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
                 <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Name *</label>
                 <input type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="input-dark w-full text-xs" placeholder="e.g. Patrol Division" />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Code</label>
                   <input type="text" value={form.code} onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))} className="input-dark w-full text-xs font-mono" placeholder="e.g. PAT" maxLength={10} />

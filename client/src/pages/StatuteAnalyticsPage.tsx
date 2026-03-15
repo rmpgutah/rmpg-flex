@@ -92,7 +92,7 @@ export default function StatuteAnalyticsPage() {
 
       {/* Mobile: day selector */}
       {isMobile && (
-        <div className="flex items-center gap-1 px-3 py-2 overflow-x-auto flex-shrink-0" style={{ background: '#111', borderBottom: '1px solid #222' }}>
+        <div className="flex items-center gap-1 px-3 py-2 overflow-x-auto flex-shrink-0" style={{ background: '#0f1a28', borderBottom: '1px solid #1e3048' }}>
           {[30, 60, 90, 180, 365].map(d => (
             <button
               key={d}

@@ -5,6 +5,7 @@ import { generateIncidentNumber } from '../utils/caseNumbers';
 import { sendCsv } from '../utils/csvExport';
 import { localNow } from '../utils/timeUtils';
 import { identifyBeat } from '../utils/geofence';
+import { createNotificationForRoles } from './notifications';
 
 const router = Router();
 
@@ -200,6 +201,16 @@ router.get('/:id', (req: Request, res: Response) => {
       SELECT i.*, o.full_name as officer_name, o.badge_number,
         s.full_name as supervisor_name, p.name as property_name,
         c.call_number, c.incident_type as call_type,
+        c.process_service_type, c.process_served_to, c.process_served_address,
+        c.process_attempts, c.process_served_at, c.process_service_result,
+        c.pso_service_type, c.pso_attempt_number,
+        c.scene_safety, c.direction_of_travel, c.caller_name, c.caller_phone,
+        c.injuries_reported, c.mental_health_crisis, c.juvenile_involved,
+        c.felony_in_progress, c.officer_safety_caution, c.gang_related,
+        c.hazmat, c.body_camera_active, c.evidence_collected, c.photos_taken,
+        c.supervisor_notified, c.le_notified, c.trespass_issued,
+        c.vehicle_pursuit, c.foot_pursuit, c.k9_requested, c.ems_requested,
+        c.fire_requested,
         cl.name as client_name
       FROM incidents i
       LEFT JOIN users o ON i.officer_id = o.id
@@ -267,7 +278,7 @@ router.get('/:id', (req: Request, res: Response) => {
 });
 
 // POST /api/incidents - Create incident
-router.post('/', (req: Request, res: Response) => {
+router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const {
@@ -382,6 +393,14 @@ router.post('/', (req: Request, res: Response) => {
       VALUES (?, 'incident_created', 'incident', ?, ?, ?)
     `).run(req.user!.userId, result.lastInsertRowid, `Created ${incidentNumber}`, req.ip || 'unknown');
 
+    // Notify supervisors of new incident report
+    createNotificationForRoles(
+      ['admin', 'manager', 'supervisor'],
+      'incident', `New Incident: ${incidentNumber}`,
+      `${incident_type} — ${location_address || 'No address'}`,
+      'incident', Number(result.lastInsertRowid), 'normal', 'incident.created', req.user!.userId,
+    );
+
     res.status(201).json(incident);
   } catch (error: any) {
     console.error('Create incident error:', error);
@@ -390,7 +409,7 @@ router.post('/', (req: Request, res: Response) => {
 });
 
 // PUT /api/incidents/:id - Update incident
-router.put('/:id', (req: Request, res: Response) => {
+router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id) as any;
@@ -488,7 +507,7 @@ router.put('/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/incidents/:id - Delete draft incident
-router.delete('/:id', (req: Request, res: Response) => {
+router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id) as any;
@@ -528,7 +547,7 @@ router.delete('/:id', (req: Request, res: Response) => {
 });
 
 // POST /api/incidents/:id/archive - Archive an incident
-router.post('/:id/archive', (req: Request, res: Response) => {
+router.post('/:id/archive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id) as any;
@@ -550,7 +569,7 @@ router.post('/:id/archive', (req: Request, res: Response) => {
 });
 
 // POST /api/incidents/:id/unarchive - Restore from archive
-router.post('/:id/unarchive', (req: Request, res: Response) => {
+router.post('/:id/unarchive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id) as any;
@@ -568,7 +587,7 @@ router.post('/:id/unarchive', (req: Request, res: Response) => {
 });
 
 // PUT /api/incidents/:id/submit - Submit for review
-router.put('/:id/submit', (req: Request, res: Response) => {
+router.put('/:id/submit', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id) as any;
@@ -677,7 +696,7 @@ router.put('/:id/return', requireRole('admin', 'manager', 'supervisor'), (req: R
 // ─── PERSON LINKING ──────────────────────────────────
 
 // POST /api/incidents/:id/persons - Link person to incident
-router.post('/:id/persons', (req: Request, res: Response) => {
+router.post('/:id/persons', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id) as any;
@@ -736,7 +755,7 @@ router.post('/:id/persons', (req: Request, res: Response) => {
 });
 
 // PUT /api/incidents/:id/persons/:personId - Update person link
-router.put('/:id/persons/:personId', (req: Request, res: Response) => {
+router.put('/:id/persons/:personId', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const link = db.prepare('SELECT * FROM incident_persons WHERE incident_id = ? AND person_id = ?')
@@ -778,7 +797,7 @@ router.put('/:id/persons/:personId', (req: Request, res: Response) => {
 });
 
 // DELETE /api/incidents/:id/persons/:personId - Unlink person
-router.delete('/:id/persons/:personId', (req: Request, res: Response) => {
+router.delete('/:id/persons/:personId', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const link = db.prepare('SELECT * FROM incident_persons WHERE incident_id = ? AND person_id = ?')
@@ -812,7 +831,7 @@ router.delete('/:id/persons/:personId', (req: Request, res: Response) => {
 // ─── VEHICLE LINKING ─────────────────────────────────
 
 // POST /api/incidents/:id/vehicles - Link vehicle to incident
-router.post('/:id/vehicles', (req: Request, res: Response) => {
+router.post('/:id/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id) as any;
@@ -872,7 +891,7 @@ router.post('/:id/vehicles', (req: Request, res: Response) => {
 });
 
 // PUT /api/incidents/:id/vehicles/:vehicleId - Update vehicle link
-router.put('/:id/vehicles/:vehicleId', (req: Request, res: Response) => {
+router.put('/:id/vehicles/:vehicleId', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const link = db.prepare('SELECT * FROM incident_vehicles WHERE incident_id = ? AND vehicle_id = ?')
@@ -916,7 +935,7 @@ router.put('/:id/vehicles/:vehicleId', (req: Request, res: Response) => {
 });
 
 // DELETE /api/incidents/:id/vehicles/:vehicleId - Unlink vehicle
-router.delete('/:id/vehicles/:vehicleId', (req: Request, res: Response) => {
+router.delete('/:id/vehicles/:vehicleId', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const link = db.prepare('SELECT * FROM incident_vehicles WHERE incident_id = ? AND vehicle_id = ?')
@@ -950,7 +969,7 @@ router.delete('/:id/vehicles/:vehicleId', (req: Request, res: Response) => {
 // ─── EVIDENCE ────────────────────────────────────────
 
 // POST /api/incidents/:id/evidence - Create evidence for incident
-router.post('/:id/evidence', (req: Request, res: Response) => {
+router.post('/:id/evidence', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id) as any;
@@ -980,7 +999,8 @@ router.post('/:id/evidence', (req: Request, res: Response) => {
     let nextNum = 1;
     if (lastEvidence) {
       const parts = lastEvidence.evidence_number.split('-');
-      nextNum = parseInt(parts[2], 10) + 1;
+      const parsed = parts.length >= 3 ? parseInt(parts[2], 10) : NaN;
+      if (!isNaN(parsed)) nextNum = parsed + 1;
     }
     const evidenceNumber = `EV-${currentYear}-${String(nextNum).padStart(5, '0')}`;
 
@@ -1052,7 +1072,7 @@ router.get('/:id/supplements', (req: Request, res: Response) => {
 });
 
 // POST /api/incidents/:id/supplements - Create a supplement
-router.post('/:id/supplements', (req: Request, res: Response) => {
+router.post('/:id/supplements', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id) as any;
@@ -1076,7 +1096,8 @@ router.post('/:id/supplements', (req: Request, res: Response) => {
     let nextNum = 1;
     if (lastSup) {
       const parts = lastSup.report_number.split('-');
-      nextNum = parseInt(parts[2], 10) + 1;
+      const parsed = parts.length >= 3 ? parseInt(parts[2], 10) : NaN;
+      if (!isNaN(parsed)) nextNum = parsed + 1;
     }
     const reportNumber = `SUP-${currentYear}-${String(nextNum).padStart(5, '0')}`;
 
@@ -1109,7 +1130,7 @@ router.post('/:id/supplements', (req: Request, res: Response) => {
 });
 
 // PUT /api/incidents/:incidentId/supplements/:supId - Update a supplement
-router.put('/:incidentId/supplements/:supId', (req: Request, res: Response) => {
+router.put('/:incidentId/supplements/:supId', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const sup = db.prepare('SELECT * FROM supplemental_reports WHERE id = ? AND incident_id = ?')
@@ -1163,7 +1184,7 @@ router.put('/:incidentId/supplements/:supId', (req: Request, res: Response) => {
 });
 
 // DELETE /api/incidents/:incidentId/supplements/:supId - Delete a draft supplement
-router.delete('/:incidentId/supplements/:supId', (req: Request, res: Response) => {
+router.delete('/:incidentId/supplements/:supId', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const sup = db.prepare('SELECT * FROM supplemental_reports WHERE id = ? AND incident_id = ?')

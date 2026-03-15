@@ -114,7 +114,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
     y = addFieldPair(doc, 'Due Date', data.due_date?.substring(0, 10) || '', lx + (qw + SPACING.MD) * 3, y, qw);
     addFieldPair(doc, 'Payment Terms', data.payment_terms || 'Net 30', lx, y, hfw);
     y = addFieldPair(doc, 'Billing Period', `${data.period_start?.substring(0, 10) || ''} to ${data.period_end?.substring(0, 10) || ''}`, rx, y, hfw);
-    y = closeAutoSection(doc, sec.sectionY, y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ── Client Information Section (auto-sizing) ──────────
@@ -123,7 +123,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
     y = addFieldPair(doc, 'Billing Address', data.billing_address || data.client_address || '', lx, y, ffw);
     addFieldPair(doc, 'Contact', data.contact_name || '', lx, y, hfw);
     y = addFieldPair(doc, 'Email', data.billing_email || data.contact_email || '', rx, y, hfw);
-    y = closeAutoSection(doc, sec.sectionY, y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ── Line Items Table ─────────────────────────────────
@@ -150,7 +150,10 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
         doc.rect(LAYOUT.PAGE_MARGIN + 1, atY - 3, cw - 2, 6, 'F');
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-        doc.setTextColor(...COLOR.TEXT_INVERTED);
+        // Luminance check: use dark text on light backgrounds, white on dark
+        const hdrLum = headerBg[0] * 0.299 + headerBg[1] * 0.587 + headerBg[2] * 0.114;
+        const hdrTextColor: [number, number, number] = hdrLum > 140 ? [30, 30, 35] : [255, 255, 255];
+        doc.setTextColor(...hdrTextColor);
         cols.forEach(c => {
           const isRight = c.label !== 'DESCRIPTION';
           doc.text(c.label, isRight ? c.x + c.w : c.x, atY, { align: isRight ? 'right' : 'left' });
@@ -159,6 +162,13 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
       };
 
       y = drawItemHeaders(y);
+      const tableStartPage = doc.getNumberOfPages();
+      const tableStartY = sec.contentY - 3;
+
+      // Track page segments for outer border drawing
+      const tableSegments: { top: number; bottom: number; page: number }[] = [
+        { top: tableStartY, bottom: y, page: tableStartPage },
+      ];
 
       // Data rows
       doc.setFont('helvetica', 'normal');
@@ -166,9 +176,14 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
       for (let i = 0; i < items.length; i++) {
         // Page break check — re-draw headers on new page
         const prevPage = doc.getNumberOfPages();
+        const prevY = y;
         y = checkPageBreak(doc, y, 8);
         if (doc.getNumberOfPages() > prevPage) {
+          // Close segment on previous page
+          tableSegments[tableSegments.length - 1].bottom = prevY;
           y = drawItemHeaders(y);
+          // Start new segment on new page
+          tableSegments.push({ top: y - 8, bottom: y, page: doc.getNumberOfPages() });
           doc.setFont('helvetica', 'normal');
           doc.setFontSize(FONT.SIZE_FIELD_VALUE);
         }
@@ -176,7 +191,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
         const item = items[i];
 
         // Dynamic row height for multi-line descriptions
-        const descLines = doc.splitTextToSize(item.description, cols[0].w - 2);
+        const descLines = doc.splitTextToSize(item.description || '', cols[0].w - 2);
         const rowHeight = Math.max(descLines.length * LAYOUT.LINE_HEIGHT, LAYOUT.LINE_HEIGHT) + 1;
 
         // Alternating shading with dynamic height
@@ -204,10 +219,18 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
         doc.line(LAYOUT.PAGE_MARGIN + 1, y - 0.5, pageWidth - LAYOUT.PAGE_MARGIN - 1, y - 0.5);
       }
 
-      // Outer table border
-      doc.setDrawColor(...COLOR.BORDER_OUTER);
-      doc.setLineWidth(BORDER.TABLE_OUTER);
-      doc.rect(LAYOUT.PAGE_MARGIN + 1, sec.contentY - 3, cw - 2, y - sec.contentY + 4);
+      // Update final segment bottom
+      if (tableSegments.length > 0) tableSegments[tableSegments.length - 1].bottom = y + 1;
+
+      // Outer table border — draw per page segment
+      const currentPage = doc.getNumberOfPages();
+      for (const seg of tableSegments) {
+        doc.setPage(seg.page);
+        doc.setDrawColor(...COLOR.BORDER_OUTER);
+        doc.setLineWidth(BORDER.TABLE_OUTER);
+        doc.rect(LAYOUT.PAGE_MARGIN + 1, seg.top, cw - 2, seg.bottom - seg.top + 3);
+      }
+      doc.setPage(currentPage);
     } else {
       doc.setFontSize(FONT.SIZE_TABLE_BODY);
       doc.setTextColor(...COLOR.TEXT_TERTIARY);
@@ -218,7 +241,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
 
     doc.setDrawColor(...COLOR.TEXT_PRIMARY);
     y += SPACING.MD;
-    y = closeAutoSection(doc, sec.sectionY, y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ── Totals Section ───────────────────────────────────
@@ -286,7 +309,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
     ]);
     y = addTableWithShading(doc, payHeaders, payRows, y, payColPositions);
 
-    y = closeAutoSection(doc, sec.sectionY, y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ── Notes Section ────────────────────────────────────
@@ -297,7 +320,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
     doc.setFont('helvetica', 'normal');
     y = addWrappedText(doc, data.notes, lx, y, ffw, 9);
     y += SPACING.MD;
-    y = closeAutoSection(doc, sec.sectionY, y);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ── Footer on all pages ──────────────────────────────
@@ -315,13 +338,18 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
 
 // ── Print-friendly HTML ───────────────────────────────────
 
+function escHtml(s: string | null | undefined): string {
+  if (!s) return '';
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 export function generatePrintableInvoiceHtml(data: InvoicePdfData): string {
   const items = data.line_items || [];
   const payments = data.payments || [];
 
   const lineItemRows = items.map(item => `
     <tr>
-      <td style="padding: 6px 8px; border-bottom: 1px solid #ddd; font-size: 11px;">${item.description}</td>
+      <td style="padding: 6px 8px; border-bottom: 1px solid #ddd; font-size: 11px;">${escHtml(item.description)}</td>
       <td style="padding: 6px 8px; border-bottom: 1px solid #ddd; text-align: right; font-size: 11px;">${item.quantity}</td>
       <td style="padding: 6px 8px; border-bottom: 1px solid #ddd; text-align: right; font-size: 11px;">${fmt(item.unit_price)}</td>
       <td style="padding: 6px 8px; border-bottom: 1px solid #ddd; text-align: right; font-size: 11px; font-weight: bold; ${item.amount < 0 ? 'color: #00783c;' : ''}">${fmt(item.amount)}</td>
@@ -346,26 +374,26 @@ export function generatePrintableInvoiceHtml(data: InvoicePdfData): string {
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #333; background: #fff; padding: 30px; max-width: 800px; margin: 0 auto; }
     @media print { body { padding: 0; } }
-    .header { background: #303030; color: #fff; padding: 16px 20px; margin-bottom: 0; display: flex; align-items: center; gap: 14px; }
+    .header { background: #1e3048; color: #fff; padding: 16px 20px; margin-bottom: 0; display: flex; align-items: center; gap: 14px; }
     .header img { width: 42px; height: 42px; border-radius: 50%; }
     .header-text h1 { font-size: 16px; margin-bottom: 1px; letter-spacing: 1px; }
     .header-text p { font-size: 10px; color: #d4a017; letter-spacing: 2px; text-transform: uppercase; }
     .accent-line { height: 3px; background: #d4a017; margin-bottom: 16px; }
-    .section-bar { background: #303030; color: #fff; padding: 4px 10px; font-size: 10px; font-weight: bold; letter-spacing: 1px; text-transform: uppercase; margin-top: 16px; border: 2px solid #303030; }
+    .section-bar { background: #1e3048; color: #fff; padding: 4px 10px; font-size: 10px; font-weight: bold; letter-spacing: 1px; text-transform: uppercase; margin-top: 16px; border: 2px solid #1e3048; }
     .section-body { border: 1px solid #ccc; border-top: none; padding: 12px; margin-bottom: 0; }
     .field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
     .field-box { border: 1px solid #ccc; padding: 4px 6px; min-height: 32px; }
     .field-box .label { font-size: 8px; text-transform: uppercase; color: #888; letter-spacing: 0.5px; }
     .field-box .value { font-size: 12px; color: #222; margin-top: 2px; }
     .invoice-title { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; }
-    .invoice-title h2 { font-size: 24px; color: #bc1010; font-weight: 900; }
-    .invoice-number { background: #bc1010; color: #fff; padding: 6px 16px; font-size: 13px; font-weight: bold; border: 2px solid #fff; outline: 2px solid #bc1010; }
+    .invoice-title h2 { font-size: 24px; color: #1a5a9e; font-weight: 900; }
+    .invoice-number { background: #1a5a9e; color: #fff; padding: 6px 16px; font-size: 13px; font-weight: bold; border: 2px solid #fff; outline: 2px solid #1a5a9e; }
     table { width: 100%; border-collapse: collapse; margin-bottom: 0; }
-    th { background: #303030; color: #fff; padding: 6px 8px; text-align: left; font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; }
+    th { background: #1e3048; color: #fff; padding: 6px 8px; text-align: left; font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; }
     .totals { margin-left: auto; width: 280px; margin-top: 12px; }
     .totals tr td { padding: 3px 8px; font-size: 12px; }
     .totals .total-row { border-top: 2px solid #333; font-size: 14px; font-weight: bold; }
-    .totals .balance-row { border: 2px solid #bc1010; font-size: 16px; font-weight: bold; color: #bc1010; }
+    .totals .balance-row { border: 2px solid #1a5a9e; font-size: 16px; font-weight: bold; color: #1a5a9e; }
     .notes { margin-top: 16px; padding: 12px; background: #f9f9f9; border: 1px solid #ccc; }
     .notes h3 { font-size: 9px; text-transform: uppercase; color: #888; margin-bottom: 6px; letter-spacing: 1px; }
     .notes p { font-size: 11px; }
@@ -403,10 +431,10 @@ export function generatePrintableInvoiceHtml(data: InvoicePdfData): string {
   <div class="section-bar">SECTION 2 &mdash; CLIENT / BILL TO</div>
   <div class="section-body">
     <div class="field-grid">
-      <div class="field-box" style="grid-column: span 2;"><div class="label">Client Name</div><div class="value">${data.client_name || 'Client'}</div></div>
-      <div class="field-box" style="grid-column: span 2;"><div class="label">Billing Address</div><div class="value">${data.billing_address || data.client_address || ''}</div></div>
-      <div class="field-box"><div class="label">Contact</div><div class="value">${data.contact_name || ''}</div></div>
-      <div class="field-box"><div class="label">Email</div><div class="value">${data.billing_email || data.contact_email || ''}</div></div>
+      <div class="field-box" style="grid-column: span 2;"><div class="label">Client Name</div><div class="value">${escHtml(data.client_name) || 'Client'}</div></div>
+      <div class="field-box" style="grid-column: span 2;"><div class="label">Billing Address</div><div class="value">${escHtml(data.billing_address || data.client_address)}</div></div>
+      <div class="field-box"><div class="label">Contact</div><div class="value">${escHtml(data.contact_name)}</div></div>
+      <div class="field-box"><div class="label">Email</div><div class="value">${escHtml(data.billing_email || data.contact_email)}</div></div>
     </div>
   </div>
 
@@ -448,7 +476,7 @@ export function generatePrintableInvoiceHtml(data: InvoicePdfData): string {
 
   ${data.notes ? `
     <div class="section-bar">NOTES</div>
-    <div class="section-body"><p style="font-size: 11px;">${data.notes}</p></div>
+    <div class="section-body"><p style="font-size: 11px;">${escHtml(data.notes)}</p></div>
   ` : ''}
 
   <div class="footer">
@@ -462,7 +490,12 @@ export function generatePrintableInvoiceHtml(data: InvoicePdfData): string {
 
 /** Generate invoice PDF and return a blob URL for in-app preview */
 export async function generateInvoicePdfBlobUrl(data: InvoicePdfData): Promise<string> {
-  const doc = await generateInvoicePdf(data);
-  const blob = doc.output('blob');
-  return URL.createObjectURL(blob);
+  try {
+    const doc = await generateInvoicePdf(data);
+    const blob = doc.output('blob');
+    return URL.createObjectURL(blob);
+  } catch (err) {
+    console.error('Invoice PDF preview generation failed:', err);
+    throw new Error(`Failed to generate invoice PDF: ${err instanceof Error ? err.message : 'Unknown error'}`);
+  }
 }

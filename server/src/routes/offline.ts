@@ -9,7 +9,9 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { sanitizeObject } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
+import { generateIncidentNumber } from '../utils/caseNumbers';
 
 const router = Router();
 
@@ -20,7 +22,7 @@ router.use(authenticateToken);
 // Maps table name → columns to SELECT (controls what the desktop app receives)
 const SYNC_TABLES: Record<string, { columns: string; hasUpdatedAt: boolean; limit?: number }> = {
   users: {
-    columns: 'id, username, password_hash, first_name, last_name, full_name, email, role, badge_number, phone, status, avatar_url, created_at, updated_at',
+    columns: 'id, username, first_name, last_name, full_name, email, role, badge_number, phone, status, avatar_url, created_at, updated_at',
     hasUpdatedAt: true,
   },
   clients: {
@@ -37,7 +39,7 @@ const SYNC_TABLES: Record<string, { columns: string; hasUpdatedAt: boolean; limi
     limit: 500,
   },
   units: {
-    columns: 'id, call_sign, officer_id, officer_name, status, latitude, longitude, current_call_id, last_status_change, capabilities',
+    columns: 'id, call_sign, officer_id, status, latitude, longitude, current_call_id, last_status_change, capabilities',
     hasUpdatedAt: false,
   },
   incidents: {
@@ -46,12 +48,12 @@ const SYNC_TABLES: Record<string, { columns: string; hasUpdatedAt: boolean; limi
     limit: 500,
   },
   time_entries: {
-    columns: 'id, officer_id, schedule_id, clock_in, clock_out, clock_in_latitude, clock_in_longitude, clock_out_latitude, clock_out_longitude, total_hours, break_minutes, status',
+    columns: 'id, officer_id, schedule_id, clock_in, clock_out, clock_in_latitude, clock_in_longitude, total_hours, break_minutes, status',
     hasUpdatedAt: false,
     limit: 200,
   },
   persons: {
-    columns: 'id, first_name, last_name, dob, gender, race, address, phone, dl_number, dl_state, flags, notes, created_at, updated_at',
+    columns: 'id, first_name, last_name, dob, gender, race, address, phone, dl_number, dl_state, ssn_last4, flags, notes, created_at, updated_at',
     hasUpdatedAt: true,
     limit: 500,
   },
@@ -126,29 +128,35 @@ router.post('/sync/push', (req: Request, res: Response) => {
 
     for (const item of items) {
       try {
+        // Parse and re-sanitize decoded bodies — the global middleware only sanitized
+        // the outer JSON string, not the inner fields after JSON.parse()
+        const parsedBody = typeof item.body === 'string' ? JSON.parse(item.body) : item.body;
+        const body = parsedBody && typeof parsedBody === 'object' && !Array.isArray(parsedBody)
+          ? sanitizeObject(parsedBody as Record<string, unknown>)
+          : parsedBody;
+
         if (item.table_name === 'calls_for_service' && item.method === 'POST') {
-          const body = typeof item.body === 'string' ? JSON.parse(item.body) : item.body;
           const result = pushCallForService(db, body, req.user!.userId);
           results.push({ local_id: item.local_id, server_id: result.id, success: true });
 
         } else if (item.table_name === 'incidents' && item.method === 'POST') {
-          const body = typeof item.body === 'string' ? JSON.parse(item.body) : item.body;
           const result = pushIncident(db, body, req.user!.userId);
           results.push({ local_id: item.local_id, server_id: result.id, success: true });
 
         } else if (item.table_name === 'time_entries' && item.method === 'POST') {
-          const body = typeof item.body === 'string' ? JSON.parse(item.body) : item.body;
           const result = pushTimeEntry(db, body);
           results.push({ local_id: item.local_id, server_id: result.id, success: true });
 
         } else if (item.table_name === 'gps_breadcrumbs' && item.method === 'POST') {
-          const body = typeof item.body === 'string' ? JSON.parse(item.body) : item.body;
-          pushGpsBreadcrumbs(db, body);
+          // GPS body is an array — sanitize each point individually
+          const sanitizedGps = Array.isArray(body)
+            ? body.map((pt: any) => pt && typeof pt === 'object' ? sanitizeObject(pt) : pt)
+            : body;
+          pushGpsBreadcrumbs(db, sanitizedGps);
           results.push({ local_id: item.local_id, success: true });
 
         } else if (item.method === 'PUT') {
           // Generic update — parse the endpoint to get table and id
-          const body = typeof item.body === 'string' ? JSON.parse(item.body) : item.body;
           pushUpdate(db, item.endpoint, body);
           results.push({ local_id: item.local_id, success: true });
 
@@ -179,7 +187,12 @@ function pushCallForService(db: any, body: any, userId: number) {
   const last = db.prepare(
     `SELECT call_number FROM calls_for_service WHERE call_number LIKE ? ORDER BY id DESC LIMIT 1`
   ).get(`CFS-${year}-%`);
-  const seq = last ? parseInt(last.call_number.split('-')[2], 10) + 1 : 1;
+  let seq = 1;
+  if (last) {
+    const parts = last.call_number.split('-');
+    const parsed = parts.length >= 3 ? parseInt(parts[2], 10) : NaN;
+    if (!isNaN(parsed)) seq = parsed + 1;
+  }
   const callNumber = `CFS-${year}-${String(seq).padStart(5, '0')}`;
   const now = localNow();
 
@@ -202,29 +215,29 @@ function pushCallForService(db: any, body: any, userId: number) {
 
 function pushIncident(db: any, body: any, userId: number) {
   const now = localNow();
+  const incidentNumber = generateIncidentNumber(db, body.incident_type || 'general');
   const result = db.prepare(`
-    INSERT INTO incidents (incident_type, priority, status, location_address, property_id,
+    INSERT INTO incidents (incident_number, incident_type, priority, status, location_address, property_id,
       narrative, officer_id, supervisor_id, call_id, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
-    body.incident_type, body.priority || 'P3', body.status || 'draft',
+    incidentNumber, body.incident_type, body.priority || 'P3', body.status || 'draft',
     body.location_address, body.property_id, body.narrative,
     body.officer_id || userId, body.supervisor_id, body.call_id, now, now
   );
 
-  return { id: result.lastInsertRowid };
+  return { id: result.lastInsertRowid, incident_number: incidentNumber };
 }
 
 function pushTimeEntry(db: any, body: any) {
   const result = db.prepare(`
     INSERT INTO time_entries (officer_id, schedule_id, clock_in, clock_out,
-      clock_in_latitude, clock_in_longitude, clock_out_latitude, clock_out_longitude,
+      clock_in_latitude, clock_in_longitude,
       total_hours, break_minutes, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     body.officer_id, body.schedule_id, body.clock_in, body.clock_out,
     body.clock_in_latitude, body.clock_in_longitude,
-    body.clock_out_latitude, body.clock_out_longitude,
     body.total_hours, body.break_minutes || 0, body.status || 'active'
   );
 

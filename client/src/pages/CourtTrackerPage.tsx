@@ -8,15 +8,19 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Gavel, Search, Plus, Calendar, Clock, User, MapPin,
-  X, Save, Loader2, AlertTriangle, CheckCircle, FileText,
+  X, Save, Loader2, AlertTriangle, CheckCircle, FileText, Scale,
 } from 'lucide-react';
 import type { CourtEvent, CourtEventType, CourtEventStatus, CourtOutcome } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
+import EmptyState from '../components/EmptyState';
 // ExportButton omitted — no dedicated export endpoint
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
+import { useFormValidation } from '../hooks/useFormValidation';
+import { isValidDate } from '../utils/validate';
+import { formatDate } from '../utils/dateUtils';
 
 const EVENT_TYPES: { value: CourtEventType; label: string }[] = [
   { value: 'arraignment', label: 'Arraignment' }, { value: 'hearing', label: 'Hearing' },
@@ -62,6 +66,7 @@ const EMPTY_FORM = {
 export default function CourtTrackerPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
+  const { errors: formErrors, validate: validateForm, clearAllErrors } = useFormValidation();
 
   const [activeView, setActiveView] = useState<'list' | 'upcoming'>('upcoming');
   const [events, setEvents] = useState<CourtEvent[]>([]);
@@ -113,7 +118,11 @@ export default function CourtTrackerPage() {
   useLiveSync('records', () => { fetchEvents({ silent: true }); fetchUpcoming(); });
 
   const handleCreate = async () => {
-    if (!formData.event_date || !formData.court_name) { addToast('Date and court required', 'error'); return; }
+    const isValid = validateForm(formData, {
+      event_date: { required: true, custom: isValidDate, customMessage: 'Valid date required (YYYY-MM-DD)' },
+      court_name: { required: true, minLength: 2 },
+    });
+    if (!isValid) return;
     setSubmitting(true);
     try {
       await apiFetch('/court/events', { method: 'POST', body: JSON.stringify(formData) });
@@ -157,7 +166,7 @@ export default function CourtTrackerPage() {
       {/* ── Left Panel ── */}
       <div className={`flex flex-col ${isMobile ? 'h-1/2' : 'w-[400px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Court / Legal Tracker" icon={Gavel}>
-          <button onClick={() => { setFormOpen(true); setFormData({ ...EMPTY_FORM }); }} className="toolbar-btn toolbar-btn-primary">
+          <button onClick={() => { clearAllErrors(); setFormOpen(true); setFormData({ ...EMPTY_FORM }); }} className="toolbar-btn toolbar-btn-primary">
             <Plus style={{ width: 11, height: 11 }} /> New
           </button>
         </PanelTitleBar>
@@ -197,7 +206,12 @@ export default function CourtTrackerPage() {
           {loading && activeView === 'list' ? (
             <div className="flex items-center justify-center h-32"><Loader2 className="w-5 h-5 animate-spin text-rmpg-500" /></div>
           ) : displayEvents.length === 0 ? (
-            <div className="text-center py-8 text-rmpg-500 text-xs">No events found</div>
+            <EmptyState
+              icon={Scale}
+              title="No events found"
+              description="Create a new court event to get started."
+              action={{ label: 'New Event', onClick: () => { clearAllErrors(); setFormOpen(true); setFormData({ ...EMPTY_FORM }); } }}
+            />
           ) : (
             displayEvents.map(evt => {
               const countdown = evt.event_date ? daysUntil(evt.event_date) : '';
@@ -224,7 +238,7 @@ export default function CourtTrackerPage() {
                   </div>
                   <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-500">
                     <Calendar style={{ width: 9, height: 9 }} />
-                    {evt.event_date ? new Date(evt.event_date).toLocaleDateString() : '—'}
+                    {evt.event_date ? formatDate(evt.event_date) : '—'}
                     {evt.event_time && <span>{evt.event_time}</span>}
                     {evt.courtroom && <span>Rm {evt.courtroom}</span>}
                   </div>
@@ -264,9 +278,9 @@ export default function CourtTrackerPage() {
               </div>
 
               {/* Detail Grid */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {[
-                  ['Event Date', selected.event_date ? new Date(selected.event_date).toLocaleDateString() : '—'],
+                  ['Event Date', selected.event_date ? formatDate(selected.event_date) : '—'],
                   ['Time', selected.event_time || '—'],
                   ['Court', selected.court_name],
                   ['Courtroom', selected.courtroom || '—'],
@@ -286,7 +300,7 @@ export default function CourtTrackerPage() {
               {selected.outcome && (
                 <div className="panel-beveled p-3">
                   <div className="text-[9px] font-mono text-rmpg-500 uppercase mb-2">Outcome</div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div><span className="text-[9px] text-rmpg-500">Verdict:</span> <span className="text-xs text-white font-bold">{selected.outcome.replace(/_/g, ' ')}</span></div>
                     {selected.sentence && <div><span className="text-[9px] text-rmpg-500">Sentence:</span> <span className="text-xs text-white">{selected.sentence}</span></div>}
                     {selected.fine_amount && <div><span className="text-[9px] text-rmpg-500">Fine:</span> <span className="text-xs text-amber-400">${Number(selected.fine_amount).toFixed(2)}</span></div>}
@@ -320,39 +334,41 @@ export default function CourtTrackerPage() {
               <button onClick={() => setFormOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] font-mono text-rmpg-500 uppercase">Type</label>
+                  <label className="field-label">Type</label>
                   <select value={formData.event_type} onChange={e => setFormData(p => ({ ...p, event_type: e.target.value as CourtEventType }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">
                     {EVENT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] font-mono text-rmpg-500 uppercase">Date *</label>
-                  <input type="date" value={formData.event_date} onChange={e => setFormData(p => ({ ...p, event_date: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                  <label className="field-label">Date *</label>
+                  <input type="date" value={formData.event_date} onChange={e => setFormData(p => ({ ...p, event_date: e.target.value }))} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none ${formErrors.event_date ? 'border-red-500' : 'border-rmpg-700'}`} />
+                  {formErrors.event_date && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.event_date}</p>}
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                 <div>
-                  <label className="text-[10px] font-mono text-rmpg-500 uppercase">Time</label>
+                  <label className="field-label">Time</label>
                   <input type="time" value={formData.event_time} onChange={e => setFormData(p => ({ ...p, event_time: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
                 </div>
                 <div>
-                  <label className="text-[10px] font-mono text-rmpg-500 uppercase">Court *</label>
-                  <input value={formData.court_name} onChange={e => setFormData(p => ({ ...p, court_name: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                  <label className="field-label">Court *</label>
+                  <input value={formData.court_name} onChange={e => setFormData(p => ({ ...p, court_name: e.target.value }))} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none ${formErrors.court_name ? 'border-red-500' : 'border-rmpg-700'}`} />
+                  {formErrors.court_name && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.court_name}</p>}
                 </div>
                 <div>
-                  <label className="text-[10px] font-mono text-rmpg-500 uppercase">Courtroom</label>
+                  <label className="field-label">Courtroom</label>
                   <input value={formData.courtroom} onChange={e => setFormData(p => ({ ...p, courtroom: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] font-mono text-rmpg-500 uppercase">Defendant Name</label>
+                  <label className="field-label">Defendant Name</label>
                   <input value={formData.defendant_name} onChange={e => setFormData(p => ({ ...p, defendant_name: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
                 </div>
                 <div>
-                  <label className="text-[10px] font-mono text-rmpg-500 uppercase">Judge</label>
+                  <label className="field-label">Judge</label>
                   <input value={formData.judge_name} onChange={e => setFormData(p => ({ ...p, judge: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
                 </div>
               </div>
@@ -377,18 +393,18 @@ export default function CourtTrackerPage() {
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div>
-                <label className="text-[10px] font-mono text-rmpg-500 uppercase">Outcome *</label>
+                <label className="field-label">Outcome *</label>
                 <select value={outcomeData.outcome} onChange={e => setOutcomeData(p => ({ ...p, outcome: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">
                   <option value="">Select outcome...</option>
                   {OUTCOME_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
               <div>
-                <label className="text-[10px] font-mono text-rmpg-500 uppercase">Sentence</label>
+                <label className="field-label">Sentence</label>
                 <textarea value={outcomeData.sentence} onChange={e => setOutcomeData(p => ({ ...p, sentence: e.target.value }))} rows={2} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
               </div>
               <div>
-                <label className="text-[10px] font-mono text-rmpg-500 uppercase">Fine Amount ($)</label>
+                <label className="field-label">Fine Amount ($)</label>
                 <input value={outcomeData.fine_amount} onChange={e => setOutcomeData(p => ({ ...p, fine_amount: e.target.value }))} type="number" className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">

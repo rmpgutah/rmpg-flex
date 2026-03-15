@@ -8,6 +8,7 @@ import {
   authenticateToken,
   authenticateTempToken,
   authenticateAnyToken,
+  requireRole,
   generateAccessToken,
   generateRefreshToken,
   generate2faPendingToken,
@@ -15,8 +16,8 @@ import {
   verifyRefreshToken,
   JwtPayload,
 } from '../middleware/auth';
-import { authRateLimit } from '../middleware/rateLimiter';
-import { validatePassword, getPasswordPolicyDescription, checkPasswordHistory } from '../middleware/validatePassword';
+import { authRateLimit, mfaRateLimit, refreshRateLimit, passwordRateLimit } from '../middleware/rateLimiter';
+import { validatePassword, getPasswordPolicyDescription, checkPasswordHistory, isPasswordExpired } from '../middleware/validatePassword';
 import config from '../config';
 import { localNow } from '../utils/timeUtils';
 import {
@@ -29,25 +30,7 @@ import {
   decryptSecret as legacyDecryptSecret,
 } from '../utils/totp';
 import { createNotification } from './notifications';
-import {
-  beginRegistration,
-  completeRegistration,
-  beginAuthentication,
-  verifyAuthentication,
-  removeCredential,
-  getUserWebAuthnStatus,
-  hasWebAuthnCredentials,
-} from '../utils/webauthn';
-import {
-  generateTotpSecret,
-  generateQRCodeDataUri,
-  verifyTotpToken,
-  encryptSecret,
-  decryptSecret,
-  generateBackupCodes,
-  hashBackupCode,
-  verifyBackupCode as verifyBackupCodeHash,
-} from '../utils/totpService';
+import { sendNotificationEmail } from '../utils/emailSender';
 import {
   isDeviceTrusted,
   trustDevice,
@@ -57,7 +40,6 @@ import {
   createSecurityNotification,
 } from '../utils/deviceFingerprint';
 import {
-  isPasswordExpired,
   isPasswordExpiringSoon,
   setPasswordExpiry,
   isPasswordInHistory,
@@ -220,8 +202,7 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
     const db = getDb();
     const user = db.prepare(`
       SELECT id, username, password_hash, first_name, last_name, full_name, email, role,
-             badge_number, phone, status, avatar_url, must_change_password,
-             totp_enabled, totp_setup_required, password_expires_at, force_password_change
+             badge_number, phone, status, avatar_url, profile_image, must_change_password
       FROM users WHERE username = ?
     `).get(username) as any;
 
@@ -232,8 +213,9 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
     }
 
     if (user.status !== 'active') {
-      logLoginAttempt(username, ip, false, 'account_inactive', userAgent, deviceFingerprint);
-      res.status(403).json({ error: 'Account is not active' });
+      logLoginAttempt(username, ip, false, 'account_inactive');
+      // Return identical error to invalid credentials to prevent account enumeration
+      res.status(401).json({ error: 'Invalid username or password' });
       return;
     }
 
@@ -321,23 +303,29 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
       return;
     }
 
-    // 2FA is enabled — require verification
-    if (has2FA || hasWebAuthn) {
-      const tempToken = generateTempToken(
-        { userId: user.id, username: user.username, role: user.role, fullName: user.full_name },
-        pendingActions
-      );
-      res.json({
-        step: 'verify_2fa',
-        requires2FA: true,
-        requiresPasswordChange: needsPasswordChange,
-        tempToken,
-        methods: {
-          totp: has2FA,
-          webauthn: hasWebAuthn,
-        },
-      });
-      return;
+    const payload: Omit<JwtPayload, 'type'> = {
+      userId: user.id,
+      username: user.username,
+      role: user.role,
+      fullName: user.full_name,
+    };
+
+    // ── Two-Factor Authentication gate ──────────────────
+    if (userFull?.totp_enabled) {
+      // Check if this device is trusted — skip 2FA if so
+      if (deviceFingerprint && isDeviceTrusted(user.id, deviceFingerprint)) {
+        // Trusted device — bypass 2FA, proceed to token issuance below
+        logLoginAttempt(username, ip, true, undefined, userAgent, deviceFingerprint);
+      } else {
+        // Not trusted — require 2FA
+        const tempToken = generate2faPendingToken(payload);
+        res.json({
+          requires2FA: true,
+          tempToken,
+          userId: user.id,
+        });
+        return;
+      }
     }
 
     // 2FA not set up — require setup
@@ -355,593 +343,100 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
       return;
     }
 
-    // No 2FA at all (should not happen with mandatory 2FA, but fallback)
-    logLoginAttempt(username, ip, true, undefined, userAgent, deviceFingerprint);
-    const tokens = issueTokens(user, ip, userAgent, deviceFingerprint);
-    res.json(tokens);
+    // ── Server-side 2FA setup enforcement ─────────────────
+    // If the user's role requires 2FA but they haven't set it up,
+    // return a setup step instead of issuing full tokens
+    if (must_setup_2fa) {
+      const tempToken = generate2faPendingToken(payload);
+      res.json({
+        step: 'setup_2fa',
+        tempToken,
+        requiresPasswordChange: !!user.must_change_password || isPasswordExpired(userFull?.password_changed_at),
+      });
+      return;
+    }
+
+    // ── No 2FA — issue full tokens ──────────────────────
+    const accessToken = generateAccessToken(payload);
+    const refreshToken = generateRefreshToken(payload);
+    const sessionId = createSession(user.id, refreshToken, ip, userAgent);
+
+    // Include sessionId in a fresh access token so IP binding works
+    const accessTokenWithSession = generateAccessToken({ ...payload, sessionId });
+
+    // Log the login to activity log
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'user_login', 'user', ?, 'User logged in', ?)
+    `).run(user.id, user.id, ip);
+
+    // Update login statistics
+    db.prepare(`
+      UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login_at = ? WHERE id = ?
+    `).run(localNow(), user.id);
+
+    // Login notification — alert user if logging in from a new IP
+    try {
+      const previousLogins = db.prepare(`
+        SELECT DISTINCT ip_address FROM login_attempts
+        WHERE username = ? AND success = 1 AND ip_address != ?
+        ORDER BY created_at DESC LIMIT 20
+      `).all(username, ip) as { ip_address: string }[];
+
+      if (previousLogins.length > 0) {
+        const knownIps = new Set(previousLogins.map(l => l.ip_address));
+        if (!knownIps.has(ip)) {
+          createNotification(
+            user.id,
+            'login_alert',
+            'New Login Detected',
+            `Login from new IP address: ${ip} — ${(userAgent || '').substring(0, 60)}`,
+            'user',
+            user.id,
+            'high',
+            'auth.new_ip_login',
+          );
+          // Email alert for new IP login
+          sendNotificationEmail(
+            user.id,
+            'New Login From Unrecognized IP',
+            `A login to your RMPG Flex account was detected from a new IP address: ${ip}\n\nDevice: ${(userAgent || '').substring(0, 80)}\nTime: ${localNow()}\n\nIf this was not you, contact your administrator immediately.`
+          ).catch(() => { /* email failure should never block login */ });
+        }
+      }
+    } catch { /* notification failure should never block login */ }
+
+    res.json({
+      token: accessTokenWithSession,
+      refreshToken,
+      sessionId,
+      expiresIn: config.jwt.accessExpiry,
+      user: {
+        id: user.id,
+        username: user.username,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        full_name: user.full_name,
+        email: user.email,
+        role: user.role,
+        badge_number: user.badge_number,
+        phone: user.phone,
+        avatar_url: user.avatar_url,
+        profile_image: user.profile_image || null,
+        status: user.status,
+        must_change_password: !!user.must_change_password,
+        totp_enabled: false,
+        requires_2fa_setup: must_setup_2fa,
+      },
+    });
   } catch (error: any) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-
-// ═══════════════════════════════════════════════════════
-// POST /api/auth/login/verify-2fa — Verify TOTP code
-// ═══════════════════════════════════════════════════════
-router.post('/login/verify-2fa', authRateLimit, authenticateTempToken, (req: Request, res: Response) => {
-  try {
-    const { code, trustDevice: shouldTrust, deviceFingerprint } = req.body;
-    const ip = req.ip || 'unknown';
-    const userAgent = req.headers['user-agent'] || 'unknown';
-    const userId = req.user!.userId;
-
-    if (!code) {
-      res.status(400).json({ error: 'Verification code is required' });
-      return;
-    }
-
-    const db = getDb();
-
-    // Get the user's TOTP secret
-    const totpRecord = db.prepare(`
-      SELECT encrypted_secret, encryption_iv, encryption_tag
-      FROM user_totp_secrets WHERE user_id = ? AND is_verified = 1
-    `).get(userId) as any;
-
-    if (!totpRecord) {
-      res.status(400).json({ error: '2FA is not configured for this account' });
-      return;
-    }
-
-    // Decrypt and verify
-    const secretBase32 = decryptSecret(
-      totpRecord.encrypted_secret,
-      totpRecord.encryption_iv,
-      totpRecord.encryption_tag
-    );
-
-    const isValid = verifyTotpToken(secretBase32, code);
-    if (!isValid) {
-      res.status(401).json({ error: 'Invalid verification code' });
-      return;
-    }
-
-    // Success — log and issue tokens
-    logLoginAttempt(req.user!.username, ip, true, undefined, userAgent, deviceFingerprint);
-
-    // Trust this device if requested
-    if (shouldTrust && deviceFingerprint) {
-      trustDevice(userId, deviceFingerprint, ip, userAgent);
-    }
-
-    // Check for new device notification
-    if (deviceFingerprint && isNewDevice(userId, deviceFingerprint)) {
-      createSecurityNotification(
-        userId,
-        'new_device_login',
-        'New device login detected',
-        `Login from ${parseDeviceName(userAgent)} at IP ${ip}`,
-        ip,
-        parseDeviceName(userAgent)
-      );
-    }
-
-    // Check if password change is still pending
-    const user = db.prepare(`
-      SELECT id, username, full_name, email, role, badge_number, phone, avatar_url,
-             force_password_change, password_expires_at
-      FROM users WHERE id = ?
-    `).get(userId) as any;
-
-    const needsPasswordChange = user.force_password_change === 1 || isPasswordExpired(user);
-    if (needsPasswordChange) {
-      const tempToken = generateTempToken(
-        { userId: user.id, username: user.username, role: user.role, fullName: user.full_name },
-        ['password_change']
-      );
-      res.json({
-        step: 'password_change',
-        requiresPasswordChange: true,
-        tempToken,
-      });
-      return;
-    }
-
-    const tokens = issueTokens(user, ip, userAgent, deviceFingerprint);
-    res.json(tokens);
-  } catch (error: any) {
-    console.error('2FA verify error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-
-// ═══════════════════════════════════════════════════════
-// POST /api/auth/login/verify-backup-code
-// ═══════════════════════════════════════════════════════
-router.post('/login/verify-backup-code', authRateLimit, authenticateTempToken, (req: Request, res: Response) => {
-  try {
-    const { code, deviceFingerprint, trustDevice: shouldTrust } = req.body;
-    const ip = req.ip || 'unknown';
-    const userAgent = req.headers['user-agent'] || 'unknown';
-    const userId = req.user!.userId;
-
-    if (!code) {
-      res.status(400).json({ error: 'Backup code is required' });
-      return;
-    }
-
-    const db = getDb();
-
-    // Get unused backup codes
-    const backupCodes = db.prepare(`
-      SELECT id, code_hash FROM user_backup_codes
-      WHERE user_id = ? AND is_used = 0
-    `).all(userId) as { id: number; code_hash: string }[];
-
-    if (backupCodes.length === 0) {
-      res.status(400).json({ error: 'No backup codes remaining. Contact an administrator.' });
-      return;
-    }
-
-    // Try to verify against each unused code
-    let matchedCode: { id: number; code_hash: string } | null = null;
-    for (const bc of backupCodes) {
-      if (verifyBackupCodeHash(code, bc.code_hash)) {
-        matchedCode = bc;
-        break;
-      }
-    }
-
-    if (!matchedCode) {
-      res.status(401).json({ error: 'Invalid backup code' });
-      return;
-    }
-
-    // Mark code as used
-    db.prepare('UPDATE user_backup_codes SET is_used = 1, used_at = ? WHERE id = ?')
-      .run(localNow(), matchedCode.id);
-
-    // Log successful login
-    logLoginAttempt(req.user!.username, ip, true, undefined, userAgent, deviceFingerprint);
-
-    // Trust this device if requested
-    if (shouldTrust && deviceFingerprint) {
-      trustDevice(userId, deviceFingerprint, ip, userAgent);
-    }
-
-    // Check remaining codes
-    const remaining = backupCodes.length - 1;
-
-    // Check password change requirement
-    const user = db.prepare(`
-      SELECT id, username, full_name, email, role, badge_number, phone, avatar_url,
-             force_password_change, password_expires_at
-      FROM users WHERE id = ?
-    `).get(userId) as any;
-
-    const needsPasswordChange = user.force_password_change === 1 || isPasswordExpired(user);
-    if (needsPasswordChange) {
-      const tempToken = generateTempToken(
-        { userId: user.id, username: user.username, role: user.role, fullName: user.full_name },
-        ['password_change']
-      );
-      res.json({
-        step: 'password_change',
-        requiresPasswordChange: true,
-        tempToken,
-        backupCodesRemaining: remaining,
-        ...(remaining <= 2 && { warning: `Only ${remaining} backup code(s) remaining. Please regenerate.` }),
-      });
-      return;
-    }
-
-    const tokens = issueTokens(user, ip, userAgent, deviceFingerprint);
-    res.json({
-      ...tokens,
-      backupCodesRemaining: remaining,
-      ...(remaining <= 2 && { warning: `Only ${remaining} backup code(s) remaining. Please regenerate.` }),
-    });
-  } catch (error: any) {
-    console.error('Backup code verify error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-
-// ═══════════════════════════════════════════════════════
-// POST /api/auth/2fa/setup — Generate TOTP secret + QR
-// ═══════════════════════════════════════════════════════
-router.post('/2fa/setup', authenticateAnyToken, async (req: Request, res: Response) => {
-  try {
-    const userId = req.user!.userId;
-    const username = req.user!.username;
-    const db = getDb();
-
-    // Check if already has a verified TOTP
-    const existing = db.prepare(
-      'SELECT is_verified FROM user_totp_secrets WHERE user_id = ?'
-    ).get(userId) as { is_verified: number } | undefined;
-
-    if (existing?.is_verified) {
-      res.status(400).json({ error: '2FA is already configured. Disable it first to reconfigure.' });
-      return;
-    }
-
-    // Delete any unverified previous setup attempt
-    db.prepare('DELETE FROM user_totp_secrets WHERE user_id = ? AND is_verified = 0').run(userId);
-
-    // Generate new TOTP secret
-    const { secret, uri } = generateTotpSecret(username);
-    const secretBase32 = secret.base32;
-
-    // Encrypt and store
-    const { encrypted, iv, tag } = encryptSecret(secretBase32);
-    db.prepare(`
-      INSERT INTO user_totp_secrets (user_id, encrypted_secret, encryption_iv, encryption_tag, is_verified)
-      VALUES (?, ?, ?, ?, 0)
-    `).run(userId, encrypted, iv, tag);
-
-    // Generate QR code
-    const qrCodeDataUri = await generateQRCodeDataUri(uri);
-
-    res.json({
-      qrCodeDataUri,
-      manualKey: secretBase32,
-      issuer: config.totp.issuer,
-    });
-  } catch (error: any) {
-    console.error('2FA setup error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-
-// ═══════════════════════════════════════════════════════
-// POST /api/auth/2fa/setup/verify — Confirm first TOTP code
-// ═══════════════════════════════════════════════════════
-router.post('/2fa/setup/verify', authenticateAnyToken, (req: Request, res: Response) => {
-  try {
-    const { code } = req.body;
-    const userId = req.user!.userId;
-    const ip = req.ip || 'unknown';
-    const userAgent = req.headers['user-agent'] || 'unknown';
-
-    if (!code) {
-      res.status(400).json({ error: 'Verification code is required' });
-      return;
-    }
-
-    const db = getDb();
-
-    // Get the unverified secret
-    const totpRecord = db.prepare(`
-      SELECT id, encrypted_secret, encryption_iv, encryption_tag
-      FROM user_totp_secrets WHERE user_id = ? AND is_verified = 0
-    `).get(userId) as any;
-
-    if (!totpRecord) {
-      res.status(400).json({ error: 'No pending 2FA setup found. Start setup again.' });
-      return;
-    }
-
-    // Decrypt and verify
-    const secretBase32 = decryptSecret(
-      totpRecord.encrypted_secret,
-      totpRecord.encryption_iv,
-      totpRecord.encryption_tag
-    );
-
-    const isValid = verifyTotpToken(secretBase32, code);
-    if (!isValid) {
-      res.status(401).json({ error: 'Invalid code. Please try again with the current code from your authenticator app.' });
-      return;
-    }
-
-    // Mark as verified
-    db.prepare('UPDATE user_totp_secrets SET is_verified = 1, updated_at = ? WHERE id = ?')
-      .run(localNow(), totpRecord.id);
-
-    // Enable 2FA on user
-    db.prepare('UPDATE users SET totp_enabled = 1, totp_setup_required = 0, updated_at = ? WHERE id = ?')
-      .run(localNow(), userId);
-
-    // Generate backup codes
-    const { plain: codes, hashed: hashedCodes } = legacyGenerateBackupCodes();
-    const insertStmt = db.prepare(
-      'INSERT INTO user_backup_codes (user_id, code_hash) VALUES (?, ?)'
-    );
-    const insertTx = db.transaction(() => {
-      // Remove any old backup codes
-      db.prepare('DELETE FROM user_backup_codes WHERE user_id = ?').run(userId);
-      for (const hash of hashedCodes) {
-        insertStmt.run(userId, hash);
-      }
-    });
-    insertTx();
-
-    // Create security notification
-    createSecurityNotification(
-      userId,
-      '2fa_enabled',
-      'Two-factor authentication enabled',
-      'TOTP-based 2FA has been set up on your account.',
-      ip,
-      parseDeviceName(userAgent)
-    );
-
-    // Log successful login
-    logLoginAttempt(req.user!.username, ip, true, undefined, userAgent);
-
-    // Check if this is during login (mfa_pending token) — need to check password change and issue tokens
-    if (req.user!.type === 'mfa_pending') {
-      const user = db.prepare(`
-        SELECT id, username, full_name, email, role, badge_number, phone, avatar_url,
-               force_password_change, password_expires_at
-        FROM users WHERE id = ?
-      `).get(userId) as any;
-
-      const needsPasswordChange = user.force_password_change === 1 || isPasswordExpired(user);
-      if (needsPasswordChange) {
-        const tempToken = generateTempToken(
-          { userId: user.id, username: user.username, role: user.role, fullName: user.full_name },
-          ['password_change']
-        );
-        res.json({
-          step: 'show_backup_codes',
-          backupCodes: codes,
-          requiresPasswordChange: true,
-          tempToken,
-        });
-        return;
-      }
-
-      const { deviceFingerprint } = req.body;
-      const tokens = issueTokens(user, ip, userAgent, deviceFingerprint);
-      res.json({
-        ...tokens,
-        step: 'show_backup_codes',
-        backupCodes: codes,
-      });
-      return;
-    }
-
-    // Already authenticated (managing 2FA from profile)
-    res.json({
-      message: '2FA setup complete',
-      backupCodes: codes,
-    });
-  } catch (error: any) {
-    console.error('2FA setup verify error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-
-// ═══════════════════════════════════════════════════════
-// GET /api/auth/2fa/status — Current 2FA status
-// ═══════════════════════════════════════════════════════
-router.get('/2fa/status', authenticateToken, (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const userId = req.user!.userId;
-
-    const user = db.prepare('SELECT totp_enabled, totp_setup_required FROM users WHERE id = ?')
-      .get(userId) as any;
-
-    const backupCount = db.prepare(`
-      SELECT COUNT(*) as count FROM user_backup_codes
-      WHERE user_id = ? AND is_used = 0
-    `).get(userId) as { count: number };
-
-    res.json({
-      enabled: user?.totp_enabled === 1,
-      setupRequired: user?.totp_setup_required === 1,
-      backupCodesRemaining: backupCount.count,
-    });
-  } catch (error: any) {
-    console.error('2FA status error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-
-// ═══════════════════════════════════════════════════════
-// POST /api/auth/2fa/backup-codes/regenerate
-// ═══════════════════════════════════════════════════════
-router.post('/2fa/backup-codes/regenerate', authenticateToken, (req: Request, res: Response) => {
-  try {
-    const userId = req.user!.userId;
-    const { password } = req.body;
-    const ip = req.ip || 'unknown';
-    const userAgent = req.headers['user-agent'] || 'unknown';
-
-    if (!password) {
-      res.status(400).json({ error: 'Password confirmation required' });
-      return;
-    }
-
-    const db = getDb();
-
-    // Verify password
-    const user = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(userId) as any;
-    if (!user || !bcryptjs.compareSync(password, user.password_hash)) {
-      res.status(401).json({ error: 'Invalid password' });
-      return;
-    }
-
-    // Generate new codes
-    const { plain: codes, hashed: hashedCodes } = legacyGenerateBackupCodes();
-    const insertStmt = db.prepare(
-      'INSERT INTO user_backup_codes (user_id, code_hash) VALUES (?, ?)'
-    );
-    const insertTx = db.transaction(() => {
-      db.prepare('DELETE FROM user_backup_codes WHERE user_id = ?').run(userId);
-      for (const hash of hashedCodes) {
-        insertStmt.run(userId, hash);
-      }
-    });
-    insertTx();
-
-    createSecurityNotification(
-      userId,
-      '2fa_enabled',
-      'Backup codes regenerated',
-      'Your 2FA backup codes have been regenerated. Old codes are no longer valid.',
-      ip,
-      parseDeviceName(userAgent)
-    );
-
-    res.json({ backupCodes: codes });
-  } catch (error: any) {
-    console.error('Backup codes regenerate error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-
-// ═══════════════════════════════════════════════════════
-// POST /api/auth/2fa/disable — Disable 2FA (requires password)
-// ═══════════════════════════════════════════════════════
-router.post('/2fa/disable', authenticateToken, (req: Request, res: Response) => {
-  try {
-    const userId = req.user!.userId;
-    const { password } = req.body;
-    const ip = req.ip || 'unknown';
-    const userAgent = req.headers['user-agent'] || 'unknown';
-
-    if (!password) {
-      res.status(400).json({ error: 'Password confirmation required' });
-      return;
-    }
-
-    const db = getDb();
-    const user = db.prepare('SELECT password_hash, role FROM users WHERE id = ?').get(userId) as any;
-
-    if (!user || !bcryptjs.compareSync(password, user.password_hash)) {
-      res.status(401).json({ error: 'Invalid password' });
-      return;
-    }
-
-    // Only admins can disable their own 2FA (mandatory for everyone else)
-    if (user.role !== 'admin') {
-      res.status(403).json({ error: 'Two-factor authentication is mandatory and cannot be disabled.' });
-      return;
-    }
-
-    const disable2fa = db.transaction(() => {
-      db.prepare('DELETE FROM user_totp_secrets WHERE user_id = ?').run(userId);
-      db.prepare('DELETE FROM user_backup_codes WHERE user_id = ?').run(userId);
-      db.prepare('UPDATE users SET totp_enabled = 0, totp_setup_required = 1, updated_at = ? WHERE id = ?')
-        .run(localNow(), userId);
-    });
-    disable2fa();
-
-    createSecurityNotification(
-      userId,
-      '2fa_disabled',
-      'Two-factor authentication disabled',
-      'TOTP 2FA has been disabled on your account.',
-      ip,
-      parseDeviceName(userAgent)
-    );
-
-    res.json({ message: '2FA disabled. You will need to set it up again on next login.' });
-  } catch (error: any) {
-    console.error('2FA disable error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-
-// ═══════════════════════════════════════════════════════
-// POST /api/auth/login/change-password — During login flow
-// ═══════════════════════════════════════════════════════
-router.post('/login/change-password', authenticateTempToken, (req: Request, res: Response) => {
-  try {
-    const { newPassword, deviceFingerprint } = req.body;
-    const userId = req.user!.userId;
-    const ip = req.ip || 'unknown';
-    const userAgent = req.headers['user-agent'] || 'unknown';
-
-    if (!newPassword) {
-      res.status(400).json({ error: 'New password is required' });
-      return;
-    }
-
-    // Validate password policy
-    const validation = validatePassword(newPassword);
-    if (!validation.valid) {
-      res.status(400).json({
-        error: 'Password does not meet requirements',
-        details: validation.errors,
-        policy: getPasswordPolicyDescription(),
-      });
-      return;
-    }
-
-    const db = getDb();
-    const user = db.prepare('SELECT id, username, full_name, email, role, badge_number, phone, avatar_url, password_hash FROM users WHERE id = ?')
-      .get(userId) as any;
-
-    if (!user) {
-      res.status(404).json({ error: 'User not found' });
-      return;
-    }
-
-    // Prevent reusing current password
-    if (bcryptjs.compareSync(newPassword, user.password_hash)) {
-      res.status(400).json({ error: 'New password must be different from current password' });
-      return;
-    }
-
-    // Check password history
-    if (isPasswordInHistory(userId, newPassword)) {
-      res.status(400).json({ error: `Cannot reuse any of your last ${config.password.historyCount} passwords` });
-      return;
-    }
-
-    // Save old password to history
-    addToPasswordHistory(userId, user.password_hash);
-
-    // Update password
-    const newHash = bcryptjs.hashSync(newPassword, 10);
-    db.prepare('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?')
-      .run(newHash, localNow(), userId);
-
-    // Set expiry and clear force flag
-    setPasswordExpiry(userId);
-
-    // Log password change
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'password_changed', 'user', ?, 'Password changed during login', ?)
-    `).run(userId, userId, ip);
-
-    createSecurityNotification(
-      userId,
-      'password_changed',
-      'Password changed',
-      'Your password was changed during the login process.',
-      ip,
-      parseDeviceName(userAgent)
-    );
-
-    // Issue final tokens
-    const tokens = issueTokens(user, ip, userAgent, deviceFingerprint);
-    res.json(tokens);
-  } catch (error: any) {
-    console.error('Login password change error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-
-// ═══════════════════════════════════════════════════════
-// POST /api/auth/refresh
-// ═══════════════════════════════════════════════════════
-router.post('/refresh', (req: Request, res: Response) => {
+// ─── POST /api/auth/refresh ───────────────────────────
+router.post('/refresh', refreshRateLimit, (req: Request, res: Response) => {
   try {
     const { refreshToken } = req.body;
 
@@ -1049,8 +544,7 @@ router.get('/me', authenticateToken, (req: Request, res: Response) => {
     const db = getDb();
     const user = db.prepare(`
       SELECT id, username, first_name, last_name, full_name, email, role,
-             badge_number, phone, status, avatar_url, created_at, must_change_password,
-             totp_enabled, password_expires_at
+             badge_number, phone, status, avatar_url, profile_image, created_at, must_change_password, totp_enabled
       FROM users WHERE id = ?
     `).get(req.user!.userId) as any;
 
@@ -1076,7 +570,7 @@ router.get('/me', authenticateToken, (req: Request, res: Response) => {
       phone: user.phone,
       status: user.status,
       avatar_url: user.avatar_url,
-      avatarUrl: user.avatar_url,
+      profile_image: user.profile_image || null,
       created_at: user.created_at,
       createdAt: user.created_at,
       must_change_password: !!user.must_change_password,
@@ -1145,11 +639,75 @@ router.delete('/sessions/:sessionId', authenticateToken, (req: Request, res: Res
   }
 });
 
+// ─── POST /api/auth/logout-all ────────────────────────
+// Revoke all sessions for the current user (logout from all devices)
+router.post('/logout-all', authenticateToken, (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const result = db.prepare('UPDATE sessions SET is_active = 0 WHERE user_id = ?')
+      .run(req.user!.userId);
 
-// ═══════════════════════════════════════════════════════
-// POST /api/auth/change-password — Authenticated users
-// ═══════════════════════════════════════════════════════
-router.post('/change-password', authenticateToken, (req: Request, res: Response) => {
+    const ip = req.ip || 'unknown';
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'logout_all_sessions', 'user', ?, 'Revoked all active sessions', ?)
+    `).run(req.user!.userId, req.user!.userId, ip);
+
+    createSecurityNotification(
+      req.user!.userId,
+      'all_sessions_revoked',
+      'All Sessions Revoked',
+      `All ${result.changes} active sessions were revoked from ${ip}.`,
+      ip,
+      parseDeviceName(req.headers['user-agent'] || '')
+    );
+
+    res.json({ message: 'All sessions revoked', count: result.changes });
+  } catch (error: any) {
+    console.error('Logout all sessions error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── GET /api/auth/session-timeout ───────────────────
+// Return the configured session idle timeout (in minutes) for client-side enforcement
+router.get('/session-timeout', authenticateToken, (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    // Check system_config for security_config JSON or session_timeout_minutes
+    let timeoutMinutes = 480; // default: 8 hours
+
+    const row = db.prepare(
+      "SELECT config_value FROM system_config WHERE config_key = 'security_config' AND category = 'settings'"
+    ).get() as { config_value: string } | undefined;
+
+    if (row?.config_value) {
+      try {
+        const secConfig = JSON.parse(row.config_value);
+        if (secConfig.session_timeout_minutes) {
+          timeoutMinutes = parseInt(secConfig.session_timeout_minutes, 10) || 480;
+        }
+      } catch { /* use default */ }
+    }
+
+    // Also check for standalone setting
+    const standalone = db.prepare(
+      "SELECT config_value FROM system_config WHERE config_key = 'session_timeout_minutes' AND category = 'settings'"
+    ).get() as { config_value: string } | undefined;
+
+    if (standalone?.config_value) {
+      timeoutMinutes = parseInt(standalone.config_value, 10) || timeoutMinutes;
+    }
+
+    res.json({ timeoutMinutes });
+  } catch (error: any) {
+    console.error('Get session timeout error:', error);
+    res.json({ timeoutMinutes: 480 }); // safe fallback
+  }
+});
+
+// ─── POST /api/auth/change-password ───────────────────
+router.post('/change-password', passwordRateLimit, authenticateToken, (req: Request, res: Response) => {
   try {
     const { currentPassword, newPassword } = req.body;
     const ip = req.ip || 'unknown';
@@ -1191,9 +749,15 @@ router.post('/change-password', authenticateToken, (req: Request, res: Response)
     }
 
     // Check password history — prevent reuse of recent passwords
-    if (isPasswordInHistory(user.id, newPassword)) {
-      res.status(400).json({ error: `Cannot reuse any of your last ${config.password.historyCount} passwords` });
-      return;
+    if (config.password.historyCount > 0) {
+      let historyHashes: string[] = [];
+      try { historyHashes = user.password_history ? JSON.parse(user.password_history) : []; } catch { /* corrupted history — allow password change */ }
+      if (checkPasswordHistory(newPassword, historyHashes)) {
+        res.status(400).json({
+          error: `Password was used recently. Cannot reuse the last ${config.password.historyCount} passwords.`,
+        });
+        return;
+      }
     }
 
     // Save to history
@@ -1202,19 +766,42 @@ router.post('/change-password', authenticateToken, (req: Request, res: Response)
     const newHash = bcryptjs.hashSync(newPassword, 10);
     const now = localNow();
 
+    // Update password history: prepend old hash, keep last N
+    let oldHistory: string[] = [];
+    try { oldHistory = user.password_history ? JSON.parse(user.password_history) : []; } catch { /* corrupted — start fresh history */ }
+    const newHistory = [user.password_hash, ...oldHistory].slice(0, config.password.historyCount);
+
     db.prepare(`
       UPDATE users SET password_hash = ?, must_change_password = 0, force_password_change = 0,
         password_changed_at = ?, updated_at = ? WHERE id = ?
     `).run(newHash, now, now, user.id);
 
-    // Set new expiry
-    setPasswordExpiry(user.id);
+    // Set new password expiry
+    try { setPasswordExpiry(user.id); } catch { /* ignore if column missing */ }
 
-    // Log
+    // Log the password change
+    const ip = req.ip || 'unknown';
+    const userAgent = req.headers['user-agent'] || 'unknown';
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'password_changed', 'user', ?, 'Password changed', ?)
     `).run(user.id, user.id, ip);
+
+    createSecurityNotification(
+      user.id,
+      'password_changed',
+      'Password changed',
+      'Your password was changed.',
+      ip,
+      parseDeviceName(userAgent)
+    );
+
+    // Email alert for password change
+    sendNotificationEmail(
+      req.user!.userId,
+      'Password Changed',
+      `Your RMPG Flex password was changed.\n\nIP: ${ip}\nDevice: ${parseDeviceName(userAgent)}\nTime: ${localNow()}\n\nAll active sessions have been terminated. If this was not you, contact your administrator immediately.`
+    ).catch(() => { /* email failure should never block response */ });
 
     createSecurityNotification(
       user.id,
@@ -1281,7 +868,7 @@ router.put('/profile', authenticateToken, (req: Request, res: Response) => {
     db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...values);
 
     const updated = db.prepare(`
-      SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, status, avatar_url, created_at
+      SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, status, avatar_url, profile_image, created_at
       FROM users WHERE id = ?
     `).get(user.id) as any;
 
@@ -1299,6 +886,68 @@ router.put('/profile', authenticateToken, (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Update profile error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── PUT /api/auth/profile-image ─────────────────────────
+// Save or clear the current user's profile image (base64 data URL)
+router.put('/profile-image', authenticateToken, (req: Request, res: Response) => {
+  try {
+    const { profile_image } = req.body; // base64 data URL or null to clear
+    const db = getDb();
+
+    if (profile_image !== null && profile_image !== undefined) {
+      if (typeof profile_image !== 'string' || !profile_image.startsWith('data:image/')) {
+        res.status(400).json({ error: 'Profile image must be an image data URL' });
+        return;
+      }
+      // Limit size (~2MB for a profile photo)
+      if (profile_image.length > 2_000_000) {
+        res.status(400).json({ error: 'Profile image too large (max 2MB)' });
+        return;
+      }
+    }
+
+    db.prepare('UPDATE users SET profile_image = ?, updated_at = ? WHERE id = ?')
+      .run(profile_image || null, localNow(), req.user!.userId);
+
+    // Verify roundtrip — ensure DB stored the complete value
+    if (profile_image) {
+      const verify = db.prepare('SELECT length(profile_image) as len FROM users WHERE id = ?')
+        .get(req.user!.userId) as { len: number } | undefined;
+      if (verify && verify.len !== profile_image.length) {
+        console.error(`Profile image truncated! Sent ${profile_image.length}, stored ${verify.len}`);
+        res.status(500).json({ error: 'Image data was truncated during storage' });
+        return;
+      }
+    }
+
+    // Broadcast so avatar updates everywhere
+    try {
+      broadcast('personnel', 'data_changed', {
+        action: 'put', module: 'auth', entity: 'profile_image',
+        id: req.user!.userId, timestamp: new Date().toISOString(),
+      });
+    } catch { /* never break the response */ }
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Save profile image error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── GET /api/auth/profile-image ─────────────────────────
+// Retrieve the current user's profile image
+router.get('/profile-image', authenticateToken, (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const row = db.prepare('SELECT profile_image FROM users WHERE id = ?')
+      .get(req.user!.userId) as { profile_image: string | null } | undefined;
+    res.json({ profile_image: row?.profile_image || null });
+  } catch (error: any) {
+    console.error('Get profile image error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1347,10 +996,9 @@ router.put('/signature', authenticateToken, (req: Request, res: Response) => {
   }
 });
 
-// ═══════════════════════════════════════════════════════
-// GET /api/auth/password-policy
-// ═══════════════════════════════════════════════════════
-router.get('/password-policy', (_req: Request, res: Response) => {
+// ─── GET /api/auth/password-policy ────────────────────
+// Requires auth — password requirements are internal policy info
+router.get('/password-policy', authenticateAnyToken, (_req: Request, res: Response) => {
   res.json({
     policy: getPasswordPolicyDescription(),
     rules: {
@@ -1371,9 +1019,9 @@ router.get('/password-policy', (_req: Request, res: Response) => {
 
 // ─── POST /api/auth/verify-2fa ───────────────────────
 // Second step of login — verify TOTP code after password accepted
-router.post('/verify-2fa', authRateLimit, (req: Request, res: Response) => {
+router.post('/verify-2fa', mfaRateLimit, (req: Request, res: Response) => {
   try {
-    const { tempToken, code } = req.body;
+    const { tempToken, code, deviceFingerprint, trustDevice: shouldTrust } = req.body;
 
     if (!tempToken || !code) {
       res.status(400).json({ error: 'Token and verification code are required' });
@@ -1389,39 +1037,97 @@ router.post('/verify-2fa', authRateLimit, (req: Request, res: Response) => {
       return;
     }
 
-    if (decoded.type !== '2fa_pending') {
+    if (decoded.type !== 'mfa_pending') {
       res.status(403).json({ error: 'Invalid token type' });
       return;
     }
 
     const db = getDb();
     const user = db.prepare(
-      'SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, avatar_url, status, must_change_password, totp_secret_enc, totp_backup_codes FROM users WHERE id = ?'
+      'SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, avatar_url, profile_image, status, must_change_password, totp_secret_enc, totp_backup_codes FROM users WHERE id = ?'
     ).get(decoded.userId) as any;
 
-    if (!user || !user.totp_secret_enc) {
+    if (!user) {
       res.status(401).json({ error: 'Invalid verification session' });
+      return;
+    }
+
+    if (user.status !== 'active') {
+      res.status(403).json({ error: 'Account is disabled or suspended' });
       return;
     }
 
     const ip = req.ip || 'unknown';
     const userAgent = req.headers['user-agent'] || 'unknown';
+    let codeValid = false;
 
-    // Try TOTP code first (legacy — combined iv:tag:ciphertext format)
-    const secret = legacyDecryptSecret(user.totp_secret_enc);
-    let codeValid = verifyTotpCode(secret, code);
+    // ── Try new system first (user_totp_secrets table) ───
+    const totpRecord = db.prepare(`
+      SELECT encrypted_secret, encryption_iv, encryption_tag
+      FROM user_totp_secrets WHERE user_id = ? AND is_verified = 1
+    `).get(decoded.userId) as any;
 
-    // If TOTP fails, try backup code
-    if (!codeValid && user.totp_backup_codes) {
-      let hashedCodes: string[] = [];
-      try { hashedCodes = JSON.parse(user.totp_backup_codes); } catch { /* corrupted backup codes */ }
-      const result = verifyBackupCode(code, hashedCodes);
-      if (result.valid) {
-        codeValid = true;
-        // Consume the backup code
-        db.prepare('UPDATE users SET totp_backup_codes = ? WHERE id = ?')
-          .run(JSON.stringify(result.remainingCodes), user.id);
+    if (totpRecord) {
+      // New system: secret in separate table with 3-column encryption
+      try {
+        const secretBase32 = decryptSecretV2(
+          totpRecord.encrypted_secret,
+          totpRecord.encryption_iv,
+          totpRecord.encryption_tag
+        );
+        codeValid = verifyTotpToken(secretBase32, code);
+      } catch (decryptErr: any) {
+        console.error('2FA decryption failed (new system):', decryptErr.message);
+        res.status(401).json({ error: '2FA secret could not be decrypted. Please re-enroll 2FA.' });
+        return;
       }
+
+      // If TOTP fails, try backup codes from user_backup_codes table
+      if (!codeValid) {
+        const backupCodes = db.prepare(`
+          SELECT id, code_hash FROM user_backup_codes
+          WHERE user_id = ? AND is_used = 0
+        `).all(decoded.userId) as { id: number; code_hash: string }[];
+
+        for (const bc of backupCodes) {
+          if (verifyBackupCode(code, [bc.code_hash]).valid) {
+            codeValid = true;
+            db.prepare('UPDATE user_backup_codes SET is_used = 1, used_at = ? WHERE id = ?')
+              .run(localNow(), bc.id);
+            break;
+          }
+        }
+      }
+    } else if (user.totp_secret_enc) {
+      // Legacy system: secret stored as iv:tag:ciphertext in users table
+      let secret: string;
+      try {
+        secret = decryptSecret(user.totp_secret_enc);
+      } catch (decryptErr: any) {
+        console.error('2FA decryption failed (legacy system):', decryptErr.message);
+        res.status(401).json({ error: '2FA secret could not be decrypted. Please re-enroll 2FA.' });
+        return;
+      }
+      codeValid = verifyTotpCode(secret, code);
+
+      // If TOTP fails, try legacy backup codes
+      if (!codeValid && user.totp_backup_codes) {
+        try {
+          const hashedCodes: string[] = JSON.parse(user.totp_backup_codes);
+          if (Array.isArray(hashedCodes)) {
+            const result = verifyBackupCode(code, hashedCodes);
+            if (result.valid) {
+              codeValid = true;
+              db.prepare('UPDATE users SET totp_backup_codes = ? WHERE id = ?')
+                .run(JSON.stringify(result.remainingCodes), user.id);
+            }
+          }
+        } catch { /* corrupted backup codes — skip legacy fallback */ }
+      }
+    } else {
+      // Neither system has a secret — 2FA is marked enabled but no secret exists
+      res.status(401).json({ error: '2FA is not properly configured. Contact an administrator.' });
+      return;
     }
 
     if (!codeValid) {
@@ -1429,7 +1135,40 @@ router.post('/verify-2fa', authRateLimit, (req: Request, res: Response) => {
       return;
     }
 
-    // 2FA verified — issue full tokens
+    // Replay protection — reject if this TOTP code was already used
+    if (isTotpCodeUsed(decoded.userId, code)) {
+      res.status(401).json({ error: 'This code has already been used. Please wait for the next code.' });
+      return;
+    }
+    markTotpCodeUsed(decoded.userId, code);
+
+    // 2FA verified — log login attempt and handle device trust
+    logLoginAttempt(user.username, ip, true, undefined, userAgent, deviceFingerprint);
+
+    // Trust this device if requested
+    console.log(`[Auth] verify-2fa trust check: shouldTrust=${shouldTrust}, hasFingerprint=${!!deviceFingerprint}, userId=${user.id}`);
+    if (shouldTrust && deviceFingerprint) {
+      trustDevice(user.id, deviceFingerprint, ip, userAgent);
+      console.log(`[Auth] Device trusted for user ${user.id}`);
+    }
+
+    // Device fingerprint tracking (new device notification)
+    if (deviceFingerprint && isNewDevice(user.id, deviceFingerprint)) {
+      createSecurityNotification(
+        user.id,
+        'new_device_login',
+        'New device login detected',
+        `Login from ${parseDeviceName(userAgent)} at IP ${ip}`,
+        ip,
+        parseDeviceName(userAgent)
+      );
+    }
+
+    // ── Check if password change is required before issuing final tokens ──
+    const needsPasswordChange = user.must_change_password === 1 || isPasswordExpired(
+      (db.prepare('SELECT password_changed_at FROM users WHERE id = ?').get(user.id) as any)?.password_changed_at
+    );
+
     const payload: Omit<JwtPayload, 'type'> = {
       userId: user.id,
       username: user.username,
@@ -1437,8 +1176,19 @@ router.post('/verify-2fa', authRateLimit, (req: Request, res: Response) => {
       fullName: user.full_name,
     };
 
+    if (needsPasswordChange) {
+      const pwTempToken = generateTempToken(payload, ['password_change']);
+      res.json({
+        step: 'password_change',
+        requiresPasswordChange: true,
+        tempToken: pwTempToken,
+      });
+      return;
+    }
+
+    // Issue full tokens
     const refreshToken = generateRefreshToken(payload);
-    const sessionId = createSession(user.id, refreshToken, ip, userAgent);
+    const sessionId = createSession(user.id, refreshToken, ip, userAgent, deviceFingerprint);
     const accessToken = generateAccessToken({ ...payload, sessionId });
 
     // Log activity
@@ -1466,6 +1216,7 @@ router.post('/verify-2fa', authRateLimit, (req: Request, res: Response) => {
             user.id, 'login_alert', 'New Login Detected',
             `Login from new IP address: ${ip} — ${(userAgent || '').substring(0, 60)}`,
             'user', user.id, 'high',
+            'auth.new_ip_login',
           );
         }
       }
@@ -1487,14 +1238,48 @@ router.post('/verify-2fa', authRateLimit, (req: Request, res: Response) => {
         badge_number: user.badge_number,
         phone: user.phone,
         avatar_url: user.avatar_url,
+        profile_image: user.profile_image || null,
         status: user.status,
-        must_change_password: !!user.must_change_password,
+        must_change_password: false,
         totp_enabled: true,
       },
     });
   } catch (error: any) {
     console.error('2FA verification error:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── POST /api/auth/unlock-account ───────────────────
+// Admin endpoint to clear login lockout for a user
+router.post('/unlock-account', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const { username } = req.body;
+    if (!username) {
+      res.status(400).json({ error: 'Username is required' });
+      return;
+    }
+
+    const db = getDb();
+
+    // Delete failed login attempts to clear the lockout
+    const result = db.prepare(
+      'DELETE FROM login_attempts WHERE username = ? AND success = 0'
+    ).run(username);
+
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'account_unlocked', 'user', 0, ?, ?)
+    `).run(req.user!.userId, `Admin unlocked account: ${username}`, req.ip || 'unknown');
+
+    res.json({
+      success: true,
+      message: `Account unlocked for ${username}`,
+      clearedAttempts: result.changes,
+    });
+  } catch (error: any) {
+    console.error('Unlock account error:', error);
+    res.status(500).json({ error: 'Failed to unlock account' });
   }
 });
 
@@ -1655,229 +1440,731 @@ router.post('/totp/disable', authenticateToken, (req: Request, res: Response) =>
   }
 });
 
-// ─── WebAuthn / YubiKey Registration ──────────────────
-// GET /api/auth/webauthn/status — check WebAuthn status for current user
-router.get('/webauthn/status', authenticateToken, (req: Request, res: Response) => {
-  try {
-    const status = getUserWebAuthnStatus(req.user!.userId);
-    res.json(status);
-  } catch (error: any) {
-    console.error('WebAuthn status error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
+// ============================================================
+// NEW-STYLE 2FA ENDPOINTS (separate tables architecture)
+// These use user_totp_secrets / user_backup_codes tables
+// ============================================================
 
-// POST /api/auth/webauthn/register/begin — start key registration
-router.post('/webauthn/register/begin', authenticateToken, async (req: Request, res: Response) => {
-  try {
-    const options = await beginRegistration(req.user!.userId, req.user!.username);
-    res.json(options);
-  } catch (error: any) {
-    console.error('WebAuthn register begin error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
+import {
+  generateTotpSecret as generateTotpSecretV2,
+  encryptSecret as encryptSecretV2,
+  decryptSecret as decryptSecretV2,
+  generateQRCodeDataUri,
+  verifyTotpToken,
+  isTotpCodeUsed,
+  markTotpCodeUsed,
+  generateBackupCodes as generateBackupCodesV2,
+  hashBackupCode,
+  verifyBackupCode as verifyBackupCodeHash,
+} from '../utils/totpService';
 
-// POST /api/auth/webauthn/register/complete — verify and store key
-router.post('/webauthn/register/complete', authenticateToken, async (req: Request, res: Response) => {
+// ─── POST /api/auth/2fa/setup ───────────────────────────
+// Generate TOTP secret + QR (uses user_totp_secrets table)
+router.post('/2fa/setup', authenticateAnyToken, async (req: Request, res: Response) => {
   try {
-    const { response: webauthnResponse, challenge, deviceName } = req.body;
+    const userId = req.user!.userId;
+    const username = req.user!.username;
+    const db = getDb();
 
-    if (!webauthnResponse || !challenge) {
-      res.status(400).json({ error: 'Response and challenge are required' });
+    // Check if already has a verified TOTP
+    const existing = db.prepare(
+      'SELECT is_verified FROM user_totp_secrets WHERE user_id = ?'
+    ).get(userId) as { is_verified: number } | undefined;
+
+    if (existing?.is_verified) {
+      res.status(400).json({ error: '2FA is already configured. Disable it first to reconfigure.' });
       return;
     }
 
-    const result = await completeRegistration(
-      req.user!.userId,
-      webauthnResponse,
-      challenge,
-      deviceName || 'Security Key',
+    // Delete any unverified previous setup attempt
+    db.prepare('DELETE FROM user_totp_secrets WHERE user_id = ? AND is_verified = 0').run(userId);
+
+    // Generate new TOTP secret
+    const { secret, uri } = generateTotpSecretV2(username);
+    const secretBase32 = secret.base32;
+
+    // Encrypt and store
+    const { encrypted, iv, tag } = encryptSecretV2(secretBase32);
+    db.prepare(`
+      INSERT INTO user_totp_secrets (user_id, encrypted_secret, encryption_iv, encryption_tag, is_verified)
+      VALUES (?, ?, ?, ?, 0)
+    `).run(userId, encrypted, iv, tag);
+
+    // Generate QR code
+    const qrCodeDataUri = await generateQRCodeDataUri(uri);
+
+    res.json({
+      qrCodeDataUri,
+      manualKey: secretBase32,
+      issuer: (config as any).twoFactor?.issuer || 'RMPG Flex',
+    });
+  } catch (error: any) {
+    console.error('2FA setup error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── POST /api/auth/2fa/setup/verify ────────────────────
+// Confirm first TOTP code to activate 2FA
+router.post('/2fa/setup/verify', authenticateAnyToken, (req: Request, res: Response) => {
+  try {
+    const { code } = req.body;
+    const userId = req.user!.userId;
+    const ip = req.ip || 'unknown';
+    const userAgent = req.headers['user-agent'] || 'unknown';
+
+    if (!code) {
+      res.status(400).json({ error: 'Verification code is required' });
+      return;
+    }
+
+    const db = getDb();
+
+    // Get the unverified secret
+    const totpRecord = db.prepare(`
+      SELECT id, encrypted_secret, encryption_iv, encryption_tag
+      FROM user_totp_secrets WHERE user_id = ? AND is_verified = 0
+    `).get(userId) as any;
+
+    if (!totpRecord) {
+      res.status(400).json({ error: 'No pending 2FA setup found. Start setup again.' });
+      return;
+    }
+
+    // Decrypt and verify
+    const secretBase32 = decryptSecretV2(
+      totpRecord.encrypted_secret,
+      totpRecord.encryption_iv,
+      totpRecord.encryption_tag
     );
 
-    if (!result.success) {
-      res.status(400).json({ error: result.error });
+    const isValid = verifyTotpToken(secretBase32, code);
+    if (!isValid) {
+      res.status(401).json({ error: 'Invalid code. Please try again with the current code from your authenticator app.' });
       return;
     }
 
-    const db = getDb();
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'webauthn_key_registered', 'user', ?, ?, ?)
-    `).run(req.user!.userId, req.user!.userId, `Registered security key: ${deviceName || 'Security Key'}`, req.ip || 'unknown');
-
-    const status = getUserWebAuthnStatus(req.user!.userId);
-    res.json({ success: true, ...status });
-  } catch (error: any) {
-    console.error('WebAuthn register complete error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// DELETE /api/auth/webauthn/credentials/:id — remove a registered key
-router.delete('/webauthn/credentials/:id', authenticateToken, (req: Request, res: Response) => {
-  try {
-    const credId = parseInt(req.params.id as string, 10);
-    if (isNaN(credId)) {
-      res.status(400).json({ error: 'Invalid credential ID' });
+    // Replay protection — reject if this TOTP code was already used
+    if (isTotpCodeUsed(userId, code)) {
+      res.status(401).json({ error: 'This code has already been used. Please wait for the next code.' });
       return;
     }
+    markTotpCodeUsed(userId, code);
 
-    const removed = removeCredential(req.user!.userId, credId);
-    if (!removed) {
-      res.status(404).json({ error: 'Credential not found' });
-      return;
-    }
+    // Mark as verified
+    db.prepare('UPDATE user_totp_secrets SET is_verified = 1, updated_at = ? WHERE id = ?')
+      .run(localNow(), totpRecord.id);
 
-    const db = getDb();
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'webauthn_key_removed', 'user', ?, 'Removed security key', ?)
-    `).run(req.user!.userId, req.user!.userId, req.ip || 'unknown');
+    // Enable 2FA on user
+    db.prepare('UPDATE users SET totp_enabled = 1, totp_setup_required = 0, updated_at = ? WHERE id = ?')
+      .run(localNow(), userId);
 
-    const status = getUserWebAuthnStatus(req.user!.userId);
-    res.json({ success: true, ...status });
-  } catch (error: any) {
-    console.error('WebAuthn remove credential error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
+    // Generate backup codes
+    const codes = generateBackupCodesV2();
+    const insertStmt = db.prepare(
+      'INSERT INTO user_backup_codes (user_id, code_hash) VALUES (?, ?)'
+    );
+    const insertTx = db.transaction(() => {
+      db.prepare('DELETE FROM user_backup_codes WHERE user_id = ?').run(userId);
+      for (const c of codes) {
+        insertStmt.run(userId, hashBackupCode(c));
+      }
+    });
+    insertTx();
 
-// ─── WebAuthn Authentication (2FA verification) ──────
-// POST /api/auth/webauthn/authenticate/begin — start assertion for login
-router.post('/webauthn/authenticate/begin', authRateLimit, (req: Request, res: Response) => {
-  (async () => {
-    try {
-      const { tempToken } = req.body;
+    // Create security notification
+    createSecurityNotification(
+      userId,
+      '2fa_enabled',
+      'Two-factor authentication enabled',
+      'TOTP-based 2FA has been set up on your account.',
+      ip,
+      parseDeviceName(userAgent)
+    );
 
-      if (!tempToken) {
-        res.status(400).json({ error: 'Temp token is required' });
+    // Log
+    logLoginAttempt(req.user!.username, ip, true, undefined, userAgent);
+
+    // If this is during login (mfa_pending token) — issue tokens
+    if (req.user!.type === 'mfa_pending') {
+      const user = db.prepare(`
+        SELECT id, username, full_name, email, role, badge_number, phone, avatar_url,
+               force_password_change, password_expires_at, password_changed_at
+        FROM users WHERE id = ?
+      `).get(userId) as any;
+
+      const needsPasswordChange = user.force_password_change === 1 || isPasswordExpired(user?.password_changed_at);
+      if (needsPasswordChange) {
+        const tempToken = generateTempToken(
+          { userId: user.id, username: user.username, role: user.role, fullName: user.full_name },
+          ['password_change']
+        );
+        res.json({
+          step: 'show_backup_codes',
+          backupCodes: codes,
+          requiresPasswordChange: true,
+          tempToken,
+        });
         return;
       }
 
-      let decoded: JwtPayload;
-      try {
-        decoded = jwt.verify(tempToken, config.jwt.secret) as JwtPayload;
-      } catch {
-        res.status(401).json({ error: 'Session expired. Please log in again.' });
-        return;
-      }
-
-      if (decoded.type !== '2fa_pending') {
-        res.status(403).json({ error: 'Invalid token type' });
-        return;
-      }
-
-      if (!hasWebAuthnCredentials(decoded.userId)) {
-        res.status(400).json({ error: 'No security keys registered' });
-        return;
-      }
-
-      const options = await beginAuthentication(decoded.userId);
-      res.json(options);
-    } catch (error: any) {
-      console.error('WebAuthn authenticate begin error:', error);
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  })();
-});
-
-// POST /api/auth/webauthn/authenticate/verify — verify assertion for login
-router.post('/webauthn/authenticate/verify', authRateLimit, (req: Request, res: Response) => {
-  (async () => {
-    try {
-      const { tempToken, response: webauthnResponse, challenge, trustDevice: shouldTrust, deviceFingerprint } = req.body;
-
-      if (!tempToken || !webauthnResponse || !challenge) {
-        res.status(400).json({ error: 'Token, response, and challenge are required' });
-        return;
-      }
-
-      let decoded: JwtPayload;
-      try {
-        decoded = jwt.verify(tempToken, config.jwt.secret) as JwtPayload;
-      } catch {
-        res.status(401).json({ error: 'Session expired. Please log in again.' });
-        return;
-      }
-
-      if (decoded.type !== '2fa_pending') {
-        res.status(403).json({ error: 'Invalid token type' });
-        return;
-      }
-
-      const result = await verifyAuthentication(decoded.userId, webauthnResponse, challenge);
-
-      if (!result.success) {
-        res.status(401).json({ error: result.error || 'Security key verification failed' });
-        return;
-      }
-
-      // WebAuthn verified — issue full tokens (same as TOTP verify-2fa)
-      const db = getDb();
-      const user = db.prepare(
-        'SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, avatar_url, status, must_change_password FROM users WHERE id = ?'
-      ).get(decoded.userId) as any;
-
-      if (!user) {
-        res.status(401).json({ error: 'User not found' });
-        return;
-      }
-
-      const ip = req.ip || 'unknown';
-      const userAgent = req.headers['user-agent'] || 'unknown';
-
-      const payload: Omit<JwtPayload, 'type'> = {
-        userId: user.id,
-        username: user.username,
-        role: user.role,
-        fullName: user.full_name,
-      };
-
-      const refreshToken = generateRefreshToken(payload);
-      const sessionId = createSession(user.id, refreshToken, ip, userAgent);
-      const accessToken = generateAccessToken({ ...payload, sessionId });
-
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'user_login_webauthn', 'user', ?, 'WebAuthn/YubiKey login completed', ?)
-      `).run(user.id, user.id, ip);
-
-      db.prepare(`
-        UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login_at = ? WHERE id = ?
-      `).run(localNow(), user.id);
-
-      // Trust this device if requested
-      if (shouldTrust && deviceFingerprint) {
-        trustDevice(decoded.userId, deviceFingerprint, ip, userAgent);
-      }
+      const { deviceFingerprint } = req.body;
+      const refreshToken = generateRefreshToken({ userId: user.id, username: user.username, role: user.role, fullName: user.full_name });
+      const sessionId = createSession(user.id, refreshToken, ip, userAgent, deviceFingerprint);
+      const accessToken = generateAccessToken({ userId: user.id, username: user.username, role: user.role, fullName: user.full_name, sessionId });
 
       res.json({
         token: accessToken,
         refreshToken,
         sessionId,
         expiresIn: config.jwt.accessExpiry,
-        user: {
-          id: user.id,
-          username: user.username,
-          full_name: user.full_name,
-          first_name: user.first_name,
-          last_name: user.last_name,
-          email: user.email,
-          role: user.role,
-          badge_number: user.badge_number,
-          phone: user.phone,
-          avatar_url: user.avatar_url,
-          must_change_password: !!user.must_change_password,
-          totp_enabled: true,
-          requires_2fa_setup: false,
-        },
+        step: 'show_backup_codes',
+        backupCodes: codes,
       });
-    } catch (error: any) {
-      console.error('WebAuthn authenticate verify error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      return;
     }
-  })();
+
+    // Already authenticated (managing 2FA from profile)
+    res.json({
+      message: '2FA setup complete',
+      backupCodes: codes,
+    });
+  } catch (error: any) {
+    console.error('2FA setup verify error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── GET /api/auth/2fa/status ───────────────────────────
+router.get('/2fa/status', authenticateToken, (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = req.user!.userId;
+
+    const user = db.prepare('SELECT totp_enabled, totp_setup_required FROM users WHERE id = ?')
+      .get(userId) as any;
+
+    const backupCount = db.prepare(`
+      SELECT COUNT(*) as count FROM user_backup_codes
+      WHERE user_id = ? AND is_used = 0
+    `).get(userId) as { count: number };
+
+    res.json({
+      enabled: user?.totp_enabled === 1,
+      setupRequired: user?.totp_setup_required === 1,
+      backupCodesRemaining: backupCount.count,
+    });
+  } catch (error: any) {
+    console.error('2FA status error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── POST /api/auth/2fa/backup-codes/regenerate ─────────
+router.post('/2fa/backup-codes/regenerate', authenticateToken, (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const { password } = req.body;
+    const ip = req.ip || 'unknown';
+    const userAgent = req.headers['user-agent'] || 'unknown';
+
+    if (!password) {
+      res.status(400).json({ error: 'Password confirmation required' });
+      return;
+    }
+
+    const db = getDb();
+
+    // Verify password
+    const user = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(userId) as any;
+    if (!user || !bcryptjs.compareSync(password, user.password_hash)) {
+      res.status(401).json({ error: 'Invalid password' });
+      return;
+    }
+
+    // Generate new codes
+    const codes = generateBackupCodesV2();
+    const insertStmt = db.prepare(
+      'INSERT INTO user_backup_codes (user_id, code_hash) VALUES (?, ?)'
+    );
+    const insertTx = db.transaction(() => {
+      db.prepare('DELETE FROM user_backup_codes WHERE user_id = ?').run(userId);
+      for (const c of codes) {
+        insertStmt.run(userId, hashBackupCode(c));
+      }
+    });
+    insertTx();
+
+    createSecurityNotification(
+      userId,
+      '2fa_enabled',
+      'Backup codes regenerated',
+      'Your 2FA backup codes have been regenerated. Old codes are no longer valid.',
+      ip,
+      parseDeviceName(userAgent)
+    );
+
+    res.json({ backupCodes: codes });
+  } catch (error: any) {
+    console.error('Backup codes regenerate error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── POST /api/auth/2fa/disable ─────────────────────────
+// Disable 2FA using new-style tables (requires password, admin-only for non-admins)
+router.post('/2fa/disable', authenticateToken, (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const { password } = req.body;
+    const ip = req.ip || 'unknown';
+    const userAgent = req.headers['user-agent'] || 'unknown';
+
+    if (!password) {
+      res.status(400).json({ error: 'Password confirmation required' });
+      return;
+    }
+
+    const db = getDb();
+    const user = db.prepare('SELECT password_hash, role FROM users WHERE id = ?').get(userId) as any;
+
+    if (!user || !bcryptjs.compareSync(password, user.password_hash)) {
+      res.status(401).json({ error: 'Invalid password' });
+      return;
+    }
+
+    // Only admins can disable their own 2FA (mandatory for everyone else)
+    if (user.role !== 'admin') {
+      res.status(403).json({ error: 'Two-factor authentication is mandatory and cannot be disabled.' });
+      return;
+    }
+
+    db.prepare('DELETE FROM user_totp_secrets WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM user_backup_codes WHERE user_id = ?').run(userId);
+    db.prepare('UPDATE users SET totp_enabled = 0, totp_setup_required = 1, updated_at = ? WHERE id = ?')
+      .run(localNow(), userId);
+
+    createSecurityNotification(
+      userId,
+      '2fa_disabled',
+      'Two-factor authentication disabled',
+      'TOTP 2FA has been disabled on your account.',
+      ip,
+      parseDeviceName(userAgent)
+    );
+
+    res.json({ message: '2FA disabled. You will need to set it up again on next login.' });
+  } catch (error: any) {
+    console.error('2FA disable error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── POST /api/auth/login/verify-2fa ────────────────────
+// Verify TOTP code during login (uses user_totp_secrets table)
+router.post('/login/verify-2fa', authenticateTempToken, (req: Request, res: Response) => {
+  try {
+    const { code, trustDevice: shouldTrust, deviceFingerprint } = req.body;
+    const ip = req.ip || 'unknown';
+    const userAgent = req.headers['user-agent'] || 'unknown';
+    const userId = req.user!.userId;
+
+    if (!code) {
+      res.status(400).json({ error: 'Verification code is required' });
+      return;
+    }
+
+    const db = getDb();
+
+    // Get the user's TOTP secret from separate table
+    const totpRecord = db.prepare(`
+      SELECT encrypted_secret, encryption_iv, encryption_tag
+      FROM user_totp_secrets WHERE user_id = ? AND is_verified = 1
+    `).get(userId) as any;
+
+    if (!totpRecord) {
+      res.status(400).json({ error: '2FA is not configured for this account' });
+      return;
+    }
+
+    // Decrypt and verify
+    const secretBase32 = decryptSecretV2(
+      totpRecord.encrypted_secret,
+      totpRecord.encryption_iv,
+      totpRecord.encryption_tag
+    );
+
+    const isValid = verifyTotpToken(secretBase32, code);
+    if (!isValid) {
+      res.status(401).json({ error: 'Invalid verification code' });
+      return;
+    }
+
+    // Replay protection — reject if this TOTP code was already used
+    if (isTotpCodeUsed(userId, code)) {
+      res.status(401).json({ error: 'This code has already been used. Please wait for the next code.' });
+      return;
+    }
+    markTotpCodeUsed(userId, code);
+
+    // Success — log and issue tokens
+    logLoginAttempt(req.user!.username, ip, true, undefined, userAgent, deviceFingerprint);
+
+    // Trust this device if requested
+    if (shouldTrust && deviceFingerprint) {
+      trustDevice(userId, deviceFingerprint, ip, userAgent);
+    }
+
+    // Check for new device notification
+    if (deviceFingerprint && isNewDevice(userId, deviceFingerprint)) {
+      createSecurityNotification(
+        userId,
+        'new_device_login',
+        'New device login detected',
+        `Login from ${parseDeviceName(userAgent)} at IP ${ip}`,
+        ip,
+        parseDeviceName(userAgent)
+      );
+    }
+
+    // Check if password change is still pending
+    const user = db.prepare(`
+      SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, avatar_url,
+             force_password_change, password_expires_at, password_changed_at, status, must_change_password
+      FROM users WHERE id = ?
+    `).get(userId) as any;
+
+    if (!user || user.status !== 'active') {
+      res.status(403).json({ error: 'Account is disabled or not found' });
+      return;
+    }
+
+    const needsPasswordChange = user.force_password_change === 1 || isPasswordExpired(user?.password_changed_at);
+    if (needsPasswordChange) {
+      const tempToken = generateTempToken(
+        { userId: user.id, username: user.username, role: user.role, fullName: user.full_name },
+        ['password_change']
+      );
+      res.json({
+        step: 'password_change',
+        requiresPasswordChange: true,
+        tempToken,
+      });
+      return;
+    }
+
+    const refreshToken = generateRefreshToken({ userId: user.id, username: user.username, role: user.role, fullName: user.full_name });
+    const sessionId = createSession(user.id, refreshToken, ip, userAgent, deviceFingerprint);
+    const accessToken = generateAccessToken({ userId: user.id, username: user.username, role: user.role, fullName: user.full_name, sessionId });
+
+    db.prepare(`
+      UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login_at = ? WHERE id = ?
+    `).run(localNow(), user.id);
+
+    res.json({
+      token: accessToken,
+      refreshToken,
+      sessionId,
+      expiresIn: config.jwt.accessExpiry,
+      user: {
+        id: user.id,
+        username: user.username,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        full_name: user.full_name,
+        email: user.email,
+        role: user.role,
+        badge_number: user.badge_number,
+        phone: user.phone,
+        avatar_url: user.avatar_url,
+        profile_image: user.profile_image || null,
+        status: user.status,
+        must_change_password: !!user.must_change_password,
+        totp_enabled: true,
+      },
+    });
+  } catch (error: any) {
+    console.error('2FA verify error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── POST /api/auth/login/verify-backup-code ────────────
+router.post('/login/verify-backup-code', authenticateTempToken, (req: Request, res: Response) => {
+  try {
+    const { code, deviceFingerprint } = req.body;
+    const ip = req.ip || 'unknown';
+    const userAgent = req.headers['user-agent'] || 'unknown';
+    const userId = req.user!.userId;
+
+    if (!code) {
+      res.status(400).json({ error: 'Backup code is required' });
+      return;
+    }
+
+    const db = getDb();
+
+    // ── Try new system first (user_backup_codes table) ───
+    const backupCodes = db.prepare(`
+      SELECT id, code_hash FROM user_backup_codes
+      WHERE user_id = ? AND is_used = 0
+    `).all(userId) as { id: number; code_hash: string }[];
+
+    let matchedCode: { id: number; code_hash: string } | null = null;
+    let usedLegacy = false;
+
+    if (backupCodes.length > 0) {
+      for (const bc of backupCodes) {
+        if (verifyBackupCodeHash(code, bc.code_hash)) {
+          matchedCode = bc;
+          break;
+        }
+      }
+    }
+
+    // ── Fallback to legacy system (users.totp_backup_codes JSON column) ──
+    if (!matchedCode) {
+      const legacyUser = db.prepare('SELECT totp_backup_codes FROM users WHERE id = ?')
+        .get(userId) as { totp_backup_codes: string | null } | undefined;
+
+      if (legacyUser?.totp_backup_codes) {
+        try {
+          const hashedCodes: string[] = JSON.parse(legacyUser.totp_backup_codes);
+          if (Array.isArray(hashedCodes)) {
+            const result = verifyBackupCode(code, hashedCodes);
+            if (result.valid) {
+              // Update the legacy backup codes — remove the used one
+              db.prepare('UPDATE users SET totp_backup_codes = ? WHERE id = ?')
+                .run(JSON.stringify(result.remainingCodes), userId);
+              usedLegacy = true;
+              matchedCode = { id: -1, code_hash: '' }; // sentinel to indicate match
+            }
+          }
+        } catch { /* corrupted legacy backup codes — skip */ }
+      }
+    }
+
+    if (!matchedCode) {
+      // Neither new nor legacy system had a match
+      if (backupCodes.length === 0) {
+        const legacyUser = db.prepare('SELECT totp_backup_codes FROM users WHERE id = ?')
+          .get(userId) as { totp_backup_codes: string | null } | undefined;
+        let legacyCodes: string[] = [];
+        try { legacyCodes = legacyUser?.totp_backup_codes ? JSON.parse(legacyUser.totp_backup_codes) as string[] : []; } catch { /* corrupted */ }
+        if (legacyCodes.length === 0) {
+          res.status(400).json({ error: 'No backup codes remaining. Contact an administrator.' });
+          return;
+        }
+      }
+      res.status(401).json({ error: 'Invalid backup code' });
+      return;
+    }
+
+    // Mark code as used (new system only — legacy codes already updated during verification)
+    if (!usedLegacy) {
+      db.prepare('UPDATE user_backup_codes SET is_used = 1, used_at = ? WHERE id = ?')
+        .run(localNow(), matchedCode.id);
+    }
+
+    // Log successful login
+    logLoginAttempt(req.user!.username, ip, true, undefined, userAgent, deviceFingerprint);
+
+    // Check remaining codes (combine new + legacy systems)
+    let remaining: number;
+    if (usedLegacy) {
+      const legacyUser = db.prepare('SELECT totp_backup_codes FROM users WHERE id = ?')
+        .get(userId) as { totp_backup_codes: string | null } | undefined;
+      try { remaining = legacyUser?.totp_backup_codes ? (JSON.parse(legacyUser.totp_backup_codes) as string[]).length : 0; } catch { remaining = 0; }
+    } else {
+      remaining = backupCodes.length - 1;
+    }
+
+    // Check password change requirement
+    const user = db.prepare(`
+      SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, avatar_url,
+             force_password_change, password_expires_at, password_changed_at, status, must_change_password
+      FROM users WHERE id = ?
+    `).get(userId) as any;
+
+    if (!user || user.status !== 'active') {
+      res.status(403).json({ error: 'Account is disabled or not found' });
+      return;
+    }
+
+    const needsPasswordChange = user.force_password_change === 1 || isPasswordExpired(user?.password_changed_at);
+    if (needsPasswordChange) {
+      const tempToken = generateTempToken(
+        { userId: user.id, username: user.username, role: user.role, fullName: user.full_name },
+        ['password_change']
+      );
+      res.json({
+        step: 'password_change',
+        requiresPasswordChange: true,
+        tempToken,
+        backupCodesRemaining: remaining,
+        ...(remaining <= 2 && { warning: `Only ${remaining} backup code(s) remaining. Please regenerate.` }),
+      });
+      return;
+    }
+
+    const refreshToken = generateRefreshToken({ userId: user.id, username: user.username, role: user.role, fullName: user.full_name });
+    const sessionId = createSession(user.id, refreshToken, ip, userAgent, deviceFingerprint);
+    const accessToken = generateAccessToken({ userId: user.id, username: user.username, role: user.role, fullName: user.full_name, sessionId });
+
+    db.prepare(`
+      UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login_at = ? WHERE id = ?
+    `).run(localNow(), user.id);
+
+    res.json({
+      token: accessToken,
+      refreshToken,
+      sessionId,
+      expiresIn: config.jwt.accessExpiry,
+      user: {
+        id: user.id,
+        username: user.username,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        full_name: user.full_name,
+        email: user.email,
+        role: user.role,
+        badge_number: user.badge_number,
+        phone: user.phone,
+        avatar_url: user.avatar_url,
+        profile_image: user.profile_image || null,
+        status: user.status,
+        must_change_password: !!user.must_change_password,
+        totp_enabled: true,
+      },
+      backupCodesRemaining: remaining,
+      ...(remaining <= 2 && { warning: `Only ${remaining} backup code(s) remaining. Please regenerate.` }),
+    });
+  } catch (error: any) {
+    console.error('Backup code verify error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── POST /api/auth/login/change-password ───────────────
+// During login flow — change password then issue final tokens
+router.post('/login/change-password', authenticateTempToken, (req: Request, res: Response) => {
+  try {
+    const { newPassword, deviceFingerprint } = req.body;
+    const userId = req.user!.userId;
+    const ip = req.ip || 'unknown';
+    const userAgent = req.headers['user-agent'] || 'unknown';
+
+    // Verify this temp token was actually issued for password_change
+    if (!req.user!.pendingActions?.includes('password_change')) {
+      res.status(403).json({ error: 'This token is not authorized for password change' });
+      return;
+    }
+
+    if (!newPassword) {
+      res.status(400).json({ error: 'New password is required' });
+      return;
+    }
+
+    // Validate password policy
+    const validation = validatePassword(newPassword);
+    if (!validation.valid) {
+      res.status(400).json({
+        error: 'Password does not meet requirements',
+        details: validation.errors,
+        policy: getPasswordPolicyDescription(),
+      });
+      return;
+    }
+
+    const db = getDb();
+    const user = db.prepare('SELECT id, username, full_name, email, role, badge_number, phone, avatar_url, profile_image, password_hash, first_name, last_name, status, must_change_password FROM users WHERE id = ?')
+      .get(userId) as any;
+
+    if (!user) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    if (user.status !== 'active') {
+      res.status(403).json({ error: 'Account is disabled or suspended' });
+      return;
+    }
+
+    // Prevent reusing current password
+    if (bcryptjs.compareSync(newPassword, user.password_hash)) {
+      res.status(400).json({ error: 'New password must be different from current password' });
+      return;
+    }
+
+    // Check password history
+    try {
+      if (isPasswordInHistory(userId, newPassword)) {
+        res.status(400).json({ error: `Cannot reuse any of your last ${config.password.historyCount} passwords` });
+        return;
+      }
+    } catch { /* ignore if table missing */ }
+
+    // Save old password to history
+    try { addToPasswordHistory(userId, user.password_hash); } catch { /* ignore */ }
+
+    // Update password
+    const newHash = bcryptjs.hashSync(newPassword, 10);
+    db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0, force_password_change = 0, password_changed_at = ?, updated_at = ? WHERE id = ?')
+      .run(newHash, localNow(), localNow(), userId);
+
+    // Set expiry
+    try { setPasswordExpiry(userId); } catch { /* ignore */ }
+
+    // Log password change
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'password_changed', 'user', ?, 'Password changed during login', ?)
+    `).run(userId, userId, ip);
+
+    createSecurityNotification(
+      userId,
+      'password_changed',
+      'Password changed',
+      'Your password was changed during the login process.',
+      ip,
+      parseDeviceName(userAgent)
+    );
+
+    // Issue final tokens
+    const refreshToken = generateRefreshToken({ userId: user.id, username: user.username, role: user.role, fullName: user.full_name });
+    const sessionId = createSession(user.id, refreshToken, ip, userAgent, deviceFingerprint);
+    const accessToken = generateAccessToken({ userId: user.id, username: user.username, role: user.role, fullName: user.full_name, sessionId });
+
+    db.prepare(`
+      UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login_at = ? WHERE id = ?
+    `).run(localNow(), user.id);
+
+    res.json({
+      token: accessToken,
+      refreshToken,
+      sessionId,
+      expiresIn: config.jwt.accessExpiry,
+      user: {
+        id: user.id,
+        username: user.username,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        full_name: user.full_name,
+        email: user.email,
+        role: user.role,
+        badge_number: user.badge_number,
+        phone: user.phone,
+        avatar_url: user.avatar_url,
+        profile_image: user.profile_image || null,
+        status: user.status,
+        must_change_password: false,
+        totp_enabled: true,
+      },
+    });
+  } catch (error: any) {
+    console.error('Login password change error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 export default router;

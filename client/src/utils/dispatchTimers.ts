@@ -25,17 +25,19 @@ interface ThresholdConfig {
   pending: Record<CallPriority, number>;
   dispatched: number;   // unit dispatched but not enroute
   onscene: number;      // unit onscene too long
+  absoluteOverdue: number; // hard 72-hour wall — any active call exceeding this is overdue
 }
 
 export const THRESHOLDS: ThresholdConfig = {
   pending: {
     P1: 60,     // 1 minute — emergency
-    P2: 180,    // 3 minutes — urgent
+    P2: 14400,  // 4 hours — urgent / PSO Priority One requests
     P3: 300,    // 5 minutes — routine
-    P4: 600,    // 10 minutes — scheduled
+    P4: 86400,  // 24 hours — scheduled / PSO (warning 8h, critical 16h, overdue 24h)
   },
   dispatched: 180,  // 3 minutes
   onscene: 2700,    // 45 minutes
+  absoluteOverdue: 259200, // 72 hours — hard overdue threshold for ANY active call
 };
 
 // ── Timer Severity Levels ──────────────────────────────────
@@ -73,7 +75,9 @@ export function getStatusElapsed(call: CallForService): number {
       refTime = call.created_at;
   }
 
-  return Math.max(0, Math.floor((now - new Date(refTime).getTime()) / 1000));
+  if (!refTime) return 0;
+  const elapsed = Math.floor((now - new Date(refTime).getTime()) / 1000);
+  return Number.isFinite(elapsed) ? Math.max(0, elapsed) : 0;
 }
 
 /**
@@ -97,17 +101,17 @@ export function getThreshold(call: CallForService): number {
 
 /**
  * Determine the severity level based on elapsed time vs threshold.
- *   normal:   < 60% of threshold
- *   warning:  60-90% of threshold
- *   critical: 90-100% of threshold
- *   overdue:  > 100% of threshold
+ *   normal:   < 1/3 of threshold
+ *   warning:  1/3 – 2/3 of threshold  (P4: 24h yellow)
+ *   critical: 2/3 – 100% of threshold (P4: 48h red)
+ *   overdue:  > 100% of threshold     (P4: 72h+ overdue)
  */
 export function getTimerSeverity(elapsed: number, threshold: number): TimerSeverity {
   if (threshold === Infinity) return 'normal';
   const ratio = elapsed / threshold;
   if (ratio >= 1.0) return 'overdue';
-  if (ratio >= 0.9) return 'critical';
-  if (ratio >= 0.6) return 'warning';
+  if (ratio >= 2 / 3) return 'critical';
+  if (ratio >= 1 / 3) return 'warning';
   return 'normal';
 }
 
@@ -116,7 +120,7 @@ export function getTimerSeverity(elapsed: number, threshold: number): TimerSever
  * For times > 1 hour, shows H:MM:SS.
  */
 export function formatTimer(seconds: number): string {
-  if (seconds < 0) return '0:00';
+  if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
 
   const hours = Math.floor(seconds / 3600);
   const mins = Math.floor((seconds % 3600) / 60);
@@ -170,12 +174,34 @@ export interface TimerState {
   isOverdue: boolean;
 }
 
+/**
+ * Get the absolute elapsed time since call creation (for 72-hour overdue check).
+ */
+export function getCallAge(call: CallForService): number {
+  if (!call.created_at) return 0;
+  const elapsed = Math.floor((Date.now() - new Date(call.created_at).getTime()) / 1000);
+  return Number.isFinite(elapsed) ? Math.max(0, elapsed) : 0;
+}
+
 export function getTimerState(call: CallForService): TimerState {
   const status = call.status;
   const label = STATUS_LABELS[status] || status.toUpperCase().slice(0, 4);
   const elapsed = getStatusElapsed(call);
   const threshold = getThreshold(call);
-  const severity = getTimerSeverity(elapsed, threshold);
+  let severity = getTimerSeverity(elapsed, threshold);
+
+  // ── 72-hour absolute overdue enforcement ──
+  // Even if the per-status threshold is Infinity (e.g. enroute),
+  // any active call open for 72+ hours is forced to overdue.
+  if (isActiveStatus(call.status) && severity !== 'overdue') {
+    const callAge = getCallAge(call);
+    if (callAge >= THRESHOLDS.absoluteOverdue) {
+      severity = 'overdue';
+    } else if (callAge >= THRESHOLDS.absoluteOverdue * 2 / 3) {
+      // 48+ hours → at least critical
+      if (severity === 'normal' || severity === 'warning') severity = 'critical';
+    }
+  }
 
   return {
     label,

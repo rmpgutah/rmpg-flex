@@ -119,7 +119,7 @@ export default function TrainingDetailTab({ training, loading, onAddTraining, of
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <div className="panel-beveled p-2.5 text-center border-t-2 border-t-green-500" style={{ background: '#0a1a0a' }}>
           <p className="text-lg font-bold font-mono text-green-400">{completed}</p>
           <p className="field-label text-green-400/70">Completed</p>
@@ -137,7 +137,7 @@ export default function TrainingDetailTab({ training, loading, onAddTraining, of
       {/* Training Cards */}
       {training.length === 0 ? (
         <div className="text-center py-12">
-          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center" style={{ background: '#161616' }}>
+          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center" style={{ background: '#0d1520' }}>
             <GraduationCap className="w-7 h-7 text-rmpg-600" />
           </div>
           <p className="text-xs text-rmpg-500">No training records for this officer.</p>
@@ -164,7 +164,7 @@ export default function TrainingDetailTab({ training, loading, onAddTraining, of
               </div>
 
               {/* Detail Grid */}
-              <div className="grid grid-cols-3 gap-x-4 gap-y-1">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-1">
                 <div>
                   <p className="field-label">Provider</p>
                   <p className="text-[11px] text-rmpg-200">{record.provider || '-'}</p>

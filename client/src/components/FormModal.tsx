@@ -102,10 +102,10 @@ export default function FormModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} ref={dialogRef}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={guardedClose} />
-      <div className={`relative w-full ${maxWidth} mx-4 shadow-2xl animate-fade-in panel-beveled`} style={{ background: '#1a1a1a' }}>
+      <div className={`relative w-full ${maxWidth} mx-4 shadow-2xl animate-fade-in panel-beveled`} style={{ background: '#141e2b' }}>
         <div className="panel-title-bar">
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2" style={{ background: '#bc1010' }} />
+            <div className="w-2 h-2" style={{ background: '#1a5a9e' }} />
             {Icon && <Icon className="title-icon" />}
             <span id={titleId}>{title}</span>
             {isDirty && (
@@ -120,16 +120,16 @@ export default function FormModal({
               onClick={guardedClose}
               className="toolbar-btn"
               style={{ padding: '1px 4px' }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = '#a00e0e'; e.currentTarget.style.color = '#ffffff'; }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = '#164d87'; e.currentTarget.style.color = '#ffffff'; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = ''; e.currentTarget.style.color = ''; }}
             >
               <X style={{ width: 10, height: 10 }} />
             </button>
           </div>
         </div>
-        <form onSubmit={onSubmit} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+        <form onSubmit={onSubmit} noValidate className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
           {children}
-          <div className="flex items-center justify-end gap-2 pt-4" style={{ borderTop: '1px solid #303030' }}>
+          <div className="flex items-center justify-end gap-2 pt-4" style={{ borderTop: '1px solid #1e3048' }}>
             <button type="button" onClick={guardedClose} className="toolbar-btn" disabled={isSubmitting}>
               Cancel
             </button>
@@ -148,7 +148,7 @@ export default function FormModal({
           <div className="relative w-full max-w-sm mx-4 bg-surface-base border border-rmpg-600 shadow-2xl animate-fade-in">
             <div
               className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600"
-              style={{ background: 'linear-gradient(180deg, #202020 0%, #1a1a1a 100%)' }}
+              style={{ background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)' }}
             >
               <div className="flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 text-amber-400" />

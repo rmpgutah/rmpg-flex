@@ -65,17 +65,19 @@ export function formatShortTime(dateStr: string | null | undefined): string {
 }
 
 /**
- * Format a server timestamp for display as date + time.
+ * Format a server timestamp for display as MM/DD/YYYY HH:MM:SS (24h).
  */
 export function formatDateTime(dateStr: string | null | undefined): string {
   const d = parseTimestamp(dateStr);
-  return d.toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
+  return `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}/${d.getFullYear()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+}
+
+/**
+ * Format a server timestamp as MM/DD/YYYY only (no time).
+ */
+export function formatDate(dateStr: string | null | undefined): string {
+  const d = parseTimestamp(dateStr);
+  return `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}/${d.getFullYear()}`;
 }
 
 /**

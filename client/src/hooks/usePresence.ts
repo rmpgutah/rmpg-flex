@@ -6,6 +6,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useWebSocket } from '../context/WebSocketContext';
+import { apiFetch } from './useApi';
 import type { WSMessage, PresenceUser } from '../types';
 
 export function usePresence() {
@@ -30,8 +31,7 @@ export function usePresence() {
   useEffect(() => {
     if (!isConnected) return;
 
-    fetch('/api/presence')
-      .then(res => res.ok ? res.json() : null)
+    apiFetch<{ users: PresenceUser[]; count?: number }>('/presence')
       .then(data => {
         if (data?.users) {
           setUsers(data.users);

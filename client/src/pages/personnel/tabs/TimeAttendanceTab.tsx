@@ -70,7 +70,7 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-5 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
         {SUMMARY_CARDS.map((card) => (
           <div
             key={card.label}
@@ -90,7 +90,7 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
             <Users className="w-3 h-3" />
             Currently Active ({activeEntries.length})
           </h3>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             {activeEntries.map((te) => (
               <div
                 key={te.id}

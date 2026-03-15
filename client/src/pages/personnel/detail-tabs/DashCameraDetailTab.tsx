@@ -82,7 +82,7 @@ export default function DashCameraDetailTab({ events, deviceMapping, loading }: 
             </span>
           </div>
 
-          <div className="grid grid-cols-3 gap-x-4 gap-y-1">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-1">
             <div>
               <p className="field-label">Serial Number</p>
               <p className="text-xs text-rmpg-100 font-mono">{deviceMapping.cpg_serial_number || '-'}</p>
@@ -106,7 +106,7 @@ export default function DashCameraDetailTab({ events, deviceMapping, loading }: 
       )}
 
       {/* Stats Row */}
-      <div className="grid grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <div className="panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-rmpg-500">
           <p className="text-lg font-bold text-rmpg-200 font-mono">{events.length}</p>
           <p className="field-label">Total Events</p>

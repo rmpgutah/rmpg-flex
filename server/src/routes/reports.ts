@@ -23,7 +23,7 @@ router.get('/dashboard', (req: Request, res: Response) => {
     // Today's calls
     const todayCalls = db.prepare(`
       SELECT COUNT(*) as count FROM calls_for_service
-      WHERE DATE(created_at) = DATE('now')
+      WHERE DATE(created_at) = DATE('now', 'localtime')
     `).get() as any;
 
     // Units on duty
@@ -55,20 +55,20 @@ router.get('/dashboard', (req: Request, res: Response) => {
         (julianday(onscene_at) - julianday(created_at)) * 24 * 60
       ) as avg_minutes
       FROM calls_for_service
-      WHERE onscene_at IS NOT NULL AND DATE(created_at) = DATE('now')
+      WHERE onscene_at IS NOT NULL AND DATE(created_at) = DATE('now', 'localtime')
     `).get() as any;
 
     // Calls by priority today
     const callsByPriority = db.prepare(`
       SELECT priority, COUNT(*) as count FROM calls_for_service
-      WHERE DATE(created_at) = DATE('now')
+      WHERE DATE(created_at) = DATE('now', 'localtime')
       GROUP BY priority ORDER BY priority
     `).all();
 
     // Calls by status
     const callsByStatus = db.prepare(`
       SELECT status, COUNT(*) as count FROM calls_for_service
-      WHERE DATE(created_at) = DATE('now')
+      WHERE DATE(created_at) = DATE('now', 'localtime')
       GROUP BY status
     `).all();
 
@@ -94,9 +94,106 @@ router.get('/dashboard', (req: Request, res: Response) => {
     const callsByHour = db.prepare(`
       SELECT strftime('%H', created_at) as hour, COUNT(*) as count
       FROM calls_for_service
-      WHERE DATE(created_at) = DATE('now')
+      WHERE DATE(created_at) = DATE('now', 'localtime')
       GROUP BY hour ORDER BY hour
     `).all();
+
+    // ── PSO (Process Service Officer) Metrics ──
+    const psoActive = db.prepare(`
+      SELECT COUNT(*) as count FROM calls_for_service
+      WHERE incident_type = 'pso_client_request'
+        AND status IN ('pending', 'dispatched', 'enroute', 'onscene')
+    `).get() as any;
+
+    const psoToday = db.prepare(`
+      SELECT COUNT(*) as count FROM calls_for_service
+      WHERE incident_type = 'pso_client_request'
+        AND DATE(created_at) = DATE('now', 'localtime')
+    `).get() as any;
+
+    const psoThisMonth = db.prepare(`
+      SELECT COUNT(*) as count FROM calls_for_service
+      WHERE incident_type = 'pso_client_request'
+        AND strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now', 'localtime')
+    `).get() as any;
+
+    const psoCompleted = db.prepare(`
+      SELECT COUNT(*) as count FROM calls_for_service
+      WHERE incident_type = 'pso_client_request'
+        AND status IN ('cleared', 'closed', 'archived')
+        AND strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now', 'localtime')
+    `).get() as any;
+
+    // Process service success rate (served vs total attempts this month)
+    const psoServeResults = db.prepare(`
+      SELECT
+        COUNT(*) as total,
+        SUM(CASE WHEN process_service_result = 'served' THEN 1 ELSE 0 END) as served,
+        SUM(CASE WHEN process_service_result = 'not_served' THEN 1 ELSE 0 END) as not_served,
+        SUM(CASE WHEN process_service_result = 'refused' THEN 1 ELSE 0 END) as refused,
+        SUM(CASE WHEN process_service_result IS NULL OR process_service_result = '' THEN 1 ELSE 0 END) as pending_result
+      FROM calls_for_service
+      WHERE incident_type = 'pso_client_request'
+        AND process_service_type IS NOT NULL AND process_service_type != ''
+        AND strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now', 'localtime')
+    `).get() as any;
+
+    // Average attempts per process serve
+    const psoAvgAttempts = db.prepare(`
+      SELECT AVG(CAST(process_attempts AS REAL)) as avg_attempts
+      FROM calls_for_service
+      WHERE incident_type = 'pso_client_request'
+        AND process_attempts IS NOT NULL AND process_attempts > 0
+        AND strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now', 'localtime')
+    `).get() as any;
+
+    // PSO calls by service type (this month)
+    const psoByServiceType = db.prepare(`
+      SELECT pso_service_type, COUNT(*) as count
+      FROM calls_for_service
+      WHERE incident_type = 'pso_client_request'
+        AND pso_service_type IS NOT NULL AND pso_service_type != ''
+        AND strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now', 'localtime')
+      GROUP BY pso_service_type ORDER BY count DESC
+    `).all();
+
+    // ServeManager sync stats (if tables exist)
+    let smStats = { totalJobs: 0, pendingJobs: 0, completedJobs: 0 };
+    try {
+      const smTotal = db.prepare(`SELECT COUNT(*) as count FROM sm_jobs`).get() as any;
+      const smPending = db.prepare(`SELECT COUNT(*) as count FROM sm_jobs WHERE status IN ('pending', 'assigned', 'in_progress')`).get() as any;
+      const smCompleted = db.prepare(`SELECT COUNT(*) as count FROM sm_jobs WHERE status IN ('completed', 'served')`).get() as any;
+      smStats = { totalJobs: smTotal.count, pendingJobs: smPending.count, completedJobs: smCompleted.count };
+    } catch { /* sm_jobs table may not exist */ }
+
+    // PSO avg response time (separate from general)
+    const psoAvgResponse = db.prepare(`
+      SELECT AVG(
+        (julianday(onscene_at) - julianday(created_at)) * 24 * 60
+      ) as avg_minutes
+      FROM calls_for_service
+      WHERE incident_type = 'pso_client_request'
+        AND onscene_at IS NOT NULL
+        AND DATE(created_at) = DATE('now', 'localtime')
+    `).get() as any;
+
+    const pso = {
+      activeCalls: psoActive.count,
+      todayCalls: psoToday.count,
+      monthCalls: psoThisMonth.count,
+      monthCompleted: psoCompleted.count,
+      avgResponseMinutes: psoAvgResponse.avg_minutes ? Math.round(psoAvgResponse.avg_minutes * 10) / 10 : null,
+      avgAttempts: psoAvgAttempts.avg_attempts ? Math.round(psoAvgAttempts.avg_attempts * 10) / 10 : null,
+      serveResults: {
+        total: psoServeResults.total || 0,
+        served: psoServeResults.served || 0,
+        notServed: psoServeResults.not_served || 0,
+        refused: psoServeResults.refused || 0,
+        pendingResult: psoServeResults.pending_result || 0,
+      },
+      byServiceType: psoByServiceType,
+      serveManager: smStats,
+    };
 
     res.json({
       activeCalls: activeCalls.count,
@@ -112,6 +209,7 @@ router.get('/dashboard', (req: Request, res: Response) => {
       recentActivity,
       officersOnDuty,
       callsByHour,
+      pso,
     });
   } catch (error: any) {
     console.error('Get dashboard error:', error);
@@ -330,7 +428,7 @@ router.get('/officer-activity', (req: Request, res: Response) => {
       // Total hours worked
       const hours = db.prepare(`
         SELECT SUM(total_hours) as total FROM time_entries
-        WHERE officer_id = ? AND status = 'completed' ${dateFilter.replace('created_at', 'clock_in')}
+        WHERE officer_id = ? AND status = 'completed' ${dateFilter.replaceAll('created_at', 'clock_in')}
       `).get(officer.id, ...params) as any;
 
       // Calls responded to (via unit assignment)
@@ -489,6 +587,13 @@ router.get('/shift-activity/:officerId', (req: Request, res: Response) => {
     const { officerId } = req.params;
     const date = (req.query.date as string) || new Date().toISOString().slice(0, 10);
 
+    // Authorization: officers can only view their own shift data
+    const privilegedRoles = ['admin', 'manager', 'supervisor'];
+    if (!privilegedRoles.includes(req.user!.role) && String(req.user!.userId) !== String(officerId)) {
+      res.status(403).json({ error: 'You can only view your own shift activity' });
+      return;
+    }
+
     // Officer info
     const officer = db.prepare('SELECT id, full_name, badge_number, email, role FROM users WHERE id = ?').get(officerId) as any;
     if (!officer) return res.status(404).json({ error: 'Officer not found' });
@@ -533,7 +638,7 @@ router.get('/shift-activity/:officerId', (req: Request, res: Response) => {
 
     // Field interviews today
     const fieldInterviews = db.prepare(`
-      SELECT id, subject_name, location, reason, created_at
+      SELECT id, fi_number, (subject_first_name || ' ' || subject_last_name) AS subject_name, location, contact_reason, created_at
       FROM field_interviews
       WHERE DATE(created_at) = ? AND officer_id = ?
       ORDER BY created_at ASC
@@ -567,7 +672,7 @@ router.get('/training-compliance', requireRole('admin', 'manager'), (req: Reques
     const db = getDb();
     const users = db.prepare("SELECT id, full_name, badge_number, role FROM users WHERE role IN ('officer','manager','admin') AND status = 'active'").all() as any[];
     const requirements = db.prepare('SELECT * FROM training_requirements WHERE is_active = 1').all() as any[];
-    const records = db.prepare('SELECT * FROM training_records ORDER BY completed_date DESC').all() as any[];
+    const records = db.prepare('SELECT * FROM training_records ORDER BY completed_date DESC LIMIT 10000').all() as any[];
     res.json({ users, requirements, records });
   } catch (error: any) {
     console.error('Training compliance error:', error);
@@ -587,7 +692,7 @@ router.get('/call-density', (req: Request, res: Response) => {
       SELECT latitude, longitude, priority, incident_type, zone_beat, created_at
       FROM calls_for_service
       WHERE latitude IS NOT NULL AND longitude IS NOT NULL
-        AND created_at >= datetime('now', ?)
+        AND created_at >= datetime('now', 'localtime', ?)
     `;
     const params: any[] = [`-${safeDays} days`];
     if (incidentType) {
@@ -615,7 +720,7 @@ router.get('/statute-analytics', (req: Request, res: Response) => {
       SELECT us.citation AS statute_number, us.short_title AS title, us.offense_level, COUNT(*) as count
       FROM citations c
       JOIN utah_statutes us ON us.id = c.statute_id
-      WHERE c.created_at >= datetime('now', ?)
+      WHERE c.created_at >= datetime('now', 'localtime', ?)
       GROUP BY c.statute_id
       ORDER BY count DESC
       LIMIT 20
@@ -626,7 +731,7 @@ router.get('/statute-analytics', (req: Request, res: Response) => {
       SELECT us.offense_level, COUNT(*) as count
       FROM citations c
       JOIN utah_statutes us ON us.id = c.statute_id
-      WHERE c.created_at >= datetime('now', ?)
+      WHERE c.created_at >= datetime('now', 'localtime', ?)
       GROUP BY us.offense_level
       ORDER BY count DESC
     `).all(offset) as any[];
@@ -635,7 +740,7 @@ router.get('/statute-analytics', (req: Request, res: Response) => {
     const trend = db.prepare(`
       SELECT strftime('%Y-%m', c.created_at) as month, COUNT(*) as count
       FROM citations c
-      WHERE c.created_at >= datetime('now', ?)
+      WHERE c.created_at >= datetime('now', 'localtime', ?)
       GROUP BY month
       ORDER BY month ASC
     `).all(offset) as any[];
@@ -645,7 +750,7 @@ router.get('/statute-analytics', (req: Request, res: Response) => {
       SELECT us.citation AS statute_number, us.short_title AS title, us.offense_level, COUNT(*) as count
       FROM incidents i
       JOIN utah_statutes us ON us.id = i.statute_id
-      WHERE i.created_at >= datetime('now', ?) AND i.statute_id IS NOT NULL
+      WHERE i.created_at >= datetime('now', 'localtime', ?) AND i.statute_id IS NOT NULL
       GROUP BY i.statute_id
       ORDER BY count DESC
       LIMIT 20
@@ -667,7 +772,7 @@ router.get('/patrol-compliance', (req: Request, res: Response) => {
 
     // Overall scan stats
     const totalScans = db.prepare(`
-      SELECT COUNT(*) as count FROM patrol_scans WHERE scanned_at >= datetime('now', ?)
+      SELECT COUNT(*) as count FROM patrol_scans WHERE scanned_at >= datetime('now', 'localtime', ?)
     `).get(offset) as any;
 
     const activeCheckpoints = db.prepare(`
@@ -680,7 +785,7 @@ router.get('/patrol-compliance', (req: Request, res: Response) => {
         COUNT(DISTINCT DATE(ps.scanned_at)) as active_days
       FROM patrol_scans ps
       JOIN users u ON u.id = ps.officer_id
-      WHERE ps.scanned_at >= datetime('now', ?)
+      WHERE ps.scanned_at >= datetime('now', 'localtime', ?)
       GROUP BY ps.officer_id
       ORDER BY scan_count DESC
     `).all(offset) as any[];
@@ -691,7 +796,7 @@ router.get('/patrol-compliance', (req: Request, res: Response) => {
         MAX(ps.scanned_at) as last_scan
       FROM patrol_checkpoints pc
       LEFT JOIN patrol_scans ps ON ps.checkpoint_id = pc.id
-        AND ps.scanned_at >= datetime('now', ?)
+        AND ps.scanned_at >= datetime('now', 'localtime', ?)
       WHERE pc.is_active = 1
       GROUP BY pc.id
       ORDER BY scan_count DESC
@@ -701,7 +806,7 @@ router.get('/patrol-compliance', (req: Request, res: Response) => {
     const byHour = db.prepare(`
       SELECT CAST(strftime('%H', scanned_at) AS INTEGER) as hour, COUNT(*) as count
       FROM patrol_scans
-      WHERE scanned_at >= datetime('now', ?)
+      WHERE scanned_at >= datetime('now', 'localtime', ?)
       GROUP BY hour
       ORDER BY hour ASC
     `).all(offset) as any[];
@@ -729,14 +834,15 @@ router.post('/custom', requireRole('admin', 'manager'), (req: Request, res: Resp
     const ALLOWED_SOURCES: Record<string, string[]> = {
       calls_for_service: ['id', 'call_number', 'incident_type', 'priority', 'status', 'caller_name', 'location_address', 'zone_beat', 'beat_id', 'zone_id', 'section_id', 'disposition', 'created_at', 'dispatched_at', 'onscene_at', 'cleared_at'],
       incidents: ['id', 'incident_number', 'incident_type', 'priority', 'status', 'location_address', 'narrative', 'officer_id', 'created_at', 'occurred_date', 'zone_beat', 'beat_id', 'zone_id', 'disposition', 'domestic_violence', 'weapons_involved'],
-      citations: ['id', 'citation_number', 'type', 'violation_description', 'statute_citation', 'offense_level', 'location', 'status', 'fine_amount', 'officer_id', 'violation_date', 'created_at'],
-      warrants: ['id', 'warrant_number', 'type', 'status', 'offense_level', 'charge_description', 'statute_citation', 'court_name', 'bail_amount', 'date_issued', 'expires_at', 'served_at', 'created_at'],
-      bolos: ['id', 'subject_name', 'description', 'priority', 'status', 'category', 'vehicle_info', 'location_last_seen', 'issued_by', 'created_at', 'expires_at'],
-      evidence: ['id', 'evidence_number', 'incident_id', 'description', 'category', 'storage_location', 'chain_of_custody', 'collected_by', 'collected_at', 'created_at'],
-      time_entries: ['id', 'officer_id', 'shift_date', 'clock_in', 'clock_out', 'hours_worked', 'overtime_hours', 'status', 'notes', 'approved_by'],
-      training_records: ['id', 'officer_id', 'title', 'category', 'status', 'hours', 'completed_date', 'expiry_date', 'instructor', 'score'],
-      field_interviews: ['id', 'subject_name', 'location', 'reason', 'officer_id', 'created_at'],
-      patrol_scans: ['id', 'checkpoint_id', 'officer_id', 'scanned_at', 'gps_latitude', 'gps_longitude'],
+      citations: ['id', 'citation_number', 'type', 'violation_description', 'statute_citation', 'offense_level', 'location', 'status', 'fine_amount', 'issuing_officer_id', 'violation_date', 'created_at'],
+      warrants: ['id', 'warrant_number', 'type', 'status', 'offense_level', 'charge_description', 'statute_citation', 'issuing_court', 'issuing_judge', 'bail_amount', 'expires_at', 'served_at', 'created_at'],
+      bolos: ['id', 'title', 'description', 'subject_description', 'vehicle_description', 'priority', 'status', 'issued_by', 'created_at', 'expires_at'],
+      evidence: ['id', 'evidence_number', 'incident_id', 'description', 'category', 'storage_location', 'chain_of_custody', 'collected_by', 'collected_date', 'created_at'],
+      time_entries: ['id', 'officer_id', 'clock_in', 'clock_out', 'total_hours', 'break_minutes', 'status', 'created_at'],
+      training_records: ['id', 'officer_id', 'course_name', 'category', 'status', 'hours', 'completed_date', 'expiry_date', 'score', 'created_at'],
+      field_interviews: ['id', 'fi_number', 'subject_first_name', 'subject_last_name', 'location', 'contact_reason', 'officer_id', 'created_at'],
+      patrol_scans: ['id', 'checkpoint_id', 'officer_id', 'scanned_at', 'latitude', 'longitude'],
+      schedules: ['id', 'officer_id', 'property_id', 'shift_date', 'start_time', 'end_time', 'status', 'notes', 'created_at'],
     };
 
     if (!source || !ALLOWED_SOURCES[source]) {
@@ -747,23 +853,27 @@ router.post('/custom', requireRole('admin', 'manager'), (req: Request, res: Resp
     const selectedCols = (columns || allowedCols).filter((c: string) => allowedCols.includes(c));
     if (selectedCols.length === 0) return res.status(400).json({ error: 'No valid columns selected' });
 
-    let sql = `SELECT ${selectedCols.join(', ')} FROM ${source}`;
+    // Quote SQL identifiers to prevent injection even if allowlists are modified
+    const q = (id: string) => `"${id.replace(/"/g, '')}"`;
+
+    let sql = `SELECT ${selectedCols.map(q).join(', ')} FROM ${q(source)}`;
     const params: any[] = [];
     const conditions: string[] = [];
 
     if (filters && Array.isArray(filters)) {
       for (const f of filters) {
         if (!allowedCols.includes(f.column)) continue;
-        if (f.operator === 'eq') { conditions.push(`${f.column} = ?`); params.push(f.value); }
-        else if (f.operator === 'contains') { conditions.push(`${f.column} LIKE ?`); params.push(`%${f.value}%`); }
-        else if (f.operator === 'gte') { conditions.push(`${f.column} >= ?`); params.push(f.value); }
-        else if (f.operator === 'lte') { conditions.push(`${f.column} <= ?`); params.push(f.value); }
+        const col = q(f.column);
+        if (f.operator === 'eq') { conditions.push(`${col} = ?`); params.push(f.value); }
+        else if (f.operator === 'contains') { conditions.push(`${col} LIKE ?`); params.push(`%${f.value}%`); }
+        else if (f.operator === 'gte') { conditions.push(`${col} >= ?`); params.push(f.value); }
+        else if (f.operator === 'lte') { conditions.push(`${col} <= ?`); params.push(f.value); }
       }
     }
 
     if (conditions.length > 0) sql += ` WHERE ${conditions.join(' AND ')}`;
-    if (groupBy && allowedCols.includes(groupBy)) sql += ` GROUP BY ${groupBy}`;
-    if (sortBy && allowedCols.includes(sortBy)) sql += ` ORDER BY ${sortBy} ${sortDir === 'asc' ? 'ASC' : 'DESC'}`;
+    if (groupBy && allowedCols.includes(groupBy)) sql += ` GROUP BY ${q(groupBy)}`;
+    if (sortBy && allowedCols.includes(sortBy)) sql += ` ORDER BY ${q(sortBy)} ${sortDir === 'asc' ? 'ASC' : 'DESC'}`;
     sql += ` LIMIT ${Math.min(parseInt(queryLimit) || 500, 2000)}`;
 
     const rows = db.prepare(sql).all(...params);
@@ -786,28 +896,28 @@ router.get('/crime-analysis', (req: Request, res: Response) => {
     // Top offenses by incident type
     const topOffenses = db.prepare(`
       SELECT incident_type, COUNT(*) as count FROM incidents
-      WHERE created_at >= DATE('now', ?) AND status != 'draft'
+      WHERE created_at >= DATE('now', 'localtime', ?) AND status != 'draft'
       GROUP BY incident_type ORDER BY count DESC LIMIT 10
     `).all(offset);
 
     // Monthly trend (last 12 months)
     const trendData = db.prepare(`
       SELECT strftime('%Y-%m', created_at) as month, COUNT(*) as count
-      FROM incidents WHERE created_at >= DATE('now', '-12 months') AND status != 'draft'
+      FROM incidents WHERE created_at >= DATE('now', 'localtime', '-12 months') AND status != 'draft'
       GROUP BY month ORDER BY month
     `).all();
 
     // Time of day distribution
     const timeOfDay = db.prepare(`
       SELECT CAST(strftime('%H', created_at) AS INTEGER) as hour, COUNT(*) as count
-      FROM calls_for_service WHERE created_at >= DATE('now', ?)
+      FROM calls_for_service WHERE created_at >= DATE('now', 'localtime', ?)
       GROUP BY hour ORDER BY hour
     `).all(offset);
 
     // Day of week distribution
     const dayOfWeek = db.prepare(`
       SELECT CAST(strftime('%w', created_at) AS INTEGER) as day, COUNT(*) as count
-      FROM calls_for_service WHERE created_at >= DATE('now', ?)
+      FROM calls_for_service WHERE created_at >= DATE('now', 'localtime', ?)
       GROUP BY day ORDER BY day
     `).all(offset);
 
@@ -816,7 +926,7 @@ router.get('/crime-analysis', (req: Request, res: Response) => {
       SELECT location_address, COUNT(*) as count,
         GROUP_CONCAT(DISTINCT incident_type) as types
       FROM calls_for_service
-      WHERE created_at >= DATE('now', ?) AND location_address IS NOT NULL
+      WHERE created_at >= DATE('now', 'localtime', ?) AND location_address IS NOT NULL
       GROUP BY location_address ORDER BY count DESC LIMIT 15
     `).all(offset);
 
@@ -828,7 +938,7 @@ router.get('/crime-analysis', (req: Request, res: Response) => {
       FROM persons p
       JOIN incident_persons ip ON p.id = ip.person_id
       JOIN incidents i ON ip.incident_id = i.id
-      WHERE i.created_at >= DATE('now', ?)
+      WHERE i.created_at >= DATE('now', 'localtime', ?)
       GROUP BY p.id HAVING incident_count >= 3
       ORDER BY incident_count DESC LIMIT 20
     `).all(offset);
@@ -841,7 +951,7 @@ router.get('/crime-analysis', (req: Request, res: Response) => {
         ), 1) as avg_response_min,
         COUNT(*) as count
       FROM calls_for_service
-      WHERE created_at >= DATE('now', ?) AND onscene_at IS NOT NULL
+      WHERE created_at >= DATE('now', 'localtime', ?) AND onscene_at IS NOT NULL
       GROUP BY priority
     `).all(offset);
 
@@ -850,7 +960,7 @@ router.get('/crime-analysis', (req: Request, res: Response) => {
       SELECT
         COUNT(*) as total,
         SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as cleared
-      FROM incidents WHERE created_at >= DATE('now', ?)
+      FROM incidents WHERE created_at >= DATE('now', 'localtime', ?)
     `).get(offset) as any;
 
     res.json({
@@ -1180,7 +1290,9 @@ router.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), as
       if (points.length >= 2) {
         const first = new Date(points[0].time).getTime();
         const last = new Date(points[points.length - 1].time).getTime();
-        durationMinutes = Math.round((last - first) / 60000);
+        if (!isNaN(first) && !isNaN(last)) {
+          durationMinutes = Math.round((last - first) / 60000);
+        }
       }
 
       // ── Zone coverage summary ────────────────────────────

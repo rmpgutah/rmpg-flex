@@ -6,12 +6,17 @@ import {
 import type { FieldInterview, FIContactReason, FIContactType, FIActionTaken } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
 import StatusBadge from '../components/StatusBadge';
+import EmptyState from '../components/EmptyState';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import ExportButton from '../components/ExportButton';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/ToastProvider';
+import { useFormValidation } from '../hooks/useFormValidation';
+import { isValidPlate, isValidDate } from '../utils/validate';
+import { formatDate, formatDateTime } from '../utils/dateUtils';
+import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
 
 const CONTACT_REASONS: { value: FIContactReason; label: string }[] = [
   { value: 'suspicious_activity', label: 'Suspicious Activity' },
@@ -60,11 +65,15 @@ const EMPTY_FORM = {
   action_taken: 'none' as FIActionTaken, narrative: '',
   vehicle_plate: '', vehicle_description: '',
   person_id: '',
+  section_id: '', zone_id: '', beat_id: '',
 };
 
 export default function FieldInterviewsPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
+  const { errors: formErrors, validate: validateForm, clearAllErrors } = useFormValidation();
+  const { sections: sectionOptions, zones: zoneOptions, beats: beatOptions } = useDistrictOptions();
+  const { identify: identifyDistrict } = useDistrictIdentify();
 
   // Data state
   const [fis, setFis] = useState<FieldInterview[]>([]);
@@ -139,11 +148,13 @@ export default function FieldInterviewsPage() {
     setFormData({ ...EMPTY_FORM });
     setSelectedPerson(null);
     setPersonSearch('');
+    clearAllErrors();
     setFormOpen(true);
   };
 
   const handleEdit = (fi: FieldInterview) => {
     setEditingFi(fi);
+    clearAllErrors();
     setFormData({
       subject_first_name: fi.subject_first_name || '',
       subject_last_name: fi.subject_last_name || '',
@@ -164,17 +175,28 @@ export default function FieldInterviewsPage() {
       vehicle_plate: fi.vehicle_plate || '',
       vehicle_description: fi.vehicle_description || '',
       person_id: fi.person_id ? String(fi.person_id) : '',
+      section_id: (fi as any).section_id || '',
+      zone_id: (fi as any).zone_id || '',
+      beat_id: (fi as any).beat_id || '',
     });
     setFormOpen(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const isValid = validateForm(formData, {
+      location: { required: true },
+      subject_last_name: { required: true },
+      subject_dob: { custom: (v) => !v || isValidDate(v), customMessage: 'Invalid date format (YYYY-MM-DD)' },
+      vehicle_plate: { custom: (v) => !v || isValidPlate(v), customMessage: 'Invalid plate format (2–8 alphanumeric)' },
+    });
+    if (!isValid) return;
     setSubmitting(true);
     try {
       const body = {
         ...formData,
         person_id: formData.person_id ? parseInt(formData.person_id, 10) : null,
+        zone_beat: [formData.zone_id, formData.beat_id].filter(Boolean).join('/') || null,
       };
       if (editingFi) {
         await apiFetch(`/field-interviews/${editingFi.id}`, { method: 'PUT', body: JSON.stringify(body) });
@@ -244,23 +266,34 @@ export default function FieldInterviewsPage() {
       </PanelTitleBar>
 
       {/* Toolbar */}
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-rmpg-700" style={{ background: '#1a1a1a' }}>
-        <div className="relative flex-1 max-w-xs">
+      <div className={`flex ${isMobile ? 'flex-col gap-1.5' : 'items-center gap-2'} px-3 py-1.5 border-b border-rmpg-700`} style={{ background: '#141e2b' }}>
+        <div className={`relative ${isMobile ? 'w-full' : 'flex-1 max-w-xs'}`}>
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
           <input
-            type="text" placeholder="Search FIs..." className="input-dark pl-7 text-xs w-full"
+            type="text" placeholder="Search FIs..." className={`input-dark pl-7 w-full ${isMobile ? 'text-sm py-2.5' : 'text-xs'}`}
             value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPage(1); }}
+            style={isMobile ? { minHeight: 44 } : undefined}
           />
         </div>
-        <select className="select-dark text-xs" value={filterReason} onChange={e => { setFilterReason(e.target.value); setPage(1); }}>
-          <option value="">All Reasons</option>
-          {CONTACT_REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-        </select>
-        <label className="flex items-center gap-1 text-[10px] text-rmpg-400 cursor-pointer">
-          <input type="checkbox" checked={showArchived} onChange={e => { setShowArchived(e.target.checked); setPage(1); }} className="accent-brand-500" />
-          Archived
-        </label>
+        <div className={`flex items-center ${isMobile ? 'gap-2' : 'gap-2'}`}>
+          <select className={`select-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs'}`} value={filterReason} onChange={e => { setFilterReason(e.target.value); setPage(1); }} style={isMobile ? { minHeight: 44 } : undefined}>
+            <option value="">All Reasons</option>
+            {CONTACT_REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+          </select>
+          <label className={`flex items-center gap-1 ${isMobile ? 'text-xs' : 'text-[10px]'} text-rmpg-400 cursor-pointer`} style={isMobile ? { minHeight: 44 } : undefined}>
+            <input type="checkbox" checked={showArchived} onChange={e => { setShowArchived(e.target.checked); setPage(1); }} className="accent-brand-500" style={isMobile ? { width: 20, height: 20 } : undefined} />
+            Archived
+          </label>
+        </div>
       </div>
+
+      {/* Error Banner */}
+      {error && (
+        <div className="px-3 py-2 bg-red-900/40 border-b border-red-700 text-red-300 text-xs flex items-center justify-between">
+          <span>Failed to load field interviews: {error}</span>
+          <button onClick={() => fetchFis()} className="text-red-200 hover:text-white underline text-[10px]">Retry</button>
+        </div>
+      )}
 
       {/* Content */}
       <div className="flex flex-1 overflow-hidden">
@@ -271,19 +304,25 @@ export default function FieldInterviewsPage() {
               <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading...
             </div>
           ) : fis.length === 0 ? (
-            <div className="text-center py-12 text-rmpg-500 text-sm">No field interviews found</div>
+            <EmptyState
+              icon={ClipboardList}
+              title="No field interviews found"
+              description="Create a new FI card to get started."
+              action={{ label: 'New FI Card', onClick: handleOpenNew }}
+            />
           ) : (
             fis.map(fi => (
               <div
                 key={fi.id}
                 onClick={() => setSelectedFi(fi)}
-                className={`px-3 py-2 cursor-pointer border-b border-rmpg-800 transition-colors hover:bg-surface-raised ${selectedFi?.id === fi.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'border-l-2 border-l-transparent'}`}
+                className={`px-3 ${isMobile ? 'py-3' : 'py-2'} cursor-pointer border-b border-rmpg-800 transition-colors hover:bg-surface-raised ${selectedFi?.id === fi.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'border-l-2 border-l-transparent'}`}
+                style={isMobile ? { minHeight: 56 } : undefined}
               >
                 <div className="flex items-center justify-between mb-0.5">
                   <span className="text-[11px] font-bold font-mono text-brand-400">{fi.fi_number}</span>
                   <div className="flex items-center gap-1">
                     <span className={`text-[8px] font-bold px-1.5 py-0 border ${REASON_COLORS[fi.contact_reason] || REASON_COLORS.other}`}>
-                      {fi.contact_reason.replace('_', ' ').toUpperCase()}
+                      {fi.contact_reason.replace(/_/g, ' ').toUpperCase()}
                     </span>
                     <span className={`text-[8px] font-bold px-1.5 py-0 border ${STATUS_COLORS[fi.status]}`}>
                       {fi.status.toUpperCase()}
@@ -300,17 +339,17 @@ export default function FieldInterviewsPage() {
                 <div className="flex items-center gap-2 text-[10px] text-rmpg-500 mt-0.5">
                   <span>{fi.officer_name || fi.officer_display_name || 'Unknown Officer'}</span>
                   <span>•</span>
-                  <span>{new Date(fi.created_at).toLocaleDateString()}</span>
+                  <span>{formatDate(fi.created_at)}</span>
                 </div>
               </div>
             ))
           )}
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-2 py-2 text-[10px] text-rmpg-400">
-              <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="toolbar-btn" style={{ fontSize: '10px' }}>Prev</button>
+            <div className={`flex items-center justify-center gap-2 py-2 ${isMobile ? 'text-xs' : 'text-[10px]'} text-rmpg-400`}>
+              <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined, minWidth: isMobile ? 48 : undefined }}>Prev</button>
               <span>Page {page} of {totalPages}</span>
-              <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} className="toolbar-btn" style={{ fontSize: '10px' }}>Next</button>
+              <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined, minWidth: isMobile ? 48 : undefined }}>Next</button>
             </div>
           )}
         </div>
@@ -321,37 +360,40 @@ export default function FieldInterviewsPage() {
             <div className="flex items-center justify-between mb-3">
               <div>
                 <h2 className="text-sm font-bold text-white font-mono">{selectedFi.fi_number}</h2>
-                <span className="text-[10px] text-rmpg-400">Created {new Date(selectedFi.created_at).toLocaleString()}</span>
+                <span className="text-[10px] text-rmpg-400">Created {formatDateTime(selectedFi.created_at)}</span>
               </div>
-              <div className="flex items-center gap-1">
-                <button onClick={() => handleEdit(selectedFi)} className="toolbar-btn" style={{ fontSize: '10px' }}>
-                  <FileText style={{ width: 10, height: 10 }} /> Edit
+              <div className={`flex items-center ${isMobile ? 'gap-2' : 'gap-1'}`}>
+                <button onClick={() => handleEdit(selectedFi)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
+                  <FileText style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Edit
                 </button>
                 {selectedFi.status === 'active' ? (
-                  <button onClick={() => handleArchive(selectedFi)} className="toolbar-btn" style={{ fontSize: '10px' }}>
-                    <Archive style={{ width: 10, height: 10 }} /> Archive
+                  <button onClick={() => handleArchive(selectedFi)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
+                    <Archive style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Archive
                   </button>
                 ) : (
-                  <button onClick={() => handleUnarchive(selectedFi)} className="toolbar-btn" style={{ fontSize: '10px' }}>
-                    <RotateCcw style={{ width: 10, height: 10 }} /> Restore
+                  <button onClick={() => handleUnarchive(selectedFi)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
+                    <RotateCcw style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Restore
                   </button>
                 )}
-                <button onClick={() => setSelectedFi(null)} className="toolbar-btn" style={{ fontSize: '10px' }}>
-                  <X style={{ width: 10, height: 10 }} />
+                <button onClick={() => setSelectedFi(null)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
+                  <X style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} />
                 </button>
               </div>
             </div>
 
             {/* Detail grid */}
-            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-xs">
               <div><span className="text-rmpg-500 text-[10px] uppercase">Subject</span><div className="text-white font-medium">{selectedFi.subject_last_name}, {selectedFi.subject_first_name}</div></div>
-              <div><span className="text-rmpg-500 text-[10px] uppercase">DOB</span><div className="text-white">{selectedFi.subject_dob ? new Date(selectedFi.subject_dob).toLocaleDateString() : '—'}</div></div>
+              <div><span className="text-rmpg-500 text-[10px] uppercase">DOB</span><div className="text-white">{selectedFi.subject_dob ? formatDate(selectedFi.subject_dob) : '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Gender / Race</span><div className="text-white">{[selectedFi.subject_gender, selectedFi.subject_race].filter(Boolean).join(' / ') || '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Build</span><div className="text-white">{[selectedFi.subject_height, selectedFi.subject_weight ? `${selectedFi.subject_weight} lbs` : ''].filter(Boolean).join(', ') || '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Hair / Eyes</span><div className="text-white">{[selectedFi.subject_hair, selectedFi.subject_eye].filter(Boolean).join(' / ') || '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Clothing</span><div className="text-white">{selectedFi.subject_clothing || '—'}</div></div>
               <div className="col-span-2"><span className="text-rmpg-500 text-[10px] uppercase">Location</span><div className="text-white">{selectedFi.location}</div></div>
-              <div><span className="text-rmpg-500 text-[10px] uppercase">Contact Reason</span><div className="text-white capitalize">{selectedFi.contact_reason.replace('_', ' ')}</div></div>
+              {((selectedFi as any).section_id || (selectedFi as any).zone_id || (selectedFi as any).beat_id) && (
+                <div className="col-span-2"><span className="text-rmpg-500 text-[10px] uppercase">Section / Zone / Beat</span><div className="text-white">{[(selectedFi as any).section_id, (selectedFi as any).zone_id, (selectedFi as any).beat_id].filter(Boolean).join(' / ') || '—'}</div></div>
+              )}
+              <div><span className="text-rmpg-500 text-[10px] uppercase">Contact Reason</span><div className="text-white capitalize">{selectedFi.contact_reason.replace(/_/g, ' ')}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Contact Type</span><div className="text-white capitalize">{selectedFi.contact_type}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Action Taken</span><div className="text-white capitalize">{selectedFi.action_taken}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Officer</span><div className="text-white">{selectedFi.officer_name || selectedFi.officer_display_name || '—'}</div></div>
@@ -373,14 +415,14 @@ export default function FieldInterviewsPage() {
       {formOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setFormOpen(false)}>
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700" style={{ background: '#1a1a1a' }}>
+            <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700" style={{ background: '#141e2b' }}>
               <span className="text-xs font-bold text-white uppercase">{editingFi ? 'Edit' : 'New'} Field Interview</span>
               <button onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white"><X style={{ width: 14, height: 14 }} /></button>
             </div>
             <form onSubmit={handleSubmit} className="p-4 space-y-3">
               {/* Person search */}
               <div>
-                <label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Link to Person Record (Optional)</label>
+                <label className="field-label">Link to Person Record (Optional)</label>
                 <div className="relative">
                   <input type="text" className="input-dark text-xs w-full" placeholder="Search person records..."
                     value={personSearch} onChange={e => setPersonSearch(e.target.value)} />
@@ -390,7 +432,7 @@ export default function FieldInterviewsPage() {
                         <button key={p.id} type="button" onClick={() => selectPerson(p)}
                           className="w-full text-left px-3 py-1.5 text-xs text-white hover:bg-rmpg-700 flex items-center gap-2">
                           <User className="w-3 h-3 text-rmpg-400" />
-                          {p.last_name}, {p.first_name} {p.date_of_birth ? `— DOB: ${new Date(p.date_of_birth).toLocaleDateString()}` : ''}
+                          {p.last_name}, {p.first_name} {p.date_of_birth ? `— DOB: ${formatDate(p.date_of_birth)}` : ''}
                         </button>
                       ))}
                     </div>
@@ -400,75 +442,106 @@ export default function FieldInterviewsPage() {
               </div>
 
               {/* Subject info */}
-              <div className="grid grid-cols-3 gap-2">
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">First Name</label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div><label className="field-label">First Name</label>
                   <input className="input-dark text-xs w-full" value={formData.subject_first_name} onChange={e => update('subject_first_name', e.target.value)} /></div>
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Last Name</label>
-                  <input className="input-dark text-xs w-full" value={formData.subject_last_name} onChange={e => update('subject_last_name', e.target.value)} /></div>
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">DOB</label>
+                <div><label className="field-label">Last Name *</label>
+                  <input className="input-dark text-xs w-full" value={formData.subject_last_name} onChange={e => update('subject_last_name', e.target.value)} />
+                  {formErrors.subject_last_name && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.subject_last_name}</p>}</div>
+                <div><label className="field-label">DOB</label>
                   <input type="date" className="input-dark text-xs w-full" value={formData.subject_dob} onChange={e => update('subject_dob', e.target.value)} /></div>
               </div>
 
-              <div className="grid grid-cols-4 gap-2">
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Gender</label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div><label className="field-label">Gender</label>
                   <select className="select-dark text-xs w-full" value={formData.subject_gender} onChange={e => update('subject_gender', e.target.value)}>
                     <option value="">—</option><option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option>
                   </select></div>
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Race</label>
+                <div><label className="field-label">Race</label>
                   <input className="input-dark text-xs w-full" value={formData.subject_race} onChange={e => update('subject_race', e.target.value)} /></div>
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Height</label>
+                <div><label className="field-label">Height</label>
                   <input className="input-dark text-xs w-full" placeholder="5'10&quot;" value={formData.subject_height} onChange={e => update('subject_height', e.target.value)} /></div>
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Weight</label>
+                <div><label className="field-label">Weight</label>
                   <input className="input-dark text-xs w-full" placeholder="180" value={formData.subject_weight} onChange={e => update('subject_weight', e.target.value)} /></div>
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Hair</label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div><label className="field-label">Hair</label>
                   <input className="input-dark text-xs w-full" value={formData.subject_hair} onChange={e => update('subject_hair', e.target.value)} /></div>
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Eyes</label>
+                <div><label className="field-label">Eyes</label>
                   <input className="input-dark text-xs w-full" value={formData.subject_eye} onChange={e => update('subject_eye', e.target.value)} /></div>
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Clothing</label>
+                <div><label className="field-label">Clothing</label>
                   <input className="input-dark text-xs w-full" placeholder="Dark hoodie, jeans" value={formData.subject_clothing} onChange={e => update('subject_clothing', e.target.value)} /></div>
               </div>
 
               {/* Location + reason */}
-              <div className="grid grid-cols-2 gap-2">
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Location *</label>
-                  <input className="input-dark text-xs w-full" required value={formData.location} onChange={e => update('location', e.target.value)} /></div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Reason</label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div><label className="field-label">Location *</label>
+                  <input className="input-dark text-xs w-full" value={formData.location} onChange={e => update('location', e.target.value)} />
+                  {formErrors.location && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.location}</p>}</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div><label className="field-label">Reason</label>
                     <select className="select-dark text-xs w-full" value={formData.contact_reason} onChange={e => update('contact_reason', e.target.value)}>
                       {CONTACT_REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                     </select></div>
-                  <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Type</label>
+                  <div><label className="field-label">Type</label>
                     <select className="select-dark text-xs w-full" value={formData.contact_type} onChange={e => update('contact_type', e.target.value)}>
                       {CONTACT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </select></div>
                 </div>
               </div>
 
+              {/* Section / Zone / Beat */}
               <div className="grid grid-cols-3 gap-2">
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Action Taken</label>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Section</label>
+                  <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
+                    value={formData.section_id || ''} onChange={e => update('section_id', e.target.value)}>
+                    <option value="">—</option>
+                    {sectionOptions.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Zone</label>
+                  <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
+                    value={formData.zone_id || ''} onChange={e => update('zone_id', e.target.value)}>
+                    <option value="">—</option>
+                    {zoneOptions.map(z => <option key={z} value={z}>{z}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Beat</label>
+                  <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
+                    value={formData.beat_id || ''} onChange={e => update('beat_id', e.target.value)}>
+                    <option value="">—</option>
+                    {beatOptions.map(b => <option key={b} value={b}>{b}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div><label className="field-label">Action Taken</label>
                   <select className="select-dark text-xs w-full" value={formData.action_taken} onChange={e => update('action_taken', e.target.value)}>
                     {ACTIONS_TAKEN.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
                   </select></div>
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Vehicle Plate</label>
-                  <input className="input-dark text-xs w-full" value={formData.vehicle_plate} onChange={e => update('vehicle_plate', e.target.value)} /></div>
-                <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Vehicle Desc.</label>
+                <div><label className="field-label">Vehicle Plate</label>
+                  <input className={`input-dark text-xs w-full ${formErrors.vehicle_plate ? '!border-red-500' : ''}`} value={formData.vehicle_plate} onChange={e => update('vehicle_plate', e.target.value)} />
+                  {formErrors.vehicle_plate && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.vehicle_plate}</p>}</div>
+                <div><label className="field-label">Vehicle Desc.</label>
                   <input className="input-dark text-xs w-full" value={formData.vehicle_description} onChange={e => update('vehicle_description', e.target.value)} /></div>
               </div>
 
               {/* Narrative */}
-              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-0.5">Narrative</label>
+              <div><label className="field-label">Narrative</label>
                 <textarea className="input-dark text-xs w-full" rows={4} value={formData.narrative} onChange={e => update('narrative', e.target.value)} /></div>
 
               {/* Actions */}
-              <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
-                <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn">Cancel</button>
-                <button type="submit" disabled={submitting} className="toolbar-btn" style={{ background: 'rgba(188,16,16,0.3)', borderColor: 'rgba(188,16,16,0.5)' }}>
-                  {submitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 10, height: 10 }} />}
+              <div className={`flex ${isMobile ? 'flex-col gap-2' : 'justify-end gap-2'} pt-2 border-t border-rmpg-700`}>
+                <button type="submit" disabled={submitting} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={{ background: 'rgba(26,90,158,0.3)', borderColor: 'rgba(26,90,158,0.5)', minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 14 : undefined }}>
+                  {submitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} />}
                   {editingFi ? 'Update' : 'Create'} FI Card
                 </button>
+                <button type="button" onClick={() => setFormOpen(false)} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={isMobile ? { minHeight: 48, fontSize: 14 } : undefined}>Cancel</button>
               </div>
             </form>
           </div>

@@ -7,7 +7,7 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Terminal, ChevronRight } from 'lucide-react';
-import { executeCommand, getCommandVerbs, type CadContext, type CommandAction } from '../utils/cadCommandParser';
+import { executeCommand, getCommandVerbs, loadCommandHistory, saveCommandHistory, type CadContext, type CommandAction } from '../utils/cadCommandParser';
 import { playTone } from '../utils/dispatchTones';
 
 interface CadCommandLineProps {
@@ -18,7 +18,7 @@ interface CadCommandLineProps {
 export default function CadCommandLine({ context, onAction }: CadCommandLineProps) {
   const [input, setInput] = useState('');
   const [output, setOutput] = useState<{ text: string; success: boolean } | null>(null);
-  const [history, setHistory] = useState<string[]>([]);
+  const [history, setHistory] = useState<string[]>(() => loadCommandHistory());
   const [historyIdx, setHistoryIdx] = useState(-1);
   const [isExpanded, setIsExpanded] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -29,8 +29,8 @@ export default function CadCommandLine({ context, onAction }: CadCommandLineProp
   useEffect(() => {
     if (output && !output.text.includes('\n')) {
       outputTimerRef.current = setTimeout(() => setOutput(null), 8000);
-      return () => { if (outputTimerRef.current) clearTimeout(outputTimerRef.current); };
     }
+    return () => { if (outputTimerRef.current) clearTimeout(outputTimerRef.current); };
   }, [output]);
 
   // ── Global "/" shortcut to focus command line ──
@@ -82,10 +82,11 @@ export default function CadCommandLine({ context, onAction }: CadCommandLineProp
     const trimmed = input.trim();
     if (!trimmed) return;
 
-    // Add to history
+    // Add to history and persist
     setHistory(prev => {
-      const next = [trimmed, ...prev.filter(h => h !== trimmed)];
-      return next.slice(0, 50);
+      const next = [trimmed, ...prev.filter(h => h !== trimmed)].slice(0, 100);
+      saveCommandHistory(next);
+      return next;
     });
     setHistoryIdx(-1);
     setInput('');

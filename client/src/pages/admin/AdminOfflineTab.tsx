@@ -25,7 +25,7 @@ interface PinSecret {
 
 export default function AdminOfflineTab({ LoadingSpinner, error, setError }: AdminOfflineTabProps) {
   const {
-    isElectron,
+    isOfflineCapable,
     isOffline,
     isLocalAuthorized,
     isSyncing,
@@ -136,7 +136,7 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
             </span>
           </div>
           <div className="text-[10px] text-rmpg-400 space-y-1">
-            {isElectron ? (
+            {isOfflineCapable ? (
               <>
                 <div>
                   Local auth: {' '}
@@ -149,7 +149,7 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
                 )}
               </>
             ) : (
-              <div className="text-rmpg-500">Offline mode requires the desktop app</div>
+              <div className="text-rmpg-500">Offline mode initializing...</div>
             )}
           </div>
         </div>
@@ -172,15 +172,15 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
               </div>
             )}
           </div>
-          {isElectron && (
+          {isOfflineCapable && (
             <button
               onClick={triggerSync}
               disabled={isSyncing}
               className="mt-2 flex items-center gap-1 px-2 py-1 text-[10px] transition-colors"
               style={{
-                background: '#252525',
-                border: '1px solid #383838',
-                color: isSyncing ? '#555' : '#888',
+                background: '#1e3048',
+                border: '1px solid #2a3e58',
+                color: isSyncing ? '#3a5070' : '#8a9aaa',
               }}
             >
               <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
@@ -222,15 +222,15 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
               disabled={generatingAll}
               className="flex items-center gap-1 px-3 py-1.5 text-[10px] transition-colors"
               style={{
-                background: '#252525',
-                border: '1px solid #383838',
-                color: generatingAll ? '#555' : '#888',
+                background: '#1e3048',
+                border: '1px solid #2a3e58',
+                color: generatingAll ? '#3a5070' : '#8a9aaa',
               }}
             >
               {generatingAll ? <Loader2 className="w-3 h-3 animate-spin" /> : <Shield className="w-3 h-3" />}
               {generatingAll ? 'Generating...' : 'Generate All Missing Secrets'}
             </button>
-            {isElectron && (
+            {isOfflineCapable && (
               <button
                 onClick={() => setPinModalOpen(true)}
                 className="btn-primary text-[10px] py-1.5"
@@ -287,9 +287,9 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
                         disabled={generatingSingle === s.user_id}
                         className="text-[10px] px-2 py-0.5 transition-colors"
                         style={{
-                          background: '#252525',
-                          border: '1px solid #383838',
-                          color: generatingSingle === s.user_id ? '#555' : '#d97706',
+                          background: '#1e3048',
+                          border: '1px solid #2a3e58',
+                          color: generatingSingle === s.user_id ? '#3a5070' : '#d97706',
                         }}
                       >
                         {generatingSingle === s.user_id ? (
@@ -303,7 +303,7 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
                         onClick={() => handleGenerateSecret(s.user_id)}
                         disabled={generatingSingle === s.user_id}
                         className="text-[10px] px-2 py-0.5 text-rmpg-500 hover:text-amber-400 transition-colors"
-                        style={{ background: '#1a1a1a', border: '1px solid #2a2a2a' }}
+                        style={{ background: '#141e2b', border: '1px solid #1e3048' }}
                         title="Rotate secret (invalidates current PINs)"
                       >
                         {generatingSingle === s.user_id ? (
@@ -329,10 +329,10 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
         </div>
         <ol className="text-[10px] text-rmpg-400 space-y-1 list-decimal list-inside leading-relaxed">
           <li>Generate offline secrets for employees using the table above (one-time setup)</li>
-          <li>Secrets sync to the desktop app automatically while online</li>
+          <li>Secrets sync to the app (desktop or browser) automatically while online</li>
           <li>When internet goes down, open this tab and click <strong className="text-amber-400">Generate PIN for Employee</strong></li>
           <li>Read the 6-digit PIN to the employee over the phone</li>
-          <li>Employee enters the PIN on their desktop app to unlock 24-hour local data entry</li>
+          <li>Employee enters the PIN on their app to unlock 24-hour local data entry</li>
           <li>All data entered offline syncs automatically when internet returns</li>
           <li>Admin accounts always have full offline access — no PIN required</li>
         </ol>

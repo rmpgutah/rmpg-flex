@@ -12,6 +12,8 @@
 
 import { Router, Request, Response } from 'express';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { auditLog } from '../utils/auditLogger';
+import { broadcastAdminUpdate } from '../utils/websocket';
 import {
   getJailRosterStatus,
   getJailRosterStatistics,
@@ -86,7 +88,7 @@ router.get('/config', requireRole('admin'), (_req: Request, res: Response) => {
 
 router.put('/config/:county', requireRole('admin'), (req: Request, res: Response) => {
   try {
-    const { county } = req.params;
+    const county = req.params.county as string;
     const { enabled, scrape_interval_minutes } = req.body;
 
     const updates: { enabled?: boolean; scrape_interval_minutes?: number } = {};
@@ -99,10 +101,14 @@ router.put('/config/:county', requireRole('admin'), (req: Request, res: Response
       updates.scrape_interval_minutes = interval;
     }
 
-    const success = updateCountyConfig(county as string, updates);
+    const success = updateCountyConfig(county, updates);
     if (!success) {
       return res.status(404).json({ error: `County not found: ${county}` });
     }
+
+    auditLog(req, 'jail_roster_config_updated', 'jail_roster', 0,
+      `Jail roster config updated for ${county}: ${JSON.stringify(updates)}`);
+    broadcastAdminUpdate({ type: 'jail_roster_config_updated', county });
 
     res.json({ success: true, message: `Config updated for ${county}` });
   } catch (err) {
@@ -116,8 +122,13 @@ router.put('/config/:county', requireRole('admin'), (req: Request, res: Response
 
 router.post('/sync/:county', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
   try {
-    const { county } = req.params;
-    const result = await scrapeCountyManual(county as string);
+    const county = req.params.county as string;
+    const result = await scrapeCountyManual(county);
+
+    auditLog(req, 'jail_roster_sync_triggered', 'jail_roster', 0,
+      `Manual sync triggered for ${county}`);
+    broadcastAdminUpdate({ type: 'jail_roster_sync_triggered', county });
+
     res.json(result);
   } catch (err) {
     console.error('[Jail Roster API] Error triggering sync:', (err as Error).message);
@@ -130,11 +141,15 @@ router.post('/sync/:county', requireRole('admin', 'manager'), async (req: Reques
 
 router.post('/reset-errors/:county', requireRole('admin'), (req: Request, res: Response) => {
   try {
-    const { county } = req.params;
-    const success = resetCountyErrors(county as string);
+    const county = req.params.county as string;
+    const success = resetCountyErrors(county);
     if (!success) {
       return res.status(404).json({ error: `County not found: ${county}` });
     }
+
+    auditLog(req, 'jail_roster_errors_reset', 'jail_roster', 0,
+      `Circuit breaker reset for ${county}`);
+
     res.json({ success: true, message: `Error counter reset for ${county}` });
   } catch (err) {
     console.error('[Jail Roster API] Error resetting errors:', (err as Error).message);

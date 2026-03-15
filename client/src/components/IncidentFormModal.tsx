@@ -4,6 +4,12 @@ import FormModal from './FormModal';
 import { useFormDirty } from '../hooks/useFormDirty';
 import type { Incident, CallPriority } from '../types';
 import { INCIDENT_TYPE_CATEGORIES, type IncidentType } from '../utils/caseNumbers';
+import {
+  WEATHER_OPTIONS,
+  LIGHTING_OPTIONS,
+  WEAPONS_OPTIONS,
+  LE_AGENCY_OPTIONS,
+} from '../utils/callOptions';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
 import StatuteLookup, { type StatuteResult } from './StatuteLookup';
 import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
@@ -91,18 +97,8 @@ const PRIORITY_OPTIONS: { value: CallPriority; label: string; color: string; des
   { value: 'P4', label: 'P4', color: 'border-gray-500 text-rmpg-300 bg-rmpg-700/30', desc: 'Scheduled' },
 ];
 
-const WEATHER_OPTIONS = [
-  '', 'Clear', 'Partly Cloudy', 'Overcast', 'Rain', 'Snow', 'Fog', 'Sleet/Hail',
-  'Windy', 'Extreme Heat', 'Extreme Cold', 'Unknown',
-];
-
-const LIGHTING_OPTIONS = [
-  '', 'Daylight', 'Dusk/Dawn', 'Dark - Street Lit', 'Dark - Not Lit',
-  'Artificial Light', 'Unknown',
-];
-
-const WEAPONS_OPTIONS = ['None', 'Firearm — Handgun', 'Firearm — Rifle', 'Firearm — Shotgun', 'Firearm — Unknown Type', 'Knife / Edged Weapon', 'Blunt Object', 'Vehicle (used as weapon)', 'Hands / Fists / Feet', 'Chemical Spray', 'Taser / Stun Gun', 'Explosive / IED', 'BB / Pellet Gun', 'Bow / Crossbow', 'Replica / Toy Weapon', 'Unknown Weapon', 'Other'];
-const LE_AGENCY_OPTIONS = ['None', 'RMPG Internal', 'Salt Lake City PD', 'West Valley City PD', 'West Jordan PD', 'Sandy City PD', 'South Jordan PD', 'Draper PD', 'Murray PD', 'Midvale PD', 'South Salt Lake PD', 'Herriman PD', 'Riverton PD', 'Salt Lake County Sheriff', 'Utah County Sheriff', 'Davis County Sheriff', 'Utah Highway Patrol (UHP)', 'Park City PD', 'Provo PD', 'Orem PD', 'Ogden PD', 'Layton PD', 'Unified Police Dept (UPD)', 'FBI', 'ATF', 'DEA', 'US Marshals', 'Other — See Notes'];
+// WEATHER_OPTIONS, LIGHTING_OPTIONS, WEAPONS_OPTIONS, LE_AGENCY_OPTIONS
+// now imported from ../utils/callOptions.ts
 // Section/Zone/Beat options now loaded dynamically from 3Tier dispatch districts
 
 // Dynamic section tabs based on incident type
@@ -322,7 +318,7 @@ export default function IncidentFormModal({
       {activeSection === 'basic' && (
         <>
           {/* Incident Type + Priority */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Incident Type</label>
               <select
@@ -374,7 +370,7 @@ export default function IncidentFormModal({
           {/* Priority Buttons */}
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold mb-2 block">Priority</label>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {PRIORITY_OPTIONS.map((p) => (
                 <button
                   key={p.value}
@@ -439,7 +435,7 @@ export default function IncidentFormModal({
           )}
 
           {/* Occurred Date/Time */}
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Occurred Date</label>
               <input type="date" className="input-dark mt-1" value={formData.occurred_date} onChange={(e) => update('occurred_date', e.target.value)} />
@@ -516,7 +512,7 @@ export default function IncidentFormModal({
       {activeSection === 'scene' && (
         <>
           {/* Weather / Lighting */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Weather Conditions</label>
               <select className="select-dark mt-1" value={formData.weather_conditions} onChange={(e) => update('weather_conditions', e.target.value)}>
@@ -536,7 +532,7 @@ export default function IncidentFormModal({
           </div>
 
           {/* Injuries */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Injuries</label>
               <select className="select-dark mt-1" value={formData.injuries} onChange={(e) => update('injuries', e.target.value)}>
@@ -560,7 +556,7 @@ export default function IncidentFormModal({
           </div>
 
           {/* Damage */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Damage Estimate ($)</label>
               <input
@@ -601,7 +597,7 @@ export default function IncidentFormModal({
       {/* ── Vehicle/Traffic Sub-Section ── */}
       {activeSection === 'vehicle_traffic' && (
         <>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Road Conditions</label>
               <select className="select-dark mt-1" value={formData.road_conditions} onChange={(e) => update('road_conditions', e.target.value)}>
@@ -631,7 +627,7 @@ export default function IncidentFormModal({
               </select>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Vehicle 1 Info</label>
               <textarea className="textarea-dark mt-1" rows={3} placeholder="Year, make, model, color, plate, driver info..." value={formData.vehicle_1_info} onChange={(e) => update('vehicle_1_info', e.target.value)} />
@@ -651,7 +647,7 @@ export default function IncidentFormModal({
       {/* ── Medical Sub-Section ── */}
       {activeSection === 'medical' && (
         <>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Patient Status</label>
               <select className="select-dark mt-1" value={formData.patient_status} onChange={(e) => update('patient_status', e.target.value)}>
@@ -703,7 +699,7 @@ export default function IncidentFormModal({
               <span className="text-sm text-rmpg-200 font-semibold">Trespass Warning Issued</span>
             </label>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Effective Date</label>
               <input type="date" className="input-dark mt-1" value={formData.trespass_effective_date} onChange={(e) => update('trespass_effective_date', e.target.value)} />
@@ -747,7 +743,7 @@ export default function IncidentFormModal({
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Justification</label>
             <textarea className="textarea-dark mt-1" rows={3} placeholder="Describe the threat/resistance that justified the use of force..." value={formData.force_justification} onChange={(e) => update('force_justification', e.target.value)} />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Subject Injuries</label>
               <input type="text" className="input-dark mt-1" placeholder="Describe injuries to subject..." value={formData.subject_injuries} onChange={(e) => update('subject_injuries', e.target.value)} />
@@ -766,7 +762,7 @@ export default function IncidentFormModal({
           {/* Boolean Flags */}
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold mb-2 block">Incident Flags</label>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
               <label className="flex items-center gap-2 p-2 bg-rmpg-800/50 border border-rmpg-600 cursor-pointer hover:border-rmpg-400 transition-colors">
                 <input
                   type="checkbox"
@@ -798,7 +794,7 @@ export default function IncidentFormModal({
           </div>
 
           {/* Responding Agency */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Responding Agency</label>
               <select

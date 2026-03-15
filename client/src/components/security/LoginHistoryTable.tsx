@@ -74,7 +74,7 @@ export default function LoginHistoryTable() {
   if (entries.length === 0) {
     return (
       <div className="text-center py-6">
-        <History className="w-6 h-6 mx-auto mb-2" style={{ color: '#383838' }} />
+        <History className="w-6 h-6 mx-auto mb-2" style={{ color: '#2a3e58' }} />
         <p className="text-[10px]" style={{ color: '#6b7280' }}>No login history</p>
       </div>
     );
@@ -126,7 +126,7 @@ export default function LoginHistoryTable() {
       {totalPages > 1 && (
         <div
           className="flex items-center justify-between px-3 py-1.5"
-          style={{ borderTop: '1px solid #2a2a2a', background: '#141414' }}
+          style={{ borderTop: '1px solid #1e3048', background: '#0d1520' }}
         >
           <span className="text-[10px] font-mono" style={{ color: '#6b7280' }}>
             Page {page} of {totalPages} ({total} entries)

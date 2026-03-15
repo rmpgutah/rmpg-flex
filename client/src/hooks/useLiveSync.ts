@@ -10,7 +10,7 @@
 //   useLiveSync(['records', 'incidents'], loadAll); // Multiple modules
 // ============================================================
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useMemo } from 'react';
 import { useWebSocket } from '../context/WebSocketContext';
 import type { WSMessage } from '../types';
 
@@ -49,7 +49,14 @@ export function useLiveSync(
   onRefreshRef.current = onRefresh;
   optionsRef.current = options;
 
-  const moduleList = Array.isArray(modules) ? modules : [modules];
+  // Stabilize moduleList — only recompute when the actual module names change,
+  // not when a new array reference is passed on every render
+  const moduleKey = Array.isArray(modules) ? modules.join(',') : modules;
+  const moduleList = useMemo(
+    () => (Array.isArray(modules) ? modules : [modules]),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [moduleKey]
+  );
 
   const handleDataChanged = useCallback((message: WSMessage) => {
     if (optionsRef.current?.disabled) return;
@@ -74,8 +81,7 @@ export function useLiveSync(
     debounceTimer.current = setTimeout(() => {
       onRefreshRef.current();
     }, delay);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [moduleList.join(',')]);
+  }, [moduleList]);
 
   useEffect(() => {
     // Subscribe to the 'data_changed' message type that the liveBroadcast middleware sends

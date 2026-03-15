@@ -115,17 +115,18 @@ function formatDuration(seconds: number): string {
 }
 
 function hexToRgb(hex: string): [number, number, number] {
-  const clean = hex.replace('#', '');
+  const clean = (hex || '#303030').replace('#', '');
   return [
-    parseInt(clean.substring(0, 2), 16),
-    parseInt(clean.substring(2, 4), 16),
-    parseInt(clean.substring(4, 6), 16),
+    parseInt(clean.substring(0, 2), 16) || 48,
+    parseInt(clean.substring(2, 4), 16) || 48,
+    parseInt(clean.substring(4, 6), 16) || 48,
   ];
 }
 
 // ── PDF Generator ───────────────────────────────────────────
 
 export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData): Promise<void> {
+  try {
   const branding = await fetchPdfBranding();
   const primaryRgb = hexToRgb(branding.primary_color || DEFAULT_PDF_BRANDING.primary_color);
   const accentRgb = hexToRgb(branding.accent_color || DEFAULT_PDF_BRANDING.accent_color);
@@ -148,15 +149,14 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   function addHeaderFooter(pageNum: number, totalPages: number) {
     // Only draw the top header bar on pages 2+
     if (pageNum > 1) {
-      doc.setFillColor(...headerBgRgb);
+      // Dark gray header bar
+      doc.setFillColor(55, 60, 72);
       doc.rect(0, 0, pageW, 14, 'F');
 
-      // Logo in header (white bg box + dark logo)
+      // Logo in header
       if (logoB64) {
         try {
-          doc.setFillColor(255, 255, 255);
-          doc.roundedRect(margin - 1, 1.5, 13, 11, 1, 1, 'F');
-          doc.addImage(logoB64, 'PNG', margin - 0.5, 2, 12, 10);
+          doc.addImage(logoB64, 'PNG', margin, 2, 12, 10);
         } catch { /* ignore */ }
       }
 
@@ -164,9 +164,11 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(9);
       doc.setFont('helvetica', 'bold');
-      doc.text(branding.report_header_text, textX, 9);
-      doc.setFontSize(7);
+      doc.text(branding.report_header_text, textX, 6);
+      doc.setFontSize(6.5);
       doc.setFont('helvetica', 'normal');
+      doc.text('PATROL DIVISION', textX, 10);
+      doc.setFontSize(7);
       doc.text(`PATROL TRACKING REPORT  |  ${formNum}  |  ${FORM_REVISION}`, pageW - margin, 9, { align: 'right' });
 
       // Accent strip
@@ -189,21 +191,18 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
   }
 
-  // ── Utility: draw a section header bar (light bg + dark text) ──
+  // ── Utility: draw a section header bar (dark gray bg + white text) ──
   function drawSectionHeader(title: string) {
-    doc.setFillColor(...primaryRgb);
-    doc.rect(margin, yPos, 2, 7, 'F');
-    doc.setFillColor(...COLOR.BG_SECTION_HDR);
-    doc.rect(margin + 2, yPos, contentW - 2, 7, 'F');
-    doc.setDrawColor(...COLOR.BORDER_SECTION);
-    doc.setLineWidth(BORDER.SECTION_OUTER);
-    doc.line(margin, yPos + 7, margin + contentW, yPos + 7);
-    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    const barH = 7;
+    doc.setFillColor(55, 60, 72);
+    doc.rect(margin, yPos, contentW, barH, 'F');
+    doc.setTextColor(255, 255, 255);
     doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');
-    doc.text(title.toUpperCase(), margin + SPACING.CONTENT_INSET, yPos + 5);
+    doc.text(title.toUpperCase(), margin + SPACING.CONTENT_INSET, yPos + barH / 2 + 1.2);
     doc.setFont('helvetica', 'normal');
-    yPos += 10;
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    yPos += barH + 3;
   }
 
   // ── Utility: draw table column headers ──────────────
@@ -213,7 +212,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     doc.setDrawColor(...COLOR.BORDER_TABLE);
     doc.setLineWidth(BORDER.TABLE_ROW * 3);
     doc.line(margin, yPos + 5, margin + contentW, yPos + 5);
-    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.setTextColor(255, 255, 255);
     doc.setFontSize(6);
     doc.setFont('helvetica', 'bold');
     let xOff = margin;
@@ -222,6 +221,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
       xOff += col.w;
     }
     doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
     yPos += 6;
   }
 
@@ -460,7 +460,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
         pt.current_call_number || '-',                                  // Call #
         (pt.current_call_type || '-').replace(/_/g, ' '),              // Call Type
         pt.cumulative_distance_miles != null ? `${pt.cumulative_distance_miles}` : '-',  // Dist
-        `${pt.lat.toFixed(4)},${pt.lng.toFixed(4)}`,                   // Lat/Lng
+        pt.lat != null && pt.lng != null ? `${Number(pt.lat).toFixed(4)},${Number(pt.lng).toFixed(4)}` : '-',  // Lat/Lng
       ];
 
       for (let ci = 0; ci < cols.length; ci++) {
@@ -521,8 +521,8 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
           seg.dispatched_at ? formatDateTime(seg.dispatched_at) : '-',
           seg.onscene_at ? formatDateTime(seg.onscene_at) : '-',
           seg.time_to_onscene_seconds != null ? formatDuration(seg.time_to_onscene_seconds) : '-',
-          `${seg.response_distance_miles} mi`,
-          String(seg.breadcrumb_count),
+          seg.response_distance_miles != null ? `${seg.response_distance_miles} mi` : '-',
+          String(seg.breadcrumb_count || 0),
         ];
 
         for (let ci = 0; ci < rCols.length; ci++) {
@@ -534,8 +534,8 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     }
 
     // ── Zone Coverage Summary ──────────────────────────
-    const zc = trail.zone_coverage;
-    if (zc && Object.keys(zc).length > 0) {
+    const zc = trail.zone_coverage || {};
+    if (Object.keys(zc).length > 0) {
       ensureSpace(30); // header (10) + col headers (6) + at least 2 rows (10)
       drawSectionHeader('Zone Coverage Summary');
 
@@ -570,12 +570,12 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
 
         let zxOff = margin;
         const zRowData = [
-          beatId,
-          zone.beat_code,
-          zone.city,
-          String(zone.point_count),
-          formatDuration(zone.time_seconds),
-          `${zone.percentage}%`,
+          beatId || '-',
+          zone.beat_code || '-',
+          zone.city || '-',
+          String(zone.point_count || 0),
+          formatDuration(zone.time_seconds || 0),
+          `${zone.percentage || 0}%`,
         ];
 
         for (let ci = 0; ci < zCols.length; ci++) {
@@ -599,4 +599,8 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   const firstCallSign = data.trails[0]?.call_sign || 'ALL';
   const suffix = data.total_units === 1 ? `_${firstCallSign}` : '';
   doc.save(`RMPG_Patrol_Tracking${suffix}_${dateStr}.pdf`);
+  } catch (err) {
+    console.error('Patrol tracking PDF generation failed:', err);
+    throw new Error(`Failed to generate patrol tracking PDF: ${err instanceof Error ? err.message : 'Unknown error'}`);
+  }
 }

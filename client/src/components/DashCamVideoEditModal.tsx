@@ -103,7 +103,7 @@ export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, 
       </div>
 
       {/* Classification + Case Number */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="field-label mb-1 block">Classification</label>
           <select
@@ -129,7 +129,7 @@ export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, 
       </div>
 
       {/* Speed + Address */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="field-label mb-1 block">Speed (MPH)</label>
           <input
@@ -156,7 +156,7 @@ export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, 
       </div>
 
       {/* Latitude + Longitude */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="field-label mb-1 block">Latitude</label>
           <input
@@ -193,12 +193,10 @@ export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, 
         />
       </div>
 
-      {/* Overlay info */}
-      {video?.overlay_status === 'complete' && (
-        <p className="text-[10px] text-rmpg-500 italic">
-          Changing speed, address, or coordinates will automatically re-burn the video overlay.
-        </p>
-      )}
+      {/* Info note */}
+      <p className="text-[10px] text-rmpg-500 italic">
+        Metadata changes are reflected in the live HUD overlay during playback.
+      </p>
     </FormModal>
   );
 }

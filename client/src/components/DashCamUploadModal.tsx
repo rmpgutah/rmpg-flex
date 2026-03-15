@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { useState, useRef } from 'react';
-import { Upload, X, Car, Loader2, MapPin, Gauge, Radio, Mic } from 'lucide-react';
+import { Upload, X, Car, Loader2, MapPin, Gauge } from 'lucide-react';
 
 interface FleetVehicle {
   id: number;
@@ -50,8 +50,6 @@ export default function DashCamUploadModal({
   const [caseNumber, setCaseNumber] = useState('');
   const [classification, setClassification] = useState('routine');
   const [notes, setNotes] = useState('');
-  const [cameraPosition, setCameraPosition] = useState('FRONT');
-  const [micStatus, setMicStatus] = useState('ON');
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
@@ -73,8 +71,6 @@ export default function DashCamUploadModal({
     setCaseNumber('');
     setClassification('routine');
     setNotes('');
-    setCameraPosition('FRONT');
-    setMicStatus('ON');
     setProgress(0);
     setError('');
     setDuration(null);
@@ -130,8 +126,6 @@ export default function DashCamUploadModal({
     if (address) formData.append('address', address);
     if (caseNumber) formData.append('case_number', caseNumber);
     if (notes) formData.append('notes', notes);
-    if (cameraPosition) formData.append('camera_position', cameraPosition);
-    if (micStatus) formData.append('mic_status', micStatus);
 
     const xhr = new XMLHttpRequest();
     xhr.open('POST', `${apiBase}/fleet/dashcam-videos`);
@@ -233,7 +227,7 @@ export default function DashCamUploadModal({
               <label className="field-label">Title <span className="text-red-400">*</span></label>
               <input type="text" value={title} onChange={e => setTitle(e.target.value)} required placeholder="Video title" className="input-dark" />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="field-label">Vehicle</label>
                 <select value={vehicleId} onChange={e => setVehicleId(e.target.value)} className="select-dark">
@@ -249,7 +243,7 @@ export default function DashCamUploadModal({
                 </select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="field-label">Recorded Date</label>
                 <input type="datetime-local" value={recordedAt} onChange={e => setRecordedAt(e.target.value)} className="input-dark" />
@@ -267,7 +261,7 @@ export default function DashCamUploadModal({
           <div className="panel-inset p-3 space-y-3">
             <p className="field-label flex items-center gap-1 text-brand-400"><MapPin className="w-3 h-3" /> Location & Speed Data</p>
             <p className="text-[9px] text-rmpg-500 -mt-1">Auto-populated from ClearPathGPS if unit and recorded date are set</p>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
               <div>
                 <label className="field-label flex items-center gap-1"><Gauge className="w-2.5 h-2.5" /> Speed (MPH)</label>
                 <input type="number" step="0.1" value={speedMph} onChange={e => setSpeedMph(e.target.value)} placeholder="e.g. 45" className="input-dark" />
@@ -285,26 +279,10 @@ export default function DashCamUploadModal({
               <label className="field-label">Street Address</label>
               <input type="text" value={address} onChange={e => setAddress(e.target.value)} placeholder="e.g. 123 S State St, Salt Lake City, UT" className="input-dark" />
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="field-label">Case Number</label>
                 <input type="text" value={caseNumber} onChange={e => setCaseNumber(e.target.value)} placeholder="e.g. 2026-0001" className="input-dark" />
-              </div>
-              <div>
-                <label className="field-label flex items-center gap-1"><Radio className="w-2.5 h-2.5" /> Camera Position</label>
-                <select value={cameraPosition} onChange={e => setCameraPosition(e.target.value)} className="select-dark">
-                  <option value="FRONT">Front</option>
-                  <option value="REAR">Rear</option>
-                  <option value="INTERIOR">Interior</option>
-                </select>
-              </div>
-              <div>
-                <label className="field-label flex items-center gap-1"><Mic className="w-2.5 h-2.5" /> Mic Status</label>
-                <select value={micStatus} onChange={e => setMicStatus(e.target.value)} className="select-dark">
-                  <option value="ON">On</option>
-                  <option value="OFF">Off</option>
-                  <option value="MUTED">Muted</option>
-                </select>
               </div>
             </div>
             <div>

@@ -53,6 +53,8 @@ import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
 import { useToast } from '../components/ToastProvider';
 import FloatingSaveBar from '../components/FloatingSaveBar';
+import { formatDate, formatDateTime } from '../utils/dateUtils';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 // ============================================================
 // Backend -> Frontend mapping
@@ -115,24 +117,7 @@ function mapDbIncident(row: any): Incident & Record<string, any> {
 // Helpers
 // ============================================================
 
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-}
-
-function formatDateTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
-}
+// formatDate and formatDateTime imported from ../utils/dateUtils
 
 type SortKey = 'incident_number' | 'type' | 'priority' | 'status' | 'location' | 'officer_name' | 'occurred_at';
 
@@ -150,6 +135,7 @@ export default function IncidentsPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
+  const isMobile = useIsMobile();
 
   // ---------- data state ----------
   const [incidents, setIncidents] = useState<Incident[]>([]);
@@ -185,6 +171,43 @@ export default function IncidentsPage() {
 
   // ---------- chain of custody expansion ----------
   const [expandedCustody, setExpandedCustody] = useState<Set<string>>(new Set());
+
+  // ---------- custody transfer modal ----------
+  const [custodyTransfer, setCustodyTransfer] = useState<{ evidenceId: string; evidenceNumber: string; currentLocation: string } | null>(null);
+  const [custodyAction, setCustodyAction] = useState<string>('transfer');
+  const [custodyToLocation, setCustodyToLocation] = useState('');
+  const [custodyNotes, setCustodyNotes] = useState('');
+  const [custodySubmitting, setCustodySubmitting] = useState(false);
+
+  const handleCustodyTransfer = async () => {
+    if (!custodyTransfer) return;
+    setCustodySubmitting(true);
+    try {
+      await apiFetch(`/api/records/evidence/${custodyTransfer.evidenceId}/chain-action`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: custodyAction,
+          from_location: custodyTransfer.currentLocation || null,
+          to_location: custodyToLocation || null,
+          notes: custodyNotes || null,
+        }),
+      });
+      addToast('Custody action recorded', 'success');
+      setCustodyTransfer(null);
+      setCustodyAction('transfer');
+      setCustodyToLocation('');
+      setCustodyNotes('');
+      // Refresh evidence for the selected incident
+      if (selectedIncident) {
+        const evData = await apiFetch<any>(`/api/records/evidence?incident_id=${selectedIncident.id}`);
+        setDetailEvidence(evData?.data || evData || []);
+      }
+    } catch {
+      addToast('Network error', 'error');
+    }
+    setCustodySubmitting(false);
+  };
 
   // ---------- toast ----------
   const { addToast } = useToast();
@@ -709,7 +732,7 @@ export default function IncidentsPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-rmpg-300" />
           <input
             type="text"
-            className="input-dark pl-9"
+            className={`input-dark pl-9 ${isMobile ? 'min-h-[44px] text-sm' : ''}`}
             placeholder={showArchived ? "Search archived incidents..." : "Search incidents..."}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -719,7 +742,7 @@ export default function IncidentsPage() {
 
       {/* Quick Stats Bar */}
       {!showArchived && !loading && (
-        <div className="px-4 py-1.5 border-b border-rmpg-700/50 flex items-center gap-4 text-[10px] font-mono flex-shrink-0" style={{ background: '#161616' }}>
+        <div className={`px-4 py-1.5 border-b border-rmpg-700/50 flex ${isMobile ? 'flex-wrap gap-2' : 'items-center gap-4'} text-[10px] font-mono flex-shrink-0`} style={{ background: '#0d1520' }}>
           <div className="flex items-center gap-1">
             <div className="w-2 h-2 rounded-full bg-amber-500" />
             <span className="text-rmpg-400">Draft:</span>
@@ -759,11 +782,11 @@ export default function IncidentsPage() {
           <table className="table-dark">
             <thead className="sticky top-0 z-10">
               <tr>
-                <th>IR #</th><th>Type</th><th>Priority</th><th>Status</th><th>Location</th><th>Officer</th><th>Date</th>
+                <th>IR #</th><th>Type</th><th>Priority</th><th>Status</th>{!isMobile && <th>Location</th>}{!isMobile && <th>Officer</th>}<th>Date</th>
               </tr>
             </thead>
             <tbody>
-              {Array.from({ length: 8 }).map((_, i) => <TableRowSkeleton key={i} cols={7} />)}
+              {Array.from({ length: 8 }).map((_, i) => <TableRowSkeleton key={i} cols={isMobile ? 5 : 7} />)}
             </tbody>
           </table>
         ) : error ? (
@@ -797,16 +820,16 @@ export default function IncidentsPage() {
                     Status <SortIcon colKey="status" sortKey={sortKey} sortAsc={sortAsc} />
                   </div>
                 </th>
-                <th className="cursor-pointer select-none" onClick={() => handleSort('location')}>
+                {!isMobile && <th className="cursor-pointer select-none" onClick={() => handleSort('location')}>
                   <div className="flex items-center gap-1">
                     Location <SortIcon colKey="location" sortKey={sortKey} sortAsc={sortAsc} />
                   </div>
-                </th>
-                <th className="cursor-pointer select-none" onClick={() => handleSort('officer_name')}>
+                </th>}
+                {!isMobile && <th className="cursor-pointer select-none" onClick={() => handleSort('officer_name')}>
                   <div className="flex items-center gap-1">
                     Officer <SortIcon colKey="officer_name" sortKey={sortKey} sortAsc={sortAsc} />
                   </div>
-                </th>
+                </th>}
                 <th className="cursor-pointer select-none" onClick={() => handleSort('occurred_at')}>
                   <div className="flex items-center gap-1">
                     Date <SortIcon colKey="occurred_at" sortKey={sortKey} sortAsc={sortAsc} />
@@ -822,7 +845,7 @@ export default function IncidentsPage() {
                     setSelectedIncident(inc);
                     setIsEditing(false);
                   }}
-                  className={`cursor-pointer ${
+                  className={`cursor-pointer ${isMobile ? 'min-h-[48px]' : ''} ${
                     selectedIncident?.id === inc.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : ''
                   }`}
                 >
@@ -834,14 +857,14 @@ export default function IncidentsPage() {
                   <td>
                     <StatusBadge status={inc.status} type="incident_status" size="sm" />
                   </td>
-                  <td className="text-xs text-rmpg-300 max-w-[200px] truncate">{inc.location}</td>
-                  <td className="text-xs text-rmpg-200">{inc.officer_name}</td>
+                  {!isMobile && <td className="text-xs text-rmpg-300 max-w-[200px] truncate">{inc.location}</td>}
+                  {!isMobile && <td className="text-xs text-rmpg-200">{inc.officer_name}</td>}
                   <td className="text-xs text-rmpg-300 font-mono">{formatDate(inc.occurred_at)}</td>
                 </tr>
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="text-center text-rmpg-400 py-12">
+                  <td colSpan={isMobile ? 5 : 7} className="text-center text-rmpg-400 py-12">
                     No incidents found
                   </td>
                 </tr>
@@ -864,7 +887,9 @@ export default function IncidentsPage() {
       // Graceful degradation — proceed without images
     }
 
+    const inc = selectedIncident as any;
     const pdfData = {
+      // Core fields
       incident_number: selectedIncident!.incident_number,
       incident_type: selectedIncident!.type,
       priority: selectedIncident!.priority,
@@ -872,24 +897,86 @@ export default function IncidentsPage() {
       location: selectedIncident!.location,
       officer_name: selectedIncident!.officer_name,
       narrative: selectedIncident!.narrative,
-      occurred_date: (selectedIncident as any)?.occurred_date,
-      occurred_time: (selectedIncident as any)?.occurred_time,
-      end_date: (selectedIncident as any)?.end_date,
-      end_time: (selectedIncident as any)?.end_time,
-      weather_conditions: (selectedIncident as any)?.weather_conditions,
-      lighting_conditions: (selectedIncident as any)?.lighting_conditions,
-      injuries: (selectedIncident as any)?.injuries,
-      injury_description: (selectedIncident as any)?.injury_description,
-      damage_estimate: (selectedIncident as any)?.damage_estimate,
-      damage_description: (selectedIncident as any)?.damage_description,
-      weapons_involved: (selectedIncident as any)?.weapons_involved,
-      alcohol_involved: (selectedIncident as any)?.alcohol_involved,
-      drugs_involved: (selectedIncident as any)?.drugs_involved,
-      domestic_violence: (selectedIncident as any)?.domestic_violence,
-      disposition: (selectedIncident as any)?.disposition,
-      zone_beat: (selectedIncident as any)?.zone_beat,
-      responding_le_agency: (selectedIncident as any)?.responding_le_agency,
-      le_case_number: (selectedIncident as any)?.le_case_number,
+      // Officer / property / client metadata
+      badge_number: inc?.badge_number,
+      property_name: inc?.property_name,
+      client_name: inc?.client_name,
+      call_number: inc?.call_number,
+      // District / zone
+      section_id: inc?.section_id,
+      zone_id: inc?.zone_id,
+      beat_id: inc?.beat_id,
+      disposition: inc?.disposition,
+      zone_beat: inc?.zone_beat,
+      // Dates / times
+      occurred_date: inc?.occurred_date,
+      occurred_time: inc?.occurred_time,
+      end_date: inc?.end_date,
+      end_time: inc?.end_time,
+      // Scene details
+      weather_conditions: inc?.weather_conditions,
+      lighting_conditions: inc?.lighting_conditions,
+      scene_safety: inc?.scene_safety,
+      injuries: inc?.injuries,
+      injury_description: inc?.injury_description,
+      damage_estimate: inc?.damage_estimate,
+      damage_description: inc?.damage_description,
+      weapons_involved: inc?.weapons_involved,
+      direction_of_travel: inc?.direction_of_travel,
+      // Incident-level flags (stored on incident)
+      alcohol_involved: inc?.alcohol_involved,
+      drugs_involved: inc?.drugs_involved,
+      domestic_violence: inc?.domestic_violence,
+      // Call-level flags (joined from linked call)
+      injuries_reported: inc?.injuries_reported,
+      mental_health_crisis: inc?.mental_health_crisis,
+      juvenile_involved: inc?.juvenile_involved,
+      felony_in_progress: inc?.felony_in_progress,
+      officer_safety_caution: inc?.officer_safety_caution,
+      gang_related: inc?.gang_related,
+      hazmat: inc?.hazmat,
+      body_camera_active: inc?.body_camera_active,
+      evidence_collected: inc?.evidence_collected,
+      photos_taken: inc?.photos_taken,
+      supervisor_notified: inc?.supervisor_notified,
+      le_notified: inc?.le_notified,
+      trespass_issued: inc?.trespass_issued,
+      vehicle_pursuit: inc?.vehicle_pursuit,
+      foot_pursuit: inc?.foot_pursuit,
+      k9_requested: inc?.k9_requested,
+      ems_requested: inc?.ems_requested,
+      fire_requested: inc?.fire_requested,
+      // LE coordination
+      responding_le_agency: inc?.responding_le_agency,
+      le_case_number: inc?.le_case_number,
+      // Process Service fields (from linked call)
+      pso_service_type: inc?.pso_service_type,
+      process_service_type: inc?.process_service_type,
+      process_served_to: inc?.process_served_to,
+      process_served_address: inc?.process_served_address,
+      process_attempts: inc?.process_attempts,
+      process_served_at: inc?.process_served_at,
+      process_service_result: inc?.process_service_result,
+      // Type-specific fields
+      road_conditions: inc?.road_conditions,
+      traffic_control: inc?.traffic_control,
+      vehicle_1_info: inc?.vehicle_1_info,
+      vehicle_2_info: inc?.vehicle_2_info,
+      diagram_notes: inc?.diagram_notes,
+      patient_status: inc?.patient_status,
+      ems_transport: inc?.ems_transport,
+      patient_vitals: inc?.patient_vitals,
+      treatment_rendered: inc?.treatment_rendered,
+      trespass_warning_issued: inc?.trespass_warning_issued,
+      trespass_effective_date: inc?.trespass_effective_date,
+      trespass_expiry_date: inc?.trespass_expiry_date,
+      property_boundaries: inc?.property_boundaries,
+      force_type: inc?.force_type,
+      force_justification: inc?.force_justification,
+      subject_injuries: inc?.subject_injuries,
+      officer_injuries: inc?.officer_injuries,
+      de_escalation_attempts: inc?.de_escalation_attempts,
+      // Linked entities
       linked_persons: detailPersons.map((p) => ({
         first_name: p.first_name,
         last_name: p.last_name,
@@ -938,6 +1025,7 @@ export default function IncidentsPage() {
   };
 
   // Build the detail panel (right side)
+  const inc = selectedIncident as any;
   const detailPanel = selectedIncident ? (
     <div ref={incidentDetailRef} className={`flex flex-col h-full overflow-hidden animate-slide-in-right${isEditing ? ' edit-mode-active' : ''}`}>
       {/* Detail Header */}
@@ -999,22 +1087,22 @@ export default function IncidentsPage() {
         )}
 
         {/* Flags (always visible, no collapse) */}
-        {((selectedIncident as any).alcohol_involved || (selectedIncident as any).drugs_involved || (selectedIncident as any).domestic_violence) && (
+        {(inc.alcohol_involved || inc.drugs_involved || inc.domestic_violence) && (
           <div className="flex items-center gap-2 mb-3">
-            {(selectedIncident as any).alcohol_involved && (
+            {inc.alcohol_involved && (
               <span className="px-2 py-0.5 bg-amber-900/40 text-amber-300 text-[10px] uppercase font-bold border border-amber-700/40">Alcohol</span>
             )}
-            {(selectedIncident as any).drugs_involved && (
+            {inc.drugs_involved && (
               <span className="px-2 py-0.5 bg-purple-900/40 text-purple-300 text-[10px] uppercase font-bold border border-purple-700/40">Drugs</span>
             )}
-            {(selectedIncident as any).domestic_violence && (
+            {inc.domestic_violence && (
               <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Domestic Violence</span>
             )}
           </div>
         )}
 
         {/* Source Call */}
-        {selectedIncident.call_id && (selectedIncident as any).call_number && (
+        {selectedIncident.call_id && inc.call_number && (
           <div className="mb-3 px-3 py-2 bg-surface-sunken border border-rmpg-700">
             <label className="field-label" style={{ fontSize: '10px', letterSpacing: '0.05em' }}>SOURCE CALL</label>
             <div className="flex items-center gap-3 mt-0.5">
@@ -1022,14 +1110,14 @@ export default function IncidentsPage() {
                 onClick={() => navigate('/dispatch')}
                 className="font-mono text-green-400 text-sm hover:text-green-300 hover:underline transition-colors"
               >
-                {(selectedIncident as any).call_number}
+                {inc.call_number}
               </button>
-              {(selectedIncident as any).call_type && (
-                <span className="text-xs text-rmpg-300">{(selectedIncident as any).call_type}</span>
+              {inc.call_type && (
+                <span className="text-xs text-rmpg-300">{inc.call_type}</span>
               )}
-              {(selectedIncident as any).call_created_at && (
+              {inc.call_created_at && (
                 <span className="text-xs text-rmpg-400 font-mono">
-                  {formatDateTime((selectedIncident as any).call_created_at)}
+                  {formatDateTime(inc.call_created_at)}
                 </span>
               )}
             </div>
@@ -1042,7 +1130,7 @@ export default function IncidentsPage() {
             <label className="field-label">Title:</label>
             <p className="text-sm text-white font-medium">{selectedIncident.title}</p>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="field-label">Type:</label>
               <p className="text-sm text-brand-400">{formatIncidentType(selectedIncident.type)}</p>
@@ -1063,8 +1151,8 @@ export default function IncidentsPage() {
             <div>
               <label className="field-label">Location:</label>
               <p className="text-sm text-rmpg-200">{selectedIncident.location}</p>
-              {(selectedIncident as any).property_name && (
-                <p className="text-[10px] text-rmpg-400 mt-0.5">{(selectedIncident as any).property_name}</p>
+              {inc.property_name && (
+                <p className="text-[10px] text-rmpg-400 mt-0.5">{inc.property_name}</p>
               )}
               {selectedIncident.client_name && (
                 <p className="text-[10px] text-brand-400 mt-0.5 flex items-center gap-1">
@@ -1080,8 +1168,8 @@ export default function IncidentsPage() {
             <div>
               <label className="field-label">Occurred:</label>
               <p className="text-sm text-rmpg-200">
-                {(selectedIncident as any).occurred_date
-                  ? `${(selectedIncident as any).occurred_date}${(selectedIncident as any).occurred_time ? ' ' + (selectedIncident as any).occurred_time : ''}`
+                {inc.occurred_date
+                  ? `${inc.occurred_date}${inc.occurred_time ? ' ' + inc.occurred_time : ''}`
                   : formatDateTime(selectedIncident.occurred_at)}
               </p>
             </div>
@@ -1089,23 +1177,30 @@ export default function IncidentsPage() {
               <label className="field-label">Created:</label>
               <p className="text-sm text-rmpg-300">{formatDateTime(selectedIncident.created_at)}</p>
             </div>
-            {((selectedIncident as any).section_id || (selectedIncident as any).zone_id || (selectedIncident as any).beat_id) && (
+            {(inc.dispatch_code || inc.section_id || inc.zone_id || inc.beat_id) && (
               <div>
-                <label className="field-label">Section / Zone / Beat:</label>
-                <p className="text-sm text-rmpg-200">
-                  {[(selectedIncident as any).section_id, (selectedIncident as any).zone_id, (selectedIncident as any).beat_id].filter(Boolean).join(' / ')}
-                </p>
+                <label className="field-label">District:</label>
+                <div className="flex items-center gap-2 mt-0.5">
+                  {inc.dispatch_code && (
+                    <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1.5 py-0.5 tracking-wide">
+                      {inc.dispatch_code}
+                    </span>
+                  )}
+                  <span className="text-sm text-rmpg-200">
+                    {[inc.section_id, inc.zone_id, inc.beat_id].filter(Boolean).join(' / ')}
+                  </span>
+                </div>
               </div>
             )}
-            {(selectedIncident as any).disposition && (
+            {inc.disposition && (
               <div>
                 <label className="field-label">Disposition:</label>
                 <p className="text-sm text-rmpg-200">
                   <span className="inline-block px-1.5 py-0.5 bg-brand-900/40 text-brand-300 text-[11px] uppercase font-bold border border-brand-600/40 mr-1">
-                    {(selectedIncident as any).disposition}
+                    {inc.disposition}
                   </span>
                   {(() => {
-                    const match = dispositionCodes.find((d) => d.code === (selectedIncident as any).disposition);
+                    const match = dispositionCodes.find((d) => d.code === inc.disposition);
                     return match ? <span className="text-rmpg-300">{match.description}</span> : null;
                   })()}
                 </p>
@@ -1115,37 +1210,37 @@ export default function IncidentsPage() {
         </CollapsibleSection>
 
         {/* Scene Details */}
-        {((selectedIncident as any).weather_conditions || (selectedIncident as any).lighting_conditions || (selectedIncident as any).injuries || (selectedIncident as any).damage_estimate || (selectedIncident as any).weapons_involved) && (
+        {(inc.weather_conditions || inc.lighting_conditions || inc.injuries || inc.damage_estimate || inc.weapons_involved) && (
           <CollapsibleSection title="Scene Details" icon={MapPin} defaultOpen>
-            <div className="grid grid-cols-2 gap-3">
-              {(selectedIncident as any).weather_conditions && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {inc.weather_conditions && (
                 <div>
                   <label className="field-label">Weather:</label>
-                  <p className="text-xs text-rmpg-200">{(selectedIncident as any).weather_conditions}</p>
+                  <p className="text-xs text-rmpg-200">{inc.weather_conditions}</p>
                 </div>
               )}
-              {(selectedIncident as any).lighting_conditions && (
+              {inc.lighting_conditions && (
                 <div>
                   <label className="field-label">Lighting:</label>
-                  <p className="text-xs text-rmpg-200">{(selectedIncident as any).lighting_conditions}</p>
+                  <p className="text-xs text-rmpg-200">{inc.lighting_conditions}</p>
                 </div>
               )}
-              {(selectedIncident as any).injuries && (selectedIncident as any).injuries !== 'none' && (
+              {inc.injuries && inc.injuries !== 'none' && (
                 <div>
                   <label className="field-label">Injuries:</label>
-                  <p className="text-xs text-red-400">{(selectedIncident as any).injuries}{(selectedIncident as any).injury_description ? ` — ${(selectedIncident as any).injury_description}` : ''}</p>
+                  <p className="text-xs text-red-400">{inc.injuries}{inc.injury_description ? ` — ${inc.injury_description}` : ''}</p>
                 </div>
               )}
-              {(selectedIncident as any).damage_estimate && (
+              {inc.damage_estimate && (
                 <div>
                   <label className="field-label">Damage Estimate:</label>
-                  <p className="text-xs text-amber-400">${(selectedIncident as any).damage_estimate}{(selectedIncident as any).damage_description ? ` — ${(selectedIncident as any).damage_description}` : ''}</p>
+                  <p className="text-xs text-amber-400">${inc.damage_estimate}{inc.damage_description ? ` — ${inc.damage_description}` : ''}</p>
                 </div>
               )}
-              {(selectedIncident as any).weapons_involved && (
+              {inc.weapons_involved && (
                 <div>
                   <label className="field-label">Weapons:</label>
-                  <p className="text-xs text-red-400">{(selectedIncident as any).weapons_involved}</p>
+                  <p className="text-xs text-red-400">{inc.weapons_involved}</p>
                 </div>
               )}
             </div>
@@ -1153,19 +1248,71 @@ export default function IncidentsPage() {
         )}
 
         {/* LE Coordination */}
-        {((selectedIncident as any).responding_le_agency || (selectedIncident as any).le_case_number) && (
+        {(inc.responding_le_agency || inc.le_case_number) && (
           <CollapsibleSection title="LE Coordination" icon={Shield} defaultOpen={false}>
-            <div className="grid grid-cols-2 gap-3">
-              {(selectedIncident as any).responding_le_agency && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {inc.responding_le_agency && (
                 <div>
                   <label className="field-label">Responding Agency:</label>
-                  <p className="text-xs text-rmpg-200">{(selectedIncident as any).responding_le_agency}</p>
+                  <p className="text-xs text-rmpg-200">{inc.responding_le_agency}</p>
                 </div>
               )}
-              {(selectedIncident as any).le_case_number && (
+              {inc.le_case_number && (
                 <div>
                   <label className="field-label">LE Case #:</label>
-                  <p className="text-xs text-rmpg-200 font-mono">{(selectedIncident as any).le_case_number}</p>
+                  <p className="text-xs text-rmpg-200 font-mono">{inc.le_case_number}</p>
+                </div>
+              )}
+            </div>
+          </CollapsibleSection>
+        )}
+
+        {/* Process Service Details (from linked call) */}
+        {(inc.process_service_type || inc.process_served_to || inc.process_attempts || inc.pso_service_type === 'process_service') && (
+          <CollapsibleSection title="Process Service Details" icon={FileText} defaultOpen>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {inc.process_service_type && (
+                <div>
+                  <label className="field-label">Document Type:</label>
+                  <p className="text-xs text-rmpg-200">{(inc.process_service_type || '').replace(/_/g, ' ')}</p>
+                </div>
+              )}
+              {inc.process_served_to && (
+                <div>
+                  <label className="field-label">Serve To:</label>
+                  <p className="text-xs text-rmpg-200">{inc.process_served_to}</p>
+                </div>
+              )}
+              <div>
+                <label className="field-label">Attempts:</label>
+                <p className="text-xs text-rmpg-200 font-mono">{inc.process_attempts || 0}</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-2">
+              {inc.process_served_address && (
+                <div>
+                  <label className="field-label">Service Address:</label>
+                  <p className="text-xs text-rmpg-200">{inc.process_served_address}</p>
+                </div>
+              )}
+              {inc.process_served_at && (
+                <div>
+                  <label className="field-label">Served At:</label>
+                  <p className="text-xs text-rmpg-200">{inc.process_served_at}</p>
+                </div>
+              )}
+              {inc.process_service_result && (
+                <div>
+                  <label className="field-label">Result:</label>
+                  <span className={`inline-block px-1.5 py-0.5 text-[10px] uppercase font-bold border ${
+                    inc.process_service_result === 'served'
+                      ? 'bg-green-900/40 text-green-400 border-green-600/40'
+                      : inc.process_service_result === 'unable_to_serve'
+                      ? 'bg-red-900/40 text-red-400 border-red-600/40'
+                      : 'bg-amber-900/40 text-amber-400 border-amber-600/40'
+                  }`}>
+                    {(inc.process_service_result || '').replace(/_/g, ' ')}
+                  </span>
                 </div>
               )}
             </div>
@@ -1322,7 +1469,16 @@ export default function IncidentsPage() {
                       <button
                         className="toolbar-btn"
                         style={{ fontSize: '10px', padding: '2px 6px' }}
-                        onClick={() => addToast('Custody transfer not yet implemented', 'info')}
+                        onClick={() => {
+                          setCustodyTransfer({
+                            evidenceId: String(ev.id),
+                            evidenceNumber: ev.evidence_number || '',
+                            currentLocation: ev.storage_location || '',
+                          });
+                          setCustodyAction('transfer');
+                          setCustodyToLocation('');
+                          setCustodyNotes('');
+                        }}
                       >
                         Transfer Custody
                       </button>
@@ -1504,7 +1660,7 @@ export default function IncidentsPage() {
       {/* Sticky Action Bar */}
       <div
         className="flex-shrink-0 px-4 py-2.5 border-t border-rmpg-600 flex items-center gap-2"
-        style={{ background: 'linear-gradient(180deg, #1a1a1a 0%, #141414 100%)' }}
+        style={{ background: 'linear-gradient(180deg, #141e2b 0%, #0d1520 100%)' }}
       >
         {!isEditing ? (
           <>
@@ -1717,6 +1873,93 @@ export default function IncidentsPage() {
         title={pdfViewerTitle}
         type="pdf"
       />
+
+      {/* Custody Transfer Modal */}
+      {custodyTransfer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setCustodyTransfer(null)}>
+          <div
+            className="bg-surface-raised border border-rmpg-600 shadow-xl w-[400px] max-w-[95vw]"
+            style={{ borderRadius: 2 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between">
+              <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">
+                Custody Action — {custodyTransfer.evidenceNumber}
+              </h3>
+              <button onClick={() => setCustodyTransfer(null)} className="text-rmpg-400 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div>
+                <label className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Action</label>
+                <select
+                  value={custodyAction}
+                  onChange={(e) => setCustodyAction(e.target.value)}
+                  className={`w-full px-2 ${isMobile ? 'py-2.5 text-sm min-h-[44px]' : 'py-1.5 text-xs'} bg-surface-sunken border border-rmpg-600 text-white`}
+                  style={{ borderRadius: 2 }}
+                >
+                  <option value="transfer">Transfer</option>
+                  <option value="check_in">Check In</option>
+                  <option value="check_out">Check Out</option>
+                  <option value="lab_submit">Submit to Lab</option>
+                  <option value="release">Release</option>
+                  <option value="dispose">Dispose</option>
+                </select>
+              </div>
+              {custodyTransfer.currentLocation && (
+                <div>
+                  <label className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">From Location</label>
+                  <input
+                    value={custodyTransfer.currentLocation}
+                    readOnly
+                    className={`w-full px-2 ${isMobile ? 'py-2.5 text-sm min-h-[44px]' : 'py-1.5 text-xs'} bg-surface-sunken border border-rmpg-700 text-rmpg-400`}
+                    style={{ borderRadius: 2 }}
+                  />
+                </div>
+              )}
+              <div>
+                <label className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">To Location</label>
+                <input
+                  value={custodyToLocation}
+                  onChange={(e) => setCustodyToLocation(e.target.value)}
+                  placeholder="Evidence room, lab, officer name..."
+                  className={`w-full px-2 ${isMobile ? 'py-2.5 text-sm min-h-[44px]' : 'py-1.5 text-xs'} bg-surface-sunken border border-rmpg-600 text-white placeholder-rmpg-500`}
+                  style={{ borderRadius: 2 }}
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Notes</label>
+                <textarea
+                  value={custodyNotes}
+                  onChange={(e) => setCustodyNotes(e.target.value)}
+                  placeholder="Optional notes..."
+                  rows={isMobile ? 3 : 2}
+                  className={`w-full px-2 ${isMobile ? 'py-2.5 text-sm min-h-[80px]' : 'py-1.5 text-xs'} bg-surface-sunken border border-rmpg-600 text-white placeholder-rmpg-500 resize-none`}
+                  style={{ borderRadius: 2 }}
+                />
+              </div>
+            </div>
+            <div className={`px-4 py-2.5 border-t border-rmpg-600 flex ${isMobile ? 'flex-col' : 'justify-end'} gap-2`}>
+              <button
+                onClick={() => setCustodyTransfer(null)}
+                className={`toolbar-btn ${isMobile ? 'w-full min-h-[48px] text-sm justify-center' : 'px-3 py-1.5 text-[11px]'}`}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCustodyTransfer}
+                disabled={custodySubmitting}
+                className={`toolbar-btn toolbar-btn-primary ${isMobile ? 'w-full min-h-[48px] text-sm justify-center' : 'px-3 py-1.5 text-[11px]'} flex items-center gap-1`}
+              >
+                {custodySubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
+                Record Action
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

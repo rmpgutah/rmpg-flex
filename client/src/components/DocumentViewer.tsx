@@ -202,7 +202,7 @@ export default function DocumentViewer({
             className="toolbar-btn"
             style={{ fontSize: '9px' }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#a00e0e';
+              e.currentTarget.style.background = '#991b1b';
               e.currentTarget.style.color = '#ffffff';
             }}
             onMouseLeave={(e) => {

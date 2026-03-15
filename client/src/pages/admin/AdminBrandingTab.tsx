@@ -9,13 +9,10 @@ import {
   Palette,
   FileText,
   Save,
-  RefreshCw,
   CheckCircle,
   Loader2,
   Eye,
   Image,
-  Type,
-  Hash,
   Printer,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
@@ -45,7 +42,7 @@ interface BrandingConfig {
 const DEFAULT_BRANDING: BrandingConfig = {
   report_header_text: 'RMPG SECURITY SERVICES',
   report_subheader_text: 'PRIVATE SECURITY',
-  primary_color: '#bc1010',
+  primary_color: '#1a5a9e',
   accent_color: '#d4a017',
   header_bg_color: '#000000',
   report_footer_text: 'This document is the property of RMPG Security Services. Unauthorized distribution is prohibited.',
@@ -140,45 +137,6 @@ export default function AdminBrandingTab({ LoadingSpinner, error, setError }: Ad
         </button>
       </div>
 
-      {/* Agency Identity */}
-      <div className="panel-beveled p-4 space-y-4">
-        <div className="flex items-center gap-2 mb-2">
-          <Type className="w-4 h-4 text-brand-400" />
-          <h3 className="text-xs font-bold text-rmpg-200 uppercase tracking-wider">Agency Identity</h3>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Agency / Report Header</label>
-            <input type="text" className="input-dark text-xs w-full" value={config.report_header_text} onChange={(e) => update('report_header_text', e.target.value)} placeholder="AGENCY NAME" />
-            <p className="text-[9px] text-rmpg-500 mt-0.5">Appears at the top of all generated PDF reports</p>
-          </div>
-          <div>
-            <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Subtitle / Department Type</label>
-            <input type="text" className="input-dark text-xs w-full" value={config.report_subheader_text} onChange={(e) => update('report_subheader_text', e.target.value)} placeholder="PRIVATE SECURITY" />
-            <p className="text-[9px] text-rmpg-500 mt-0.5">Secondary line below the agency name</p>
-          </div>
-        </div>
-
-        <div>
-          <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Report Footer Text</label>
-          <textarea
-            className="input-dark text-xs w-full h-16"
-            value={config.report_footer_text}
-            onChange={(e) => update('report_footer_text', e.target.value)}
-            placeholder="Confidentiality notice or agency disclaimer"
-          />
-        </div>
-
-        <div>
-          <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Form Number Prefix</label>
-          <div className="flex items-center gap-2">
-            <input type="text" className="input-dark text-xs w-24" value={config.form_number_prefix} onChange={(e) => update('form_number_prefix', e.target.value.toUpperCase())} maxLength={5} placeholder="RKY" />
-            <span className="text-[10px] text-rmpg-500 font-mono">{config.form_number_prefix}26-00001-THF</span>
-          </div>
-        </div>
-      </div>
-
       {/* Brand Colors */}
       <div className="panel-beveled p-4 space-y-4">
         <div className="flex items-center gap-2 mb-2">
@@ -186,7 +144,7 @@ export default function AdminBrandingTab({ LoadingSpinner, error, setError }: Ad
           <h3 className="text-xs font-bold text-rmpg-200 uppercase tracking-wider">Brand Colors</h3>
         </div>
 
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Primary Color</label>
             <div className="flex items-center gap-2">

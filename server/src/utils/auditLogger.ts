@@ -103,7 +103,67 @@ export type AuditAction =
   // Invoices
   | 'invoice_created'
   | 'invoice_updated'
-  | 'payment_recorded';
+  | 'payment_recorded'
+  // Arrests & Jail
+  | 'arrest_created'
+  | 'arrest_updated'
+  | 'arrest_deleted'
+  | 'arrest_imported'
+  | 'arrest_linked'
+  | 'arrest_unlinked'
+  | 'jail_roster_config_updated'
+  | 'jail_roster_sync_triggered'
+  | 'jail_roster_errors_reset'
+  // DL Records
+  | 'dl_record_created'
+  | 'dl_record_deleted'
+  // Skip Tracer
+  | 'skiptracer_search'
+  | 'skiptracer_config_updated'
+  | 'skiptracer_config_cleared'
+  // IPED Digital Forensics
+  | 'iped_job_created'
+  | 'iped_job_cancelled'
+  | 'iped_config_updated'
+  | 'iped_config_cleared'
+  | 'iped_hash_computed'
+  | 'iped_hashset_imported'
+  | 'iped_hashset_removed'
+  // ClearPathGPS
+  | 'clearpathgps_credentials_updated'
+  | 'clearpathgps_credentials_cleared'
+  | 'clearpathgps_toggled'
+  | 'clearpathgps_mapping_created'
+  | 'clearpathgps_mapping_removed'
+  | 'clearpathgps_settings_updated'
+  | 'clearpathgps_media_settings_updated'
+  | 'clearpathgps_media_sync_triggered'
+  // Dash Camera Videos
+  | 'dashcam_uploaded'
+  | 'dashcam_updated'
+  | 'dashcam_deleted'
+  | 'dashcam_linked'
+  | 'dashcam_unlinked'
+  // Email
+  | 'SEND_EMAIL'
+  | 'REPLY_EMAIL'
+  | 'REPLY_ALL_EMAIL'
+  | 'FORWARD_EMAIL'
+  | 'DELETE_EMAIL'
+  | 'BATCH_EMAIL'
+  | 'MARK_ALL_READ'
+  | 'OAUTH_INITIATE'
+  | 'SCHEDULE_EMAIL'
+  // CRM
+  | 'crm_task_created'
+  | 'crm_task_updated'
+  | 'crm_task_deleted'
+  | 'crm_activity_logged'
+  // Generic CRUD (used by newer routes)
+  | 'CREATE'
+  | 'UPDATE'
+  | 'DELETE'
+  | 'SEARCH';
 
 export type AuditEntityType =
   | 'user'
@@ -134,7 +194,30 @@ export type AuditEntityType =
   | 'checkpoint'
   | 'patrol_scan'
   | 'invoice'
-  | 'payment';
+  | 'payment'
+  | 'arrest_record'
+  | 'dl_record'
+  | 'skiptracer'
+  | 'iped_job'
+  | 'iped_hashset'
+  | 'jail_roster'
+  | 'integration'
+  | 'dashcam_video'
+  | 'dashcam_video_link'
+  | 'email'
+  | 'email_folder'
+  | 'email_template'
+  | 'email_link'
+  | 'email_schedule'
+  | 'system_config'
+  | 'colorado_doc_offenders'
+  | 'crm_task'
+  | 'crm_activity'
+  | 'crm_leads'
+  | 'crm_lead_activity'
+  | 'crm_proposals'
+  | 'crm_proposal_templates'
+  | 'lead_scrape_sources';
 
 /**
  * Log an action to the activity_log table.

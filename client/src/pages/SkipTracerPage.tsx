@@ -339,7 +339,7 @@ export default function SkipTracerPage() {
         </div>
 
         {/* ─── Right Panel: Detail View ─────────────────────── */}
-        <div className="flex-1 overflow-y-auto p-4" style={{ background: '#0a0a0a' }}>
+        <div className="flex-1 overflow-y-auto p-4" style={{ background: 'var(--surface-deep)' }}>
           {!selected && !personDetail && (
             <div className="flex flex-col items-center justify-center h-full text-center">
               <Search className="w-12 h-12 text-rmpg-700 mb-3" />

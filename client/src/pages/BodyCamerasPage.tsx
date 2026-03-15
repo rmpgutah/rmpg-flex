@@ -4,7 +4,7 @@
 // from the Personnel dropdown in the sidebar.
 // ============================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Video, Loader2, AlertTriangle } from 'lucide-react';
 import type { BodyCamera, BodyCamVideo, VideoClassification } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -56,6 +56,7 @@ export default function BodyCamerasPage() {
         apiFetch<any[]>('/personnel/bodycam-videos'),
         apiFetch<any[]>('/personnel'),
       ]);
+      if (!mountedRef.current) return;
       setCameras((Array.isArray(cams) ? cams : []).map(mapBodyCamera));
       setVideos((Array.isArray(vids) ? vids : []).map(mapBodyCamVideo));
       setOfficers(
@@ -66,12 +67,15 @@ export default function BodyCamerasPage() {
       );
       setError(null);
     } catch (err: any) {
+      if (!mountedRef.current) return;
       setError(err?.message || 'Failed to load body camera data');
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, []);
 
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
   useEffect(() => { fetchData(); }, [fetchData]);
 
   // Live-sync for real-time updates from other users
@@ -209,7 +213,7 @@ export default function BodyCamerasPage() {
     <div className="flex flex-col h-full animate-fade-in">
 
       {/* Header */}
-      <div className="flex-shrink-0 border-b border-rmpg-700" style={{ background: '#161616' }}>
+      <div className="flex-shrink-0 border-b border-rmpg-700" style={{ background: '#0d1520' }}>
         <PanelTitleBar title="BODY CAMERAS" icon={Video}>
           <RmpgLogo height={16} iconOnly />
           <span className="toolbar-separator" />

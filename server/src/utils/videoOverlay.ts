@@ -51,8 +51,6 @@ export interface DashCamOverlayConfig {
   latitude: number | null;
   longitude: number | null;
   address: string;
-  cameraPosition?: string;
-  micStatus?: string;
 }
 
 export type OverlayConfig = BodyCamOverlayConfig | DashCamOverlayConfig;

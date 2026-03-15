@@ -45,13 +45,22 @@ export function usePanicAudio() {
   const streamRef = useRef<MediaStream | null>(null);
   const broadcastTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const broadcastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Guard against double-start (mic/timer leak)
+  const isBroadcastingRef = useRef(false);
 
   // Stream players for incoming audio (separate for panic vs. response)
   const panicPlayerRef = useRef<StreamPlayer | null>(null);
   const responsePlayerRef = useRef<StreamPlayer | null>(null);
 
+  // Ref-mirror for stopBroadcast so timer closures always call the latest version
+  const stopBroadcastRef = useRef<() => void>(() => {});
+
   // ─── Start broadcasting (sender — open mic) ─────────────────
   const startBroadcast = useCallback(async () => {
+    // Guard against double-start: prevents mic/timer leak if button is mashed
+    if (isBroadcastingRef.current) return;
+    isBroadcastingRef.current = true;
+
     try {
       // Request mic access
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -104,24 +113,40 @@ export function usePanicAudio() {
         error: null,
       }));
 
-      // Countdown timer
+      // Countdown timer — uses ref to avoid stale closure
       let timeLeft = BROADCAST_DURATION;
       broadcastTimerRef.current = setInterval(() => {
         timeLeft -= 1;
         setState(prev => ({ ...prev, broadcastTimeLeft: timeLeft }));
         if (timeLeft <= 0) {
-          stopBroadcast();
+          stopBroadcastRef.current();
         }
       }, 1000);
 
-      // Hard stop after duration
+      // Hard stop after duration — uses ref to avoid stale closure
       broadcastTimeoutRef.current = setTimeout(() => {
-        stopBroadcast();
+        stopBroadcastRef.current();
       }, BROADCAST_DURATION * 1000);
 
     } catch (err) {
+      // Clean up any partially-acquired resources (mic stream, timers)
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
+      mediaRecorderRef.current = null;
+      if (broadcastTimerRef.current) {
+        clearInterval(broadcastTimerRef.current);
+        broadcastTimerRef.current = null;
+      }
+      if (broadcastTimeoutRef.current) {
+        clearTimeout(broadcastTimeoutRef.current);
+        broadcastTimeoutRef.current = null;
+      }
+      isBroadcastingRef.current = false;
       setState(prev => ({
         ...prev,
+        isBroadcasting: false,
         error: err instanceof Error ? err.message : 'Failed to access microphone',
       }));
     }
@@ -129,6 +154,10 @@ export function usePanicAudio() {
 
   // ─── Stop broadcasting ──────────────────────────────────────
   const stopBroadcast = useCallback(() => {
+    // Guard: only act if actually broadcasting
+    if (!isBroadcastingRef.current) return;
+    isBroadcastingRef.current = false;
+
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
     }
@@ -158,6 +187,9 @@ export function usePanicAudio() {
       broadcastTimeLeft: 0,
     }));
   }, [send]);
+
+  // Keep ref in sync so timer closures always call the latest stopBroadcast
+  useEffect(() => { stopBroadcastRef.current = stopBroadcast; }, [stopBroadcast]);
 
   // ─── Start responding (talk-back mode) ──────────────────────
   const startResponse = useCallback(async (targetUserId: number) => {
@@ -224,6 +256,10 @@ export function usePanicAudio() {
   useEffect(() => {
     // Listen for incoming panic audio (from the officer who triggered panic)
     const unsubAudio = subscribe('panic_audio', (msg: any) => {
+      // Skip playback if WE are the one broadcasting — prevents echo/reverb
+      // when the server fails to filter us out (e.g. multi-tab edge case)
+      if (isBroadcastingRef.current) return;
+
       const data = msg.data || msg.payload || msg;
 
       if (data.end) {
@@ -276,6 +312,7 @@ export function usePanicAudio() {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      isBroadcastingRef.current = false;
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         mediaRecorderRef.current.stop();
       }

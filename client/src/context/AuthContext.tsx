@@ -1,5 +1,16 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { User } from '../types';
+import { resetVoiceState } from '../utils/voiceAlerts';
+
+export type LoginStep =
+  | 'username'
+  | 'password'
+  | 'verify_2fa'
+  | 'setup_2fa'
+  | 'confirm_setup_2fa'
+  | 'show_backup_codes'
+  | 'password_change'
+  | 'complete';
 
 export type LoginStep =
   | 'username'
@@ -24,14 +35,13 @@ interface AuthContextType {
   loginBusy: boolean;
   login: (username: string, password: string) => Promise<LoginResult>;
   verify2FA: (code: string, trustDevice?: boolean) => Promise<void>;
-  verifyBackupCode: (code: string, trustDevice?: boolean) => Promise<void>;
+  verifyBackupCode: (code: string) => Promise<void>;
   /** Verify 2FA using a WebAuthn security key (YubiKey / Touch ID) */
   verifyWebAuthn: (trustDevice?: boolean) => Promise<void>;
   setup2FA: () => Promise<{ qrCodeDataUri: string; manualKey: string }>;
   confirmSetup2FA: (code: string) => Promise<{ backupCodes: string[] }>;
   changePasswordDuringLogin: (newPassword: string) => Promise<void>;
   pending2FA: boolean;
-  twoFactorMethods: { totp: boolean; webauthn: boolean };
   /** Expose temp token for WebAuthn authenticate-options flow */
   tempToken: string | null;
   cancel2FA: () => void;
@@ -45,7 +55,6 @@ interface AuthContextType {
   loginUsername: string;
   setLoginUsername: (u: string) => void;
   pendingBackupCodes: string[] | null;
-  backupCodes: string[] | null;
   requiresPasswordChange: boolean;
 }
 
@@ -82,7 +91,10 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = AU
 }
 
 // Generate a device fingerprint hash for trusted device recognition
+// Cached at module level — never changes during a session
+let _cachedFingerprint: string | null = null;
 async function getDeviceFingerprint(): Promise<string> {
+  if (_cachedFingerprint) return _cachedFingerprint;
   const raw = [
     navigator.userAgent,
     navigator.language,
@@ -92,9 +104,10 @@ async function getDeviceFingerprint(): Promise<string> {
 
   try {
     const buffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw));
-    return Array.from(new Uint8Array(buffer))
+    _cachedFingerprint = Array.from(new Uint8Array(buffer))
       .map(b => b.toString(16).padStart(2, '0'))
       .join('');
+    return _cachedFingerprint;
   } catch {
     // Fallback for environments without SubtleCrypto
     let hash = 0;
@@ -103,8 +116,14 @@ async function getDeviceFingerprint(): Promise<string> {
       hash = ((hash << 5) - hash) + char;
       hash |= 0;
     }
-    return Math.abs(hash).toString(16);
+    _cachedFingerprint = Math.abs(hash).toString(16);
+    return _cachedFingerprint;
   }
+}
+
+/** Safe localStorage.setItem — silently handles quota exceeded / private browsing */
+function safeSetItem(key: string, value: string): void {
+  try { localStorage.setItem(key, value); } catch { /* quota exceeded or private browsing */ }
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -114,6 +133,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isRefreshingRef = useRef(false);
+  const refreshFailCountRef = useRef(0);
 
   const clearError = useCallback(() => setError(null), []);
 
@@ -136,6 +156,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
         if (!refreshToken) {
           // No refresh token — force logout
+          isRefreshingRef.current = false;
           clearTokens();
           setToken(null);
           setUser(null);
@@ -150,9 +171,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (res.ok) {
           const data = await res.json();
-          localStorage.setItem(TOKEN_KEY, data.token);
-          localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
+          safeSetItem(TOKEN_KEY, data.token);
+          safeSetItem(REFRESH_TOKEN_KEY, data.refreshToken);
           setToken(data.token);
+          refreshFailCountRef.current = 0; // reset backoff on success
           scheduleRefresh(data.token);
         } else {
           // Refresh failed — only force logout if we're online
@@ -161,12 +183,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             try {
               const state = await electron.getOfflineState();
               if (!state.isOnline) {
-                // Offline — don't force logout, retry later
+                // Offline — don't force logout, retry with backoff
+                refreshFailCountRef.current++;
+                const backoff = Math.min(Math.pow(2, refreshFailCountRef.current) * 1000, 30000);
                 refreshTimerRef.current = setTimeout(() => {
                   isRefreshingRef.current = false;
                   const ct = localStorage.getItem(TOKEN_KEY);
                   if (ct) scheduleRefresh(ct);
-                }, 30000);
+                }, backoff);
                 return;
               }
             } catch { /* fall through to logout */ }
@@ -176,15 +200,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(null);
         }
       } catch {
-        // Network/timeout error — try again in 30 seconds
+        // Network/timeout error — retry with exponential backoff (1s, 2s, 4s, ... max 30s)
+        refreshFailCountRef.current++;
+        const backoff = Math.min(Math.pow(2, refreshFailCountRef.current) * 1000, 30000);
         refreshTimerRef.current = setTimeout(() => {
           isRefreshingRef.current = false;
           const currentToken = localStorage.getItem(TOKEN_KEY);
           if (currentToken) scheduleRefresh(currentToken);
-        }, 30000);
-      } finally {
-        isRefreshingRef.current = false;
+        }, backoff);
+        // Note: isRefreshingRef stays true until the backoff timer fires,
+        // preventing duplicate concurrent refresh attempts during retry.
+        return;
       }
+      // Only clear the flag when we're NOT scheduling a retry
+      isRefreshingRef.current = false;
     }, refreshIn);
   }, []);
 
@@ -248,8 +277,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             if (refreshRes.ok) {
               const data = await refreshRes.json();
-              localStorage.setItem(TOKEN_KEY, data.token);
-              localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
+              safeSetItem(TOKEN_KEY, data.token);
+              safeSetItem(REFRESH_TOKEN_KEY, data.refreshToken);
               setToken(data.token);
               // setToken will re-trigger this effect — new generation will handle it
               return;
@@ -283,19 +312,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           } catch { /* fall through to mock */ }
         }
 
-        // Fallback mock user for pure-browser development
-        setUser({
-          id: 'dev-1',
-          username: 'dispatcher',
-          email: 'dispatcher@rmpg.com',
-          first_name: 'John',
-          last_name: 'Mitchell',
-          role: 'dispatcher',
-          badge_number: 'D-101',
-          is_active: true,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        });
+        // Fallback mock user for pure-browser development ONLY
+        if (import.meta.env.DEV) {
+          setUser({
+            id: 'dev-1',
+            username: 'dispatcher',
+            email: 'dispatcher@rmpg.com',
+            first_name: 'John',
+            last_name: 'Mitchell',
+            role: 'dispatcher',
+            badge_number: 'D-101',
+            is_active: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
+        } else {
+          // In production, clear auth state if server is unreachable
+          clearTokens();
+          setToken(null);
+          setUser(null);
+        }
       } finally {
         if (gen === generationRef.current) {
           setIsLoading(false);
@@ -323,7 +359,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Initialize device fingerprint
   useEffect(() => {
-    getDeviceFingerprint().then(fp => { deviceFingerprintRef.current = fp; });
+    getDeviceFingerprint().then(fp => { deviceFingerprintRef.current = fp; }).catch(() => { /* fingerprint unavailable */ });
   }, []);
 
   // ── Two-Factor Authentication state ───────────────────
@@ -338,7 +374,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoginStep('password');
   }, []);
 
-  const verify2FA = useCallback(async (code: string, shouldTrustDevice?: boolean) => {
+  const verify2FA = useCallback(async (code: string, trustDevice?: boolean) => {
     if (!tempToken) throw new Error('No pending 2FA session');
     setLoginBusy(true);
     setError(null);
@@ -346,15 +382,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await fetch('/api/auth/login/verify-2fa', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${tempToken}`,
-        },
-        body: JSON.stringify({
-          code,
-          deviceFingerprint: deviceFingerprintRef.current,
-          trustDevice: shouldTrustDevice,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tempToken, code, deviceFingerprint: deviceFingerprintRef.current, trustDevice: !!trustDevice }),
       });
 
       if (res.ok) {
@@ -368,9 +397,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        localStorage.setItem(TOKEN_KEY, data.token);
-        if (data.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
-        if (data.sessionId) localStorage.setItem(SESSION_ID_KEY, data.sessionId);
+        safeSetItem(TOKEN_KEY, data.token);
+        if (data.refreshToken) safeSetItem(REFRESH_TOKEN_KEY, data.refreshToken);
+        if (data.sessionId) safeSetItem(SESSION_ID_KEY, data.sessionId);
 
         setUser(data.user);
         setToken(data.token);
@@ -396,7 +425,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [tempToken, scheduleRefresh]);
 
   // ── WebAuthn / Security Key 2FA verification ─────────
-  const verifyWebAuthn = useCallback(async (shouldTrustDevice?: boolean) => {
+  const verifyWebAuthn = useCallback(async (trustDeviceFlag?: boolean) => {
     if (!tempToken) throw new Error('No pending 2FA session');
     setLoginBusy(true);
     setError(null);
@@ -424,13 +453,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const verifyRes = await fetch('/api/auth/webauthn/authenticate-verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          challengeId,
-          tempToken,
-          response: authResponse,
-          trustDevice: shouldTrustDevice,
-          deviceFingerprint: deviceFingerprintRef.current,
-        }),
+        body: JSON.stringify({ challengeId, tempToken, response: authResponse, trustDevice: !!trustDeviceFlag, deviceFingerprint: deviceFingerprintRef.current }),
       });
 
       if (verifyRes.ok) {
@@ -443,9 +466,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        localStorage.setItem(TOKEN_KEY, data.token);
-        if (data.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
-        if (data.sessionId) localStorage.setItem(SESSION_ID_KEY, data.sessionId);
+        safeSetItem(TOKEN_KEY, data.token);
+        if (data.refreshToken) safeSetItem(REFRESH_TOKEN_KEY, data.refreshToken);
+        if (data.sessionId) safeSetItem(SESSION_ID_KEY, data.sessionId);
 
         setUser(data.user);
         setToken(data.token);
@@ -499,9 +522,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (data.requires2FA || data.step === 'verify_2fa') {
           setTempToken(data.tempToken);
           setPending2FA(true);
-          if (data.methods) {
-            setTwoFactorMethods({ totp: !!data.methods.totp, webauthn: !!data.methods.webauthn });
-          }
           setRequiresPasswordChange(!!data.requiresPasswordChange);
           setLoginStep('verify_2fa');
           return { requires2FA: true, success: false };
@@ -523,16 +543,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return { requires2FA: false, success: false };
         }
 
-        localStorage.setItem(TOKEN_KEY, data.token);
+        safeSetItem(TOKEN_KEY, data.token);
         if (data.refreshToken) {
-          localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
+          safeSetItem(REFRESH_TOKEN_KEY, data.refreshToken);
         }
         if (data.sessionId) {
-          localStorage.setItem(SESSION_ID_KEY, data.sessionId);
+          safeSetItem(SESSION_ID_KEY, data.sessionId);
         }
 
         // Store username for offline auth lookup
-        localStorage.setItem(LAST_USERNAME_KEY, username);
+        safeSetItem(LAST_USERNAME_KEY, username);
 
         // Set user BEFORE token so the effect sees user is already
         // populated and skips the redundant /me round-trip.
@@ -563,10 +583,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         );
       }
     } catch (err: unknown) {
-      // If the server is unavailable, allow dev login
-      if (err instanceof TypeError && err.message.includes('fetch')) {
+      // If the server is unavailable, allow dev login in development only
+      if (import.meta.env.DEV && err instanceof TypeError && err.message.includes('fetch')) {
         const mockToken = 'dev-token-' + Date.now();
-        localStorage.setItem(TOKEN_KEY, mockToken);
+        safeSetItem(TOKEN_KEY, mockToken);
         setUser({
           id: 'dev-1',
           username,
@@ -594,7 +614,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [scheduleRefresh]);
 
   // ─── Verify Backup Code ──────────────────────────
-  const verifyBackupCode = useCallback(async (code: string, shouldTrustDevice?: boolean) => {
+  const verifyBackupCode = useCallback(async (code: string) => {
     if (!tempToken) throw new Error('No pending 2FA session');
     setLoginBusy(true);
     setError(null);
@@ -606,7 +626,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${tempToken}`,
         },
-        body: JSON.stringify({ code, deviceFingerprint: deviceFingerprintRef.current, trustDevice: shouldTrustDevice }),
+        body: JSON.stringify({ code, deviceFingerprint: deviceFingerprintRef.current }),
       });
 
       if (res.ok) {
@@ -619,9 +639,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        localStorage.setItem(TOKEN_KEY, data.token);
-        if (data.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
-        if (data.sessionId) localStorage.setItem(SESSION_ID_KEY, data.sessionId);
+        safeSetItem(TOKEN_KEY, data.token);
+        if (data.refreshToken) safeSetItem(REFRESH_TOKEN_KEY, data.refreshToken);
+        if (data.sessionId) safeSetItem(SESSION_ID_KEY, data.sessionId);
         setUser(data.user);
         setToken(data.token);
         setPending2FA(false);
@@ -710,9 +730,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (data.token) {
-        localStorage.setItem(TOKEN_KEY, data.token);
-        if (data.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
-        if (data.sessionId) localStorage.setItem(SESSION_ID_KEY, data.sessionId);
+        safeSetItem(TOKEN_KEY, data.token);
+        if (data.refreshToken) safeSetItem(REFRESH_TOKEN_KEY, data.refreshToken);
+        if (data.sessionId) safeSetItem(SESSION_ID_KEY, data.sessionId);
         // Update React state so the app recognizes the authenticated session
         setToken(data.token);
         if (data.user) setUser(data.user);
@@ -751,9 +771,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       const data = await res.json();
-      localStorage.setItem(TOKEN_KEY, data.token);
-      if (data.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
-      if (data.sessionId) localStorage.setItem(SESSION_ID_KEY, data.sessionId);
+      safeSetItem(TOKEN_KEY, data.token);
+      if (data.refreshToken) safeSetItem(REFRESH_TOKEN_KEY, data.refreshToken);
+      if (data.sessionId) safeSetItem(SESSION_ID_KEY, data.sessionId);
       setUser(data.user);
       setToken(data.token);
       setIsLoading(false);
@@ -783,7 +803,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setPendingBackupCodes(null);
     setRequiresPasswordChange(false);
 
-    // Best-effort notify server
+    // Clear voice alerts state (dedup cache, queue, cached voice)
+    resetVoiceState();
+
+    // Best-effort notify server — log failure so it's visible in console
     if (currentToken) {
       fetch('/api/auth/logout', {
         method: 'POST',
@@ -792,7 +815,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ refreshToken, sessionId }),
-      }).catch(() => {});
+      }).catch((err) => {
+        console.warn('Logout API call failed — server session may remain active:', err);
+      });
     }
   }, []);
 
@@ -811,11 +836,78 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch { /* silent — stale data is acceptable */ }
   }, []);
 
+  // ─── Session idle timeout (CJIS compliance) ────────
+  // Tracks user activity (mouse, keyboard, touch) and auto-logs out
+  // after the configured inactivity period.
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const idleTimeoutMsRef = useRef(480 * 60 * 1000); // default 8 hours, updated from server
+
+  // Fetch session timeout config from server once authenticated
+  useEffect(() => {
+    if (!user || !token) return;
+    fetch('/api/auth/session-timeout', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.timeoutMinutes) {
+          idleTimeoutMsRef.current = data.timeoutMinutes * 60 * 1000;
+          resetIdleTimer(); // restart with updated timeout
+        }
+      })
+      .catch(() => { /* use default */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!user]);
+
+  const resetIdleTimer = useCallback(() => {
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    // Only set idle timer if user is authenticated
+    if (!user) return;
+    idleTimerRef.current = setTimeout(() => {
+      console.warn('[Auth] Session idle timeout — auto-logout');
+      // Set a flag so login page can show timeout message
+      sessionStorage.setItem('rmpg_idle_logout', '1');
+      logout();
+    }, idleTimeoutMsRef.current);
+  }, [user, logout]);
+
+  // Listen for user activity to reset idle timer
+  useEffect(() => {
+    if (!user) {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+      return;
+    }
+
+    const onActivity = () => resetIdleTimer();
+    const events = ['mousedown', 'keydown', 'touchstart', 'scroll', 'mousemove'];
+
+    // Throttle — only reset timer at most once per 30 seconds to avoid overhead
+    let lastReset = Date.now();
+    const throttledActivity = () => {
+      const now = Date.now();
+      if (now - lastReset > 30_000) {
+        lastReset = now;
+        onActivity();
+      }
+    };
+
+    events.forEach(e => document.addEventListener(e, throttledActivity, { passive: true }));
+    resetIdleTimer(); // start the timer
+
+    return () => {
+      events.forEach(e => document.removeEventListener(e, throttledActivity));
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    };
+  }, [user, resetIdleTimer]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (refreshTimerRef.current) {
         clearTimeout(refreshTimerRef.current);
+      }
+      if (idleTimerRef.current) {
+        clearTimeout(idleTimerRef.current);
       }
     };
   }, []);
@@ -835,7 +927,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     confirmSetup2FA,
     changePasswordDuringLogin,
     pending2FA,
-    twoFactorMethods,
     tempToken,
     cancel2FA,
     logout,
@@ -847,9 +938,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loginUsername,
     setLoginUsername,
     pendingBackupCodes,
-    backupCodes: pendingBackupCodes,
     requiresPasswordChange,
-  }), [user, token, isLoading, loginBusy, login, verify2FA, verifyBackupCode, verifyWebAuthn, setup2FA, confirmSetup2FA, changePasswordDuringLogin, pending2FA, twoFactorMethods, tempToken, cancel2FA, logout, refreshUser, error, clearError, loginStep, loginUsername, pendingBackupCodes, requiresPasswordChange]);
+  }), [user, token, isLoading, loginBusy, login, verify2FA, verifyBackupCode, verifyWebAuthn, setup2FA, confirmSetup2FA, changePasswordDuringLogin, pending2FA, tempToken, cancel2FA, logout, refreshUser, error, clearError, loginStep, loginUsername, pendingBackupCodes, requiresPasswordChange]);
 
   return (
     <AuthContext.Provider value={contextValue}>

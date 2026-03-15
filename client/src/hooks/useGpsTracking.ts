@@ -64,16 +64,36 @@ interface UseGpsTrackingOptions {
 }
 
 // ─── Constants ──────────────────────────────────────────────
-/** How often to batch-send collected points to the server (15 seconds).
- *  Increased from 5s to reduce bandwidth on mobile WiFi / vehicle networks
- *  while still providing timely breadcrumb updates. */
-const DEFAULT_BATCH_INTERVAL = 15000;
+/** How often to batch-send collected points to the server (5 seconds).
+ *  Shorter interval = better real-time tracking on dispatch map.
+ *  At ~1 position/second, each batch carries ~5 points. */
+const DEFAULT_BATCH_INTERVAL = 5000;
+
+/** Whether the current device is likely a desktop/laptop (no GPS hardware).
+ *  Used to relax accuracy thresholds — WiFi positioning on desktops in moving
+ *  vehicles typically returns 100–500m accuracy. */
+const IS_DESKTOP = typeof window !== 'undefined' && !/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+
 /** Reject GPS readings less accurate than this (meters).
- *  Set to 200 to accept WiFi-based positioning on mobile/vehicle networks
- *  (typically 80–150m accuracy, occasionally worse in parking structures). */
-const DEFAULT_MAX_ACCURACY = 200;
-/** Reject points that imply movement faster than this (m/s). 100 m/s ≈ 224 mph */
-const DEFAULT_MAX_SPEED = 100;
+ *  Mobile (GPS hardware): 100m — modern phones get 3-15m; 100m filters WiFi junk.
+ *  Desktop (WiFi only):   500m — WiFi triangulation in moving vehicles gives
+ *  100–300m typically; 500m cap rejects wild cell-tower estimates. */
+const DEFAULT_MAX_ACCURACY = IS_DESKTOP ? 500 : 100;
+/** Reject points that imply movement faster than this (m/s). 80 m/s ≈ 179 mph */
+const DEFAULT_MAX_SPEED = 80;
+/** Minimum distance (meters) between queued points — suppresses stationary jitter.
+ *  GPS hardware drifts ±1-3m when still; this threshold prevents filling the
+ *  queue with noise while the officer is parked or on foot at a scene. */
+const MIN_QUEUE_DISTANCE = 3;
+
+/** Accuracy threshold (meters) above which we apply WiFi smoothing.
+ *  When connected via mobile hotspot, WiFi positioning can jump 50-300m between
+ *  updates. Smoothing blends new readings with the last good position. */
+const WIFI_SMOOTHING_THRESHOLD = 30;
+
+/** Smoothing factor for WiFi readings (0-1). Lower = smoother but laggier.
+ *  0.3 means 30% new reading + 70% previous — reduces jumps by ~70%. */
+const WIFI_SMOOTHING_ALPHA = 0.3;
 
 // ─── GPS Point Queue Item ───────────────────────────────────
 interface QueuedPoint {
@@ -128,6 +148,18 @@ function haversineMeters(
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// ─── Compute Bearing (degrees) ──────────────────────────────
+/** Calculate initial bearing from point A to point B (0–360°). */
+function computeBearing(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const toDeg = (rad: number) => (rad * 180) / Math.PI;
+  const dLng = toRad(lng2 - lng1);
+  const y = Math.sin(dLng) * Math.cos(toRad(lat2));
+  const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
+    Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLng);
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
 }
 
 // ─── localStorage GPS Failover Queue ─────────────────────
@@ -215,20 +247,26 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   // ─── Point queue ──────────────────────────────────────────
   // Every watchPosition callback pushes here. The batch interval drains it.
   const queueRef = useRef<QueuedPoint[]>([]);
+  /** Maximum in-memory queue size — prevents unbounded growth if sends fail */
+  const MAX_QUEUE_SIZE = 500;
   // Track the last accepted point for jump detection
   const lastAcceptedRef = useRef<{ lat: number; lng: number; time: number } | null>(null);
   // Keep the latest position for UI display (real-time dot on map)
   const latestPositionRef = useRef<QueuedPoint | null>(null);
   // Flag: send first position immediately for real-time icon placement
   const firstPositionSentRef = useRef(false);
-  // GPS source: 'browser' (default) or 'clearpathgps' (hardware tracker manages position)
-  const gpsSourceRef = useRef<string>('browser');
+  // Track unitId via ref so sendBatch (empty deps) can read the latest value
+  const unitIdRef = useRef<number | null>(null);
+  /** Heartbeat restart counter — prevents infinite restart loops */
+  const heartbeatRestartCountRef = useRef(0);
+  const MAX_HEARTBEAT_RESTARTS = 5;
 
   // Fetch the user's assigned unit on mount
   useEffect(() => {
     apiFetch<{ id: number; call_sign: string; status: string; gps_source?: string } | null>('/dispatch/gps/my-unit')
       .then((unit) => {
         if (unit) {
+          unitIdRef.current = unit.id;
           setState((prev) => ({ ...prev, unitCallSign: unit.call_sign, unitId: unit.id }));
           gpsSourceRef.current = unit.gps_source || 'browser';
         }
@@ -241,43 +279,61 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   // ─── Batch send ───────────────────────────────────────────
   // Drains the queue and POSTs all collected points to the server.
   // On failure, persists points to localStorage so they survive page reloads.
+  const isSendingRef = useRef(false);
   const sendBatch = useCallback(async () => {
-    // Skip POST when a hardware GPS tracker (ClearPathGPS) is managing this unit's position
-    if (gpsSourceRef.current === 'clearpathgps') {
-      queueRef.current = [];
-      clearFailoverQueue();
-      return;
-    }
-
-    // Merge any previously failed points from localStorage
-    const failoverPoints = loadFailoverQueue();
-    const currentPoints = queueRef.current;
-    const allPoints = [...failoverPoints, ...currentPoints];
-    if (allPoints.length === 0) return;
-
-    // Snapshot and clear — if the send fails, persist to localStorage
-    queueRef.current = [];
+    // Guard against concurrent sends (interval can fire while await is pending)
+    if (isSendingRef.current) return;
+    isSendingRef.current = true;
 
     try {
-      await apiFetch('/dispatch/gps', {
-        method: 'POST',
-        body: JSON.stringify({ points: allPoints }),
-      });
-      // Success — clear the failover queue
-      clearFailoverQueue();
-      setState((prev) => ({
-        ...prev,
-        lastSentAt: new Date().toISOString(),
-        error: null,
-      }));
-    } catch (err) {
-      // Re-enqueue current points in memory, persist all to localStorage
-      queueRef.current = [...currentPoints, ...queueRef.current];
-      saveFailoverQueue(allPoints.slice(-LS_MAX_QUEUED_POINTS));
-      setState((prev) => ({
-        ...prev,
-        error: err instanceof Error ? err.message : 'Failed to send GPS position',
-      }));
+      // Merge any previously failed points from localStorage
+      const failoverPoints = loadFailoverQueue();
+      const currentPoints = [...queueRef.current]; // snapshot copy, not reference
+      const allPoints = [...failoverPoints, ...currentPoints];
+      if (allPoints.length === 0) return;
+
+      // Clear — new points arriving during await go into fresh array
+      queueRef.current = [];
+
+      try {
+        await apiFetch('/dispatch/gps', {
+          method: 'POST',
+          body: JSON.stringify({ points: allPoints, device_type: IS_DESKTOP ? 'desktop' : 'mobile' }),
+        });
+        // Success — clear the failover queue
+        clearFailoverQueue();
+        // Check if we need to fetch unit info using ref (avoids stale closure from empty deps)
+        const needsUnitFetch = !unitIdRef.current;
+        setState((prev) => ({
+          ...prev,
+          lastSentAt: new Date().toISOString(),
+          error: null,
+        }));
+        // If we didn't have a unit before, the server may have auto-created one.
+        // Re-fetch unit info so the status bar shows the call sign.
+        if (needsUnitFetch) {
+          apiFetch<{ id: number; call_sign: string; status: string } | null>('/dispatch/gps/my-unit')
+            .then((unit) => {
+              if (unit) {
+                unitIdRef.current = unit.id;
+                setState((p) => ({ ...p, unitCallSign: unit.call_sign, unitId: unit.id }));
+              }
+            })
+            .catch(() => {});
+        }
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : 'Failed to send GPS position';
+        console.warn(`[GPS] Batch send failed (${allPoints.length} pts):`, errMsg);
+        // Re-enqueue failed points in front of any new arrivals
+        queueRef.current = [...currentPoints, ...queueRef.current];
+        saveFailoverQueue(allPoints.slice(-LS_MAX_QUEUED_POINTS));
+        setState((prev) => ({
+          ...prev,
+          error: errMsg,
+        }));
+      }
+    } finally {
+      isSendingRef.current = false;
     }
   }, []);
 
@@ -289,7 +345,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     try {
       await apiFetch('/dispatch/gps', {
         method: 'POST',
-        body: JSON.stringify({ points: [point] }),
+        body: JSON.stringify({ points: [point], device_type: IS_DESKTOP ? 'desktop' : 'mobile' }),
       });
       setState((prev) => ({
         ...prev,
@@ -312,13 +368,20 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       return false;
     }
 
-    // 2. Jump detection — reject teleportation artifacts
     const last = lastAcceptedRef.current;
     if (last) {
       const now = Date.now();
       const dtSeconds = (now - last.time) / 1000;
+      const distance = haversineMeters(last.lat, last.lng, lat, lng);
+
+      // 2. Minimum distance — suppress stationary GPS jitter (±1-3m drift)
+      //    But always accept if >30 seconds have passed (periodic heartbeat point)
+      if (distance < MIN_QUEUE_DISTANCE && dtSeconds < 30) {
+        return false;
+      }
+
+      // 3. Jump detection — reject teleportation artifacts
       if (dtSeconds > 0) {
-        const distance = haversineMeters(last.lat, last.lng, lat, lng);
         const impliedSpeed = distance / dtSeconds; // m/s
         if (impliedSpeed > maxSpeedMs) {
           return false;
@@ -358,18 +421,33 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         positionSource: 'ip',
       }));
 
-      // Queue the point for batch send
+      // Queue the point for batch send.
+      // IP geolocation is low-accuracy (~1-5km) but it's the only option when
+      // navigator.geolocation fails on desktop. Cap reported accuracy at 5000m.
+      const ipAccuracy = Math.min(loc.accuracy || 5000, 5000);
       const point: QueuedPoint = {
         lat: loc.latitude,
         lng: loc.longitude,
-        accuracy: loc.accuracy || 5000,
+        accuracy: ipAccuracy,
         heading: null,
         speed: null,
         timestamp: new Date().toISOString(),
         source: 'ip',
       };
 
-      if (shouldAcceptPoint(loc.latitude, loc.longitude, loc.accuracy || 5000)) {
+      // IP fallback uses a relaxed accuracy gate — it's low-quality but better
+      // than no position data at all. Jump detection still applies.
+      const last = lastAcceptedRef.current;
+      let acceptIp = true;
+      if (last) {
+        const dtSeconds = (Date.now() - last.time) / 1000;
+        if (dtSeconds > 0) {
+          const distance = haversineMeters(last.lat, last.lng, loc.latitude, loc.longitude);
+          if (distance / dtSeconds > maxSpeedMs) acceptIp = false;
+        }
+      }
+
+      if (acceptIp) {
         lastAcceptedRef.current = { lat: loc.latitude, lng: loc.longitude, time: Date.now() };
         latestPositionRef.current = point;
         queueRef.current.push(point);
@@ -383,7 +461,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     } catch {
       // IP fallback failed — degrade gracefully
     }
-  }, [shouldAcceptPoint, sendImmediate]);
+  }, [maxSpeedMs, sendImmediate]);
 
   // Starts the periodic IP fallback poller (Electron desktop only)
   const startIpFallbackPoller = useCallback(() => {
@@ -392,6 +470,36 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     tryIpFallback(); // Immediate first attempt
     ipFallbackIntervalRef.current = setInterval(tryIpFallback, DEFAULT_BATCH_INTERVAL);
   }, [tryIpFallback]);
+
+  // ─── Internal cleanup ──────────────────────────────────────
+  // Shared by stopTracking and startTracking's error handlers.
+  // Defined BEFORE both so there's no temporal dead zone issue.
+  const cleanupTracking = useCallback((flush = true) => {
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+    if (batchIntervalRef.current !== null) {
+      clearInterval(batchIntervalRef.current);
+      batchIntervalRef.current = null;
+    }
+    if (retryTimeoutRef.current !== null) {
+      clearTimeout(retryTimeoutRef.current);
+      retryTimeoutRef.current = null;
+    }
+    if (heartbeatRef.current !== null) {
+      clearInterval(heartbeatRef.current);
+      heartbeatRef.current = null;
+    }
+    if (ipFallbackIntervalRef.current !== null) {
+      clearInterval(ipFallbackIntervalRef.current);
+      ipFallbackIntervalRef.current = null;
+    }
+    // Flush any remaining points before stopping
+    if (flush && queueRef.current.length > 0) {
+      sendBatch();
+    }
+  }, [sendBatch]);
 
   // Start tracking
   const startTracking = useCallback(() => {
@@ -414,6 +522,8 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
 
         // Update heartbeat timestamp — proves watchPosition is still delivering
         lastCallbackTimeRef.current = Date.now();
+        // Reset restart counter on successful callback
+        heartbeatRestartCountRef.current = 0;
 
         // Detect connection type and infer position source
         const connType = getConnectionType();
@@ -439,21 +549,55 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
           return;
         }
 
+        // ── WiFi smoothing for mobile hotspot connections ──
+        // When accuracy is >30m (WiFi/cell, not GPS hardware), the position can
+        // jump 50-300m between updates due to BSSID database staleness on mobile
+        // hotspots. Blend with previous known good position to dampen jumps.
+        let smoothLat = latitude;
+        let smoothLng = longitude;
+        const lastPt = lastAcceptedRef.current;
+        if (lastPt && accuracy != null && accuracy > WIFI_SMOOTHING_THRESHOLD) {
+          const dist = haversineMeters(lastPt.lat, lastPt.lng, latitude, longitude);
+          // Only smooth if the jump is significant but not extreme (extreme = real movement)
+          // Small jumps (<10m) don't need smoothing; large jumps (>500m) are probably real movement
+          if (dist > 10 && dist < 500) {
+            const alpha = WIFI_SMOOTHING_ALPHA;
+            smoothLat = lastPt.lat + alpha * (latitude - lastPt.lat);
+            smoothLng = lastPt.lng + alpha * (longitude - lastPt.lng);
+          }
+        }
+
+        // WiFi positioning doesn't provide heading/speed — compute from movement
+        let effectiveHeading = heading;
+        let effectiveSpeed = speed;
+        if (lastPt && (heading == null || speed == null)) {
+          const dtSec = (Date.now() - lastPt.time) / 1000;
+          const dist = haversineMeters(lastPt.lat, lastPt.lng, smoothLat, smoothLng);
+          // Only compute if we've moved a meaningful distance (avoid jitter)
+          if (dist > 5 && dtSec > 0) {
+            if (heading == null) effectiveHeading = computeBearing(lastPt.lat, lastPt.lng, smoothLat, smoothLng);
+            if (speed == null) effectiveSpeed = dist / dtSec;
+          }
+        }
+
         const point: QueuedPoint = {
-          lat: latitude,
-          lng: longitude,
+          lat: smoothLat,
+          lng: smoothLng,
           accuracy,
-          heading,
-          speed,
+          heading: effectiveHeading,
+          speed: effectiveSpeed,
           timestamp: new Date().toISOString(),
           source,
         };
 
-        // Update tracking refs
-        lastAcceptedRef.current = { lat: latitude, lng: longitude, time: Date.now() };
+        // Update tracking refs (use smoothed coordinates for continuity)
+        lastAcceptedRef.current = { lat: smoothLat, lng: smoothLng, time: Date.now() };
         latestPositionRef.current = point;
 
-        // Queue for next batch
+        // Queue for next batch (cap at MAX_QUEUE_SIZE to prevent unbounded growth)
+        if (queueRef.current.length >= MAX_QUEUE_SIZE) {
+          queueRef.current = queueRef.current.slice(-Math.floor(MAX_QUEUE_SIZE / 2));
+        }
         queueRef.current.push(point);
 
         // Send first position immediately for real-time map icon
@@ -488,32 +632,33 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
           permissionPending: false,
         }));
 
-        // If denied, retry every 10 seconds in case user changes permission
+        // If denied, probe every 30 seconds in case user re-grants permission
+        // (non-recursive — just a probe, not a full restart cascade)
         if (denied) {
           if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
-          retryTimeoutRef.current = setTimeout(() => {
-            navigator.geolocation.getCurrentPosition(
-              () => {
-                // Permission restored — restart tracking
-                stopTracking();
-                startTracking();
-              },
-              () => {
-                // Still denied — keep retrying
-                retryTimeoutRef.current = setTimeout(() => {
-                  stopTracking();
+          const probePermission = () => {
+            retryTimeoutRef.current = setTimeout(() => {
+              navigator.geolocation.getCurrentPosition(
+                () => {
+                  // Permission restored — restart tracking (once)
+                  cleanupTracking(false);
                   startTracking();
-                }, 15000);
-              },
-              { timeout: 5000 }
-            );
-          }, 10000);
+                },
+                () => {
+                  // Still denied — schedule another probe (not recursive startTracking)
+                  probePermission();
+                },
+                { timeout: 5000 }
+              );
+            }, 30000);
+          };
+          probePermission();
         }
       },
       {
         enableHighAccuracy: highAccuracy,
-        timeout: 20000,      // 20s — generous for WiFi/vehicle networks
-        maximumAge: 5000,    // Accept positions up to 5s old (helps on WiFi gaps)
+        timeout: 10000,      // 10s — faster retry on poor signal
+        maximumAge: 1000,    // Accept positions up to 1s old (fresh fixes only)
       }
     );
     watchIdRef.current = watchId;
@@ -538,45 +683,29 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
           startIpFallbackPoller();
           return;
         }
-        // Clear the stale watch and restart — forces re-acquisition on WiFi networks
+        // Cap restart attempts to prevent infinite restart loops
+        heartbeatRestartCountRef.current++;
+        if (heartbeatRestartCountRef.current > MAX_HEARTBEAT_RESTARTS) {
+          console.error('[GPS] Max heartbeat restarts reached, stopping restart attempts');
+          setState((prev) => ({ ...prev, error: 'GPS signal lost. Refresh the page to retry.' }));
+          return;
+        }
+        // Clear the stale watch and restart
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
-        stopTracking();
+        cleanupTracking(false);
         startTracking();
       }
     }, HEARTBEAT_INTERVAL);
 
     setIsTracking(true);
-  }, [batchIntervalMs, highAccuracy, sendBatch, sendImmediate, shouldAcceptPoint, startIpFallbackPoller]);
+  }, [batchIntervalMs, highAccuracy, sendBatch, sendImmediate, shouldAcceptPoint, startIpFallbackPoller, cleanupTracking]);
 
   // Stop tracking (internal use only — users cannot call this)
   const stopTracking = useCallback(() => {
-    if (watchIdRef.current !== null) {
-      navigator.geolocation.clearWatch(watchIdRef.current);
-      watchIdRef.current = null;
-    }
-    if (batchIntervalRef.current !== null) {
-      clearInterval(batchIntervalRef.current);
-      batchIntervalRef.current = null;
-    }
-    if (retryTimeoutRef.current !== null) {
-      clearTimeout(retryTimeoutRef.current);
-      retryTimeoutRef.current = null;
-    }
-    if (heartbeatRef.current !== null) {
-      clearInterval(heartbeatRef.current);
-      heartbeatRef.current = null;
-    }
-    if (ipFallbackIntervalRef.current !== null) {
-      clearInterval(ipFallbackIntervalRef.current);
-      ipFallbackIntervalRef.current = null;
-    }
-    // Flush any remaining points before stopping
-    if (queueRef.current.length > 0) {
-      sendBatch();
-    }
+    cleanupTracking(true); // flush queue
     setIsTracking(false);
-  }, [sendBatch]);
+  }, [cleanupTracking]);
 
   // Toggle is now a no-op — GPS is mandatory, but we keep the function
   // for backward compatibility (the button in the toolbar is now just a status indicator)
@@ -592,27 +721,8 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   useEffect(() => {
     startTracking();
     return () => {
-      // Cleanup on unmount
-      if (watchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-        watchIdRef.current = null;
-      }
-      if (batchIntervalRef.current !== null) {
-        clearInterval(batchIntervalRef.current);
-        batchIntervalRef.current = null;
-      }
-      if (retryTimeoutRef.current !== null) {
-        clearTimeout(retryTimeoutRef.current);
-        retryTimeoutRef.current = null;
-      }
-      if (heartbeatRef.current !== null) {
-        clearInterval(heartbeatRef.current);
-        heartbeatRef.current = null;
-      }
-      if (ipFallbackIntervalRef.current !== null) {
-        clearInterval(ipFallbackIntervalRef.current);
-        ipFallbackIntervalRef.current = null;
-      }
+      // Flush remaining points and clean up all timers/watchers
+      cleanupTracking(true);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

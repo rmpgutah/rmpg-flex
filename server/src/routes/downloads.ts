@@ -276,7 +276,7 @@ export function mountDownloadFileRoute(app: any) {
   // electron-updater fetches files relative to the feed URL (/updates/)
   // while the download page uses /downloads/
   const serveInstallerFile = (req: Request, res: Response) => {
-    const { filename } = req.params;
+    const filename = req.params.filename as string;
 
     // Security: only allow specific file extensions
     const ext = path.extname(filename as string).toLowerCase();
@@ -313,6 +313,11 @@ export function mountDownloadFileRoute(app: any) {
     }
 
     const stream = fs.createReadStream(filePath);
+    stream.on('error', (err) => {
+      console.error('File stream error:', err);
+      if (!res.headersSent) res.status(500).json({ error: 'Failed to stream file' });
+      else res.destroy();
+    });
     stream.pipe(res);
   };
 

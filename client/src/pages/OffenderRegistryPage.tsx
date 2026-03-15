@@ -17,6 +17,7 @@ import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
+import { useFormValidation } from '../hooks/useFormValidation';
 
 const ALERT_TYPES: { value: OffenderAlertType; label: string }[] = [
   { value: 'ban_zone', label: 'Ban Zone' }, { value: 'watch_list', label: 'Watch List' },
@@ -50,9 +51,158 @@ const EMPTY_FORM = {
   severity: 'caution' as AlertSeverity, expiration_date: '', notes: '',
 };
 
+// ─── Colorado DOC Search Panel ─────────────────────────────
+interface CdocResult {
+  doc_number: string;
+  first_name: string;
+  last_name: string;
+  dob: string | null;
+  facility: string | null;
+  status: string | null;
+  photo_url: string | null;
+  offenses: string | null;
+  person_id: number | null;
+}
+
+function CdocSearchPanel() {
+  const [lastName, setLastName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [results, setResults] = useState<CdocResult[]>([]);
+  const [selectedOffender, setSelectedOffender] = useState<CdocResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [searched, setSearched] = useState(false);
+
+  const searchCdoc = async () => {
+    if (!lastName.trim()) return;
+    setLoading(true);
+    setSearched(true);
+    try {
+      const params = new URLSearchParams({ lastName: lastName.trim() });
+      if (firstName.trim()) params.set('firstName', firstName.trim());
+      const res = await apiFetch<{ data: CdocResult[] }>(`/colorado-doc/search?${params}`);
+      setResults(res.data || []);
+    } catch { setResults([]); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <>
+      <div className="px-3 py-2 border-b border-rmpg-700 bg-surface-sunken">
+        <div className="text-[9px] font-mono text-rmpg-500 uppercase tracking-wider mb-2">Colorado DOC Offender Search</div>
+        <div className="flex gap-1">
+          <input
+            value={lastName}
+            onChange={e => setLastName(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && searchCdoc()}
+            placeholder="Last name *"
+            className="flex-1 px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 outline-none focus:border-brand-600"
+          />
+          <input
+            value={firstName}
+            onChange={e => setFirstName(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && searchCdoc()}
+            placeholder="First name"
+            className="flex-1 px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 outline-none focus:border-brand-600"
+          />
+          <button onClick={searchCdoc} disabled={loading || !lastName.trim()} className="toolbar-btn toolbar-btn-primary px-2">
+            {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search style={{ width: 11, height: 11 }} />}
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+        {selectedOffender ? (
+          <div className="p-3 space-y-3">
+            <button onClick={() => setSelectedOffender(null)} className="text-[10px] text-brand-400 hover:text-brand-300 flex items-center gap-1">
+              <X style={{ width: 10, height: 10 }} /> Back to results
+            </button>
+            <div className="flex gap-3 items-start">
+              {selectedOffender.photo_url && (
+                <img src={selectedOffender.photo_url} alt="Mugshot" className="w-20 h-24 object-cover border border-rmpg-600" />
+              )}
+              <div className="flex-1">
+                <div className="text-sm font-bold text-white">{selectedOffender.last_name}, {selectedOffender.first_name}</div>
+                <div className="text-[10px] text-rmpg-400 font-mono">DOC# {selectedOffender.doc_number}</div>
+                {selectedOffender.dob && <div className="text-[10px] text-rmpg-400">DOB: {new Date(selectedOffender.dob).toLocaleDateString()}</div>}
+                {selectedOffender.status && (
+                  <span className={`inline-block mt-1 text-[9px] px-1.5 py-0.5 font-bold border ${
+                    selectedOffender.status.toLowerCase().includes('incarcerat') ? 'bg-red-900/50 text-red-300 border-red-700/50' :
+                    selectedOffender.status.toLowerCase().includes('parol') ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
+                    'bg-blue-900/40 text-blue-400 border-blue-700/40'
+                  }`}>
+                    {selectedOffender.status.toUpperCase()}
+                  </span>
+                )}
+              </div>
+            </div>
+            {selectedOffender.facility && (
+              <div className="panel-beveled p-2">
+                <div className="text-[9px] font-mono text-rmpg-500 uppercase mb-1">Facility</div>
+                <div className="text-xs text-white">{selectedOffender.facility}</div>
+              </div>
+            )}
+            {selectedOffender.offenses && (
+              <div className="panel-beveled p-2">
+                <div className="text-[9px] font-mono text-rmpg-500 uppercase mb-1">Offenses</div>
+                <div className="text-xs text-rmpg-300 whitespace-pre-wrap">{selectedOffender.offenses}</div>
+              </div>
+            )}
+            {selectedOffender.person_id && (
+              <div className="text-[9px] text-green-400 border border-green-700/40 bg-green-900/20 px-2 py-1">
+                Linked to local person record #{selectedOffender.person_id}
+              </div>
+            )}
+          </div>
+        ) : results.length > 0 ? (
+          results.map(r => (
+            <button
+              key={r.doc_number}
+              onClick={() => setSelectedOffender(r)}
+              className="w-full text-left px-3 py-2 border-b border-rmpg-700/50 hover:bg-rmpg-700/30 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                {r.photo_url && <img src={r.photo_url} alt="" className="w-8 h-10 object-cover border border-rmpg-600 flex-shrink-0" />}
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-bold text-white truncate">{r.last_name}, {r.first_name}</div>
+                  <div className="text-[10px] text-rmpg-400 font-mono">DOC# {r.doc_number}</div>
+                </div>
+                {r.status && (
+                  <span className={`text-[8px] px-1 py-0 font-bold border flex-shrink-0 ${
+                    r.status.toLowerCase().includes('incarcerat') ? 'bg-red-900/50 text-red-300 border-red-700/50' :
+                    r.status.toLowerCase().includes('parol') ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
+                    'bg-rmpg-700 text-rmpg-300 border-rmpg-600'
+                  }`}>
+                    {r.status.toUpperCase()}
+                  </span>
+                )}
+              </div>
+            </button>
+          ))
+        ) : searched && !loading ? (
+          <div className="flex-1 flex items-center justify-center p-8">
+            <div className="text-center">
+              <Shield className="w-8 h-8 text-rmpg-600 mx-auto mb-2" />
+              <div className="text-xs text-rmpg-500">No CDOC records found</div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex-1 flex items-center justify-center p-8">
+            <div className="text-center">
+              <UserX className="w-10 h-10 text-rmpg-600 mx-auto mb-2" />
+              <div className="text-xs text-rmpg-500 mb-1">Select an alert or search Colorado DOC</div>
+              <div className="text-[10px] text-rmpg-600">Enter a last name above to search the Colorado Department of Corrections offender database</div>
+            </div>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
 export default function OffenderRegistryPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
+  const { errors: formErrors, validate: validateForm, clearAllErrors } = useFormValidation();
 
   const [alerts, setAlerts] = useState<OffenderAlert[]>([]);
   const [selected, setSelected] = useState<OffenderAlert | null>(null);
@@ -116,7 +266,11 @@ export default function OffenderRegistryPage() {
   }, [personSearch]);
 
   const handleCreate = async () => {
-    if (!formData.person_id || !formData.description) { addToast('Person and description required', 'error'); return; }
+    const isValid = validateForm(formData, {
+      person_id: { required: true },
+      description: { required: true, minLength: 3 },
+    });
+    if (!isValid) return;
     setSubmitting(true);
     try {
       await apiFetch('/offender-registry', { method: 'POST', body: JSON.stringify(formData) });
@@ -152,7 +306,7 @@ export default function OffenderRegistryPage() {
       {/* ── Left Panel ── */}
       <div className={`flex flex-col ${isMobile ? 'h-1/2' : 'w-[400px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Known Offender Registry" icon={UserX}>
-          <button onClick={() => { setFormOpen(true); setFormData({ ...EMPTY_FORM }); setSelectedPerson(null); setPersonSearch(''); }} className="toolbar-btn toolbar-btn-primary">
+          <button onClick={() => { clearAllErrors(); setFormOpen(true); setFormData({ ...EMPTY_FORM }); setSelectedPerson(null); setPersonSearch(''); }} className="toolbar-btn toolbar-btn-primary">
             <Plus style={{ width: 11, height: 11 }} /> New Alert
           </button>
         </PanelTitleBar>
@@ -268,7 +422,7 @@ export default function OffenderRegistryPage() {
               {/* Person card */}
               <div className="panel-beveled p-3">
                 <div className="text-[9px] font-mono text-rmpg-500 uppercase mb-2">Person Information</div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div><span className="text-[9px] text-rmpg-500">Name:</span> <span className="text-xs text-white font-bold">{selected.person_name || '—'}</span></div>
                   <div><span className="text-[9px] text-rmpg-500">DOB:</span> <span className="text-xs text-white">{selected.dob ? new Date(selected.dob).toLocaleDateString() : '—'}</span></div>
                   {selected.is_sex_offender && (
@@ -281,7 +435,7 @@ export default function OffenderRegistryPage() {
               </div>
 
               {/* Alert details */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {[
                   ['Description', selected.description],
                   ['Effective Date', selected.effective_date ? new Date(selected.effective_date).toLocaleDateString() : '—'],
@@ -305,11 +459,9 @@ export default function OffenderRegistryPage() {
             </div>
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center">
-              <UserX className="w-10 h-10 text-rmpg-600 mx-auto mb-2" />
-              <div className="text-xs text-rmpg-500">Select an alert to view details</div>
-            </div>
+          <div className="flex-1 flex flex-col">
+            {/* CDOC Search */}
+            <CdocSearchPanel />
           </div>
         )}
       </div>
@@ -324,7 +476,7 @@ export default function OffenderRegistryPage() {
             <div className="p-4 space-y-3">
               {/* Person search */}
               <div>
-                <label className="text-[10px] font-mono text-rmpg-500 uppercase">Person *</label>
+                <label className="field-label">Person *</label>
                 {selectedPerson ? (
                   <div className="mt-1 flex items-center gap-2 px-2 py-1.5 bg-surface-sunken border border-rmpg-700">
                     <User style={{ width: 12, height: 12 }} className="text-rmpg-500" />
@@ -335,7 +487,8 @@ export default function OffenderRegistryPage() {
                   </div>
                 ) : (
                   <div className="relative">
-                    <input value={personSearch} onChange={e => setPersonSearch(e.target.value)} placeholder="Search by name..." className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 outline-none" />
+                    <input value={personSearch} onChange={e => setPersonSearch(e.target.value)} placeholder="Search by name..." className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white placeholder-rmpg-500 outline-none ${formErrors.person_id ? 'border-red-500' : 'border-rmpg-700'}`} />
+                    {formErrors.person_id && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.person_id}</p>}
                     {personResults.length > 0 && (
                       <div className="absolute z-10 top-full left-0 right-0 bg-surface-base border border-rmpg-700 max-h-40 overflow-y-auto">
                         {personResults.map(p => (
@@ -353,15 +506,15 @@ export default function OffenderRegistryPage() {
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] font-mono text-rmpg-500 uppercase">Alert Type</label>
+                  <label className="field-label">Alert Type</label>
                   <select value={formData.alert_type} onChange={e => setFormData(p => ({ ...p, alert_type: e.target.value as OffenderAlertType }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">
                     {ALERT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] font-mono text-rmpg-500 uppercase">Severity</label>
+                  <label className="field-label">Severity</label>
                   <select value={formData.severity} onChange={e => setFormData(p => ({ ...p, severity: e.target.value as AlertSeverity }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">
                     <option value="info">Info</option><option value="caution">Caution</option><option value="warning">Warning</option><option value="danger">Danger</option>
                   </select>
@@ -369,12 +522,13 @@ export default function OffenderRegistryPage() {
               </div>
 
               <div>
-                <label className="text-[10px] font-mono text-rmpg-500 uppercase">Description *</label>
-                <textarea value={formData.description} onChange={e => setFormData(p => ({ ...p, description: e.target.value }))} rows={3} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
+                <label className="field-label">Description *</label>
+                <textarea value={formData.description} onChange={e => setFormData(p => ({ ...p, description: e.target.value }))} rows={3} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none resize-none ${formErrors.description ? 'border-red-500' : 'border-rmpg-700'}`} />
+                {formErrors.description && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.description}</p>}
               </div>
 
               <div>
-                <label className="text-[10px] font-mono text-rmpg-500 uppercase">Expiration Date</label>
+                <label className="field-label">Expiration Date</label>
                 <input type="date" value={formData.expiration_date} onChange={e => setFormData(p => ({ ...p, expiration_date: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
               </div>
 

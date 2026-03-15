@@ -114,13 +114,15 @@ const PAYMENT_METHODS = [
 ];
 
 const BILLING_CYCLES = [
-  '', 'monthly', 'quarterly', 'annually',
+  '', 'weekly', 'bi-weekly', 'semi-monthly', 'monthly', 'quarterly', 'annually',
 ];
 
 const INDUSTRIES = [
   '', 'Commercial Real Estate', 'Residential / HOA', 'Healthcare / Medical',
   'Retail', 'Hospitality', 'Construction', 'Education', 'Government',
-  'Industrial / Manufacturing', 'Technology', 'Financial Services', 'Other',
+  'Industrial / Manufacturing', 'Technology', 'Financial Services',
+  'Private Investigations', 'Security Services', 'Law Office / Paralegal',
+  'Process Service', 'Other',
 ];
 
 export default function ClientFormModal({
@@ -224,7 +226,7 @@ export default function ClientFormModal({
       {/* ── General Tab ── */}
       {activeSection === 'general' && (
         <>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Client Name */}
             <div>
               <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">
@@ -255,7 +257,7 @@ export default function ClientFormModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Industry */}
             <div>
               <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">
@@ -320,7 +322,7 @@ export default function ClientFormModal({
       {activeSection === 'billing' && (
         <>
           {/* Primary Contact */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Contact Name</label>
               <input type="text" className="input-dark text-xs w-full" value={form.contact_name} onChange={(e) => set('contact_name', e.target.value)} placeholder="Jennifer Wong" />
@@ -336,7 +338,7 @@ export default function ClientFormModal({
           </div>
 
           {/* Billing Info */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Billing Email</label>
               <input type="email" className="input-dark text-xs w-full" value={form.billing_email} onChange={(e) => set('billing_email', e.target.value)} placeholder="billing@gateway.com" />
@@ -352,13 +354,13 @@ export default function ClientFormModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             {/* Payment Method */}
             <div>
               <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Payment Method</label>
               <select className="select-dark text-xs w-full" value={form.payment_method} onChange={(e) => set('payment_method', e.target.value)}>
                 {PAYMENT_METHODS.map((m) => (
-                  <option key={m} value={m}>{m ? m.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase()) : '-- Select --'}</option>
+                  <option key={m} value={m}>{m ? m.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '-- Select --'}</option>
                 ))}
               </select>
             </div>
@@ -391,7 +393,7 @@ export default function ClientFormModal({
       {/* ── Contract Tab ── */}
       {activeSection === 'contract' && (
         <>
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div>
               <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Contract Type</label>
               <select className="select-dark text-xs w-full" value={form.contract_type} onChange={(e) => set('contract_type', e.target.value)}>
@@ -412,7 +414,7 @@ export default function ClientFormModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Payment Terms</label>
               <select className="select-dark text-xs w-full" value={form.payment_terms} onChange={(e) => set('payment_terms', e.target.value)}>
@@ -436,7 +438,7 @@ export default function ClientFormModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Discount Percent */}
             <div>
               <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Discount (%)</label>
@@ -455,7 +457,7 @@ export default function ClientFormModal({
       {/* ── Account Details Tab ── */}
       {activeSection === 'account' && (
         <>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Account Manager */}
             <div>
               <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Account Manager</label>

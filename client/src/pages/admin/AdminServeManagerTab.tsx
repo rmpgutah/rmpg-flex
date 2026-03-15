@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Link2, Key, RefreshCw, CheckCircle2, XCircle, AlertTriangle,
-  Loader2, Clock, Search, Eye, EyeOff, Trash2, Zap,
-  ChevronLeft, ChevronRight, FileText, Briefcase, MapPin,
+  Loader2, Clock, Search, Eye, EyeOff, Trash2, Zap, Play, Save,
+  ChevronLeft, ChevronRight, FileText, Briefcase, MapPin, ToggleLeft, ToggleRight,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import type {
   SMIntegrationStatus, SMConnectionTestResult, SMSyncResult,
   SMSyncLogEntry, SMCachedJob, SMPaginatedResponse, SMCachedAttempt,
+  SMPollerStatus,
 } from '../../types/servemanager';
 
 interface Props {
@@ -43,6 +44,17 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
   // ── Job detail ──
   const [selectedJob, setSelectedJob] = useState<(SMCachedJob & { attempts?: SMCachedAttempt[] }) | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+
+  // ── Auto-Poller ──
+  const [pollerStatus, setPollerStatus] = useState<SMPollerStatus | null>(null);
+  const [pollerEnabled, setPollerEnabled] = useState(false);
+  const [pollerInterval, setPollerInterval] = useState('300');
+  const [pollerTargetClient, setPollerTargetClient] = useState('ICU Investigations, LLC');
+  const [pollerAutoCreate, setPollerAutoCreate] = useState(true);
+  const [pollerSaving, setPollerSaving] = useState(false);
+  const [pollerPolling, setPollerPolling] = useState(false);
+  const [pollerPollResult, setPollerPollResult] = useState<{ synced: number; callsCreated: number; error?: string } | null>(null);
+  const [pollerDirty, setPollerDirty] = useState(false);
 
   // ── Data fetching ──
 
@@ -80,8 +92,20 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
     }
   }, [jobSearch, jobPage]);
 
+  const fetchPollerStatus = useCallback(async () => {
+    try {
+      const data = await apiFetch<SMPollerStatus>('/servemanager/poller/status');
+      setPollerStatus(data);
+      setPollerEnabled(data.enabled);
+      setPollerInterval(String(data.poll_interval));
+      setPollerTargetClient(data.target_client);
+      setPollerAutoCreate(data.auto_create_calls);
+      setPollerDirty(false);
+    } catch { /* ignore if not configured yet */ }
+  }, []);
+
   useEffect(() => { fetchStatus(); fetchSyncLog(); }, [fetchStatus, fetchSyncLog]);
-  useEffect(() => { if (status?.configured) fetchJobs(); }, [status?.configured, fetchJobs]);
+  useEffect(() => { if (status?.configured) { fetchJobs(); fetchPollerStatus(); } }, [status?.configured, fetchJobs, fetchPollerStatus]);
 
   // ── Handlers ──
 
@@ -147,6 +171,44 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
       setError(err instanceof Error ? err.message : 'Failed to load job details');
     } finally {
       setLoadingDetail(false);
+    }
+  };
+
+  // ── Poller handlers ──
+
+  const handlePollerSave = async () => {
+    setPollerSaving(true);
+    try {
+      await apiFetch('/servemanager/poller/settings', {
+        method: 'PUT',
+        body: JSON.stringify({
+          enabled: pollerEnabled,
+          poll_interval: parseInt(pollerInterval, 10) || 300,
+          target_client: pollerTargetClient,
+          auto_create_calls: pollerAutoCreate,
+        }),
+      });
+      await fetchPollerStatus();
+      setPollerDirty(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save poller settings');
+    } finally {
+      setPollerSaving(false);
+    }
+  };
+
+  const handlePollerPollNow = async () => {
+    setPollerPolling(true);
+    setPollerPollResult(null);
+    try {
+      const result = await apiFetch<{ synced: number; callsCreated: number; error?: string }>('/servemanager/poller/poll-now', { method: 'POST' });
+      setPollerPollResult(result);
+      await fetchPollerStatus();
+      await fetchJobs();
+    } catch (err) {
+      setPollerPollResult({ synced: 0, callsCreated: 0, error: err instanceof Error ? err.message : 'Poll failed' });
+    } finally {
+      setPollerPolling(false);
     }
   };
 
@@ -269,7 +331,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
           </div>
 
           {/* Stats row */}
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <div className="bg-surface-sunken p-2 rounded-sm">
               <div className="text-[10px] text-rmpg-400">Cached Jobs</div>
               <div className="text-lg font-bold font-mono text-rmpg-100">{status.cached_jobs}</div>
@@ -319,6 +381,127 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
         </div>
       )}
 
+      {/* ═══ Section 2b: Auto-Poller — Job-to-Dispatch ═══ */}
+      {status?.configured && (
+        <div className="panel-beveled bg-surface-base p-3 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">
+              <Play className="w-3.5 h-3.5" />
+              Auto-Poller — Job-to-Dispatch
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={handlePollerPollNow}
+                disabled={pollerPolling}
+                className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
+              >
+                {pollerPolling ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+                Poll Now
+              </button>
+              <button
+                onClick={handlePollerSave}
+                disabled={pollerSaving || !pollerDirty}
+                className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 disabled:opacity-50"
+              >
+                {pollerSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                Save
+              </button>
+            </div>
+          </div>
+
+          {/* Poll result feedback */}
+          {pollerPollResult && (
+            <div className={`flex items-center gap-2 text-[10px] px-2 py-1.5 rounded-sm ${
+              pollerPollResult.error
+                ? 'bg-red-950/30 border border-red-800/40 text-red-400'
+                : pollerPollResult.callsCreated > 0
+                  ? 'bg-green-950/30 border border-green-800/40 text-green-400'
+                  : 'bg-surface-sunken border border-rmpg-600 text-rmpg-300'
+            }`}>
+              {pollerPollResult.error ? (
+                <><XCircle className="w-3.5 h-3.5 shrink-0" /> Poll error: {pollerPollResult.error}</>
+              ) : (
+                <><CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> Synced {pollerPollResult.synced} jobs, created {pollerPollResult.callsCreated} dispatch call(s)</>
+              )}
+            </div>
+          )}
+
+          {/* Poller settings grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* Enable/Disable toggle */}
+            <div className="flex items-center justify-between bg-surface-sunken p-2.5 rounded-sm">
+              <div>
+                <div className="text-[10px] font-bold text-rmpg-300">Poller Enabled</div>
+                <div className="text-[9px] text-rmpg-500">Automatically sync jobs on interval</div>
+              </div>
+              <button
+                onClick={() => { setPollerEnabled(!pollerEnabled); setPollerDirty(true); }}
+                className="text-rmpg-300 hover:text-rmpg-100 transition-colors"
+              >
+                {pollerEnabled
+                  ? <ToggleRight className="w-7 h-7 text-green-400" />
+                  : <ToggleLeft className="w-7 h-7 text-rmpg-600" />
+                }
+              </button>
+            </div>
+
+            {/* Auto-create dispatch calls toggle */}
+            <div className="flex items-center justify-between bg-surface-sunken p-2.5 rounded-sm">
+              <div>
+                <div className="text-[10px] font-bold text-rmpg-300">Auto-Create Dispatch Calls</div>
+                <div className="text-[9px] text-rmpg-500">Create calls for unlinked target jobs</div>
+              </div>
+              <button
+                onClick={() => { setPollerAutoCreate(!pollerAutoCreate); setPollerDirty(true); }}
+                className="text-rmpg-300 hover:text-rmpg-100 transition-colors"
+              >
+                {pollerAutoCreate
+                  ? <ToggleRight className="w-7 h-7 text-green-400" />
+                  : <ToggleLeft className="w-7 h-7 text-rmpg-600" />
+                }
+              </button>
+            </div>
+
+            {/* Poll interval */}
+            <div className="bg-surface-sunken p-2.5 rounded-sm space-y-1">
+              <div className="text-[10px] font-bold text-rmpg-300">Poll Interval (seconds)</div>
+              <input
+                type="number"
+                min={60}
+                max={1800}
+                value={pollerInterval}
+                onChange={(e) => { setPollerInterval(e.target.value); setPollerDirty(true); }}
+                className="w-full bg-rmpg-800 border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none font-mono"
+              />
+              <div className="text-[9px] text-rmpg-500">Min 60s, max 1800s (30 min)</div>
+            </div>
+
+            {/* Target client */}
+            <div className="bg-surface-sunken p-2.5 rounded-sm space-y-1">
+              <div className="text-[10px] font-bold text-rmpg-300">Target Client</div>
+              <input
+                type="text"
+                value={pollerTargetClient}
+                onChange={(e) => { setPollerTargetClient(e.target.value); setPollerDirty(true); }}
+                className="w-full bg-rmpg-800 border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
+              />
+              <div className="text-[9px] text-rmpg-500">Only jobs from this client trigger auto-dispatch</div>
+            </div>
+          </div>
+
+          {/* Last poll info */}
+          <div className="flex items-center gap-3 text-[10px] text-rmpg-400">
+            <Clock className="w-3 h-3" />
+            <span>Last poll: {pollerStatus?.last_poll_at ? new Date(pollerStatus.last_poll_at).toLocaleString() : 'Never'}</span>
+            <span className="text-rmpg-600">|</span>
+            <span>Status: {pollerEnabled
+              ? <span className="text-green-400">Active</span>
+              : <span className="text-rmpg-500">Disabled</span>
+            }</span>
+          </div>
+        </div>
+      )}
+
       {/* ═══ Section 3: Jobs Browser ═══ */}
       {status?.configured && status.cached_jobs > 0 && (
         <div className="panel-beveled bg-surface-base p-3 space-y-3">
@@ -357,7 +540,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                   <XCircle className="w-4 h-4" />
                 </button>
               </div>
-              <div className="grid grid-cols-3 gap-2 text-[10px]">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[10px]">
                 <div><span className="text-rmpg-500">Recipient:</span> <span className="text-rmpg-200">{selectedJob.recipient_name || '—'}</span></div>
                 <div><span className="text-rmpg-500">Client:</span> <span className="text-rmpg-200">{selectedJob.client_company_name || '—'}</span></div>
                 <div><span className="text-rmpg-500">Status:</span> <span className="text-rmpg-200">{selectedJob.job_status || '—'}</span></div>

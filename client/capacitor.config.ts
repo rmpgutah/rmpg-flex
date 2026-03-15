@@ -14,7 +14,7 @@ const config: CapacitorConfig = {
       launchShowDuration: 2000,
       backgroundColor: '#0a0e14',
       showSpinner: true,
-      spinnerColor: '#bc1010',
+      spinnerColor: '#1a5a9e',
       androidSpinnerStyle: 'small',
     },
     StatusBar: {

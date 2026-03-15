@@ -54,6 +54,9 @@ if (!envSecret || envSecret === defaultSecret) {
 }
 
 // ─── SSL/TLS Certificate Detection ────────────────────
+// When running behind a reverse proxy (nginx), set DISABLE_SSL=true in .env
+// so the server only listens on PORT (default 3001) as plain HTTP.
+const disableSsl = envBool('DISABLE_SSL', false);
 const sslCertPath = process.env.SSL_CERT_PATH || path.resolve(__dirname, '../certs/fullchain.pem');
 const sslKeyPath = process.env.SSL_KEY_PATH || path.resolve(__dirname, '../certs/privkey.pem');
 
@@ -61,14 +64,18 @@ let sslEnabled = false;
 let sslCert: string | undefined;
 let sslKey: string | undefined;
 
-try {
-  if (fs.existsSync(sslCertPath) && fs.existsSync(sslKeyPath)) {
-    sslCert = fs.readFileSync(sslCertPath, 'utf-8');
-    sslKey = fs.readFileSync(sslKeyPath, 'utf-8');
-    sslEnabled = true;
+if (disableSsl) {
+  console.log('ℹ  SSL disabled via DISABLE_SSL=true — running HTTP-only behind reverse proxy');
+} else {
+  try {
+    if (fs.existsSync(sslCertPath) && fs.existsSync(sslKeyPath)) {
+      sslCert = fs.readFileSync(sslCertPath, 'utf-8');
+      sslKey = fs.readFileSync(sslKeyPath, 'utf-8');
+      sslEnabled = true;
+    }
+  } catch (err) {
+    console.warn('⚠  SSL certificate files found but could not be read:', (err as Error).message);
   }
-} catch (err) {
-  console.warn('⚠  SSL certificate files found but could not be read:', (err as Error).message);
 }
 
 // ─── TOTP / Two-Factor config (shared by config.totp and config.twoFactor) ──
@@ -136,20 +143,33 @@ export const config = {
     requireNumber: envBool('PASSWORD_REQUIRE_NUMBER', true),
     requireSpecial: envBool('PASSWORD_REQUIRE_SPECIAL', true),
     expiryDays: envInt('PASSWORD_EXPIRY_DAYS', 90),
-    historyCount: envInt('PASSWORD_HISTORY_COUNT', 5),
     expiryWarningDays: envInt('PASSWORD_EXPIRY_WARNING_DAYS', 7),
   },
 
   // Two-Factor Authentication (TOTP)
-  // Referenced as both config.totp and config.twoFactor across the codebase
-  totp: totpConfig,
-  twoFactor: totpConfig,
+  totp: {
+    encryptionKey: process.env.TOTP_ENCRYPTION_KEY || jwtSecret,
+    issuer: process.env.TOTP_ISSUER || 'RMPG Flex',
+    requiredRoles: (process.env.TOTP_REQUIRED_ROLES || 'admin,manager,supervisor,officer,dispatcher,contract_manager').split(',').map(s => s.trim()).filter(Boolean),
+    backupCodeCount: envInt('TOTP_BACKUP_CODE_COUNT', 10),
+    tempTokenExpiry: process.env.TOTP_TEMP_TOKEN_EXPIRY || '3m',
+    trustedDeviceDays: envInt('TRUSTED_DEVICE_DAYS', 30),
+  },
 
   // WebAuthn / Security Key (YubiKey, Touch ID, Windows Hello)
   webauthn: {
     rpName: process.env.WEBAUTHN_RP_NAME || 'RMPG Flex',
     rpID: process.env.WEBAUTHN_RP_ID || 'rmpgutah.us',
-    origin: process.env.WEBAUTHN_ORIGIN || 'https://rmpgutah.us',
+    origin: (process.env.WEBAUTHN_ORIGIN || 'https://rmpgutah.us,http://localhost:5173,http://localhost:3001').split(',').map(s => s.trim()),
+  },
+
+  // Alias for utilities that reference config.twoFactor
+  twoFactor: {
+    issuer: process.env.TOTP_ISSUER || 'RMPG Flex',
+    encryptionKey: process.env.TOTP_ENCRYPTION_KEY || jwtSecret,
+    tempTokenExpiry: process.env.TOTP_TEMP_TOKEN_EXPIRY || '3m',
+    backupCodeCount: envInt('TOTP_BACKUP_CODE_COUNT', 10),
+    trustedDeviceDays: envInt('TRUSTED_DEVICE_DAYS', 30),
   },
 
   // Session

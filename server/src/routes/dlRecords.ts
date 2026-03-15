@@ -1,5 +1,5 @@
 // ============================================================
-// DL Records — Manual Entry Endpoint
+// DL Records — Manual Entry + Full CRUD
 // Officers can input DL/person data from physical license
 // examinations during field contacts. Stores via storeDlRecord()
 // which UPSERTs on (dl_number, dl_state).
@@ -9,10 +9,65 @@ import { Router, Request, Response } from 'express';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { storeDlRecord } from '../utils/dlRecordStore';
 import { getDb } from '../models/database';
+import { auditLog } from '../utils/auditLogger';
+import { broadcastRecordUpdate } from '../utils/websocket';
 import type { DlRecordSubject } from '../utils/dlRecordStore';
 
 const router = Router();
 router.use(authenticateToken);
+
+// GET /api/dl-records — list recent DL records with pagination
+router.get('/', requireRole('admin', 'manager', 'officer', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50));
+    const offset = (page - 1) * limit;
+    const search = (req.query.search as string || '').trim();
+
+    let where = '';
+    const params: any[] = [];
+
+    if (search) {
+      where = "WHERE full_name LIKE ? OR dl_number LIKE ? OR dl_state LIKE ?";
+      const term = `%${search}%`;
+      params.push(term, term, term);
+    }
+
+    const total = (db.prepare(
+      `SELECT COUNT(*) as c FROM dl_records ${where}`
+    ).get(...params) as any)?.c || 0;
+
+    params.push(limit, offset);
+    const records = db.prepare(`
+      SELECT * FROM dl_records ${where}
+      ORDER BY updated_at DESC
+      LIMIT ? OFFSET ?
+    `).all(...params);
+
+    res.json({ records, total, page, limit, totalPages: Math.ceil(total / limit) });
+  } catch (error: any) {
+    console.error('[DL Records] List error:', error);
+    res.status(500).json({ error: 'Failed to list DL records' });
+  }
+});
+
+// GET /api/dl-records/:id — get single DL record detail
+router.get('/:id', requireRole('admin', 'manager', 'officer', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id as string);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID' }); return; }
+
+    const record = db.prepare('SELECT * FROM dl_records WHERE id = ?').get(id);
+    if (!record) { res.status(404).json({ error: 'DL record not found' }); return; }
+
+    res.json(record);
+  } catch (error: any) {
+    console.error('[DL Records] Get error:', error);
+    res.status(500).json({ error: 'Failed to get DL record' });
+  }
+});
 
 // POST /api/dl-records — manually create/update a DL record
 router.post('/', requireRole('admin', 'manager', 'officer'), (req: Request, res: Response) => {
@@ -67,21 +122,39 @@ router.post('/', requireRole('admin', 'manager', 'officer'), (req: Request, res:
 
     const recordId = storeDlRecord(subject);
 
-    // Audit log
-    const db = getDb();
-    db.prepare(
-      "INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'dl_record_manual_entry', 'dl_record', ?, ?, ?)"
-    ).run(
-      req.user!.userId,
-      recordId,
-      `Manual DL entry: ${body.dl_number} (${body.dl_state}) — ${body.last_name}, ${body.first_name}`,
-      req.ip || 'unknown'
-    );
+    auditLog(req, 'dl_record_created', 'dl_record', recordId,
+      `Manual DL entry: ${body.dl_number} (${body.dl_state}) — ${body.last_name}, ${body.first_name}`);
+
+    broadcastRecordUpdate({ type: 'dl_record_created', id: recordId });
 
     res.json({ success: true, recordId, message: 'DL record saved' });
   } catch (error: any) {
     console.error('[DL Records] Manual entry error:', error);
     res.status(500).json({ error: 'Failed to save DL record' });
+  }
+});
+
+// DELETE /api/dl-records/:id — delete a DL record (admin only)
+router.delete('/:id', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id as string);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID' }); return; }
+
+    const existing = db.prepare('SELECT id, dl_number, dl_state, full_name FROM dl_records WHERE id = ?').get(id) as any;
+    if (!existing) { res.status(404).json({ error: 'DL record not found' }); return; }
+
+    db.prepare('DELETE FROM dl_records WHERE id = ?').run(id);
+
+    auditLog(req, 'dl_record_deleted', 'dl_record', id,
+      `Deleted DL record: ${existing.dl_number} (${existing.dl_state}) — ${existing.full_name}`);
+
+    broadcastRecordUpdate({ type: 'dl_record_deleted', id });
+
+    res.json({ success: true, message: 'DL record deleted' });
+  } catch (error: any) {
+    console.error('[DL Records] Delete error:', error);
+    res.status(500).json({ error: 'Failed to delete DL record' });
   }
 });
 

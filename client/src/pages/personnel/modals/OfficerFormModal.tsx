@@ -131,7 +131,7 @@ export default function OfficerFormModal({
         <>
           <SectionDivider label="Account" />
           <div className="panel-inset p-3 space-y-3">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="field-label">Username <span className="text-red-400">*</span></label>
                 <input type="text" required value={form.username} onChange={e => set('username', e.target.value)} placeholder="Login username" className="input-dark" />
@@ -141,7 +141,7 @@ export default function OfficerFormModal({
                 <input type="password" required value={form.password} onChange={e => set('password', e.target.value)} placeholder="Initial password" className="input-dark" />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="field-label">Role <span className="text-red-400">*</span></label>
                 <select required value={form.role} onChange={e => set('role', e.target.value)} className="select-dark">
@@ -160,7 +160,7 @@ export default function OfficerFormModal({
       {/* Personal */}
       <SectionDivider label="Personal Information" />
       <div className="panel-inset p-3 space-y-3">
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <div>
             <label className="field-label">First Name <span className="text-red-400">*</span></label>
             <input type="text" required value={form.first_name} onChange={e => set('first_name', e.target.value)} className="input-dark" />
@@ -174,7 +174,7 @@ export default function OfficerFormModal({
             <input type="text" value={form.middle_name} onChange={e => set('middle_name', e.target.value)} className="input-dark" />
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="field-label">Date of Birth</label>
             <input type="date" value={form.date_of_birth} onChange={e => set('date_of_birth', e.target.value)} className="input-dark" />
@@ -193,7 +193,7 @@ export default function OfficerFormModal({
       {/* Professional */}
       <SectionDivider label="Professional" />
       <div className="panel-inset p-3 space-y-3">
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <div>
             <label className="field-label">Badge Number</label>
             <input type="text" value={form.badge_number} onChange={e => set('badge_number', e.target.value)} className="input-dark" />
@@ -209,7 +209,7 @@ export default function OfficerFormModal({
             <input type="text" value={form.employee_id} onChange={e => set('employee_id', e.target.value)} className="input-dark" />
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <div>
             <label className="field-label">Department</label>
             <input type="text" value={form.department} onChange={e => set('department', e.target.value)} className="input-dark" />
@@ -230,7 +230,7 @@ export default function OfficerFormModal({
       {/* Contact */}
       <SectionDivider label="Contact" />
       <div className="panel-inset p-3 space-y-3">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="field-label">Phone</label>
             <input type="tel" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="801-555-0100" className="input-dark" />
@@ -258,7 +258,7 @@ export default function OfficerFormModal({
             }}
           />
         </div>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <div>
             <label className="field-label">City</label>
             <input type="text" value={form.city} onChange={e => set('city', e.target.value)} className="input-dark" />
@@ -277,7 +277,7 @@ export default function OfficerFormModal({
       {/* Emergency Contact */}
       <SectionDivider label="Emergency Contact" />
       <div className="panel-inset p-3">
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <div>
             <label className="field-label">Name</label>
             <input type="text" value={form.emergency_contact_name} onChange={e => set('emergency_contact_name', e.target.value)} className="input-dark" />
@@ -296,7 +296,7 @@ export default function OfficerFormModal({
       {/* Medical/Safety */}
       <SectionDivider label="Medical / Safety" />
       <div className="panel-inset p-3">
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <div>
             <label className="field-label">Blood Type</label>
             <select value={form.blood_type} onChange={e => set('blood_type', e.target.value)} className="select-dark">
@@ -319,7 +319,7 @@ export default function OfficerFormModal({
       {/* Driver's License */}
       <SectionDivider label="Driver's License" />
       <div className="panel-inset p-3">
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <div>
             <label className="field-label">DL Number</label>
             <input type="text" value={form.dl_number} onChange={e => set('dl_number', e.target.value)} className="input-dark" />

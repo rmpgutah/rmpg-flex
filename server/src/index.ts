@@ -14,18 +14,25 @@ import { fileURLToPath } from 'url';
 import config from './config';
 import { initDatabase } from './models/database';
 import { initWebSocket, getConnectedUsers, getConnectedClientCount } from './utils/websocket';
+import { authenticateToken } from './middleware/auth';
 import { securityHeaders } from './middleware/securityHeaders';
 import { sanitizeInput } from './middleware/sanitize';
 import { apiRateLimit } from './middleware/rateLimiter';
 import { liveBroadcast } from './middleware/liveBroadcast';
-import { startPatrolMonitor } from './utils/patrolMonitor';
-import { startDailyReportScheduler } from './utils/dailyReportGenerator';
-import { startClearPathGpsPoller } from './utils/clearPathGpsPoller';
-import { scheduleOfacSync, searchOfacLocal } from './utils/ofacScraper';
-import { scheduleUtahWarrantSync } from './utils/utahWarrantScraper';
-import { scheduleArrestSync } from './utils/arrestScraper';
-import { scheduleJailRosterSync } from './utils/jailRosterScraper';
-import { scheduleOverlayReprocessing } from './utils/videoOverlay';
+import { startPatrolMonitor, stopPatrolMonitor } from './utils/patrolMonitor';
+import { startDailyReportScheduler, stopDailyReportScheduler } from './utils/dailyReportGenerator';
+import { startClearPathGpsPoller, stopClearPathGpsPoller } from './utils/clearPathGpsPoller';
+import { startClearPathGpsMediaPoller, stopClearPathGpsMediaPoller } from './utils/clearPathGpsMediaPoller';
+import { startEmailPoller, stopEmailPoller } from './utils/emailPoller';
+import { scheduleOfacSync, searchOfacLocal, stopOfacSync } from './utils/ofacScraper';
+import { scheduleUtahWarrantSync, stopUtahWarrantSync } from './utils/utahWarrantScraper';
+import { scheduleWarrantScraper, stopWarrantScraper } from './utils/multiStateWarrantScraper';
+import { scheduleCourtRecordsScan, stopCourtRecordsScan } from './utils/courtRecordsScraper';
+import { scheduleArrestSync, stopArrestSync } from './utils/arrestScraper';
+import { scheduleJailRosterSync, stopJailRosterSync } from './utils/jailRosterScraper';
+import { startServeManagerPoller, stopServeManagerPoller } from './utils/serveManagerPoller';
+import { startPsoMonitor, stopPsoMonitor } from './utils/psoMonitor';
+import { startCallAgingMonitor, stopCallAgingMonitor } from './utils/callAgingMonitor';
 import { getDb } from './models/database';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -46,6 +53,7 @@ try {
 // Import routes
 import authRoutes from './routes/auth';
 import securityDashboardRoutes from './routes/securityDashboard';
+import webauthnRoutes from './routes/webauthn';
 import dispatchRoutes from './routes/dispatch';
 import incidentRoutes from './routes/incidents';
 import recordsRoutes from './routes/records';
@@ -81,9 +89,21 @@ import darRoutes from './routes/dar';
 import offenderRegistryRoutes from './routes/offenderRegistry';
 import offlineRoutes from './routes/offline';
 import companyDocumentsRoutes from './routes/companyDocuments';
-import ipedRoutes from './routes/iped';
-import forensicsRoutes from './routes/forensics';
+import arrestRoutes from './routes/arrests';
+import jailRosterRoutes from './routes/jailRoster';
+import clearPathGpsRoutes from './routes/clearpathgps';
+import dlRecordRoutes from './routes/dlRecords';
+import connectionsRoutes from './routes/connections';
 import skiptracerRoutes from './routes/skiptracer';
+import dashcamVideoRoutes from './routes/dashcamVideos';
+import coloradoDocRoutes from './routes/coloradoDoc';
+import sexOffenderRegistryRoutes from './routes/sexOffenderRegistry';
+import emailRoutes from './routes/email';
+import crmRoutes from './routes/crm';
+import crmLeadsRoutes from './routes/crmLeads';
+import crmProposalsRoutes from './routes/crmProposals';
+import userPreferencesRoutes from './routes/userPreferences';
+import { scheduleLeadScrapers, stopLeadScrapers } from './utils/leadScraperBase';
 
 const app = express();
 
@@ -173,6 +193,15 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(sanitizeInput);
 
+// Request timeout — 30s default, skip for upload routes (large files)
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/uploads') || req.path.startsWith('/api/downloads')) return next();
+  req.setTimeout(30_000, () => {
+    if (!res.headersSent) res.status(408).json({ error: 'Request timeout' });
+  });
+  next();
+});
+
 // Apply rate limiting to API routes
 app.use('/api', apiRateLimit);
 
@@ -205,7 +234,8 @@ app.get('/api/health', (_req, res) => {
 });
 
 // ─── Presence Endpoint ───────────────────────────────
-app.get('/api/presence', (_req, res) => {
+// Requires auth — exposes online officer usernames/roles
+app.get('/api/presence', authenticateToken, (_req, res) => {
   const users = getConnectedUsers();
   res.json({ users, count: users.length, connections: getConnectedClientCount() });
 });
@@ -215,9 +245,65 @@ app.get('/api/presence', (_req, res) => {
 // so every connected device sees changes in real-time
 app.use(liveBroadcast);
 
+// ─── Redispatch (top-level to bypass nested router issues) ──
+app.post('/api/dispatch/calls/:id/redispatch', authenticateToken, (req, res) => {
+  // Top-level route — bypasses nested dispatch router matching issue
+  try {
+    const db = getDb();
+    const role = req.user?.role;
+    if (!role || !['admin', 'manager', 'supervisor', 'dispatcher'].includes(role)) {
+      res.status(403).json({ error: 'Insufficient role' });
+      return;
+    }
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+    if (call.incident_type !== 'pso_client_request') { res.status(400).json({ error: 'Not a PSO call' }); return; }
+    if (!['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(call.status)) {
+      res.status(400).json({ error: 'Call must be completed to re-dispatch' }); return;
+    }
+    const now = new Date().toISOString().replace('T', ' ').split('.')[0];
+    const currentAttempt = call.pso_attempt_number || 1;
+    const newAttempt = currentAttempt + 1;
+    const ordinal = (n: number) => { const s = ['th','st','nd','rd']; const v = n % 100; return n + (s[(v-20)%10]||s[v]||s[0]); };
+
+    // Snapshot visit history
+    let assignedCallSigns: string[] = [];
+    try {
+      const unitIds = JSON.parse(call.assigned_unit_ids || '[]');
+      if (Array.isArray(unitIds) && unitIds.length) {
+        const units = db.prepare(`SELECT call_sign FROM units WHERE id IN (${unitIds.map(()=>'?').join(',')})`).all(...unitIds) as any[];
+        assignedCallSigns = units.map((u:any) => u.call_sign).filter(Boolean);
+      }
+    } catch {}
+
+    db.prepare(`INSERT INTO call_visit_history (call_id, visit_number, status, dispatched_at, enroute_at, onscene_at, cleared_at, closed_at, assigned_units, responding_vehicle_id, starting_mileage, ending_mileage, disposition, note, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(req.params.id, currentAttempt, call.status, call.dispatched_at, call.enroute_at, call.onscene_at, call.cleared_at, call.closed_at, JSON.stringify(assignedCallSigns), call.responding_vehicle_id||null, call.starting_mileage??null, call.ending_mileage??null, call.disposition||null, null, req.user?.fullName||'Dispatch', now);
+
+    let notes: any[] = [];
+    if (call.notes) { try { notes = JSON.parse(call.notes); } catch { notes = []; } }
+    const { scheduled_note } = req.body || {};
+    const noteText = scheduled_note ? `Re-dispatched — ${ordinal(newAttempt)} visit. Note: ${scheduled_note}` : `Re-dispatched — ${ordinal(newAttempt)} visit`;
+    notes.push({ id: String(Date.now()), author: req.user?.fullName||'Dispatch', text: noteText, timestamp: now, created_at: now });
+
+    db.prepare(`UPDATE calls_for_service SET status='pending', dispatched_at=NULL, enroute_at=NULL, onscene_at=NULL, cleared_at=NULL, closed_at=NULL, starting_mileage=NULL, ending_mileage=NULL, responding_vehicle_id=NULL, pso_attempt_number=?, pso_72hr_notified=NULL, notes=?, updated_at=? WHERE id=?`)
+      .run(newAttempt, JSON.stringify(notes), now, req.params.id);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'call_redispatched', 'call', ?, ?, ?)`)
+      .run(req.user!.userId, req.params.id, `Re-dispatched PSO call ${call.call_number} — ${ordinal(newAttempt)} visit`, req.ip||'unknown');
+
+    const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    const visitHistory = db.prepare('SELECT * FROM call_visit_history WHERE call_id = ? ORDER BY visit_number ASC').all(req.params.id);
+    res.json({ ...updated, visit_history: visitHistory });
+  } catch (error: any) {
+    console.error('[REDISPATCH-TOPLEVEL] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ─── API Routes ───────────────────────────────────────
 app.use('/api/auth', authRoutes);
 app.use('/api/auth/security', securityDashboardRoutes);
+app.use('/api/auth/webauthn', webauthnRoutes);
 app.use('/api/dispatch', dispatchRoutes);
 app.use('/api/incidents', incidentRoutes);
 app.use('/api/records', recordsRoutes);
@@ -230,6 +316,7 @@ app.use('/api/admin', systemConfigRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/patrol', patrolRoutes);
 app.use('/api/warrants', warrantRoutes);
+app.use('/api/fleet/dashcam-videos', dashcamVideoRoutes);
 app.use('/api/fleet', fleetRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/statutes', statuteRoutes);
@@ -254,9 +341,19 @@ app.use('/api/dar', darRoutes);
 app.use('/api/offender-registry', offenderRegistryRoutes);
 app.use('/api/offline', offlineRoutes);
 app.use('/api/company-documents', companyDocumentsRoutes);
-app.use('/api/iped', ipedRoutes);
-app.use('/api/forensics', forensicsRoutes);
+app.use('/api/arrests', arrestRoutes);
+app.use('/api/jail-roster', jailRosterRoutes);
+app.use('/api/clearpathgps', clearPathGpsRoutes);
+app.use('/api/dl-records', dlRecordRoutes);
+app.use('/api/connections', connectionsRoutes);
 app.use('/api/skiptracer', skiptracerRoutes);
+app.use('/api/colorado-doc', coloradoDocRoutes);
+app.use('/api/sex-offender-registry', sexOffenderRegistryRoutes);
+app.use('/api/email', emailRoutes);
+app.use('/api/crm', crmRoutes);
+app.use('/api/crm', crmLeadsRoutes);
+app.use('/api/crm', crmProposalsRoutes);
+app.use('/api/user/preferences', authenticateToken, userPreferencesRoutes);
 
 // Mount download page and file serving routes (outside /api)
 // Also mounts /updates/latest.yml, /updates/latest-mac.yml for electron-updater
@@ -289,9 +386,16 @@ app.use('/assets', express.static(path.join(clientDistPath, 'assets'), {
   immutable: true,
 }));
 
-// Everything else — short cache
+// Everything else — short cache, but NEVER cache index.html via this route
 app.use(express.static(clientDistPath, {
   maxAge: '5m',
+  setHeaders(res, filePath) {
+    // HTML files must always revalidate — the SW + Vite hashed imports
+    // ensure the browser loads the correct JS/CSS after a deploy.
+    if (filePath.endsWith('.html')) {
+      res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    }
+  },
 }));
 
 // SPA fallback: serve index.html for non-API, non-download routes
@@ -302,6 +406,7 @@ app.get('*', (req, res) => {
     // Already handled by download routes — if we get here, 404
     res.status(404).json({ error: 'Not found' });
   } else {
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.sendFile(path.join(clientDistPath, 'index.html'), (err) => {
       if (err) {
         res.status(404).json({ error: 'Not found' });
@@ -320,13 +425,13 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 });
 
 // ─── Initialize and Start ─────────────────────────────
+// Declared outside try block so gracefulShutdown() can access it
+let primaryServer: http.Server | https.Server | null = null;
+
 try {
   // Initialize database
   initDatabase();
   console.log('Database initialized');
-
-  // Determine server type based on SSL availability
-  let primaryServer: http.Server | https.Server;
 
   if (config.ssl.enabled && config.ssl.cert && config.ssl.key) {
     // ─── HTTPS Mode ─────────────────────────────────
@@ -410,11 +515,22 @@ try {
     console.log('║    /api/servemanager - ServeManager               ║');
     console.log('║    /api/arrests    - Arrest Records (JailBase)   ║');
     console.log('║    /api/jail-roster - Jail Roster Scraper         ║');
-    console.log('║    /api/iped       - IPED Digital Forensics      ║');
+    console.log('║    /api/connections - Connection Analysis         ║');
+    console.log('║    /api/email      - Microsoft Email             ║');
     console.log('║    /api/skiptracer - Skip Tracer (RapidAPI)      ║');
     console.log('║    /api/health     - Health Check                ║');
     console.log('╚══════════════════════════════════════════════════╝');
     console.log('');
+
+    // Daily WAL checkpoint + ANALYZE for SQLite health
+    setInterval(() => {
+      try {
+        const db = getDb();
+        db.pragma('wal_checkpoint(PASSIVE)');
+        db.exec('ANALYZE');  // Update query planner statistics
+        console.log('[DB Maintenance] WAL checkpoint + ANALYZE completed');
+      } catch (e) { console.error('[DB Maintenance] Failed:', e); }
+    }, 24 * 60 * 60 * 1000).unref();
 
     // Start patrol monitor for missed scan alerts
     startPatrolMonitor(5 * 60 * 1000); // Check every 5 minutes
@@ -422,8 +538,26 @@ try {
     // Start midnight daily patrol report scheduler
     startDailyReportScheduler();
 
-    // Start ClearPathGPS fleet position poller (if enabled)
+    // Start ClearPathGPS fleet tracking poller
     startClearPathGpsPoller();
+
+    // Start ClearPathGPS media sync poller (dashcam video auto-download)
+    startClearPathGpsMediaPoller();
+
+    // Start Microsoft Email inbox sync poller
+    startEmailPoller();
+
+    // Start ServeManager auto-poller (syncs jobs → creates dispatch calls)
+    startServeManagerPoller();
+
+    // Start PSO 72-hour re-dispatch monitor (checks every 30 minutes)
+    startPsoMonitor();
+
+    // Start general call aging monitor — 72-hour overdue enforcement (checks every 30 minutes)
+    startCallAgingMonitor();
+
+    // Schedule jail roster sync
+    scheduleJailRosterSync();
 
     // Start OFAC SDN data sync (downloads from U.S. Treasury, syncs daily)
     scheduleOfacSync();
@@ -431,14 +565,17 @@ try {
     // Start Utah state warrant scraper (syncs daily at midnight from warrants.utah.gov)
     scheduleUtahWarrantSync();
 
+    // Start multi-state warrant scraper (county sheriff warrant pages + arrest record extraction)
+    scheduleWarrantScraper();
+
+    // Start court records scraper (Utah XChange + surrounding states, every 2 hours)
+    scheduleCourtRecordsScan();
+
     // Start JailBase arrest record sync (hourly from RapidAPI)
     scheduleArrestSync();
 
-    // Start Utah county jail roster scraper (scrapes county jail websites/PDFs)
-    scheduleJailRosterSync();
-
-    // Check for pending video overlay processing (60s after startup)
-    scheduleOverlayReprocessing();
+    // Start CRM lead scrapers (Overwatch)
+    scheduleLeadScrapers();
 
     // Auto-backfill OFAC screening for existing person records (runs 60s after boot
     // to allow OFAC data sync to complete first)
@@ -462,7 +599,6 @@ try {
               db.prepare('UPDATE persons SET watchlist_match = ?, watchlist_checked_at = ? WHERE id = ?').run(matchInfo, now, p.id);
               if (hits.length > 0) {
                 matches++;
-                // Create notification for matches
                 try {
                   db.prepare(`INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, created_at) VALUES ('system', 'high', ?, ?, 'person', ?, ?)`)
                     .run(`OFAC WATCHLIST MATCH: ${p.first_name} ${p.last_name}`, `Person #${p.id} matches OFAC sanctions list`, p.id, now);
@@ -484,17 +620,72 @@ try {
   process.exit(1);
 }
 
+// ─── Graceful shutdown ──────────────────────────────────────
+// Stop background pollers and schedulers before exit so resources are cleaned up.
+let isShuttingDown = false;
+
+function gracefulShutdown(signal: string) {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  console.log(`\n[Shutdown] ${signal} received — stopping background services...`);
+
+  // Force-exit after 10 seconds if graceful shutdown stalls
+  const forceTimer = setTimeout(() => {
+    console.error('[Shutdown] Timeout — forcing exit');
+    process.exit(1);
+  }, 10_000);
+  forceTimer.unref();
+
+  // Stop all background pollers/schedulers
+  try { stopPatrolMonitor(); } catch (e) { console.error('[Shutdown] stopPatrolMonitor:', e); }
+  try { stopClearPathGpsPoller(); } catch (e) { console.error('[Shutdown] stopClearPathGpsPoller:', e); }
+  try { stopClearPathGpsMediaPoller(); } catch (e) { console.error('[Shutdown] stopClearPathGpsMediaPoller:', e); }
+  try { stopEmailPoller(); } catch (e) { console.error('[Shutdown] stopEmailPoller:', e); }
+  try { stopServeManagerPoller(); } catch (e) { console.error('[Shutdown] stopServeManagerPoller:', e); }
+  try { stopPsoMonitor(); } catch (e) { console.error('[Shutdown] stopPsoMonitor:', e); }
+  try { stopCallAgingMonitor(); } catch (e) { console.error('[Shutdown] stopCallAgingMonitor:', e); }
+  try { stopOfacSync(); } catch (e) { console.error('[Shutdown] stopOfacSync:', e); }
+  try { stopUtahWarrantSync(); } catch (e) { console.error('[Shutdown] stopUtahWarrantSync:', e); }
+  try { stopWarrantScraper(); } catch (e) { console.error('[Shutdown] stopWarrantScraper:', e); }
+  try { stopCourtRecordsScan(); } catch (e) { console.error('[Shutdown] stopCourtRecordsScan:', e); }
+  try { stopArrestSync(); } catch (e) { console.error('[Shutdown] stopArrestSync:', e); }
+  try { stopJailRosterSync(); } catch (e) { console.error('[Shutdown] stopJailRosterSync:', e); }
+  try { stopLeadScrapers(); } catch (e) { console.error('[Shutdown] stopLeadScrapers:', e); }
+  try { stopDailyReportScheduler(); } catch (e) { console.error('[Shutdown] stopDailyReportScheduler:', e); }
+
+  // Final WAL checkpoint to flush pending writes
+  try {
+    const db = getDb();
+    db.pragma('wal_checkpoint(TRUNCATE)');
+    console.log('[Shutdown] WAL checkpoint completed');
+  } catch (e) { console.error('[Shutdown] WAL checkpoint failed:', e); }
+
+  // Close HTTP server to stop accepting new connections
+  if (primaryServer) {
+    primaryServer.close(() => {
+      console.log('[Shutdown] HTTP server closed. Exiting.');
+      process.exit(0);
+    });
+  } else {
+    console.log('[Shutdown] Background services stopped. Exiting.');
+    process.exit(0);
+  }
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
 // ─── Process-level crash protection ──────────────────────────
 // Log unhandled errors instead of dying silently.
 process.on('uncaughtException', (err) => {
   console.error('═══ UNCAUGHT EXCEPTION ═══');
-  console.error(err);
+  console.error(err.message || err);
   console.error('Server will continue running. Please investigate the above error.');
 });
 
-process.on('unhandledRejection', (reason, promise) => {
+process.on('unhandledRejection', (reason, _promise) => {
   console.error('═══ UNHANDLED PROMISE REJECTION ═══');
-  console.error('Reason:', reason);
+  console.error('Reason:', reason instanceof Error ? reason.message : reason);
   console.error('Server will continue running. Please investigate the above error.');
 });
 

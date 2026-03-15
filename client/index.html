@@ -5,7 +5,7 @@
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/rmpg flex.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <meta name="theme-color" content="#bc1010" />
+    <meta name="theme-color" content="#1a5a9e" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="RMPG Flex" />
@@ -15,7 +15,22 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   </head>
   <body class="bg-[#0a0e14] text-white">
-    <div id="root"></div>
+    <div id="root">
+      <!-- Pre-React branded splash — hidden once React hydrates -->
+      <div id="pre-splash" style="display:flex;align-items:center;justify-content:center;height:100vh;background:#0a0e14">
+        <div style="display:flex;flex-direction:column;align-items:center">
+          <img src="/rmpg flex.png" alt="RMPG Flex" width="88" height="88"
+               style="filter:drop-shadow(0 0 20px rgba(26,90,158,0.3));object-fit:contain" draggable="false" />
+          <div style="margin-top:16px;margin-bottom:12px;width:140px;height:2px;background:#1a1a1a;border-radius:1px;overflow:hidden">
+            <div style="width:48px;height:100%;background:linear-gradient(90deg,transparent,#1a5a9e,transparent);animation:sl 1.6s ease-in-out infinite"></div>
+          </div>
+          <p style="font-size:9px;text-transform:uppercase;letter-spacing:0.2em;font-weight:700;color:rgba(160,160,160,0.7);font-family:system-ui,sans-serif;margin:0">
+            Initializing
+          </p>
+        </div>
+      </div>
+      <style>#pre-splash{transition:opacity .3s}@keyframes sl{0%{transform:translateX(-48px)}100%{transform:translateX(140px)}}</style>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
     <!-- Service worker registration handled by useServiceWorker hook in React -->
   </body>

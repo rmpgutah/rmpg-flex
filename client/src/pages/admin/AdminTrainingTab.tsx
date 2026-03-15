@@ -138,7 +138,7 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
   return (
     <div className="p-4">
       {/* Summary Cards */}
-      <div className="grid grid-cols-4 gap-4 mb-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
         <div className="panel-beveled p-3">
           <div className="text-[20px] font-black text-blue-400">{stats.total_officers}</div>
           <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Total Officers</div>
@@ -164,7 +164,7 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
         <GraduationCap style={{ width: 10, height: 10 }} />
         Compliance by Category
       </div>
-      <div className="grid grid-cols-2 gap-2 mb-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
         {stats.by_category.map(cat => {
           const pct = cat.required > 0 ? Math.round((cat.completed / cat.required) * 100) : 100;
           const color = pct >= 90 ? '#22c55e' : pct >= 70 ? '#f59e0b' : '#ef4444';
@@ -194,7 +194,7 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
       </div>
       <table className="w-full text-[10px]">
         <thead>
-          <tr className="text-rmpg-500 text-[9px] uppercase tracking-wider" style={{ background: '#111' }}>
+          <tr className="text-rmpg-500 text-[9px] uppercase tracking-wider" style={{ background: '#0f1a28' }}>
             <th className="text-left px-3 py-1.5 font-bold">Officer</th>
             <th className="text-left px-3 py-1.5 font-bold">Badge</th>
             <th className="text-left px-3 py-1.5 font-bold">Role</th>
@@ -214,7 +214,7 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
                 <td className="px-3 py-2 text-rmpg-400 font-mono">{o.badge_number || '—'}</td>
                 <td className="px-3 py-2 text-rmpg-400">{toDisplayLabel(o.role)}</td>
                 <td className="px-3 py-2 text-center font-mono text-rmpg-300">{o.completed}/{o.required}</td>
-                <td className="px-3 py-2 text-center font-mono" style={{ color: o.overdue > 0 ? '#ef4444' : '#666' }}>
+                <td className="px-3 py-2 text-center font-mono" style={{ color: o.overdue > 0 ? '#ef4444' : '#5a6e80' }}>
                   {o.overdue}
                 </td>
                 <td className="px-3 py-2">

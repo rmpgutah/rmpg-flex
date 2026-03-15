@@ -25,6 +25,8 @@ import {
   discoverUtahSources,
   UTAH_COUNTY_DEFAULTS,
 } from '../utils/arrestScraper';
+import { auditLog } from '../utils/auditLogger';
+import { broadcastRecordUpdate } from '../utils/websocket';
 
 const router = Router();
 router.use(authenticateToken);
@@ -47,7 +49,9 @@ function encrypt(plaintext: string): string {
 
 function decrypt(stored: string): string {
   const key = deriveKey();
-  const [ivHex, authTagHex, ciphertext] = stored.split(':');
+  const parts = stored.split(':');
+  if (parts.length < 3) throw new Error('Malformed encrypted value');
+  const [ivHex, authTagHex, ciphertext] = parts;
   const iv = Buffer.from(ivHex, 'hex');
   const authTag = Buffer.from(authTagHex, 'hex');
   const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
@@ -123,7 +127,7 @@ function splitName(fullName: string): { first: string; middle: string; last: str
 // ============================================================
 
 // ── POST /manual — Create a manual booking entry ────────────
-router.post('/manual', (req: Request, res: Response) => {
+router.post('/manual', requireRole('admin', 'manager', 'officer', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -145,7 +149,7 @@ router.post('/manual', (req: Request, res: Response) => {
         jailbase_id, source_id, source_name,
         full_name, first_name, last_name, middle_name,
         date_of_birth, booking_date, release_date,
-        charges, county, status, booking_number, agency,
+        charges, county, state, status, booking_number, agency,
         gender, race, height, weight, hair_color, eye_color,
         address, bail_amount, hold_reason, notes,
         entry_source, entered_by, created_at, updated_at
@@ -153,7 +157,7 @@ router.post('/manual', (req: Request, res: Response) => {
         ?, 'manual', 'Manual Entry',
         ?, ?, ?, ?,
         ?, ?, ?,
-        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
         'manual', ?, ?, ?
@@ -162,23 +166,29 @@ router.post('/manual', (req: Request, res: Response) => {
       `manual-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`,
       fullName, first || b.first_name || '', last || b.last_name || '', middle || b.middle_name || '',
       b.date_of_birth || null, b.booking_date || now, b.release_date || null,
-      charges, b.county || '', b.status || 'active', b.booking_number || null, b.agency || null,
+      charges, b.county || '', b.state || 'UT', b.status || 'active', b.booking_number || null, b.agency || null,
       b.gender || null, b.race || null, b.height || null, b.weight || null, b.hair_color || null, b.eye_color || null,
-      b.address || null, b.bail_amount != null ? parseFloat(b.bail_amount) : null, b.hold_reason || null, b.notes || null,
+      b.address || null, b.bail_amount != null && !isNaN(parseFloat(b.bail_amount)) ? parseFloat(b.bail_amount) : null, b.hold_reason || null, b.notes || null,
       user?.id || null, now, now,
     );
+
+    const newId = result.lastInsertRowid as number;
+
+    auditLog(req, 'arrest_created', 'arrest_record', newId,
+      `Manual booking: ${fullName}`);
+    broadcastRecordUpdate({ type: 'arrest_created', id: newId });
 
     // Run cross-linking for the new record
     try { crossLinkArrests(); } catch { /* non-critical */ }
 
-    res.json({ success: true, id: result.lastInsertRowid, message: 'Booking record created' });
+    res.json({ success: true, id: newId, message: 'Booking record created' });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error(err); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ── PUT /manual/:id — Update a booking record ───────────────
-router.put('/manual/:id', (req: Request, res: Response) => {
+router.put('/manual/:id', requireRole('admin', 'manager', 'officer', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -210,7 +220,7 @@ router.put('/manual/:id', (req: Request, res: Response) => {
 
     if (b.bail_amount !== undefined) {
       updates.push('bail_amount = ?');
-      params.push(b.bail_amount != null ? parseFloat(b.bail_amount) : null);
+      params.push(b.bail_amount != null && !isNaN(parseFloat(b.bail_amount)) ? parseFloat(b.bail_amount) : null);
     }
 
     if (b.charges !== undefined) {
@@ -234,9 +244,13 @@ router.put('/manual/:id', (req: Request, res: Response) => {
     params.push(id);
 
     db.prepare(`UPDATE arrest_records SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+
+    auditLog(req, 'arrest_updated', 'arrest_record', id, `Updated arrest record #${id}`);
+    broadcastRecordUpdate({ type: 'arrest_updated', id });
+
     res.json({ success: true, message: 'Record updated' });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error(err); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -254,9 +268,12 @@ router.delete('/manual/:id', requireRole('admin', 'manager'), (req: Request, res
     db.prepare('DELETE FROM arrest_cross_links WHERE arrest_record_id = ?').run(id);
     db.prepare('DELETE FROM arrest_records WHERE id = ?').run(id);
 
+    auditLog(req, 'arrest_deleted', 'arrest_record', id, `Deleted arrest record #${id}`);
+    broadcastRecordUpdate({ type: 'arrest_deleted', id });
+
     res.json({ success: true, message: 'Record deleted' });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error(err); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -281,7 +298,7 @@ router.get('/manual/:id', (req: Request, res: Response) => {
 
     res.json({ ...record, cross_links: links });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error(err); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -306,7 +323,7 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
         jailbase_id, source_id, source_name,
         full_name, first_name, last_name, middle_name,
         date_of_birth, booking_date, release_date,
-        charges, county, status, booking_number, agency,
+        charges, county, state, status, booking_number, agency,
         gender, race, height, weight, hair_color, eye_color,
         address, bail_amount, hold_reason, notes,
         entry_source, entered_by, created_at, updated_at
@@ -314,7 +331,7 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
         ?, 'csv-import', ?,
         ?, ?, ?, ?,
         ?, ?, ?,
-        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
         'csv', ?, ?, ?
@@ -357,6 +374,7 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
             r.release_date || r.ReleaseDate || r.RELEASE_DATE || null,
             chargesJson,
             r.county || county || '',
+            r.state || 'UT',
             r.status || 'active',
             r.booking_number || r.BookingNumber || r.BOOKING_NUMBER || r.booking_id || null,
             r.agency || agency || null,
@@ -382,6 +400,10 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
 
     importTx();
 
+    auditLog(req, 'arrest_imported', 'arrest_record', 0,
+      `CSV import: ${imported} of ${records.length} records (county: ${county || 'unknown'})`);
+    broadcastRecordUpdate({ type: 'arrest_imported', imported, total: records.length });
+
     // Run cross-linking on all new records
     try {
       const crossLinks = crossLinkArrests();
@@ -398,7 +420,7 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
       res.json({ success: true, imported, skipped, total: records.length, errors: errors.length > 0 ? errors : undefined });
     }
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error(err); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -440,7 +462,7 @@ router.get('/status', (_req: Request, res: Response) => {
       apiOffline,
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error(err); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -457,7 +479,7 @@ router.put('/credentials', requireRole('admin', 'manager'), (req: Request, res: 
     }
     res.json({ success: true, message: 'API key saved and encrypted' });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error(err); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -468,7 +490,7 @@ router.delete('/credentials', requireRole('admin', 'manager'), (_req: Request, r
     setConfigValue(CONFIG_KEYS.enabled, 'false');
     res.json({ success: true, message: 'API key removed' });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error(err); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -479,7 +501,7 @@ router.put('/toggle', requireRole('admin', 'manager'), (req: Request, res: Respo
     setConfigValue(CONFIG_KEYS.enabled, enabled ? 'true' : 'false');
     res.json({ success: true, enabled: !!enabled });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error(err); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -517,9 +539,22 @@ router.get('/search', async (req: Request, res: Response) => {
     const name = (req.query.name as string || '').trim();
     if (!name || name.length < 2) return res.status(400).json({ error: 'Name required (min 2 characters)' });
     const result = await searchArrests(name);
+
+    // Apply optional client-side filters (source, source_id/county) that searchArrests doesn't handle
+    const sourceFilter = (req.query.source as string || '').trim();
+    const countyFilter = (req.query.source_id as string || '').trim();
+    if (sourceFilter || countyFilter) {
+      result.records = result.records.filter((r: any) => {
+        if (sourceFilter && r.entry_source !== sourceFilter) return false;
+        if (countyFilter && r.source_id !== countyFilter) return false;
+        return true;
+      });
+      result.resultCount = result.records.length;
+    }
+
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error(err); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -538,8 +573,10 @@ router.get('/recent', (req: Request, res: Response) => {
     const params: any[] = [];
 
     const sourceId = (req.query.source_id as string || '').trim(); // county key: weber, davis, etc.
+    const stateFilter = (req.query.state as string || '').trim().toUpperCase();
     if (county) { conditions.push('ar.county = ?'); params.push(county); }
     if (sourceId) { conditions.push('ar.source_id = ?'); params.push(sourceId); }
+    if (stateFilter) { conditions.push('ar.state = ?'); params.push(stateFilter); }
     if (source === 'manual') { conditions.push("ar.entry_source = 'manual'"); }
     else if (source === 'csv') { conditions.push("ar.entry_source = 'csv'"); }
     else if (source === 'scraper') { conditions.push("ar.entry_source = 'scraper'"); }
@@ -570,20 +607,20 @@ router.get('/recent', (req: Request, res: Response) => {
 
     res.json({ records: parsed, total, page, limit, totalPages: Math.ceil(total / limit) });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error(err); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ── GET /sync-status ────────────────────────────────────────
 router.get('/sync-status', (_req: Request, res: Response) => {
   try { res.json(getArrestSyncStatus()); }
-  catch (err: any) { res.status(500).json({ error: err.message }); }
+  catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── GET /usage ──────────────────────────────────────────────
 router.get('/usage', (_req: Request, res: Response) => {
   try { res.json(getArrestUsageStats()); }
-  catch (err: any) { res.status(500).json({ error: err.message }); }
+  catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── POST /sync — Manual API sync ────────────────────────────
@@ -591,7 +628,21 @@ router.post('/sync', requireRole('admin', 'manager'), async (_req: Request, res:
   try {
     const result = await syncArrestData();
     res.json({ success: true, ...result });
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
+  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ── GET /states — Record counts by state ────────────────────
+router.get('/states', (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const states = db.prepare(`
+      SELECT COALESCE(state, 'UT') as state, COUNT(*) as count
+      FROM arrest_records
+      GROUP BY COALESCE(state, 'UT')
+      ORDER BY count DESC
+    `).all() as { state: string; count: number }[];
+    res.json({ states });
+  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── GET /counties ───────────────────────────────────────────
@@ -612,7 +663,7 @@ router.get('/counties', async (req: Request, res: Response) => {
       enabled: enabled.length === 0 || enabled.includes(c.sourceId),
     }));
     res.json({ sources, discovered: false });
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
+  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── PUT /counties ───────────────────────────────────────────
@@ -622,7 +673,7 @@ router.put('/counties', requireRole('admin', 'manager'), (req: Request, res: Res
     if (!Array.isArray(counties)) return res.status(400).json({ error: 'counties must be an array' });
     setConfigValue(CONFIG_KEYS.enabledCounties, JSON.stringify(counties));
     res.json({ success: true, enabledCounties: counties });
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
+  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── GET /:id/cross-links ────────────────────────────────────
@@ -635,12 +686,12 @@ router.get('/:id/cross-links', (req: Request, res: Response) => {
       'SELECT linked_type, linked_id, match_type, match_confidence, created_at FROM arrest_cross_links WHERE arrest_record_id = ?'
     ).all(id) as any[];
     res.json({ arrestRecordId: id, links });
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
+  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── PUT /:id/link-person ────────────────────────────────────
 // Manually link an arrest record to a person record
-router.put('/:id/link-person', (req: Request, res: Response) => {
+router.put('/:id/link-person', requireRole('admin', 'manager', 'officer', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id as string);
@@ -666,13 +717,17 @@ router.put('/:id/link-person', (req: Request, res: Response) => {
       ).run(id, 'person', person_id, 'manual', 1.0);
     }
 
+    auditLog(req, 'arrest_linked', 'arrest_record', id,
+      `Linked arrest #${id} to person ${person.last_name}, ${person.first_name} (ID: ${person_id})`);
+    broadcastRecordUpdate({ type: 'arrest_linked', arrestId: id, personId: person_id });
+
     res.json({ success: true, person: { id: person.id, name: `${person.last_name}, ${person.first_name}` } });
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
+  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── DELETE /:id/link-person ─────────────────────────────────
 // Remove manual person link from arrest record
-router.delete('/:id/link-person', (req: Request, res: Response) => {
+router.delete('/:id/link-person', requireRole('admin', 'manager', 'officer', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id as string);
@@ -691,8 +746,12 @@ router.delete('/:id/link-person', (req: Request, res: Response) => {
       ).run(id, 'person', record.person_id, 'manual');
     }
 
+    auditLog(req, 'arrest_unlinked', 'arrest_record', id,
+      `Unlinked person from arrest #${id}`);
+    broadcastRecordUpdate({ type: 'arrest_unlinked', arrestId: id });
+
     res.json({ success: true });
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
+  } catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 export default router;

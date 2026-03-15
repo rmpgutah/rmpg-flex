@@ -12,7 +12,9 @@ let serverUrl = '';
 let mainWindow = null;
 let pullTimers = {};
 let isSyncing = false;
+let syncStartedAt = null;  // timestamp when sync started — for stale lock detection
 let lastPushAt = null;
+const SYNC_LOCK_TIMEOUT = 60_000; // 60s — if sync is still locked after this, force-release
 
 // ─── Pull Sync Intervals (ms) ───────────────────────────────
 const PULL_INTERVALS = {
@@ -66,9 +68,25 @@ function stopPullSchedule() {
   pullTimers = {};
 }
 
-async function pullAll() {
-  if (isSyncing) return;
+function acquireSyncLock() {
+  // If a previous sync got stuck (e.g. network hang), force-release the lock
+  if (isSyncing && syncStartedAt && (Date.now() - syncStartedAt > SYNC_LOCK_TIMEOUT)) {
+    console.warn('[SYNC] Force-releasing stale sync lock (was held for >' + (SYNC_LOCK_TIMEOUT / 1000) + 's)');
+    isSyncing = false;
+  }
+  if (isSyncing) return false;
   isSyncing = true;
+  syncStartedAt = Date.now();
+  return true;
+}
+
+function releaseSyncLock() {
+  isSyncing = false;
+  syncStartedAt = null;
+}
+
+async function pullAll() {
+  if (!acquireSyncLock()) return;
 
   try {
     emit('offline:sync-progress', { phase: 'pull', table: 'all', current: 0, total: Object.keys(PULL_INTERVALS).length });
@@ -83,20 +101,19 @@ async function pullAll() {
     emit('offline:sync-complete', { pulled: i, pushed: 0, errors: 0 });
     console.log('[SYNC] Pull all complete');
   } finally {
-    isSyncing = false;
+    releaseSyncLock();
   }
 }
 
 async function pushAll() {
-  if (isSyncing) return;
-  isSyncing = true;
+  if (!acquireSyncLock()) return;
 
   try {
     const queueDepth = getQueueDepth();
     if (queueDepth === 0) {
       // Also push any unsynced GPS breadcrumbs
       await pushGpsBreadcrumbs();
-      isSyncing = false;
+      releaseSyncLock();
       return;
     }
 
@@ -160,7 +177,7 @@ async function pushAll() {
     emit('offline:sync-complete', { pulled: 0, pushed, errors });
     console.log(`[SYNC] Push complete: ${pushed} synced, ${errors} errors`);
   } finally {
-    isSyncing = false;
+    releaseSyncLock();
   }
 }
 

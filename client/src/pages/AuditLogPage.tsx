@@ -121,9 +121,9 @@ const AuditLogPage: React.FC = () => {
 
       const data = await apiFetch<{ data: AuditLogEntry[]; pagination: { total: number; totalPages: number } }>(`/audit/logs?${queryParams.toString()}`);
 
-      setLogs(data.data);
-      setTotalPages(data.pagination.totalPages);
-      setTotal(data.pagination.total);
+      setLogs(data?.data || []);
+      setTotalPages(data?.pagination?.totalPages || 1);
+      setTotal(data?.pagination?.total || 0);
     } catch (err) {
       console.error('Error fetching audit logs:', err);
       setError('Failed to load audit logs. Please try again.');
@@ -265,11 +265,11 @@ const AuditLogPage: React.FC = () => {
       {/* Portal Header */}
       <div className="panel-beveled bg-surface-base overflow-hidden mb-6">
         <div className="flex items-center gap-4 px-4 py-2.5 relative">
-          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #6e0a0a, #bc1010 30%, #bc1010 70%, #6e0a0a)' }} />
+          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3359, #1a5a9e 30%, #1a5a9e 70%, #0e3359)' }} />
           <RmpgLogo height={64} />
           <div className="flex-1">
             <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: '#d0d0d0' }}>Audit Log</h1>
-            <p className="text-[9px] tracking-wide" style={{ color: '#484848' }}>Rocky Mountain Protective Group, LLC</p>
+            <p className="text-[9px] tracking-wide" style={{ color: '#3a5070' }}>Rocky Mountain Protective Group, LLC</p>
           </div>
         </div>
       </div>
@@ -303,21 +303,21 @@ const AuditLogPage: React.FC = () => {
         {/* Stats Row */}
         {stats && (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-6">
-            <div className="panel-beveled p-3" style={{ background: '#161616' }}>
+            <div className="panel-beveled p-3" style={{ background: '#0d1520' }}>
               <div className="flex items-center gap-2 mb-2">
                 <ScrollText className="w-4 h-4 text-brand-400" />
                 <span className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">Total Entries</span>
               </div>
               <div className="text-2xl font-bold text-brand-400 font-mono">{stats.totalEntries.toLocaleString()}</div>
             </div>
-            <div className="panel-beveled p-3" style={{ background: stats.entriesToday > 0 ? '#0a1a0a' : '#161616' }}>
+            <div className="panel-beveled p-3" style={{ background: stats.entriesToday > 0 ? '#0a1a0a' : '#0d1520' }}>
               <div className="flex items-center gap-2 mb-2">
                 <Calendar className="w-4 h-4 text-green-400" />
                 <span className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">Today</span>
               </div>
               <div className="text-2xl font-bold text-green-400 font-mono">{stats.entriesToday.toLocaleString()}</div>
             </div>
-            <div className="panel-beveled p-3" style={{ background: '#161616' }}>
+            <div className="panel-beveled p-3" style={{ background: '#0d1520' }}>
               <div className="flex items-center gap-2 mb-2">
                 <Clock className="w-4 h-4 text-amber-400" />
                 <span className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">Top Action (30d)</span>
@@ -339,7 +339,7 @@ const AuditLogPage: React.FC = () => {
                 </div>
               )}
             </div>
-            <div className="panel-beveled p-3" style={{ background: '#161616' }}>
+            <div className="panel-beveled p-3" style={{ background: '#0d1520' }}>
               <div className="flex items-center gap-2 mb-2">
                 <Filter className="w-4 h-4 text-cyan-400" />
                 <span className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">Top User (30d)</span>
@@ -517,7 +517,7 @@ const AuditLogPage: React.FC = () => {
               </thead>
               <tbody>
                 {logs.map((log) => (
-                  <tr key={log.id} className="hover:bg-gray-750">
+                  <tr key={log.id} className="hover:bg-surface-raised">
                     <td className="px-3 py-1.5 whitespace-nowrap font-mono">
                       <div className="flex items-center gap-1.5">
                         <Clock className="w-3.5 h-3.5 text-rmpg-400" />

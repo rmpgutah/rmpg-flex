@@ -7,7 +7,7 @@
 // layer system's selection mode.
 // ============================================================
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { apiFetch } from './useApi';
 import type { GeoFeatureInfo } from './useGeoJsonLayers';
 
@@ -93,13 +93,16 @@ export function useShiftPlanning() {
   // ── Computed ───────────────────────────────────────────────
   const activePlan = plans.find((p) => p.id === activePlanId) ?? null;
 
-  // Build assigned features set from the active plan
-  const assignedFeatures = new Set<string>();
-  if (activePlan) {
-    for (const a of activePlan.assignments) {
-      assignedFeatures.add(`${a.layerId}::${a.featureKey}`);
+  // Build assigned features set from the active plan (memoized to avoid re-renders)
+  const assignedFeatures = useMemo(() => {
+    const set = new Set<string>();
+    if (activePlan) {
+      for (const a of activePlan.assignments) {
+        set.add(`${a.layerId}::${a.featureKey}`);
+      }
     }
-  }
+    return set;
+  }, [activePlan]);
 
   // ── Persist to localStorage ────────────────────────────────
   const plansRef = useRef(plans);

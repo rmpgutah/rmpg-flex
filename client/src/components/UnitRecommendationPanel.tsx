@@ -77,7 +77,7 @@ export default function UnitRecommendationPanel({
       <div className="unit-rec-list">
         {ranked.map((item: RankedUnit) => {
           const isTopPick = item.rank === 1 && item.unit.status === 'available';
-          const statusColor = STATUS_COLORS[item.unit.status] || '#888';
+          const statusColor = STATUS_COLORS[item.unit.status] || '#8a9aaa';
 
           return (
             <div
@@ -109,7 +109,7 @@ export default function UnitRecommendationPanel({
                         className="text-[8px] uppercase font-bold px-1"
                         style={{ color: statusColor }}
                       >
-                        {item.unit.status === 'onscene' ? 'ON SCN' : item.unit.status.replace('_', ' ')}
+                        {item.unit.status === 'onscene' ? 'ON SCN' : item.unit.status.replace(/_/g, ' ')}
                       </span>
                     )}
                   </div>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { UserPlus, Search, Loader2, AlertTriangle } from 'lucide-react';
+import { UserPlus, Search, Loader2, AlertTriangle, PlusCircle } from 'lucide-react';
 import FormModal from './FormModal';
+import PersonFormModal, { type PersonFormData } from './PersonFormModal';
 import { apiFetch } from '../hooks/useApi';
 import type { PersonRole } from '../types';
 
@@ -46,6 +47,8 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
   const [error, setError] = useState('');
   const [warrantWarning, setWarrantWarning] = useState<WarrantCheckResult | null>(null);
   const [checkingWarrants, setCheckingWarrants] = useState(false);
+  const [showCreatePerson, setShowCreatePerson] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
 
   const resetForm = useCallback(() => {
     setSearchQuery('');
@@ -55,6 +58,7 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
     setNotes('');
     setError('');
     setWarrantWarning(null);
+    setShowCreatePerson(false);
   }, []);
 
   useEffect(() => {
@@ -97,6 +101,32 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
       setCheckingWarrants(false);
     }
   }, []);
+
+  const handleCreatePerson = async (data: PersonFormData) => {
+    setIsCreating(true);
+    setError('');
+    try {
+      const result = await apiFetch<{ id: number }>('/records/persons', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+      // Auto-select the newly created person
+      const newPerson: PersonResult = {
+        id: result.id,
+        first_name: data.first_name,
+        last_name: data.last_name,
+        dob: data.dob || undefined,
+        phone: data.phone || undefined,
+      };
+      setSelectedPerson(newPerson);
+      setShowCreatePerson(false);
+      checkWarrants(result.id);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to create person');
+    } finally {
+      setIsCreating(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -196,7 +226,17 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
         )}
 
         {searchQuery.length >= 2 && searchResults.length === 0 && !isSearching && !selectedPerson && (
-          <p className="text-xs text-rmpg-400 mt-1">No persons found</p>
+          <div className="mt-1 flex items-center gap-2">
+            <p className="text-xs text-rmpg-400">No persons found</p>
+            <button
+              type="button"
+              onClick={() => setShowCreatePerson(true)}
+              className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase text-brand-400 bg-brand-900/30 border border-brand-700/40 hover:bg-brand-900/50 transition-colors"
+            >
+              <PlusCircle className="w-3 h-3" />
+              Create New Person
+            </button>
+          </div>
         )}
       </div>
 
@@ -267,6 +307,13 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
           onChange={(e) => setNotes(e.target.value)}
         />
       </div>
+      {/* Create Person Modal */}
+      <PersonFormModal
+        isOpen={showCreatePerson}
+        onClose={() => setShowCreatePerson(false)}
+        onSubmit={handleCreatePerson}
+        isSubmitting={isCreating}
+      />
     </FormModal>
   );
 }

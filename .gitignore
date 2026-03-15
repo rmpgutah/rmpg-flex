@@ -58,3 +58,4 @@ firebase-debug.log
 # ─── TypeScript Cache ─────────────────────────────
 *.tsbuildinfo
 .claude/
+.github/

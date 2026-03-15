@@ -9,11 +9,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Briefcase, Search, Plus, ChevronDown, User, Clock, FileText,
   X, Save, Loader2, AlertTriangle, Target, MessageSquare,
-  ArrowRight, CheckCircle, Pause, Hash,
+  ArrowRight, CheckCircle, Pause, Hash, FolderOpen,
 } from 'lucide-react';
 import type { Case, CaseNote, CaseStatus, CaseType, CasePriority } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
 import StatusBadge from '../components/StatusBadge';
+import EmptyState from '../components/EmptyState';
 // ExportButton omitted — no dedicated export endpoint
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -125,16 +126,21 @@ export default function CaseManagementPage() {
   useEffect(() => { fetchCases(); }, [fetchCases]);
   useEffect(() => { fetchStats(); }, [fetchStats]);
   useEffect(() => {
-    apiFetch<{ data: any[] }>('/personnel?per_page=200').then(r => setUsers(r.data || [])).catch(() => {});
+    let cancelled = false;
+    apiFetch<{ data: any[] }>('/personnel?per_page=200').then(r => { if (!cancelled) setUsers(r.data || []); }).catch(() => {});
+    return () => { cancelled = true; };
   }, []);
   useLiveSync('records', () => { fetchCases({ silent: true }); fetchStats(); });
 
   useEffect(() => {
     if (selected) {
       fetchNotes(selected.id);
-      const factors = selected.solvability_factors
-        ? (typeof selected.solvability_factors === 'string' ? JSON.parse(selected.solvability_factors) : selected.solvability_factors)
-        : {};
+      let factors: Record<string, any> = {};
+      try {
+        factors = selected.solvability_factors
+          ? (typeof selected.solvability_factors === 'string' ? JSON.parse(selected.solvability_factors) : selected.solvability_factors)
+          : {};
+      } catch { /* malformed JSON in DB — use empty */ }
       setSolvFactors(factors);
     }
   }, [selected, fetchNotes]);
@@ -251,7 +257,12 @@ export default function CaseManagementPage() {
           {loading ? (
             <div className="flex items-center justify-center h-32"><Loader2 className="w-5 h-5 animate-spin text-rmpg-500" /></div>
           ) : cases.length === 0 ? (
-            <div className="text-center py-8 text-rmpg-500 text-xs">No cases found</div>
+            <EmptyState
+              icon={FolderOpen}
+              title="No cases found"
+              description="Create a new case to get started."
+              action={{ label: 'New Case', onClick: () => { setFormOpen(true); setFormData({ ...EMPTY_FORM }); } }}
+            />
           ) : (
             cases.map(c => (
               <button
@@ -350,7 +361,7 @@ export default function CaseManagementPage() {
                   </div>
 
                   {/* Detail grid */}
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {[
                       ['Case Number', selected.case_number],
                       ['Type', TYPE_OPTIONS.find(t => t.value === selected.case_type)?.label],
@@ -468,24 +479,24 @@ export default function CaseManagementPage() {
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div>
-                <label className="text-[10px] font-mono text-rmpg-500 uppercase">Title *</label>
+                <label className="field-label">Title *</label>
                 <input value={formData.title} onChange={e => setFormData(p => ({ ...p, title: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="text-[10px] font-mono text-rmpg-500 uppercase">Type</label>
+                  <label className="field-label">Type</label>
                   <select value={formData.case_type} onChange={e => setFormData(p => ({ ...p, case_type: e.target.value as CaseType }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">
                     {TYPE_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] font-mono text-rmpg-500 uppercase">Priority</label>
+                  <label className="field-label">Priority</label>
                   <select value={formData.priority} onChange={e => setFormData(p => ({ ...p, priority: e.target.value as CasePriority }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">
                     {PRIORITY_OPTIONS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] font-mono text-rmpg-500 uppercase">Lead Investigator</label>
+                  <label className="field-label">Lead Investigator</label>
                   <select value={formData.lead_investigator_id} onChange={e => setFormData(p => ({ ...p, lead_investigator_id: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">
                     <option value="">Unassigned</option>
                     {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
@@ -493,7 +504,7 @@ export default function CaseManagementPage() {
                 </div>
               </div>
               <div>
-                <label className="text-[10px] font-mono text-rmpg-500 uppercase">Summary</label>
+                <label className="field-label">Summary</label>
                 <textarea value={formData.summary} onChange={e => setFormData(p => ({ ...p, summary: e.target.value }))} rows={3} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">

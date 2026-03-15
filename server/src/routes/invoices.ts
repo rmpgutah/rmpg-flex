@@ -8,7 +8,7 @@
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 
 const router = Router();
@@ -255,7 +255,7 @@ router.get('/:id', (req: Request, res: Response) => {
 
 // ─── POST /api/invoices ───────────────────────────────────
 // Create a new invoice
-router.post('/', (req: Request, res: Response) => {
+router.post('/', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -306,7 +306,7 @@ router.post('/', (req: Request, res: Response) => {
 
 // ─── POST /api/invoices/:id/generate ──────────────────────
 // Auto-generate line items from billing period
-router.post('/:id/generate', (req: Request, res: Response) => {
+router.post('/:id/generate', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -526,7 +526,7 @@ router.post('/:id/generate', (req: Request, res: Response) => {
 
 // ─── PUT /api/invoices/:id ────────────────────────────────
 // Update invoice fields
-router.put('/:id', (req: Request, res: Response) => {
+router.put('/:id', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -584,7 +584,7 @@ router.put('/:id', (req: Request, res: Response) => {
 
 // ─── PUT /api/invoices/:id/status ─────────────────────────
 // Status transition with validation
-router.put('/:id/status', (req: Request, res: Response) => {
+router.put('/:id/status', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -645,7 +645,7 @@ router.put('/:id/status', (req: Request, res: Response) => {
 
 // ─── POST /api/invoices/:id/line-items ────────────────────
 // Add a line item
-router.post('/:id/line-items', (req: Request, res: Response) => {
+router.post('/:id/line-items', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -683,7 +683,7 @@ router.post('/:id/line-items', (req: Request, res: Response) => {
 
 // ─── PUT /api/invoices/:id/line-items/:itemId ─────────────
 // Update a line item
-router.put('/:id/line-items/:itemId', (req: Request, res: Response) => {
+router.put('/:id/line-items/:itemId', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -720,7 +720,7 @@ router.put('/:id/line-items/:itemId', (req: Request, res: Response) => {
 });
 
 // ─── DELETE /api/invoices/:id/line-items/:itemId ──────────
-router.delete('/:id/line-items/:itemId', (req: Request, res: Response) => {
+router.delete('/:id/line-items/:itemId', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const item = db.prepare(
@@ -739,7 +739,7 @@ router.delete('/:id/line-items/:itemId', (req: Request, res: Response) => {
 
 // ─── POST /api/invoices/:id/payments ──────────────────────
 // Record a payment
-router.post('/:id/payments', (req: Request, res: Response) => {
+router.post('/:id/payments', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -787,7 +787,7 @@ router.post('/:id/payments', (req: Request, res: Response) => {
 
 // ─── DELETE /api/invoices/:id/payments/:paymentId ─────────
 // Reverse a payment
-router.delete('/:id/payments/:paymentId', (req: Request, res: Response) => {
+router.delete('/:id/payments/:paymentId', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;

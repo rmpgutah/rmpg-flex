@@ -98,11 +98,11 @@ function consumeChallenge(challenge: string): number | null {
 export async function beginRegistration(userId: number, username: string) {
   const existingCreds = getUserCredentials(userId);
 
-  const excludeCredentials: PublicKeyCredentialDescriptorJSON[] = existingCreds.map(cred => ({
-    id: cred.credential_id,
-    type: 'public-key',
-    transports: JSON.parse(cred.transports || '[]'),
-  }));
+  const excludeCredentials: PublicKeyCredentialDescriptorJSON[] = existingCreds.map(cred => {
+    let transports: AuthenticatorTransport[] = [];
+    try { transports = JSON.parse(cred.transports || '[]'); } catch { /* malformed — use empty */ }
+    return { id: cred.credential_id, type: 'public-key' as const, transports };
+  });
 
   const options = await generateRegistrationOptions({
     rpName: RP_NAME,
@@ -190,11 +190,11 @@ export async function completeRegistration(
 export async function beginAuthentication(userId: number) {
   const credentials = getUserCredentials(userId);
 
-  const allowCredentials: PublicKeyCredentialDescriptorJSON[] = credentials.map(cred => ({
-    id: cred.credential_id,
-    type: 'public-key',
-    transports: JSON.parse(cred.transports || '[]'),
-  }));
+  const allowCredentials: PublicKeyCredentialDescriptorJSON[] = credentials.map(cred => {
+    let transports: AuthenticatorTransport[] = [];
+    try { transports = JSON.parse(cred.transports || '[]'); } catch { /* malformed — use empty */ }
+    return { id: cred.credential_id, type: 'public-key' as const, transports };
+  });
 
   const options = await generateAuthenticationOptions({
     rpID: getRpId(),

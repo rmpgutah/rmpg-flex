@@ -90,7 +90,7 @@ export default function DeploymentFormModal({
             {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="field-label">Position</label>
             <select value={form.position} onChange={e => set('position', e.target.value)} className="select-dark">
@@ -112,7 +112,7 @@ export default function DeploymentFormModal({
         <div className="flex-1 h-px bg-rmpg-700" />
       </div>
       <div className="panel-inset p-3">
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <div>
             <label className="field-label">Start Date <span className="text-red-400">*</span></label>
             <input type="date" required value={form.start_date} onChange={e => set('start_date', e.target.value)} className="input-dark" />

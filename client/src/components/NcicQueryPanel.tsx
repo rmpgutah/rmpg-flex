@@ -5,7 +5,7 @@
 // ============================================================
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { X, Terminal, Loader2 } from 'lucide-react';
+import { X, Terminal, Loader2, Copy, Check } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import {
   formatPersonResponse,
@@ -33,6 +33,18 @@ import {
   type BackgroundRecord,
 } from '../utils/ncicFormatter';
 import { playTone } from '../utils/dispatchTones';
+
+// ── Quick-query buttons shown on welcome screen ──────────────
+const QUICK_QUERIES = [
+  { label: 'XREF', prefix: 'QX ', desc: 'Cross-Reference (ALL)' },
+  { label: 'PERSON', prefix: 'QH ', desc: 'Person / History' },
+  { label: 'VEHICLE', prefix: 'QV ', desc: 'Vehicle / Plate' },
+  { label: 'WARRANT', prefix: 'QW ', desc: 'Warrant Check' },
+  { label: 'DL', prefix: 'QD ', desc: "Driver's License" },
+  { label: 'BKGND', prefix: 'QB ', desc: 'Background Check' },
+  { label: 'ADDRESS', prefix: 'QA ', desc: 'Premise Lookup' },
+  { label: 'ARREST', prefix: 'QR ', desc: 'Arrest Records' },
+] as const;
 
 interface NcicQueryPanelProps {
   isOpen: boolean;

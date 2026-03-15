@@ -160,7 +160,7 @@ export const GlobalSearch: React.FC = () => {
         const searchPromises = [
           apiFetch<any[]>(`/records/persons?search=${encodeURIComponent(query)}`)
             .then((data) =>
-              data.map((item) => ({
+              (Array.isArray(data) ? data : []).map((item) => ({
                 id: item.id,
                 type: 'person' as EntityType,
                 primaryText: `${item.firstName} ${item.lastName}`,
@@ -170,7 +170,7 @@ export const GlobalSearch: React.FC = () => {
             .catch(() => []),
           apiFetch<any[]>(`/records/vehicles?search=${encodeURIComponent(query)}`)
             .then((data) =>
-              data.map((item) => ({
+              (Array.isArray(data) ? data : []).map((item) => ({
                 id: item.id,
                 type: 'vehicle' as EntityType,
                 primaryText: item.plate || 'No Plate',
@@ -180,7 +180,7 @@ export const GlobalSearch: React.FC = () => {
             .catch(() => []),
           apiFetch<any[]>(`/incidents?search=${encodeURIComponent(query)}`)
             .then((data) =>
-              data.map((item) => ({
+              (Array.isArray(data) ? data : []).map((item) => ({
                 id: item.id,
                 type: 'incident' as EntityType,
                 primaryText: item.incidentNumber || `Incident #${item.id}`,
@@ -190,7 +190,7 @@ export const GlobalSearch: React.FC = () => {
             .catch(() => []),
           apiFetch<any[]>(`/dispatch/calls?search=${encodeURIComponent(query)}`)
             .then((data) =>
-              data.map((item) => ({
+              (Array.isArray(data) ? data : []).map((item) => ({
                 id: item.id,
                 type: 'call' as EntityType,
                 primaryText: item.callNumber || `Call #${item.id}`,
@@ -200,7 +200,7 @@ export const GlobalSearch: React.FC = () => {
             .catch(() => []),
           apiFetch<any[]>(`/comms/bolos?search=${encodeURIComponent(query)}`)
             .then((data) =>
-              data.map((item) => ({
+              (Array.isArray(data) ? data : []).map((item) => ({
                 id: item.id,
                 type: 'bolo' as EntityType,
                 primaryText: item.subject || 'BOLO',
@@ -358,7 +358,7 @@ export const GlobalSearch: React.FC = () => {
             className="flex-1 bg-transparent text-sm text-white placeholder-gray-500 outline-none"
           />
           <div className="flex items-center gap-2 text-xs text-rmpg-400">
-            <kbd className="px-2 py-1 bg-gray-700 border border-rmpg-600">
+            <kbd className="px-2 py-1 bg-rmpg-700 border border-rmpg-600">
               <Command className="w-3 h-3 inline" />
               K
             </kbd>
@@ -440,7 +440,7 @@ const ResultItem: React.FC<ResultItemProps> = ({ result, isSelected, onClick }) 
     <button
       className={`
         w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors
-        ${isSelected ? 'bg-gray-700' : 'hover:bg-rmpg-800'}
+        ${isSelected ? 'bg-rmpg-700' : 'hover:bg-rmpg-800'}
       `}
       onClick={onClick}
     >
@@ -449,7 +449,7 @@ const ResultItem: React.FC<ResultItemProps> = ({ result, isSelected, onClick }) 
         <p className="text-sm text-white truncate">{result.primaryText}</p>
         <p className="text-xs text-rmpg-300 truncate">{result.secondaryText}</p>
       </div>
-      <span className="px-2 py-0.5 bg-gray-700 text-rmpg-200 text-xs border border-rmpg-600 flex-shrink-0">
+      <span className="px-2 py-0.5 bg-rmpg-700 text-rmpg-200 text-xs border border-rmpg-600 flex-shrink-0">
         {config.label}
       </span>
       <ArrowRight className="w-4 h-4 text-rmpg-400 flex-shrink-0" />

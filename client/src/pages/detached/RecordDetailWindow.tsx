@@ -68,7 +68,7 @@ export default function RecordDetailWindow() {
         {/* Person Details */}
         <div className="bg-surface-base border border-rmpg-600 p-6 mb-6">
           <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-4 border-b border-rmpg-700 pb-2">Personal Information</h3>
-          <div className="grid grid-cols-4 gap-4 text-sm">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
             <div>
               <label className="text-[10px] text-rmpg-500 block">Last Name</label>
               <p className="text-white font-medium">{record.last_name}</p>
@@ -104,7 +104,7 @@ export default function RecordDetailWindow() {
           </div>
 
           {/* Physical Description */}
-          <div className="grid grid-cols-4 gap-4 text-sm mt-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm mt-4">
             <div>
               <label className="text-[10px] text-rmpg-500 block">Hair Color</label>
               <p className="text-rmpg-200">{record.hair_color || 'N/A'}</p>
@@ -197,7 +197,7 @@ export default function RecordDetailWindow() {
     >
       <div className="bg-surface-base border border-rmpg-600 p-6 mb-6">
         <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-4 border-b border-rmpg-700 pb-2">Vehicle Information</h3>
-        <div className="grid grid-cols-4 gap-4 text-sm">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
           <div>
             <label className="text-[10px] text-rmpg-500 block">Plate Number</label>
             <p className="text-white font-mono font-bold">{record.plate_number || 'N/A'}</p>
@@ -236,7 +236,7 @@ export default function RecordDetailWindow() {
         {(record.owner_first_name || record.owner_last_name) && (
           <div className="mt-4 pt-4 border-t border-rmpg-700">
             <h4 className="text-[10px] text-rmpg-500 uppercase font-bold mb-2">Registered Owner</h4>
-            <div className="grid grid-cols-3 gap-4 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
               <div>
                 <label className="text-[10px] text-rmpg-500 block">Name</label>
                 <p className="text-rmpg-200">{record.owner_first_name} {record.owner_last_name}</p>

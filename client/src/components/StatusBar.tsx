@@ -5,6 +5,10 @@
 
 import React, { useState, useEffect } from 'react';
 import RmpgLogo from './RmpgLogo';
+import BatteryIndicator from './BatteryIndicator';
+
+const APP_VERSION: string =
+  typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0';
 
 const APP_VERSION: string =
   typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0';
@@ -77,7 +81,7 @@ export default function StatusBar({
               GPS: {gpsUnitCallSign || 'ON'}
             </span>
             {gpsAccuracy != null && (
-              <span style={{ color: '#707070', marginLeft: 4 }}>
+              <span style={{ color: '#5a6e80', marginLeft: 4 }}>
                 ±{Math.round(gpsAccuracy)}m
               </span>
             )}
@@ -99,12 +103,15 @@ export default function StatusBar({
         </span>
       </div>
 
+      {/* Battery */}
+      <BatteryIndicator />
+
       {/* Timestamp (right-aligned) */}
       <div className="status-bar-section">
         <span style={{ color: '#22c55e' }}>
           {now.toLocaleTimeString('en-US', { hour12: false })}
         </span>
-        <span style={{ color: '#707070', marginLeft: 8 }}>
+        <span style={{ color: '#5a6e80', marginLeft: 8 }}>
           {now.toLocaleDateString('en-US', {
             weekday: 'short',
             month: 'short',

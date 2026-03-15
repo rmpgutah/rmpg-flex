@@ -147,6 +147,7 @@ export interface VehiclesTabState {
   vehicleModalOpen: boolean;
   editingVehicle: Vehicle | undefined;
   vehicleSubmitting: boolean;
+  vehicleSubmitError: string | null;
   openNewVehicle: () => void;
   openEditVehicle: (v: Vehicle) => void;
   handleVehicleSubmit: (data: VehicleFormData) => Promise<void>;
@@ -180,6 +181,7 @@ export function useVehiclesTab(props: VehiclesTabProps): VehiclesTabState {
   const [vehicleModalOpen, setVehicleModalOpen] = useState(false);
   const [editingVehicle, setEditingVehicle] = useState<Vehicle | undefined>(undefined);
   const [vehicleSubmitting, setVehicleSubmitting] = useState(false);
+  const [vehicleSubmitError, setVehicleSubmitError] = useState<string | null>(null);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [vehicleAlerts, setVehicleAlerts] = useState<RecordAlert[]>([]);
   const [vehicleIncidents, setVehicleIncidents] = useState<any[]>([]);
@@ -228,6 +230,7 @@ export function useVehiclesTab(props: VehiclesTabProps): VehiclesTabState {
 
   const handleVehicleSubmit = async (data: VehicleFormData) => {
     setVehicleSubmitting(true);
+    setVehicleSubmitError(null);
     try {
       const payload = { ...data, year: data.year ? parseInt(data.year, 10) : null };
       if (editingVehicle) {
@@ -239,15 +242,17 @@ export function useVehiclesTab(props: VehiclesTabProps): VehiclesTabState {
       setEditingVehicle(undefined);
       await fetchVehicles();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save vehicle');
+      const msg = err instanceof Error ? err.message : 'Failed to save vehicle';
+      setVehicleSubmitError(msg);
+      setError(msg);
     } finally {
       setVehicleSubmitting(false);
     }
   };
 
-  const openEditVehicle = (v: Vehicle) => { setEditingVehicle(v); setVehicleModalOpen(true); };
-  const openNewVehicle = () => { setEditingVehicle(undefined); setVehicleModalOpen(true); };
-  const closeModal = () => { setVehicleModalOpen(false); setEditingVehicle(undefined); };
+  const openEditVehicle = (v: Vehicle) => { setEditingVehicle(v); setVehicleSubmitError(null); setVehicleModalOpen(true); };
+  const openNewVehicle = () => { setEditingVehicle(undefined); setVehicleSubmitError(null); setVehicleModalOpen(true); };
+  const closeModal = () => { setVehicleModalOpen(false); setEditingVehicle(undefined); setVehicleSubmitError(null); };
 
   const handleArchive = async (type: 'persons' | 'vehicles' | 'properties' | 'evidence', id: string) => {
     setSelectedVehicle(null);
@@ -273,7 +278,7 @@ export function useVehiclesTab(props: VehiclesTabProps): VehiclesTabState {
 
   return {
     selectedVehicle, setSelectedVehicle,
-    vehicleModalOpen, editingVehicle, vehicleSubmitting,
+    vehicleModalOpen, editingVehicle, vehicleSubmitting, vehicleSubmitError,
     openNewVehicle, openEditVehicle, handleVehicleSubmit, closeModal,
     vehicleAlerts, vehicleIncidents, loadingVehicleIncidents,
     filteredVehicles, handleArchive, handleUnarchive,
@@ -291,7 +296,7 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
     filteredVehicles, selectedVehicle, setSelectedVehicle,
     searchQuery, setSearchQuery, showArchived,
     openEditVehicle, setDeleteTarget, handleArchive, handleUnarchive,
-    vehicleModalOpen, editingVehicle, vehicleSubmitting, handleVehicleSubmit, closeModal,
+    vehicleModalOpen, editingVehicle, vehicleSubmitting, vehicleSubmitError, handleVehicleSubmit, closeModal,
   } = state;
 
   return (
@@ -414,6 +419,7 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
         onSubmit={handleVehicleSubmit}
         isSubmitting={vehicleSubmitting}
         editingVehicle={editingVehicle}
+        submitError={vehicleSubmitError}
       />
     </div>
   );
@@ -460,7 +466,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
 
         {/* ── Vehicle Details ─────────────────────── */}
         <CollapsibleSection title="Vehicle Details" icon={Car} defaultOpen>
-          <div className="grid grid-cols-3 gap-2 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
             {renderInfoRow('Plate', selectedVehicle.license_plate)}
             {renderInfoRow('State', selectedVehicle.plate_state)}
             {renderInfoRow('Plate Type', selectedVehicle.plate_type)}
@@ -487,7 +493,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
         {/* ── Mechanical (conditional) ─────────── */}
         {(selectedVehicle.engine_type || selectedVehicle.fuel_type || selectedVehicle.transmission || selectedVehicle.drive_type || selectedVehicle.odometer) && (
           <CollapsibleSection title="Mechanical" icon={Hash} defaultOpen={false}>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {renderInfoRow('Engine', selectedVehicle.engine_type)}
               {renderInfoRow('Fuel', selectedVehicle.fuel_type)}
               {renderInfoRow('Transmission', selectedVehicle.transmission)}
@@ -499,7 +505,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
 
         {/* ── Registration & Insurance ────────── */}
         <CollapsibleSection title="Registration & Insurance" icon={Shield} defaultOpen>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {renderInfoRow('Reg. Expiry', selectedVehicle.registration_expiry, Calendar)}
             {renderInfoRow('Insurance', selectedVehicle.insurance_company)}
             {renderInfoRow('Policy #', selectedVehicle.insurance_policy, Hash)}
@@ -512,7 +518,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
         {/* ── Stolen / Tow Status (conditional) ── */}
         {(selectedVehicle.stolen_status || selectedVehicle.tow_status) && (
           <CollapsibleSection title="Stolen / Tow Status" icon={AlertTriangle}>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {renderInfoRow('Stolen Status', selectedVehicle.stolen_status)}
               {renderInfoRow('Stolen Date', selectedVehicle.stolen_date, Calendar)}
               {renderInfoRow('Recovery Date', selectedVehicle.recovery_date, Calendar)}

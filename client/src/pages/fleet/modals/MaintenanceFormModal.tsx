@@ -46,12 +46,12 @@ export default function MaintenanceFormModal({ isOpen, mode = 'create', form, on
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} style={{ background: 'rgba(0,0,0,0.6)' }}>
-      <div className="panel-beveled w-[480px] max-h-[80vh] flex flex-col" style={{ background: '#1e1e1e' }}>
+      <div className="panel-beveled w-[480px] max-h-[80vh] flex flex-col" style={{ background: '#1a2636' }}>
         <PanelTitleBar title={mode === 'edit' ? 'EDIT MAINTENANCE' : 'LOG MAINTENANCE'} icon={Wrench} id={titleId}>
           <button className="toolbar-btn text-[9px]" onClick={onClose}>X</button>
         </PanelTitleBar>
         <div className="flex-1 overflow-y-auto p-4">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-[9px] text-gray-500 uppercase font-semibold block mb-0.5">Type</label>
               <select className="select-dark w-full text-[11px]" value={form.type}

@@ -220,7 +220,7 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
       {showAdd && (
         <div className="panel-surface border border-rmpg-600 p-4 space-y-3">
           <h3 className="text-xs font-bold text-rmpg-200 uppercase tracking-wider">New Radio Channel</h3>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-[10px] text-rmpg-400 mb-1 uppercase">Channel ID</label>
               <input

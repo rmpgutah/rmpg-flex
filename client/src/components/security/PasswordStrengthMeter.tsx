@@ -19,7 +19,7 @@ const requirements: Requirement[] = [
 ];
 
 function getStrength(password: string): { score: number; label: string; color: string } {
-  if (!password) return { score: 0, label: '', color: '#383838' };
+  if (!password) return { score: 0, label: '', color: '#2a3e58' };
 
   let score = 0;
   if (password.length >= 8) score++;
@@ -28,11 +28,11 @@ function getStrength(password: string): { score: number; label: string; color: s
   if (/\d/.test(password)) score++;
   if (/[^A-Za-z0-9]/.test(password)) score++;
 
-  if (score <= 1) return { score, label: 'WEAK', color: '#bc1010' };
+  if (score <= 1) return { score, label: 'WEAK', color: '#dc2626' };
   if (score === 2) return { score, label: 'FAIR', color: '#d4a017' };
   if (score === 3) return { score, label: 'GOOD', color: '#4a90c4' };
   if (score >= 4) return { score, label: 'STRONG', color: '#22c55e' };
-  return { score: 0, label: '', color: '#383838' };
+  return { score: 0, label: '', color: '#2a3e58' };
 }
 
 export default function PasswordStrengthMeter({ password, showRequirements = true }: Props) {
@@ -51,7 +51,7 @@ export default function PasswordStrengthMeter({ password, showRequirements = tru
               key={i}
               className="flex-1 transition-colors duration-300"
               style={{
-                background: i <= strength.score ? strength.color : '#2a2a2a',
+                background: i <= strength.score ? strength.color : '#1e3048',
               }}
             />
           ))}

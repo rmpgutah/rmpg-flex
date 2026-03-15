@@ -152,27 +152,18 @@ export const VIDEO_CLASSIFICATION_COLORS: Record<string, string> = {
 
 export const DASHCAM_EVENT_COLORS: Record<string, string> = {
   hard_brake: 'bg-red-900/50 text-red-400 border border-red-700/50',
-  hard_accel: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
-  hard_turn: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
-  hard_cornering: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
-  speeding: 'bg-red-900/50 text-red-400 border border-red-700/50',
+  speeding: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
   impact: 'bg-red-900/60 text-red-300 border border-red-600/50',
-  tamper: 'bg-purple-900/50 text-purple-400 border border-purple-700/50',
-  panic: 'bg-red-900/60 text-red-300 border border-red-600/50',
-  sos: 'bg-red-900/60 text-red-300 border border-red-600/50',
-  video_start: 'bg-green-900/50 text-green-400 border border-green-700/50',
-  video_stop: 'bg-rmpg-700 text-rmpg-300 border border-rmpg-600',
-  video_alarm: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
-  video_lost: 'bg-red-900/50 text-red-400 border border-red-700/50',
-  camera_motion: 'bg-blue-900/50 text-blue-400 border border-blue-700/50',
+  hard_accel: 'bg-orange-900/50 text-orange-400 border border-orange-700/50',
+  hard_turn: 'bg-purple-900/50 text-purple-400 border border-purple-700/50',
   camera_triggered: 'bg-blue-900/50 text-blue-400 border border-blue-700/50',
-  camera_event: 'bg-blue-900/50 text-blue-400 border border-blue-700/50',
+  video_recorded: 'bg-indigo-900/50 text-indigo-400 border border-indigo-700/50',
 };
 
 export const CHART_TOOLTIP_STYLE = {
   contentStyle: {
-    backgroundColor: '#1a1a1a',
-    border: '1px solid #383838',
+    backgroundColor: '#141e2b',
+    border: '1px solid #2a3e58',
     color: '#e0e0e0',
     fontSize: 10,
     fontFamily: 'Consolas, monospace',

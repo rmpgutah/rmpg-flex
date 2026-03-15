@@ -12,6 +12,7 @@ import { Printer, Eye, PenLine } from 'lucide-react';
 import { downloadRecordPdf, generateRecordPdfBlobUrl, type RecordPdfType } from '../utils/recordPdfGenerator';
 import { fetchEntityImages, fetchImageFromUrl } from '../utils/pdfImageHelpers';
 import { apiFetch } from '../hooks/useApi';
+import { useAuth } from '../context/AuthContext';
 import DocumentViewer from './DocumentViewer';
 import SignaturePad from './SignaturePad';
 
@@ -47,12 +48,23 @@ export default function PrintRecordButton({
   entityType,
   entityId,
 }: PrintRecordButtonProps) {
+  const { user } = useAuth();
   const [viewerOpen, setViewerOpen] = useState(false);
   const [pdfBlobUrl, setPdfBlobUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [signModalOpen, setSignModalOpen] = useState(false);
   const [savedSignature, setSavedSignature] = useState<string | null>(null);
   const [signatureChecked, setSignatureChecked] = useState(false);
+
+  // Escape key to close sign modal
+  useEffect(() => {
+    if (!signModalOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSignModalOpen(false);
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [signModalOpen]);
 
   // Clean up blob URL on unmount
   useEffect(() => {
@@ -112,6 +124,16 @@ export default function PrintRecordButton({
       } catch (err) {
         console.warn('[PrintRecordButton] System history fetch failed, proceeding without history:', err);
       }
+
+      // Also fetch criminal history records (arrests, convictions, charges, bookings, etc.)
+      try {
+        const criminal = await apiFetch<any[]>(`/records/persons/${data.id}/criminal-history`);
+        if (criminal && criminal.length > 0) {
+          enriched.criminal_records = criminal;
+        }
+      } catch (err) {
+        console.warn('[PrintRecordButton] Criminal history fetch failed, proceeding without:', err);
+      }
     }
 
     // For call records, fetch GPS breadcrumb trail
@@ -143,8 +165,14 @@ export default function PrintRecordButton({
       }
     }
 
+    // Auto-fill reporting officer info from logged-in user
+    if (user) {
+      enriched.officer_name = enriched.officer_name || user.full_name || `${user.last_name}, ${user.first_name}`;
+      enriched.badge_number = enriched.badge_number || user.badge_number || '';
+    }
+
     return enriched;
-  }, [entityType, entityId, recordType]);
+  }, [entityType, entityId, recordType, user]);
 
   const handlePrint = useCallback(async () => {
     if (!recordData) return;

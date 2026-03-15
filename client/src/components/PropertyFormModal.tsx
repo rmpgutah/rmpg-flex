@@ -12,6 +12,7 @@ interface PropertyFormModalProps {
   isSubmitting: boolean;
   editingProperty?: Property;
   clients?: { id: string; name: string; status: string }[];
+  submitError?: string | null;
 }
 
 export interface PropertyFormData {
@@ -72,6 +73,7 @@ export default function PropertyFormModal({
   isSubmitting,
   editingProperty,
   clients = [],
+  submitError,
 }: PropertyFormModalProps) {
   const [form, setForm] = useState<PropertyFormData>(EMPTY_FORM);
   const { isDirty, snapshot } = useFormDirty(form, isOpen);
@@ -133,6 +135,13 @@ export default function PropertyFormModal({
       maxWidth="max-w-3xl"
       isDirty={isDirty}
     >
+      {/* Submit Error */}
+      {submitError && (
+        <div className="px-3 py-2 -mt-2 mb-2 bg-red-900/30 border border-red-700 text-red-400 text-xs">
+          {submitError}
+        </div>
+      )}
+
       {/* Row 1: Name */}
       <div>
         <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
@@ -176,7 +185,7 @@ export default function PropertyFormModal({
       </div>
 
       {/* Row 3: City, State, Zip */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
         <div>
           <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">City</label>
           <input
@@ -206,7 +215,7 @@ export default function PropertyFormModal({
       </div>
 
       {/* Row 4: Client, Property Type */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Client</label>
           <select name="client_id" className="select-dark w-full text-xs" value={form.client_id} onChange={handleChange}>
@@ -226,7 +235,7 @@ export default function PropertyFormModal({
       </div>
 
       {/* Row 5: Gate Code, Alarm Code, Emergency Contact */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
         <div>
           <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Gate Code</label>
           <input
@@ -263,7 +272,7 @@ export default function PropertyFormModal({
       </div>
 
       {/* Row 6: Latitude, Longitude */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Latitude</label>
           <input

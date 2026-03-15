@@ -123,7 +123,7 @@ export default function EquipmentFormModal({
             {officers.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
           </select>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="field-label">Equipment Type <span className="text-red-400">*</span></label>
             <select required value={form.equipment_type} onChange={e => set('equipment_type', e.target.value)} className="select-dark">
@@ -145,7 +145,7 @@ export default function EquipmentFormModal({
         <div className="flex-1 h-px bg-rmpg-700" />
       </div>
       <div className="panel-inset p-3 space-y-3">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="field-label">Make</label>
             <input type="text" value={form.make} onChange={e => set('make', e.target.value)} placeholder="e.g. Motorola" className="input-dark" />
@@ -155,7 +155,7 @@ export default function EquipmentFormModal({
             <input type="text" value={form.model} onChange={e => set('model', e.target.value)} placeholder="e.g. APX 8000" className="input-dark" />
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="field-label">Serial Number</label>
             <input type="text" value={form.serial_number} onChange={e => set('serial_number', e.target.value)} placeholder="Serial #" className="input-dark" />
@@ -173,7 +173,7 @@ export default function EquipmentFormModal({
         <div className="flex-1 h-px bg-rmpg-700" />
       </div>
       <div className="panel-inset p-3 space-y-3">
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <div>
             <label className="field-label">Condition</label>
             <select value={form.condition} onChange={e => set('condition', e.target.value)} className="select-dark">

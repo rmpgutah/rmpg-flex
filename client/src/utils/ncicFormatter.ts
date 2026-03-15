@@ -486,7 +486,7 @@ export interface NcicOfacSubject {
 
 export interface AddressLookupResults {
   persons: (NcicPerson & { active_warrants?: number })[];
-  calls: { call_number?: string; incident_type?: string; priority?: string; disposition?: string; created_at?: string; weapons_involved?: boolean | number; domestic_violence?: boolean | number }[];
+  calls: { call_number?: string; incident_type?: string; priority?: string; disposition?: string; created_at?: string; weapons_involved?: string | boolean | number; domestic_violence?: boolean | number }[];
   properties: { name?: string; address?: string; gate_code?: string; alarm_code?: string; post_orders?: string; hazard_notes?: string }[];
   trespassOrders: { order_number?: string; status?: string; subject_name?: string; expiration_date?: string }[];
 }
@@ -556,7 +556,7 @@ export function formatAddressResponse(results: AddressLookupResults, searchTerm:
     lines.push(`  ═══ CALL HISTORY — ${results.calls.length} PRIOR CALL(S) ═══`);
     for (const c of results.calls.slice(0, 5)) {
       const flags: string[] = [];
-      if (c.weapons_involved) flags.push('ARMED');
+      if (c.weapons_involved && c.weapons_involved !== 'None') flags.push('ARMED');
       if (c.domestic_violence) flags.push('DV');
       const flagStr = flags.length > 0 ? `  [${flags.join(',')}]` : '';
       lines.push(`  ${ncicDate(c.created_at)} ${pad(c.call_number, 12)} ${pad(c.incident_type, 20)} ${pad(c.disposition, 10)}${flagStr}`);
@@ -564,7 +564,7 @@ export function formatAddressResponse(results: AddressLookupResults, searchTerm:
     if (results.calls.length > 5) lines.push(`  ... +${results.calls.length - 5} MORE`);
 
     // Summary warnings from call history
-    const armedCalls = results.calls.filter(c => c.weapons_involved).length;
+    const armedCalls = results.calls.filter(c => c.weapons_involved && c.weapons_involved !== 'None').length;
     const dvCalls = results.calls.filter(c => c.domestic_violence).length;
     if (armedCalls > 0 || dvCalls > 0) {
       hasWarnings = true;

@@ -21,6 +21,8 @@ import crypto from 'crypto';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
+import { auditLog } from '../utils/auditLogger';
+import { broadcastAdminUpdate } from '../utils/websocket';
 import config from '../config';
 
 const router = Router();
@@ -46,7 +48,9 @@ function encrypt(plaintext: string): string {
 
 function decrypt(stored: string): string {
   const key = deriveKey();
-  const [ivHex, authTagHex, ciphertext] = stored.split(':');
+  const parts = stored.split(':');
+  if (parts.length < 3) throw new Error('Malformed encrypted value');
+  const [ivHex, authTagHex, ciphertext] = parts;
   const iv = Buffer.from(ivHex, 'hex');
   const authTag = Buffer.from(authTagHex, 'hex');
   const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
@@ -217,6 +221,9 @@ router.put('/config', requireRole('admin'), (req: Request, res: Response) => {
     // Always production for RapidAPI
     setConfigValue(CONFIG_KEYS.environment, 'production');
 
+    auditLog(req, 'skiptracer_config_updated', 'integration', 0, 'Skip Tracer configuration updated');
+    broadcastAdminUpdate({ type: 'skiptracer_config_updated' });
+
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -224,9 +231,13 @@ router.put('/config', requireRole('admin'), (req: Request, res: Response) => {
 });
 
 // ── Delete config (admin only) ──────────────────────────────
-router.delete('/config', requireRole('admin'), (_req: Request, res: Response) => {
+router.delete('/config', requireRole('admin'), (req: Request, res: Response) => {
   try {
     Object.values(CONFIG_KEYS).forEach(deleteConfigValue);
+
+    auditLog(req, 'skiptracer_config_cleared', 'integration', 0, 'Skip Tracer configuration cleared');
+    broadcastAdminUpdate({ type: 'skiptracer_config_cleared' });
+
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -281,6 +292,7 @@ router.get('/search/byname', async (req: Request, res: Response) => {
 
     const data = await rapidApiFetch('/search/byname', params);
     persistSearch('byname', params, data, req.user!.userId);
+    auditLog(req, 'skiptracer_search', 'skiptracer', 0, `Skip trace by name: ${name}`);
     res.json(data);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -298,6 +310,7 @@ router.get('/search/byaddress', async (req: Request, res: Response) => {
 
     const data = await rapidApiFetch('/search/byaddress', params);
     persistSearch('byaddress', params, data, req.user!.userId);
+    auditLog(req, 'skiptracer_search', 'skiptracer', 0, `Skip trace by address: ${address}`);
     res.json(data);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -315,6 +328,7 @@ router.get('/search/bynameaddress', async (req: Request, res: Response) => {
 
     const data = await rapidApiFetch('/search/bynameaddress', params);
     persistSearch('bynameaddress', params, data, req.user!.userId);
+    auditLog(req, 'skiptracer_search', 'skiptracer', 0, `Skip trace by name+address: ${name}`);
     res.json(data);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -332,6 +346,7 @@ router.get('/search/byphone', async (req: Request, res: Response) => {
 
     const data = await rapidApiFetch('/search/byphone', params);
     persistSearch('byphone', params, data, req.user!.userId);
+    auditLog(req, 'skiptracer_search', 'skiptracer', 0, `Skip trace by phone: ${phone}`);
     res.json(data);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -349,6 +364,7 @@ router.get('/search/byemail', async (req: Request, res: Response) => {
 
     const data = await rapidApiFetch('/search/byemail', params);
     persistSearch('byemail', params, data, req.user!.userId);
+    auditLog(req, 'skiptracer_search', 'skiptracer', 0, `Skip trace by email: ${email}`);
     res.json(data);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -358,11 +374,11 @@ router.get('/search/byemail', async (req: Request, res: Response) => {
 // ── Person Details by ID (email, phone) ─────────────────────
 router.get('/person/:id', async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
     if (!id) return res.status(400).json({ error: 'id parameter required' });
 
-    const data = await rapidApiFetch('/search/detailsbyID', { id: id as string });
-    persistSearch('personDetailsByID', { id: id as string }, data, req.user!.userId);
+    const data = await rapidApiFetch('/search/detailsbyID', { id });
+    persistSearch('personDetailsByID', { id }, data, req.user!.userId);
     res.json(data);
   } catch (err: any) {
     res.status(500).json({ error: err.message });

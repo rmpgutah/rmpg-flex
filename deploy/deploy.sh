@@ -72,6 +72,27 @@ if ! ssh -o ConnectTimeout=5 -o BatchMode=yes "$VPS_USER@$VPS_IP" "echo ok" >/de
 fi
 echo "    SSH connection OK"
 
+# ─── Pre-deploy Quality Gates ────────────────────────────
+if [ "$UPLOAD_CODE" = true ]; then
+  echo ""
+  echo ">>> Running pre-deploy quality gates..."
+
+  echo "    [1/3] Client typecheck..."
+  (cd "$PROJECT_DIR/client" && npx tsc --noEmit) || { echo "FAILED: Client typecheck errors — fix before deploying"; exit 1; }
+  echo "          ✓ Client types OK"
+
+  echo "    [2/3] Server tests..."
+  (cd "$PROJECT_DIR/server" && npm test --silent) || { echo "FAILED: Server tests — fix before deploying"; exit 1; }
+  echo "          ✓ Server tests pass"
+
+  echo "    [3/3] Client tests..."
+  (cd "$PROJECT_DIR/client" && npm test --silent) || { echo "FAILED: Client tests — fix before deploying"; exit 1; }
+  echo "          ✓ Client tests pass"
+
+  echo ""
+  echo "    All quality gates passed ✓"
+fi
+
 # ─── Full VPS Setup (first time) ─────────────────────────
 if [ "$FULL_SETUP" = true ]; then
   echo ""
@@ -173,10 +194,10 @@ if [ "$UPLOAD_CODE" = true ]; then
   rsync -avz --progress \
     --exclude='node_modules' \
     --exclude='.git' \
-    --exclude='server/data/*.db' \
-    --exclude='server/data/*.db-wal' \
-    --exclude='server/data/*.db-shm' \
+    --exclude='server/data' \
+    --exclude='server/certs' \
     --exclude='server/.env' \
+    --exclude='server/uploads' \
     --exclude='desktop' \
     --exclude='.DS_Store' \
     --exclude='.claude' \
@@ -210,10 +231,46 @@ ssh "$VPS_USER@$VPS_IP" bash << 'REMOTEEOF'
     HAS_SSL=true
   fi
 
+  # ── Detect nginx reverse proxy ──
+  HAS_NGINX=false
+  if systemctl is-active --quiet nginx 2>/dev/null && \
+     (nginx -T 2>/dev/null | grep -q "proxy_pass.*127.0.0.1:3001" || \
+      nginx -T 2>/dev/null | grep -q "proxy_pass.*localhost:3001"); then
+    HAS_NGINX=true
+  fi
+
   # ── Create/update systemd service ──
   # Flex runs behind nginx on port 3001 (nginx handles SSL on 80/443)
   echo ">>> Configuring systemd service..."
-  cat > /etc/systemd/system/rmpg-flex.service << 'SVCEOF'
+  if [ "$HAS_NGINX" = true ]; then
+    # Nginx proxy mode: nginx handles SSL on 443, Node listens on 3001
+    cat > /etc/systemd/system/rmpg-flex.service << 'SVCEOF'
+[Unit]
+Description=RMPG Flex CAD/RMS Server
+After=network.target nginx.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/rmpg-flex
+Environment=NODE_ENV=production
+Environment=PORT=3001
+Environment=DISABLE_SSL=true
+ExecStart=/usr/bin/npx tsx server/src/index.ts
+Restart=always
+RestartSec=1
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=rmpg-flex
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+    echo "    Service configured for nginx proxy mode (port 3001, SSL disabled)"
+  elif [ "$HAS_SSL" = true ]; then
+    # SSL mode: listen on 443, redirect HTTP 80→HTTPS
+    cat > /etc/systemd/system/rmpg-flex.service << 'SVCEOF'
 [Unit]
 Description=RMPG Flex CAD/RMS Server
 After=network.target nginx.service
@@ -227,7 +284,7 @@ Environment=NODE_ENV=production
 Environment=PORT=3001
 ExecStart=/usr/bin/npx tsx server/src/index.ts
 Restart=always
-RestartSec=5
+RestartSec=1
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=rmpg-flex
@@ -235,7 +292,36 @@ SyslogIdentifier=rmpg-flex
 [Install]
 WantedBy=multi-user.target
 SVCEOF
-    echo "    Service configured: port 3001 behind nginx"
+    echo "    Service configured for HTTPS (port 443 + HTTP redirect on 80)"
+  else
+    # No SSL: listen on port 80
+    cat > /etc/systemd/system/rmpg-flex.service << 'SVCEOF'
+[Unit]
+Description=RMPG Flex CAD/RMS Server
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/rmpg-flex
+Environment=NODE_ENV=production
+Environment=PORT=80
+ExecStart=/usr/bin/npx tsx server/src/index.ts
+Restart=always
+RestartSec=1
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=rmpg-flex
+
+# Allow binding to privileged ports (80, 443)
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+    echo "    Service configured for HTTP (port 80)"
+  fi
   systemctl daemon-reload
   systemctl enable rmpg-flex
 

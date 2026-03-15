@@ -36,7 +36,10 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import StatuteLookup, { type StatuteResult } from '../components/StatuteLookup';
 import PrintRecordButton from '../components/PrintRecordButton';
 import type { CitationPdfData } from '../utils/recordPdfGenerator';
-import { localToday } from '../utils/dateUtils';
+import { localToday, formatDate } from '../utils/dateUtils';
+import { useFormValidation } from '../hooks/useFormValidation';
+import { isValidDate, isValidPlate, isValidState } from '../utils/validate';
+import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -73,6 +76,10 @@ interface Citation {
   court_name: string | null;
   court_address: string | null;
   notes: string | null;
+  section_id: string | null;
+  zone_id: string | null;
+  beat_id: string | null;
+  zone_beat: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -111,6 +118,10 @@ interface CitationForm {
   court_name: string;
   court_address: string;
   notes: string;
+  section_id: string;
+  zone_id: string;
+  beat_id: string;
+  zone_beat: string;
 }
 
 // ── Constants ──────────────────────────────────────────────
@@ -135,9 +146,9 @@ const STATUS_BADGE: Record<string, string> = {
   issued: 'bg-blue-900/50 text-blue-300 border-blue-700/50',
   paid: 'bg-green-900/50 text-green-300 border-green-700/50',
   contested: 'bg-amber-900/50 text-amber-300 border-amber-700/50',
-  dismissed: 'bg-gray-700/50 text-rmpg-300 border-rmpg-600/50',
+  dismissed: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
   warrant_issued: 'bg-red-900/60 text-red-300 border-red-700/50',
-  voided: 'bg-gray-800/50 text-rmpg-500 border-rmpg-700/50',
+  voided: 'bg-rmpg-800/50 text-rmpg-500 border-rmpg-700/50',
 };
 
 const TYPE_BADGE: Record<string, string> = {
@@ -178,16 +189,13 @@ const EMPTY_FORM: CitationForm = {
   court_name: '',
   court_address: '',
   notes: '',
+  section_id: '',
+  zone_id: '',
+  beat_id: '',
+  zone_beat: '',
 };
 
-function formatDate(d: string | null | undefined): string {
-  if (!d) return '--';
-  try {
-    return new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-  } catch {
-    return d;
-  }
-}
+// formatDate imported from ../utils/dateUtils
 
 function formatCurrency(n: number | null | undefined): string {
   if (n == null) return '--';
@@ -199,6 +207,8 @@ function formatCurrency(n: number | null | undefined): string {
 export default function CitationsPage() {
   const { user } = useAuth();
   const isMobile = useIsMobile();
+  const { sections: sectionOptions, zones: zoneOptions, beats: beatOptions } = useDistrictOptions();
+  const { identify: identifyDistrict } = useDistrictIdentify();
 
   // List state
   const [citations, setCitations] = useState<Citation[]>([]);
@@ -221,7 +231,7 @@ export default function CitationsPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const { errors: formErrors, validate: runValidation, clearAllErrors: clearFormErrors } = useFormValidation();
 
   // Person search state
   const [personSearch, setPersonSearch] = useState('');
@@ -244,8 +254,8 @@ export default function CitationsPage() {
       if (searchQuery.trim()) params.set('q', searchQuery.trim());
 
       const res = await apiFetch<{ data: Citation[]; pagination: any }>(`/citations?${params}`);
-      setCitations(res.data);
-      setTotalPages(res.pagination.totalPages || 1);
+      setCitations(res.data || []);
+      setTotalPages(res.pagination?.totalPages || 1);
     } catch (err: any) {
       if (!options?.silent) setError(err.message || 'Failed to load citations');
     } finally {
@@ -349,8 +359,16 @@ export default function CitationsPage() {
   // ── Form helpers ─────────────────────────────────────────
 
   const updateField = (key: keyof CitationForm, value: any) => {
-    setForm(prev => ({ ...prev, [key]: value }));
-    if (formErrors[key]) setFormErrors(prev => { const n = { ...prev }; delete n[key]; return n; });
+    setForm(prev => {
+      const next = { ...prev, [key]: value };
+      // Auto-compute zone_beat when zone or beat changes
+      if (key === 'zone_id' || key === 'beat_id') {
+        const z = key === 'zone_id' ? value : prev.zone_id;
+        const b = key === 'beat_id' ? value : prev.beat_id;
+        next.zone_beat = (z && b) ? `${z}-${b}` : '';
+      }
+      return next;
+    });
   };
 
   const handleNewCitation = () => {
@@ -364,7 +382,7 @@ export default function CitationsPage() {
     setPersonSearch('');
     setSaveError('');
     setSaveSuccess(false);
-    setFormErrors({});
+    clearFormErrors();
     setMode('create');
     setSelectedCitation(null);
   };
@@ -395,32 +413,34 @@ export default function CitationsPage() {
       court_name: c.court_name || '',
       court_address: c.court_address || '',
       notes: c.notes || '',
+      section_id: c.section_id || '',
+      zone_id: c.zone_id || '',
+      beat_id: c.beat_id || '',
+      zone_beat: c.zone_beat || '',
     });
     setPersonSearch(c.person_name || '');
     setSaveError('');
     setSaveSuccess(false);
-    setFormErrors({});
+    clearFormErrors();
     setMode('edit');
   };
 
   const handleCancelForm = () => {
     setMode('list');
-    setFormErrors({});
+    clearFormErrors();
     setSaveError('');
     setSaveSuccess(false);
   };
 
-  const validateForm = (): boolean => {
-    const errs: Record<string, string> = {};
-    if (!form.violation_description.trim()) errs.violation_description = 'Violation description is required';
-    if (!form.violation_date) errs.violation_date = 'Violation date is required';
-    if (!form.person_name.trim()) errs.person_name = 'Subject name is required';
-    setFormErrors(errs);
-    return Object.keys(errs).length === 0;
-  };
-
   const handleSave = async () => {
-    if (!validateForm()) return;
+    const isValid = runValidation(form, {
+      violation_description: { required: true, minLength: 3 },
+      violation_date: { required: true, custom: isValidDate, customMessage: 'Valid date required' },
+      person_name: { required: true },
+      vehicle_plate: { custom: (v) => !v || isValidPlate(v), customMessage: 'Invalid plate format (2–8 alphanumeric)' },
+      vehicle_state: { custom: (v) => !v || isValidState(v), customMessage: 'Invalid US state abbreviation' },
+    });
+    if (!isValid) return;
     setSaving(true);
     setSaveError('');
     setSaveSuccess(false);
@@ -536,32 +556,35 @@ export default function CitationsPage() {
     <>
       {/* Search & filters header */}
       <div className="p-3 border-b border-rmpg-700 space-y-2">
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1">
+        <div className={`flex items-center gap-2 ${isMobile ? 'flex-col' : ''}`}>
+          <div className={`relative ${isMobile ? 'w-full' : 'flex-1'}`}>
             <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-rmpg-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
               placeholder="Search citations..."
-              className="input-dark w-full py-1.5 pl-8 pr-3 text-xs"
+              className={`input-dark w-full pl-8 pr-3 ${isMobile ? 'py-2.5 text-sm' : 'py-1.5 text-xs'}`}
+              style={isMobile ? { minHeight: 44 } : undefined}
             />
           </div>
-          <button onClick={handleNewCitation} className="toolbar-btn toolbar-btn-primary" title="New Citation">
-            <Plus size={12} /> New
-          </button>
-          <button onClick={() => { fetchCitations(); fetchStats(); }} className="text-rmpg-400 hover:text-rmpg-200 p-1 transition-colors" title="Refresh">
-            <RefreshCw size={14} />
-          </button>
+          <div className={`flex items-center gap-2 ${isMobile ? 'w-full' : ''}`}>
+            <button onClick={handleNewCitation} className={`toolbar-btn toolbar-btn-primary ${isMobile ? 'flex-1 justify-center' : ''}`} title="New Citation" style={isMobile ? { minHeight: 48 } : undefined}>
+              <Plus size={isMobile ? 16 : 12} /> New
+            </button>
+            <button onClick={() => { fetchCitations(); fetchStats(); }} className="text-rmpg-400 hover:text-rmpg-200 p-1 transition-colors" title="Refresh" style={isMobile ? { minHeight: 48, minWidth: 48 } : undefined}>
+              <RefreshCw size={isMobile ? 18 : 14} />
+            </button>
+          </div>
         </div>
         {/* Filter row */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <Filter size={10} className="text-rmpg-500" />
-          <select value={filterType} onChange={e => { setFilterType(e.target.value as any); setPage(1); }} className="input-dark py-1 px-2 text-[10px]">
+        <div className={`flex items-center ${isMobile ? 'flex-col gap-1.5' : 'gap-2 flex-wrap'}`}>
+          {!isMobile && <Filter size={10} className="text-rmpg-500" />}
+          <select value={filterType} onChange={e => { setFilterType(e.target.value as any); setPage(1); }} className={`input-dark px-2 ${isMobile ? 'w-full py-2 text-xs' : 'py-1 text-[10px]'}`} style={isMobile ? { minHeight: 44 } : undefined}>
             <option value="">All Types</option>
             {CITATION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
-          <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value as any); setPage(1); }} className="input-dark py-1 px-2 text-[10px]">
+          <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value as any); setPage(1); }} className={`input-dark px-2 ${isMobile ? 'w-full py-2 text-xs' : 'py-1 text-[10px]'}`} style={isMobile ? { minHeight: 44 } : undefined}>
             <option value="">All Statuses</option>
             {CITATION_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
@@ -589,14 +612,15 @@ export default function CitationsPage() {
             <button
               key={c.id}
               onClick={() => handleSelectCitation(c)}
-              className={`w-full text-left px-3 py-2 border-b border-rmpg-700/50 hover:bg-rmpg-700/20 transition-colors ${
+              className={`w-full text-left px-3 ${isMobile ? 'py-3' : 'py-2'} border-b border-rmpg-700/50 hover:bg-rmpg-700/20 transition-colors ${
                 selectedCitation?.id === c.id && mode === 'list' ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : ''
               }`}
+              style={isMobile ? { minHeight: 56 } : undefined}
             >
               <div className="flex items-center gap-2 mb-0.5">
                 <span className="text-[11px] font-mono font-bold text-white">{c.citation_number}</span>
                 <span className={`inline-flex items-center px-1.5 py-0 text-[9px] font-bold uppercase border panel-beveled ${STATUS_BADGE[c.status] || ''}`}>
-                  {c.status.replace('_', ' ')}
+                  {c.status.replace(/_/g, ' ')}
                 </span>
                 <span className={`inline-flex items-center px-1.5 py-0 text-[9px] font-bold uppercase border panel-beveled ${TYPE_BADGE[c.type] || ''}`}>
                   {toDisplayLabel(c.type)}
@@ -617,12 +641,12 @@ export default function CitationsPage() {
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between px-3 py-2 border-t border-rmpg-700 text-[10px] text-rmpg-400">
-          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} className="hover:text-rmpg-200 disabled:opacity-30">
+        <div className={`flex items-center justify-between px-3 py-2 border-t border-rmpg-700 ${isMobile ? 'text-xs' : 'text-[10px]'} text-rmpg-400`}>
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} className="hover:text-rmpg-200 disabled:opacity-30" style={isMobile ? { minHeight: 48, minWidth: 48 } : undefined}>
             Prev
           </button>
           <span>Page {page} of {totalPages}</span>
-          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="hover:text-rmpg-200 disabled:opacity-30">
+          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="hover:text-rmpg-200 disabled:opacity-30" style={isMobile ? { minHeight: 48, minWidth: 48 } : undefined}>
             Next
           </button>
         </div>
@@ -645,7 +669,7 @@ export default function CitationsPage() {
           <Hash size={14} className="text-rmpg-400" />
           <h2 className="text-sm font-mono font-bold text-white">{c.citation_number}</h2>
           <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-bold uppercase border panel-beveled ${STATUS_BADGE[c.status] || ''}`}>
-            {c.status.replace('_', ' ')}
+            {c.status.replace(/_/g, ' ')}
           </span>
           <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-bold uppercase border panel-beveled ${TYPE_BADGE[c.type] || ''}`}>
             {toDisplayLabel(c.type)}
@@ -754,6 +778,9 @@ export default function CitationsPage() {
               <div><span className="text-rmpg-400">Date:</span> <span className="text-rmpg-200">{formatDate(c.violation_date)}</span></div>
               {c.violation_time && <div><span className="text-rmpg-400">Time:</span> <span className="text-rmpg-200">{c.violation_time}</span></div>}
               {c.location && <div><span className="text-rmpg-400">Location:</span> <span className="text-rmpg-200">{c.location}</span></div>}
+              {(c.section_id || c.zone_id || c.beat_id) && (
+                <div><span className="text-rmpg-400">S/Z/B:</span> <span className="text-rmpg-200 font-mono">{c.section_id || '—'} / {c.zone_id || '—'} / {c.beat_id || '—'}</span></div>
+              )}
             </div>
           </section>
 
@@ -835,17 +862,18 @@ export default function CitationsPage() {
         {/* Type selector */}
         <section>
           <h3 className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2">Citation Type</h3>
-          <div className="flex gap-2 flex-wrap">
+          <div className={`flex ${isMobile ? 'flex-col' : 'flex-wrap'} gap-2`}>
             {CITATION_TYPES.map(t => (
               <button
                 key={t.value}
                 type="button"
                 onClick={() => updateField('type', t.value)}
-                className={`px-3 py-1.5 text-xs font-bold uppercase transition-colors border ${
+                className={`px-3 ${isMobile ? 'py-3 text-sm' : 'py-1.5 text-xs'} font-bold uppercase transition-colors border ${
                   form.type === t.value
                     ? TYPE_BADGE[t.value] + ' ring-1 ring-brand-500/50'
                     : 'border-rmpg-600 text-rmpg-400 bg-rmpg-800/40 hover:bg-rmpg-700/50'
                 }`}
+                style={isMobile ? { minHeight: 48 } : undefined}
               >
                 {t.label}
               </button>
@@ -870,27 +898,28 @@ export default function CitationsPage() {
           </h3>
           <div className="space-y-3">
             <div>
-              <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Statute Search</label>
+              <label className="field-label">Statute Search</label>
               <StatuteLookup
                 onSelect={handleStatuteSelect}
                 value={form.statute_citation || undefined}
                 onClear={clearStatute}
                 categoryFilter={statuteCategoryFilter}
                 placeholder="Search statute code or description..."
+                showStateFilter
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Statute Citation</label>
+                <label className="field-label">Statute Citation</label>
                 <input type="text" value={form.statute_citation} onChange={e => updateField('statute_citation', e.target.value)} placeholder="e.g. 41-6a-601" className="input-dark w-full py-2 text-xs font-mono" />
               </div>
               <div>
-                <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Offense Level</label>
+                <label className="field-label">Offense Level</label>
                 <input type="text" value={form.offense_level} onChange={e => updateField('offense_level', e.target.value)} placeholder="e.g. infraction" className="input-dark w-full py-2 text-xs capitalize" />
               </div>
             </div>
             <div>
-              <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Violation Description *</label>
+              <label className="field-label">Violation Description *</label>
               <input
                 type="text"
                 value={form.violation_description}
@@ -901,7 +930,7 @@ export default function CitationsPage() {
               {formErrors.violation_description && <p className="text-red-400 text-[10px] mt-1">{formErrors.violation_description}</p>}
             </div>
             <div>
-              <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Fine Amount ($)</label>
+              <label className="field-label">Fine Amount ($)</label>
               <div className="relative">
                 <DollarSign size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-rmpg-400" />
                 <input type="number" step="0.01" min="0" value={form.fine_amount} onChange={e => updateField('fine_amount', e.target.value)} placeholder="0.00" className="input-dark w-full py-2 pl-8 text-xs" />
@@ -917,7 +946,7 @@ export default function CitationsPage() {
           </h3>
           <div className="space-y-3">
             <div ref={personDropdownRef} className="relative">
-              <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Search Existing Person</label>
+              <label className="field-label">Search Existing Person</label>
               <div className="relative">
                 <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-rmpg-400" />
                 <input
@@ -960,7 +989,7 @@ export default function CitationsPage() {
             )}
 
             <div>
-              <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Full Name *</label>
+              <label className="field-label">Full Name *</label>
               <input
                 type="text"
                 value={form.person_name}
@@ -971,19 +1000,19 @@ export default function CitationsPage() {
               {formErrors.person_name && <p className="text-red-400 text-[10px] mt-1">{formErrors.person_name}</p>}
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Date of Birth</label>
+                <label className="field-label">Date of Birth</label>
                 <input type="date" value={form.person_dob} onChange={e => updateField('person_dob', e.target.value)} className="input-dark w-full py-2 text-xs" />
               </div>
               <div>
-                <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Driver License #</label>
+                <label className="field-label">Driver License #</label>
                 <input type="text" value={form.person_dl} onChange={e => updateField('person_dl', e.target.value)} placeholder="DL number" className="input-dark w-full py-2 text-xs font-mono" />
               </div>
             </div>
 
             <div>
-              <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Address</label>
+              <label className="field-label">Address</label>
               <input type="text" value={form.person_address} onChange={e => updateField('person_address', e.target.value)} placeholder="Street, City, State ZIP" className="input-dark w-full py-2 text-xs" />
             </div>
           </div>
@@ -997,16 +1026,16 @@ export default function CitationsPage() {
             </h3>
             <div className="space-y-3">
               <div>
-                <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Vehicle Description</label>
+                <label className="field-label">Vehicle Description</label>
                 <input type="text" value={form.vehicle_description} onChange={e => updateField('vehicle_description', e.target.value)} placeholder="Year Make Model Color" className="input-dark w-full py-2 text-xs" />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] uppercase text-rmpg-500 mb-1">License Plate</label>
+                  <label className="field-label">License Plate</label>
                   <input type="text" value={form.vehicle_plate} onChange={e => updateField('vehicle_plate', e.target.value.toUpperCase())} placeholder="ABC1234" className="input-dark w-full py-2 text-xs font-mono uppercase" />
                 </div>
                 <div>
-                  <label className="block text-[10px] uppercase text-rmpg-500 mb-1">State</label>
+                  <label className="field-label">State</label>
                   <select value={form.vehicle_state} onChange={e => updateField('vehicle_state', e.target.value)} className="input-dark w-full py-2 text-xs">
                     {US_STATES.map(st => <option key={st} value={st}>{st}</option>)}
                   </select>
@@ -1022,9 +1051,9 @@ export default function CitationsPage() {
             <Calendar size={12} /> Location & Time
           </h3>
           <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Violation Date *</label>
+                <label className="field-label">Violation Date *</label>
                 <input
                   type="date"
                   value={form.violation_date}
@@ -1034,13 +1063,40 @@ export default function CitationsPage() {
                 {formErrors.violation_date && <p className="text-red-400 text-[10px] mt-1">{formErrors.violation_date}</p>}
               </div>
               <div>
-                <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Violation Time</label>
+                <label className="field-label">Violation Time</label>
                 <input type="time" value={form.violation_time} onChange={e => updateField('violation_time', e.target.value)} className="input-dark w-full py-2 text-xs" />
               </div>
             </div>
             <div>
-              <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Location</label>
+              <label className="field-label">Location</label>
               <input type="text" value={form.location} onChange={e => updateField('location', e.target.value)} placeholder="Address or intersection" className="input-dark w-full py-2 text-xs" />
+            </div>
+            {/* Section / Zone / Beat */}
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Section</label>
+                <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
+                  value={form.section_id || ''} onChange={(e) => updateField('section_id', e.target.value)}>
+                  <option value="">—</option>
+                  {sectionOptions.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Zone</label>
+                <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
+                  value={form.zone_id || ''} onChange={(e) => updateField('zone_id', e.target.value)}>
+                  <option value="">—</option>
+                  {zoneOptions.map(z => <option key={z} value={z}>{z}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Beat</label>
+                <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
+                  value={form.beat_id || ''} onChange={(e) => updateField('beat_id', e.target.value)}>
+                  <option value="">—</option>
+                  {beatOptions.map(b => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </div>
             </div>
           </div>
         </section>
@@ -1050,13 +1106,13 @@ export default function CitationsPage() {
           <h3 className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2 flex items-center gap-1.5">
             <User size={12} /> Issuing Officer
           </h3>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Officer Name</label>
+              <label className="field-label">Officer Name</label>
               <input type="text" value={form.issuing_officer_name} onChange={e => updateField('issuing_officer_name', e.target.value)} className="input-dark w-full py-2 text-xs" />
             </div>
             <div>
-              <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Badge #</label>
+              <label className="field-label">Badge #</label>
               <input type="text" value={form.badge_number} onChange={e => updateField('badge_number', e.target.value)} className="input-dark w-full py-2 text-xs font-mono" />
             </div>
           </div>
@@ -1069,15 +1125,15 @@ export default function CitationsPage() {
           </h3>
           <div className="space-y-3">
             <div>
-              <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Court Date</label>
+              <label className="field-label">Court Date</label>
               <input type="date" value={form.court_date} onChange={e => updateField('court_date', e.target.value)} className="input-dark w-full py-2 text-xs" />
             </div>
             <div>
-              <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Court Name</label>
+              <label className="field-label">Court Name</label>
               <input type="text" value={form.court_name} onChange={e => updateField('court_name', e.target.value)} placeholder="e.g. Provo Justice Court" className="input-dark w-full py-2 text-xs" />
             </div>
             <div>
-              <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Court Address</label>
+              <label className="field-label">Court Address</label>
               <input type="text" value={form.court_address} onChange={e => updateField('court_address', e.target.value)} placeholder="Street, City, State ZIP" className="input-dark w-full py-2 text-xs" />
             </div>
           </div>
@@ -1097,20 +1153,21 @@ export default function CitationsPage() {
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-end gap-3 px-4 py-3 border-t border-rmpg-700">
-        <button onClick={handleCancelForm} className="px-4 py-2 text-xs font-bold uppercase text-rmpg-300 hover:text-rmpg-100 transition-colors">
-          Cancel
-        </button>
+      <div className={`flex items-center ${isMobile ? 'flex-col gap-2' : 'justify-end gap-3'} px-4 py-3 border-t border-rmpg-700`}>
         <button
           onClick={handleSave}
           disabled={saving}
-          className="toolbar-btn toolbar-btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+          className={`toolbar-btn toolbar-btn-primary disabled:opacity-50 disabled:cursor-not-allowed ${isMobile ? 'w-full justify-center' : ''}`}
+          style={isMobile ? { minHeight: 48, fontSize: 14 } : undefined}
         >
           {saving ? (
             <><Loader2 size={14} className="animate-spin" /> Saving...</>
           ) : (
             <><Check size={14} /> {isEdit ? 'Save Changes' : 'Create Citation'}</>
           )}
+        </button>
+        <button onClick={handleCancelForm} className={`px-4 py-2 text-xs font-bold uppercase text-rmpg-300 hover:text-rmpg-100 transition-colors ${isMobile ? 'w-full text-center' : ''}`} style={isMobile ? { minHeight: 48 } : undefined}>
+          Cancel
         </button>
       </div>
     </div>

@@ -83,7 +83,7 @@ export default function EquipmentDetailTab({
       </div>
 
       {/* Status Overview */}
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <div className="panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-green-500">
           <p className="text-lg font-bold text-green-400 font-mono">{issuedCount}</p>
           <p className="field-label">Issued</p>
@@ -134,7 +134,7 @@ export default function EquipmentDetailTab({
               </div>
 
               {/* Detail grid */}
-              <div className="grid grid-cols-3 gap-x-4 gap-y-1 mb-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-1 mb-2">
                 <div>
                   <p className="field-label">Make / Model</p>
                   <p className="text-xs text-rmpg-100">

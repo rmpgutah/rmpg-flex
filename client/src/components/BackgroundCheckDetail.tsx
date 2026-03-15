@@ -158,7 +158,7 @@ export default function BackgroundCheckDetail({ searchId, onClose }: BackgroundC
                             </span>
                           )}
                         </div>
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] text-rmpg-400">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] text-rmpg-400">
                           {r.offense_date && <div>Date: <span className="text-rmpg-300">{r.offense_date}</span></div>}
                           {r.court && <div>Court: <span className="text-rmpg-300">{r.court}</span></div>}
                           {r.case_number && <div>Case #: <span className="text-rmpg-300">{r.case_number}</span></div>}
@@ -183,7 +183,7 @@ export default function BackgroundCheckDetail({ searchId, onClose }: BackgroundC
                     {court.map((r, i) => (
                       <div key={i} className="bg-surface-sunken p-2.5 rounded-sm space-y-1 border-l-2 border-blue-500/50">
                         <div className="text-[11px] font-medium text-rmpg-100">{r.offense || 'Court Record'}</div>
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] text-rmpg-400">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] text-rmpg-400">
                           {r.offense_date && <div>Filed: <span className="text-rmpg-300">{r.offense_date}</span></div>}
                           {r.court && <div>Court: <span className="text-rmpg-300">{r.court}</span></div>}
                           {r.case_number && <div>Case #: <span className="text-rmpg-300">{r.case_number}</span></div>}
@@ -215,7 +215,7 @@ export default function BackgroundCheckDetail({ searchId, onClose }: BackgroundC
                             </span>
                           )}
                         </div>
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] text-rmpg-400">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] text-rmpg-400">
                           {r.state && <div>State: <span className="text-red-300/80">{r.state}</span></div>}
                           {r.status && <div>Status: <span className="text-red-300/80">{r.status}</span></div>}
                           {r.offense_date && <div>Date: <span className="text-red-300/80">{r.offense_date}</span></div>}

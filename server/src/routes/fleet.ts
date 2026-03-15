@@ -267,12 +267,12 @@ router.get('/analytics', (req: Request, res: Response) => {
       status_breakdown: statusWithColors,
       fuel_economy_trend: fuelEconomyTrend,
       fleet_summary: {
-        total_vehicles: totalVehicles.count,
-        avg_mileage: Math.round(avgMileage.avg || 0),
-        total_maintenance_cost: totalMaintCost.total || 0,
-        total_fuel_cost: totalFuelCost.total || 0,
-        vehicles_needing_service: vehiclesNeedingService.count,
-        inspections_failing: inspectionsFailing.count,
+        total_vehicles: totalVehicles?.count || 0,
+        avg_mileage: Math.round(avgMileage?.avg || 0),
+        total_maintenance_cost: totalMaintCost?.total || 0,
+        total_fuel_cost: totalFuelCost?.total || 0,
+        vehicles_needing_service: vehiclesNeedingService?.count || 0,
+        inspections_failing: inspectionsFailing?.count || 0,
       },
     });
   } catch (error: any) {
@@ -284,10 +284,16 @@ router.get('/analytics', (req: Request, res: Response) => {
 // ─── GET /api/fleet/:id ─ Get single fleet vehicle ────────────────
 router.get('/:id', (req: Request, res: Response, next: NextFunction) => {
   try {
-    // Skip to real route handlers for paths that look like sub-routes, not vehicle IDs
-    const reservedPaths = ['maintenance', 'analytics', 'dashcam-videos', 'import', 'fuel', 'inspections'];
-    if (reservedPaths.includes(req.params.id as string)) {
-      return next();
+    // Avoid matching sub-routes that are handled by other route definitions
+    if (['maintenance', 'analytics', 'dashcam-videos'].includes(req.params.id as string)) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
+
+    // Fleet IDs are numeric — reject non-numeric to prevent route collisions
+    if (!/^\d+$/.test(req.params.id as string)) {
+      res.status(404).json({ error: 'Not found' });
+      return;
     }
 
     const db = getDb();
@@ -1375,7 +1381,7 @@ router.get('/:id/assignments', (req: Request, res: Response) => {
 });
 
 // ─── GET /api/fleet/:id/personnel ─ Aggregated officer data ───────
-router.get('/:id/personnel', (req: Request, res: Response) => {
+router.get('/:id/personnel', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -1405,8 +1411,7 @@ router.get('/:id/personnel', (req: Request, res: Response) => {
         // Full officer profile
         officer = db.prepare(`
           SELECT id, username, full_name, first_name, last_name, middle_name, email, role, badge_number, phone, status,
-            rank, department, address, city, state, zip, date_of_birth, hire_date, termination_date,
-            shift_preference, dl_number, dl_state, dl_expiry, blood_type, allergies, uniform_size,
+            rank, department, hire_date, shift_preference,
             emergency_contact_name, emergency_contact_phone, emergency_contact_relationship,
             created_at, updated_at
           FROM users WHERE id = ?
@@ -1461,7 +1466,7 @@ router.get('/:id/personnel', (req: Request, res: Response) => {
 });
 
 // ─── POST /api/fleet/:id/personnel-notes ─ Add note ──────────────
-router.post('/:id/personnel-notes', (req: Request, res: Response) => {
+router.post('/:id/personnel-notes', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -1496,7 +1501,7 @@ router.post('/:id/personnel-notes', (req: Request, res: Response) => {
 });
 
 // ─── DELETE /api/fleet/:id/personnel-notes/:noteId ─ Delete note ──
-router.delete('/:id/personnel-notes/:noteId', (req: Request, res: Response) => {
+router.delete('/:id/personnel-notes/:noteId', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id, noteId } = req.params;

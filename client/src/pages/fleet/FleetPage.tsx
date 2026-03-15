@@ -649,7 +649,7 @@ export default function FleetPage() {
     <div className="flex flex-col h-full animate-fade-in bg-surface-base">
 
       {/* ====== FLEET STATS DASHBOARD ====== */}
-      <div className="flex-shrink-0 border-b border-rmpg-700" style={{ background: '#161616' }}>
+      <div className="flex-shrink-0 border-b border-rmpg-700" style={{ background: '#0d1520' }}>
         <PanelTitleBar title="FLEET MANAGEMENT" icon={Car}>
           <RmpgLogo height={16} iconOnly />
           <span className="toolbar-separator" />
@@ -758,8 +758,8 @@ export default function FleetPage() {
       <div className="flex flex-1 overflow-hidden">
 
         {/* ---- LEFT PANEL: Vehicle List ---- */}
-        <div className="flex flex-col" style={{ width: '36%', minWidth: 300, maxWidth: 440, background: '#1e1e1e' }}>
-          <div className="flex items-center gap-2 px-2 py-1.5 border-b border-rmpg-700" style={{ background: '#1a1a1a' }}>
+        <div className="flex flex-col" style={{ width: '36%', minWidth: 300, maxWidth: 440, background: '#1a2636' }}>
+          <div className="flex items-center gap-2 px-2 py-1.5 border-b border-rmpg-700" style={{ background: '#141e2b' }}>
             <select
               className="select-dark text-[10px] py-1 px-2"
               value={filterStatus}
@@ -803,7 +803,7 @@ export default function FleetPage() {
                   className={`px-3 py-2.5 cursor-pointer border-b border-rmpg-700 transition-colors ${
                     isSelected ? 'panel-inset' : 'hover:bg-rmpg-800'
                   }`}
-                  style={isSelected ? { background: '#1a1a1a', borderLeft: `3px solid ${statusColor}` } : { borderLeft: '3px solid transparent' }}
+                  style={isSelected ? { background: '#141e2b', borderLeft: `3px solid ${statusColor}` } : { borderLeft: '3px solid transparent' }}
                   onClick={() => setSelectedId(v.id)}
                 >
                   <div className="flex items-center gap-2.5">
@@ -902,7 +902,7 @@ export default function FleetPage() {
         <div className="flex-shrink-0 w-px bg-rmpg-600" />
 
         {/* ---- RIGHT PANEL ---- */}
-        <div className="flex-1 flex flex-col overflow-hidden" style={{ background: '#1e1e1e' }}>
+        <div className="flex-1 flex flex-col overflow-hidden" style={{ background: '#1a2636' }}>
           {selectedId == null || !detail ? (
             // Fleet-wide: Maintenance Monitor + Analytics when no vehicle selected
             <div className="flex-1 overflow-y-auto">

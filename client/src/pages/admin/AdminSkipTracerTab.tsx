@@ -300,7 +300,7 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
         <p className="text-[10px] text-rmpg-500">
           These search methods are available through the Skip Tracer panel in Records. All searches are logged and auditable.
         </p>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           {Object.entries(SEARCH_TYPE_LABELS).map(([key, { label, icon: Icon, color }]) => (
             <div key={key} className="flex items-center gap-2 px-3 py-2 bg-surface-sunken border border-rmpg-700">
               <Icon className="w-3.5 h-3.5 shrink-0" style={{ color }} />
@@ -320,7 +320,7 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
             <BarChart3 className="w-3.5 h-3.5" />
             Usage Statistics
           </div>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {[
               { label: 'Total Searches', value: stats.total_searches || 0 },
               { label: 'Total Results', value: stats.total_results || 0 },

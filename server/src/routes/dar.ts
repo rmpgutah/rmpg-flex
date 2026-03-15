@@ -8,7 +8,7 @@
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 
 const router = Router();
@@ -46,7 +46,7 @@ router.get('/', (req: Request, res: Response) => {
       const s = `%${search}%`; params.push(s, s, s, s);
     }
 
-    const total = (db.prepare(`SELECT COUNT(*) as count FROM daily_activity_reports d ${where}`).get(...params) as any).count;
+    const total = (db.prepare(`SELECT COUNT(*) as count FROM daily_activity_reports d ${where}`).get(...params) as any)?.count || 0;
     const rows = db.prepare(`
       SELECT d.*, u.full_name as reviewer_name
       FROM daily_activity_reports d
@@ -211,7 +211,7 @@ router.post('/auto-populate', (req: Request, res: Response) => {
 });
 
 // ─── POST / ──────────────────────────────────────────────
-router.post('/', (req: Request, res: Response) => {
+router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -251,7 +251,7 @@ router.post('/', (req: Request, res: Response) => {
 });
 
 // ─── PUT /:id ────────────────────────────────────────────
-router.put('/:id', (req: Request, res: Response) => {
+router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -274,7 +274,7 @@ router.put('/:id', (req: Request, res: Response) => {
 });
 
 // ─── PUT /:id/submit ────────────────────────────────────
-router.put('/:id/submit', (req: Request, res: Response) => {
+router.put('/:id/submit', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -289,7 +289,7 @@ router.put('/:id/submit', (req: Request, res: Response) => {
 });
 
 // ─── PUT /:id/approve ───────────────────────────────────
-router.put('/:id/approve', (req: Request, res: Response) => {
+router.put('/:id/approve', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -307,7 +307,7 @@ router.put('/:id/approve', (req: Request, res: Response) => {
 });
 
 // ─── PUT /:id/return ────────────────────────────────────
-router.put('/:id/return', (req: Request, res: Response) => {
+router.put('/:id/return', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();

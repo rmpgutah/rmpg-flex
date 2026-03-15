@@ -184,6 +184,16 @@ export interface SMAttemptLive {
   attachments: any[];
 }
 
+// ── Auto-Poller status ───────────────────────────────
+
+export interface SMPollerStatus {
+  enabled: boolean;
+  poll_interval: number;
+  target_client: string;
+  auto_create_calls: boolean;
+  last_poll_at: string | null;
+}
+
 // ── API response wrappers ─────────────────────────────
 
 export interface SMConnectionTestResult {

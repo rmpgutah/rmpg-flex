@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Search,
   UserCircle,
@@ -58,6 +58,8 @@ function mapDbPerson(row: Record<string, unknown>): Person {
     gender: row.gender ? String(row.gender) : undefined,
     race: row.race ? String(row.race) : undefined,
     height: row.height ? String(row.height) : undefined,
+    height_feet: row.height_feet != null ? Number(row.height_feet) : undefined,
+    height_inches: row.height_inches != null ? Number(row.height_inches) : undefined,
     weight: row.weight ? String(row.weight) : undefined,
     build: row.build ? String(row.build) : undefined,
     complexion: row.complexion ? String(row.complexion) : undefined,
@@ -174,8 +176,9 @@ export interface PersonsTabState {
   personModalOpen: boolean;
   editingPerson: Person | undefined;
   personSubmitting: boolean;
+  personSubmitError: string | null;
   openNewPerson: () => void;
-  openEditPerson: (p: Person) => void;
+  openEditPerson: (p: Person) => Promise<void>;
   handlePersonSubmit: (data: PersonFormData) => Promise<void>;
   closeModal: () => void;
   // Alerts
@@ -213,9 +216,11 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
   const [personModalOpen, setPersonModalOpen] = useState(false);
   const [editingPerson, setEditingPerson] = useState<Person | undefined>(undefined);
   const [personSubmitting, setPersonSubmitting] = useState(false);
+  const [personSubmitError, setPersonSubmitError] = useState<string | null>(null);
 
   // Selection
   const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
+  const lastFetchedPersonId = useRef<string | null>(null);
 
   // Alerts for selected person
   const [personAlerts, setPersonAlerts] = useState<RecordAlert[]>([]);
@@ -230,6 +235,17 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
       setPersonModalOpen(true);
     }
   }, [openNewTrigger]);
+
+  // Fetch full person detail when selection changes (list only returns limited columns)
+  useEffect(() => {
+    const id = selectedPerson?.id;
+    if (!id) { lastFetchedPersonId.current = null; return; }
+    if (lastFetchedPersonId.current === id) return;
+    lastFetchedPersonId.current = id;
+    apiFetch<Record<string, unknown>>(`/records/persons/${id}`)
+      .then(full => setSelectedPerson(mapDbPerson(full as Record<string, unknown>)))
+      .catch(() => { /* keep list-level data as fallback */ });
+  }, [selectedPerson?.id]);
 
   // Clear selection if the person was removed from the list
   useEffect(() => {
@@ -273,7 +289,9 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
 
   const handlePersonSubmit = async (data: PersonFormData) => {
     setPersonSubmitting(true);
+    setPersonSubmitError(null);
     try {
+      const savedId = editingPerson?.id;
       if (editingPerson) {
         await apiFetch(`/records/persons/${editingPerson.id}`, { method: 'PUT', body: JSON.stringify(data) });
       } else {
@@ -282,16 +300,38 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
       setPersonModalOpen(false);
       setEditingPerson(undefined);
       await fetchPersons();
+      // Refresh the detail panel so it shows updated data after save
+      if (savedId) {
+        lastFetchedPersonId.current = null;
+        try {
+          const fresh = await apiFetch<Record<string, unknown>>(`/records/persons/${savedId}`);
+          setSelectedPerson(mapDbPerson(fresh as Record<string, unknown>));
+          lastFetchedPersonId.current = savedId;
+        } catch { /* keep existing selection */ }
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save person');
+      const msg = err instanceof Error ? err.message : 'Failed to save person';
+      setPersonSubmitError(msg);
+      setError(msg);
     } finally {
       setPersonSubmitting(false);
     }
   };
 
-  const openEditPerson = (person: Person) => { setEditingPerson(person); setPersonModalOpen(true); };
-  const openNewPerson = () => { setEditingPerson(undefined); setPersonModalOpen(true); };
-  const closeModal = () => { setPersonModalOpen(false); setEditingPerson(undefined); };
+  const openEditPerson = async (person: Person) => {
+    setPersonSubmitError(null);
+    setEditingPerson(person); // Set immediately with list data so modal has context
+    setPersonModalOpen(true);
+    // Upgrade with full detail (list only returns limited columns)
+    try {
+      const full = await apiFetch<Record<string, unknown>>(`/records/persons/${person.id}`);
+      setEditingPerson(mapDbPerson(full as Record<string, unknown>));
+    } catch {
+      // Keep the list-level data already set
+    }
+  };
+  const openNewPerson = () => { setEditingPerson(undefined); setPersonSubmitError(null); setPersonModalOpen(true); };
+  const closeModal = () => { setPersonModalOpen(false); setEditingPerson(undefined); setPersonSubmitError(null); };
 
   // Wrap archive/unarchive to also clear selection
   const handleArchive = async (type: 'persons' | 'vehicles' | 'properties' | 'evidence', id: string) => {
@@ -318,7 +358,7 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
 
   return {
     selectedPerson, setSelectedPerson,
-    personModalOpen, editingPerson, personSubmitting,
+    personModalOpen, editingPerson, personSubmitting, personSubmitError,
     openNewPerson, openEditPerson, handlePersonSubmit, closeModal,
     personAlerts, ssnRevealed, setSSNRevealed,
     filteredPersons, handleArchive, handleUnarchive,
@@ -336,7 +376,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
     filteredPersons, selectedPerson, setSelectedPerson, setSSNRevealed,
     searchQuery, setSearchQuery, showArchived,
     openEditPerson, setDeleteTarget, handleArchive, handleUnarchive,
-    personModalOpen, editingPerson, personSubmitting, handlePersonSubmit, closeModal,
+    personModalOpen, editingPerson, personSubmitting, personSubmitError, handlePersonSubmit, closeModal,
   } = state;
 
   return (
@@ -488,6 +528,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
         onSubmit={handlePersonSubmit}
         isSubmitting={personSubmitting}
         editingPerson={editingPerson}
+        submitError={personSubmitError}
       />
     </div>
   );
@@ -538,7 +579,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
 
         {/* ── Physical Description ─────────────────── */}
         <CollapsibleSection title="Physical Description" icon={Eye} defaultOpen>
-          <div className="grid grid-cols-3 gap-1.5 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 text-xs">
             {(selectedPerson.height_feet != null || selectedPerson.height) && <div><span className="text-rmpg-400">Height:</span> <span className="text-rmpg-200">{selectedPerson.height_feet != null ? `${selectedPerson.height_feet}'${String(selectedPerson.height_inches ?? 0).padStart(2, '0')}"` : selectedPerson.height}</span></div>}
             {selectedPerson.weight && <div><span className="text-rmpg-400">Weight:</span> <span className="text-rmpg-200">{selectedPerson.weight}</span></div>}
             {selectedPerson.build && <div><span className="text-rmpg-400">Build:</span> <span className="text-rmpg-200">{selectedPerson.build}</span></div>}
@@ -565,7 +606,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
 
         {/* ── Contact & Address ────────────────────── */}
         <CollapsibleSection title="Contact & Address" icon={Phone} defaultOpen>
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
             {renderInfoRow('Phone', selectedPerson.phone, Phone)}
             {renderInfoRow('Phone 2', selectedPerson.phone_secondary, Phone)}
             {renderInfoRow('Email', selectedPerson.email, Mail)}
@@ -610,7 +651,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
               )}
               <div className="flex-1 space-y-1.5">
                 {selectedPerson.dl_number && (
-                  <div className="grid grid-cols-2 gap-1.5 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs">
                     <div><span className="text-rmpg-400">DL:</span> <span className="text-rmpg-200 font-mono">{selectedPerson.dl_number}</span></div>
                     {selectedPerson.dl_state && <div><span className="text-rmpg-400">State:</span> <span className="text-rmpg-200">{selectedPerson.dl_state}</span></div>}
                     {selectedPerson.dl_class && <div><span className="text-rmpg-400">Class:</span> <span className="text-rmpg-200">{selectedPerson.dl_class}</span></div>}
@@ -618,7 +659,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
                   </div>
                 )}
                 {selectedPerson.id_number && (
-                  <div className="grid grid-cols-2 gap-1.5 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs">
                     <div>
                       <span className="text-rmpg-400">{selectedPerson.id_type ? selectedPerson.id_type.replace(/_/g, ' ').toUpperCase() : 'ID'}:</span>{' '}
                       <span className="text-rmpg-200 font-mono">{selectedPerson.id_number}</span>
@@ -664,7 +705,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
         {/* ── Legal & Associations (conditional) ──── */}
         {(selectedPerson.probation_parole || selectedPerson.known_associates) && (
           <CollapsibleSection title="Legal & Associations" icon={Shield}>
-            <div className="grid grid-cols-2 gap-1.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
               {renderInfoRow('Probation/Parole', selectedPerson.probation_parole)}
               {renderInfoRow('P.O. / Officer', selectedPerson.probation_parole_officer)}
             </div>
@@ -677,7 +718,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
         {/* ── Emergency Contact (conditional) ─────── */}
         {selectedPerson.emergency_contact_name && (
           <CollapsibleSection title="Emergency Contact" icon={AlertTriangle}>
-            <div className="grid grid-cols-3 gap-1.5">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
               {renderInfoRow('Name', selectedPerson.emergency_contact_name)}
               {renderInfoRow('Phone', selectedPerson.emergency_contact_phone, Phone)}
               {renderInfoRow('Relationship', selectedPerson.emergency_contact_relationship)}

@@ -117,7 +117,7 @@ function doScriptLoad(
   };
 
   const script = document.createElement('script');
-  script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,marker&callback=${callbackName}&v=weekly`;
+  script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,marker,visualization&callback=${callbackName}&v=weekly`;
   script.async = true;
   script.defer = true;
   script.onerror = () => {
@@ -169,29 +169,253 @@ export function onOnlineRetryMaps(apiKey: string, callback: () => void): () => v
   return () => window.removeEventListener('online', handler);
 }
 
+// ============================================================
+// Tile Load Monitoring
+// Google Maps fires no error when tiles fail to download on
+// slow/intermittent WiFi — the map just shows a blank dark area.
+// This utility detects stalled tile loading and provides hooks
+// for components to show recovery UI.
+// ============================================================
+
+export interface TileMonitorCallbacks {
+  onStalled: () => void;   // Tiles haven't loaded after threshold
+  onLoaded: () => void;    // Tiles finished loading
+  onRecovering: () => void; // Attempting tile recovery
+}
+
+/**
+ * Monitor tile loading on a Google Maps instance.
+ * Detects stalled tiles (no `tilesloaded` event within threshold) and
+ * auto-recovers when device comes back online.
+ * Returns a cleanup function.
+ */
+export function monitorTileLoading(
+  map: google.maps.Map,
+  callbacks: TileMonitorCallbacks,
+  thresholdMs: number = 15000,
+): () => void {
+  let tilesLoaded = false;
+  let stallTimer: ReturnType<typeof setTimeout> | null = null;
+  const listeners: google.maps.MapsEventListener[] = [];
+
+  // Start the stall timer
+  function startStallTimer() {
+    if (stallTimer) clearTimeout(stallTimer);
+    stallTimer = setTimeout(() => {
+      if (!tilesLoaded) callbacks.onStalled();
+    }, thresholdMs);
+  }
+
+  // Tiles loaded successfully
+  const tilesListener = google.maps.event.addListener(map, 'tilesloaded', () => {
+    tilesLoaded = true;
+    if (stallTimer) { clearTimeout(stallTimer); stallTimer = null; }
+    callbacks.onLoaded();
+  });
+  listeners.push(tilesListener);
+
+  // Reset stall timer on map idle (user panned/zoomed — new tiles loading)
+  const idleListener = google.maps.event.addListener(map, 'idle', () => {
+    if (!tilesLoaded) startStallTimer();
+  });
+  listeners.push(idleListener);
+
+  // Auto-recover on connectivity restore
+  const onOnline = () => {
+    if (tilesLoaded) return;
+    callbacks.onRecovering();
+    // Force tile re-fetch by nudging the map
+    tilesLoaded = false;
+    startStallTimer();
+    const center = map.getCenter();
+    if (center) {
+      map.panTo({ lat: center.lat() + 0.0001, lng: center.lng() });
+      setTimeout(() => map.panTo(center), 200);
+    }
+  };
+  window.addEventListener('online', onOnline);
+
+  // Periodic recovery attempt every 30s if tiles are stalled
+  const recoveryInterval = setInterval(() => {
+    if (tilesLoaded) return;
+    if (navigator.onLine) {
+      onOnline(); // retry
+    }
+  }, 30000);
+
+  // Start initial stall timer
+  startStallTimer();
+
+  return () => {
+    if (stallTimer) clearTimeout(stallTimer);
+    clearInterval(recoveryInterval);
+    listeners.forEach(l => google.maps.event.removeListener(l));
+    window.removeEventListener('online', onOnline);
+  };
+}
+
+// ============================================================
+// Static Fallback Map Images (legacy — kept for fast initial load)
+// Pre-downloaded dark-styled Google Static Maps images of Utah
+// at 3 zoom levels. Shown behind the map when tiles fail to
+// load (vehicle WiFi resilience). ~370 KB total.
+// ============================================================
+
+/** Available offline fallback map images (zoom → path). */
+const FALLBACK_MAPS: { maxZoom: number; path: string; center: { lat: number; lng: number }; zoom: number }[] = [
+  { maxZoom: 9,  path: '/maps/utah-z7.png',       center: { lat: 39.32, lng: -111.09 }, zoom: 7 },
+  { maxZoom: 12, path: '/maps/utah-slc-z11.png',   center: { lat: 40.7608, lng: -111.891 }, zoom: 11 },
+  { maxZoom: 99, path: '/maps/utah-slc-z13.png',   center: { lat: 40.7608, lng: -111.891 }, zoom: 13 },
+];
+
+/**
+ * Returns the best fallback map image path for a given map zoom level.
+ * Used as the background when Google Maps tiles fail to load on poor WiFi.
+ */
+export function getFallbackMapImage(zoom: number): string {
+  const match = FALLBACK_MAPS.find(f => zoom <= f.maxZoom) ?? FALLBACK_MAPS[FALLBACK_MAPS.length - 1];
+  return match.path;
+}
+
+// ============================================================
+// Offline Tile Layer (CartoDB dark_matter)
+// Pre-downloaded raster tiles at Z7–15 covering the Utah
+// operational area (~1,738 tiles, ~11 MB). Renders as a bottom
+// overlay under Google Maps tiles — when Google tiles load they
+// cover the offline layer; when they fail the offline tiles
+// show through, preventing black-screen on vehicle WiFi.
+//
+// Coverage:
+//   Z7–8   Full Utah state
+//   Z9–11  Wasatch Front (Ogden → Provo)
+//   Z12–14 SLC metro (Salt Lake Valley)
+//   Z15    SLC core (downtown + neighborhoods)
+// ============================================================
+
+/** Zoom range covered by offline tiles */
+export const OFFLINE_TILE_MIN_ZOOM = 7;
+export const OFFLINE_TILE_MAX_ZOOM = 15;
+
+/**
+ * Creates and attaches an offline tile layer to a Google Maps instance.
+ * The layer reads pre-downloaded tiles from /tiles/{z}/{x}/{y}.png
+ * and renders them beneath Google's own tiles.
+ *
+ * Returns a cleanup function that removes the layer from the map.
+ */
+export function addOfflineTileLayer(map: google.maps.Map): () => void {
+  const offlineLayer = new google.maps.ImageMapType({
+    getTileUrl: (coord: google.maps.Point, zoom: number): string | null => {
+      // Only serve tiles within our downloaded range
+      if (zoom < OFFLINE_TILE_MIN_ZOOM || zoom > OFFLINE_TILE_MAX_ZOOM) return null;
+
+      // Wrap X coordinate for world continuity
+      const maxTile = 1 << zoom;
+      const x = ((coord.x % maxTile) + maxTile) % maxTile;
+      const y = coord.y;
+
+      // Bounds check (Y can be negative or too large)
+      if (y < 0 || y >= maxTile) return null;
+
+      return `/tiles/${zoom}/${x}/${y}.png`;
+    },
+    tileSize: new google.maps.Size(256, 256),
+    maxZoom: OFFLINE_TILE_MAX_ZOOM,
+    minZoom: OFFLINE_TILE_MIN_ZOOM,
+    name: 'Offline',
+    opacity: 1.0,
+  });
+
+  // Insert at position 0 — renders UNDER Google's base tiles.
+  // When Google tiles load, they cover the offline layer.
+  // When they fail (no WiFi), offline tiles show through.
+  map.overlayMapTypes.insertAt(0, offlineLayer);
+
+  // Return cleanup function
+  return () => {
+    // Find and remove the offline layer
+    for (let i = 0; i < map.overlayMapTypes.getLength(); i++) {
+      if (map.overlayMapTypes.getAt(i) === offlineLayer) {
+        map.overlayMapTypes.removeAt(i);
+        break;
+      }
+    }
+  };
+}
+
 /** Dark map style matching RMPG Flex theme */
 export const DARK_MAP_STYLE: google.maps.MapTypeStyle[] = [
-  { elementType: 'geometry', stylers: [{ color: '#0a0a0a' }] },
+  { elementType: 'geometry', stylers: [{ color: '#060c14' }] },
   { elementType: 'labels.text.stroke', stylers: [{ color: '#000000' }] },
   { elementType: 'labels.text.fill', stylers: [{ color: '#555555' }] },
   { featureType: 'administrative', elementType: 'geometry', stylers: [{ visibility: 'off' }] },
-  { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#707070' }] },
-  { featureType: 'administrative.province', elementType: 'geometry.stroke', stylers: [{ color: '#2a2a2a' }] },
+  { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#5a6e80' }] },
+  { featureType: 'administrative.province', elementType: 'geometry.stroke', stylers: [{ color: '#162236' }] },
   { featureType: 'administrative.land_parcel', stylers: [{ visibility: 'off' }] },
   { featureType: 'administrative.neighborhood', stylers: [{ visibility: 'off' }] },
   { featureType: 'landscape', elementType: 'geometry', stylers: [{ color: '#0e0e0e' }] },
-  { featureType: 'landscape.man_made', elementType: 'geometry', stylers: [{ color: '#111111' }] },
+  { featureType: 'landscape.man_made', elementType: 'geometry', stylers: [{ color: '#0a1018' }] },
   { featureType: 'landscape.natural', elementType: 'geometry', stylers: [{ color: '#0c0c0c' }] },
   { featureType: 'poi', stylers: [{ visibility: 'off' }] },
   { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#0d120d' }, { visibility: 'simplified' }] },
-  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#1a1a1a' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#141e2b' }] },
   { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#222222' }] },
   { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#444444' }] },
   { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#242424' }] },
-  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#2a2a2a' }] },
+  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#162236' }] },
   { featureType: 'transit', stylers: [{ visibility: 'off' }] },
   { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#060c14' }] },
   { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#1a2a3a' }] },
+];
+
+/** Night Navigation style — high-contrast roads on near-black, optimized for driving */
+export const NIGHT_NAV_STYLE: google.maps.MapTypeStyle[] = [
+  { elementType: 'geometry', stylers: [{ color: '#0a0e14' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#000000' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#6b8aaa' }] },
+  { featureType: 'administrative', elementType: 'geometry', stylers: [{ visibility: 'off' }] },
+  { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#7caccc' }] },
+  { featureType: 'administrative.province', elementType: 'geometry.stroke', stylers: [{ color: '#1a3050' }] },
+  { featureType: 'administrative.land_parcel', stylers: [{ visibility: 'off' }] },
+  { featureType: 'administrative.neighborhood', elementType: 'labels.text.fill', stylers: [{ color: '#4a6a8a' }] },
+  { featureType: 'landscape', elementType: 'geometry', stylers: [{ color: '#0c1018' }] },
+  { featureType: 'landscape.man_made', elementType: 'geometry', stylers: [{ color: '#0e1420' }] },
+  { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#0a1a0a' }, { visibility: 'simplified' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#1e3048' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#2a4060' }] },
+  { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#5a8ab0' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#1a3a5c' }] },
+  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#2a5080' }] },
+  { featureType: 'road.highway', elementType: 'labels.text.fill', stylers: [{ color: '#7ab0e0' }] },
+  { featureType: 'road.arterial', elementType: 'geometry', stylers: [{ color: '#1a2e44' }] },
+  { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#061020' }] },
+  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#1a3050' }] },
+];
+
+/** Terrain style — subtle elevation shading with visible contours */
+export const TERRAIN_STYLE: google.maps.MapTypeStyle[] = [
+  { elementType: 'geometry', stylers: [{ color: '#e8e4dc' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#ffffff' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#444444' }] },
+  { featureType: 'administrative', elementType: 'geometry.stroke', stylers: [{ color: '#999999' }] },
+  { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#333333' }] },
+  { featureType: 'administrative.land_parcel', stylers: [{ visibility: 'off' }] },
+  { featureType: 'administrative.neighborhood', elementType: 'labels.text.fill', stylers: [{ color: '#666666' }] },
+  { featureType: 'landscape.natural', elementType: 'geometry', stylers: [{ color: '#ddd8cc' }] },
+  { featureType: 'landscape.natural.terrain', elementType: 'geometry', stylers: [{ color: '#c8c0b0' }] },
+  { featureType: 'landscape.man_made', elementType: 'geometry', stylers: [{ color: '#e0dcd4' }] },
+  { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#b8ccb0' }, { visibility: 'simplified' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#ffffff' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#bbbbbb' }] },
+  { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#555555' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#f0e8d8' }] },
+  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#ccbb99' }] },
+  { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#a0c0e0' }] },
+  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#5588aa' }] },
 ];
 
 /** Light map style for printed reports — clean, high-contrast B&W */
@@ -284,7 +508,11 @@ function restoreAfterPrint(): void {
 
 // Auto-register beforeprint/afterprint listeners so that even native
 // Ctrl+P (or system print) switches maps to light on a best-effort basis.
+// Guard prevents duplicate registration if module is re-evaluated (HMR).
+// Remove-then-add ensures no duplicates accumulate across hot reloads.
 if (typeof window !== 'undefined') {
+  window.removeEventListener('beforeprint', switchToLightForPrint);
+  window.removeEventListener('afterprint', restoreAfterPrint);
   window.addEventListener('beforeprint', switchToLightForPrint);
   window.addEventListener('afterprint', restoreAfterPrint);
 }

@@ -8,10 +8,18 @@
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { validateEnum, requireInt } from '../middleware/sanitize';
+import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
+import { createNotificationForRoles } from './notifications';
+import { resolveDistrict } from '../utils/districtResolver';
 
 const router = Router();
+
+// ─── Allowed enum values ─────────────────────────────────
+const VALID_CITATION_TYPES = ['traffic', 'criminal', 'parking', 'warning'] as const;
+const VALID_CITATION_STATUSES = ['issued', 'paid', 'contested', 'dismissed', 'warrant_issued', 'voided'] as const;
+const VALID_OFFENSE_LEVELS = ['infraction', 'misdemeanor', 'felony'] as const;
 router.use(authenticateToken);
 
 // ─── GET /api/citations/stats ─────────────────────────────
@@ -222,7 +230,7 @@ router.get('/:id', (req: Request, res: Response) => {
 });
 
 // ─── POST /api/citations ─────────────────────────────────
-router.post('/', (req: Request, res: Response) => {
+router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
 
@@ -261,6 +269,16 @@ router.post('/', (req: Request, res: Response) => {
       return;
     }
 
+    // Validate enums
+    try {
+      validateEnum(type, VALID_CITATION_TYPES, 'type');
+      validateEnum(status, VALID_CITATION_STATUSES, 'status');
+      if (offense_level) validateEnum(offense_level, VALID_OFFENSE_LEVELS, 'offense_level');
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+
     // Auto-generate citation number: CIT-YYYY-NNNN
     const year = new Date().getFullYear();
     const lastCit = db.prepare(
@@ -269,11 +287,34 @@ router.post('/', (req: Request, res: Response) => {
     let seq = 1;
     if (lastCit) {
       const parts = lastCit.citation_number.split('-');
-      seq = parseInt(parts[2], 10) + 1;
+      const parsed = parts.length >= 3 ? parseInt(parts[2], 10) : NaN;
+      if (!isNaN(parsed)) seq = parsed + 1;
     }
     const citation_number = `CIT-${year}-${String(seq).padStart(4, '0')}`;
 
     const now = localNow();
+
+    // Auto-fill Section/Zone/Beat from linked call or incident
+    let { section_id, zone_id, beat_id, zone_beat } = req.body;
+    if (!section_id && !zone_id && !beat_id) {
+      if (call_id) {
+        const linkedCall = db.prepare('SELECT section_id, zone_id, beat_id, zone_beat FROM calls_for_service WHERE id = ?').get(call_id) as any;
+        if (linkedCall) {
+          section_id = linkedCall.section_id;
+          zone_id = linkedCall.zone_id;
+          beat_id = linkedCall.beat_id;
+          zone_beat = linkedCall.zone_beat;
+        }
+      } else if (incident_id) {
+        const linkedIncident = db.prepare('SELECT section_id, zone_id, beat_id, zone_beat FROM incidents WHERE id = ?').get(incident_id) as any;
+        if (linkedIncident) {
+          section_id = linkedIncident.section_id;
+          zone_id = linkedIncident.zone_id;
+          beat_id = linkedIncident.beat_id;
+          zone_beat = linkedIncident.zone_beat;
+        }
+      }
+    }
 
     const result = db.prepare(`
       INSERT INTO citations (
@@ -285,7 +326,8 @@ router.post('/', (req: Request, res: Response) => {
         incident_id, call_id,
         issuing_officer_id, issuing_officer_name, badge_number,
         court_date, court_name, court_address,
-        notes, created_at, updated_at
+        notes, section_id, zone_id, beat_id, zone_beat,
+        created_at, updated_at
       ) VALUES (
         ?, ?, ?,
         ?, ?, ?, ?, ?,
@@ -295,7 +337,8 @@ router.post('/', (req: Request, res: Response) => {
         ?, ?,
         ?, ?, ?,
         ?, ?, ?,
-        ?, ?, ?
+        ?, ?, ?, ?, ?,
+        ?, ?
       )
     `).run(
       citation_number, type, status,
@@ -306,7 +349,8 @@ router.post('/', (req: Request, res: Response) => {
       incident_id || null, call_id || null,
       issuing_officer_id || null, issuing_officer_name || null, badge_number || null,
       court_date || null, court_name || null, court_address || null,
-      notes || null, now, now
+      notes || null, section_id || null, zone_id || null, beat_id || null, zone_beat || null,
+      now, now
     );
 
     // Activity log
@@ -321,6 +365,15 @@ router.post('/', (req: Request, res: Response) => {
     );
 
     const created = db.prepare('SELECT * FROM citations WHERE id = ?').get(result.lastInsertRowid);
+
+    // Notify supervisors of citation issued
+    createNotificationForRoles(
+      ['admin', 'manager', 'supervisor'],
+      'citation', `Citation Issued: ${citation_number}`,
+      `${type} citation${person_name ? ` — ${person_name}` : ''}`,
+      'citation', Number(result.lastInsertRowid), 'normal', 'citation.issued', req.user!.userId,
+    );
+
     res.status(201).json({ data: created });
   } catch (error: any) {
     console.error('Create citation error:', error);
@@ -329,7 +382,7 @@ router.post('/', (req: Request, res: Response) => {
 });
 
 // ─── PUT /api/citations/:id ──────────────────────────────
-router.put('/:id', (req: Request, res: Response) => {
+router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const citation = db.prepare('SELECT * FROM citations WHERE id = ?').get(req.params.id) as any;
@@ -370,6 +423,10 @@ router.put('/:id', (req: Request, res: Response) => {
       court_name: v => v ?? null,
       court_address: v => v ?? null,
       notes: v => v ?? null,
+      section_id: v => v ?? null,
+      zone_id: v => v ?? null,
+      beat_id: v => v ?? null,
+      zone_beat: v => v ?? null,
     };
 
     for (const [key, transform] of Object.entries(fieldMap)) {
@@ -407,7 +464,7 @@ router.put('/:id', (req: Request, res: Response) => {
 
 // ─── DELETE /api/citations/:id ────────────────────────────
 // Soft-delete: sets status to 'voided'
-router.delete('/:id', (req: Request, res: Response) => {
+router.delete('/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const citation = db.prepare('SELECT * FROM citations WHERE id = ?').get(req.params.id) as any;
