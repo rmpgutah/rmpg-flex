@@ -3430,9 +3430,8 @@ function migrateSchema(): void {
       console.log(`[migrate] Seeded ${seeded} multi-state county jail configs (CO/WY/ID/NV/AZ/NM)`);
     }
 
-    // Disable all non-UT counties — parsers must be individually verified before enabling
-    // JailTracker migrated to publicroster-api (2025); HTML counties may have changed structure
-    db.prepare("UPDATE jail_roster_config SET enabled = 0 WHERE state != 'UT' AND enabled = 1").run();
+    // Non-UT counties are now supported — noRoster auto-disable and circuit breakers
+    // handle failures gracefully. No longer force-disabling on startup.
   } catch (err) {
     console.log('[migrate] Multi-state county seed skipped:', (err as Error).message);
   }
