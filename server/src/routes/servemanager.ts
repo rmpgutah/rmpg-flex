@@ -16,6 +16,8 @@ import {
 
 const router = Router();
 router.use(authenticateToken);
+// Legal process serving (subpoenas, summons) is law enforcement operational data
+router.use(requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'));
 
 // ============================================================
 // Table initialization (self-contained)
@@ -108,7 +110,7 @@ function requireApiKey(_req: Request, res: Response): boolean {
   return true;
 }
 
-function upsertJobFromApi(job: any): void {
+export function upsertJobFromApi(job: any): void {
   ensureTables();
   const db = getDb();
   const now = localNow();
@@ -168,7 +170,7 @@ function upsertJobFromApi(job: any): void {
   );
 }
 
-function upsertAttemptFromApi(attempt: any): void {
+export function upsertAttemptFromApi(attempt: any): void {
   ensureTables();
   const db = getDb();
   const now = localNow();

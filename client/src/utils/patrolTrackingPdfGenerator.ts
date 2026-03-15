@@ -183,7 +183,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     doc.setLineWidth(0.2);
     doc.line(0, pageH - 8, pageW, pageH - 8);
     doc.setTextColor(...COLOR.TEXT_MUTED);
-    doc.setFontSize(5.5);
+    doc.setFontSize(6);
     doc.text(`Generated: ${reportDate}  |  ${formNum}  |  CONFIDENTIAL — INTERNAL USE ONLY`, margin, pageH - 3.5);
     doc.text(`Page ${pageNum} of ${totalPages}`, pageW - margin, pageH - 3.5, { align: 'right' });
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -209,20 +209,20 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   // ── Utility: draw table column headers ──────────────
   function drawColumnHeaders(cols: { label: string; w: number }[]) {
     doc.setFillColor(...COLOR.BG_TABLE_HDR);
-    doc.rect(margin, yPos, contentW, 5, 'F');
+    doc.rect(margin, yPos, contentW, 6, 'F');
     doc.setDrawColor(...COLOR.BORDER_TABLE);
     doc.setLineWidth(BORDER.TABLE_ROW * 3);
-    doc.line(margin, yPos + 5, margin + contentW, yPos + 5);
-    doc.setTextColor(...COLOR.TEXT_SECONDARY);
-    doc.setFontSize(6);
+    doc.line(margin, yPos + 6, margin + contentW, yPos + 6);
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.setFontSize(6.5);
     doc.setFont('helvetica', 'bold');
     let xOff = margin;
     for (const col of cols) {
-      doc.text(col.label, xOff + 1, yPos + 3.5);
+      doc.text(col.label, xOff + 1, yPos + 4, { maxWidth: col.w - 1.5 });
       xOff += col.w;
     }
     doc.setFont('helvetica', 'normal');
-    yPos += 6;
+    yPos += 7;
   }
 
   // ── Utility: new page with proper yPos ──────────────
@@ -413,8 +413,8 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
 
     drawBreadcrumbHeaders();
 
-    // Table rows
-    doc.setFontSize(5.5);
+    // Table rows — increased font size for readability
+    doc.setFontSize(6.5);
     doc.setFont('helvetica', 'normal');
 
     // Sample points for readability — if > 300 points, sample every Nth
@@ -430,11 +430,11 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
         drawBreadcrumbHeaders();
       }
 
-      // Zebra striping
+      // Zebra striping with increased row height
       const rowIdx = Math.floor(i / sampleRate);
       if (rowIdx % 2 === 0) {
         doc.setFillColor(...COLOR.BG_ZEBRA);
-        doc.rect(margin, yPos, contentW, 4, 'F');
+        doc.rect(margin, yPos, contentW, 5, 'F');
       }
 
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -444,7 +444,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
       const beatCode = pt.beat_code || '-';
       const zoneParts = pt.zone || '-';
       // beat_code is the full identifier; zone is the area label
-      const sector = beatCode !== '-' ? beatCode.replace(/[0-9]/g, '') : '-';
+      const sector = beatCode !== '-' ? (beatCode.match(/^[A-Za-z]+/) || ['-'])[0] : '-';
 
       const rowData = [
         formatDateTime(pt.time),                                        // Date/Time
@@ -464,17 +464,19 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
       ];
 
       for (let ci = 0; ci < cols.length; ci++) {
-        doc.text(rowData[ci], xOff + 0.8, yPos + 3, { maxWidth: cols[ci].w - 1.5 });
+        const cellW = Math.max(cols[ci].w - 2, 3);
+        const cellText = rowData[ci].length > Math.floor(cellW / 1.5) ? rowData[ci].substring(0, Math.floor(cellW / 1.5) - 1) + '…' : rowData[ci];
+        doc.text(cellText, xOff + 1, yPos + 3.5, { maxWidth: cellW });
         xOff += cols[ci].w;
       }
 
-      yPos += 4.5;
+      yPos += 5.5;
     }
 
     if (sampleRate > 1) {
       yPos += 2;
       doc.setTextColor(...COLOR.TEXT_TERTIARY);
-      doc.setFontSize(5.5);
+      doc.setFontSize(6);
       doc.text(`* Showing every ${sampleRate}${sampleRate === 2 ? 'nd' : sampleRate === 3 ? 'rd' : 'th'} point (${trail.points.length} total breadcrumbs)`, margin, yPos);
       yPos += 5;
     }
@@ -501,16 +503,16 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
 
       drawColumnHeaders(rCols);
 
-      doc.setFontSize(6);
+      doc.setFontSize(6.5);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
       for (let si = 0; si < trail.response_segments.length; si++) {
         const seg = trail.response_segments[si];
-        ensureSpace(5);
+        ensureSpace(6);
 
         if (si % 2 === 0) {
           doc.setFillColor(...COLOR.BG_ZEBRA);
-          doc.rect(margin, yPos, contentW, 4.2, 'F');
+          doc.rect(margin, yPos, contentW, 5, 'F');
         }
 
         let rxOff = margin;
@@ -526,10 +528,10 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
         ];
 
         for (let ci = 0; ci < rCols.length; ci++) {
-          doc.text(rRowData[ci], rxOff + 1, yPos + 3, { maxWidth: rCols[ci].w - 1.5 });
+          doc.text(rRowData[ci], rxOff + 1, yPos + 3.5, { maxWidth: rCols[ci].w - 2 });
           rxOff += rCols[ci].w;
         }
-        yPos += 4.5;
+        yPos += 5.5;
       }
     }
 
@@ -553,19 +555,19 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
 
       drawColumnHeaders(zCols);
 
-      doc.setFontSize(6);
+      doc.setFontSize(6.5);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
       // Sort by time spent descending
       const sorted = Object.entries(zc).sort(([, a], [, b]) => b.time_seconds - a.time_seconds);
 
       for (let zi = 0; zi < sorted.length; zi++) {
-        ensureSpace(5);
+        ensureSpace(6);
         const [beatId, zone] = sorted[zi];
 
         if (zi % 2 === 0) {
           doc.setFillColor(...COLOR.BG_ZEBRA);
-          doc.rect(margin, yPos, contentW, 4.2, 'F');
+          doc.rect(margin, yPos, contentW, 5, 'F');
         }
 
         let zxOff = margin;
@@ -579,10 +581,10 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
         ];
 
         for (let ci = 0; ci < zCols.length; ci++) {
-          doc.text(zRowData[ci], zxOff + 1, yPos + 3, { maxWidth: zCols[ci].w - 1.5 });
+          doc.text(zRowData[ci], zxOff + 1, yPos + 3.5, { maxWidth: zCols[ci].w - 2 });
           zxOff += zCols[ci].w;
         }
-        yPos += 4.5;
+        yPos += 5.5;
       }
     }
   }

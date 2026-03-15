@@ -95,6 +95,12 @@ export function useApi<T = unknown>(options?: UseApiOptions) {
           throw new Error(message);
         }
 
+        // 204 No Content has no body — don't attempt to parse JSON
+        if (res.status === 204) {
+          setState({ data: null as T, error: null, isLoading: false });
+          return null as T;
+        }
+
         const data = await res.json();
         setState({ data, error: null, isLoading: false });
         return data;
@@ -232,8 +238,10 @@ export async function apiFetch<T>(
 
   // ─── Normal online fetch path ──────────────────────────
   const token = localStorage.getItem('rmpg_token');
+  const isFormData = typeof FormData !== 'undefined' && options?.body instanceof FormData;
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    // Don't set Content-Type for FormData — the browser sets it with the boundary
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...(options?.headers as Record<string, string>),
   };
 
@@ -253,6 +261,7 @@ export async function apiFetch<T>(
         const errData = await retryRes.json().catch(() => ({}));
         throw new Error(errData.error || errData.message || `Request failed with status ${retryRes.status}`);
       }
+      if (retryRes.status === 204) return null as T;
       return retryRes.json();
     }
     // No new token — redirect already happened or network error
@@ -264,6 +273,8 @@ export async function apiFetch<T>(
     throw new Error(errData.error || errData.message || `Request failed with status ${res.status}`);
   }
 
+  // 204 No Content has no body
+  if (res.status === 204) return null as T;
   return res.json();
 }
 

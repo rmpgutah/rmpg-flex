@@ -32,6 +32,16 @@ export default function ReportTypeSelector({ incidentType, onSelect, onPreview, 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const defaultType = getDefaultReportType(incidentType);
 
+  // Escape key to close sign modal
+  useEffect(() => {
+    if (!signModalOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSignModalOpen(false);
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [signModalOpen]);
+
   // Pre-fetch user's saved signature
   useEffect(() => {
     apiFetch<{ signature: string | null }>('/auth/signature')
@@ -189,7 +199,7 @@ export default function ReportTypeSelector({ incidentType, onSelect, onPreview, 
       {/* Quick-sign modal */}
       {signModalOpen && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-surface-base border border-rmpg-600 shadow-2xl p-6 max-w-lg w-full mx-4">
+          <div className="bg-surface-base border shadow-2xl p-6 w-full mx-4" style={{ maxWidth: '640px', borderColor: '#3a5070', borderRadius: '2px' }}>
             <h3 className="text-sm font-bold text-rmpg-100 mb-1">Sign Document</h3>
             <p className="text-[10px] text-rmpg-400 mb-4">
               Draw your signature below. It will be embedded in the PDF and saved to your profile for future reports.
@@ -197,9 +207,9 @@ export default function ReportTypeSelector({ incidentType, onSelect, onPreview, 
             <SignaturePad
               value={null}
               onChange={handleQuickSign}
-              label="Your Signature"
-              width={440}
-              height={140}
+              label="Officer Signature"
+              width={580}
+              height={200}
               compact={false}
             />
             <button

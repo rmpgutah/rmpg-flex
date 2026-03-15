@@ -1,11 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
 import { broadcast } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
 
 const router = Router();
 router.use(authenticateToken);
+// Field interviews contain biometric profiles and PII — restrict to LE roles
+router.use(requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'));
 
 /** Generate next FI number: FI-YYYY-NNNN */
 function generateFiNumber(db: ReturnType<typeof getDb>): string {
@@ -131,8 +133,8 @@ router.post('/', (req: Request, res: Response) => {
       user.id, user.full_name, now
     );
 
-    const created = db.prepare('SELECT * FROM field_interviews WHERE id = ?').get(result.lastInsertRowid);
-    broadcast('alerts', { type: 'fi_created', data: created });
+    const created = db.prepare('SELECT * FROM field_interviews WHERE id = ?').get(result.lastInsertRowid) as any;
+    broadcast('alerts', 'fi_created', { id: created?.id, fi_number: created?.fi_number, status: created?.status });
     res.status(201).json(created);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -169,8 +171,8 @@ router.put('/:id', (req: Request, res: Response) => {
     params.push(req.params.id);
     db.prepare(`UPDATE field_interviews SET ${setClauses.join(', ')} WHERE id = ?`).run(...params);
 
-    const updated = db.prepare('SELECT * FROM field_interviews WHERE id = ?').get(req.params.id);
-    broadcast('alerts', { type: 'fi_updated', data: updated });
+    const updated = db.prepare('SELECT * FROM field_interviews WHERE id = ?').get(req.params.id) as any;
+    broadcast('alerts', 'fi_updated', { id: updated?.id, fi_number: updated?.fi_number, status: updated?.status });
     res.json(updated);
   } catch (err: any) {
     res.status(500).json({ error: err.message });

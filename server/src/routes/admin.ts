@@ -827,20 +827,22 @@ router.post('/users/:id/reset-2fa', requireRole('admin'), (req: Request, res: Re
       return;
     }
 
-    // Delete TOTP secret and backup codes
-    db.prepare('DELETE FROM user_totp_secrets WHERE user_id = ?').run(userId);
-    db.prepare('DELETE FROM user_backup_codes WHERE user_id = ?').run(userId);
-    db.prepare('DELETE FROM trusted_devices WHERE user_id = ?').run(userId);
-    db.prepare('UPDATE users SET totp_enabled = 0, totp_setup_required = 1, updated_at = ? WHERE id = ?')
-      .run(localNow(), userId);
-
-    // Also clear legacy TOTP columns if they exist
-    try {
-      db.prepare(`
-        UPDATE users SET totp_secret_enc = NULL, totp_backup_codes = NULL,
-          totp_pending_secret = NULL WHERE id = ?
-      `).run(userId);
-    } catch { /* legacy columns may not exist */ }
+    // Delete TOTP secret and backup codes (atomic transaction)
+    const reset2fa = db.transaction(() => {
+      db.prepare('DELETE FROM user_totp_secrets WHERE user_id = ?').run(userId);
+      db.prepare('DELETE FROM user_backup_codes WHERE user_id = ?').run(userId);
+      db.prepare('DELETE FROM trusted_devices WHERE user_id = ?').run(userId);
+      db.prepare('UPDATE users SET totp_enabled = 0, totp_setup_required = 1, updated_at = ? WHERE id = ?')
+        .run(localNow(), userId);
+      // Also clear legacy TOTP columns if they exist
+      try {
+        db.prepare(`
+          UPDATE users SET totp_secret_enc = NULL, totp_backup_codes = NULL,
+            totp_pending_secret = NULL WHERE id = ?
+        `).run(userId);
+      } catch { /* legacy columns may not exist */ }
+    });
+    reset2fa();
 
     // Log
     db.prepare(`

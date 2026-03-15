@@ -16,7 +16,7 @@ import {
   JwtPayload,
 } from '../middleware/auth';
 import { authRateLimit } from '../middleware/rateLimiter';
-import { validatePassword, getPasswordPolicyDescription, checkPasswordHistory, isPasswordExpired } from '../middleware/validatePassword';
+import { validatePassword, getPasswordPolicyDescription, checkPasswordHistory } from '../middleware/validatePassword';
 import config from '../config';
 import { localNow } from '../utils/timeUtils';
 import {
@@ -368,7 +368,7 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
 // ═══════════════════════════════════════════════════════
 // POST /api/auth/login/verify-2fa — Verify TOTP code
 // ═══════════════════════════════════════════════════════
-router.post('/login/verify-2fa', authenticateTempToken, (req: Request, res: Response) => {
+router.post('/login/verify-2fa', authRateLimit, authenticateTempToken, (req: Request, res: Response) => {
   try {
     const { code, trustDevice: shouldTrust, deviceFingerprint } = req.body;
     const ip = req.ip || 'unknown';
@@ -459,9 +459,9 @@ router.post('/login/verify-2fa', authenticateTempToken, (req: Request, res: Resp
 // ═══════════════════════════════════════════════════════
 // POST /api/auth/login/verify-backup-code
 // ═══════════════════════════════════════════════════════
-router.post('/login/verify-backup-code', authenticateTempToken, (req: Request, res: Response) => {
+router.post('/login/verify-backup-code', authRateLimit, authenticateTempToken, (req: Request, res: Response) => {
   try {
-    const { code, deviceFingerprint } = req.body;
+    const { code, deviceFingerprint, trustDevice: shouldTrust } = req.body;
     const ip = req.ip || 'unknown';
     const userAgent = req.headers['user-agent'] || 'unknown';
     const userId = req.user!.userId;
@@ -504,6 +504,11 @@ router.post('/login/verify-backup-code', authenticateTempToken, (req: Request, r
 
     // Log successful login
     logLoginAttempt(req.user!.username, ip, true, undefined, userAgent, deviceFingerprint);
+
+    // Trust this device if requested
+    if (shouldTrust && deviceFingerprint) {
+      trustDevice(userId, deviceFingerprint, ip, userAgent);
+    }
 
     // Check remaining codes
     const remaining = backupCodes.length - 1;
@@ -642,15 +647,15 @@ router.post('/2fa/setup/verify', authenticateAnyToken, (req: Request, res: Respo
       .run(localNow(), userId);
 
     // Generate backup codes
-    const codes = generateBackupCodes();
+    const { plain: codes, hashed: hashedCodes } = generateBackupCodes();
     const insertStmt = db.prepare(
       'INSERT INTO user_backup_codes (user_id, code_hash) VALUES (?, ?)'
     );
     const insertTx = db.transaction(() => {
       // Remove any old backup codes
       db.prepare('DELETE FROM user_backup_codes WHERE user_id = ?').run(userId);
-      for (const code of codes) {
-        insertStmt.run(userId, hashBackupCode(code));
+      for (const hash of hashedCodes) {
+        insertStmt.run(userId, hash);
       }
     });
     insertTx();
@@ -766,14 +771,14 @@ router.post('/2fa/backup-codes/regenerate', authenticateToken, (req: Request, re
     }
 
     // Generate new codes
-    const codes = generateBackupCodes();
+    const { plain: codes, hashed: hashedCodes } = generateBackupCodes();
     const insertStmt = db.prepare(
       'INSERT INTO user_backup_codes (user_id, code_hash) VALUES (?, ?)'
     );
     const insertTx = db.transaction(() => {
       db.prepare('DELETE FROM user_backup_codes WHERE user_id = ?').run(userId);
-      for (const code of codes) {
-        insertStmt.run(userId, hashBackupCode(code));
+      for (const hash of hashedCodes) {
+        insertStmt.run(userId, hash);
       }
     });
     insertTx();
@@ -824,10 +829,13 @@ router.post('/2fa/disable', authenticateToken, (req: Request, res: Response) => 
       return;
     }
 
-    db.prepare('DELETE FROM user_totp_secrets WHERE user_id = ?').run(userId);
-    db.prepare('DELETE FROM user_backup_codes WHERE user_id = ?').run(userId);
-    db.prepare('UPDATE users SET totp_enabled = 0, totp_setup_required = 1, updated_at = ? WHERE id = ?')
-      .run(localNow(), userId);
+    const disable2fa = db.transaction(() => {
+      db.prepare('DELETE FROM user_totp_secrets WHERE user_id = ?').run(userId);
+      db.prepare('DELETE FROM user_backup_codes WHERE user_id = ?').run(userId);
+      db.prepare('UPDATE users SET totp_enabled = 0, totp_setup_required = 1, updated_at = ? WHERE id = ?')
+        .run(localNow(), userId);
+    });
+    disable2fa();
 
     createSecurityNotification(
       userId,
@@ -1776,7 +1784,7 @@ router.post('/webauthn/authenticate/begin', authRateLimit, (req: Request, res: R
 router.post('/webauthn/authenticate/verify', authRateLimit, (req: Request, res: Response) => {
   (async () => {
     try {
-      const { tempToken, response: webauthnResponse, challenge } = req.body;
+      const { tempToken, response: webauthnResponse, challenge, trustDevice: shouldTrust, deviceFingerprint } = req.body;
 
       if (!tempToken || !webauthnResponse || !challenge) {
         res.status(400).json({ error: 'Token, response, and challenge are required' });
@@ -1836,6 +1844,11 @@ router.post('/webauthn/authenticate/verify', authRateLimit, (req: Request, res: 
       db.prepare(`
         UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login_at = ? WHERE id = ?
       `).run(localNow(), user.id);
+
+      // Trust this device if requested
+      if (shouldTrust && deviceFingerprint) {
+        trustDevice(decoded.userId, deviceFingerprint, ip, userAgent);
+      }
 
       res.json({
         token: accessToken,

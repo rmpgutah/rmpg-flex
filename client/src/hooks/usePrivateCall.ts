@@ -3,6 +3,7 @@ import { useWebSocket } from '../context/WebSocketContext';
 import { useAuth } from '../context/AuthContext';
 import { StreamPlayer } from '../utils/StreamPlayer';
 import { playRadioTone } from '../utils/radioTones';
+import { devLog } from '../utils/devLog';
 
 // ============================================================
 // RMPG Flex — Private Call Hook (Full-Duplex)
@@ -161,7 +162,7 @@ export function usePrivateCall() {
 
       // 200ms chunks — same as radio for consistent latency
       recorder.start(200);
-      console.log('[PrivateCall] Audio stream started, mimeType:', mimeType);
+      devLog('[PrivateCall] Audio stream started, mimeType:', mimeType);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Microphone access denied';
       setError(
@@ -323,7 +324,7 @@ export function usePrivateCall() {
 
       // Confirmation tone
       playRadioTone('channelChange');
-      console.log(`[PrivateCall] CONNECTED with ${data.partnerName}`);
+      devLog(`[PrivateCall] CONNECTED with ${data.partnerName}`);
     });
 
     // Call declined (by receiver or auto-timeout)
@@ -367,7 +368,7 @@ export function usePrivateCall() {
 
       // End-of-call tone
       playRadioTone('receiveEnd');
-      console.log(`[PrivateCall] ENDED (${data.duration || 0}s)`);
+      devLog(`[PrivateCall] ENDED (${data.duration || 0}s)`);
     });
 
     // Error from server

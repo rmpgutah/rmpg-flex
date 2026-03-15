@@ -12,12 +12,14 @@ interface CallCardProps {
   isSelected?: boolean;
   onClick?: (call: CallForService) => void;
   onUnitDrop?: (callId: string, unitId: string) => void;
+  onStatusChange?: (callId: string, newStatus: string) => void;
+  onContextMenu?: (e: React.MouseEvent, call: CallForService) => void;
   warnings?: WarningTag[];
 }
 
 const NON_DROPPABLE_STATUSES = ['cleared', 'closed', 'cancelled', 'archived'];
 
-export default React.memo(function CallCard({ call, isSelected = false, onClick, onUnitDrop, warnings }: CallCardProps) {
+export default React.memo(function CallCard({ call, isSelected = false, onClick, onUnitDrop, onStatusChange, onContextMenu, warnings }: CallCardProps) {
   const isEmergency = call.priority === 'P1';
   const [isDragOver, setIsDragOver] = useState(false);
   const timerRef = useRef<HTMLSpanElement>(null);
@@ -54,8 +56,9 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
 
       setIsOverdue(state.isOverdue);
 
-      // Legacy escalation logic
-      const diffMin = Math.floor((Date.now() - new Date(call.created_at).getTime()) / 60000);
+      // Legacy escalation logic — guard against missing/invalid created_at
+      const createdTime = call.created_at ? new Date(call.created_at).getTime() : NaN;
+      const diffMin = Number.isFinite(createdTime) ? Math.floor((Date.now() - createdTime) / 60000) : 0;
       const isPending = call.status === 'pending';
       setShouldEscalate(isPending && (
         (call.priority === 'P3' && diffMin >= 20) ||
@@ -107,12 +110,13 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
   return (
     <div
       onClick={() => onClick?.(call)}
+      onContextMenu={(e) => { if (onContextMenu) { e.preventDefault(); onContextMenu(e, call); } }}
       onDragOver={handleDragOver}
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       className={`
-        relative p-2 cursor-pointer transition-all duration-100
+        group relative p-2 cursor-pointer transition-all duration-100
         priority-border-${call.priority}
         ${isSelected
           ? 'bg-brand-900/30 panel-beveled'
@@ -125,7 +129,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
       style={{
         background: call.status === 'on_hold'
           ? 'rgba(180, 130, 0, 0.08)'
-          : isSelected ? undefined : '#1a1a1a',
+          : isSelected ? undefined : '#141e2b',
         borderLeftColor: call.status === 'on_hold' ? '#f59e0b' : undefined,
         ...(isDragOver ? {
           boxShadow: '0 0 8px rgba(34, 197, 94, 0.5)',
@@ -156,7 +160,12 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
             <AlertTriangle className="w-4 h-4 text-red-500 animate-emergency-blink" />
           )}
           <span className="text-sm font-bold text-green-400 font-mono">{call.call_number}</span>
-          {call.dispatch_code && (
+          {call.incident_type === 'pso_client_request' && call.pso_attempt_number && (
+            <span className="text-[9px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1 py-0">
+              VISIT #{call.pso_attempt_number}
+            </span>
+          )}
+          {call.dispatch_code && !(call.incident_type === 'pso_client_request' && call.pso_attempt_number) && (
             <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1 py-0">
               {call.dispatch_code}
             </span>
@@ -185,6 +194,9 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         <span className="text-sm font-medium text-brand-400">
           {formatIncidentType(call.incident_type)}
         </span>
+        {call.incident_type === 'pso_client_request' && call.pso_service_type && (
+          <span className="text-[9px] text-rmpg-300 truncate max-w-[140px]">{call.pso_service_type}</span>
+        )}
         {call.case_number && (
           <span className="text-[9px] font-mono text-cyan-400 bg-cyan-900/20 border border-cyan-700/30 px-1">
             {call.case_number}
@@ -229,6 +241,27 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
       {warnings && warnings.length > 0 && (
         <div className="mt-1.5 pt-1 border-t border-red-900/40">
           <WarningTags warnings={warnings} compact />
+        </div>
+      )}
+
+      {/* Quick Status Advance Buttons — visible on hover */}
+      {onStatusChange && !['closed', 'cancelled', 'archived'].includes(call.status) && (
+        <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5 z-10"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {call.status === 'pending' && (
+            <button onClick={() => onStatusChange(call.id, 'dispatched')} className="px-1.5 py-0.5 text-[8px] font-bold bg-amber-900/60 text-amber-300 border border-amber-700/50 hover:bg-amber-800/80 transition-colors" title="Dispatch">D</button>
+          )}
+          {call.status === 'dispatched' && (
+            <button onClick={() => onStatusChange(call.id, 'enroute')} className="px-1.5 py-0.5 text-[8px] font-bold bg-blue-900/60 text-blue-300 border border-blue-700/50 hover:bg-blue-800/80 transition-colors" title="En Route">ER</button>
+          )}
+          {call.status === 'enroute' && (
+            <button onClick={() => onStatusChange(call.id, 'onscene')} className="px-1.5 py-0.5 text-[8px] font-bold bg-purple-900/60 text-purple-300 border border-purple-700/50 hover:bg-purple-800/80 transition-colors" title="On Scene">OS</button>
+          )}
+          {['dispatched', 'enroute', 'onscene'].includes(call.status) && (
+            <button onClick={() => onStatusChange(call.id, 'cleared')} className="px-1.5 py-0.5 text-[8px] font-bold bg-green-900/60 text-green-300 border border-green-700/50 hover:bg-green-800/80 transition-colors" title="Clear">CL</button>
+          )}
+          <button onClick={() => onStatusChange(call.id, 'closed')} className="px-1.5 py-0.5 text-[8px] font-bold bg-red-900/60 text-red-300 border border-red-700/50 hover:bg-red-800/80 transition-colors" title="Close Call">X</button>
         </div>
       )}
 

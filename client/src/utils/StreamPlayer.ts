@@ -1,3 +1,5 @@
+import { devLog } from './devLog';
+
 // ============================================================
 // RMPG Flex — Stream Player (Audio Playback for Radio/Panic)
 // ============================================================
@@ -59,7 +61,7 @@ export class StreamPlayer {
       src.start();
       // Close after a moment — we just needed to unlock audio
       setTimeout(() => ctx.close().catch(() => {}), 100);
-      console.log('[StreamPlayer] Audio pre-warmed successfully');
+      devLog('[StreamPlayer] Audio pre-warmed successfully');
     } catch {
       console.warn('[StreamPlayer] Pre-warm failed (no user gesture?)');
     }
@@ -77,7 +79,7 @@ export class StreamPlayer {
       if (this.audioContext.state === 'suspended') {
         this.audioContext.resume().catch(() => {});
       }
-      console.log('[StreamPlayer] AudioContext created, state:', this.audioContext.state);
+      devLog('[StreamPlayer] AudioContext created, state:', this.audioContext.state);
     } catch (err) {
       console.error('[StreamPlayer] Failed to create AudioContext:', err);
     }
@@ -109,7 +111,7 @@ export class StreamPlayer {
 
     // Log first few chunks for diagnostics
     if (this.chunkCount <= 3) {
-      console.log('[StreamPlayer] Chunk #' + this.chunkCount +
+      devLog('[StreamPlayer] Chunk #' + this.chunkCount +
         ' received, size:', bytes.length, 'bytes, total:', this.totalBytes,
         'bytes, ctx state:', this.audioContext?.state);
     }
@@ -149,7 +151,7 @@ export class StreamPlayer {
       if (newDuration <= 0.01) return; // Nothing new to play
 
       if (this.chunkCount <= 3) {
-        console.log('[StreamPlayer] Decoded:', totalDuration.toFixed(2) + 's total,',
+        devLog('[StreamPlayer] Decoded:', totalDuration.toFixed(2) + 's total,',
           newDuration.toFixed(2) + 's new, playing from', this.playedUpTo.toFixed(2) + 's');
       }
 
@@ -195,7 +197,7 @@ export class StreamPlayer {
       // This is expected on the very first chunk sometimes — just wait
       // for more data
       if (this.chunkCount <= 2) {
-        console.log('[StreamPlayer] Decode deferred (need more data), chunks:', this.chunkCount);
+        devLog('[StreamPlayer] Decode deferred (need more data), chunks:', this.chunkCount);
       } else {
         console.warn('[StreamPlayer] decodeAudioData failed:', err);
       }

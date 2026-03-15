@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 
 // ============================================================
 // RMPG Flex — Pagination Hook
@@ -69,9 +69,11 @@ export function usePagination<T>(
   const total = data.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
-  // Clamp page to valid range
+  // Clamp page to valid range (deferred to effect to avoid setState during render)
   const safePage = Math.min(Math.max(1, page), totalPages);
-  if (safePage !== page) setPage(safePage);
+  useEffect(() => {
+    if (safePage !== page) setPage(safePage);
+  }, [safePage, page]);
 
   const pageData = useMemo(() => {
     const start = (safePage - 1) * pageSize;

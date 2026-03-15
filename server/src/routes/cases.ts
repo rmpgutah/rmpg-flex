@@ -8,12 +8,14 @@
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 import { generateCaseNumber } from '../utils/caseNumbers';
 
 const router = Router();
 router.use(authenticateToken);
+// Case investigations are sensitive — restrict to LE roles only
+router.use(requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'));
 
 // ─── GET /stats ──────────────────────────────────────────
 router.get('/stats', (req: Request, res: Response) => {

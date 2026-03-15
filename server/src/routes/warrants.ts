@@ -9,6 +9,8 @@ const router = Router();
 
 // All warrant routes require authentication
 router.use(authenticateToken);
+// Warrants are sensitive law enforcement records — restrict to LE roles only
+router.use(requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'));
 
 // GET /api/warrants - List warrants with filters
 router.get('/', (req: Request, res: Response) => {
@@ -302,10 +304,12 @@ router.post('/', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), (r
       req.ip || 'unknown',
     );
 
-    // Broadcast warrant event
+    // Broadcast warrant event (minimal signal — no PII, clients refetch via API)
     broadcast('alerts', 'warrant', {
       action: 'created',
-      warrant,
+      id: warrant.id,
+      warrant_number: warrant.warrant_number,
+      status: warrant.status,
     });
 
     res.status(201).json(warrant);
@@ -405,7 +409,7 @@ router.put('/:id', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), 
 });
 
 // PUT /api/warrants/:id/serve - Serve a warrant
-router.put('/:id/serve', (req: Request, res: Response) => {
+router.put('/:id/serve', requireRole('officer', 'supervisor', 'dispatcher', 'admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
 
@@ -465,10 +469,12 @@ router.put('/:id/serve', (req: Request, res: Response) => {
       req.ip || 'unknown',
     );
 
-    // Broadcast warrant served event
+    // Broadcast warrant served event (minimal signal — no PII)
     broadcast('alerts', 'warrant', {
       action: 'served',
-      warrant: updated,
+      id: updated.id,
+      warrant_number: updated.warrant_number,
+      status: updated.status,
     });
 
     res.json(updated);
@@ -504,7 +510,7 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
 });
 
 // POST /api/warrants/:id/archive
-router.post('/:id/archive', (req: Request, res: Response) => {
+router.post('/:id/archive', requireRole('supervisor', 'dispatcher', 'admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const warrant = db.prepare('SELECT * FROM warrants WHERE id = ?').get(req.params.id) as any;
@@ -532,7 +538,7 @@ router.post('/:id/archive', (req: Request, res: Response) => {
 });
 
 // POST /api/warrants/:id/unarchive
-router.post('/:id/unarchive', (req: Request, res: Response) => {
+router.post('/:id/unarchive', requireRole('supervisor', 'dispatcher', 'admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const warrant = db.prepare('SELECT * FROM warrants WHERE id = ?').get(req.params.id) as any;

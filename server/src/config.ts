@@ -140,6 +140,20 @@ export const config = {
     trustedDeviceDays: envInt('TRUSTED_DEVICE_DAYS', 30),
   },
 
+  // WebAuthn / Security Key (YubiKey, Touch ID, Windows Hello)
+  webauthn: {
+    rpName: process.env.WEBAUTHN_RP_NAME || 'RMPG Flex',
+    rpID: process.env.WEBAUTHN_RP_ID || 'rmpgutah.us',
+    origin: process.env.WEBAUTHN_ORIGIN || 'https://rmpgutah.us',
+  },
+
+  // Alias for utilities that reference config.twoFactor
+  twoFactor: {
+    issuer: process.env.TOTP_ISSUER || 'RMPG Flex',
+    encryptionKey: process.env.TOTP_ENCRYPTION_KEY || jwtSecret,
+    backupCodeCount: envInt('TOTP_BACKUP_CODE_COUNT', 10),
+  },
+
   // Session
   session: {
     maxPerUser: envInt('SESSION_MAX_PER_USER', 5),

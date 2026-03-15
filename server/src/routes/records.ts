@@ -1038,11 +1038,51 @@ router.get('/properties/:id', (req: Request, res: Response) => {
       WHERE s.property_id = ? AND s.shift_date = ?
     `).all(property.id, today);
 
+    // Get linked persons via client_persons (employees, tenants, managers, etc.)
+    let linkedPersons: any[] = [];
+    if (property.client_id) {
+      linkedPersons = db.prepare(`
+        SELECT p.id, p.first_name, p.last_name, p.phone, p.email, p.photo_url,
+          p.flags, p.notes, p.alias_nickname,
+          cp.relationship, cp.title, cp.is_primary, cp.notes as link_notes
+        FROM client_persons cp
+        JOIN persons p ON cp.person_id = p.id
+        WHERE cp.client_id = ?
+        ORDER BY cp.is_primary DESC, cp.relationship, p.last_name
+      `).all(property.client_id);
+    }
+
+    // Also get directly linked persons via record_links (trespass subjects, etc.)
+    const directLinks = db.prepare(`
+      SELECT p.id, p.first_name, p.last_name, p.phone, p.email, p.photo_url,
+        p.flags, p.notes, p.alias_nickname,
+        rl.relationship, rl.notes as link_notes
+      FROM record_links rl
+      JOIN persons p ON rl.target_id = p.id AND rl.target_type = 'person'
+      WHERE rl.source_type = 'property' AND rl.source_id = ?
+      UNION
+      SELECT p.id, p.first_name, p.last_name, p.phone, p.email, p.photo_url,
+        p.flags, p.notes, p.alias_nickname,
+        rl.relationship, rl.notes as link_notes
+      FROM record_links rl
+      JOIN persons p ON rl.source_id = p.id AND rl.source_type = 'person'
+      WHERE rl.target_type = 'property' AND rl.target_id = ?
+    `).all(property.id, property.id);
+
+    // Merge direct links, avoiding duplicates
+    const existingIds = new Set(linkedPersons.map((p: any) => p.id));
+    for (const dl of directLinks) {
+      if (!existingIds.has((dl as any).id)) {
+        linkedPersons.push(dl);
+      }
+    }
+
     res.json({
       ...property,
       recentCalls,
       checkpoints,
       todaySchedules: schedules,
+      linkedPersons,
     });
   } catch (error: any) {
     console.error('Get property error:', error);

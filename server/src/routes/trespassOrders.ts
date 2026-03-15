@@ -1,11 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
 import { broadcast } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
 
 const router = Router();
 router.use(authenticateToken);
+// Trespass orders contain PII (names, DOB, descriptions) — restrict to LE roles
+router.use(requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'));
 
 /** Generate next order number: TO-YYYY-NNNN */
 function generateOrderNumber(db: ReturnType<typeof getDb>): string {
@@ -177,8 +179,8 @@ router.post('/', (req: Request, res: Response) => {
       now, now
     );
 
-    const created = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(result.lastInsertRowid);
-    broadcast('alerts', { type: 'trespass_order_created', data: created });
+    const created = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(result.lastInsertRowid) as any;
+    broadcast('alerts', 'trespass_order_created', { id: created?.id, order_number: created?.order_number, status: created?.status });
     res.status(201).json(created);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -213,8 +215,8 @@ router.put('/:id', (req: Request, res: Response) => {
     params.push(req.params.id);
     db.prepare(`UPDATE trespass_orders SET ${setClauses.join(', ')} WHERE id = ?`).run(...params);
 
-    const updated = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(req.params.id);
-    broadcast('alerts', { type: 'trespass_order_updated', data: updated });
+    const updated = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(req.params.id) as any;
+    broadcast('alerts', 'trespass_order_updated', { id: updated?.id, order_number: updated?.order_number, status: updated?.status });
     res.json(updated);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -229,8 +231,8 @@ router.put('/:id/serve', (req: Request, res: Response) => {
     const now = localNow();
     db.prepare(`UPDATE trespass_orders SET status = 'served', served_at = ?, served_by = ?, updated_at = ? WHERE id = ?`)
       .run(now, user.id, now, req.params.id);
-    const updated = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(req.params.id);
-    broadcast('alerts', { type: 'trespass_order_served', data: updated });
+    const updated = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(req.params.id) as any;
+    broadcast('alerts', 'trespass_order_served', { id: updated?.id, order_number: updated?.order_number, status: updated?.status });
     res.json(updated);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -243,8 +245,8 @@ router.put('/:id/lift', (req: Request, res: Response) => {
     const db = getDb();
     const now = localNow();
     db.prepare(`UPDATE trespass_orders SET status = 'lifted', updated_at = ? WHERE id = ?`).run(now, req.params.id);
-    const updated = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(req.params.id);
-    broadcast('alerts', { type: 'trespass_order_lifted', data: updated });
+    const updated = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(req.params.id) as any;
+    broadcast('alerts', 'trespass_order_lifted', { id: updated?.id, order_number: updated?.order_number, status: updated?.status });
     res.json(updated);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -257,8 +259,8 @@ router.put('/:id/violate', (req: Request, res: Response) => {
     const db = getDb();
     const now = localNow();
     db.prepare(`UPDATE trespass_orders SET status = 'violated', updated_at = ? WHERE id = ?`).run(now, req.params.id);
-    const updated = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(req.params.id);
-    broadcast('alerts', { type: 'trespass_order_violated', data: updated });
+    const updated = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(req.params.id) as any;
+    broadcast('alerts', 'trespass_order_violated', { id: updated?.id, order_number: updated?.order_number, status: updated?.status });
     res.json(updated);
   } catch (err: any) {
     res.status(500).json({ error: err.message });

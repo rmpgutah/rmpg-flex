@@ -77,18 +77,18 @@ export default function StatusBar({
               GPS: {gpsUnitCallSign || 'ON'}
             </span>
             {gpsAccuracy != null && (
-              <span style={{ color: '#707070', marginLeft: 4 }}>
+              <span style={{ color: '#4a6280', marginLeft: 4 }}>
                 ±{Math.round(gpsAccuracy)}m
               </span>
             )}
             {gpsLastSent && (
-              <span style={{ color: '#505050', marginLeft: 4 }}>
+              <span style={{ color: '#4a6280', marginLeft: 4 }}>
                 {new Date(gpsLastSent).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
               </span>
             )}
           </>
         ) : (
-          <span style={{ color: '#505050' }}>GPS: OFF</span>
+          <span style={{ color: '#4a6280' }}>GPS: OFF</span>
         )}
       </div>
 
@@ -104,7 +104,7 @@ export default function StatusBar({
         <span style={{ color: '#22c55e' }}>
           {now.toLocaleTimeString('en-US', { hour12: false })}
         </span>
-        <span style={{ color: '#707070', marginLeft: 8 }}>
+        <span style={{ color: '#4a6280', marginLeft: 8 }}>
           {now.toLocaleDateString('en-US', {
             weekday: 'short',
             month: 'short',

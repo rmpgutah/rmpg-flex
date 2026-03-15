@@ -25,9 +25,9 @@ export default function FloatingSaveBar({
     <div
       className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[9990] flex items-center gap-2 px-4 py-2 shadow-2xl animate-slide-in-up"
       style={{
-        background: 'linear-gradient(180deg, #2a2a2a 0%, #1a1a1a 100%)',
-        border: '1px solid #484848',
-        borderTop: '2px solid #bc1010',
+        background: 'linear-gradient(180deg, #2a3e58 0%, #141e2b 100%)',
+        border: '1px solid #3a5070',
+        borderTop: '2px solid #1a5a9e',
         boxShadow: '0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(188,16,16,0.2)',
       }}
     >

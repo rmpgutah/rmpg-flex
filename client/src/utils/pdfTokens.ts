@@ -1,7 +1,7 @@
 // ============================================================
 // RMPG Flex — PDF Design Token System
-// Blocky police-report style: Courier values, Helvetica labels
-// Thick borders, dark section headers, tight structured grid
+// Deep Blue police-report style: Courier values, Helvetica labels
+// Navy headers, blue accent borders, tight structured grid
 // ============================================================
 
 import jsPDF from 'jspdf';
@@ -13,34 +13,38 @@ export type RGBColor = readonly [number, number, number];
 export const COLOR = {
   // Text hierarchy
   TEXT_PRIMARY:    [0, 0, 0]        as const,  // Courier field values
-  TEXT_SECONDARY:  [50, 50, 50]     as const,  // Helvetica labels (darker)
-  TEXT_TERTIARY:   [100, 100, 100]  as const,  // Placeholders, sub-labels
+  TEXT_SECONDARY:  [30, 48, 72]     as const,  // Helvetica labels (navy)
+  TEXT_TERTIARY:   [74, 98, 128]    as const,  // Placeholders, sub-labels (#4a6280)
   TEXT_INVERTED:   [255, 255, 255]  as const,  // White on dark backgrounds
-  TEXT_MUTED:      [140, 140, 140]  as const,  // Form number, report date
+  TEXT_MUTED:      [107, 127, 150]  as const,  // Form number, report date (#6b7f96)
 
-  // Borders — thicker, more structured for blocky look
-  BORDER_FIELD:    [120, 120, 120]  as const,  // Field box borders (darker)
-  BORDER_TABLE:    [150, 150, 155]  as const,  // Row separator lines
-  BORDER_COLUMN:   [140, 140, 145]  as const,  // Vertical column separators
-  BORDER_OUTER:    [40, 40, 40]     as const,  // Table outer border (near-black)
-  BORDER_SECTION:  [30, 30, 30]     as const,  // Section outline (bold)
+  // Borders — navy-tinted, structured for professional look
+  BORDER_FIELD:    [42, 62, 88]     as const,  // Field box borders (#2a3e58)
+  BORDER_TABLE:    [58, 80, 112]    as const,  // Row separator lines (#3a5070)
+  BORDER_COLUMN:   [58, 80, 112]    as const,  // Vertical column separators
+  BORDER_OUTER:    [20, 30, 46]     as const,  // Table outer border (#141e2e)
+  BORDER_SECTION:  [14, 28, 48]     as const,  // Section outline (deep navy)
 
   // Backgrounds
-  BG_ZEBRA:        [235, 235, 240]  as const,  // Even-row table shading
-  BG_SECTION_HDR:  [25, 25, 30]     as const,  // Section header bar (DARK — police style)
-  BG_TABLE_HDR:    [50, 50, 60]     as const,  // Table column header (dark)
+  BG_ZEBRA:        [232, 238, 246]  as const,  // Even-row shading (blue-tinted #e8eef6)
+  BG_SECTION_HDR:  [20, 46, 82]     as const,  // Section header bar (deep blue #142e52)
+  BG_TABLE_HDR:    [26, 90, 158]    as const,  // Table column header (brand blue #1a5a9e)
 
   // Financial
   AMOUNT_CREDIT:   [0, 120, 60]     as const,
   AMOUNT_DEBIT:    [180, 0, 0]      as const,
 
+  // Brand accent
+  BRAND_BLUE:      [26, 90, 158]    as const,  // #1a5a9e — primary brand
+  BRAND_GOLD:      [212, 160, 23]   as const,  // #d4a017 — secondary accent
+
   // Watermark
-  WATERMARK:       [120, 120, 120]  as const,
+  WATERMARK:       [74, 98, 128]    as const,  // Blue-tinted watermark
 
   // NIBRS Grid Form — sidebar tabs + dense cells
-  BG_SIDEBAR_TAB:      [25, 25, 30]     as const,  // Dark sidebar tab background
-  BG_FORM_CELL_LABEL:  [240, 240, 245]  as const,  // Light gray label strip inside cell
-  BORDER_FORM_GRID:    [60, 60, 60]     as const,  // Dark grid lines (shared borders)
+  BG_SIDEBAR_TAB:      [20, 46, 82]     as const,  // Deep blue sidebar tab
+  BG_FORM_CELL_LABEL:  [232, 238, 246]  as const,  // Blue-tinted label strip inside cell
+  BORDER_FORM_GRID:    [42, 62, 88]     as const,  // Navy grid lines
 } as const;
 
 // ── Typography Tokens ────────────────────────────────────────
@@ -50,10 +54,10 @@ export const COLOR = {
 export const FONT = {
   SIZE_HEADER_TITLE:      13,    // Agency name in header bar
   SIZE_SECTION_TITLE:     8,     // Section header bar text (all-caps)
-  SIZE_FIELD_VALUE:       8.5,   // Courier values inside field boxes
-  SIZE_FIELD_LABEL:       6,     // Helvetica labels above field boxes
-  SIZE_TABLE_HEADER:      6.5,   // Helvetica column headers
-  SIZE_TABLE_BODY:        7.5,   // Courier table row content
+  SIZE_FIELD_VALUE:       9,     // Courier values inside field boxes
+  SIZE_FIELD_LABEL:       6.5,   // Helvetica labels above field boxes
+  SIZE_TABLE_HEADER:      7,     // Helvetica column headers
+  SIZE_TABLE_BODY:        8,     // Courier table row content
   SIZE_FOOTER_PRIMARY:    5,     // Footer form #, page #
   SIZE_FOOTER_SECONDARY:  4.5,   // Footer secondary info
   SIZE_SMALL_META:        5,     // Form revision, report date
@@ -111,7 +115,7 @@ export const SPACING = {
 
   CONTENT_INSET:      2,     // Left/right padding inside sections (tighter)
   SECTION_HEADER_H:   5.5,   // Section header bar height (tighter)
-  SECTION_GAP:        1.5,   // Gap between sections (tighter)
+  SECTION_GAP:        3,     // Gap between sections
   SECTION_CONTENT_PAD: 1.5,  // Gap from header bar to first content (tighter)
   SECTION_BOTTOM_PAD:  2,    // Padding inside section before bottom border (tighter)
 
@@ -125,7 +129,7 @@ export const SPACING = {
   // NIBRS Grid Form — cell dimensions
   FORM_CELL_H:        7,     // Default form cell height
   FORM_CELL_LABEL_H:  2.5,   // Height reserved for label strip inside cell
-  FORM_CELL_PAD:      1.2,   // Padding inside cell for label/value text
+  FORM_CELL_PAD:      1.5,   // Padding inside cell for label/value text
   SIDEBAR_TAB_W:      12,    // Width of sidebar section tab
 } as const;
 
@@ -140,7 +144,7 @@ export const LAYOUT = {
   SEAL_SIZE:         14,     // Compact logo
   ACCENT_STRIP_H:    1,     // Thinner accent strip below header
   CASE_BOX_W:        42,     // Case number box width
-  LINE_HEIGHT:       3.5,    // Base line height for wrapped text (tighter)
+  LINE_HEIGHT:       4,      // Base line height for wrapped text
   DIAGRAM_GRID_STEP: 10,     // Grid spacing in accident diagram
 
   // NIBRS Grid Form — layout

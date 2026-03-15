@@ -9,6 +9,8 @@ import { identifyBeat } from '../utils/geofence';
 const router = Router();
 
 router.use(authenticateToken);
+// Incidents are law enforcement operational data — restrict to LE roles only
+router.use(requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'));
 
 // GET /api/incidents - List incidents with filters
 router.get('/', (req: Request, res: Response) => {

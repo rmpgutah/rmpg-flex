@@ -171,9 +171,9 @@ export const DASHCAM_EVENT_COLORS: Record<string, string> = {
 
 export const CHART_TOOLTIP_STYLE = {
   contentStyle: {
-    backgroundColor: '#1a1a1a',
-    border: '1px solid #383838',
-    color: '#e0e0e0',
+    backgroundColor: '#141e2b',
+    border: '1px solid #2a3e58',
+    color: '#c0d0e0',
     fontSize: 10,
     fontFamily: 'Consolas, monospace',
   },

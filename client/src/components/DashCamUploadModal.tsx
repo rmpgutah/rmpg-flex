@@ -2,8 +2,8 @@
 // RMPG Flex — Dash Camera Video Upload Modal
 // ============================================================
 
-import React, { useState, useRef } from 'react';
-import { Upload, X, Car, Loader2, MapPin, Gauge, Radio, Mic } from 'lucide-react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { Upload, X, Car, Loader2, MapPin, Gauge, Radio, Mic, FileText, Navigation } from 'lucide-react';
 
 interface FleetVehicle {
   id: number;
@@ -52,11 +52,26 @@ export default function DashCamUploadModal({
   const [notes, setNotes] = useState('');
   const [cameraPosition, setCameraPosition] = useState('FRONT');
   const [micStatus, setMicStatus] = useState('ON');
+  const [dataFile, setDataFile] = useState<File | null>(null);
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [gpsSynced, setGpsSynced] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
   const [duration, setDuration] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const dataFileRef = useRef<HTMLInputElement>(null);
+  const xhrRef = useRef<XMLHttpRequest | null>(null);
+
+  // Escape key to close modal
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !uploading) handleClose();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, uploading]);
 
   if (!isOpen) return null;
 
@@ -75,6 +90,9 @@ export default function DashCamUploadModal({
     setNotes('');
     setCameraPosition('FRONT');
     setMicStatus('ON');
+    setDataFile(null);
+    setGpsLoading(false);
+    setGpsSynced(false);
     setProgress(0);
     setError('');
     setDuration(null);
@@ -82,7 +100,11 @@ export default function DashCamUploadModal({
   };
 
   const handleClose = () => {
-    if (uploading) return;
+    // Abort in-flight upload before closing
+    if (xhrRef.current) {
+      xhrRef.current.abort();
+      xhrRef.current = null;
+    }
     reset();
     onClose();
   };
@@ -104,6 +126,102 @@ export default function DashCamUploadModal({
       videoEl.src = URL.createObjectURL(f);
     }
   };
+
+  // ── .txt / .json data file parser ─────────────────────────
+  // Supports SmartWitness JSON exports and simple KEY: VALUE text files.
+
+  /** Parse simple KEY: VALUE text format */
+  const parseTextDataFile = (text: string): Record<string, string> => {
+    const result: Record<string, string> = {};
+    for (const line of text.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const colonIdx = trimmed.indexOf(':');
+      if (colonIdx === -1) continue;
+      const key = trimmed.slice(0, colonIdx).trim().toUpperCase().replace(/\s+/g, '_');
+      const value = trimmed.slice(colonIdx + 1).trim();
+      if (key && value) result[key] = value;
+    }
+    return result;
+  };
+
+  /** Parse SmartWitness JSON format */
+  const parseSmartWitnessJson = (json: any): Record<string, string> => {
+    const result: Record<string, string> = {};
+    if (json.speed != null) result.SPEED_MPH = String(Math.round(json.speed));
+    if (json.latitude != null) result.LATITUDE = String(json.latitude);
+    if (json.longitude != null) result.LONGITUDE = String(json.longitude);
+    if (json.mediaDataLocation?.address) result.ADDRESS = json.mediaDataLocation.address;
+    if (json.eventTime) {
+      // eventTime is Unix epoch seconds — convert to datetime-local format
+      const d = new Date(json.eventTime * 1000);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      result.RECORDED_AT = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+    if (json.eventType) result.EVENT_TYPE = json.eventType;
+    if (json.recorderId) result.RECORDER_ID = json.recorderId;
+    if (json.heading != null) result.HEADING = String(json.heading);
+    return result;
+  };
+
+  const handleDataFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setDataFile(f);
+    try {
+      const text = await f.text();
+      let parsed: Record<string, string>;
+      // Auto-detect JSON vs text format
+      const trimmed = text.trim();
+      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        const json = JSON.parse(trimmed);
+        parsed = parseSmartWitnessJson(Array.isArray(json) ? json[0] : json);
+      } else {
+        parsed = parseTextDataFile(text);
+      }
+      if (parsed.TITLE && !title) setTitle(parsed.TITLE);
+      if (parsed.CASE_NUMBER && !caseNumber) setCaseNumber(parsed.CASE_NUMBER);
+      if (parsed.SPEED_MPH && !speedMph) setSpeedMph(parsed.SPEED_MPH);
+      if (parsed.LATITUDE && !latitude) setLatitude(parsed.LATITUDE);
+      if (parsed.LONGITUDE && !longitude) setLongitude(parsed.LONGITUDE);
+      if (parsed.ADDRESS && !address) setAddress(parsed.ADDRESS);
+      if (parsed.CLASSIFICATION) setClassification(parsed.CLASSIFICATION.toLowerCase());
+      if (parsed.CAMERA_POSITION) setCameraPosition(parsed.CAMERA_POSITION.toUpperCase());
+      if (parsed.MIC_STATUS) setMicStatus(parsed.MIC_STATUS.toUpperCase());
+      if (parsed.NOTES && !notes) setNotes(parsed.NOTES);
+      if (parsed.RECORDED_AT && !recordedAt) setRecordedAt(parsed.RECORDED_AT);
+      if (parsed.EVENT_TYPE && !notes) setNotes(`Event: ${parsed.EVENT_TYPE}`);
+    } catch {
+      setError('Failed to read data file — check format (JSON or KEY: VALUE text)');
+    }
+  };
+
+  // ── ClearPathGPS auto-lookup ──────────────────────────────
+  const lookupGps = useCallback(async () => {
+    if (!unitId || !recordedAt || gpsLoading) return;
+    setGpsLoading(true);
+    setGpsSynced(false);
+    try {
+      const ts = new Date(recordedAt).toISOString();
+      const url = `${apiBase}/fleet/dashcam-gps-lookup?unit_id=${encodeURIComponent(unitId)}&timestamp=${encodeURIComponent(ts)}`;
+      const resp = await fetch(url, { headers: getAuthHeaders() });
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({ error: 'GPS lookup failed' }));
+        setError(body.error || 'GPS lookup failed');
+        return;
+      }
+      const data = await resp.json();
+      if (data.speedMph != null) setSpeedMph(String(Math.round(data.speedMph)));
+      if (data.latitude != null) setLatitude(String(data.latitude));
+      if (data.longitude != null) setLongitude(String(data.longitude));
+      if (data.address) setAddress(data.address);
+      setGpsSynced(true);
+    } catch {
+      setError('Failed to fetch GPS data from ClearPathGPS');
+    } finally {
+      setGpsLoading(false);
+    }
+  }, [unitId, recordedAt, gpsLoading, apiBase, getAuthHeaders]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -134,6 +252,7 @@ export default function DashCamUploadModal({
     if (micStatus) formData.append('mic_status', micStatus);
 
     const xhr = new XMLHttpRequest();
+    xhrRef.current = xhr;
     xhr.open('POST', `${apiBase}/fleet/dashcam-videos`);
     xhr.timeout = 600000;
 
@@ -225,6 +344,31 @@ export default function DashCamUploadModal({
               </button>
             )}
             <input ref={fileRef} type="file" accept="video/mp4,video/quicktime,video/x-msvideo,video/webm,.mp4,.mov,.avi,.webm" onChange={handleFileChange} className="hidden" />
+
+            {/* Data File (.txt) Import */}
+            <div className="mt-3 pt-3 border-t border-rmpg-700">
+              <label className="field-label mb-2 block flex items-center gap-1">
+                <FileText className="w-3 h-3" /> Data File (Optional .txt / .json)
+              </label>
+              {dataFile ? (
+                <div className="flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-green-400 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-rmpg-200 truncate">{dataFile.name}</p>
+                    <p className="text-[9px] text-green-400">Data imported — fields auto-filled</p>
+                  </div>
+                  <button type="button" onClick={() => { setDataFile(null); if (dataFileRef.current) dataFileRef.current.value = ''; }} className="toolbar-btn p-1">
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ) : (
+                <button type="button" onClick={() => dataFileRef.current?.click()} className="w-full py-3 border border-dashed border-rmpg-600 rounded hover:border-green-500/50 transition-colors flex items-center justify-center gap-2">
+                  <FileText className="w-4 h-4 text-rmpg-500" />
+                  <span className="text-[10px] text-rmpg-400">Load data file (.txt or SmartWitness .json)</span>
+                </button>
+              )}
+              <input ref={dataFileRef} type="file" accept=".txt,.json,text/plain,application/json" onChange={handleDataFileChange} className="hidden" />
+            </div>
           </div>
 
           {/* Metadata */}
@@ -265,8 +409,29 @@ export default function DashCamUploadModal({
 
           {/* Location & Speed */}
           <div className="panel-inset p-3 space-y-3">
-            <p className="field-label flex items-center gap-1 text-brand-400"><MapPin className="w-3 h-3" /> Location & Speed Data</p>
-            <p className="text-[9px] text-rmpg-500 -mt-1">Auto-populated from ClearPathGPS if unit and recorded date are set</p>
+            <div className="flex items-center justify-between">
+              <p className="field-label flex items-center gap-1 text-brand-400"><MapPin className="w-3 h-3" /> Location & Speed Data</p>
+              {unitId && recordedAt && (
+                <button
+                  type="button"
+                  onClick={lookupGps}
+                  disabled={gpsLoading}
+                  className={`text-[9px] px-2 py-0.5 rounded flex items-center gap-1 font-mono ${
+                    gpsSynced
+                      ? 'bg-green-900/40 text-green-400 border border-green-700/40'
+                      : 'toolbar-btn text-brand-400 hover:text-brand-300'
+                  }`}
+                >
+                  {gpsLoading ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Navigation className="w-2.5 h-2.5" />}
+                  {gpsSynced ? 'GPS SYNCED' : gpsLoading ? 'SYNCING...' : 'SYNC GPS'}
+                </button>
+              )}
+            </div>
+            {!unitId || !recordedAt ? (
+              <p className="text-[9px] text-rmpg-500 -mt-1">Set unit and recorded date to sync GPS from ClearPathGPS</p>
+            ) : !gpsSynced ? (
+              <p className="text-[9px] text-rmpg-500 -mt-1">Click SYNC GPS to auto-fill from ClearPathGPS</p>
+            ) : null}
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className="field-label flex items-center gap-1"><Gauge className="w-2.5 h-2.5" /> Speed (MPH)</label>
@@ -306,10 +471,6 @@ export default function DashCamUploadModal({
                   <option value="MUTED">Muted</option>
                 </select>
               </div>
-            </div>
-            <div>
-              <label className="field-label">Notes</label>
-              <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Additional notes..." className="textarea-dark" />
             </div>
           </div>
 

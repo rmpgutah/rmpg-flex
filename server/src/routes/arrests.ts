@@ -28,6 +28,8 @@ import {
 
 const router = Router();
 router.use(authenticateToken);
+// Arrest records are highly sensitive law enforcement data — restrict to LE roles
+router.use(requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'));
 
 // ── Encryption helpers ──────────────────────────────────────
 
@@ -250,9 +252,12 @@ router.delete('/manual/:id', requireRole('admin', 'manager'), (req: Request, res
     const existing = db.prepare('SELECT id FROM arrest_records WHERE id = ?').get(id);
     if (!existing) return res.status(404).json({ error: 'Record not found' });
 
-    // Delete cross-links first (FK cascade should handle, but be explicit)
-    db.prepare('DELETE FROM arrest_cross_links WHERE arrest_record_id = ?').run(id);
-    db.prepare('DELETE FROM arrest_records WHERE id = ?').run(id);
+    // Delete cross-links + record atomically
+    const deleteRecord = db.transaction(() => {
+      db.prepare('DELETE FROM arrest_cross_links WHERE arrest_record_id = ?').run(id);
+      db.prepare('DELETE FROM arrest_records WHERE id = ?').run(id);
+    });
+    deleteRecord();
 
     res.json({ success: true, message: 'Record deleted' });
   } catch (err: any) {

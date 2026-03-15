@@ -50,6 +50,15 @@ export default function BackgroundCheckDetail({ searchId, onClose }: BackgroundC
       .finally(() => setLoading(false));
   }, [searchId]);
 
+  // Escape key to close
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onClose]);
+
   const records = data?.search?.response_data?.records || [];
   const criminal = records.filter(r => r.record_type === 'CRIMINAL');
   const court = records.filter(r => r.record_type === 'COURT');

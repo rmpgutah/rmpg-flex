@@ -75,7 +75,7 @@ export default function TrustedDevicesList() {
   if (devices.length === 0) {
     return (
       <div className="text-center py-6">
-        <Shield className="w-6 h-6 mx-auto mb-2" style={{ color: '#383838' }} />
+        <Shield className="w-6 h-6 mx-auto mb-2" style={{ color: '#2a3e58' }} />
         <p className="text-[10px]" style={{ color: '#6b7280' }}>No trusted devices</p>
         <p className="text-[9px] mt-1" style={{ color: '#4b5563' }}>
           Trust a device during login to skip 2FA for 30 days
@@ -90,7 +90,7 @@ export default function TrustedDevicesList() {
         <div
           key={device.id}
           className="flex items-center gap-3 px-3 py-2 panel-beveled"
-          style={{ background: '#1a1a1a' }}
+          style={{ background: '#141e2b' }}
         >
           {/* Device icon */}
           <div className="p-1.5 panel-inset" style={{ color: '#4a90c4', background: 'rgba(74,144,196,0.1)' }}>
@@ -114,7 +114,7 @@ export default function TrustedDevicesList() {
 
           {/* Expiry */}
           <div className="text-right flex-shrink-0">
-            <div className="text-[9px] font-mono" style={{ color: '#a0a0a0' }}>
+            <div className="text-[9px] font-mono" style={{ color: '#8899aa' }}>
               {daysUntil(device.trusted_until)} left
             </div>
           </div>

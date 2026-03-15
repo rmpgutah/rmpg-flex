@@ -11,8 +11,8 @@ import WebUpdateBanner from './components/WebUpdateBanner';
 import AndroidUpdateChecker from './components/AndroidUpdateChecker';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
-import DispatchPage from './pages/DispatchPage';
-import MapPage from './pages/MapPage';
+import DispatchPage from './pages/dispatch/DispatchPage';
+import MapPage from './pages/map/MapPage';
 import IncidentsPage from './pages/IncidentsPage';
 import RecordsPage from './pages/RecordsPage';
 import PersonnelPage from './pages/personnel';
@@ -47,6 +47,10 @@ import TrainingDocsPage from './pages/TrainingDocsPage';
 import ForensicsPage from './pages/ForensicsPage';
 import SkipTracerPage from './pages/SkipTracerPage';
 import ArrestRecordsPage from './pages/ArrestRecordsPage';
+import EmailPage from './pages/EmailPage';
+import CrmPage from './pages/CrmPage';
+import TrainingPage from './pages/TrainingPage';
+import SexOffenderRegistryPage from './pages/SexOffenderRegistryPage';
 import IncidentDetailWindow from './pages/detached/IncidentDetailWindow';
 import RecordDetailWindow from './pages/detached/RecordDetailWindow';
 
@@ -144,6 +148,10 @@ function AppRoutes() {
           <Route path="/forensics" element={<ForensicsPage />} />
           <Route path="/skip-tracer" element={<SkipTracerPage />} />
           <Route path="/arrest-records" element={<ArrestRecordsPage />} />
+          <Route path="/email" element={<EmailPage />} />
+          <Route path="/crm" element={<CrmPage />} />
+          <Route path="/training" element={<TrainingPage />} />
+          <Route path="/sex-offender-registry" element={<SexOffenderRegistryPage />} />
           <Route path="/admin" element={<AdminPage />} />
         </Route>
 

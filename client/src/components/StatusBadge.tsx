@@ -3,9 +3,9 @@ import type { CallPriority, UnitStatus, CallStatus, IncidentStatus } from '../ty
 
 type BadgeType = 'priority' | 'unit_status' | 'call_status' | 'incident_status';
 
-interface StatusBadgeProps {
+export interface StatusBadgeProps {
   status: string;
-  type: BadgeType;
+  type?: BadgeType;
   size?: 'sm' | 'md';
   className?: string;
 }

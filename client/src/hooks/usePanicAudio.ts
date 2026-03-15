@@ -50,6 +50,9 @@ export function usePanicAudio() {
   const panicPlayerRef = useRef<StreamPlayer | null>(null);
   const responsePlayerRef = useRef<StreamPlayer | null>(null);
 
+  // Ref to always call the latest stopBroadcast from timer callbacks
+  const stopBroadcastRef = useRef<() => void>(() => {});
+
   // ─── Start broadcasting (sender — open mic) ─────────────────
   const startBroadcast = useCallback(async () => {
     try {
@@ -104,19 +107,19 @@ export function usePanicAudio() {
         error: null,
       }));
 
-      // Countdown timer
+      // Countdown timer — uses ref to avoid stale closure
       let timeLeft = BROADCAST_DURATION;
       broadcastTimerRef.current = setInterval(() => {
         timeLeft -= 1;
         setState(prev => ({ ...prev, broadcastTimeLeft: timeLeft }));
         if (timeLeft <= 0) {
-          stopBroadcast();
+          stopBroadcastRef.current();
         }
       }, 1000);
 
       // Hard stop after duration
       broadcastTimeoutRef.current = setTimeout(() => {
-        stopBroadcast();
+        stopBroadcastRef.current();
       }, BROADCAST_DURATION * 1000);
 
     } catch (err) {
@@ -158,6 +161,9 @@ export function usePanicAudio() {
       broadcastTimeLeft: 0,
     }));
   }, [send]);
+
+  // Keep ref in sync so timer callbacks always call the latest version
+  stopBroadcastRef.current = stopBroadcast;
 
   // ─── Start responding (talk-back mode) ──────────────────────
   const startResponse = useCallback(async (targetUserId: number) => {

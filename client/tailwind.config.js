@@ -31,31 +31,31 @@ export default {
       colors: {
         // ── Surface tokens (CSS variable backed) ──────────
         surface: {
-          base:    'var(--surface-base)',     // #1a1a1a
-          raised:  'var(--surface-raised)',   // #1e1e1e
-          sunken:  'var(--surface-sunken)',   // #141414
-          overlay: 'var(--surface-overlay)',  // #111111
-          deep:    'var(--surface-deep)',     // #0a0a0a
+          base:    'var(--surface-base)',     // #141e2b
+          raised:  'var(--surface-raised)',   // #1a2636
+          sunken:  'var(--surface-sunken)',   // #0d1520
+          overlay: 'var(--surface-overlay)',  // #0f1923
+          deep:    'var(--surface-deep)',     // #080e18
         },
 
         // ── RMPG Brand ─────────────────────────────────────
-        // Derived from the official Rocky Mountain Protective Group logo.
-        //   Logo red (eagle feathers / mountain peaks): #bc1010
-        //   Logo charcoal (eagle body / mountain base):  #303030
-        //   Logo gold (eagle beak accent):               #d4a017
-        //   Logo light grey (text):                      #d0d0d0
+        // Derived from the RMPG brand blue theme
+        //   Brand blue (primary accent):               #1a5a9e
+        //   Brand navy (deep tones):                   #14427a
+        //   Brand gold (eagle beak accent):            #d4a017
+        //   Brand light (text):                        #c0d0e0
 
         brand: {
-          50:  '#fdf1f1',    // Lightest tint
-          100: '#fce0e0',
-          200: '#f7b8b8',
-          300: '#ef7a7a',
-          400: '#d93030',    // Lighter accent
-          500: '#bc1010',    // Primary — logo eagle red
-          600: '#a00e0e',    // Slightly deeper
-          700: '#8a0c0c',    // Deep crimson
-          800: '#6e0a0a',    // Very deep
-          900: '#520808',    // Darkest crimson
+          50:  '#e8f0fa',    // Lightest tint
+          100: '#c8ddf0',
+          200: '#90bae0',
+          300: '#5a96cc',
+          400: '#2068b0',    // Lighter accent
+          500: '#1a5a9e',    // Primary — brand blue
+          600: '#174e8a',    // Slightly deeper
+          700: '#14427a',    // Deep blue
+          800: '#0f3460',    // Very deep
+          900: '#0a2648',    // Darkest navy
         },
 
         // Warm gold accent — eagle beak / mountain highlights
@@ -67,19 +67,19 @@ export default {
           700: '#936c0a',
         },
 
-        // Neutral charcoal greys — logo body / mountain base
+        // Deep blue neutrals — navy-tinted CAD console palette
         rmpg: {
-          50:  '#f0f0f0',    // Light background
-          100: '#e0e0e0',    // Light grey (logo text)
-          200: '#c8c8c8',    // Medium light (logo text)
-          300: '#a0a0a0',    // Medium grey
-          400: '#707070',    // Grey
-          500: '#484848',    // Mid-dark grey
-          600: '#383838',    // Dark charcoal
-          700: '#303030',    // Logo charcoal (eagle/mountain)
-          800: '#202020',    // Deeper
-          900: '#141414',    // Near black
-          950: '#0a0e14',    // App background
+          50:  '#e8eef6',    // Light background
+          100: '#c0d0e0',    // Light blue-grey
+          200: '#8899aa',    // Medium light
+          300: '#6b7f96',    // Medium blue-grey
+          400: '#4a6280',    // Blue-grey
+          500: '#3a5070',    // Mid-dark navy
+          600: '#2a3e58',    // Dark navy
+          700: '#1e3048',    // Deep navy
+          800: '#162236',    // Deeper
+          900: '#0d1520',    // Near black navy
+          950: '#080e18',    // App background
         },
 
         dispatch: {

@@ -8,7 +8,7 @@
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
 import { computeFileHashes, computeContentFingerprint } from '../utils/ipedManager';
 import path from 'path';
@@ -16,6 +16,8 @@ import fs from 'fs';
 
 const router = Router();
 router.use(authenticateToken);
+// Forensic lab data is highly sensitive investigative material — restrict to LE roles
+router.use(requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'));
 
 // ── Helpers ──────────────────────────────────────────────
 

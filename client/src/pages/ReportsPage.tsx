@@ -34,6 +34,8 @@ import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
 import { localToday, dateToLocalYMD } from '../utils/dateUtils';
 import { generatePatrolTrackingPdf } from '../utils/patrolTrackingPdfGenerator';
+import { formatIncidentType } from '../utils/caseNumbers';
+import { toDisplayLabel } from '../utils/formatters';
 
 // ============================================================
 // Types
@@ -85,19 +87,19 @@ interface OfficerActivityData {
 // Constants
 // ============================================================
 
-const PIE_COLORS = ['#bc1010', '#d4a017', '#4a90c4', '#a855f7', '#22c55e', '#06b6d4', '#707070', '#ec4899', '#8b5cf6'];
+const PIE_COLORS = ['#1a5a9e', '#d4a017', '#4a90c4', '#a855f7', '#22c55e', '#06b6d4', '#5a6e80', '#ec4899', '#8b5cf6'];
 
 const PRIORITY_COLORS: Record<string, string> = {
-  P1: '#bc1010',
+  P1: '#dc2626',
   P2: '#d4a017',
   P3: '#4a90c4',
-  P4: '#707070',
+  P4: '#5a6e80',
 };
 
 const CHART_TOOLTIP_STYLE = {
   contentStyle: {
     backgroundColor: 'var(--surface-base)',
-    border: '1px solid #383838',
+    border: '1px solid #2a3e58',
     borderRadius: '0px',
     color: '#e0e0e0',
     fontSize: '11px',
@@ -161,10 +163,9 @@ function getDateRange(range: string): { startDate: string; endDate?: string } {
 }
 
 function formatGroupKey(key: string): string {
-  return key
-    .split('_')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
+  // Use formatIncidentType first (it knows official labels), fall back to toDisplayLabel
+  const typed = formatIncidentType(key);
+  return typed !== key ? typed : toDisplayLabel(key);
 }
 
 function formatDateLabel(dateStr: string): string {
@@ -357,11 +358,11 @@ export default function ReportsPage() {
       {!isMobile && (
         <div className="panel-beveled bg-surface-base overflow-hidden">
           <div className="flex items-center gap-4 px-4 py-2.5 relative">
-            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #6e0a0a, #bc1010 30%, #bc1010 70%, #6e0a0a)' }} />
+            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3359, #1a5a9e 30%, #1a5a9e 70%, #0e3359)' }} />
             <RmpgLogo height={64} />
             <div className="flex-1">
               <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: '#d0d0d0' }}>Reports & Analytics</h1>
-              <p className="text-[9px] tracking-wide" style={{ color: '#484848' }}>Rocky Mountain Protective Group, LLC</p>
+              <p className="text-[9px] tracking-wide" style={{ color: '#3a5070' }}>Rocky Mountain Protective Group, LLC</p>
             </div>
           </div>
         </div>
@@ -437,63 +438,75 @@ export default function ReportsPage() {
       ) : (
         <>
           {/* Summary Stats */}
-          <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-5 gap-4'}`}>
-            <div className="bg-surface-base panel-beveled p-4 text-center hover:bg-surface-raised transition-all duration-150">
-              <p className="text-2xl font-bold text-green-400 font-mono">{stats.totalCalls}</p>
-              <p className="text-[10px] text-rmpg-300 uppercase mt-1 font-bold tracking-wide">Total Calls</p>
-            </div>
-            <div className="bg-surface-base panel-beveled p-4 text-center hover:bg-surface-raised transition-all duration-150">
-              <p className="text-2xl font-bold text-green-400 font-mono">{stats.incidentsFiled}</p>
-              <p className="text-[10px] text-rmpg-300 uppercase mt-1 font-bold tracking-wide">Incidents Filed</p>
-            </div>
-            <div className="bg-surface-base panel-beveled p-4 text-center hover:bg-surface-raised transition-all duration-150">
-              <p className="text-2xl font-bold text-green-400 font-mono">{stats.avgResponse}</p>
-              <p className="text-[10px] text-rmpg-300 uppercase mt-1 font-bold tracking-wide">Avg Response</p>
-            </div>
-            <div className="bg-surface-base panel-beveled p-4 text-center hover:bg-surface-raised transition-all duration-150">
-              <p className="text-2xl font-bold text-green-400 font-mono">{stats.slaMet}</p>
-              <p className="text-[10px] text-rmpg-300 uppercase mt-1 font-bold tracking-wide">SLA Met</p>
-            </div>
-            <div className="bg-surface-base panel-beveled p-4 text-center hover:bg-surface-raised transition-all duration-150">
-              <p className="text-2xl font-bold text-green-400 font-mono">{stats.activeOfficers}</p>
-              <p className="text-[10px] text-rmpg-300 uppercase mt-1 font-bold tracking-wide">Active Officers</p>
-            </div>
+          <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-5 gap-3'}`}>
+            {[
+              { label: 'Total Calls', value: stats.totalCalls, color: '#3b82f6', border: 'border-l-blue-500' },
+              { label: 'Incidents Filed', value: stats.incidentsFiled, color: '#22c55e', border: 'border-l-green-500' },
+              { label: 'Avg Response', value: stats.avgResponse, color: '#f59e0b', border: 'border-l-amber-500' },
+              { label: 'SLA Met', value: stats.slaMet, color: '#8b5cf6', border: 'border-l-purple-500' },
+              { label: 'Active Officers', value: stats.activeOfficers, color: '#ef4444', border: 'border-l-red-500' },
+            ].map((s) => (
+              <div key={s.label} className={`bg-surface-base panel-beveled p-3 border-l-[3px] ${s.border} hover:bg-surface-raised transition-all duration-150`}>
+                <p className="text-2xl font-black font-mono" style={{ color: s.color }}>{s.value}</p>
+                <p className="text-[9px] text-rmpg-400 uppercase mt-0.5 font-bold tracking-wider">{s.label}</p>
+              </div>
+            ))}
           </div>
 
           {/* Charts Grid */}
-          <div className={`grid ${isMobile ? 'grid-cols-1 gap-3' : 'grid-cols-2 gap-6'}`}>
+          <div className={`grid ${isMobile ? 'grid-cols-1 gap-3' : 'grid-cols-2 gap-4'}`}>
             {/* Incidents by Type (Pie) */}
-            <div className="bg-surface-base panel-beveled p-4 hover:border-rmpg-600 transition-all duration-150">
-              <h3 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-4">Incidents by Type</h3>
-              <ResponsiveContainer width="100%" height={280}>
-                <PieChart>
-                  <Pie
-                    data={incidentsChartData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={100}
-                    paddingAngle={2}
-                    dataKey="value"
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                  >
+            <div className="bg-surface-base panel-beveled hover:border-rmpg-600 transition-all duration-150">
+              <div className="px-4 pt-3 pb-1 border-b border-rmpg-700/50 flex items-center gap-2">
+                <FileText className="w-3.5 h-3.5 text-brand-400" />
+                <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Incidents by Type</h3>
+              </div>
+              <div className="p-4">
+                <div className={isMobile ? '' : 'flex items-start gap-4'}>
+                  <ResponsiveContainer width={isMobile ? '100%' : '55%'} height={220}>
+                    <PieChart>
+                      <Pie
+                        data={incidentsChartData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={50}
+                        outerRadius={90}
+                        paddingAngle={3}
+                        dataKey="value"
+                      >
+                        {incidentsChartData.map((entry, i) => (
+                          <Cell key={i} fill={entry.fill} />
+                        ))}
+                      </Pie>
+                      <Tooltip {...CHART_TOOLTIP_STYLE} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  {/* Legend */}
+                  <div className={`${isMobile ? 'mt-2' : 'mt-2 flex-1'} space-y-1.5`}>
                     {incidentsChartData.map((entry, i) => (
-                      <Cell key={i} fill={entry.fill} />
+                      <div key={i} className="flex items-center gap-2">
+                        <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ backgroundColor: entry.fill }} />
+                        <span className="text-[10px] text-rmpg-200 truncate flex-1">{entry.name}</span>
+                        <span className="text-[10px] text-rmpg-400 font-mono font-bold">{entry.value}</span>
+                      </div>
                     ))}
-                  </Pie>
-                  <Tooltip {...CHART_TOOLTIP_STYLE} />
-                </PieChart>
-              </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Calls by Priority (Bar) */}
-            <div className="bg-surface-base panel-beveled p-4 hover:border-rmpg-600 transition-all duration-150">
-              <h3 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-4">Calls by Priority</h3>
+            <div className="bg-surface-base panel-beveled hover:border-rmpg-600 transition-all duration-150">
+              <div className="px-4 pt-3 pb-1 border-b border-rmpg-700/50 flex items-center gap-2">
+                <BarChart3 className="w-3.5 h-3.5 text-amber-400" />
+                <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Calls by Priority</h3>
+              </div>
+              <div className="p-4">
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={priorityChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#383838" />
-                  <XAxis dataKey="priority" tick={{ fill: '#a0a0a0', fontSize: 12 }} />
-                  <YAxis tick={{ fill: '#a0a0a0', fontSize: 12 }} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#2a3e58" />
+                  <XAxis dataKey="priority" tick={{ fill: '#8a9aaa', fontSize: 12 }} />
+                  <YAxis tick={{ fill: '#8a9aaa', fontSize: 12 }} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
                   <Bar dataKey="count" radius={[4, 4, 0, 0]}>
                     {priorityChartData.map((entry, i) => (
@@ -502,48 +515,60 @@ export default function ReportsPage() {
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
+              </div>
             </div>
 
             {/* Response Times Trend (Line) */}
-            <div className="bg-surface-base panel-beveled p-4 hover:border-rmpg-600 transition-all duration-150">
-              <h3 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-4">Response Time Trend (minutes)</h3>
+            <div className="bg-surface-base panel-beveled hover:border-rmpg-600 transition-all duration-150">
+              <div className="px-4 pt-3 pb-1 border-b border-rmpg-700/50 flex items-center gap-2">
+                <TrendingUp className="w-3.5 h-3.5 text-red-400" />
+                <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Response Time Trend (minutes)</h3>
+              </div>
+              <div className="p-4">
               <ResponsiveContainer width="100%" height={280}>
                 <LineChart data={responseTimeChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#383838" />
-                  <XAxis dataKey="date" tick={{ fill: '#a0a0a0', fontSize: 10 }} />
-                  <YAxis tick={{ fill: '#a0a0a0', fontSize: 12 }} domain={[0, 'auto']} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#2a3e58" />
+                  <XAxis dataKey="date" tick={{ fill: '#8a9aaa', fontSize: 10 }} />
+                  <YAxis tick={{ fill: '#8a9aaa', fontSize: 12 }} domain={[0, 'auto']} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
-                  <Legend wrapperStyle={{ color: '#a0a0a0', fontSize: '11px' }} />
-                  <Line type="monotone" dataKey="avgMinutes" name="Avg Response" stroke="#bc1010" strokeWidth={2} dot={{ fill: '#bc1010', r: 3 }} />
+                  <Legend wrapperStyle={{ color: '#8a9aaa', fontSize: '11px' }} />
+                  <Line type="monotone" dataKey="avgMinutes" name="Avg Response" stroke="#1a5a9e" strokeWidth={2} dot={{ fill: '#1a5a9e', r: 3 }} />
                   <Line type="monotone" dataKey="targetMinutes" name="Target" stroke="#d4a017" strokeDasharray="5 5" strokeWidth={1} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
+              </div>
             </div>
 
             {/* Officer Activity (Bar) */}
-            <div className="bg-surface-base panel-beveled p-4 hover:border-rmpg-600 transition-all duration-150">
-              <h3 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-4">Officer Activity Comparison</h3>
+            <div className="bg-surface-base panel-beveled hover:border-rmpg-600 transition-all duration-150">
+              <div className="px-4 pt-3 pb-1 border-b border-rmpg-700/50 flex items-center gap-2">
+                <MapPin className="w-3.5 h-3.5 text-green-400" />
+                <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Officer Activity Comparison</h3>
+              </div>
+              <div className="p-4">
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={officerChartData} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke="#383838" />
-                  <XAxis type="number" tick={{ fill: '#a0a0a0', fontSize: 12 }} />
-                  <YAxis type="category" dataKey="name" tick={{ fill: '#a0a0a0', fontSize: 11 }} width={70} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#2a3e58" />
+                  <XAxis type="number" tick={{ fill: '#8a9aaa', fontSize: 12 }} />
+                  <YAxis type="category" dataKey="name" tick={{ fill: '#8a9aaa', fontSize: 11 }} width={70} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
-                  <Legend wrapperStyle={{ color: '#a0a0a0', fontSize: '11px' }} />
-                  <Bar dataKey="calls" name="Calls" fill="#bc1010" radius={[0, 4, 4, 0]} />
+                  <Legend wrapperStyle={{ color: '#8a9aaa', fontSize: '11px' }} />
+                  <Bar dataKey="calls" name="Calls" fill="#1a5a9e" radius={[0, 4, 4, 0]} />
                   <Bar dataKey="incidents" name="Incidents" fill="#d4a017" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
+              </div>
             </div>
           </div>
 
           {/* Call Volume Trend (Area Chart) */}
           {responseTimesData && responseTimesData.dailyTrend.length > 1 && (
-            <div className="bg-surface-base panel-beveled p-4 hover:border-rmpg-600 transition-all duration-150">
-              <h3 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-4 flex items-center gap-2">
+            <div className="bg-surface-base panel-beveled hover:border-rmpg-600 transition-all duration-150">
+              <div className="px-4 pt-3 pb-1 border-b border-rmpg-700/50 flex items-center gap-2">
                 <TrendingUp className="w-3.5 h-3.5 text-brand-400" />
-                Call Volume Trend
-              </h3>
+                <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Call Volume Trend</h3>
+              </div>
+              <div className="p-4">
               <ResponsiveContainer width="100%" height={240}>
                 <AreaChart data={responseTimesData.dailyTrend.map(item => ({
                   date: formatDateLabel(item.date),
@@ -555,20 +580,25 @@ export default function ReportsPage() {
                       <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.02} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#383838" />
-                  <XAxis dataKey="date" tick={{ fill: '#a0a0a0', fontSize: 10 }} />
-                  <YAxis tick={{ fill: '#a0a0a0', fontSize: 12 }} allowDecimals={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#2a3e58" />
+                  <XAxis dataKey="date" tick={{ fill: '#8a9aaa', fontSize: 10 }} />
+                  <YAxis tick={{ fill: '#8a9aaa', fontSize: 12 }} allowDecimals={false} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
                   <Area type="monotone" dataKey="calls" name="Calls" stroke="#3b82f6" strokeWidth={2} fill="url(#callVolumeGradient)" />
                 </AreaChart>
               </ResponsiveContainer>
+              </div>
             </div>
           )}
 
           {/* Response Time by Priority (Grouped Bar) */}
           {responseTimesData && responseTimesData.byPriority.length > 0 && (
-            <div className="bg-surface-base panel-beveled p-4 hover:border-rmpg-600 transition-all duration-150">
-              <h3 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-4">Response Time by Priority (minutes)</h3>
+            <div className="bg-surface-base panel-beveled hover:border-rmpg-600 transition-all duration-150">
+              <div className="px-4 pt-3 pb-1 border-b border-rmpg-700/50 flex items-center gap-2">
+                <Calendar className="w-3.5 h-3.5 text-purple-400" />
+                <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Response Time by Priority (minutes)</h3>
+              </div>
+              <div className="p-4">
               <ResponsiveContainer width="100%" height={240}>
                 <BarChart data={responseTimesData.byPriority.map(item => ({
                   priority: item.priority,
@@ -576,11 +606,11 @@ export default function ReportsPage() {
                   count: item.count,
                   fill: PRIORITY_COLORS[item.priority] || '#6b7280',
                 }))}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#383838" />
-                  <XAxis dataKey="priority" tick={{ fill: '#a0a0a0', fontSize: 12 }} />
-                  <YAxis tick={{ fill: '#a0a0a0', fontSize: 12 }} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#2a3e58" />
+                  <XAxis dataKey="priority" tick={{ fill: '#8a9aaa', fontSize: 12 }} />
+                  <YAxis tick={{ fill: '#8a9aaa', fontSize: 12 }} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
-                  <Legend wrapperStyle={{ color: '#a0a0a0', fontSize: '11px' }} />
+                  <Legend wrapperStyle={{ color: '#8a9aaa', fontSize: '11px' }} />
                   <Bar dataKey="avgMinutes" name="Avg Response (min)" radius={[4, 4, 0, 0]}>
                     {responseTimesData.byPriority.map((item, i) => (
                       <Cell key={i} fill={PRIORITY_COLORS[item.priority] || '#6b7280'} />
@@ -588,6 +618,7 @@ export default function ReportsPage() {
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
+              </div>
             </div>
           )}
 

@@ -2,7 +2,7 @@
 // RMPG Flex — Body Camera Video Upload Modal
 // ============================================================
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Upload, X, Video, Loader2, Radio } from 'lucide-react';
 import type { BodyCamera, VideoClassification } from '../types';
 
@@ -45,6 +45,17 @@ export default function VideoUploadModal({
   const [error, setError] = useState('');
   const [duration, setDuration] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const xhrRef = useRef<XMLHttpRequest | null>(null);
+
+  // Escape key to close modal
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !uploading) handleClose();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, uploading]);
 
   if (!isOpen) return null;
 
@@ -64,7 +75,11 @@ export default function VideoUploadModal({
   };
 
   const handleClose = () => {
-    if (uploading) return;
+    // Abort in-flight upload before closing
+    if (xhrRef.current) {
+      xhrRef.current.abort();
+      xhrRef.current = null;
+    }
     reset();
     onClose();
   };
@@ -122,6 +137,7 @@ export default function VideoUploadModal({
     if (notes) formData.append('notes', notes);
 
     const xhr = new XMLHttpRequest();
+    xhrRef.current = xhr;
     xhr.open('POST', `${apiBase}/personnel/bodycam-videos`);
     xhr.timeout = 600000; // 10 minute timeout for large uploads
 

@@ -148,19 +148,19 @@ export default function MobileCardList<T>({
         <div
           className="flex-shrink-0 px-3 py-2"
           style={{
-            background: '#1a1a1a',
-            borderBottom: '1px solid #2a2a2a',
+            background: '#141e2b',
+            borderBottom: '1px solid #2a3e58',
           }}
         >
           <div
             className="flex items-center gap-2 px-3"
             style={{
               height: 40,
-              background: '#141414',
-              border: '1px solid #2a2a2a',
+              background: '#0d1520',
+              border: '1px solid #2a3e58',
             }}
           >
-            <Search style={{ width: 16, height: 16, color: '#585858', flexShrink: 0 }} />
+            <Search style={{ width: 16, height: 16, color: '#4a6280', flexShrink: 0 }} />
             <input
               type="text"
               value={searchValue}
@@ -215,7 +215,7 @@ export default function MobileCardList<T>({
               style={{
                 width: 20,
                 height: 20,
-                color: pullReady || refreshing ? '#bc1010' : '#585858',
+                color: pullReady || refreshing ? '#1a5a9e' : '#4a6280',
                 transform: pullReady ? 'rotate(180deg)' : `rotate(${pullDistance * 3}deg)`,
                 transition: 'transform 0.2s ease',
                 animation: refreshing ? 'spin 1s linear infinite' : undefined,

@@ -75,7 +75,7 @@ export default function ConfirmDialog({
       <div className="relative w-full max-w-md mx-4 bg-surface-base border border-rmpg-600 shadow-2xl animate-fade-in">
         <div
           className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600"
-          style={{ background: 'linear-gradient(180deg, #202020 0%, #1a1a1a 100%)' }}
+          style={{ background: 'linear-gradient(180deg, #202020 0%, #141e2b 100%)' }}
         >
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 text-red-400" />

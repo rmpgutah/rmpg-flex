@@ -488,7 +488,7 @@ export default function FleetPersonnelTab({
         ) : (
           <div className="p-3">
             <div className="relative">
-              <div className="absolute left-2 top-0 bottom-0 w-px" style={{ background: 'linear-gradient(to bottom, #bc101040, #282828)' }} />
+              <div className="absolute left-2 top-0 bottom-0 w-px" style={{ background: 'linear-gradient(to bottom, #1a5a9e40, #1e3048)' }} />
               <div className="space-y-1.5">
                 {assignments.slice(0, 10).map((a) => {
                   const isActive = !a.unassigned_at;

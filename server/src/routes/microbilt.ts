@@ -23,6 +23,8 @@ import { storeDlRecord, searchDlLocal, getDlStats } from '../utils/dlRecordStore
 
 const router = Router();
 router.use(authenticateToken);
+// Background checks and credit data are LE investigation tools — restrict access
+router.use(requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'));
 
 // ============================================================
 // Encryption helpers (same pattern as ServeManager)

@@ -378,12 +378,12 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
       <div
         className="relative w-[520px] max-h-[80vh] flex flex-col"
         style={{
-          background: '#1a1a1a',
-          border: '1px solid #484848',
-          borderTopColor: '#585858',
-          borderLeftColor: '#585858',
-          borderBottomColor: '#282828',
-          borderRightColor: '#282828',
+          background: '#141e2b',
+          border: '1px solid #3a5070',
+          borderTopColor: '#4a6280',
+          borderLeftColor: '#4a6280',
+          borderBottomColor: '#1e3048',
+          borderRightColor: '#1e3048',
           boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
         }}
         onClick={e => e.stopPropagation()}
@@ -410,9 +410,9 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
             <div
               className="w-12 h-12 flex items-center justify-center text-base font-bold"
               style={{
-                background: 'linear-gradient(135deg, #8a0c0c, #bc1010)',
+                background: 'linear-gradient(135deg, #14427a, #1a5a9e)',
                 color: '#fff',
-                border: '2px solid #d93030',
+                border: '2px solid #2068b0',
                 borderRadius: 2,
               }}
             >
@@ -423,11 +423,11 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
             <div className="text-sm font-bold text-white">
               {user.first_name} {user.last_name}
             </div>
-            <div className="text-[10px] font-mono" style={{ color: '#a0a0a0' }}>
+            <div className="text-[10px] font-mono" style={{ color: '#8899aa' }}>
               {user.badge_number && <span className="mr-2">{user.badge_number}</span>}
               <span className="uppercase">{toDisplayLabel(user.role)}</span>
             </div>
-            <div className="text-[10px]" style={{ color: '#707070' }}>
+            <div className="text-[10px]" style={{ color: '#4a6280' }}>
               {user.email}
             </div>
           </div>
@@ -443,9 +443,9 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                 onClick={() => setActiveTab(tab.id)}
                 className="flex items-center gap-1.5 px-4 py-2 text-[10px] font-bold uppercase tracking-wider transition-colors"
                 style={{
-                  color: activeTab === tab.id ? '#ffffff' : '#707070',
-                  borderBottom: activeTab === tab.id ? '2px solid #bc1010' : '2px solid transparent',
-                  background: activeTab === tab.id ? 'rgba(188, 16, 16, 0.08)' : 'transparent',
+                  color: activeTab === tab.id ? '#ffffff' : '#4a6280',
+                  borderBottom: activeTab === tab.id ? '2px solid #1a5a9e' : '2px solid transparent',
+                  background: activeTab === tab.id ? 'rgba(26, 90, 158, 0.08)' : 'transparent',
                 }}
               >
                 <Icon style={{ width: 11, height: 11 }} />
@@ -505,13 +505,13 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
               <div className="grid grid-cols-2 gap-3 mt-2">
                 <div>
                   <label className="field-label">Username</label>
-                  <div className="text-xs text-white px-3 py-1.5" style={{ background: '#111', border: '1px solid #282828' }}>
+                  <div className="text-xs text-white px-3 py-1.5" style={{ background: '#111', border: '1px solid #1e3048' }}>
                     {user.username}
                   </div>
                 </div>
                 <div>
                   <label className="field-label">Badge #</label>
-                  <div className="text-xs text-white px-3 py-1.5" style={{ background: '#111', border: '1px solid #282828' }}>
+                  <div className="text-xs text-white px-3 py-1.5" style={{ background: '#111', border: '1px solid #1e3048' }}>
                     {user.badge_number || '—'}
                   </div>
                 </div>
@@ -558,7 +558,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                     type="button"
                     onClick={() => setShowCurrentPw(!showCurrentPw)}
                     className="absolute right-2 top-1/2 -translate-y-1/2"
-                    style={{ color: '#707070' }}
+                    style={{ color: '#4a6280' }}
                   >
                     {showCurrentPw ? <EyeOff style={{ width: 13, height: 13 }} /> : <Eye style={{ width: 13, height: 13 }} />}
                   </button>
@@ -577,7 +577,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                     type="button"
                     onClick={() => setShowNewPw(!showNewPw)}
                     className="absolute right-2 top-1/2 -translate-y-1/2"
-                    style={{ color: '#707070' }}
+                    style={{ color: '#4a6280' }}
                   >
                     {showNewPw ? <EyeOff style={{ width: 13, height: 13 }} /> : <Eye style={{ width: 13, height: 13 }} />}
                   </button>
@@ -594,8 +594,8 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
               </div>
 
               {pwPolicy.length > 0 && (
-                <div className="text-[10px] space-y-0.5 p-2" style={{ color: '#707070', background: '#111', border: '1px solid #282828' }}>
-                  <div className="font-bold text-[9px] uppercase tracking-wider mb-1" style={{ color: '#a0a0a0' }}>
+                <div className="text-[10px] space-y-0.5 p-2" style={{ color: '#4a6280', background: '#111', border: '1px solid #1e3048' }}>
+                  <div className="font-bold text-[9px] uppercase tracking-wider mb-1" style={{ color: '#8899aa' }}>
                     Password Requirements
                   </div>
                   {pwPolicy.map((rule, i) => (
@@ -643,7 +643,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   <div className="text-xs font-bold" style={{ color: totpStatus?.enabled ? '#4ade80' : '#ef7a7a' }}>
                     {totpStatus?.enabled ? 'Two-Factor Authentication Enabled' : 'Two-Factor Authentication Disabled'}
                   </div>
-                  <div className="text-[9px]" style={{ color: '#707070' }}>
+                  <div className="text-[9px]" style={{ color: '#4a6280' }}>
                     {totpStatus?.enabled
                       ? 'Your account is protected with authenticator app verification.'
                       : totpStatus?.required
@@ -685,10 +685,10 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
               {/* ── Step 1: Show QR Code ────────────────── */}
               {setupStep === 'qr' && (
                 <div className="space-y-3">
-                  <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#a0a0a0' }}>
+                  <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#8899aa' }}>
                     Step 1: Scan QR Code
                   </div>
-                  <p className="text-[10px]" style={{ color: '#707070' }}>
+                  <p className="text-[10px]" style={{ color: '#4a6280' }}>
                     Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.)
                   </p>
                   <div className="flex justify-center py-2">
@@ -701,10 +701,10 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                       />
                     )}
                   </div>
-                  <div className="text-[10px] font-bold uppercase tracking-wider mt-3" style={{ color: '#a0a0a0' }}>
+                  <div className="text-[10px] font-bold uppercase tracking-wider mt-3" style={{ color: '#8899aa' }}>
                     Step 2: Enter Verification Code
                   </div>
-                  <p className="text-[10px]" style={{ color: '#707070' }}>
+                  <p className="text-[10px]" style={{ color: '#4a6280' }}>
                     Enter the 6-digit code from your authenticator app to verify setup.
                   </p>
                   <TotpCodeInput
@@ -717,7 +717,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   {securityBusy && (
                     <div className="flex items-center justify-center gap-2">
                       <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      <span className="text-[10px]" style={{ color: '#a0a0a0' }}>Verifying...</span>
+                      <span className="text-[10px]" style={{ color: '#8899aa' }}>Verifying...</span>
                     </div>
                   )}
                   <button
@@ -725,7 +725,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                     onClick={() => { setSetupStep('idle'); setSecurityMsg(null); }}
                     className="text-[10px] uppercase tracking-wide font-bold transition-colors"
                     style={{ color: '#666' }}
-                    onMouseEnter={e => { e.currentTarget.style.color = '#e0e0e0'; }}
+                    onMouseEnter={e => { e.currentTarget.style.color = '#c0d0e0'; }}
                     onMouseLeave={e => { e.currentTarget.style.color = '#666'; }}
                   >
                     Cancel Setup
@@ -736,7 +736,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
               {/* ── Step 3: Show Backup Codes ──────────── */}
               {setupStep === 'backups' && (
                 <div className="space-y-3">
-                  <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#a0a0a0' }}>
+                  <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#8899aa' }}>
                     Recovery Codes
                   </div>
                   <div
@@ -757,7 +757,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                         <div
                           key={i}
                           className="text-center font-mono text-xs py-1"
-                          style={{ background: '#141414', border: '1px solid #282828', color: '#e0e0e0' }}
+                          style={{ background: '#0d1520', border: '1px solid #1e3048', color: '#c0d0e0' }}
                         >
                           {code}
                         </div>
@@ -785,10 +785,10 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
               {/* ── Disable 2FA: Re-enter password ─────── */}
               {setupStep === 'disabling' && (
                 <div className="space-y-3">
-                  <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#a0a0a0' }}>
+                  <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#8899aa' }}>
                     Confirm Disable
                   </div>
-                  <p className="text-[10px]" style={{ color: '#707070' }}>
+                  <p className="text-[10px]" style={{ color: '#4a6280' }}>
                     Enter your password to confirm disabling two-factor authentication.
                   </p>
                   <input
@@ -823,8 +823,8 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
               {/* ═══════════════════════════════════════════ */}
               <div className="mt-4 pt-4 border-t border-rmpg-700">
                 <div className="flex items-center gap-2 mb-3">
-                  <KeyRound style={{ width: 16, height: 16, color: '#bc1010' }} />
-                  <div className="text-xs font-bold uppercase tracking-wider" style={{ color: '#a0a0a0' }}>
+                  <KeyRound style={{ width: 16, height: 16, color: '#1a5a9e' }} />
+                  <div className="text-xs font-bold uppercase tracking-wider" style={{ color: '#8899aa' }}>
                     Security Keys
                   </div>
                   <div className="text-[9px] ml-auto" style={{ color: '#555' }}>
@@ -846,7 +846,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                       <div
                         key={cred.id}
                         className="flex items-center justify-between p-2"
-                        style={{ background: '#141414', border: '1px solid #282828' }}
+                        style={{ background: '#0d1520', border: '1px solid #1e3048' }}
                       >
                         <div className="flex items-center gap-2">
                           <KeyRound style={{ width: 13, height: 13, color: '#4ade80' }} />
@@ -921,27 +921,27 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
 
           {activeTab === 'sessions' && (
             <>
-              <div className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: '#a0a0a0' }}>
+              <div className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: '#8899aa' }}>
                 Active Sessions
               </div>
               {sessions.length === 0 ? (
-                <div className="text-xs text-center py-4" style={{ color: '#707070' }}>No active sessions</div>
+                <div className="text-xs text-center py-4" style={{ color: '#4a6280' }}>No active sessions</div>
               ) : (
                 <div className="space-y-2">
                   {sessions.map((session: any) => (
                     <div
                       key={session.session_id}
                       className="flex items-center justify-between p-2"
-                      style={{ background: '#141414', border: '1px solid #282828' }}
+                      style={{ background: '#0d1520', border: '1px solid #1e3048' }}
                     >
                       <div>
                         <div className="text-[11px] text-white font-mono">
                           {session.ip_address}
                         </div>
-                        <div className="text-[9px]" style={{ color: '#707070' }}>
+                        <div className="text-[9px]" style={{ color: '#4a6280' }}>
                           {session.user_agent?.substring(0, 60)}...
                         </div>
-                        <div className="text-[9px]" style={{ color: '#505050' }}>
+                        <div className="text-[9px]" style={{ color: '#4a6280' }}>
                           Last used: {new Date(session.last_used_at || session.created_at).toLocaleString()}
                         </div>
                       </div>
@@ -966,7 +966,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   <SecurityStatusCard />
 
                   {/* 2FA actions */}
-                  <div className="panel-beveled p-3" style={{ background: '#1a1a1a' }}>
+                  <div className="panel-beveled p-3" style={{ background: '#141e2b' }}>
                     <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">
                       Two-Factor Authentication
                     </h3>

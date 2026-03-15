@@ -81,6 +81,27 @@ router.use((req: Request, res: Response, next: NextFunction) => {
 
 router.use(authenticateToken);
 
+// ─── PII Protection ───────────────────────────────────
+// Roles that should NOT see sensitive officer PII (home address, DL, blood type, emergency contacts).
+// These are billing/viewer roles with no law-enforcement need-to-know.
+const RESTRICTED_ROLES = new Set(['contract_manager', 'client_viewer']);
+
+// Fields stripped from personnel responses for restricted roles
+const SENSITIVE_PERSONNEL_FIELDS = [
+  'address', 'city', 'state', 'zip', 'date_of_birth',
+  'dl_number', 'dl_state', 'dl_expiry', 'blood_type', 'allergies',
+  'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship',
+];
+
+/** Strip sensitive PII fields from a personnel record for restricted roles */
+function stripSensitiveFields(record: any): any {
+  const stripped = { ...record };
+  for (const field of SENSITIVE_PERSONNEL_FIELDS) {
+    delete stripped[field];
+  }
+  return stripped;
+}
+
 // ─── USERS / OFFICERS ─────────────────────────────────
 
 // GET /api/personnel - List all personnel
@@ -125,7 +146,13 @@ router.get('/', (req: Request, res: Response) => {
       ORDER BY u.full_name
     `).all(...params);
 
-    res.json(users);
+    // Strip sensitive PII for non-LE roles (contract_manager, client_viewer)
+    const callerRole = req.user?.role;
+    const result = callerRole && RESTRICTED_ROLES.has(callerRole)
+      ? users.map(stripSensitiveFields)
+      : users;
+
+    res.json(result);
   } catch (error: any) {
     console.error('Get personnel error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -176,8 +203,14 @@ router.get('/:id', (req: Request, res: Response, next) => {
       SELECT * FROM time_entries WHERE officer_id = ? AND status = 'active' ORDER BY clock_in DESC LIMIT 1
     `).get(user.id);
 
+    // Strip sensitive PII for non-LE roles
+    const callerRole = req.user?.role;
+    const safeUser = callerRole && RESTRICTED_ROLES.has(callerRole)
+      ? stripSensitiveFields(user)
+      : user;
+
     res.json({
-      ...user,
+      ...safeUser,
       unit,
       credentials,
       todaySchedule,
@@ -2475,7 +2508,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       // Role distribution
       const ROLE_COLORS: Record<string, string> = {
         admin: '#ef4444', manager: '#a855f7', supervisor: '#f59e0b',
-        officer: '#bc1010', dispatcher: '#3b82f6',
+        officer: '#1a5a9e', dispatcher: '#3b82f6',
       };
       const roleDistribution = db.prepare(`
         SELECT role, COUNT(*) as count FROM users GROUP BY role ORDER BY count DESC

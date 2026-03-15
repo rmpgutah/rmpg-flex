@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiFetch } from './useApi';
 
 interface UseApiDataResult<T> {
@@ -13,17 +13,24 @@ export function useApiData<T>(endpoint: string, options?: { immediate?: boolean 
   const [data, setData] = useState<T | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const mountedRef = useRef(true);
+
+  // Track mount state for safe async setState
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const refetch = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
       const result = await apiFetch<T>(endpoint);
-      setData(result);
+      if (mountedRef.current) setData(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Request failed');
+      if (mountedRef.current) setError(err instanceof Error ? err.message : 'Request failed');
     } finally {
-      setIsLoading(false);
+      if (mountedRef.current) setIsLoading(false);
     }
   }, [endpoint]);
 

@@ -58,7 +58,7 @@ function createTables(): void {
       password_hash TEXT NOT NULL,
       full_name TEXT NOT NULL,
       email TEXT,
-      role TEXT NOT NULL CHECK(role IN ('admin','manager','dispatcher','supervisor','officer','client_viewer')),
+      role TEXT NOT NULL CHECK(role IN ('admin','manager','dispatcher','supervisor','officer','client_viewer','contract_manager')),
       badge_number TEXT,
       phone TEXT,
       status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','inactive','terminated')),
@@ -865,6 +865,35 @@ function createTables(): void {
       FOREIGN KEY (vehicle_id) REFERENCES vehicles_records(id) ON DELETE CASCADE,
       FOREIGN KEY (added_by) REFERENCES users(id),
       UNIQUE(incident_id, vehicle_id)
+    );
+
+    -- Call-level person/vehicle linkage (structured records on dispatch calls)
+    CREATE TABLE IF NOT EXISTS call_persons (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      call_id INTEGER NOT NULL,
+      person_id INTEGER NOT NULL,
+      role TEXT NOT NULL DEFAULT 'involved' CHECK(role IN ('suspect','victim','witness','reporting_party','involved','other')),
+      notes TEXT,
+      added_by INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (call_id) REFERENCES calls_for_service(id) ON DELETE CASCADE,
+      FOREIGN KEY (person_id) REFERENCES persons(id) ON DELETE CASCADE,
+      FOREIGN KEY (added_by) REFERENCES users(id),
+      UNIQUE(call_id, person_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS call_vehicles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      call_id INTEGER NOT NULL,
+      vehicle_id INTEGER NOT NULL,
+      role TEXT NOT NULL DEFAULT 'involved' CHECK(role IN ('suspect_vehicle','victim_vehicle','witness_vehicle','involved','evidence','other')),
+      notes TEXT,
+      added_by INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (call_id) REFERENCES calls_for_service(id) ON DELETE CASCADE,
+      FOREIGN KEY (vehicle_id) REFERENCES vehicles_records(id) ON DELETE CASCADE,
+      FOREIGN KEY (added_by) REFERENCES users(id),
+      UNIQUE(call_id, vehicle_id)
     );
 
     -- Training Records
@@ -3121,6 +3150,8 @@ function migrateSchema(): void {
   addCol('dashcam_videos', 'overlay_status', "TEXT DEFAULT 'pending'");
   addCol('dashcam_videos', 'processed_file_path', 'TEXT');
   addCol('dashcam_videos', 'overlay_error', 'TEXT');
+  addCol('dashcam_videos', 'camera_position', "TEXT DEFAULT 'FRONT'");
+  addCol('dashcam_videos', 'mic_status', "TEXT DEFAULT 'ON'");
 
   // ── DIGITAL EVIDENCE HASHES — link to forensic cases/exhibits ──
   addCol('digital_evidence_hashes', 'forensic_case_id', 'INTEGER');
@@ -3160,6 +3191,300 @@ function migrateSchema(): void {
       CREATE INDEX IF NOT EXISTS idx_fcl_type_id ON forensic_case_links(linked_type, linked_id);
     `);
   } catch { /* table already exists */ }
+
+  // ── Migration: Add contract_manager to users role CHECK constraint ──
+  // Uses writable_schema to safely update the CHECK text without recreating the table
+  try {
+    const tableInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").get() as any;
+    if (tableInfo?.sql && !tableInfo.sql.includes('contract_manager')) {
+      const updatedSql = tableInfo.sql.replace(
+        "'client_viewer')",
+        "'client_viewer','contract_manager')"
+      );
+      db.pragma('writable_schema = ON');
+      db.prepare("UPDATE sqlite_master SET sql = ? WHERE type = 'table' AND name = 'users'").run(updatedSql);
+      db.pragma('writable_schema = OFF');
+      db.pragma('integrity_check');
+      console.log('Users table CHECK constraint updated to include contract_manager');
+    }
+  } catch (err) {
+    console.log('Users role CHECK migration skipped or already done:', (err as Error).message);
+  }
+
+  // ── GPS SOURCE PRIORITY — dual-session phone/desktop support ─
+  addCol('units', 'gps_updated_at', 'TEXT');
+  addCol('gps_breadcrumbs', 'gps_source', 'TEXT');
+
+  // ── MILEAGE TRACKING — responding vehicle on calls ─────────
+  addCol('calls_for_service', 'responding_vehicle_id', 'TEXT');
+
+  // ── CALL VISIT HISTORY — snapshot each PSO visit before redispatch ──
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS call_visit_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      call_id TEXT NOT NULL,
+      visit_number INTEGER NOT NULL DEFAULT 1,
+      status TEXT,
+      dispatched_at TEXT,
+      enroute_at TEXT,
+      onscene_at TEXT,
+      cleared_at TEXT,
+      closed_at TEXT,
+      assigned_units TEXT,
+      responding_vehicle_id TEXT,
+      starting_mileage REAL,
+      ending_mileage REAL,
+      disposition TEXT,
+      note TEXT,
+      created_by TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (call_id) REFERENCES calls_for_service(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_visit_history_call ON call_visit_history(call_id);
+  `);
+
+  // ─── Notification rules (email delivery triggers) ────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS notification_rules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      trigger_event TEXT NOT NULL,
+      notification_type TEXT NOT NULL DEFAULT 'in_app',
+      target_user_ids TEXT DEFAULT '[]',
+      target_roles TEXT DEFAULT '[]',
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+  `);
+
+  // ─── Email cache tables (Microsoft Graph inbox sync) ────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS email_cache (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      graph_id TEXT UNIQUE NOT NULL,
+      conversation_id TEXT,
+      folder_id TEXT NOT NULL DEFAULT 'inbox',
+      subject TEXT,
+      from_address TEXT,
+      from_name TEXT,
+      to_addresses TEXT,
+      cc_addresses TEXT,
+      body_preview TEXT,
+      body_html TEXT,
+      has_attachments INTEGER DEFAULT 0,
+      is_read INTEGER DEFAULT 0,
+      is_flagged INTEGER DEFAULT 0,
+      importance TEXT DEFAULT 'normal',
+      received_at TEXT NOT NULL,
+      sent_at TEXT,
+      synced_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_email_cache_folder ON email_cache(folder_id);
+    CREATE INDEX IF NOT EXISTS idx_email_cache_received ON email_cache(received_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_email_cache_from ON email_cache(from_address);
+    CREATE INDEX IF NOT EXISTS idx_email_cache_graph ON email_cache(graph_id);
+
+    CREATE TABLE IF NOT EXISTS email_attachments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email_graph_id TEXT NOT NULL,
+      attachment_graph_id TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      content_type TEXT,
+      size INTEGER DEFAULT 0,
+      is_inline INTEGER DEFAULT 0,
+      content_id TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (email_graph_id) REFERENCES email_cache(graph_id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_email_attachments_email ON email_attachments(email_graph_id);
+
+    CREATE TABLE IF NOT EXISTS email_folders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      graph_id TEXT UNIQUE NOT NULL,
+      display_name TEXT NOT NULL,
+      parent_folder_id TEXT,
+      total_count INTEGER DEFAULT 0,
+      unread_count INTEGER DEFAULT 0,
+      synced_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_email_folders_graph ON email_folders(graph_id);
+  `);
+
+  // ─── CRM TABLES ─────────────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS crm_tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      client_id INTEGER REFERENCES clients(id),
+      property_id INTEGER REFERENCES properties(id),
+      title TEXT NOT NULL,
+      description TEXT,
+      task_type TEXT DEFAULT 'follow_up',
+      priority TEXT DEFAULT 'normal',
+      status TEXT DEFAULT 'pending',
+      due_date TEXT,
+      assigned_to TEXT,
+      completed_at TEXT,
+      completed_by TEXT,
+      notes TEXT,
+      created_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_crm_tasks_client ON crm_tasks(client_id);
+    CREATE INDEX IF NOT EXISTS idx_crm_tasks_status ON crm_tasks(status);
+    CREATE INDEX IF NOT EXISTS idx_crm_tasks_due ON crm_tasks(due_date);
+
+    CREATE TABLE IF NOT EXISTS crm_activity (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      client_id INTEGER REFERENCES clients(id),
+      activity_type TEXT NOT NULL,
+      subject TEXT,
+      details TEXT,
+      created_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_crm_activity_client ON crm_activity(client_id);
+    CREATE INDEX IF NOT EXISTS idx_crm_activity_date ON crm_activity(created_at);
+
+    -- ─── CRM LEADS & PIPELINE ──────────────────────────────
+
+    CREATE TABLE IF NOT EXISTS crm_leads (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source TEXT NOT NULL DEFAULT 'manual',
+      source_id TEXT,
+      source_url TEXT,
+      business_name TEXT NOT NULL,
+      industry TEXT,
+      sic_code TEXT,
+      business_type TEXT,
+      contact_name TEXT,
+      contact_email TEXT,
+      contact_phone TEXT,
+      contact_title TEXT,
+      address TEXT,
+      city TEXT,
+      state TEXT DEFAULT 'UT',
+      zip TEXT,
+      latitude REAL,
+      longitude REAL,
+      estimated_value REAL,
+      permit_number TEXT,
+      registration_date TEXT,
+      license_number TEXT,
+      project_type TEXT,
+      property_size TEXT,
+      pipeline_stage TEXT NOT NULL DEFAULT 'new' CHECK(pipeline_stage IN ('new','contacted','qualified','proposal','negotiation','won','lost','dismissed')),
+      lead_score INTEGER DEFAULT 0,
+      assigned_to INTEGER,
+      client_id INTEGER REFERENCES clients(id),
+      proposal_id INTEGER,
+      notes TEXT,
+      lost_reason TEXT,
+      next_follow_up TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_crm_leads_source ON crm_leads(source);
+    CREATE INDEX IF NOT EXISTS idx_crm_leads_stage ON crm_leads(pipeline_stage);
+    CREATE INDEX IF NOT EXISTS idx_crm_leads_score ON crm_leads(lead_score DESC);
+    CREATE INDEX IF NOT EXISTS idx_crm_leads_assigned ON crm_leads(assigned_to);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_leads_dedup ON crm_leads(source, source_id) WHERE source_id IS NOT NULL;
+
+    CREATE TABLE IF NOT EXISTS crm_lead_activity (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      lead_id INTEGER NOT NULL REFERENCES crm_leads(id) ON DELETE CASCADE,
+      activity_type TEXT NOT NULL,
+      subject TEXT,
+      details TEXT,
+      old_value TEXT,
+      new_value TEXT,
+      created_by INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_crm_lead_activity_lead ON crm_lead_activity(lead_id);
+
+    CREATE TABLE IF NOT EXISTS crm_proposals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      proposal_number TEXT NOT NULL,
+      lead_id INTEGER REFERENCES crm_leads(id),
+      client_id INTEGER REFERENCES clients(id),
+      title TEXT NOT NULL,
+      template_type TEXT,
+      description TEXT,
+      scope_of_work TEXT,
+      terms TEXT,
+      monthly_value REAL DEFAULT 0,
+      total_value REAL DEFAULT 0,
+      billing_frequency TEXT DEFAULT 'monthly',
+      valid_until TEXT,
+      proposed_start TEXT,
+      proposed_end TEXT,
+      contract_length_months INTEGER,
+      stage TEXT NOT NULL DEFAULT 'draft' CHECK(stage IN ('draft','sent','viewed','accepted','rejected','expired')),
+      sent_at TEXT,
+      viewed_at TEXT,
+      accepted_at TEXT,
+      rejected_at TEXT,
+      rejection_reason TEXT,
+      created_by INTEGER,
+      assigned_to INTEGER,
+      notes TEXT,
+      pdf_path TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_crm_proposals_lead ON crm_proposals(lead_id);
+    CREATE INDEX IF NOT EXISTS idx_crm_proposals_client ON crm_proposals(client_id);
+    CREATE INDEX IF NOT EXISTS idx_crm_proposals_stage ON crm_proposals(stage);
+
+    CREATE TABLE IF NOT EXISTS crm_proposal_templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      template_type TEXT NOT NULL,
+      description TEXT,
+      default_scope TEXT,
+      default_terms TEXT,
+      default_monthly_value REAL,
+      default_billing_frequency TEXT DEFAULT 'monthly',
+      default_contract_months INTEGER DEFAULT 12,
+      is_active INTEGER DEFAULT 1,
+      created_by INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS lead_scrape_sources (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_key TEXT UNIQUE NOT NULL,
+      display_name TEXT NOT NULL,
+      base_url TEXT,
+      is_enabled INTEGER DEFAULT 0,
+      poll_interval_seconds INTEGER DEFAULT 86400,
+      last_poll_at TEXT,
+      last_success_at TEXT,
+      consecutive_failures INTEGER DEFAULT 0,
+      total_leads_imported INTEGER DEFAULT 0,
+      api_key_encrypted TEXT,
+      extra_config TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS lead_scrape_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_key TEXT NOT NULL,
+      status TEXT NOT NULL,
+      records_found INTEGER DEFAULT 0,
+      records_imported INTEGER DEFAULT 0,
+      records_skipped INTEGER DEFAULT 0,
+      error_message TEXT,
+      duration_ms INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_lead_scrape_log_source ON lead_scrape_log(source_key);
+    CREATE INDEX IF NOT EXISTS idx_lead_scrape_log_date ON lead_scrape_log(created_at);
+  `);
 
   console.log('Schema migration completed.');
 }
@@ -3315,6 +3640,11 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_incident_persons_person ON incident_persons(person_id);
     CREATE INDEX IF NOT EXISTS idx_incident_vehicles_incident ON incident_vehicles(incident_id);
     CREATE INDEX IF NOT EXISTS idx_incident_vehicles_vehicle ON incident_vehicles(vehicle_id);
+
+    CREATE INDEX IF NOT EXISTS idx_call_persons_call ON call_persons(call_id);
+    CREATE INDEX IF NOT EXISTS idx_call_persons_person ON call_persons(person_id);
+    CREATE INDEX IF NOT EXISTS idx_call_vehicles_call ON call_vehicles(call_id);
+    CREATE INDEX IF NOT EXISTS idx_call_vehicles_vehicle ON call_vehicles(vehicle_id);
 
     CREATE INDEX IF NOT EXISTS idx_persons_dl ON persons(dl_number);
     CREATE INDEX IF NOT EXISTS idx_vehicles_registration ON vehicles_records(registration_expiry);

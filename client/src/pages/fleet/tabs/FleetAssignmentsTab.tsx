@@ -49,7 +49,7 @@ export default function FleetAssignmentsTab({ assignments }: Props) {
       ) : (
         <div className="panel-beveled p-3 bg-surface-base">
           <div className="relative">
-            <div className="absolute left-3 top-0 bottom-0 w-px" style={{ background: 'linear-gradient(to bottom, #f59e0b40, #282828)' }} />
+            <div className="absolute left-3 top-0 bottom-0 w-px" style={{ background: 'linear-gradient(to bottom, #f59e0b40, #1e3048)' }} />
             <div className="space-y-2">
               {assignments.map((a) => {
                 const isActive = !a.unassigned_at;

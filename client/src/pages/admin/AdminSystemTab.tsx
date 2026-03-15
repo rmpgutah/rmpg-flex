@@ -153,7 +153,7 @@ const DEFAULT_SECURITY: SecurityConfig = {
 const DEFAULT_BRANDING: BrandingConfig = {
   report_header_text: 'RMPG SECURITY SERVICES',
   report_subheader_text: 'PRIVATE SECURITY',
-  primary_color: '#dc2626',
+  primary_color: '#1a5a9e',
   accent_color: '#d4a017',
   header_bg_color: '#1a1a2e',
 };

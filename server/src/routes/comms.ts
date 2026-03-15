@@ -7,6 +7,8 @@ import { localNow } from '../utils/timeUtils';
 const router = Router();
 
 router.use(authenticateToken);
+// BOLOs, radio transcripts, and activity feeds are operational LE data — restrict access
+router.use(requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'));
 
 // ─── MESSAGES ─────────────────────────────────────────
 

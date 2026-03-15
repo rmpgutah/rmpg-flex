@@ -13,6 +13,8 @@ import type { DlRecordSubject } from '../utils/dlRecordStore';
 
 const router = Router();
 router.use(authenticateToken);
+// DL records contain sensitive identity information — restrict to LE roles
+router.use(requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'));
 
 // POST /api/dl-records — manually create/update a DL record
 router.post('/', requireRole('admin', 'manager', 'officer'), (req: Request, res: Response) => {

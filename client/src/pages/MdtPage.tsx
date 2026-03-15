@@ -579,7 +579,7 @@ export default function MdtPage() {
                 onClick={() => setActiveTab(tab)}
                 className="flex-1 px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider transition-colors whitespace-nowrap"
                 style={{
-                  background: activeTab === tab ? '#1a1a1a' : 'transparent',
+                  background: activeTab === tab ? '#141e2b' : 'transparent',
                   color: activeTab === tab ? (tab === 'ncic' ? '#22d3ee' : '#fff') : '#666',
                   borderBottom: activeTab === tab ? `2px solid ${tab === 'ncic' ? '#22d3ee' : '#22c55e'}` : '2px solid transparent',
                 }}
