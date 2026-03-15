@@ -224,32 +224,11 @@ app.get('/api/health', (_req, res) => {
   const overall = dbStatus === 'ok' ? 'ok' : 'degraded';
   const statusCode = overall === 'ok' ? 200 : 503;
 
+  // Public health check: minimal info only (no version, features, or internals)
   res.status(statusCode).json({
     status: overall,
-    name: 'RMPG Flex CAD/RMS Server',
-    version: SERVER_VERSION,
-    environment: config.nodeEnv,
     timestamp: new Date().toISOString(),
-    uptime: Math.floor(process.uptime()),
-    database: { status: dbStatus, ...(dbError && { error: dbError }) },
-    connections: { websocket: getConnectedClientCount() },
-    features: {
-      rateLimiting: true,
-      securityHeaders: true,
-      inputSanitization: true,
-      tokenRefresh: true,
-      sessionManagement: true,
-      accountLockout: true,
-      passwordPolicy: true,
-      fileUpload: true,
-      warrants: true,
-      fleetManagement: true,
-      notifications: true,
-      csvExport: true,
-      sslEncryption: config.ssl.enabled,
-      wsAuthentication: true,
-      liveSync: true,
-    },
+    database: { status: dbStatus },
   });
 });
 

@@ -814,11 +814,14 @@ router.post('/:id/hashes/verify', requireRole('admin', 'manager', 'supervisor', 
     if (!validTypes.includes(hash_type)) return res.status(400).json({ error: `hash_type must be one of: ${validTypes.join(', ')}` });
 
     // Search for matches across ALL hash records in the database
+    // Use safe column lookup map (defense-in-depth even though hash_type is validated above)
+    const hashColumnMap: Record<string, string> = { md5: 'md5', sha1: 'sha1', sha256: 'sha256', sha512: 'sha512' };
+    const col = hashColumnMap[hash_type];
     const matches = db.prepare(`
       SELECT deh.*, fc.lab_case_number, fc.title as case_title
       FROM digital_evidence_hashes deh
       LEFT JOIN forensic_cases fc ON deh.forensic_case_id = fc.id
-      WHERE deh.${hash_type} = ?
+      WHERE deh."${col}" = ?
       ORDER BY deh.created_at DESC
     `).all(hash_value.trim().toLowerCase());
 

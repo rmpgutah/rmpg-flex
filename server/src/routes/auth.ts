@@ -750,7 +750,7 @@ router.post('/change-password', passwordRateLimit, authenticateToken, (req: Requ
     // Save to history
     addToPasswordHistory(user.id, user.password_hash);
 
-    const newHash = bcryptjs.hashSync(newPassword, 10);
+    const newHash = bcryptjs.hashSync(newPassword, 12);
     const now = localNow();
 
     // Update password history: prepend old hash, keep last N
@@ -1016,7 +1016,7 @@ router.post('/verify-2fa', mfaRateLimit, (req: Request, res: Response) => {
     // Verify the temp token
     let decoded: JwtPayload;
     try {
-      decoded = jwt.verify(tempToken, config.jwt.secret) as JwtPayload;
+      decoded = jwt.verify(tempToken, config.jwt.secret, { algorithms: ['HS256'] }) as JwtPayload;
     } catch {
       res.status(401).json({ error: 'Verification session expired. Please log in again.' });
       return;
@@ -2093,7 +2093,7 @@ router.post('/login/change-password', authenticateTempToken, (req: Request, res:
     try { addToPasswordHistory(userId, user.password_hash); } catch { /* ignore */ }
 
     // Update password
-    const newHash = bcryptjs.hashSync(newPassword, 10);
+    const newHash = bcryptjs.hashSync(newPassword, 12);
     db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0, force_password_change = 0, password_changed_at = ?, updated_at = ? WHERE id = ?')
       .run(newHash, localNow(), localNow(), userId);
 

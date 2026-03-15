@@ -32,7 +32,7 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
   }
 
   try {
-    const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
+    const decoded = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] }) as JwtPayload;
 
     // Reject refresh tokens and MFA-pending tokens used as access tokens
     if (decoded.type === 'refresh' || decoded.type === 'mfa_pending') {
@@ -61,7 +61,11 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
           }
           // 'warn' mode: log but allow through
         }
-      } catch { /* DB not available - allow through */ }
+      } catch {
+        // DB unavailable — fail closed for security
+        res.status(503).json({ error: 'Session validation unavailable', code: 'SESSION_CHECK_FAILED' });
+        return;
+      }
     }
 
     req.user = decoded;
@@ -116,7 +120,7 @@ export function generateRefreshToken(payload: Omit<JwtPayload, 'type'>): string 
 }
 
 export function verifyRefreshToken(token: string): JwtPayload {
-  const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
+  const decoded = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] }) as JwtPayload;
   if (decoded.type !== 'refresh') {
     throw new Error('Invalid token type');
   }
@@ -143,7 +147,7 @@ export function authenticateTempToken(req: Request, res: Response, next: NextFun
   }
 
   try {
-    const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
+    const decoded = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] }) as JwtPayload;
 
     if (decoded.type !== 'mfa_pending') {
       res.status(403).json({ error: 'Invalid token type — MFA token required' });
@@ -172,7 +176,7 @@ export function authenticateAnyToken(req: Request, res: Response, next: NextFunc
   }
 
   try {
-    const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
+    const decoded = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] }) as JwtPayload;
 
     // Block refresh tokens — they should never be used as access tokens
     if (decoded.type === 'refresh') {

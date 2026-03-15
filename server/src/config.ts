@@ -166,11 +166,11 @@ export const config = {
   session: {
     maxPerUser: envInt('SESSION_MAX_PER_USER', 5),
     enforceIpBinding: envBool('SESSION_ENFORCE_IP_BINDING', true),
-    ipChangeAction: (process.env.SESSION_IP_CHANGE_ACTION || 'warn') as 'invalidate' | 'reauth' | 'warn',
+    ipChangeAction: (process.env.SESSION_IP_CHANGE_ACTION || 'invalidate') as 'invalidate' | 'reauth' | 'warn',
   },
 
   // CORS
-  corsOrigins: (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:3000,http://localhost:4173,https://rmpgutah.us,http://rmpgutah.us,https://www.rmpgutah.us,https://crm.rmpgutah.us')
+  corsOrigins: (process.env.CORS_ORIGINS || (isProduction ? 'https://rmpgutah.us,https://www.rmpgutah.us,https://crm.rmpgutah.us' : 'http://localhost:5173,http://localhost:3000,http://localhost:4173'))
     .split(',')
     .map(s => s.trim()),
 
