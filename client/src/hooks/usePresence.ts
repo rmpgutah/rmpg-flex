@@ -38,7 +38,7 @@ export function usePresence() {
           setCount(data.count || data.users.length);
         }
       })
-      .catch(() => {});
+      .catch((err) => { console.warn('[usePresence] fetch presence failed:', err); });
   }, [isConnected]);
 
   return { users, count, isConnected };

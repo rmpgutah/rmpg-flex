@@ -69,7 +69,7 @@ function SignatureEditor({ onClose }: { onClose: () => void }) {
     let cancelled = false;
     apiFetch<{ signature: string }>('/email/signature')
       .then(d => { if (!cancelled) setSignature(d.signature || ''); })
-      .catch(() => {})
+      .catch((err) => { console.warn('[EmailPage] fetch signature failed:', err); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);
@@ -251,7 +251,7 @@ function TemplatePicker({ onSelect, onClose }: { onSelect: (template: EmailTempl
   useEffect(() => {
     apiFetch<EmailTemplate[]>('/email/templates')
       .then(data => setTemplates(data || []))
-      .catch(() => {})
+      .catch((err) => { console.warn('[EmailPage] fetch templates failed:', err); })
       .finally(() => setLoading(false));
   }, []);
 
@@ -1422,7 +1422,7 @@ export default function EmailPage() {
   const debouncedFolderRefresh = useCallback(() => {
     if (folderRefreshTimerRef.current) clearTimeout(folderRefreshTimerRef.current);
     folderRefreshTimerRef.current = setTimeout(() => {
-      apiFetch<EmailFolder[]>('/email/folders').then(setFolders).catch(() => {});
+      apiFetch<EmailFolder[]>('/email/folders').then(setFolders).catch((err) => { console.warn('[EmailPage] refresh folders failed:', err); });
     }, 500);
   }, []);
 

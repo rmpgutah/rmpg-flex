@@ -456,7 +456,7 @@ export default function Layout() {
     const unsub3 = subscribe('email:new_messages' as any, () => {
       apiFetch<{ count: number }>('/email/unread-count')
         .then(r => setEmailUnreadCount(r.count || 0))
-        .catch(() => {});
+        .catch((err) => { console.warn('[Layout] fetch email unread count failed:', err); });
     });
     return () => { unsub1(); unsub2(); unsub3(); };
   }, [subscribe, fetchHeaderStats]);

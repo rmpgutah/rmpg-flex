@@ -230,7 +230,7 @@ export default function MapPage() {
       }
       setBeatDistrictMap(map);
       setDistrictSections(Array.from(sectionSet.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.id.localeCompare(b.id)));
-    }).catch(() => {});
+    }).catch((err) => { console.warn('[MapPage] fetch districts failed:', err); });
     return () => { cancelled = true; };
   }, []);
 
@@ -380,7 +380,7 @@ export default function MapPage() {
     let cancelled = false;
     apiFetch<{ incident_type: string; count: number }[]>('/dispatch/heatmap/types')
       .then((data) => { if (!cancelled) setHeatmapTypes(data || []); })
-      .catch(() => {});
+      .catch((err) => { console.warn('[MapPage] fetch heatmap types failed:', err); });
     return () => { cancelled = true; };
   }, [showHeatmap]);
 

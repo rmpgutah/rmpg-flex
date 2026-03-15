@@ -306,7 +306,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
     if (isOpen && activeTab === 'password') {
       apiFetch<any>('/auth/password-policy')
         .then(data => setPwPolicy(Array.isArray(data?.policy) ? data.policy : []))
-        .catch(() => {});
+        .catch((err) => { console.warn('[UserProfileModal] fetch password policy failed:', err); });
     }
     if (isOpen && activeTab === 'sessions') {
       apiFetch<any>('/auth/sessions')
@@ -327,7 +327,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
         .catch(() => setWebauthnStatus(null));
       apiFetch<any>('/auth/2fa/status')
         .then(data => setTfaStatus({ enabled: data.enabled, backupCodesRemaining: data.backupCodesRemaining }))
-        .catch(() => {});
+        .catch((err) => { console.warn('[UserProfileModal] fetch 2FA status failed:', err); });
       setSecurityView('overview');
       setRegenCodes(null);
       setRegenPassword('');
@@ -1361,7 +1361,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                       setSecurityView('overview');
                       apiFetch<any>('/auth/2fa/status')
                         .then(data => setTfaStatus({ enabled: data.enabled, backupCodesRemaining: data.backupCodesRemaining }))
-                        .catch(() => {});
+                        .catch((err) => { console.warn('[UserProfileModal] refresh 2FA status after setup failed:', err); });
                     }}
                     onCancel={() => setSecurityView('overview')}
                   />
@@ -1386,7 +1386,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                         setSecurityView('overview');
                         apiFetch<any>('/auth/2fa/status')
                           .then(data => setTfaStatus({ enabled: data.enabled, backupCodesRemaining: data.backupCodesRemaining }))
-                          .catch(() => {});
+                          .catch((err) => { console.warn('[UserProfileModal] refresh 2FA status after regen failed:', err); });
                       }}
                     />
                   ) : (

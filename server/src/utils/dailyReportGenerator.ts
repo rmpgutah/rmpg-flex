@@ -905,10 +905,11 @@ export function startDailyReportScheduler(): void {
       // Auto-archive: purge old breadcrumbs based on retention policy (default 30 days)
       try {
         const db = getDb();
-        const policy = db.prepare(
-          "SELECT retention_days FROM retention_policies WHERE entity_type = 'gps_breadcrumbs' AND is_active = 1"
-        ).get() as { retention_days: number } | undefined;
-        const days = policy?.retention_days ?? 30;
+        // Check if retention_policies table exists before querying
+        const tableExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='retention_policies'").get();
+        const days = tableExists
+          ? ((db.prepare("SELECT retention_days FROM retention_policies WHERE entity_type = 'gps_breadcrumbs' AND is_active = 1").get() as { retention_days: number } | undefined)?.retention_days ?? 30)
+          : 30;
         const result = db.prepare(
           `DELETE FROM gps_breadcrumbs WHERE recorded_at < datetime('now', 'localtime', '-' || ? || ' days')`
         ).run(days);
@@ -922,15 +923,18 @@ export function startDailyReportScheduler(): void {
       // Purge old dashcam events based on retention policy (default 90 days)
       try {
         const db = getDb();
-        const camPolicy = db.prepare(
-          "SELECT retention_days FROM retention_policies WHERE entity_type = 'dashcam_events' AND is_active = 1"
-        ).get() as { retention_days: number } | undefined;
-        const camDays = camPolicy?.retention_days ?? 90;
-        const camResult = db.prepare(
-          `DELETE FROM dashcam_events WHERE created_at < datetime('now', 'localtime', '-' || ? || ' days')`
-        ).run(camDays);
-        if (camResult.changes > 0) {
-          console.log(`[Daily Report] Purged ${camResult.changes} dashcam events older than ${camDays} day(s)`);
+        const tableExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='retention_policies'").get();
+        const camDays = tableExists
+          ? ((db.prepare("SELECT retention_days FROM retention_policies WHERE entity_type = 'dashcam_events' AND is_active = 1").get() as { retention_days: number } | undefined)?.retention_days ?? 90)
+          : 90;
+        const dashcamTableExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='dashcam_events'").get();
+        if (dashcamTableExists) {
+          const camResult = db.prepare(
+            `DELETE FROM dashcam_events WHERE created_at < datetime('now', 'localtime', '-' || ? || ' days')`
+          ).run(camDays);
+          if (camResult.changes > 0) {
+            console.log(`[Daily Report] Purged ${camResult.changes} dashcam events older than ${camDays} day(s)`);
+          }
         }
       } catch (err) {
         console.error('[Daily Report] Dashcam event retention cleanup failed:', err);

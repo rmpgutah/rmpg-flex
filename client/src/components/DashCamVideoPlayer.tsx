@@ -196,8 +196,8 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
 
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
-    if (!document.fullscreenElement) containerRef.current.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
-    else document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
+    if (!document.fullscreenElement) containerRef.current.requestFullscreen().then(() => setIsFullscreen(true)).catch((err) => { console.warn('[DashCamVideoPlayer] enter fullscreen failed:', err); });
+    else document.exitFullscreen().then(() => setIsFullscreen(false)).catch((err) => { console.warn('[DashCamVideoPlayer] exit fullscreen failed:', err); });
   };
 
   // Speed → color + subtle background for evidence strip

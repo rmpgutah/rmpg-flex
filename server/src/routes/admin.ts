@@ -185,8 +185,9 @@ router.delete('/clients/:id', (req: Request, res: Response) => {
 
     // Check for associated properties
     const propCount = db.prepare('SELECT COUNT(*) as count FROM properties WHERE client_id = ?').get(client.id) as any;
-    if (propCount.count > 0) {
-      res.status(400).json({ error: `Cannot delete client with ${propCount.count} associated properties` });
+    const propCountVal = propCount?.count ?? 0;
+    if (propCountVal > 0) {
+      res.status(400).json({ error: `Cannot delete client with ${propCountVal} associated properties` });
       return;
     }
 

@@ -1016,6 +1016,7 @@ router.put('/:id/links/:linkId', requireRole('admin', 'manager', 'supervisor', '
     }
 
     const updated = db.prepare('SELECT * FROM forensic_case_links WHERE id = ?').get(linkId) as any;
+    if (!updated) { res.status(404).json({ error: 'Link not found after update' }); return; }
     res.json({ ...updated, resolved: resolveLinkedRecord(updated.linked_type, updated.linked_id) });
   } catch (error: any) {
     console.error('Update link error:', error);

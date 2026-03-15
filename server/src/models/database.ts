@@ -482,27 +482,6 @@ function createTables(): void {
       synced_at TEXT DEFAULT (datetime('now','localtime'))
     );
 
-    -- Utah State Warrants — scraped from warrants.utah.gov
-    CREATE TABLE IF NOT EXISTS utah_warrants (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      utah_person_id TEXT NOT NULL,
-      first_name TEXT NOT NULL,
-      middle_name TEXT,
-      last_name TEXT NOT NULL,
-      age INTEGER,
-      city TEXT,
-      utah_warrant_id TEXT NOT NULL,
-      issue_date TEXT,
-      court_name TEXT,
-      case_id TEXT,
-      charges TEXT,
-      fetched_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-    );
-    CREATE INDEX IF NOT EXISTS idx_utah_warrant_name
-      ON utah_warrants(last_name COLLATE NOCASE, first_name COLLATE NOCASE);
-    CREATE INDEX IF NOT EXISTS idx_utah_warrant_person
-      ON utah_warrants(utah_person_id);
-
     CREATE TABLE IF NOT EXISTS utah_warrant_sync_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       persons_found INTEGER DEFAULT 0,
@@ -1149,50 +1128,6 @@ function createTables(): void {
 
     CREATE INDEX IF NOT EXISTS idx_dashcam_links_video ON dashcam_video_links(video_id);
     CREATE INDEX IF NOT EXISTS idx_dashcam_links_entity ON dashcam_video_links(entity_type, entity_id);
-
-    -- ClearPathGPS device-to-unit mappings
-    CREATE TABLE IF NOT EXISTS cpg_device_mappings (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      cpg_device_id TEXT NOT NULL,
-      cpg_display_name TEXT,
-      cpg_serial_number TEXT,
-      unit_id INTEGER NOT NULL,
-      is_active INTEGER NOT NULL DEFAULT 1,
-      last_synced_at TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (unit_id) REFERENCES units(id)
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_cpg_mappings_device ON cpg_device_mappings(cpg_device_id);
-    CREATE INDEX IF NOT EXISTS idx_cpg_mappings_unit ON cpg_device_mappings(unit_id);
-
-    -- ClearPathGPS dashcam events (hard brake, speeding, impact, etc.)
-    CREATE TABLE IF NOT EXISTS dashcam_events (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      cpg_device_id TEXT,
-      unit_id INTEGER,
-      dashcam_id TEXT,
-      event_type TEXT NOT NULL,
-      event_timestamp TEXT NOT NULL,
-      speed_mph REAL,
-      latitude REAL,
-      longitude REAL,
-      address TEXT,
-      heading REAL,
-      device_name TEXT,
-      video_available INTEGER DEFAULT 0,
-      video_url TEXT,
-      raw_data TEXT,
-      status_code TEXT,
-      status_code_text TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (unit_id) REFERENCES units(id)
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_dashcam_events_unit ON dashcam_events(unit_id);
-    CREATE INDEX IF NOT EXISTS idx_dashcam_events_type ON dashcam_events(event_type);
-    CREATE INDEX IF NOT EXISTS idx_dashcam_events_time ON dashcam_events(event_timestamp);
 
     -- Radio transmission transcripts — permanent log of PTT voice comms
     CREATE TABLE IF NOT EXISTS radio_transcripts (
@@ -4266,11 +4201,6 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_criminal_history_type ON criminal_history(record_type);
     CREATE INDEX IF NOT EXISTS idx_criminal_history_date ON criminal_history(offense_date);
 
-    -- Officer equipment indexes
-    CREATE INDEX IF NOT EXISTS idx_officer_equipment_officer ON officer_equipment(officer_id);
-    CREATE INDEX IF NOT EXISTS idx_officer_equipment_status ON officer_equipment(status);
-    CREATE INDEX IF NOT EXISTS idx_officer_equipment_type ON officer_equipment(equipment_type);
-
     -- GPS breadcrumb indexes
     CREATE INDEX IF NOT EXISTS idx_breadcrumbs_unit_time ON gps_breadcrumbs(unit_id, recorded_at);
     CREATE INDEX IF NOT EXISTS idx_breadcrumbs_officer ON gps_breadcrumbs(officer_id);
@@ -4335,17 +4265,6 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_offender_alerts_status ON offender_alerts(status);
     CREATE INDEX IF NOT EXISTS idx_offender_alerts_severity ON offender_alerts(severity);
 
-    -- 2FA / Security indexes
-    CREATE INDEX IF NOT EXISTS idx_totp_secrets_user ON user_totp_secrets(user_id);
-    CREATE INDEX IF NOT EXISTS idx_backup_codes_user ON user_backup_codes(user_id);
-    CREATE INDEX IF NOT EXISTS idx_backup_codes_unused ON user_backup_codes(user_id, is_used);
-    CREATE INDEX IF NOT EXISTS idx_trusted_devices_user ON trusted_devices(user_id);
-    CREATE INDEX IF NOT EXISTS idx_trusted_devices_fingerprint ON trusted_devices(device_fingerprint);
-    CREATE INDEX IF NOT EXISTS idx_trusted_devices_expiry ON trusted_devices(trusted_until);
-    CREATE INDEX IF NOT EXISTS idx_password_history_user ON password_history(user_id);
-    CREATE INDEX IF NOT EXISTS idx_security_notifs_user ON security_notifications(user_id);
-    CREATE INDEX IF NOT EXISTS idx_security_notifs_read ON security_notifications(user_id, is_read);
-    CREATE INDEX IF NOT EXISTS idx_security_notifs_created ON security_notifications(created_at);
   `);
 
   // ─── Email cache tables (Microsoft Graph inbox sync) ────────

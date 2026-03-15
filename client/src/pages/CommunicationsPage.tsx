@@ -376,7 +376,7 @@ export default function CommunicationsPage() {
     fetchMessages();
     apiFetch<any[]>('/personnel')
       .then((data) => setOfficers((Array.isArray(data) ? data : []).map((u: any) => ({ id: u.id, full_name: u.full_name }))))
-      .catch(() => {});
+      .catch((err) => { console.warn('[CommunicationsPage] fetch personnel failed:', err); });
   }, [fetchMessages]);
 
   // Scroll to bottom of thread when selected or new messages arrive
