@@ -802,7 +802,11 @@ async function fetchDavisRoster(): Promise<string> {
 // The parser dynamically creates sessions per county and fetches
 // the /Inmates/InmatesJSON endpoint which returns structured data.
 //
-// JailTracker county name mappings (API county parameter values):
+// JailTracker county name mappings (legacy API county parameter values):
+// NOTE: As of 2025, JailTracker migrated from ASP.NET MVC to Blazor WASM.
+// The old /jtclientweb/JTClientWeb/ path is DEAD — returns HTML for all routes.
+// The new API is at /publicroster-api/api/{agencyCode}/search-offenders (POST).
+// Counties without a publicroster agency code use the legacy jtclientwebofficial path.
 const JAILTRACKER_COUNTY_NAMES: Record<string, string> = {
   // Utah
   ut_washington: 'Washington County',
@@ -823,7 +827,7 @@ const JAILTRACKER_COUNTY_NAMES: Record<string, string> = {
   nv_washoe: 'Washoe County', nv_elko: 'Elko County', nv_lyon: 'Lyon County',
   nv_nye: 'Nye County', nv_carson: 'Carson City', nv_churchill: 'Churchill County',
   nv_white_pine: 'White Pine County',
-  // Arizona
+  // Arizona — Most AZ counties have LEFT JailTracker as of 2025
   az_pima: 'Pima County', az_yavapai: 'Yavapai County', az_mohave: 'Mohave County',
   az_coconino: 'Coconino County', az_yuma: 'Yuma County', az_navajo: 'Navajo County',
   az_apache: 'Apache County', az_cochise: 'Cochise County',
@@ -833,10 +837,42 @@ const JAILTRACKER_COUNTY_NAMES: Record<string, string> = {
   nm_otero: 'Otero County',
 };
 
+// JailTracker facility name mappings for the jtclientwebofficial path
+// Format: county_key -> facility name used in URL path (e.g., "Henry_County_MO")
+const JAILTRACKER_FACILITY_NAMES: Record<string, string> = {
+  // Utah
+  ut_washington: 'Washington_County_UT',
+  // Colorado
+  co_mesa: 'Mesa_County_CO', co_pueblo: 'Pueblo_County_CO', co_larimer: 'Larimer_County_CO',
+  co_weld: 'Weld_County_CO', co_arapahoe: 'Arapahoe_County_CO', co_adams: 'Adams_County_CO',
+  co_jefferson: 'Jefferson_County_CO', co_denver: 'Denver_County_CO', co_douglas: 'Douglas_County_CO',
+  co_boulder: 'Boulder_County_CO', co_garfield: 'Garfield_County_CO',
+  // Wyoming
+  wy_natrona: 'Natrona_County_WY', wy_laramie: 'Laramie_County_WY', wy_sweetwater: 'Sweetwater_County_WY',
+  wy_fremont: 'Fremont_County_WY', wy_campbell: 'Campbell_County_WY', wy_albany: 'Albany_County_WY',
+  wy_uinta: 'Uinta_County_WY', wy_lincoln: 'Lincoln_County_WY', wy_teton: 'Teton_County_WY',
+  // Idaho
+  id_canyon: 'Canyon_County_ID', id_bannock: 'Bannock_County_ID', id_bonneville: 'Bonneville_County_ID',
+  id_twin_falls: 'Twin_Falls_County_ID', id_kootenai: 'Kootenai_County_ID', id_bingham: 'Bingham_County_ID',
+  id_madison: 'Madison_County_ID',
+  // Nevada
+  nv_washoe: 'Washoe_County_NV', nv_elko: 'Elko_County_NV', nv_lyon: 'Lyon_County_NV',
+  nv_nye: 'Nye_County_NV', nv_carson: 'Carson_City_NV', nv_churchill: 'Churchill_County_NV',
+  nv_white_pine: 'White_Pine_County_NV',
+  // Arizona
+  az_pima: 'Pima_County_AZ', az_yavapai: 'Yavapai_County_AZ', az_mohave: 'Mohave_County_AZ',
+  az_coconino: 'Coconino_County_AZ', az_yuma: 'Yuma_County_AZ', az_navajo: 'Navajo_County_AZ',
+  az_apache: 'Apache_County_AZ', az_cochise: 'Cochise_County_AZ',
+  // New Mexico
+  nm_dona_ana: 'Dona_Ana_County_NM', nm_san_juan: 'San_Juan_County_NM', nm_sandoval: 'Sandoval_County_NM',
+  nm_santa_fe: 'Santa_Fe_County_NM', nm_lea: 'Lea_County_NM', nm_chaves: 'Chaves_County_NM',
+  nm_otero: 'Otero_County_NM',
+};
+
 /**
  * Create a JailTracker parser for a specific county.
- * All JailTracker deployments use the same API shape — the county
- * name is passed as a parameter to the API endpoint.
+ * Handles BOTH the legacy JSON shape (Inmates array) AND the new
+ * publicroster-api shape (data array with detailsJson).
  */
 function createJailTrackerParser(countyKey: string): CountyParser {
   return {
@@ -845,9 +881,81 @@ function createJailTrackerParser(countyKey: string): CountyParser {
     parseRoster(content: string): RosterEntry[] {
       const entries: RosterEntry[] = [];
 
+      // Guard: if content looks like HTML, it's the Blazor WASM error page
+      const trimmed = content.trim();
+      if (trimmed.startsWith('<!') || trimmed.startsWith('<html') || trimmed.startsWith('<head')) {
+        const htmlErr = new Error(`JailTracker returned HTML instead of JSON for ${countyKey} — platform has migrated to Blazor WASM`);
+        (htmlErr as any).noRoster = true;
+        throw htmlErr;
+      }
+
       try {
         const data = JSON.parse(content);
-        // JailTracker JSON shape: { Inmates: [{ ArrestNo, LastName, FirstName, MiddleName,
+
+        // ── New publicroster-api format ──────────────────────────
+        // Shape: { success: true, data: [{ firstName, lastName, middleName, gender,
+        //   agencyOffenderId, bookDate, detailsJson: "[{filename:'CriminalOffenses',...}]" }] }
+        if (data.success !== undefined && Array.isArray(data.data)) {
+          for (const inmate of data.data) {
+            const lastName = (inmate.lastName || '').trim();
+            const firstName = (inmate.firstName || '').trim();
+            const middleName = (inmate.middleName || inmate.nameSuffix || '').trim();
+            if (!lastName && !firstName) continue;
+
+            const fullName = middleName
+              ? `${lastName}, ${firstName} ${middleName}`
+              : `${lastName}, ${firstName}`;
+
+            const rosterId = inmate.agencyOffenderId || inmate.agencyOffenderPermanentId
+              || `${lastName}-${firstName}-${Date.now()}`;
+
+            const gender = (inmate.gender || '').charAt(0).toUpperCase();
+            const bookingDate = inmate.bookDate || '';
+
+            // Parse charges from detailsJson
+            const charges: string[] = [];
+            let bail = '';
+            let age: number | null = null;
+            try {
+              const details = typeof inmate.detailsJson === 'string'
+                ? JSON.parse(inmate.detailsJson) : (inmate.detailsJson || []);
+              for (const section of details) {
+                if (section.filename === 'CriminalOffenses' && Array.isArray(section.data)) {
+                  for (const offense of section.data) {
+                    const charge = offense.Offense || offense.offense || '';
+                    if (charge) charges.push(charge);
+                    if (!bail && (offense.BondAmount || offense.bondAmount)) {
+                      bail = offense.BondAmount || offense.bondAmount;
+                    }
+                  }
+                }
+                if (section.filename === 'AdditionalInfo' && Array.isArray(section.data)) {
+                  for (const info of section.data) {
+                    if (info.Name === 'Age' && info.Value) age = Number(info.Value) || null;
+                  }
+                }
+              }
+            } catch { /* detailsJson parse failed — not critical */ }
+
+            entries.push({
+              roster_id: String(rosterId),
+              full_name: fullName,
+              first_name: firstName,
+              last_name: lastName,
+              middle_name: middleName,
+              gender,
+              age,
+              booking_date: bookingDate,
+              charges,
+              bail_amount: String(bail || ''),
+              detail_url: inmate.multiAgencyName || '',
+            });
+          }
+          return entries;
+        }
+
+        // ── Legacy JailTracker JSON shape ────────────────────────
+        // Shape: { Inmates: [{ ArrestNo, LastName, FirstName, MiddleName,
         //   Gender, DateOfBirth, BookingDate, TotalBond, Charges: "charge1\ncharge2" }] }
         const inmates = data.Inmates || data.inmates || data.data || [];
 
@@ -895,7 +1003,8 @@ function createJailTrackerParser(countyKey: string): CountyParser {
           });
         }
       } catch (err) {
-        console.error(`[JailTracker] Parse error for ${countyKey}:`, (err as Error).message);
+        // Re-throw — don't silently swallow parse errors
+        throw new Error(`[JailTracker] Parse error for ${countyKey}: ${(err as Error).message}`);
       }
 
       return entries;
@@ -905,46 +1014,134 @@ function createJailTrackerParser(countyKey: string): CountyParser {
 
 /**
  * Fetch inmate data from a JailTracker deployment.
- * First acquires a session, then queries the InmatesJSON endpoint.
+ *
+ * Strategy (as of 2025 platform migration):
+ * 1. Try the NEW publicroster-api REST endpoint (POST /search-offenders)
+ *    - This is the current production API used by the Blazor WASM frontend
+ *    - Requires an agency code (checked via /get-agency-info first)
+ * 2. Fall back to the LEGACY jtclientwebofficial MVC path
+ *    - Session-based, uses GetInmates with ExtJS-style params
+ *    - Still works for many counties but some have left JailTracker
+ * 3. If both fail, throw a clear error (NOT silently return 0 records)
+ *
+ * The OLD /jtclientweb/JTClientWeb/ path is DEAD — Blazor WASM catches all
+ * routes and returns HTML. We no longer attempt it.
  */
 async function fetchJailTrackerRoster(countyKey: string): Promise<string> {
   const countyName = JAILTRACKER_COUNTY_NAMES[countyKey] || countyKey;
+  const facilityName = JAILTRACKER_FACILITY_NAMES[countyKey] || '';
 
-  // Step 1: Get a session by hitting the main page
-  const sessionRes = await fetch('https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/', {
-    method: 'GET',
-    headers: { 'User-Agent': USER_AGENT },
-    redirect: 'follow',
-  });
+  // ── Strategy 1: New publicroster-api ──────────────────────
+  // Try to look up this county's agency code by probing the facility name
+  // The publicroster API uses internal agency codes, not county names
+  try {
+    const infoRes = await fetch(
+      `https://omsweb.public-safety-cloud.com/publicroster-api/api/${facilityName}/get-agency-info`,
+      { headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' } }
+    );
 
-  // Extract session ID from redirect URL or Set-Cookie
-  const sessionUrl = sessionRes.url;
-  const sessionMatch = sessionUrl.match(/\(S\(([^)]+)\)\)/);
-  const sessionId = sessionMatch ? sessionMatch[1] : '';
+    if (infoRes.ok) {
+      const infoData = await infoRes.json();
 
-  if (!sessionId) {
-    // Try without session — some deployments don't require it
-    const directUrl = `https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON?approvedOfficerOnly=false&approvedFacility=${encodeURIComponent(countyName)}&approvedCounty=${encodeURIComponent(countyName)}`;
-    const directRes = await fetch(directUrl, {
-      headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
-    });
-    if (!directRes.ok) throw new Error(`JailTracker HTTP ${directRes.status} for ${countyKey}`);
-    return await directRes.text();
+      // "Invalid facility" from publicroster-api — record this for later
+      // (don't auto-disable yet, try legacy jtclientwebofficial first)
+      if (infoData.success === false && infoData.errorMessage?.includes?.('Invalid facility')) {
+        console.log(`[JailTracker] ${countyKey}: publicroster-api says Invalid facility`);
+        // Fall through to Strategy 2
+      } else if (infoData.success && infoData.data) {
+        console.log(`[JailTracker] ${countyKey}: publicroster-api available (agency: ${facilityName})`);
+
+        // Fetch all current offenders via the search endpoint
+        const searchRes = await fetch(
+          `https://omsweb.public-safety-cloud.com/publicroster-api/api/${facilityName}/search-offenders`,
+          {
+            method: 'POST',
+            headers: {
+              'User-Agent': USER_AGENT,
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+            },
+            body: JSON.stringify({}),
+          }
+        );
+
+        if (searchRes.ok) {
+          const searchText = await searchRes.text();
+          // Validate it's JSON, not HTML
+          if (searchText.trim().startsWith('{') || searchText.trim().startsWith('[')) {
+            return searchText;
+          }
+        }
+      }
+    }
+  } catch (err) {
+    // Re-throw noRoster errors
+    if ((err as any).noRoster) throw err;
+    console.log(`[JailTracker] ${countyKey}: publicroster-api probe failed:`, (err as Error).message);
   }
 
-  // Step 2: Fetch inmates JSON with session
-  const inmatesUrl = `https://omsweb.public-safety-cloud.com/jtclientweb/(S(${sessionId}))/JTClientWeb/Inmates/InmatesJSON?approvedOfficerOnly=false&approvedFacility=${encodeURIComponent(countyName)}&approvedCounty=${encodeURIComponent(countyName)}`;
+  // ── Strategy 2: Legacy jtclientwebofficial path ───────────
+  if (facilityName) {
+    try {
+      const pageUrl = `https://omsweb.public-safety-cloud.com/jtclientwebofficial/jailtracker/index/${facilityName}`;
+      const pageRes = await fetch(pageUrl, {
+        headers: { 'User-Agent': USER_AGENT },
+        redirect: 'follow',
+      });
 
-  const res = await fetch(inmatesUrl, {
-    headers: {
-      'User-Agent': USER_AGENT,
-      Accept: 'application/json',
-      Referer: `https://omsweb.public-safety-cloud.com/jtclientweb/(S(${sessionId}))/JTClientWeb/Inmates/`,
-    },
-  });
+      const pageHtml = await pageRes.text();
 
-  if (!res.ok) throw new Error(`JailTracker HTTP ${res.status} for ${countyKey}`);
-  return await res.text();
+      // Check for "Invalid Facility" — county has permanently left JailTracker
+      // Throw noRoster error to auto-disable instead of retrying
+      if (pageHtml.includes('Invalid Facility')) {
+        const err = new Error(`JailTracker: ${countyName} is no longer on JailTracker (Invalid Facility) — auto-disabling`);
+        (err as any).noRoster = true;
+        throw err;
+      }
+
+      // Extract session from Settings.init('sessionId', ...)
+      const sessionMatch = pageHtml.match(/Settings\.init\('([^']+)'/);
+      if (sessionMatch) {
+        const sessionId = sessionMatch[1];
+        const apiUrl = `https://omsweb.public-safety-cloud.com/jtclientwebofficial/(S(${sessionId}))/JailTracker/GetInmates?start=0&limit=1000&searchtype=current`;
+
+        const apiRes = await fetch(apiUrl, {
+          headers: {
+            'User-Agent': USER_AGENT,
+            Accept: 'application/json',
+            Referer: pageRes.url,
+          },
+        });
+
+        if (apiRes.ok) {
+          const apiText = await apiRes.text();
+          // Validate it's JSON, not HTML
+          if (apiText.trim().startsWith('{') || apiText.trim().startsWith('[')) {
+            // Check for valid data (not session-time-out or empty string)
+            const parsed = JSON.parse(apiText);
+            if (parsed.error === 'session-time-out') {
+              console.log(`[JailTracker] ${countyKey}: jtclientwebofficial session timed out`);
+            } else {
+              return apiText;
+            }
+          }
+        }
+      }
+    } catch (err) {
+      // If it's a noRoster error (Invalid Facility, etc.), re-throw — don't fall through
+      if ((err as any).noRoster || (err as Error).message.includes('Invalid Facility') || (err as Error).message.includes('no longer on JailTracker')) {
+        throw err;
+      }
+      console.log(`[JailTracker] ${countyKey}: jtclientwebofficial fallback failed:`, (err as Error).message);
+    }
+  }
+
+  // ── Both strategies failed — auto-disable ────────────────
+  const bothFailedErr = new Error(
+    `JailTracker API unavailable for ${countyName} — both publicroster-api and jtclientwebofficial failed. Auto-disabling.`
+  );
+  (bothFailedErr as any).noRoster = true;
+  throw bothFailedErr;
 }
 
 // ════════════════════════════════════════════════════════════
@@ -1484,20 +1681,20 @@ const clarkNvParser: CountyParser = {
         cells.push(tdMatch[1].replace(/<[^>]+>/g, '').trim());
       }
 
-      // Expected: ID, Name, Age, Race, Sex, Case, Charge, Status, Arrest Date, ...
+      // Columns: InmateID(0), Name(1), ArrestDate(2), CaseNo(3), Age(4), Race(5), Sex(6)
       if (cells.length < 5) continue;
 
       // Skip header rows
-      if (cells[0] === 'ID' || cells[0] === 'Inmate' || cells[1] === 'Name') continue;
+      if (cells[0] === 'Select' || cells[0] === 'ID' || cells[0] === 'Inmate' || cells[1] === 'Name' || cells[0] === 'Inmate ID') continue;
 
       const inmateId = cells[0] || '';
       const fullName = (cells[1] || '').trim();
-      if (!fullName || !inmateId) continue;
+      if (!fullName || !inmateId || !inmateId.match(/^\d+$/)) continue;
 
       const { first, middle, last } = splitName(fullName);
-      const gender = (cells[4] || '').charAt(0).toUpperCase();
-      const charge = (cells[6] || '').trim();
-      const arrestDate = (cells[8] || cells[7] || '').trim();
+      const gender = (cells[6] || cells[5] || '').charAt(0).toUpperCase();
+      const charge = (cells[3] || '').trim(); // Case No
+      const arrestDate = (cells[2] || '').trim();
 
       entries.push({
         roster_id: inmateId,
@@ -1506,7 +1703,7 @@ const clarkNvParser: CountyParser = {
         last_name: last,
         middle_name: middle,
         gender,
-        age: parseInt(cells[2], 10) || null,
+        age: parseInt(cells[4], 10) || null,
         booking_date: arrestDate,
         charges: charge ? [charge] : [],
         bail_amount: '',
@@ -1520,7 +1717,8 @@ const clarkNvParser: CountyParser = {
 
 /**
  * Clark County NV requires A-Z POST searches to build the full roster.
- * ASP.NET ViewState-based form at redrock.clarkcountynv.gov.
+ * ASP.NET form at redrock.clarkcountynv.gov.
+ * Form fields: txtName (search input), SearchName (submit button).
  */
 async function fetchClarkNvRoster(): Promise<string> {
   const baseUrl = 'https://redrock.clarkcountynv.gov/ccdcincustody/incustodysearch.aspx';
@@ -1531,24 +1729,30 @@ async function fetchClarkNvRoster(): Promise<string> {
   // First, get the search page to extract ViewState
   let viewState = '';
   let eventValidation = '';
+  let viewStateGen = '';
   try {
     const searchPage = await fetchPage(baseUrl);
     const vsMatch = searchPage.match(/id="__VIEWSTATE"\s+value="([^"]*)"/);
     const evMatch = searchPage.match(/id="__EVENTVALIDATION"\s+value="([^"]*)"/);
+    const vsgMatch = searchPage.match(/id="__VIEWSTATEGENERATOR"\s+value="([^"]*)"/);
     viewState = vsMatch ? vsMatch[1] : '';
     eventValidation = evMatch ? evMatch[1] : '';
+    viewStateGen = vsgMatch ? vsgMatch[1] : '';
   } catch {
     throw new Error('Failed to load Clark County search page');
   }
 
   for (const letter of letters) {
     try {
-      const body = new URLSearchParams({
+      const params: Record<string, string> = {
         __VIEWSTATE: viewState,
         __EVENTVALIDATION: eventValidation,
-        ctl00$ContentPlaceHolder1$txtLastName: letter,
-        ctl00$ContentPlaceHolder1$btnSearch: 'Search',
-      });
+        txtName: letter,
+        SearchName: '  Submit  ',
+      };
+      if (viewStateGen) params.__VIEWSTATEGENERATOR = viewStateGen;
+
+      const body = new URLSearchParams(params);
 
       const res = await fetch(baseUrl, {
         method: 'POST',
@@ -1557,6 +1761,7 @@ async function fetchClarkNvRoster(): Promise<string> {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: body.toString(),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
 
       if (!res.ok) continue;
@@ -1565,8 +1770,10 @@ async function fetchClarkNvRoster(): Promise<string> {
       // Update ViewState for next request
       const vsMatch = html.match(/id="__VIEWSTATE"\s+value="([^"]*)"/);
       const evMatch = html.match(/id="__EVENTVALIDATION"\s+value="([^"]*)"/);
+      const vsgMatch = html.match(/id="__VIEWSTATEGENERATOR"\s+value="([^"]*)"/);
       if (vsMatch) viewState = vsMatch[1];
       if (evMatch) eventValidation = evMatch[1];
+      if (vsgMatch) viewStateGen = vsgMatch[1];
 
       // Extract result rows, deduplicate
       const rows = html.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
@@ -1590,62 +1797,68 @@ async function fetchClarkNvRoster(): Promise<string> {
 }
 
 // ── El Paso County, CO ────────────────────────────────────
-// HTML form search at epcsheriffsoffice.com. Search A-Z by last name.
+// JSON API at epcsheriffsoffice.com/search.php. Search A-Z by last name.
+// API returns: [{booking_no, name_last, name_first, name_middle, dob, sex, race,
+//   building, inmate_charges: [{court_case_no, BondAmount}], inmate_warrants: [{...}]}]
 
 const elPasoCoParser: CountyParser = {
   county: 'co_el_paso',
 
-  parseRoster(html: string): RosterEntry[] {
+  parseRoster(content: string): RosterEntry[] {
     const entries: RosterEntry[] = [];
+    try {
+      const inmates = JSON.parse(content);
+      if (!Array.isArray(inmates)) return entries;
 
-    // Parse table rows with booking number, first, middle, last
-    const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
-    let match: RegExpExecArray | null;
+      for (const inmate of inmates) {
+        const lastName = (inmate.name_last || '').trim();
+        const firstName = (inmate.name_first || '').trim();
+        const middleName = (inmate.name_middle || '').trim();
+        if (!lastName && !firstName) continue;
 
-    while ((match = rowRegex.exec(html)) !== null) {
-      const rowHtml = match[1];
-      const cells: string[] = [];
-      const tdRe = /<td[^>]*>([\s\S]*?)<\/td>/gi;
-      let tdMatch: RegExpExecArray | null;
-      while ((tdMatch = tdRe.exec(rowHtml)) !== null) {
-        cells.push(tdMatch[1].replace(/<[^>]+>/g, '').trim());
+        const fullName = middleName
+          ? `${lastName}, ${firstName} ${middleName}`
+          : `${lastName}, ${firstName}`;
+
+        const charges: string[] = [];
+        if (Array.isArray(inmate.inmate_charges)) {
+          for (const ch of inmate.inmate_charges) {
+            if (ch.court_case_no) charges.push(ch.court_case_no);
+          }
+        }
+        if (Array.isArray(inmate.inmate_warrants)) {
+          for (const w of inmate.inmate_warrants) {
+            if (w.WarrantDescription) {
+              charges.push(`${w.WarrantDescription} (${w.WarrantLevel || 'Unknown'})`);
+            }
+          }
+        }
+
+        // Sum bond amounts
+        let totalBond = 0;
+        if (Array.isArray(inmate.inmate_charges)) {
+          for (const ch of inmate.inmate_charges) {
+            const amt = parseFloat(String(ch.BondAmount || '0').replace(/[,$]/g, ''));
+            if (!isNaN(amt)) totalBond += amt;
+          }
+        }
+
+        entries.push({
+          roster_id: inmate.booking_no || `elpaso-${lastName}-${firstName}`,
+          full_name: fullName,
+          first_name: firstName,
+          last_name: lastName,
+          middle_name: middleName,
+          gender: inmate.sex || '',
+          age: null,
+          booking_date: '',
+          charges,
+          bail_amount: totalBond > 0 ? `$${totalBond.toLocaleString()}` : '',
+          detail_url: inmate.building ? `Facility: ${inmate.building}` : '',
+        });
       }
-
-      if (cells.length < 3) continue;
-      if (cells[0].match(/^(Booking|Number|ID)$/i)) continue;
-
-      const bookingNumber = cells[0] || '';
-      const firstName = (cells[1] || '').trim();
-      const middleName = (cells[2] || '').trim();
-      const lastName = (cells[3] || cells[1] || '').trim();
-
-      if (!firstName && !lastName) continue;
-
-      // Handle different column orders
-      let fName = firstName, mName = middleName, lName = lastName;
-      if (cells.length >= 4) {
-        fName = cells[1].trim();
-        mName = cells[2].trim();
-        lName = cells[3].trim();
-      }
-
-      const fullName = mName
-        ? `${lName}, ${fName} ${mName}`
-        : `${lName}, ${fName}`;
-
-      entries.push({
-        roster_id: bookingNumber || `elpaso-${lName}-${fName}`,
-        full_name: fullName,
-        first_name: fName,
-        last_name: lName,
-        middle_name: mName,
-        gender: '',
-        age: null,
-        booking_date: '',
-        charges: [],
-        bail_amount: '',
-        detail_url: '',
-      });
+    } catch (err) {
+      console.error('[Jail Roster] El Paso CO parse error:', (err as Error).message);
     }
 
     return entries;
@@ -1653,37 +1866,62 @@ const elPasoCoParser: CountyParser = {
 };
 
 /**
- * El Paso County CO — search A-Z by last name.
+ * El Paso County CO — JSON API search by last name.
+ * API: GET https://epcsheriffsoffice.com/search.php?searchName={prefix}&searchBooking=
+ * Note: API requires 2+ characters — single letters return empty.
+ * We search all 2-letter combos (aa..zz = 676 queries) to get full coverage.
  */
 async function fetchElPasoCoRoster(): Promise<string> {
-  const baseUrl = 'https://epcsheriffsoffice.com/services/search-for-inmates/';
-  const letters = 'abcdefghijklmnopqrstuvwxyz'.split('');
-  const allHtml: string[] = [];
+  const apiUrl = 'https://epcsheriffsoffice.com/search.php';
+  const alpha = 'abcdefghijklmnopqrstuvwxyz';
+  const allInmates: any[] = [];
   const seen = new Set<string>();
 
-  for (const letter of letters) {
-    try {
-      // Try GET with query param first, fall back to POST
-      const url = `${baseUrl}?lastName=${letter}`;
-      const html = await fetchPage(url);
+  // Build 2-letter prefixes (676 combinations, ~11min at 1s delay)
+  const prefixes: string[] = [];
+  for (const a of alpha) {
+    for (const b of alpha) {
+      prefixes.push(a + b);
+    }
+  }
 
-      const rows = html.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
-      for (const row of rows) {
-        const bookMatch = row.match(/<td[^>]*>(\w{2,3}\d{4,})<\/td>/i);
-        const key = bookMatch ? bookMatch[1] : row.substring(0, 80);
+  let emptyCount = 0;
+  for (const prefix of prefixes) {
+    try {
+      const url = `${apiUrl}?searchName=${prefix}&searchBooking=`;
+      const res = await fetch(url, {
+        headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (!Array.isArray(data) || data.length === 0) {
+        emptyCount++;
+        // Fast-skip: if many consecutive empty results, reduce delay
+        if (emptyCount > 10) {
+          await sleep(200); // Faster for empty results
+          continue;
+        }
+      } else {
+        emptyCount = 0;
+      }
+
+      for (const inmate of data) {
+        const key = inmate.booking_no || `${inmate.name_last}-${inmate.name_first}`;
         if (!seen.has(key)) {
           seen.add(key);
-          allHtml.push(row);
+          allInmates.push(inmate);
         }
       }
     } catch {
-      // Skip this letter
+      // Skip this prefix
     }
     await sleep(REQUEST_DELAY_MS);
   }
 
-  console.log(`[Jail Roster] El Paso County CO: aggregated ${allHtml.length} unique rows`);
-  return allHtml.join('\n');
+  console.log(`[Jail Roster] El Paso County CO: aggregated ${allInmates.length} unique inmates`);
+  return JSON.stringify(allInmates);
 }
 
 // ── Ada County, ID ────────────────────────────────────────
@@ -1696,42 +1934,60 @@ const adaIdParser: CountyParser = {
   parseRoster(html: string): RosterEntry[] {
     const entries: RosterEntry[] = [];
 
-    // Ada County displays inmates in table rows or arrest-class elements
-    const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+    // Ada County uses div-based layout with ArrestClickJS(id, this) onclick handlers.
+    // Structure: <div onclick="ArrestClickJS(ID, this)">
+    //   <div class='myNameTitle'><strong>Last, First Middle</strong></div>
+    //   <div class='info'>JID Number: <strong>01234567</strong><br/>Age: 42<br/>Arresting Agency: ...
+    //     <div>Charge Count: <span class='badge'>N</span></div>
+    //   </div>
+    //   ... charge table rows follow ...
+    // </div>
+
+    // Match each inmate block by ArrestClickJS call
+    const blockRegex = /ArrestClickJS\((\d+),\s*this\)/g;
     let match: RegExpExecArray | null;
 
-    while ((match = rowRegex.exec(html)) !== null) {
-      const rowHtml = match[1];
-      const cells: string[] = [];
-      const tdRe = /<td[^>]*>([\s\S]*?)<\/td>/gi;
-      let tdMatch: RegExpExecArray | null;
-      while ((tdMatch = tdRe.exec(rowHtml)) !== null) {
-        cells.push(tdMatch[1].replace(/<[^>]+>/g, '').trim());
-      }
+    while ((match = blockRegex.exec(html)) !== null) {
+      const jid = match[1];
+      // Extract a chunk of HTML after this match to parse details
+      const startIdx = match.index;
+      const chunk = html.substring(startIdx, startIdx + 3000);
 
-      if (cells.length < 3) continue;
-      // Skip headers
-      if (cells[0].match(/^(Name|Inmate|#|Booking|ID)$/i)) continue;
+      // Name: <strong>Last, First Middle</strong> inside myNameTitle
+      const nameMatch = chunk.match(/myNameTitle[\s\S]*?<strong>([^<]+)<\/strong>/);
+      if (!nameMatch) continue;
+      const nameCell = nameMatch[1].trim();
 
-      // Try to identify name cell — look for comma-separated format
-      let nameCell = '';
-      let bookingDate = '';
-      let charges: string[] = [];
+      // Age
+      const ageMatch = chunk.match(/Age:\s*(\d+)/);
+      const age = ageMatch ? parseInt(ageMatch[1], 10) : null;
 
-      for (const cell of cells) {
-        if (cell.includes(',') && cell.match(/[A-Z]{2,}/i) && !nameCell) {
-          nameCell = cell;
-        } else if (cell.match(/\d{1,2}\/\d{1,2}\/\d{2,4}/)) {
-          bookingDate = cell;
-        } else if (cell.length > 5 && !cell.match(/^\d+$/)) {
-          charges.push(cell);
+      // Arresting agency (use as detail)
+      const agencyMatch = chunk.match(/Arresting Agency:\s*([^<]+)/);
+      const agency = agencyMatch ? agencyMatch[1].trim() : '';
+
+      // Charges from charge table rows
+      const charges: string[] = [];
+      const chargeRegex = /<td[^>]*>([^<]+)<\/td><td>([^<]+)<\/td>/g;
+      let chargeMatch: RegExpExecArray | null;
+      while ((chargeMatch = chargeRegex.exec(chunk)) !== null) {
+        const severity = chargeMatch[1].trim();
+        const charge = chargeMatch[2].trim();
+        // Skip header rows and severity-only rows
+        if (severity === 'Severity' || charge === 'Criminal Charge' || charge === 'Type') continue;
+        if (/^[FM]$/.test(severity) && charge.length > 3) {
+          charges.push(`${charge} (${severity === 'F' ? 'Felony' : 'Misdemeanor'})`);
+        } else if (charge.length > 3) {
+          charges.push(charge);
         }
       }
 
-      if (!nameCell) continue;
+      // Bail total
+      const bailMatch = chunk.match(/Bail Total:\s*\$?([\d,]+\.?\d*)/);
+      const bail = bailMatch ? `$${bailMatch[1]}` : '';
 
       const { first, middle, last } = splitName(nameCell);
-      const rosterId = `ada-${last}-${first}-${bookingDate}`.replace(/[^a-zA-Z0-9-]/g, '');
+      const rosterId = `ada-${jid}`;
 
       entries.push({
         roster_id: rosterId,
@@ -1740,11 +1996,11 @@ const adaIdParser: CountyParser = {
         last_name: last,
         middle_name: middle,
         gender: '',
-        age: null,
-        booking_date: bookingDate,
+        age,
+        booking_date: '',
         charges,
-        bail_amount: '',
-        detail_url: '',
+        bail_amount: bail,
+        detail_url: agency ? `Agency: ${agency}` : '',
       });
     }
 
@@ -1758,8 +2014,9 @@ const adaIdParser: CountyParser = {
 async function fetchAdaIdRoster(): Promise<string> {
   const baseUrl = 'https://apps.adacounty.id.gov/sheriff/reports/inmates.aspx';
   const letters = 'abcdefghijklmnopqrstuvwxyz'.split('');
-  const allHtml: string[] = [];
-  const seen = new Set<string>();
+  // Collect full HTML pages (parser needs ArrestClickJS div blocks, not just <tr> rows)
+  const allPages: string[] = [];
+  const seenIds = new Set<string>();
 
   // Get initial page for ASP.NET state
   let viewState = '';
@@ -1773,15 +2030,6 @@ async function fetchAdaIdRoster(): Promise<string> {
     viewState = vsMatch ? vsMatch[1] : '';
     eventValidation = evMatch ? evMatch[1] : '';
     viewStateGen = vsgMatch ? vsgMatch[1] : '';
-
-    // Also capture initial page results
-    const rows = page.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
-    for (const row of rows) {
-      if (!seen.has(row.substring(0, 80))) {
-        seen.add(row.substring(0, 80));
-        allHtml.push(row);
-      }
-    }
   } catch (err) {
     throw new Error(`Failed to load Ada County search page: ${(err as Error).message}`);
   }
@@ -1804,6 +2052,7 @@ async function fetchAdaIdRoster(): Promise<string> {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: body.toString(),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
 
       if (!res.ok) continue;
@@ -1815,13 +2064,19 @@ async function fetchAdaIdRoster(): Promise<string> {
       if (vsMatch) viewState = vsMatch[1];
       if (evMatch) eventValidation = evMatch[1];
 
-      const rows = html.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
-      for (const row of rows) {
-        const key = row.substring(0, 80);
-        if (!seen.has(key)) {
-          seen.add(key);
-          allHtml.push(row);
+      // Count new unique inmates in this page
+      const idMatches = html.matchAll(/ArrestClickJS\((\d+)/g);
+      let newCount = 0;
+      for (const m of idMatches) {
+        if (!seenIds.has(m[1])) {
+          seenIds.add(m[1]);
+          newCount++;
         }
+      }
+
+      // Only add pages that contain new inmates (avoid duplicating data)
+      if (newCount > 0) {
+        allPages.push(html);
       }
     } catch {
       // Skip this letter
@@ -1829,8 +2084,8 @@ async function fetchAdaIdRoster(): Promise<string> {
     await sleep(REQUEST_DELAY_MS);
   }
 
-  console.log(`[Jail Roster] Ada County ID: aggregated ${allHtml.length} unique rows`);
-  return allHtml.join('\n');
+  console.log(`[Jail Roster] Ada County ID: aggregated ${seenIds.size} unique inmates across ${allPages.length} pages`);
+  return allPages.join('\n<!-- PAGE_BREAK -->\n');
 }
 
 // ── Maricopa County, AZ (MCSO) ───────────────────────────
@@ -1901,50 +2156,88 @@ const maricopaAzParser: CountyParser = {
 };
 
 /**
- * Maricopa County AZ (MCSO) — search A-Z by last name.
+ * Maricopa County AZ (MCSO) — search by last name.
+ *
+ * As of 2025, MCSO moved from /InmateSearch to /InmateInfo and added
+ * reCAPTCHA (Google reCAPTCHA v2). The old A-Z POST search no longer works.
+ * The new /InmateInfo page requires:
+ *   1. GET /InmateInfo to obtain __RequestVerificationToken cookie
+ *   2. reCAPTCHA challenge (blocks automated access)
+ *   3. POST with token + CAPTCHA solution + search params
+ *
+ * Since reCAPTCHA blocks automated scraping, this function now throws
+ * a clear error instead of silently returning 0 results.
  */
 async function fetchMaricopaAzRoster(): Promise<string> {
-  const searchUrl = 'https://www.mcso.org/InmateSearch';
-  const letters = 'abcdefghijklmnopqrstuvwxyz'.split('');
-  const allHtml: string[] = [];
-  const seen = new Set<string>();
+  // Step 1: Check if the new URL is accessible
+  const infoUrl = 'https://www.mcso.org/InmateInfo';
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-  for (const letter of letters) {
-    try {
-      const body = new URLSearchParams({
-        LastName: letter,
-        FirstName: '',
-        DOB: '',
-      });
+  try {
+    const res = await fetch(infoUrl, {
+      headers: { 'User-Agent': USER_AGENT },
+      signal: controller.signal,
+    });
 
-      const res = await fetch(searchUrl, {
-        method: 'POST',
-        headers: {
-          'User-Agent': USER_AGENT,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: body.toString(),
-      });
-
-      if (!res.ok) continue;
-      const html = await res.text();
-
-      const rows = html.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
-      for (const row of rows) {
-        const key = row.substring(0, 100);
-        if (!seen.has(key)) {
-          seen.add(key);
-          allHtml.push(row);
-        }
-      }
-    } catch {
-      // Skip this letter
+    if (!res.ok) {
+      throw new Error(`Maricopa County MCSO returned HTTP ${res.status} — /InmateInfo page unavailable`);
     }
-    await sleep(REQUEST_DELAY_MS);
-  }
 
-  console.log(`[Jail Roster] Maricopa County AZ: aggregated ${allHtml.length} unique rows`);
-  return allHtml.join('\n');
+    const html = await res.text();
+
+    // Check for reCAPTCHA — if present, we can't automate
+    if (html.includes('reCaptcha') || html.includes('recaptcha') || html.includes('g-recaptcha')) {
+      throw new Error(
+        'Maricopa County MCSO (mcso.org/InmateInfo) now requires reCAPTCHA — ' +
+        'automated scraping is blocked. Manual search only at https://www.mcso.org/InmateInfo'
+      );
+    }
+
+    // If somehow no reCAPTCHA, try the old POST approach with new URL
+    const letters = 'abcdefghijklmnopqrstuvwxyz'.split('');
+    const allHtml: string[] = [];
+    const seen = new Set<string>();
+
+    for (const letter of letters) {
+      try {
+        const body = new URLSearchParams({
+          txtInmateLastName: letter,
+          txtInmateFirstName: '',
+          txtInmateDob: '',
+        });
+
+        const searchRes = await fetch(infoUrl, {
+          method: 'POST',
+          headers: {
+            'User-Agent': USER_AGENT,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: body.toString(),
+        });
+
+        if (!searchRes.ok) continue;
+        const searchHtml = await searchRes.text();
+
+        const rows = searchHtml.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
+        for (const row of rows) {
+          const key = row.substring(0, 100);
+          if (!seen.has(key)) {
+            seen.add(key);
+            allHtml.push(row);
+          }
+        }
+      } catch {
+        // Skip this letter
+      }
+      await sleep(REQUEST_DELAY_MS);
+    }
+
+    console.log(`[Jail Roster] Maricopa County AZ: aggregated ${allHtml.length} unique rows`);
+    return allHtml.join('\n');
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 // ── Bernalillo County, NM ─────────────────────────────────
@@ -2031,9 +2324,46 @@ const COUNTY_PARSERS: Record<string, CountyParser> = {
   nm_bernalillo: bernalilloNmParser,
 };
 
-// Register JailTracker parsers for all configured counties
+// Register JailTracker parsers for all counties in the name map
 for (const countyKey of Object.keys(JAILTRACKER_COUNTY_NAMES)) {
   COUNTY_PARSERS[countyKey] = createJailTrackerParser(countyKey);
+}
+
+/**
+ * Dynamically register parsers at runtime for any DB counties marked
+ * as 'jailtracker' that aren't already in JAILTRACKER_COUNTY_NAMES.
+ * Called once during scheduler startup so newly-added counties work
+ * without a code change.
+ */
+function ensureJailTrackerParsers(): void {
+  try {
+    const db = getDb();
+    const rows = db.prepare(
+      "SELECT county, display_name FROM jail_roster_config WHERE roster_type = 'jailtracker'"
+    ).all() as { county: string; display_name: string }[];
+
+    for (const row of rows) {
+      if (!COUNTY_PARSERS[row.county]) {
+        // Derive a facility name from the county key if not in the map
+        // e.g. "co_mesa" → "Mesa_County_CO" (best guess)
+        const parts = row.county.split('_');
+        const stateAbbr = (parts[0] || '').toUpperCase();
+        const countyWords = parts.slice(1).map(w => w.charAt(0).toUpperCase() + w.slice(1));
+        const facilityGuess = [...countyWords, 'County', stateAbbr].join('_');
+
+        if (!JAILTRACKER_COUNTY_NAMES[row.county]) {
+          JAILTRACKER_COUNTY_NAMES[row.county] = row.display_name.replace(/,.*/, '').trim();
+        }
+        if (!JAILTRACKER_FACILITY_NAMES[row.county]) {
+          JAILTRACKER_FACILITY_NAMES[row.county] = facilityGuess;
+        }
+        COUNTY_PARSERS[row.county] = createJailTrackerParser(row.county);
+        console.log(`[JailTracker] Auto-registered parser for ${row.county} (facility: ${facilityGuess})`);
+      }
+    }
+  } catch {
+    // DB not ready yet — parsers will be registered on first scrape attempt
+  }
 }
 
 // ════════════════════════════════════════════════════════════
@@ -2227,9 +2557,16 @@ async function scrapeCounty(county: string): Promise<{
   const config = getCountyConfig(county);
   if (!config) throw new Error(`No config for county: ${county}`);
 
-  // Gracefully skip counties with no scrapable roster — don't count as errors
-  if (config.roster_type === 'none' || (!config.roster_url && !COUNTY_PARSERS[county])) {
-    const err = new Error(`No public roster available for ${county} (roster_type: ${config.roster_type})`);
+  // Gracefully skip counties with no scrapable roster — auto-disable, don't count as errors
+  if (config.roster_type === 'none') {
+    const err = new Error(`No public roster available for ${county} (roster_type: none)`);
+    (err as any).noRoster = true;
+    throw err;
+  }
+
+  // If the county has no URL AND no registered parser, it's not scrapable
+  if (!config.roster_url && !COUNTY_PARSERS[county]) {
+    const err = new Error(`No roster URL or parser configured for ${county} — auto-disabling`);
     (err as any).noRoster = true;
     throw err;
   }
@@ -2241,8 +2578,26 @@ async function scrapeCounty(county: string): Promise<{
     throw err;
   }
 
+  // For 'jailtracker' counties, dynamically create a parser if missing
+  if (config.roster_type === 'jailtracker' && !COUNTY_PARSERS[county]) {
+    const displayName = config.display_name || county;
+    JAILTRACKER_COUNTY_NAMES[county] = displayName.replace(/,.*/, '').trim();
+    // Best-guess facility name: "co_mesa" → "Mesa_County_CO"
+    const parts = county.split('_');
+    const stateAbbr = (parts[0] || '').toUpperCase();
+    const countyWords = parts.slice(1).map(w => w.charAt(0).toUpperCase() + w.slice(1));
+    JAILTRACKER_FACILITY_NAMES[county] = [...countyWords, 'County', stateAbbr].join('_');
+    COUNTY_PARSERS[county] = createJailTrackerParser(county);
+    console.log(`[JailTracker] On-demand parser created for ${county}`);
+  }
+
   const parser = COUNTY_PARSERS[county];
-  if (!parser) throw new Error(`No parser for county: ${county}`);
+  if (!parser) {
+    // No parser and not jailtracker — auto-disable instead of crashing
+    const err = new Error(`No parser implemented for ${county} (type: ${config.roster_type}) — auto-disabling. Enable when a parser is available.`);
+    (err as any).noRoster = true;
+    throw err;
+  }
 
   let content: string;
 
@@ -2274,7 +2629,7 @@ async function scrapeCounty(county: string): Promise<{
     // Maricopa County AZ — MCSO inmate search API
     content = await fetchMaricopaAzRoster();
   } else if (config.roster_type === 'jailtracker') {
-    // JailTracker (public-safety-cloud.com) — session-based JSON API
+    // JailTracker (public-safety-cloud.com) — tries publicroster-api then legacy jtclientwebofficial
     content = await fetchJailTrackerRoster(county);
   } else if (config.roster_type === 'pdf') {
     content = await parsePdfText(config.roster_url);
@@ -2434,6 +2789,10 @@ export function scheduleJailRosterSync(): void {
   console.log('[Jail Roster] Scheduler starting in', STARTUP_DELAY_MS / 1000, 'seconds...');
 
   startupTimeout = setTimeout(() => {
+    // Dynamically register parsers for any DB counties with roster_type='jailtracker'
+    // that don't already have a parser in COUNTY_PARSERS
+    ensureJailTrackerParsers();
+
     const configs = getCountyConfigs();
     const enabled = configs.filter(c => c.enabled);
 

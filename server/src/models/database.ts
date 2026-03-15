@@ -3350,69 +3350,69 @@ function migrateSchema(): void {
     const multiStateCounties = [
       // ── Colorado ──
       ['co_el_paso', 'El Paso County, CO', 'https://epcsheriffsoffice.com/services/search-for-inmates/', 'html', 'CO'],
-      ['co_mesa', 'Mesa County, CO', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'CO'],
-      ['co_pueblo', 'Pueblo County, CO', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'CO'],
-      ['co_larimer', 'Larimer County, CO', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'CO'],
-      ['co_weld', 'Weld County, CO', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'CO'],
-      ['co_arapahoe', 'Arapahoe County, CO', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'CO'],
-      ['co_adams', 'Adams County, CO', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'CO'],
-      ['co_jefferson', 'Jefferson County, CO', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'CO'],
-      ['co_denver', 'Denver County, CO', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'CO'],
-      ['co_douglas', 'Douglas County, CO', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'CO'],
-      ['co_boulder', 'Boulder County, CO', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'CO'],
-      ['co_garfield', 'Garfield County, CO', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'CO'],
+      ['co_mesa', 'Mesa County, CO', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'CO'],
+      ['co_pueblo', 'Pueblo County, CO', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'CO'],
+      ['co_larimer', 'Larimer County, CO', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'CO'],
+      ['co_weld', 'Weld County, CO', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'CO'],
+      ['co_arapahoe', 'Arapahoe County, CO', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'CO'],
+      ['co_adams', 'Adams County, CO', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'CO'],
+      ['co_jefferson', 'Jefferson County, CO', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'CO'],
+      ['co_denver', 'Denver County, CO', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'CO'],
+      ['co_douglas', 'Douglas County, CO', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'CO'],
+      ['co_boulder', 'Boulder County, CO', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'CO'],
+      ['co_garfield', 'Garfield County, CO', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'CO'],
 
       // ── Wyoming ──
-      ['wy_natrona', 'Natrona County, WY', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'WY'],
-      ['wy_laramie', 'Laramie County, WY', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'WY'],
-      ['wy_sweetwater', 'Sweetwater County, WY', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'WY'],
-      ['wy_fremont', 'Fremont County, WY', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'WY'],
-      ['wy_campbell', 'Campbell County, WY', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'WY'],
-      ['wy_albany', 'Albany County, WY', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'WY'],
-      ['wy_uinta', 'Uinta County, WY', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'WY'],
-      ['wy_lincoln', 'Lincoln County, WY', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'WY'],
-      ['wy_teton', 'Teton County, WY', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'WY'],
+      ['wy_natrona', 'Natrona County, WY', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'WY'],
+      ['wy_laramie', 'Laramie County, WY', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'WY'],
+      ['wy_sweetwater', 'Sweetwater County, WY', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'WY'],
+      ['wy_fremont', 'Fremont County, WY', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'WY'],
+      ['wy_campbell', 'Campbell County, WY', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'WY'],
+      ['wy_albany', 'Albany County, WY', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'WY'],
+      ['wy_uinta', 'Uinta County, WY', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'WY'],
+      ['wy_lincoln', 'Lincoln County, WY', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'WY'],
+      ['wy_teton', 'Teton County, WY', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'WY'],
 
       // ── Idaho ──
       ['id_ada', 'Ada County, ID', 'https://apps.adacounty.id.gov/sheriff/reports/inmates.aspx', 'html', 'ID'],
-      ['id_canyon', 'Canyon County, ID', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'ID'],
-      ['id_bannock', 'Bannock County, ID', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'ID'],
-      ['id_bonneville', 'Bonneville County, ID', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'ID'],
-      ['id_twin_falls', 'Twin Falls County, ID', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'ID'],
-      ['id_kootenai', 'Kootenai County, ID', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'ID'],
-      ['id_bingham', 'Bingham County, ID', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'ID'],
-      ['id_madison', 'Madison County, ID', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'ID'],
+      ['id_canyon', 'Canyon County, ID', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'ID'],
+      ['id_bannock', 'Bannock County, ID', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'ID'],
+      ['id_bonneville', 'Bonneville County, ID', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'ID'],
+      ['id_twin_falls', 'Twin Falls County, ID', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'ID'],
+      ['id_kootenai', 'Kootenai County, ID', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'ID'],
+      ['id_bingham', 'Bingham County, ID', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'ID'],
+      ['id_madison', 'Madison County, ID', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'ID'],
 
       // ── Nevada ──
       ['nv_clark', 'Clark County, NV', 'https://redrock.clarkcountynv.gov/ccdcincustody/incustodysearch.aspx', 'html', 'NV'],
-      ['nv_washoe', 'Washoe County, NV', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'NV'],
-      ['nv_elko', 'Elko County, NV', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'NV'],
-      ['nv_lyon', 'Lyon County, NV', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'NV'],
-      ['nv_nye', 'Nye County, NV', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'NV'],
-      ['nv_carson', 'Carson City, NV', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'NV'],
-      ['nv_churchill', 'Churchill County, NV', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'NV'],
-      ['nv_white_pine', 'White Pine County, NV', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'NV'],
+      ['nv_washoe', 'Washoe County, NV', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'NV'],
+      ['nv_elko', 'Elko County, NV', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'NV'],
+      ['nv_lyon', 'Lyon County, NV', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'NV'],
+      ['nv_nye', 'Nye County, NV', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'NV'],
+      ['nv_carson', 'Carson City, NV', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'NV'],
+      ['nv_churchill', 'Churchill County, NV', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'NV'],
+      ['nv_white_pine', 'White Pine County, NV', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'NV'],
 
       // ── Arizona ──
-      ['az_maricopa', 'Maricopa County, AZ', 'https://www.mcso.org/Inmate', 'html', 'AZ'],
-      ['az_pima', 'Pima County, AZ', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'AZ'],
-      ['az_yavapai', 'Yavapai County, AZ', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'AZ'],
-      ['az_mohave', 'Mohave County, AZ', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'AZ'],
-      ['az_coconino', 'Coconino County, AZ', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'AZ'],
-      ['az_yuma', 'Yuma County, AZ', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'AZ'],
-      ['az_navajo', 'Navajo County, AZ', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'AZ'],
-      ['az_apache', 'Apache County, AZ', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'AZ'],
-      ['az_cochise', 'Cochise County, AZ', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'AZ'],
+      ['az_maricopa', 'Maricopa County, AZ', 'https://www.mcso.org/InmateInfo', 'html', 'AZ'],
+      ['az_pima', 'Pima County, AZ', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'AZ'],
+      ['az_yavapai', 'Yavapai County, AZ', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'AZ'],
+      ['az_mohave', 'Mohave County, AZ', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'AZ'],
+      ['az_coconino', 'Coconino County, AZ', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'AZ'],
+      ['az_yuma', 'Yuma County, AZ', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'AZ'],
+      ['az_navajo', 'Navajo County, AZ', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'AZ'],
+      ['az_apache', 'Apache County, AZ', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'AZ'],
+      ['az_cochise', 'Cochise County, AZ', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'AZ'],
 
       // ── New Mexico ──
       ['nm_bernalillo', 'Bernalillo County, NM', 'https://viaintfacep2.bernco.gov/custodylist/Results', 'html', 'NM'],
-      ['nm_dona_ana', 'Dona Ana County, NM', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'NM'],
-      ['nm_san_juan', 'San Juan County, NM', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'NM'],
-      ['nm_sandoval', 'Sandoval County, NM', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'NM'],
-      ['nm_santa_fe', 'Santa Fe County, NM', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'NM'],
-      ['nm_lea', 'Lea County, NM', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'NM'],
-      ['nm_chaves', 'Chaves County, NM', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'NM'],
-      ['nm_otero', 'Otero County, NM', 'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 'NM'],
+      ['nm_dona_ana', 'Dona Ana County, NM', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'NM'],
+      ['nm_san_juan', 'San Juan County, NM', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'NM'],
+      ['nm_sandoval', 'Sandoval County, NM', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'NM'],
+      ['nm_santa_fe', 'Santa Fe County, NM', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'NM'],
+      ['nm_lea', 'Lea County, NM', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'NM'],
+      ['nm_chaves', 'Chaves County, NM', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'NM'],
+      ['nm_otero', 'Otero County, NM', 'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 'NM'],
     ];
 
     const existingCounties = new Set(
@@ -3431,7 +3431,7 @@ function migrateSchema(): void {
     }
 
     // Disable all non-UT counties — parsers must be individually verified before enabling
-    // JailTracker API requires Blazor WASM (not scrapeable); HTML counties need custom parsers
+    // JailTracker migrated to publicroster-api (2025); HTML counties may have changed structure
     db.prepare("UPDATE jail_roster_config SET enabled = 0 WHERE state != 'UT' AND enabled = 1").run();
   } catch (err) {
     console.log('[migrate] Multi-state county seed skipped:', (err as Error).message);
@@ -3450,7 +3450,7 @@ function migrateSchema(): void {
     const utahCounties = [
       // ── Counties with scrapable public rosters (enabled) ──
       ['ut_utah',       'Utah County',       'https://sheriff.utahcounty.gov/corrections/inmateSearch',                      'html', 1, 30],
-      ['ut_washington', 'Washington County',  'https://omsweb.public-safety-cloud.com/jtclientweb/JTClientWeb/Inmates/InmatesJSON', 'jailtracker', 1, 30],
+      ['ut_washington', 'Washington County',  'https://omsweb.public-safety-cloud.com/publicroster-api/api', 'jailtracker', 1, 30],
       ['ut_tooele',     'Tooele County',      'https://inmate.tooelecountysheriff.org/',                                     'json', 1, 30],
       ['ut_carbon',     'Carbon County',      'https://www.carbon.utah.gov/service/jail-bookings/',                           'html', 0, 60],
       ['ut_state_prison','Utah State Prison (UDC)','https://corrections.utah.gov/inmate-services/offender-search/',              'json', 1, 120],

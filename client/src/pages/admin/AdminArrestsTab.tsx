@@ -725,7 +725,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
                 {/* County Cards */}
                 <div className="space-y-2">
                   {(scraperStatus.counties || []).map((county: any) => {
-                    const isCircuitBroken = county.consecutive_errors >= 3;
+                    const isCircuitBroken = county.consecutive_errors >= 5;
                     const lastSyncAgo = county.last_scrape_at
                       ? Math.round((Date.now() - new Date(county.last_scrape_at).getTime()) / 60000) : null;
                     const isStale = lastSyncAgo !== null && lastSyncAgo > (county.scrape_interval_minutes || 30) * 2;
