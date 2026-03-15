@@ -196,6 +196,7 @@ export type AuditEntityType =
   | 'invoice'
   | 'payment'
   | 'arrest_record'
+  | 'serve_queue'
   | 'dl_record'
   | 'skiptracer'
   | 'iped_job'

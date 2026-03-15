@@ -53,6 +53,7 @@ import SkipTracerPage from './pages/SkipTracerPage';
 import ArrestRecordsPage from './pages/ArrestRecordsPage';
 import EmailPage from './pages/EmailPage';
 import CrmPage from './pages/CrmPage';
+import ServePage from './pages/ServePage';
 import IncidentDetailWindow from './pages/detached/IncidentDetailWindow';
 import RecordDetailWindow from './pages/detached/RecordDetailWindow';
 
@@ -203,6 +204,7 @@ function AppRoutes() {
           <Route path="/arrest-records" element={<ArrestRecordsPage />} />
           <Route path="/email" element={<EmailPage />} />
           <Route path="/crm" element={<CrmPage />} />
+          <Route path="/serve" element={<ServePage />} />
           <Route path="/admin" element={<AdminPage />} />
         </Route>
 

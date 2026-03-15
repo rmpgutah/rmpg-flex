@@ -1,0 +1,562 @@
+// ============================================================
+// Process Server Field Suite — API Routes
+// ============================================================
+// Queue management, service attempts, route planning, skip traces,
+// and ServeManager import for the process server module.
+
+import { Router, Request, Response } from 'express';
+import { getDb } from '../models/database';
+import { authenticateToken, requireRole } from '../middleware/auth';
+import { auditLog } from '../utils/auditLogger';
+import { broadcast } from '../utils/websocket';
+import { localNow } from '../utils/timeUtils';
+import config from '../config';
+import crypto from 'crypto';
+
+const router = Router();
+router.use(authenticateToken);
+
+const WRITE_ROLES = ['admin', 'manager', 'supervisor', 'officer'];
+
+// ============================================================
+// Static routes FIRST (before /:id param route)
+// ============================================================
+
+// ── GET /stats/summary — Dashboard stats ────────────────────
+router.get('/stats/summary', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const today = new Date().toISOString().slice(0, 10);
+
+    const counts = db.prepare(`
+      SELECT
+        COUNT(*) as total,
+        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+        SUM(CASE WHEN status = 'served' THEN 1 ELSE 0 END) as served,
+        SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
+        SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) as in_progress
+      FROM serve_queue
+    `).get() as any;
+
+    const attemptsToday = db.prepare(`
+      SELECT COUNT(*) as count FROM serve_attempts
+      WHERE DATE(attempted_at) = ?
+    `).get(today) as any;
+
+    const mileageToday = db.prepare(`
+      SELECT COALESCE(SUM(mileage), 0) as total FROM serve_attempts
+      WHERE DATE(attempted_at) = ?
+    `).get(today) as any;
+
+    res.json({
+      ...counts,
+      attempts_today: attemptsToday?.count || 0,
+      mileage_today: mileageToday?.total || 0,
+    });
+  } catch (err: any) {
+    console.error('[SERVE] Stats error:', err);
+    res.status(500).json({ error: 'Failed to fetch stats' });
+  }
+});
+
+// ── GET /routes/:date — Get route for officer + date ────────
+router.get('/routes/:date', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { date } = req.params;
+    const officerId = req.query.officer_id ? Number(req.query.officer_id) : req.user!.userId;
+
+    const route = db.prepare(`
+      SELECT * FROM serve_routes
+      WHERE officer_id = ? AND route_date = ?
+    `).get(officerId, date);
+
+    if (!route) {
+      res.json(null);
+      return;
+    }
+
+    res.json(route);
+  } catch (err: any) {
+    console.error('[SERVE] Route fetch error:', err);
+    res.status(500).json({ error: 'Failed to fetch route' });
+  }
+});
+
+// ── POST /routes — Upsert route ─────────────────────────────
+router.post('/routes', requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { officer_id, route_date, optimized_order_json, waypoints_json, total_distance_miles, total_time_minutes, start_lat, start_lng, end_lat, end_lng, notes } = req.body;
+
+    if (!officer_id || !route_date) {
+      res.status(400).json({ error: 'officer_id and route_date are required' });
+      return;
+    }
+
+    const now = localNow();
+    const existing = db.prepare('SELECT id FROM serve_routes WHERE officer_id = ? AND route_date = ?').get(officer_id, route_date) as any;
+
+    if (existing) {
+      db.prepare(`
+        UPDATE serve_routes SET
+          optimized_order_json = COALESCE(?, optimized_order_json),
+          waypoints_json = COALESCE(?, waypoints_json),
+          total_distance_miles = COALESCE(?, total_distance_miles),
+          total_time_minutes = COALESCE(?, total_time_minutes),
+          start_lat = COALESCE(?, start_lat),
+          start_lng = COALESCE(?, start_lng),
+          end_lat = COALESCE(?, end_lat),
+          end_lng = COALESCE(?, end_lng),
+          notes = COALESCE(?, notes),
+          updated_at = ?
+        WHERE id = ?
+      `).run(
+        optimized_order_json ?? null, waypoints_json ?? null,
+        total_distance_miles ?? null, total_time_minutes ?? null,
+        start_lat ?? null, start_lng ?? null, end_lat ?? null, end_lng ?? null,
+        notes ?? null, now, existing.id,
+      );
+      const updated = db.prepare('SELECT * FROM serve_routes WHERE id = ?').get(existing.id);
+      res.json(updated);
+    } else {
+      const id = crypto.randomUUID();
+      db.prepare(`
+        INSERT INTO serve_routes (id, officer_id, route_date, optimized_order_json, waypoints_json, total_distance_miles, total_time_minutes, start_lat, start_lng, end_lat, end_lng, notes, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        id, officer_id, route_date,
+        optimized_order_json ?? null, waypoints_json ?? null,
+        total_distance_miles ?? null, total_time_minutes ?? null,
+        start_lat ?? null, start_lng ?? null, end_lat ?? null, end_lng ?? null,
+        notes ?? null, now, now,
+      );
+      const created = db.prepare('SELECT * FROM serve_routes WHERE id = ?').get(id);
+      res.status(201).json(created);
+    }
+  } catch (err: any) {
+    console.error('[SERVE] Route upsert error:', err);
+    res.status(500).json({ error: 'Failed to save route' });
+  }
+});
+
+// ── POST /sync-from-sm — Import unserved SM jobs ────────────
+router.post('/sync-from-sm', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+
+    // Find SM jobs not yet in serve_queue that aren't completed/cancelled
+    const unimported = db.prepare(`
+      SELECT sm.*
+      FROM sm_jobs sm
+      LEFT JOIN serve_queue sq ON sq.sm_job_id = sm.id
+      WHERE sq.id IS NULL
+        AND COALESCE(sm.service_status, '') NOT IN ('Served', 'Canceled', 'On Hold')
+    `).all() as any[];
+
+    if (!unimported.length) {
+      res.json({ imported: 0, jobs: [] });
+      return;
+    }
+
+    const insertStmt = db.prepare(`
+      INSERT INTO serve_queue (
+        id, sm_job_id, officer_id, serve_date, recipient_name,
+        recipient_address, recipient_city, recipient_state, recipient_zip,
+        recipient_lat, recipient_lng, document_type, case_number,
+        court_name, jurisdiction, client_name, attorney_name,
+        priority, deadline, max_attempts, service_instructions, notes,
+        status, attempt_count, sort_order, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, 999, ?, ?)
+    `);
+
+    const imported: any[] = [];
+    const today = new Date().toISOString().slice(0, 10);
+
+    const txn = db.transaction(() => {
+      for (const sm of unimported) {
+        const id = crypto.randomUUID();
+        // Parse first address from addresses_json
+        let addr = '', city = '', state = '', zip = '', lat: number | null = null, lng: number | null = null;
+        try {
+          const addrs = JSON.parse(sm.addresses_json || '[]');
+          if (addrs.length > 0) {
+            const a = addrs[0];
+            addr = a.Address1 || a.address || '';
+            city = a.City || a.city || '';
+            state = a.State || a.state || '';
+            zip = a.Zip || a.zip || '';
+            lat = a.Latitude || a.lat || null;
+            lng = a.Longitude || a.lng || null;
+          }
+        } catch {}
+
+        insertStmt.run(
+          id, sm.id, sm.employee_process_server_id || null, today,
+          sm.recipient_name || '', addr, city, state, zip, lat, lng,
+          'civil', sm.court_case_number || '',
+          '', '', sm.client_company_name || '', '',
+          sm.rush ? 'urgent' : 'normal', sm.due_date || null,
+          3, sm.service_instructions || '', sm.notes_local || '',
+          now, now,
+        );
+        imported.push({ id, sm_job_id: sm.id, recipient_name: sm.recipient_name });
+      }
+    });
+    txn();
+
+    auditLog(req, 'CREATE', 'serve_queue', 0, `Imported ${imported.length} jobs from ServeManager`);
+    broadcast('serve', 'serve_sync', { count: imported.length });
+
+    res.json({ imported: imported.length, jobs: imported });
+  } catch (err: any) {
+    console.error('[SERVE] SM sync error:', err);
+    res.status(500).json({ error: 'Failed to sync from ServeManager' });
+  }
+});
+
+// ── PUT /reorder — Batch update sort_order ──────────────────
+router.put('/reorder', requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { order } = req.body;
+
+    if (!Array.isArray(order)) {
+      res.status(400).json({ error: 'order must be an array of { id, sort_order }' });
+      return;
+    }
+
+    const stmt = db.prepare('UPDATE serve_queue SET sort_order = ?, updated_at = ? WHERE id = ?');
+    const now = localNow();
+
+    const txn = db.transaction(() => {
+      for (const item of order) {
+        stmt.run(item.sort_order, now, item.id);
+      }
+    });
+    txn();
+
+    broadcast('serve', 'serve_reordered', { count: order.length });
+    res.json({ success: true, updated: order.length });
+  } catch (err: any) {
+    console.error('[SERVE] Reorder error:', err);
+    res.status(500).json({ error: 'Failed to reorder' });
+  }
+});
+
+// ============================================================
+// Parameterized routes
+// ============================================================
+
+// ── GET / — List serve queue ────────────────────────────────
+router.get('/', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const officerId = req.query.officer_id ? Number(req.query.officer_id) : req.user!.userId;
+    const date = req.query.date as string || new Date().toISOString().slice(0, 10);
+    const status = req.query.status as string | undefined;
+
+    let sql = 'SELECT * FROM serve_queue WHERE officer_id = ? AND serve_date = ?';
+    const params: any[] = [officerId, date];
+
+    if (status) {
+      sql += ' AND status = ?';
+      params.push(status);
+    }
+
+    sql += ' ORDER BY sort_order ASC, priority DESC, deadline ASC';
+
+    const rows = db.prepare(sql).all(...params);
+    res.json(rows);
+  } catch (err: any) {
+    console.error('[SERVE] List error:', err);
+    res.status(500).json({ error: 'Failed to list serve queue' });
+  }
+});
+
+// ── POST / — Create serve job ───────────────────────────────
+router.post('/', requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const now = localNow();
+    const id = crypto.randomUUID();
+
+    const {
+      sm_job_id, officer_id, serve_date, recipient_name, recipient_address,
+      recipient_city, recipient_state, recipient_zip, recipient_lat, recipient_lng,
+      document_type, case_number, court_name, jurisdiction, client_name,
+      attorney_name, priority, time_window, deadline, max_attempts,
+      service_instructions, notes,
+    } = req.body;
+
+    db.prepare(`
+      INSERT INTO serve_queue (
+        id, sm_job_id, officer_id, serve_date, recipient_name,
+        recipient_address, recipient_city, recipient_state, recipient_zip,
+        recipient_lat, recipient_lng, document_type, case_number,
+        court_name, jurisdiction, client_name, attorney_name,
+        priority, time_window, deadline, max_attempts,
+        service_instructions, notes, status, attempt_count, sort_order,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, 999, ?, ?)
+    `).run(
+      id, sm_job_id ?? null, officer_id ?? req.user!.userId,
+      serve_date ?? new Date().toISOString().slice(0, 10),
+      recipient_name ?? '', recipient_address ?? '', recipient_city ?? '',
+      recipient_state ?? '', recipient_zip ?? '', recipient_lat ?? null, recipient_lng ?? null,
+      document_type ?? '', case_number ?? '', court_name ?? '', jurisdiction ?? '',
+      client_name ?? '', attorney_name ?? '', priority ?? 'normal',
+      time_window ?? null, deadline ?? null, max_attempts ?? 3,
+      service_instructions ?? '', notes ?? '', now, now,
+    );
+
+    const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(id);
+    auditLog(req, 'CREATE', 'serve_queue', id, `Created serve job for ${recipient_name || 'unknown'}`);
+    broadcast('serve', 'serve_created', job);
+
+    res.status(201).json(job);
+  } catch (err: any) {
+    console.error('[SERVE] Create error:', err);
+    res.status(500).json({ error: 'Failed to create serve job' });
+  }
+});
+
+// ── GET /:id — Get single job with attempts + skip traces ───
+router.get('/:id', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
+
+    if (!job) {
+      res.status(404).json({ error: 'Serve job not found' });
+      return;
+    }
+
+    const attempts = db.prepare(
+      'SELECT * FROM serve_attempts WHERE serve_queue_id = ? ORDER BY attempt_number ASC'
+    ).all(req.params.id);
+
+    const skipTraces = db.prepare(
+      'SELECT * FROM serve_skip_traces WHERE serve_queue_id = ? ORDER BY searched_at DESC'
+    ).all(req.params.id);
+
+    res.json({ ...job, attempts, skipTraces });
+  } catch (err: any) {
+    console.error('[SERVE] Get error:', err);
+    res.status(500).json({ error: 'Failed to fetch serve job' });
+  }
+});
+
+// ── PUT /:id — Update serve job ─────────────────────────────
+router.put('/:id', requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
+    if (!existing) {
+      res.status(404).json({ error: 'Serve job not found' });
+      return;
+    }
+
+    const updatableFields = [
+      'officer_id', 'serve_date', 'recipient_name', 'recipient_address',
+      'recipient_city', 'recipient_state', 'recipient_zip', 'recipient_lat', 'recipient_lng',
+      'document_type', 'case_number', 'court_name', 'jurisdiction',
+      'client_name', 'attorney_name', 'priority', 'time_window', 'deadline',
+      'max_attempts', 'status', 'sort_order', 'service_instructions', 'notes',
+    ];
+
+    const setClauses: string[] = [];
+    const values: any[] = [];
+
+    for (const field of updatableFields) {
+      if (req.body[field] !== undefined) {
+        setClauses.push(`${field} = ?`);
+        values.push(req.body[field]);
+      }
+    }
+
+    if (setClauses.length === 0) {
+      res.status(400).json({ error: 'No updatable fields provided' });
+      return;
+    }
+
+    setClauses.push('updated_at = ?');
+    values.push(localNow());
+    values.push(req.params.id);
+
+    db.prepare(`UPDATE serve_queue SET ${setClauses.join(', ')} WHERE id = ?`).run(...values);
+
+    const updated = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id);
+    auditLog(req, 'UPDATE', 'serve_queue', String(req.params.id), `Updated serve job: ${setClauses.map(c => c.split(' =')[0]).join(', ')}`);
+    broadcast('serve', 'serve_updated', updated);
+
+    res.json(updated);
+  } catch (err: any) {
+    console.error('[SERVE] Update error:', err);
+    res.status(500).json({ error: 'Failed to update serve job' });
+  }
+});
+
+// ── POST /:id/attempt — Record service attempt ─────────────
+router.post('/:id/attempt', requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
+    if (!job) {
+      res.status(404).json({ error: 'Serve job not found' });
+      return;
+    }
+
+    const {
+      result, gps_lat, gps_lng, notes, method, recipient_response,
+      photo_url, signature_url, mileage,
+    } = req.body;
+
+    // Enforce posting requirements: need 2+ prior failed attempts
+    if (result === 'posted') {
+      const failedAttempts = db.prepare(
+        "SELECT COUNT(*) as cnt FROM serve_attempts WHERE serve_queue_id = ? AND result != 'served'"
+      ).get(req.params.id) as any;
+      if ((failedAttempts?.cnt || 0) < 2) {
+        res.status(400).json({
+          error: 'Posting requires at least 2 prior failed attempts for due diligence',
+        });
+        return;
+      }
+    }
+
+    const now = localNow();
+    const attemptNumber = (job.attempt_count || 0) + 1;
+    const attemptId = crypto.randomUUID();
+
+    db.prepare(`
+      INSERT INTO serve_attempts (
+        id, serve_queue_id, attempt_number, attempted_at, attempted_by,
+        result, gps_lat, gps_lng, notes, method, recipient_response,
+        photo_url, signature_url, mileage, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      attemptId, req.params.id, attemptNumber, now, req.user!.userId,
+      result || 'no_answer', gps_lat ?? null, gps_lng ?? null,
+      notes ?? '', method ?? 'personal', recipient_response ?? '',
+      photo_url ?? null, signature_url ?? null, mileage ?? null, now,
+    );
+
+    // Determine new status
+    let newStatus = 'in_progress';
+    if (result === 'served' || result === 'posted') {
+      newStatus = 'served';
+    } else if (attemptNumber >= (job.max_attempts || 3)) {
+      newStatus = 'failed';
+    }
+
+    db.prepare(`
+      UPDATE serve_queue SET
+        attempt_count = ?,
+        status = ?,
+        updated_at = ?
+      WHERE id = ?
+    `).run(attemptNumber, newStatus, now, req.params.id);
+
+    const updatedJob = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id);
+    const attempt = db.prepare('SELECT * FROM serve_attempts WHERE id = ?').get(attemptId);
+
+    const dueDiligenceComplete = attemptNumber >= 2 && newStatus !== 'served';
+
+    auditLog(req, 'CREATE', 'serve_queue', String(req.params.id), `Attempt #${attemptNumber}: ${result}`);
+    broadcast('serve', 'serve_attempt', { job: updatedJob, attempt });
+
+    res.status(201).json({ attempt, job: updatedJob, dueDiligenceComplete });
+  } catch (err: any) {
+    console.error('[SERVE] Attempt error:', err);
+    res.status(500).json({ error: 'Failed to record attempt' });
+  }
+});
+
+// ── POST /:id/skip-trace — Run skip trace for job ───────────
+router.post('/:id/skip-trace', requireRole(...WRITE_ROLES), async (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
+    if (!job) {
+      res.status(404).json({ error: 'Serve job not found' });
+      return;
+    }
+
+    const name = job.recipient_name;
+    const address = job.recipient_address;
+
+    if (!name) {
+      res.status(400).json({ error: 'Job has no recipient name for skip trace' });
+      return;
+    }
+
+    // Call internal skip tracer API
+    const port = config.port;
+    const authHeader = req.headers['authorization'];
+    let endpoint = `http://localhost:${port}/api/skiptracer/search/byname?name=${encodeURIComponent(name)}`;
+    if (address) {
+      endpoint = `http://localhost:${port}/api/skiptracer/search/bynameaddress?name=${encodeURIComponent(name)}&address=${encodeURIComponent(address)}`;
+    }
+
+    const stResponse = await fetch(endpoint, {
+      headers: { Authorization: authHeader || '' },
+    });
+
+    if (!stResponse.ok) {
+      const errText = await stResponse.text();
+      res.status(stResponse.status).json({ error: `Skip trace failed: ${errText}` });
+      return;
+    }
+
+    const stData = await stResponse.json() as any;
+
+    // Extract addresses from results
+    const addresses: any[] = [];
+    if (stData?.PeopleDetails && Array.isArray(stData.PeopleDetails)) {
+      for (const person of stData.PeopleDetails) {
+        if (person.Addresses && Array.isArray(person.Addresses)) {
+          for (const addr of person.Addresses) {
+            addresses.push({
+              address: addr.Address1 || addr.StreetAddress || '',
+              city: addr.City || '',
+              state: addr.State || '',
+              zip: addr.Zip || '',
+              type: addr.AddressType || 'unknown',
+            });
+          }
+        }
+      }
+    }
+
+    // Save to serve_skip_traces
+    const now = localNow();
+    const traceId = crypto.randomUUID();
+
+    db.prepare(`
+      INSERT INTO serve_skip_traces (
+        id, serve_queue_id, searched_at, search_type, search_query,
+        results_json, addresses_found_json, searched_by, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      traceId, req.params.id, now,
+      address ? 'bynameaddress' : 'byname',
+      address ? `${name} | ${address}` : name,
+      JSON.stringify(stData),
+      JSON.stringify(addresses),
+      req.user!.userId,
+      now,
+    );
+
+    const trace = db.prepare('SELECT * FROM serve_skip_traces WHERE id = ?').get(traceId);
+    auditLog(req, 'CREATE', 'serve_queue', String(req.params.id), `Skip trace for ${name}: ${addresses.length} addresses found`);
+
+    res.json({ trace, addresses });
+  } catch (err: any) {
+    console.error('[SERVE] Skip trace error:', err);
+    res.status(500).json({ error: 'Failed to run skip trace' });
+  }
+});
+
+export default router;
