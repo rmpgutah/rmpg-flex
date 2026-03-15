@@ -12,16 +12,6 @@ export type LoginStep =
   | 'password_change'
   | 'complete';
 
-export type LoginStep =
-  | 'username'
-  | 'password'
-  | 'verify_2fa'
-  | 'setup_2fa'
-  | 'confirm_setup_2fa'
-  | 'show_backup_codes'
-  | 'password_change'
-  | 'complete';
-
 interface LoginResult {
   requires2FA: boolean;
   success: boolean;

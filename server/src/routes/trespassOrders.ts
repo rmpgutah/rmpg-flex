@@ -203,7 +203,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
       order_number, person_id || null, subject_first_name, subject_last_name, subject_dob || null, subject_description,
       property_id || null, property_name, location,
       order_type, reason, conditions,
-      duration_days || null, effective_date || now, exp,
+      duration_days ?? null, effective_date || now, exp,
       originating_call_id || null, originating_incident_id || null,
       user.userId, user.fullName, authorized_by, notes,
       section_id || null, zone_id || null, beat_id || null, zone_beat || null,

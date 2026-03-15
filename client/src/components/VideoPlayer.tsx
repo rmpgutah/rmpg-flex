@@ -8,8 +8,8 @@
 // ============================================================
 
 import React, { useRef, useState, useEffect } from 'react';
-import { X, Video, Shield, Maximize2, Minimize2 } from 'lucide-react';
-import type { BodyCamVideo } from '../types';
+import { X, Video, Shield, Maximize2, Minimize2, Edit2 } from 'lucide-react';
+import type { BodyCamVideo, VideoClassification } from '../types';
 import { VIDEO_CLASSIFICATION_COLORS } from '../pages/personnel/utils/personnelConstants';
 import VideoHudOverlay from './VideoHudOverlay';
 
@@ -23,7 +23,7 @@ interface Props {
   onClassify?: (videoId: number, classification: VideoClassification) => void;
 }
 
-export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHeaders }: Props) {
+export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHeaders, onEditVideo }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [hudVisible, setHudVisible] = useState(true);
@@ -86,6 +86,11 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
 
   const classColor = VIDEO_CLASSIFICATION_COLORS[video.classification] || 'bg-rmpg-700 text-rmpg-300';
 
+  const overlayInfo = video.overlay_status ? {
+    label: video.overlay_status.replace(/_/g, ' ').toUpperCase(),
+    cls: video.overlay_status === 'complete' ? 'border-green-500 text-green-400' : video.overlay_status === 'error' ? 'border-red-500 text-red-400' : 'border-amber-500 text-amber-400'
+  } : null;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90" onClick={onClose}>
       <div
@@ -107,7 +112,7 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
             </span>
             {overlayInfo && (
               <span className={`text-[9px] px-1.5 py-0.5 font-semibold flex items-center gap-1 border rounded flex-shrink-0 ${overlayInfo.cls}`}>
-                <OverlayIcon className={`w-2.5 h-2.5 ${video.overlay_status === 'processing' || video.overlay_status === 'pending' ? 'animate-spin' : ''}`} />
+                <Shield className={`w-2.5 h-2.5 ${video.overlay_status === 'processing' || video.overlay_status === 'pending' ? 'animate-spin' : ''}`} />
                 {overlayInfo.label}
               </span>
             )}

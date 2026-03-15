@@ -196,6 +196,18 @@ export interface CallPdfData {
   // Linked vehicles (from call_vehicles join)
   linked_vehicles?: { role: string; plate_number?: string; plate_state?: string; year?: number; color?: string; make?: string; model?: string; vin?: string; owner_first_name?: string; owner_last_name?: string; stolen_status?: string }[];
   attachment_images?: PdfImage[];
+  // GPS breadcrumb trail
+  breadcrumb_trail?: {
+    points: { lat: number; lng: number; timestamp: string; speed_mph?: number; source?: string }[];
+    stats: {
+      total_distance_miles: number;
+      duration_minutes: number;
+      avg_speed_mph: number;
+      max_speed_mph: number;
+      total_points: number;
+      source_breakdown?: Record<string, number>;
+    };
+  };
   // Visit history (PSO return visits)
   visit_history?: {
     visit_number: number;

@@ -385,7 +385,7 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
             r.hair_color || r.HairColor || r.HAIR_COLOR || null,
             r.eye_color || r.EyeColor || r.EYE_COLOR || null,
             r.address || r.Address || r.ADDRESS || null,
-            r.bail_amount || r.BailAmount || r.BAIL_AMOUNT || null,
+            r.bail_amount ?? r.BailAmount ?? r.BAIL_AMOUNT ?? null,
             r.hold_reason || r.HoldReason || null,
             r.notes || null,
             user?.id || null, now, now,

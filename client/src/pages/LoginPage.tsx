@@ -6,14 +6,16 @@
 // ============================================================
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Eye, EyeOff, AlertCircle, ShieldCheck, ArrowLeft, Lock, KeyRound, Smartphone, Usb } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { Eye, EyeOff, AlertCircle, ShieldCheck, ArrowLeft, Lock, KeyRound, Smartphone, Usb, Fingerprint } from 'lucide-react';
+import { useAuth, type LoginStep } from '../context/AuthContext';
 import TotpCodeInput from '../components/TotpCodeInput';
 import PasswordStrengthMeter from '../components/security/PasswordStrengthMeter';
 import BackupCodesDisplay from '../components/security/BackupCodesDisplay';
 
 const APP_VERSION: string =
   typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '5.3.9';
+
+type TwoFactorMode = 'choose' | 'totp' | 'webauthn' | 'backup';
 
 // Status bar text/led for each step
 const stepStatus: Record<LoginStep, { text: string; color: string }> = {
@@ -47,11 +49,16 @@ export default function LoginPage() {
     requiresPasswordChange,
   } = useAuth();
 
+  const [loginUsername, setLoginUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [totpCode, setTotpCode] = useState('');
   const [backupCode, setBackupCode] = useState('');
   const [trustThisDevice, setTrustThisDevice] = useState(false);
+  const [useBackupCode, setUseBackupCode] = useState(false);
+  const [webauthnError, setWebauthnError] = useState(false);
+  const [twoFactorMode, setTwoFactorMode] = useState<TwoFactorMode>('choose');
+  const [twoFactorMethods, setTwoFactorMethods] = useState<{ totp?: boolean; webauthn?: boolean }>({});
 
   // 2FA setup state
   const [qrCodeUri, setQrCodeUri] = useState('');
@@ -91,11 +98,36 @@ export default function LoginPage() {
   }, [loginStep]);
 
   // Auto-submit TOTP when 6 digits entered
+  const handleVerify2FA = () => {
+    const trimmed = totpCode.replace(/\s/g, '');
+    if (trimmed.length === 6) handleTotpSubmit(trimmed);
+  };
+
   useEffect(() => {
     if (totpCode.length === 6 && loginStep === 'verify_2fa' && !loginBusy) {
       handleVerify2FA();
     }
   }, [totpCode]);
+
+  const handleCredentialsSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!loginUsername.trim()) return;
+    if (loginStep === 'username') {
+      setLoginStep('password');
+    } else if (loginStep === 'password') {
+      handlePasswordSubmit(e);
+    }
+  };
+
+  const handleBack = () => {
+    cancel2FA();
+    setTotpCode('');
+    setBackupCode('');
+    setTwoFactorMode('choose');
+    setWebauthnError(false);
+    setPassword('');
+    setLoginStep('username');
+  };
 
   const handleUsernameSubmit = (e: React.FormEvent) => {
     e.preventDefault();

@@ -79,12 +79,12 @@ router.post('/clients', (req: Request, res: Response) => {
     `).run(
       name, contact_name || null, contact_email || null, contact_phone || null,
       address || null, contract_start || null, contract_end || null,
-      sla_response_minutes || null, notes || null,
+      sla_response_minutes ?? null, notes || null,
       billing_email || null, billing_address || null, contract_type || null,
-      contract_value || null, payment_terms || null, auto_renew ? 1 : 0,
+      contract_value ?? null, payment_terms || null, auto_renew ? 1 : 0,
       client_code || null, industry || null, website || null, tax_id || null,
-      payment_method || null, billing_cycle || null, billing_day || null,
-      discount_percent || null, late_fee_percent || null,
+      payment_method || null, billing_cycle || null, billing_day ?? null,
+      discount_percent ?? null, late_fee_percent ?? null,
       account_manager || null, priority_client ? 1 : 0, client_since || null,
     );
 

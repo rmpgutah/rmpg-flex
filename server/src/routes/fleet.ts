@@ -380,12 +380,12 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       vehicle_number,
       make || null,
       model || null,
-      year || null,
+      year ?? null,
       color || null,
       vin || null,
       plate_number || null,
       plate_state || null,
-      current_mileage || null,
+      current_mileage ?? null,
       insurance_expiry || null,
       registration_expiry || null,
       equipmentJson,
@@ -798,7 +798,7 @@ router.post('/:id/maintenance', requireRole('admin', 'manager', 'supervisor'), (
     }
     if (mileage_at_service !== undefined) {
       fleetSetClauses.push(`current_mileage = ?`);
-      fleetSetValues.push(mileage_at_service || null);
+      fleetSetValues.push(mileage_at_service ?? null);
     }
     fleetSetValues.push(id);
     db.prepare(`UPDATE fleet_vehicles SET ${fleetSetClauses.join(', ')} WHERE id = ?`).run(...fleetSetValues);
@@ -1009,9 +1009,9 @@ router.post('/:id/fuel', requireRole('admin', 'manager', 'supervisor', 'officer'
       id,
       fuel_date,
       gallons,
-      cost_per_gallon || null,
+      cost_per_gallon ?? null,
       computedTotal,
-      odometer_reading || null,
+      odometer_reading ?? null,
       fuel_type || 'regular',
       station || null,
       notes || null,

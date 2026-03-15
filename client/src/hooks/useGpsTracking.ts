@@ -260,6 +260,8 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   /** Heartbeat restart counter — prevents infinite restart loops */
   const heartbeatRestartCountRef = useRef(0);
   const MAX_HEARTBEAT_RESTARTS = 5;
+  /** GPS source for unit — 'browser' (default) or 'clearpathgps' (external tracker) */
+  const gpsSourceRef = useRef<string>('browser');
 
   // Fetch the user's assigned unit on mount
   useEffect(() => {

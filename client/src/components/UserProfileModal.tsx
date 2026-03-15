@@ -20,6 +20,7 @@ import {
   Bell,
   Monitor,
   RotateCcw,
+  Key,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../hooks/useApi';
@@ -30,6 +31,7 @@ import LoginHistoryTable from './security/LoginHistoryTable';
 import SecurityKeyManager from './security/SecurityKeyManager';
 import BackupCodesDisplay from './security/BackupCodesDisplay';
 import SecurityStatusCard from './security/SecurityStatusCard';
+import TwoFactorSetupWizard from './security/TwoFactorSetupWizard';
 
 interface UserPreferences {
   notify_dispatch_email: number;

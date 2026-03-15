@@ -238,7 +238,7 @@ function pushTimeEntry(db: any, body: any) {
   `).run(
     body.officer_id, body.schedule_id, body.clock_in, body.clock_out,
     body.clock_in_latitude, body.clock_in_longitude,
-    body.total_hours, body.break_minutes || 0, body.status || 'active'
+    body.total_hours, body.break_minutes ?? 0, body.status || 'active'
   );
 
   return { id: result.lastInsertRowid };

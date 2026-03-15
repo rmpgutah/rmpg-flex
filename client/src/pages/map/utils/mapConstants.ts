@@ -22,6 +22,7 @@ export interface MapUnit {
   call_number: string | null;
   current_call_type: string | null;
   current_call_location: string | null;
+  gps_source?: string;
 }
 
 export interface ActiveCall {

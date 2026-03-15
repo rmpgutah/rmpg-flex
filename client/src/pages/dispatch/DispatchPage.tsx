@@ -77,6 +77,7 @@ import { formatTime, formatElapsed, formatActivityDetails, type FilterTab } from
 import { announceCallAlerts, announcePanicAlert, announceNewCall, announceDispatchEvent } from '../../utils/voiceAlerts';
 import { useDistrictOptions } from '../../hooks/useDistrictLookup';
 import { useUserPreferences } from '../../context/UserPreferencesContext';
+import QuickPsoModal from '../../components/QuickPsoModal';
 import {
   WEATHER_OPTIONS,
   LIGHTING_OPTIONS,

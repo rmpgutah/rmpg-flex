@@ -1323,7 +1323,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         course_name,
         category || 'other',
         JSON.stringify(required_for_roles || []),
-        renewal_period_months || null,
+        renewal_period_months ?? null,
         minimum_hours ?? 0,
         is_mandatory ? 1 : 0,
         description || null,
@@ -1605,7 +1605,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         officer_id, property_id, position || 'Patrol', start_date,
-        end_date || null, status || 'active', hours_per_week || null, notes || null,
+        end_date || null, status || 'active', hours_per_week ?? null, notes || null,
       );
 
       const deployment = db.prepare(`

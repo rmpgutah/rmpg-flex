@@ -27,7 +27,7 @@ function nextDarNumber(): string {
 }
 
 // ─── GET / ───────────────────────────────────────────────
-router.get('/', (req: Request, res: Response) => {
+router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { status, officer_id, property_id, date_from, date_to, search, page = '1', limit = '50' } = req.query;
@@ -65,7 +65,7 @@ router.get('/', (req: Request, res: Response) => {
 });
 
 // ─── GET /:id ────────────────────────────────────────────
-router.get('/:id', (req: Request, res: Response) => {
+router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare('SELECT * FROM daily_activity_reports WHERE id = ?').get(req.params.id);
@@ -76,7 +76,7 @@ router.get('/:id', (req: Request, res: Response) => {
 
 // ─── POST /auto-populate ────────────────────────────────
 // Fetches shift data for an officer on a given date
-router.post('/auto-populate', (req: Request, res: Response) => {
+router.post('/auto-populate', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { officer_id, shift_date } = req.body;

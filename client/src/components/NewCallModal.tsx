@@ -165,10 +165,13 @@ const DEFAULT_FORM_DATA = {
   historical_closed_at: '',
 };
 
+const DRAFT_KEY = 'rmpg_new_call_draft';
+
 export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [], clients = [], initialData, defaultMode = 'quick' }: NewCallModalProps) {
   const [formData, setFormData] = useState({ ...DEFAULT_FORM_DATA });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [mode, setMode] = useState<'quick' | 'full'>(defaultMode);
+  const [hasDraft, setHasDraft] = useState(false);
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const { identify: identifyDistrict } = useDistrictIdentify();

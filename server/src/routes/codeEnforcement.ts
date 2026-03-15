@@ -133,7 +133,7 @@ router.post('/violations', requireRole('admin', 'manager', 'supervisor', 'office
     `).run(violation_number, violation_type, location, property_id || null,
       person_id || null, violator_name || null, violator_contact || null,
       description, code_section || null, severity || 'minor',
-      compliance_deadline || null, fine_amount || 0, req.user!.userId, user?.full_name || '',
+      compliance_deadline || null, fine_amount ?? 0, req.user!.userId, user?.full_name || '',
       section_id || null, zone_id || null, beat_id || null, zone_beat || null,
       now, now);
 
@@ -243,11 +243,11 @@ router.post('/tows', requireRole('admin', 'manager', 'supervisor', 'officer'), (
         officer_id, officer_name, notes, ordered_at, created_at, updated_at)
       VALUES (?, 'ordered', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(tow_number, vehicle_plate || null, vehicle_state || null, vehicle_vin || null,
-      vehicle_year || null, vehicle_make || null, vehicle_model || null, vehicle_color || null, vehicle_id || null,
+      vehicle_year ?? null, vehicle_make || null, vehicle_model || null, vehicle_color || null, vehicle_id || null,
       tow_from, tow_to || null, tow_reason, authorization || null,
       tow_company || null, tow_driver || null, tow_company_phone || null,
       call_id || null, citation_id || null, incident_id || null,
-      tow_fee || 0, storage_fee_daily || 0,
+      tow_fee ?? 0, storage_fee_daily ?? 0,
       req.user!.userId, user?.full_name || '', notes || null, now, now, now);
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)

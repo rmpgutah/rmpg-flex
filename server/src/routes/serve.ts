@@ -187,8 +187,8 @@ router.post('/sync-from-sm', requireRole('admin', 'manager', 'supervisor'), (req
             city = a.City || a.city || '';
             state = a.State || a.state || '';
             zip = a.Zip || a.zip || '';
-            lat = a.Latitude || a.lat || null;
-            lng = a.Longitude || a.lng || null;
+            lat = a.Latitude ?? a.lat ?? null;
+            lng = a.Longitude ?? a.lng ?? null;
           }
         } catch {}
 
@@ -427,7 +427,7 @@ router.post('/:id/attempt', requireRole(...WRITE_ROLES), (req: Request, res: Res
     }
 
     const now = localNow();
-    const attemptNumber = (job.attempt_count || 0) + 1;
+    const attemptNumber = (job.attempt_count ?? 0) + 1;
     const attemptId = crypto.randomUUID();
 
     db.prepare(`

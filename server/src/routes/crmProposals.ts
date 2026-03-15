@@ -412,8 +412,8 @@ router.post('/proposal-templates', requireRole('admin'), (req: Request, res: Res
     `).run(
       name.trim(), template_type.trim(), description || null,
       default_scope || null, default_terms || null,
-      default_monthly_value || null, default_billing_frequency || 'monthly',
-      default_contract_months || 12,
+      default_monthly_value ?? null, default_billing_frequency || 'monthly',
+      default_contract_months ?? 12,
       req.user?.userId || null, now, now,
     );
 

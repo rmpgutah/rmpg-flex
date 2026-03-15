@@ -9,7 +9,7 @@ import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, getIncidentCat
 
 // ── AdvancedMarkerElement Content Builders ────────────────────
 
-export function buildUnitMarkerContent(callSign: string, status: UnitStatus): HTMLElement {
+export function buildUnitMarkerContent(callSign: string, status: UnitStatus, _gpsSource?: string): HTMLElement {
   const color = UNIT_STATUS_COLORS[status];
   const label = UNIT_STATUS_LABELS[status];
 

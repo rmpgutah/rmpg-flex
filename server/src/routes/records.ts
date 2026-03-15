@@ -814,8 +814,8 @@ router.post('/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer'
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       plate_number || null, state || null, make || null, model || null,
-      year || null, color || null, secondary_color || null,
-      body_style || null, doors || null, vin || null, owner_person_id || null,
+      year ?? null, color || null, secondary_color || null,
+      body_style || null, doors ?? null, vin || null, owner_person_id || null,
       insurance_company || null, insurance_policy || null, registration_expiry || null,
       damage_description || null, distinguishing_features || null,
       trim || null, engine_type || null, fuel_type || null, transmission || null, drive_type || null,

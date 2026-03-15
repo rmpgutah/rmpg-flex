@@ -162,7 +162,7 @@ export function upsertJobFromApi(job: any): void {
     job.client_job_number, job.rush ? 1 : 0, job.due_date, job.service_instructions,
     recipientName, recipientDesc, clientCompanyName, clientCompanyId,
     processServerName, empServerId, courtCaseNumber, courtCaseId,
-    job.attempt_count || 0, job.last_attempt_served_at,
+    job.attempt_count ?? 0, job.last_attempt_served_at,
     JSON.stringify(job.addresses || []), JSON.stringify(job.documents_to_be_served || []),
     job.archived_at, job.created_at, job.updated_at, now
   );

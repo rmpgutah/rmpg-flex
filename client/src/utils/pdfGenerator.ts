@@ -723,6 +723,7 @@ export function addSignatureBlock(
   }
 
   // Signature line — full width
+  const sigLineY = row1Y + sigRowH - 3;
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
   doc.setLineWidth(BORDER.SIGNATURE_LINE);
   doc.line(x + SPACING.MD, sigLineY, x + width - SPACING.MD, sigLineY);
@@ -1600,6 +1601,7 @@ function addGpsActivityLogSection(doc: jsPDF, data: IncidentData, y: number, pri
 // ── Report Templates ─────────────────────────────────────────
 
 function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
+  const ffw = getFullFieldWidth(doc);
   const hfw = getHalfFieldWidth(doc);
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
@@ -2416,6 +2418,7 @@ function generateDailyActivityReport(doc: jsPDF, data: IncidentData) {
 }
 
 function generateArrestReport(doc: jsPDF, data: IncidentData) {
+  const ffw = getFullFieldWidth(doc);
   const hfw = getHalfFieldWidth(doc);
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
@@ -2444,6 +2447,7 @@ function generateArrestReport(doc: jsPDF, data: IncidentData) {
   }
 
   // Subject Details
+  const subjectStartY = y;
   { const sec = openAutoSection(doc, 'Subject Details', y); y = sec.contentY;
     const persons = data.linked_persons || [];
     if (persons.length > 0) {
@@ -2506,6 +2510,7 @@ function generateArrestReport(doc: jsPDF, data: IncidentData) {
   // ═══════════════════════════════════════════════════════════
   // CHARGES — charges table
   // ═══════════════════════════════════════════════════════════
+  const chargesStartY = y;
   y = checkPageBreak(doc, y, 30, data.priority);
   { const sec = openAutoSection(doc, 'Flags', y); y = sec.contentY;
     let flagX = lx;
@@ -2561,6 +2566,7 @@ function generateArrestReport(doc: jsPDF, data: IncidentData) {
   // ═══════════════════════════════════════════════════════════
   // PROPERTY — personal property inventory + codes
   // ═══════════════════════════════════════════════════════════
+  const propStartY = y;
   y = checkPageBreak(doc, y, 30, data.priority);
   { const sec = openAutoSection(doc, 'Miranda Advisement', y); y = sec.contentY;
     doc.setFontSize(FONT.SIZE_TABLE_BODY);
@@ -2625,6 +2631,7 @@ function generateArrestReport(doc: jsPDF, data: IncidentData) {
 // ── Process Service Report ────────────────────────────────────
 
 function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
+  const ffw = getFullFieldWidth(doc);
   const hfw = getHalfFieldWidth(doc);
   const lx = getLeftX();
   const rx = getRightColumnX(doc);

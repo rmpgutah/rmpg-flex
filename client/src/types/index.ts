@@ -4,7 +4,7 @@
 
 // --- Auth & Users ---
 
-export type UserRole = 'admin' | 'manager' | 'supervisor' | 'officer' | 'dispatcher' | 'client_viewer';
+export type UserRole = 'admin' | 'manager' | 'supervisor' | 'officer' | 'dispatcher' | 'client_viewer' | 'contract_manager';
 
 export interface User {
   id: string;
@@ -838,7 +838,6 @@ export interface BodyCamVideo {
   uploaded_by: string;
   created_at: string;
   updated_at: string;
-  overlay_status?: string;
   officer_name?: string;
   camera_serial?: string;
 }

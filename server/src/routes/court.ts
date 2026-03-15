@@ -63,7 +63,7 @@ router.get('/events', (req: Request, res: Response) => {
 });
 
 // ─── GET /events/upcoming ────────────────────────────────
-router.get('/events/upcoming', (req: Request, res: Response) => {
+router.get('/events/upcoming', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const today = localToday();

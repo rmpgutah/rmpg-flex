@@ -100,7 +100,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       external_url || null,
       is_required_reading ? 1 : 0,
       published != null ? (published ? 1 : 0) : 1,
-      sort_order || 0,
+      sort_order ?? 0,
       req.user!.userId,
       req.user!.userId,
     );

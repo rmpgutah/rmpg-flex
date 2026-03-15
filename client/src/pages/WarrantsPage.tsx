@@ -162,6 +162,18 @@ interface UtahWarrantResult {
   source?: string;
 }
 
+type UtahWarrant = UtahWarrantResult;
+
+interface UtahSyncStatus {
+  lastSync: string | null;
+  status: string;
+  personsFound: number;
+  warrantsFound: number;
+  durationMs: number;
+  lastError: string | null;
+  currentCount: number;
+}
+
 // ============================================================
 // Constants
 // ============================================================

@@ -6,7 +6,7 @@
 // ============================================================
 
 import React, { useState, useRef } from 'react';
-import { Upload, X, Video, Loader2, XCircle, CheckCircle2, Zap } from 'lucide-react';
+import { Upload, X, Video, Loader2, XCircle, CheckCircle2, Zap, Radio } from 'lucide-react';
 import type { BodyCamera, VideoClassification } from '../types';
 
 interface Props {
@@ -24,6 +24,14 @@ const CLASSIFICATIONS: { value: VideoClassification; label: string }[] = [
   { value: 'evidence', label: 'Evidence' },
   { value: 'flagged', label: 'Flagged' },
   { value: 'restricted', label: 'Restricted' },
+];
+
+const ACTIVATION_TYPES: { value: string; label: string }[] = [
+  { value: 'MANUAL', label: 'Manual' },
+  { value: 'AUTOMATIC', label: 'Automatic' },
+  { value: 'EMERGENCY', label: 'Emergency' },
+  { value: 'PRE_EVENT', label: 'Pre-Event' },
+  { value: 'POST_EVENT', label: 'Post-Event' },
 ];
 
 const CHUNK_SIZE = 10 * 1024 * 1024; // 10 MB chunks

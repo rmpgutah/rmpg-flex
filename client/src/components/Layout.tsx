@@ -47,6 +47,7 @@ import {
   ChevronRight,
   Mail,
   GraduationCap,
+  Microscope,
 } from 'lucide-react';
 import { Navigation2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -191,6 +192,11 @@ const CLIENT_VIEWER_BLOCKED_PATHS = new Set([
   '/reports/custom', '/crime-analysis', '/dar',
 ]);
 
+// Paths that contract_manager role is NOT allowed to see
+const CONTRACT_MANAGER_BLOCKED_PATHS = new Set([
+  '/admin', '/personnel', '/users',
+]);
+
 export default function Layout() {
   const { user, logout, refreshUser } = useAuth();
   const { isConnected, subscribe } = useWebSocket();
@@ -201,6 +207,7 @@ export default function Layout() {
   const presence = usePresence();
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
   const isClientViewer = user?.role === 'client_viewer';
+  const isContractManager = user?.role === 'contract_manager';
   const pageTitle = PAGE_TITLES[location.pathname] || 'Dashboard';
 
   // ── Back / Forward navigation history tracking ──
@@ -998,10 +1005,11 @@ export default function Layout() {
                     }}
                     onMouseEnter={() => { if (openDropdown) setOpenDropdown(null); }}
                     className="toolbar-btn"
-                    title={`Open ${item.label}${fKey ? ` (${fKey})` : ''}`}
+                    title={`Open ${item.label}${item.shortcut ? ` (${item.shortcut})` : ''}`}
                     style={{ height: 44, padding: '2px 6px' }}
                   >
-                    {btnContent()}
+                    <Icon style={{ width: 16, height: 16, color: '#5a6e80', marginBottom: 1 }} />
+                    <span className="font-medium leading-none" style={{ fontSize: 9, letterSpacing: '0.02em' }}>{item.label}</span>
                   </button>
                 </React.Fragment>
               );
