@@ -270,8 +270,9 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
       if (data.error) {
         setTestResult({ success: false, error: `Account discovery: ${data.error}` });
       } else {
-        setDiscoveredAccounts(data.accounts || []);
-        if (data.accounts.length === 0) {
+        const accounts = data.accounts || [];
+        setDiscoveredAccounts(accounts);
+        if (accounts.length === 0) {
           setTestResult({ success: false, error: 'No accounts found for this email/password' });
         }
       }

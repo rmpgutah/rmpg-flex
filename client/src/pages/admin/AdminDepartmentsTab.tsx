@@ -50,7 +50,7 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
     setLoading(true);
     try {
       const data = await apiFetch<Department[]>('/admin/departments');
-      setDepartments(data);
+      setDepartments(data || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load departments');
     } finally {

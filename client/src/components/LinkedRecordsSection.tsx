@@ -102,7 +102,7 @@ export default function LinkedRecordsSection({ entityType, entityId, onOpenLinkM
       const data = await apiFetch<EnrichedLink[]>(
         `/records/links?type=${encodeURIComponent(entityType)}&id=${encodeURIComponent(entityId)}`,
       );
-      setLinks(data);
+      setLinks(data || []);
     } catch (err) {
       console.error('Failed to load linked records:', err);
       setLinks([]);

@@ -73,7 +73,7 @@ export function PersonClientLinks({ personId, personName }: PersonClientLinksPro
     try {
       setLoading(true);
       const data = await apiFetch(`/records/persons/${personId}/clients`) as ClientPersonLink[];
-      setLinks(data);
+      setLinks(data || []);
     } catch (err) {
       console.error('Failed to load person-client links:', err);
     } finally {
@@ -175,7 +175,7 @@ export function ClientPersonLinks({ clientId, clientName }: ClientPersonLinksPro
     try {
       setLoading(true);
       const data = await apiFetch(`/records/clients/${clientId}/persons`) as ClientPersonLink[];
-      setLinks(data);
+      setLinks(data || []);
     } catch (err) {
       console.error('Failed to load client-person links:', err);
     } finally {

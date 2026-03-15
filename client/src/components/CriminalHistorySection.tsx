@@ -134,7 +134,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
     try {
       setLoading(true);
       const data = await apiFetch(`/records/persons/${personId}/criminal-history`) as CriminalRecord[];
-      setRecords(data);
+      setRecords(data || []);
     } catch (err) {
       console.error('Failed to load criminal history:', err);
     } finally {

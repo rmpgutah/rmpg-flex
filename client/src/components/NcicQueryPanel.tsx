@@ -480,7 +480,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
             query: string;
           }>(`/records/ncic-query?type=phone&query=${encodeURIComponent(queryText)}`);
 
-          if (phoneData.results.length === 0) {
+          if (!phoneData.results || phoneData.results.length === 0) {
             response = formatNoRecord('PHONE', queryText);
           } else {
             response = phoneData.results
@@ -488,7 +488,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
               .join('\n\n');
             hasHit = true;
 
-            const hasWarrants = phoneData.results.some(r => r.warrants.length > 0);
+            const hasWarrants = phoneData.results.some(r => r.warrants?.length > 0);
             if (hasWarrants) {
               playTone('warning');
             } else {

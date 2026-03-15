@@ -122,7 +122,7 @@ export default function FileAttachments({
     try {
       setError(null);
       const data = await apiFetchAttachments(entityType, entityId);
-      setAttachments(data);
+      setAttachments(data || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load attachments');
     } finally {
