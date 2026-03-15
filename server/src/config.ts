@@ -145,6 +145,13 @@ export const config = {
   totp: totpConfig,
   twoFactor: totpConfig,
 
+  // WebAuthn / Security Key (YubiKey, Touch ID, Windows Hello)
+  webauthn: {
+    rpName: process.env.WEBAUTHN_RP_NAME || 'RMPG Flex',
+    rpID: process.env.WEBAUTHN_RP_ID || 'rmpgutah.us',
+    origin: process.env.WEBAUTHN_ORIGIN || 'https://rmpgutah.us',
+  },
+
   // Session
   session: {
     maxPerUser: envInt('SESSION_MAX_PER_USER', 5),

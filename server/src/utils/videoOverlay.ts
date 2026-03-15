@@ -1,35 +1,24 @@
 // ============================================================
 // RMPG Flex — Video Overlay Processing Engine
 // ============================================================
-// Burns permanent police-style metadata overlays onto body
-// camera and dash camera video files using FFmpeg drawtext and
-// drawbox filters. Processing runs in the background after
-// upload — the overlaid version is served for streaming/download.
+// Burns permanent metadata overlays onto body camera and dash
+// camera video files using FFmpeg drawtext filters. Processing
+// runs in the background after upload — the overlaid version is
+// served for streaming and download.
 //
-// Body Camera (BWC) Overlay:
-//   ┌─────────────────────────────────────────────────────┐
-//   │ ROCKY MOUNTAIN PROTECTIVE GROUP                      │
-//   │ BWC | OFC. NAME #BADGE | CAM: SERIAL                │
-//   │ MM/DD/YYYY HH:MM:SSH                                │
-//   │ ● ACTIVATED | CASE: NUMBER              ● REC       │
-//   │ CLASSIFICATION: EVIDENCE                             │
-//   │                                                      │
-//   │                           BAT: 100% | STR: 32.0 GB  │
-//   ├─ ─ ─ ─ ─ ─ amber 1px border ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─┤
+// Body Camera Overlay:
+//   BWC | OFC. NAME #BADGE | CAM: SERIAL
+//   MM/DD/YYYY HH:MM:SSH (advancing) | CASE: NUMBER
+//   CLASSIFICATION: EVIDENCE
 //
-// Dash Camera (MVR) Overlay:
-//   ┌─────────────────────────────────────────────────────┐
-//   │ ROCKY MOUNTAIN PROTECTIVE GROUP                      │
-//   │ MVR-001 | UNIT: 4A21 | VEH: 2024 FORD EXPLORER     │
-//   │ MM/DD/YYYY HH:MM:SSH               | SPD: 45 MPH   │
-//   │ REC ● | MIC: ON | GPS: LOCK | CAM: FRONT  ● REC   │
-//   │                                                      │
-//   │ LAT: 40.7608° N  LON: 111.8910° W                   │
-//   │ 1200 N MAIN ST, VERNAL, UT 84078                    │
-//   ├─ ─ ─ ─ ─ ─ amber 1px border ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─┤
+// Dash Camera Overlay:
+//   MVR | UNIT: CALLSIGN | VEH: YEAR MAKE MODEL
+//   MM/DD/YYYY HH:MM:SSH (advancing) | SPD: XX MPH
+//   LAT° N, LON° W  (bottom)
+//   STREET ADDRESS   (bottom)
 // ============================================================
 
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 import fs from 'fs';
@@ -37,7 +26,7 @@ import { fileURLToPath } from 'url';
 import { getDb } from '../models/database';
 import { localNow } from './timeUtils';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -51,11 +40,6 @@ export interface BodyCamOverlayConfig {
   recordedAtUnix: number;
   caseNumber: string;
   classification: string;
-  agencyName?: string;
-  eventType?: string;          // ACTIVATED | PRE-EVENT | MANUAL
-  batteryPercent?: number;     // simulated battery indicator
-  storageRemainingGb?: number; // simulated storage remaining
-  showBorderFrame?: boolean;   // default true
 }
 
 export interface DashCamOverlayConfig {
@@ -67,12 +51,8 @@ export interface DashCamOverlayConfig {
   latitude: number | null;
   longitude: number | null;
   address: string;
-  agencyName?: string;
-  cameraId?: string;           // MVR-001, MVR-002, etc.
-  micStatus?: string;          // ON | OFF | MUTED
-  gpsLockStatus?: string;      // LOCK | NO FIX
-  cameraPosition?: string;     // FRONT | REAR | INTERIOR
-  showBorderFrame?: boolean;   // default true
+  cameraPosition?: string;
+  micStatus?: string;
 }
 
 export type OverlayConfig = BodyCamOverlayConfig | DashCamOverlayConfig;
@@ -80,7 +60,6 @@ export type OverlayStatus = 'pending' | 'processing' | 'complete' | 'error';
 
 // ── Constants ───────────────────────────────────────────────
 
-const DEFAULT_AGENCY_NAME = 'ROCKY MOUNTAIN PROTECTIVE GROUP';
 const FFMPEG_TIMEOUT_MS = 30 * 60_000; // 30 minutes max per video
 const REPROCESS_BATCH_SIZE = 5;
 const REPROCESS_DELAY_MS = 60_000; // 60s after startup
@@ -100,19 +79,6 @@ function escapeDrawtext(text: string): string {
     .replace(/;/g, '\\;');
 }
 
-/** Read agency name from system_config, falling back to the default */
-export function getOverlayAgencyName(): string {
-  try {
-    const db = getDb();
-    const row = db.prepare(
-      `SELECT config_value FROM system_config WHERE config_key = 'video_overlay_agency_name' LIMIT 1`
-    ).get() as { config_value: string } | undefined;
-    return row?.config_value || DEFAULT_AGENCY_NAME;
-  } catch {
-    return DEFAULT_AGENCY_NAME;
-  }
-}
-
 /** Format lat/lon as degrees string: "40.7608° N, 111.8910° W" */
 function formatCoordinates(lat: number | null, lon: number | null): string {
   if (lat == null || lon == null) return 'NO GPS DATA';
@@ -125,20 +91,18 @@ function formatCoordinates(lat: number | null, lon: number | null): string {
 
 /**
  * Build FFmpeg video filter string for body camera overlay.
- * Police-style multi-line overlay with agency header, event type,
- * classification, recording indicator, and optional battery/storage.
+ * Three lines of text in the top-left corner with semi-transparent background.
  */
 function buildBodyCamFilterGraph(config: BodyCamOverlayConfig): string {
-  const agency = escapeDrawtext((config.agencyName || getOverlayAgencyName()).toUpperCase());
-  const officerLine = escapeDrawtext(
+  const line1 = escapeDrawtext(
     `BWC | OFC. ${config.officerName.toUpperCase()}${config.badgeNumber ? ` #${config.badgeNumber}` : ''} | CAM${config.cameraSerial ? `: ${config.cameraSerial}` : ''}`
   );
 
-  const event = config.eventType?.toUpperCase() || 'MANUAL';
   const caseStr = config.caseNumber ? ` | CASE${escapeDrawtext(`: ${config.caseNumber}`)}` : '';
-  const eventLine = escapeDrawtext(`* ${event}`) + caseStr;
 
-  const classText = escapeDrawtext(`CLASSIFICATION: ${config.classification.toUpperCase()}`);
+  const line3 = escapeDrawtext(`CLASSIFICATION: ${config.classification.toUpperCase()}`);
+
+  // Classification color: evidence=yellow, flagged=orange, restricted=red, routine=white
   const classColor = {
     EVIDENCE: 'yellow',
     FLAGGED: 'orange',
@@ -146,92 +110,42 @@ function buildBodyCamFilterGraph(config: BodyCamOverlayConfig): string {
     ROUTINE: 'white',
   }[config.classification.toUpperCase()] || 'white';
 
-  // Battery/storage line (bottom-right)
-  const bat = config.batteryPercent != null ? config.batteryPercent : 100;
-  const stor = config.storageRemainingGb != null ? config.storageRemainingGb : 32.0;
-  const statusLine = escapeDrawtext(`BAT: ${bat}%% | STR: ${stor.toFixed(1)} GB`);
-
-  const showBorder = config.showBorderFrame !== false;
-
-  const filters: string[] = [];
-
-  // Amber border frame
-  if (showBorder) {
-    filters.push(`drawbox=x=2:y=2:w=iw-4:h=ih-4:color=orange@0.4:t=1`);
-  }
-
-  filters.push(
-    // Line 1: Agency header
-    `drawtext=text='${agency}':fontsize=20:fontcolor=white:font=monospace:box=1:boxcolor=black@0.70:boxborderw=10:x=12:y=10`,
-    // Line 2: Officer / camera ID
-    `drawtext=text='${officerLine}':fontsize=14:fontcolor=white:font=monospace:box=1:boxcolor=black@0.65:boxborderw=6:x=12:y=38`,
-    // Line 3: Large advancing timestamp
-    `drawtext=text='%{pts\\:localtime\\:${config.recordedAtUnix}\\:%m/%d/%Y %T}H':fontsize=20:fontcolor=white:font=monospace:box=1:boxcolor=black@0.70:boxborderw=8:x=12:y=60`,
-    // Line 4: Event type + case number (lime green)
-    `drawtext=text='${eventLine}':fontsize=13:fontcolor=lime:font=monospace:box=1:boxcolor=black@0.60:boxborderw=5:x=12:y=88`,
-    // Line 5: Classification (color-coded)
-    `drawtext=text='${classText}':fontsize=14:fontcolor=${classColor}:font=monospace:box=1:boxcolor=black@0.65:boxborderw=6:x=12:y=110`,
-    // Top-right: Recording indicator (red)
-    `drawtext=text='* REC':fontsize=14:fontcolor=red:font=monospace:box=1:boxcolor=black@0.50:boxborderw=6:x=w-110:y=10`,
-    // Bottom-right: Battery / storage status
-    `drawtext=text='${statusLine}':fontsize=11:fontcolor=lime:font=monospace:box=1:boxcolor=black@0.55:boxborderw=5:x=w-280:y=h-30`,
-  );
+  const filters = [
+    // Line 1: BWC | OFC. NAME #BADGE | CAM: SERIAL
+    `drawtext=text='${line1}':fontsize=18:fontcolor=white:font=monospace:box=1:boxcolor=black@0.65:boxborderw=8:x=12:y=12`,
+    // Line 2: Advancing timestamp + case number
+    `drawtext=text='%{pts\\:localtime\\:${config.recordedAtUnix}\\:%m/%d/%Y %T}H${caseStr}':fontsize=16:fontcolor=white:font=monospace:box=1:boxcolor=black@0.65:boxborderw=8:x=12:y=40`,
+    // Line 3: Classification
+    `drawtext=text='${line3}':fontsize=14:fontcolor=${classColor}:font=monospace:box=1:boxcolor=black@0.65:boxborderw=8:x=12:y=66`,
+  ];
 
   return filters.join(',');
 }
 
 /**
  * Build FFmpeg video filter string for dash camera overlay.
- * Police-style multi-line overlay with agency header, speed readout,
- * status indicators, GPS coordinates, and address.
+ * Two lines top-left, two lines bottom-left.
  */
 function buildDashCamFilterGraph(config: DashCamOverlayConfig): string {
-  const agency = escapeDrawtext((config.agencyName || getOverlayAgencyName()).toUpperCase());
-
-  const camId = config.cameraId || 'MVR';
-  const idLine = escapeDrawtext(
-    `${camId} | UNIT${config.unitCallSign ? `: ${config.unitCallSign}` : ''} | VEH${config.vehicleDescription ? `: ${config.vehicleDescription.toUpperCase()}` : ''}`
+  const line1 = escapeDrawtext(
+    `MVR | UNIT${config.unitCallSign ? `: ${config.unitCallSign}` : ''} | VEH${config.vehicleDescription ? `: ${config.vehicleDescription.toUpperCase()}` : ''}`
   );
 
-  const speedStr = config.speedMph != null
-    ? ` | SPD${escapeDrawtext(`: ${config.speedMph} MPH`)}`
-    : '';
+  const speedStr = config.speedMph != null ? ` | SPD${escapeDrawtext(`: ${config.speedMph} MPH`)}` : '';
 
-  const mic = config.micStatus?.toUpperCase() || 'ON';
-  const gps = config.gpsLockStatus?.toUpperCase() || (config.latitude != null ? 'LOCK' : 'NO FIX');
-  const cam = config.cameraPosition?.toUpperCase() || 'FRONT';
-  const statusRow = escapeDrawtext(`REC * | MIC: ${mic} | GPS: ${gps} | CAM: ${cam}`);
-
-  const coordLabel = config.latitude != null && config.longitude != null
-    ? escapeDrawtext(`LAT: ${Math.abs(config.latitude).toFixed(4)} ${config.latitude >= 0 ? 'N' : 'S'}  LON: ${Math.abs(config.longitude).toFixed(4)} ${config.longitude >= 0 ? 'E' : 'W'}`)
-    : escapeDrawtext('NO GPS DATA');
-
+  const coordStr = escapeDrawtext(formatCoordinates(config.latitude, config.longitude));
   const addrStr = escapeDrawtext(config.address ? config.address.toUpperCase() : 'NO ADDRESS DATA');
-  const showBorder = config.showBorderFrame !== false;
 
-  const filters: string[] = [];
-
-  // Amber border frame
-  if (showBorder) {
-    filters.push(`drawbox=x=2:y=2:w=iw-4:h=ih-4:color=orange@0.4:t=1`);
-  }
-
-  filters.push(
-    // Top Line 1: Agency header
-    `drawtext=text='${agency}':fontsize=20:fontcolor=white:font=monospace:box=1:boxcolor=black@0.70:boxborderw=10:x=12:y=10`,
-    // Top Line 2: Camera ID / unit / vehicle
-    `drawtext=text='${idLine}':fontsize=14:fontcolor=white:font=monospace:box=1:boxcolor=black@0.65:boxborderw=6:x=12:y=38`,
-    // Top Line 3: Large advancing timestamp + speed
-    `drawtext=text='%{pts\\:localtime\\:${config.recordedAtUnix}\\:%m/%d/%Y %T}H${speedStr}':fontsize=22:fontcolor=white:font=monospace:box=1:boxcolor=black@0.70:boxborderw=8:x=12:y=62`,
-    // Top Line 4: Status indicators row (lime green)
-    `drawtext=text='${statusRow}':fontsize=11:fontcolor=lime:font=monospace:box=1:boxcolor=black@0.60:boxborderw=5:x=12:y=92`,
-    // Top-right: Recording indicator (red)
-    `drawtext=text='* REC':fontsize=14:fontcolor=red:font=monospace:box=1:boxcolor=black@0.50:boxborderw=6:x=w-110:y=10`,
-    // Bottom Line 1: GPS coordinates (cyan)
-    `drawtext=text='${coordLabel}':fontsize=13:fontcolor=cyan:font=monospace:box=1:boxcolor=black@0.65:boxborderw=6:x=12:y=h-58`,
-    // Bottom Line 2: Street address
-    `drawtext=text='${addrStr}':fontsize=13:fontcolor=white:font=monospace:box=1:boxcolor=black@0.65:boxborderw=6:x=12:y=h-34`,
-  );
+  const filters = [
+    // Top Line 1: MVR | UNIT: CALLSIGN | VEH: DESCRIPTION
+    `drawtext=text='${line1}':fontsize=18:fontcolor=white:font=monospace:box=1:boxcolor=black@0.65:boxborderw=8:x=12:y=12`,
+    // Top Line 2: Advancing timestamp + speed
+    `drawtext=text='%{pts\\:localtime\\:${config.recordedAtUnix}\\:%m/%d/%Y %T}H${speedStr}':fontsize=16:fontcolor=white:font=monospace:box=1:boxcolor=black@0.65:boxborderw=8:x=12:y=40`,
+    // Bottom Line 1: Coordinates
+    `drawtext=text='${coordStr}':fontsize=14:fontcolor=cyan:font=monospace:box=1:boxcolor=black@0.65:boxborderw=8:x=12:y=h-56`,
+    // Bottom Line 2: Address
+    `drawtext=text='${addrStr}':fontsize=14:fontcolor=white:font=monospace:box=1:boxcolor=black@0.65:boxborderw=8:x=12:y=h-32`,
+  ];
 
   return filters.join(',');
 }
@@ -254,23 +168,23 @@ export async function processVideoOverlay(
     ? buildBodyCamFilterGraph(config)
     : buildDashCamFilterGraph(config);
 
-  const cmd = [
-    'ffmpeg',
-    '-i', `"${inputPath}"`,
-    '-vf', `"${filterGraph}"`,
+  // Use execFile (no shell) to prevent command injection via file paths
+  const args = [
+    '-i', inputPath,
+    '-vf', filterGraph,
     '-c:v', 'libx264',
     '-preset', 'fast',
     '-crf', '23',
     '-c:a', 'copy',
     '-movflags', '+faststart',
     '-y',
-    `"${outputPath}"`,
-  ].join(' ');
+    outputPath,
+  ];
 
   console.log(`[Video Overlay] Processing: ${path.basename(inputPath)} → ${path.basename(outputPath)}`);
 
   try {
-    await execAsync(cmd, { timeout: FFMPEG_TIMEOUT_MS });
+    await execFileAsync('ffmpeg', args, { timeout: FFMPEG_TIMEOUT_MS });
     console.log(`[Video Overlay] Complete: ${path.basename(outputPath)}`);
   } catch (err: any) {
     // Extract useful error info from stderr
