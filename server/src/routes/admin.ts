@@ -824,40 +824,43 @@ router.post('/users/:id/reset-2fa', requireRole('admin'), (req: Request, res: Re
       return;
     }
 
-    const user = db.prepare('SELECT id, username, full_name FROM users WHERE id = ?').get(userId) as any;
+    const user = db.prepare('SELECT id, username, full_name FROM users WHERE id = ?').get(targetId) as any;
     if (!user) {
       res.status(404).json({ error: 'User not found' });
       return;
     }
 
+    const reqIp = req.ip || 'unknown';
+    const reqUserAgent = req.headers['user-agent'] || 'unknown';
+
     // Delete TOTP secret and backup codes
-    db.prepare('DELETE FROM user_totp_secrets WHERE user_id = ?').run(userId);
-    db.prepare('DELETE FROM user_backup_codes WHERE user_id = ?').run(userId);
-    db.prepare('DELETE FROM trusted_devices WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM user_totp_secrets WHERE user_id = ?').run(targetId);
+    db.prepare('DELETE FROM user_backup_codes WHERE user_id = ?').run(targetId);
+    db.prepare('DELETE FROM trusted_devices WHERE user_id = ?').run(targetId);
     db.prepare('UPDATE users SET totp_enabled = 0, totp_setup_required = 1, updated_at = ? WHERE id = ?')
-      .run(localNow(), userId);
+      .run(localNow(), targetId);
 
     // Also clear legacy TOTP columns if they exist
     try {
       db.prepare(`
         UPDATE users SET totp_secret_enc = NULL, totp_backup_codes = NULL,
           totp_pending_secret = NULL WHERE id = ?
-      `).run(userId);
+      `).run(targetId);
     } catch { /* legacy columns may not exist */ }
 
     // Log
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, '2fa_reset', 'user', ?, ?, ?)
-    `).run(req.user!.userId, userId, `Admin reset 2FA for ${user.username}`, ip);
+    `).run(req.user!.userId, targetId, `Admin reset 2FA for ${user.username}`, reqIp);
 
     createSecurityNotification(
-      userId,
+      targetId,
       '2fa_reset',
       'Two-factor authentication reset',
       `Your 2FA was reset by an administrator. You will need to set it up again on next login.`,
-      ip,
-      parseDeviceName(userAgent)
+      reqIp,
+      parseDeviceName(reqUserAgent)
     );
 
     res.json({ message: `2FA reset for ${user.full_name}. They will be prompted to set up 2FA on next login.` });

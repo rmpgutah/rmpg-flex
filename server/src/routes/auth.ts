@@ -311,7 +311,7 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
     };
 
     // ── Two-Factor Authentication gate ──────────────────
-    if (userFull?.totp_enabled) {
+    if (has2FA) {
       // Check if this device is trusted — skip 2FA if so
       if (deviceFingerprint && isDeviceTrusted(user.id, deviceFingerprint)) {
         // Trusted device — bypass 2FA, proceed to token issuance below
@@ -339,19 +339,6 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
         requires2FASetup: true,
         requiresPasswordChange: needsPasswordChange,
         tempToken,
-      });
-      return;
-    }
-
-    // ── Server-side 2FA setup enforcement ─────────────────
-    // If the user's role requires 2FA but they haven't set it up,
-    // return a setup step instead of issuing full tokens
-    if (must_setup_2fa) {
-      const tempToken = generate2faPendingToken(payload);
-      res.json({
-        step: 'setup_2fa',
-        tempToken,
-        requiresPasswordChange: !!user.must_change_password || isPasswordExpired(userFull?.password_changed_at),
       });
       return;
     }
@@ -780,8 +767,6 @@ router.post('/change-password', passwordRateLimit, authenticateToken, (req: Requ
     try { setPasswordExpiry(user.id); } catch { /* ignore if column missing */ }
 
     // Log the password change
-    const ip = req.ip || 'unknown';
-    const userAgent = req.headers['user-agent'] || 'unknown';
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'password_changed', 'user', ?, 'Password changed', ?)
