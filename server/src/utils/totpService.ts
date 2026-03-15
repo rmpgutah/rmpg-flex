@@ -29,10 +29,10 @@ export function generateTotpSecret(username: string): { secret: OTPAuth.Secret; 
 // ─── AES-256-GCM Encryption ─────────────────────────
 
 function getEncryptionKey(): Buffer {
-  // Derive a 32-byte key from the configured hex string
-  const keyHex = twoFactorConfig().encryptionKey;
-  if (!keyHex) throw new Error('TOTP encryption key is not configured. Check config.twoFactor.encryptionKey.');
-  return Buffer.from(keyHex.slice(0, 64).padEnd(64, '0'), 'hex');
+  // Derive a 32-byte key using HKDF-SHA256 for proper key stretching
+  const keyMaterial = twoFactorConfig().encryptionKey;
+  if (!keyMaterial) throw new Error('TOTP encryption key is not configured. Check config.twoFactor.encryptionKey.');
+  return Buffer.from(crypto.hkdfSync('sha256', keyMaterial, '', 'rmpg-totp-encryption', 32));
 }
 
 export function encryptSecret(plainSecret: string): { encrypted: string; iv: string; tag: string } {
@@ -131,10 +131,10 @@ export function verifyTotpToken(secretBase32: string, token: string): boolean {
 export function generateBackupCodes(count: number = twoFactorConfig().backupCodeCount || 10): string[] {
   const codes: string[] = [];
   for (let i = 0; i < count; i++) {
-    // 8-character alphanumeric codes (uppercase for readability)
-    const bytes = crypto.randomBytes(5);
-    const code = bytes.toString('hex').slice(0, 8).toUpperCase();
-    codes.push(`${code.slice(0, 4)}-${code.slice(4)}`);
+    // 12-character hex codes (6 bytes = 48 bits of entropy)
+    const bytes = crypto.randomBytes(6);
+    const code = bytes.toString('hex').toUpperCase();
+    codes.push(`${code.slice(0, 4)}-${code.slice(4, 8)}-${code.slice(8)}`);
   }
   return codes;
 }
@@ -142,7 +142,7 @@ export function generateBackupCodes(count: number = twoFactorConfig().backupCode
 export function hashBackupCode(code: string): string {
   // Normalize: remove dashes, uppercase
   const normalized = code.replace(/-/g, '').toUpperCase();
-  return bcryptjs.hashSync(normalized, 10);
+  return bcryptjs.hashSync(normalized, 12);
 }
 
 export function verifyBackupCode(code: string, hash: string): boolean {

@@ -52,7 +52,7 @@ function safeSend(ws: WebSocket, data: string): boolean {
   return false;
 }
 
-// Authentication timeout — disconnect clients that don't authenticate within 10 seconds
+// Authentication timeout — disconnect clients that don't authenticate within 3 seconds
 const AUTH_TIMEOUT_MS = 3_000;
 
 // All channels every authenticated client auto-subscribes to
@@ -170,7 +170,7 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
         safeSend(ws, JSON.stringify({
           type: 'error',
           code: 'AUTH_TIMEOUT',
-          message: 'Authentication required within 10 seconds',
+          message: 'Authentication required within 3 seconds',
         }));
         ws.close(4001, 'Authentication timeout');
         clients.delete(clientId);
