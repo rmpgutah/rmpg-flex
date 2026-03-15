@@ -196,6 +196,7 @@ export default function AdminClientsTab({
 
   // Fetch client detail when a client is selected
   useEffect(() => {
+    let cancelled = false;
     if (selectedClient) {
       setLoadingClientDetail(true);
       Promise.all([
@@ -204,17 +205,19 @@ export default function AdminClientsTab({
         apiFetch<any[]>(`/admin/clients/${selectedClient.id}/calls`).catch(() => []),
         apiFetch<any>(`/admin/clients/${selectedClient.id}/billing`).catch(() => null),
       ]).then(([detail, incidents, calls, billing]) => {
+        if (cancelled) return;
         setClientProperties(detail?.properties || []);
         setClientIncidents(incidents || []);
         setClientCalls(calls || []);
         setClientBilling(billing);
-      }).finally(() => setLoadingClientDetail(false));
+      }).finally(() => { if (!cancelled) setLoadingClientDetail(false); });
     } else {
       setClientProperties([]);
       setClientIncidents([]);
       setClientCalls([]);
       setClientBilling(null);
     }
+    return () => { cancelled = true; };
   }, [selectedClient?.id]);
 
   return (

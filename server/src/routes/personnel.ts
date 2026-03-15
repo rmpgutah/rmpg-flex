@@ -2342,7 +2342,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         camera_id, officer_id, title, relativePath, verifiedSize,
-        duration_seconds || null, meta.mimeType || 'video/mp4',
+        duration_seconds ?? null, meta.mimeType || 'video/mp4',
         recorded_at || localNow(), case_number || null,
         classification || 'routine', notes || null, String(user?.userId || 'system')
       );
@@ -2458,7 +2458,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).run(
             camera_id, officer_id, title, relativePath, verifiedSize,
-            duration_seconds || null, file.mimetype,
+            duration_seconds ?? null, file.mimetype,
             recorded_at || localNow(), case_number || null,
             classification || 'routine', notes || null, String(req.user!.userId)
           );

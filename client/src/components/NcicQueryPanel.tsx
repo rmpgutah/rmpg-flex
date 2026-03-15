@@ -136,6 +136,17 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
 
     if (!queryText) return;
 
+    // Input validation: enforce length limits
+    if (queryText.length > 200) {
+      const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
+      setEntries(prev => [...prev, {
+        id: ++queryIdCounter, timestamp: ts, command,
+        response: 'ERROR: QUERY TOO LONG — MAXIMUM 200 CHARACTERS', hasHit: false,
+      }]);
+      playTone('error');
+      return;
+    }
+
     setLoading(true);
     const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
 
@@ -157,7 +168,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
             query: string;
           }>(`/records/ncic-query?type=person&query=${encodeURIComponent(queryText)}`);
 
-          if (data.results.length === 0) {
+          if (!data.results || data.results.length === 0) {
             response = formatNoRecord('PERSON', queryText);
           } else {
             response = data.results
@@ -166,7 +177,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
             hasHit = true;
 
             // Check for warrants — play warning tone
-            const hasWarrants = data.results.some(r => r.warrants.length > 0);
+            const hasWarrants = data.results.some(r => r.warrants?.length > 0);
             if (hasWarrants) {
               playTone('warning');
             } else {
@@ -184,7 +195,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
             query: string;
           }>(`/records/ncic-query?type=vehicle&query=${encodeURIComponent(queryText)}`);
 
-          if (data.results.length === 0) {
+          if (!data.results || data.results.length === 0) {
             response = formatNoRecord('VEHICLE', queryText);
           } else {
             response = data.results.map(v => formatVehicleResponse(v)).join('\n\n');
@@ -214,8 +225,8 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
             query: string;
           }>(`/records/ncic-query?type=warrant&query=${encodeURIComponent(queryText)}`);
 
-          response = formatWarrantResponse(data.results, queryText, data.utahResults);
-          hasHit = data.results.length > 0 || (data.utahResults || []).length > 0;
+          response = formatWarrantResponse(data.results || [], queryText, data.utahResults);
+          hasHit = (data.results || []).length > 0 || (data.utahResults || []).length > 0;
           if (hasHit) playTone('warning');
           break;
         }
@@ -268,7 +279,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
             body: JSON.stringify(body),
           });
 
-          if (!dlData.hit || dlData.subjects.length === 0) {
+          if (!dlData.hit || !dlData.subjects || dlData.subjects.length === 0) {
             response = formatNoRecord('DL SEARCH', queryText);
           } else {
             response = formatDlResponse(dlData.subjects, queryText);
@@ -283,7 +294,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
           // Parse: QO AL QAIDA  |  QO SMITH, JOHN
           const ofacBody: any = {};
           if (queryText.includes(',')) {
-            const [last, first] = queryText.split(',').map(s => s.trim());
+            const [last = '', first = ''] = queryText.split(',').map(s => s.trim());
             ofacBody.lastName = last;
             ofacBody.firstName = first;
           } else {
@@ -315,7 +326,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
           // Parse name: "LAST, FIRST" or "LAST FIRST" or just "LAST"
           const xrefBody: any = {};
           if (queryText.includes(',')) {
-            const [last, first] = queryText.split(',').map(s => s.trim());
+            const [last = '', first = ''] = queryText.split(',').map(s => s.trim());
             xrefBody.lastName = last;
             xrefBody.firstName = first;
           } else {
@@ -492,7 +503,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
           const courtBase = 'https://www.utcourts.gov/xchange/CaseSearch';
           const courtParams = new URLSearchParams();
           if (queryText.includes(',')) {
-            const [last, first] = queryText.split(',').map(s => s.trim());
+            const [last = '', first = ''] = queryText.split(',').map(s => s.trim());
             courtParams.set('lastName', last);
             if (first) courtParams.set('firstName', first);
           } else {
@@ -564,7 +575,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
 
           // Parse: QB FIRST LAST  |  QB LAST,FIRST  |  QB FIRST LAST MM/DD/YYYY
           if (queryText.includes(',')) {
-            const [last, first] = queryText.split(',').map(s => s.trim());
+            const [last = '', first = ''] = queryText.split(',').map(s => s.trim());
             bgBody.lastName = last;
             bgBody.firstName = first;
           } else {
@@ -625,7 +636,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
           // Arrest record query — JailBase county arrest records
           let arName = queryText;
           if (queryText.includes(',')) {
-            const [last, first] = queryText.split(',').map(s => s.trim());
+            const [last = '', first = ''] = queryText.split(',').map(s => s.trim());
             arName = `${first} ${last}`;
           }
 
@@ -792,6 +803,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
             onChange={e => setInput(e.target.value.toUpperCase())}
             onKeyDown={handleKeyDown}
             placeholder="QX SMITH, JOHN | QH NAME | QS NAME | QR NAME | QB NAME"
+            maxLength={210}
             spellCheck={false}
             autoComplete="off"
             disabled={loading}
@@ -873,6 +885,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
             onChange={e => setInput(e.target.value.toUpperCase())}
             onKeyDown={handleKeyDown}
             placeholder="QX SMITH, JOHN | QH NAME | QS NAME | QV PLATE | QB NAME"
+            maxLength={210}
             spellCheck={false}
             autoComplete="off"
             disabled={loading}

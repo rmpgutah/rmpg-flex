@@ -295,6 +295,7 @@ router.put('/shift-plans/:id', requireRole('admin', 'manager', 'supervisor'), (r
       WHERE sp.id = ?
     `).get(req.params.id) as any;
 
+    if (!updated) return res.status(404).json({ error: 'Shift plan not found after update' });
     res.json(parseAssignments(updated));
   } catch (error: any) {
     console.error('Update shift plan error:', error);

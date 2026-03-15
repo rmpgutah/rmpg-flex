@@ -81,7 +81,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
     setLoading(true);
     try {
       const data = await apiFetch<Announcement[]>('/admin/announcements/all');
-      setAnnouncements(data);
+      setAnnouncements(data || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load announcements');
     } finally {

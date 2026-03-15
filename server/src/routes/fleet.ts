@@ -785,7 +785,7 @@ router.post('/:id/maintenance', requireRole('admin', 'manager', 'supervisor'), (
       performed_by || null,
       performed_at || localNow(),
       next_due_date || null,
-      next_due_mileage || null,
+      next_due_mileage ?? null,
       localNow()
     );
 
@@ -1224,7 +1224,7 @@ router.post('/:id/inspections', requireRole('admin', 'manager', 'supervisor', 'o
       inspector_name,
       inspection_date,
       overall_result,
-      mileage || null,
+      mileage ?? null,
       itemsJson,
       notes || null,
       req.user!.userId,
@@ -1604,8 +1604,8 @@ router.post('/import/simply-fleet', requireRole('admin', 'manager'), (req: Reque
             f.odometer ?? null,
             f.station || null,
             f.notes || null,
-            f.distance || null,
-            f.efficiency || null,
+            f.distance ?? null,
+            f.efficiency ?? null,
             req.user!.userId,
             now,
           );
@@ -1805,7 +1805,7 @@ router.post('/dashcam-videos', requireRole('admin', 'manager'), (req: Request, r
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           vehicle_id || null, unit_id || null, title, relativePath, verifiedSize,
-          duration_seconds || null, file.mimetype,
+          duration_seconds ?? null, file.mimetype,
           recorded_at || localNow(),
           resolvedSpeed, resolvedLat, resolvedLon, resolvedAddr,
           case_number || null, classification || 'routine',

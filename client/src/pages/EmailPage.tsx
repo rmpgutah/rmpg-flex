@@ -1436,7 +1436,7 @@ export default function EmailPage() {
   }, []);
 
   const fetchFolders = useCallback(async () => {
-    try { const data = await apiFetch<EmailFolder[]>('/email/folders'); setFolders(data); } catch { /* ignore */ }
+    try { const data = await apiFetch<EmailFolder[]>('/email/folders'); setFolders(data || []); } catch { /* ignore */ }
   }, []);
 
   const fetchMessages = useCallback(async (p = 1, folder = selectedFolder, q = search) => {

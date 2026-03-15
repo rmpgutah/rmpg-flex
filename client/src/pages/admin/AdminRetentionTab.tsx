@@ -71,7 +71,7 @@ export default function AdminRetentionTab({ LoadingSpinner, error, setError }: P
     setLoading(true);
     try {
       const data = await apiFetch<RetentionPolicy[]>('/admin/retention');
-      setPolicies(data);
+      setPolicies(data || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load retention policies');
     } finally {

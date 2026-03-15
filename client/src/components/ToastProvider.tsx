@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { CheckCircle, XCircle, AlertTriangle, Info, X } from 'lucide-react';
 
@@ -64,12 +64,20 @@ interface ToastItemProps {
 const ToastItem: React.FC<ToastItemProps> = ({ toast, onDismiss }) => {
   const [progress, setProgress] = useState(100);
   const [isExiting, setIsExiting] = useState(false);
+  const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const config = TOAST_CONFIG[toast.type];
   const Icon = config.icon;
 
+  const handleDismiss = useCallback(() => {
+    setIsExiting(true);
+    if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
+    dismissTimerRef.current = setTimeout(() => {
+      onDismiss(toast.id);
+    }, 300);
+  }, [onDismiss, toast.id]);
+
   useEffect(() => {
-    const startTime = Date.now();
     const endTime = toast.createdAt + toast.duration;
 
     const updateProgress = () => {
@@ -86,15 +94,11 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, onDismiss }) => {
 
     const interval = setInterval(updateProgress, 50);
 
-    return () => clearInterval(interval);
-  }, [toast]);
-
-  const handleDismiss = () => {
-    setIsExiting(true);
-    setTimeout(() => {
-      onDismiss(toast.id);
-    }, 300);
-  };
+    return () => {
+      clearInterval(interval);
+      if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
+    };
+  }, [toast, handleDismiss]);
 
   return (
     <div

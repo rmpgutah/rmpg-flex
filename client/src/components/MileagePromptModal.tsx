@@ -19,7 +19,8 @@ export default function MileagePromptModal({
 
   useEffect(() => {
     // Auto-focus the mileage input on mount
-    setTimeout(() => inputRef.current?.focus(), 50);
+    const timer = setTimeout(() => inputRef.current?.focus(), 50);
+    return () => clearTimeout(timer);
   }, []);
 
   const handleSubmit = () => {

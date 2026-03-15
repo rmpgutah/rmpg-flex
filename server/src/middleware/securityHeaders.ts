@@ -34,7 +34,9 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
   // when Google or Esri add new sub-domains.
   res.set('Content-Security-Policy', [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://*.googleapis.com https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com",
+    // unsafe-inline is required by Google Maps JS API which injects inline scripts
+    // unsafe-eval only in dev for Vite HMR; blocked in production
+    `script-src 'self' 'unsafe-inline' ${config.isProduction ? '' : "'unsafe-eval'"} blob: https://*.googleapis.com https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com`.replace(/\s+/g, ' '),
     "style-src 'self' 'unsafe-inline' https://unpkg.com https://*.googleapis.com https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com",
     "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://unpkg.com https://*.googleapis.com https://*.gstatic.com https://*.ggpht.com https://*.google.com https://*.googleusercontent.com https://*.arcgis.com https://js.arcgis.com",
     "font-src 'self' data: https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com",

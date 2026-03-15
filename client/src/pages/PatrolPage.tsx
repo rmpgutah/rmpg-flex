@@ -270,7 +270,7 @@ const PatrolPage: React.FC = () => {
   const loadProperties = async () => {
     try {
       const data = await apiFetch<Property[]>('/records/properties');
-      setProperties(data);
+      setProperties(data || []);
     } catch (error) {
       console.error('Error loading properties:', error);
     }
@@ -299,7 +299,7 @@ const PatrolPage: React.FC = () => {
   const loadCheckpoints = async () => {
     try {
       const data = await apiFetch<Checkpoint[]>('/patrol/checkpoints');
-      setCheckpoints(data);
+      setCheckpoints(data || []);
     } catch {
       setCheckpoints([]);
     }
@@ -314,7 +314,7 @@ const PatrolPage: React.FC = () => {
       if (scanFilters.endDate) params.append('endDate', scanFilters.endDate);
 
       const data = await apiFetch<Scan[]>(`/patrol/scans?${params.toString()}`);
-      setScans(data);
+      setScans(data || []);
     } catch {
       setScans([]);
     }
@@ -323,7 +323,7 @@ const PatrolPage: React.FC = () => {
   const loadCompliance = async () => {
     try {
       const data = await apiFetch<Compliance[]>('/patrol/compliance');
-      setCompliance(data);
+      setCompliance(data || []);
     } catch {
       setCompliance([]);
     }

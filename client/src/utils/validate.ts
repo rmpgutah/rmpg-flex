@@ -42,9 +42,9 @@ export function isValidSSN(ssn: string): boolean {
   const digits = ssn.replace(/\D/g, '');
   if (digits.length !== 9) return false;
   // SSA rules: no area 000, 666, 900-999; no group 00; no serial 0000
-  const area = parseInt(digits.substring(0, 3));
-  const group = parseInt(digits.substring(3, 5));
-  const serial = parseInt(digits.substring(5, 9));
+  const area = parseInt(digits.substring(0, 3), 10);
+  const group = parseInt(digits.substring(3, 5), 10);
+  const serial = parseInt(digits.substring(5, 9), 10);
   return area > 0 && area !== 666 && area < 900 && group > 0 && serial > 0;
 }
 

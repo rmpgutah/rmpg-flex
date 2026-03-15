@@ -566,8 +566,10 @@ router.get('/recent', (req: Request, res: Response) => {
     const county = (req.query.county as string || '').trim();
     const source = (req.query.source as string || '').trim(); // 'manual', 'csv', 'api', or ''
     const statusFilter = (req.query.status as string || '').trim();
-    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string, 10) || 50));
+    const parsedPage = parseInt(req.query.page as string, 10);
+    const page = Math.max(1, isNaN(parsedPage) ? 1 : parsedPage);
+    const parsedLimit = parseInt(req.query.limit as string, 10);
+    const limit = Math.min(100, Math.max(1, isNaN(parsedLimit) ? 50 : parsedLimit));
     const offset = (page - 1) * limit;
 
     const conditions: string[] = [];
@@ -705,8 +707,8 @@ router.put('/:id/link-person', requireRole('admin', 'manager', 'officer', 'super
     if (!person) return res.status(404).json({ error: 'Person not found' });
 
     // Update arrest record with person_id
-    db.prepare('UPDATE arrest_records SET person_id = ?, updated_at = datetime(\'now\',\'localtime\') WHERE id = ?')
-      .run(person_id, id);
+    db.prepare('UPDATE arrest_records SET person_id = ?, updated_at = ? WHERE id = ?')
+      .run(person_id, localNow(), id);
 
     // Also add a cross-link if not already present
     const existing = db.prepare(
@@ -737,8 +739,8 @@ router.delete('/:id/link-person', requireRole('admin', 'manager', 'officer', 'su
     const record = db.prepare('SELECT person_id FROM arrest_records WHERE id = ?').get(id) as any;
     if (!record) return res.status(404).json({ error: 'Arrest record not found' });
 
-    db.prepare('UPDATE arrest_records SET person_id = NULL, updated_at = datetime(\'now\',\'localtime\') WHERE id = ?')
-      .run(id);
+    db.prepare('UPDATE arrest_records SET person_id = NULL, updated_at = ? WHERE id = ?')
+      .run(localNow(), id);
 
     // Remove manual cross-link
     if (record.person_id) {

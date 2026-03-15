@@ -382,7 +382,8 @@ export default function CommunicationsPage() {
   // Scroll to bottom of thread when selected or new messages arrive
   useEffect(() => {
     if (selectedThread) {
-      setTimeout(() => threadEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+      const timer = setTimeout(() => threadEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+      return () => clearTimeout(timer);
     }
   }, [selectedThread?.messages.length]);
 

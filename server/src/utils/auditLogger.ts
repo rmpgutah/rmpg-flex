@@ -121,6 +121,10 @@ export type AuditAction =
   | 'skiptracer_search'
   | 'skiptracer_config_updated'
   | 'skiptracer_config_cleared'
+  // Forensic Lab
+  | 'forensic_case_created'
+  | 'forensic_case_updated'
+  | 'forensic_case_deleted'
   // IPED Digital Forensics
   | 'iped_job_created'
   | 'iped_job_cancelled'
@@ -218,7 +222,8 @@ export type AuditEntityType =
   | 'crm_lead_activity'
   | 'crm_proposals'
   | 'crm_proposal_templates'
-  | 'lead_scrape_sources';
+  | 'lead_scrape_sources'
+  | 'forensic_case';
 
 /**
  * Log an action to the activity_log table.

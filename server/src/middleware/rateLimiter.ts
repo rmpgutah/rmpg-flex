@@ -116,6 +116,14 @@ export const passwordRateLimit = rateLimit({
   message: 'Too many password change attempts. Please try again later.',
 });
 
+// Rate limiter for webhook endpoints — prevent deploy DoS
+export const webhookRateLimit = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  maxRequests: 5,           // max 5 webhook calls per 5 min
+  keyGenerator: (req) => `webhook:${req.ip || 'unknown'}`,
+  message: 'Too many webhook requests. Please try again later.',
+});
+
 // General API rate limiter
 export const apiRateLimit = rateLimit({
   windowMs: config.security.rateLimitWindowMs,

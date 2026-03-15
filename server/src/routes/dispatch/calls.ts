@@ -252,7 +252,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         gang_related ? 1 : 0, evidence_collected ? 1 : 0, body_camera_active ? 1 : 0, photos_taken ? 1 : 0,
         trespass_issued ? 1 : 0, vehicle_pursuit ? 1 : 0, foot_pursuit ? 1 : 0,
         pso_service_type || null, pso_authorization || null, pso_requestor_name || null,
-        pso_requestor_phone || null, pso_requestor_email || null, pso_billing_code || null, createAttemptNumber || 1,
+        pso_requestor_phone || null, pso_requestor_email || null, pso_billing_code || null, createAttemptNumber ?? 1,
         process_service_type || null, process_served_to || null, process_served_address || null,
         contract_id || null, resolvedClientId,
         // created_at: use custom timestamp for historical entries, otherwise current time

@@ -679,9 +679,9 @@ router.post('/calls/:id/promote-to-incident', requireRole('admin', 'manager', 's
       call.section_id || null,
       call.zone_id || null,
       call.beat_id || null,
-      call.domestic_violence || 0,
+      call.domestic_violence ?? 0,
       call.weapons_involved || null,
-      call.injuries_reported || 0
+      call.injuries_reported ?? 0
     );
 
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(result.lastInsertRowid) || { id: result.lastInsertRowid };

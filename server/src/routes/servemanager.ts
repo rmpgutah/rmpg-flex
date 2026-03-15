@@ -90,7 +90,7 @@ function initSmTables(): void {
   `);
 }
 
-try { initSmTables(); } catch { /* DB not ready yet — will init on first request */ }
+try { initSmTables(); } catch (err) { console.error('[ServeManager] Table init failed:', err); }
 
 // ============================================================
 // Helpers
@@ -333,8 +333,10 @@ router.get('/jobs', async (req: Request, res: Response) => {
     }
 
     // Cache mode
-    const pageNum = Math.max(1, parseInt(String(page), 10));
-    const limit = Math.min(100, Math.max(1, parseInt(String(per_page), 10)));
+    const parsedPage = parseInt(String(page), 10);
+    const pageNum = Math.max(1, isNaN(parsedPage) ? 1 : parsedPage);
+    const parsedPerPage = parseInt(String(per_page), 10);
+    const limit = Math.min(100, Math.max(1, isNaN(parsedPerPage) ? 25 : parsedPerPage));
     const offset = (pageNum - 1) * limit;
 
     const conditions: string[] = [];

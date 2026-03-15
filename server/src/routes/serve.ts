@@ -64,7 +64,8 @@ router.get('/routes/:date', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Req
   try {
     const db = getDb();
     const { date } = req.params;
-    const officerId = req.query.officer_id ? Number(req.query.officer_id) : req.user!.userId;
+    const parsedOfficerId = req.query.officer_id ? Number(req.query.officer_id) : null;
+    const officerId = (parsedOfficerId != null && !isNaN(parsedOfficerId)) ? parsedOfficerId : req.user!.userId;
 
     const route = db.prepare(`
       SELECT * FROM serve_routes
@@ -253,7 +254,8 @@ router.put('/reorder', requireRole(...WRITE_ROLES), (req: Request, res: Response
 router.get('/', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const officerId = req.query.officer_id ? Number(req.query.officer_id) : req.user!.userId;
+    const parsedOid = req.query.officer_id ? Number(req.query.officer_id) : null;
+    const officerId = (parsedOid != null && !isNaN(parsedOid)) ? parsedOid : req.user!.userId;
     const date = req.query.date as string || new Date().toISOString().slice(0, 10);
     const status = req.query.status as string | undefined;
 
@@ -289,6 +291,10 @@ router.post('/', requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
       attorney_name, priority, time_window, deadline, max_attempts,
       service_instructions, notes,
     } = req.body;
+
+    if (!recipient_name || !recipient_name.trim()) {
+      return res.status(400).json({ error: 'recipient_name is required' });
+    }
 
     db.prepare(`
       INSERT INTO serve_queue (

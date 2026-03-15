@@ -874,7 +874,10 @@ router.post('/custom', requireRole('admin', 'manager'), (req: Request, res: Resp
     if (conditions.length > 0) sql += ` WHERE ${conditions.join(' AND ')}`;
     if (groupBy && allowedCols.includes(groupBy)) sql += ` GROUP BY ${q(groupBy)}`;
     if (sortBy && allowedCols.includes(sortBy)) sql += ` ORDER BY ${q(sortBy)} ${sortDir === 'asc' ? 'ASC' : 'DESC'}`;
-    sql += ` LIMIT ${Math.min(parseInt(queryLimit, 10) || 500, 2000)}`;
+    const parsedLimit = parseInt(queryLimit, 10);
+    const safeLimit = Math.min(isNaN(parsedLimit) ? 500 : parsedLimit, 2000);
+    sql += ` LIMIT ?`;
+    params.push(safeLimit);
 
     const rows = db.prepare(sql).all(...params);
     res.json({ data: rows, columns: selectedCols, count: rows.length, sql: sql.replace(/\?/g, '…') });

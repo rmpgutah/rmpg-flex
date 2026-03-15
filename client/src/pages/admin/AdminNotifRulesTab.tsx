@@ -84,7 +84,7 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
     setLoading(true);
     try {
       const data = await apiFetch<NotificationRule[]>('/admin/notification-rules');
-      setRules(data);
+      setRules(data || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load notification rules');
     } finally {

@@ -15,6 +15,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
+import { auditLog } from '../utils/auditLogger';
 import {
   getIpedConfig,
   setIpedConfigValues,
@@ -67,6 +68,7 @@ router.put('/config', requireRole('admin'), (req: Request, res: Response) => {
     if (hashSetsPath !== undefined) values.hashSetsPath = hashSetsPath;
 
     setIpedConfigValues(values);
+    auditLog(req, 'iped_config_updated', 'config', 'iped', `IPED config updated: ${Object.keys(values).join(', ')}`);
     res.json({ success: true, message: 'IPED configuration saved' });
   } catch (err: any) {
     console.error('IPED error:', err.message);
@@ -75,9 +77,10 @@ router.put('/config', requireRole('admin'), (req: Request, res: Response) => {
 });
 
 // ── DELETE /config — Clear IPED configuration ───────────────
-router.delete('/config', requireRole('admin'), (_req: Request, res: Response) => {
+router.delete('/config', requireRole('admin'), (req: Request, res: Response) => {
   try {
     clearIpedConfig();
+    auditLog(req, 'iped_config_cleared', 'config', 'iped', 'IPED configuration cleared');
     res.json({ success: true, message: 'IPED configuration cleared' });
   } catch (err: any) {
     console.error('IPED error:', err.message);
@@ -212,6 +215,7 @@ router.post('/jobs', requireRole('admin', 'manager'), async (req: Request, res: 
       });
     }
 
+    auditLog(req, 'iped_job_created', 'iped_job', jobId, `IPED ${jobType} job created for input: ${inputPath}`);
     res.json({ success: true, jobId, status: 'queued' });
   } catch (err: any) {
     console.error('IPED error:', err.message);
@@ -292,6 +296,7 @@ router.post('/jobs/:id/cancel', requireRole('admin', 'manager'), (req: Request, 
     const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
     const cancelled = cancelIpedJob(id);
+    if (cancelled) auditLog(req, 'iped_job_cancelled', 'iped_job', id, `IPED job ${id} cancelled`);
     res.json({ success: cancelled, message: cancelled ? 'Job cancelled' : 'Job not running' });
   } catch (err: any) {
     console.error('IPED error:', err.message);
@@ -300,7 +305,7 @@ router.post('/jobs/:id/cancel', requireRole('admin', 'manager'), (req: Request, 
 });
 
 // ── POST /hash/compute — Hash a single file ─────────────────
-router.post('/hash/compute', async (req: Request, res: Response) => {
+router.post('/hash/compute', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
   try {
     const { filePath, attachmentId, evidenceId } = req.body;
 
@@ -346,7 +351,7 @@ router.post('/hash/batch', requireRole('admin', 'manager'), async (req: Request,
 });
 
 // ── GET /hash/results — Query hash results ──────────────────
-router.get('/hash/results', (req: Request, res: Response) => {
+router.get('/hash/results', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const evidenceId = req.query.evidenceId ? parseInt(req.query.evidenceId as string, 10) : null;
@@ -411,6 +416,7 @@ router.post('/hash-sets/import', requireRole('admin'), (req: Request, res: Respo
     }
 
     const count = importHashSet(filePath, setName, category, hashType || 'md5');
+    auditLog(req, 'iped_hashset_imported', 'iped_hashset', setName, `Imported ${count} hashes into set "${setName}" (${category})`);
     res.json({ success: true, imported: count, setName, category });
   } catch (err: any) {
     console.error('IPED error:', err.message);
@@ -437,6 +443,7 @@ router.post('/hash-sets/import-iped', requireRole('admin'), async (req: Request,
 router.delete('/hash-sets/:name', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const removed = removeHashSet(req.params.name as string);
+    if (removed) auditLog(req, 'iped_hashset_removed', 'iped_hashset', String(req.params.name), `Hash set "${req.params.name}" removed`);
     res.json({ success: true, removed });
   } catch (err: any) {
     console.error('IPED error:', err.message);

@@ -141,7 +141,7 @@ export default function ServePage() {
     setLoading(true);
     try {
       const data = await apiFetch<ServeJob[]>(`/api/process-server?date=${selectedDate}`);
-      setJobs(data);
+      setJobs(data || []);
     } catch {
       // silently fail — user can retry
     } finally {

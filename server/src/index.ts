@@ -14,10 +14,10 @@ import { fileURLToPath } from 'url';
 import config from './config';
 import { initDatabase } from './models/database';
 import { initWebSocket, getConnectedUsers, getConnectedClientCount } from './utils/websocket';
-import { authenticateToken } from './middleware/auth';
+import { authenticateToken, requireRole } from './middleware/auth';
 import { securityHeaders } from './middleware/securityHeaders';
 import { sanitizeInput } from './middleware/sanitize';
-import { apiRateLimit } from './middleware/rateLimiter';
+import { apiRateLimit, webhookRateLimit } from './middleware/rateLimiter';
 import { liveBroadcast } from './middleware/liveBroadcast';
 import { startPatrolMonitor, stopPatrolMonitor } from './utils/patrolMonitor';
 import { startDailyReportScheduler, stopDailyReportScheduler } from './utils/dailyReportGenerator';
@@ -132,7 +132,7 @@ app.use(cors({
 }));
 
 // ─── GitHub Webhook (must come BEFORE express.json() for raw body HMAC) ──
-app.post('/api/webhook/github', express.raw({ type: 'application/json', limit: '5mb' }), (req, res) => {
+app.post('/api/webhook/github', webhookRateLimit, express.raw({ type: 'application/json', limit: '5mb' }), (req, res) => {
   const WEBHOOK_SECRET_FILE = path.resolve(__dirname, '../../.webhook-secret');
   let secret = '';
   try { secret = fs.readFileSync(WEBHOOK_SECRET_FILE, 'utf8').trim(); } catch { /* no secret file */ }
@@ -254,8 +254,8 @@ app.get('/api/health', (_req, res) => {
 });
 
 // ─── Presence Endpoint ───────────────────────────────
-// Requires auth — exposes online officer usernames/roles
-app.get('/api/presence', authenticateToken, (_req, res) => {
+// Restricted to supervisory+ roles — exposes online officer usernames/roles
+app.get('/api/presence', authenticateToken, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (_req, res) => {
   const users = getConnectedUsers();
   res.json({ users, count: users.length, connections: getConnectedClientCount() });
 });

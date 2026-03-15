@@ -23,7 +23,7 @@ router.use(authenticateToken);
 // ─── MESSAGES ─────────────────────────────────────────
 
 // POST /api/comms/messages - Send message
-router.post('/messages', (req: Request, res: Response) => {
+router.post('/messages', requireRole('admin', 'manager', 'dispatcher', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { to_user_id, channel, content, priority, subject, parent_id } = req.body;

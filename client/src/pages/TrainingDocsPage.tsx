@@ -74,7 +74,7 @@ export default function TrainingDocsPage() {
     try {
       setLoading(true);
       const data = await apiFetchCompanyDocuments(category !== 'all' ? category : undefined);
-      setDocuments(data);
+      setDocuments(data || []);
     } catch (err) {
       console.error('Failed to load documents:', err);
     } finally {

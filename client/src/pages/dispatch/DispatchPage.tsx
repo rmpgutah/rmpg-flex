@@ -1191,13 +1191,22 @@ export default function DispatchPage() {
 
   const handleAddNote = async () => {
     if (!selectedCall || !newNote.trim()) return;
+    const trimmedNote = newNote.trim();
+    if (trimmedNote.length > 2000) {
+      addToast('Note is too long (max 2000 characters)', 'error');
+      return;
+    }
+    if (trimmedNote.length < 2) {
+      addToast('Note must be at least 2 characters', 'error');
+      return;
+    }
     try {
       // Build notes array with the new note appended
       const existingNotes = selectedCall.notes || [];
       const note: CallNote = {
         id: `n-${Date.now()}`,
         author: 'Dispatch',
-        text: newNote.trim(),
+        text: trimmedNote,
         timestamp: new Date().toISOString(),
       };
       const allNotes = [...existingNotes, note];
@@ -1443,7 +1452,7 @@ export default function DispatchPage() {
       process_service_type: selectedCall.process_service_type || '',
       process_served_to: selectedCall.process_served_to || '',
       process_served_address: selectedCall.process_served_address || '',
-      process_attempts: selectedCall.process_attempts || 0,
+      process_attempts: selectedCall.process_attempts ?? 0,
       process_served_at: selectedCall.process_served_at || '',
       process_service_result: selectedCall.process_service_result || '',
     });
@@ -1918,11 +1927,11 @@ export default function DispatchPage() {
                 </div>
 
                 {/* Assigned Units */}
-                {selectedCall.assigned_units.length > 0 && (
+                {(selectedCall.assigned_units || []).length > 0 && (
                   <div className="panel-inset p-3">
                     <div className="field-label mb-2">Assigned Units</div>
                     <div className="flex flex-wrap gap-1.5">
-                      {selectedCall.assigned_units.map((unitIdStr) => {
+                      {(selectedCall.assigned_units || []).map((unitIdStr) => {
                         const unitObj = units.find((u) => String(u.id) === String(unitIdStr));
                         return (
                           <span
@@ -1960,6 +1969,7 @@ export default function DispatchPage() {
                       className="flex-1 bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-200 px-3 rounded"
                       style={{ minHeight: 44 }}
                       placeholder="Add note…"
+                      maxLength={2000}
                       value={newNote}
                       onChange={(e) => setNewNote(e.target.value)}
                       onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddNote(); } }}
@@ -2558,7 +2568,7 @@ export default function DispatchPage() {
                   const counts: Record<string, number> = {
                     persons: callPersons.length + callVehicles.length,
                     timeline: activityEntries.length,
-                    notes: selectedCall.notes.length,
+                    notes: (selectedCall.notes || []).length,
                   };
                   const count = counts[tab];
                   return (
@@ -2809,7 +2819,7 @@ export default function DispatchPage() {
                                   units={units.filter(u => u.status !== 'off_duty')}
                                   callLat={selectedCall.latitude}
                                   callLng={selectedCall.longitude}
-                                  assignedUnitIds={selectedCall.assigned_units.map(String)}
+                                  assignedUnitIds={(selectedCall.assigned_units || []).map(String)}
                                   onAssign={(unitId) => { handleAssignUnit(unitId); setShowAttachUnitDropdown(false); }}
                                   onCreateUnit={() => { setShowAttachUnitDropdown(false); setShowCreateUnitModal(true); }}
                                   onClose={() => setShowAttachUnitDropdown(false)}
@@ -2819,9 +2829,9 @@ export default function DispatchPage() {
                           </div>
                         )}
                       </div>
-                      {selectedCall.assigned_units.length > 0 ? (
+                      {(selectedCall.assigned_units || []).length > 0 ? (
                         <div className="flex flex-wrap gap-1.5 mt-1">
-                          {selectedCall.assigned_units.map((unitIdStr) => {
+                          {(selectedCall.assigned_units || []).map((unitIdStr) => {
                             const unitObj = units.find((u) => String(u.id) === String(unitIdStr));
                             const displayName = unitObj ? unitObj.call_sign : unitIdStr;
                             const statusColor = unitObj ? (
@@ -3414,7 +3424,7 @@ export default function DispatchPage() {
                           </div>
                           <div>
                             <label className="text-[9px] text-amber-400">Attempts</label>
-                            <input type="number" className="input-dark text-xs" min="0" placeholder="0" value={editData.process_attempts || 0} onChange={(e) => updateEditField('process_attempts', e.target.value)} />
+                            <input type="number" className="input-dark text-xs" min="0" placeholder="0" value={editData.process_attempts ?? 0} onChange={(e) => updateEditField('process_attempts', e.target.value ? parseInt(e.target.value, 10) : 0)} />
                           </div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -3641,7 +3651,7 @@ export default function DispatchPage() {
                     <MessageSquare className="w-3 h-3" /> Notes
                   </label>
                   <div className="space-y-1.5 mb-3 flex-1 overflow-y-auto">
-                    {selectedCall.notes.map((note) => (
+                    {(selectedCall.notes || []).map((note) => (
                       <div key={note.id} className="flex items-start gap-2 text-xs">
                         <span className="text-rmpg-400 font-mono whitespace-nowrap">{formatTime(note.timestamp)}</span>
                         <span className="text-brand-400 font-semibold whitespace-nowrap">{note.author}:</span>
@@ -3663,6 +3673,7 @@ export default function DispatchPage() {
                         className="input-dark flex-1 text-xs resize-none"
                         rows={2}
                         placeholder="Add note..."
+                        maxLength={2000}
                         spellCheck={true}
                         value={newNote}
                         onChange={(e) => setNewNote(e.target.value)}

@@ -56,8 +56,10 @@ router.get('/', (req: Request, res: Response) => {
       whereClause += ' AND w.archived_at IS NULL';
     }
 
-    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const perPageNum = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 25));
+    const parsedPage = parseInt(page as string, 10);
+    const pageNum = Math.max(1, isNaN(parsedPage) ? 1 : parsedPage);
+    const parsedPerPage = parseInt(per_page as string, 10);
+    const perPageNum = Math.min(200, Math.max(1, isNaN(parsedPerPage) ? 25 : parsedPerPage));
     const offset = (pageNum - 1) * perPageNum;
 
     const countRow = db.prepare(`

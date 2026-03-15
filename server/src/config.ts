@@ -33,15 +33,16 @@ if (!envSecret || envSecret === defaultSecret) {
   if (isProduction) {
     console.error('');
     console.error('╔═══════════════════════════════════════════════════════════╗');
-    console.error('║  CRITICAL SECURITY WARNING                               ║');
-    console.error('║  JWT_SECRET is not set or using default value!            ║');
+    console.error('║  FATAL: JWT_SECRET is not set or using default value!     ║');
+    console.error('║  A random fallback would silently destroy all sessions    ║');
+    console.error('║  and permanently invalidate TOTP secrets on restart.      ║');
+    console.error('║                                                           ║');
     console.error('║  Generate a strong secret: openssl rand -hex 64           ║');
     console.error('║  Set it in .env: JWT_SECRET=<your-secret>                 ║');
     console.error('╚═══════════════════════════════════════════════════════════╝');
     console.error('');
-    // In production, generate a random secret so the server still runs
-    // but tokens will invalidate on restart
-    jwtSecret = crypto.randomBytes(64).toString('hex');
+    // Refuse to start — a random secret destroys TOTP secrets and sessions on restart
+    process.exit(1);
   } else {
     // Development: use the default but warn
     jwtSecret = envSecret || crypto.randomBytes(64).toString('hex');
@@ -169,8 +170,10 @@ export const config = {
     ipChangeAction: (process.env.SESSION_IP_CHANGE_ACTION || 'warn') as 'invalidate' | 'reauth' | 'warn',
   },
 
-  // CORS
-  corsOrigins: (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:3000,http://localhost:4173,https://rmpgutah.us,http://rmpgutah.us,https://www.rmpgutah.us,https://crm.rmpgutah.us')
+  // CORS — localhost origins only in development; production is restricted to real domains
+  corsOrigins: (process.env.CORS_ORIGINS || (isProduction
+    ? 'https://rmpgutah.us,https://www.rmpgutah.us,https://crm.rmpgutah.us'
+    : 'http://localhost:5173,http://localhost:3000,http://localhost:4173,https://rmpgutah.us,https://www.rmpgutah.us,https://crm.rmpgutah.us'))
     .split(',')
     .map(s => s.trim()),
 

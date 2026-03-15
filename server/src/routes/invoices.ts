@@ -50,56 +50,60 @@ function recalculateInvoiceTotals(invoiceId: number | string | string[]): void {
   const db = getDb();
   const now = localNow();
 
-  // Sum line items by type
-  const items = db.prepare(`
-    SELECT line_type, COALESCE(SUM(amount), 0) as total
-    FROM invoice_line_items WHERE invoice_id = ?
-    GROUP BY line_type
-  `).all(invoiceId) as any[];
+  const recalcTx = db.transaction(() => {
+    // Sum line items by type
+    const items = db.prepare(`
+      SELECT line_type, COALESCE(SUM(amount), 0) as total
+      FROM invoice_line_items WHERE invoice_id = ?
+      GROUP BY line_type
+    `).all(invoiceId) as any[];
 
-  let subtotal = 0;
-  let discountAmount = 0;
-  let lateFeeAmount = 0;
-  for (const item of items) {
-    if (item.line_type === 'discount') {
-      discountAmount = Math.abs(item.total);
-    } else if (item.line_type === 'late_fee') {
-      lateFeeAmount = item.total;
-    } else {
-      subtotal += item.total;
+    let subtotal = 0;
+    let discountAmount = 0;
+    let lateFeeAmount = 0;
+    for (const item of items) {
+      if (item.line_type === 'discount') {
+        discountAmount = Math.abs(item.total);
+      } else if (item.line_type === 'late_fee') {
+        lateFeeAmount = item.total;
+      } else {
+        subtotal += item.total;
+      }
     }
-  }
 
-  const total = subtotal - discountAmount + lateFeeAmount;
+    const total = subtotal - discountAmount + lateFeeAmount;
 
-  // Sum payments
-  const payResult = db.prepare(
-    'SELECT COALESCE(SUM(amount), 0) as paid FROM payments WHERE invoice_id = ?'
-  ).get(invoiceId) as any;
-  const amountPaid = payResult.paid;
-  const balanceDue = Math.max(0, total - amountPaid);
+    // Sum payments
+    const payResult = db.prepare(
+      'SELECT COALESCE(SUM(amount), 0) as paid FROM payments WHERE invoice_id = ?'
+    ).get(invoiceId) as any;
+    const amountPaid = payResult.paid;
+    const balanceDue = Math.max(0, total - amountPaid);
 
-  db.prepare(`
-    UPDATE invoices
-    SET subtotal = ?, discount_amount = ?, late_fee_amount = ?,
-        total = ?, amount_paid = ?, balance_due = ?, updated_at = ?
-    WHERE id = ?
-  `).run(subtotal, discountAmount, lateFeeAmount, total, amountPaid, balanceDue, now, invoiceId);
-
-  // Update client aggregates
-  const inv = db.prepare('SELECT client_id FROM invoices WHERE id = ?').get(invoiceId) as any;
-  if (inv) {
-    const agg = db.prepare(`
-      SELECT COALESCE(SUM(total), 0) as total_invoiced,
-             COALESCE(SUM(amount_paid), 0) as total_paid,
-             COALESCE(SUM(balance_due), 0) as outstanding
-      FROM invoices WHERE client_id = ? AND status NOT IN ('void','cancelled')
-    `).get(inv.client_id) as any;
     db.prepare(`
-      UPDATE clients SET total_invoiced = ?, total_paid = ?, outstanding_balance = ?, updated_at = ?
+      UPDATE invoices
+      SET subtotal = ?, discount_amount = ?, late_fee_amount = ?,
+          total = ?, amount_paid = ?, balance_due = ?, updated_at = ?
       WHERE id = ?
-    `).run(agg.total_invoiced, agg.total_paid, agg.outstanding, now, inv.client_id);
-  }
+    `).run(subtotal, discountAmount, lateFeeAmount, total, amountPaid, balanceDue, now, invoiceId);
+
+    // Update client aggregates
+    const inv = db.prepare('SELECT client_id FROM invoices WHERE id = ?').get(invoiceId) as any;
+    if (inv) {
+      const agg = db.prepare(`
+        SELECT COALESCE(SUM(total), 0) as total_invoiced,
+               COALESCE(SUM(amount_paid), 0) as total_paid,
+               COALESCE(SUM(balance_due), 0) as outstanding
+        FROM invoices WHERE client_id = ? AND status NOT IN ('void','cancelled')
+      `).get(inv.client_id) as any;
+      db.prepare(`
+        UPDATE clients SET total_invoiced = ?, total_paid = ?, outstanding_balance = ?, updated_at = ?
+        WHERE id = ?
+      `).run(agg.total_invoiced, agg.total_paid, agg.outstanding, now, inv.client_id);
+    }
+  });
+
+  recalcTx();
 }
 
 // ─── GET /api/invoices/stats ──────────────────────────────
@@ -486,7 +490,7 @@ router.post('/:id/generate', requireRole('admin', 'manager', 'contract_manager')
           `).all(...citParams) as any[];
 
           for (const cit of citations) {
-            const amt = cit.fine_amount || 0;
+            const amt = cit.fine_amount ?? 0;
             const desc = `Citation ${cit.citation_number} — ${cit.violation_description || 'Violation'}`;
             insertItem.run(invoice.id, 'citation', desc, 1, amt, amt, 'citation', cit.id, sortOrder++, now);
             items.push({ type: 'citation', amount: amt });
@@ -497,7 +501,7 @@ router.post('/:id/generate', requireRole('admin', 'manager', 'contract_manager')
       // 6. Apply discount
       if (client.discount_percent && client.discount_percent > 0) {
         // Calculate subtotal of non-discount items so far
-        const sub = items.reduce((s, i) => s + (i.amount || 0), 0);
+        const sub = items.reduce((s, i) => s + (i.amount ?? 0), 0);
         const discountAmt = -Math.round(sub * client.discount_percent / 100 * 100) / 100;
         const desc = `Client discount (${client.discount_percent}%)`;
         insertItem.run(invoice.id, 'discount', desc, 1, discountAmt, discountAmt, null, null, sortOrder++, now);
@@ -659,8 +663,8 @@ router.post('/:id/line-items', requireRole('admin', 'manager', 'contract_manager
       return res.status(400).json({ error: 'line_type and description are required' });
     }
 
-    const qty = quantity || 1;
-    const price = unit_price || 0;
+    const qty = quantity ?? 1;
+    const price = unit_price ?? 0;
     const amount = Math.round(qty * price * 100) / 100;
 
     // Get max sort order

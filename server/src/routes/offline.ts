@@ -67,15 +67,33 @@ const SYNC_TABLES: Record<string, { columns: string; hasUpdatedAt: boolean; limi
 // Reference tables get full replacement (small datasets)
 const REFERENCE_TABLES = ['users', 'clients', 'properties'];
 
+// ─── Table access by role ────────────────────────────────────
+// PII-heavy tables (persons, vehicles) are restricted to supervisor+ roles
+const PII_TABLES = new Set(['persons', 'vehicles_records']);
+const SYNC_ALLOWED_ROLES = new Set(['admin', 'manager', 'supervisor', 'officer', 'dispatcher']);
+
 // ─── POST /sync/pull ─────────────────────────────────────────
 // Returns rows from a table, optionally filtered by updated_at > since
 router.post('/sync/pull', (req: Request, res: Response) => {
   try {
     const { table, since, limit: reqLimit } = req.body;
     const db = getDb();
+    const role = req.user?.role;
+
+    // Only field roles can sync
+    if (!role || !SYNC_ALLOWED_ROLES.has(role)) {
+      res.status(403).json({ error: 'Offline sync not available for your role' });
+      return;
+    }
 
     if (!table || !SYNC_TABLES[table]) {
       res.status(400).json({ error: `Invalid table: ${table}. Allowed: ${Object.keys(SYNC_TABLES).join(', ')}` });
+      return;
+    }
+
+    // PII-heavy tables restricted to supervisor+ roles
+    if (PII_TABLES.has(table) && !['admin', 'manager', 'supervisor'].includes(role)) {
+      res.status(403).json({ error: `Access to ${table} sync requires supervisor or higher role` });
       return;
     }
 
@@ -118,6 +136,13 @@ router.post('/sync/push', (req: Request, res: Response) => {
   try {
     const { items } = req.body; // Array of { method, endpoint, body, local_id, table_name }
     const db = getDb();
+    const role = req.user?.role;
+
+    // Only field roles can push
+    if (!role || !SYNC_ALLOWED_ROLES.has(role)) {
+      res.status(403).json({ error: 'Offline sync not available for your role' });
+      return;
+    }
 
     if (!Array.isArray(items) || items.length === 0) {
       res.status(400).json({ error: 'No items to push' });

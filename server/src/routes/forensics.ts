@@ -10,6 +10,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
+import { auditLog } from '../utils/auditLogger';
 import { computeFileHashes, computeContentFingerprint } from '../utils/ipedManager';
 import path from 'path';
 import fs from 'fs';
@@ -183,6 +184,9 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
       user.userId, user.fullName || user.username,
     );
 
+    auditLog(req, 'forensic_case_created', 'forensic_case', result.lastInsertRowid as number,
+      `Forensic case ${lab_case_number} created: ${title.trim()}`);
+
     const created = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(result.lastInsertRowid);
     if (!created) { res.status(500).json({ error: 'Failed to retrieve created forensic case' }); return; }
     res.status(201).json(created);
@@ -282,6 +286,9 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (re
       );
     }
 
+    auditLog(req, 'forensic_case_updated', 'forensic_case', existing.id,
+      `Forensic case ${existing.lab_case_number} updated${status && status !== existing.status ? ` (status: ${existing.status} → ${status})` : ''}`);
+
     const updated = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.id);
     res.json(updated);
   } catch (error: any) {
@@ -298,6 +305,8 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
     const existing = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Case not found' });
     db.prepare('DELETE FROM forensic_cases WHERE id = ?').run(req.params.id);
+    auditLog(req, 'forensic_case_deleted', 'forensic_case', (existing as any).id,
+      `Forensic case ${(existing as any).lab_case_number} deleted`);
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete forensic case error:', error);
@@ -693,9 +702,9 @@ router.post('/:id/hashes/manual', requireRole('admin', 'manager', 'supervisor', 
         created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      parseInt(req.params.id as string, 10), exhibit_id || null, file_name.trim(), fp || null, file_size || null, mime_type || null,
+      parseInt(req.params.id as string, 10), exhibit_id || null, file_name.trim(), fp || null, file_size ?? null, mime_type || null,
       md5 || null, sha1 || null, sha256 || null, sha512 || null,
-      hash_set_match ? 1 : 0, hash_set_name || null, hash_set_category || null, match_confidence || null,
+      hash_set_match ? 1 : 0, hash_set_name || null, hash_set_category || null, match_confidence ?? null,
       flagged ? 1 : 0, flag_reason || null, notes || null,
       now, now,
     );

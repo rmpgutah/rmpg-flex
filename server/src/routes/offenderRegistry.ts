@@ -53,8 +53,10 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
   try {
     const db = getDb();
     const { alert_type, severity, status = 'active', search, page = '1', limit = '50' } = req.query;
-    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 50));
+    const parsedPage = parseInt(page as string, 10);
+    const pageNum = Math.max(1, isNaN(parsedPage) ? 1 : parsedPage);
+    const parsedLimit = parseInt(limit as string, 10);
+    const limitNum = Math.min(100, Math.max(1, isNaN(parsedLimit) ? 50 : parsedLimit));
     const offset = (pageNum - 1) * limitNum;
 
     let where = 'WHERE 1=1';
@@ -175,9 +177,15 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request,
       updates.push('restricted_zones = ?');
       params.push(JSON.stringify(req.body.restricted_zones));
     }
-    params.push(req.params.id);
+    const id = parseInt(req.params.id as string, 10);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
+
+    const existing = db.prepare('SELECT id FROM offender_alerts WHERE id = ?').get(id);
+    if (!existing) return res.status(404).json({ error: 'Alert not found' });
+
+    params.push(id);
     db.prepare(`UPDATE offender_alerts SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-    res.json({ data: { id: parseInt(req.params.id as string, 10) } });
+    res.json({ data: { id } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -186,12 +194,18 @@ router.put('/:id/clear', requireRole('admin', 'manager', 'supervisor'), (req: Re
   try {
     const db = getDb();
     const now = localNow();
-    db.prepare('UPDATE offender_alerts SET status = ?, updated_at = ? WHERE id = ?').run('cleared', now, req.params.id);
+    const id = parseInt(req.params.id as string, 10);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
+
+    const existing = db.prepare('SELECT id FROM offender_alerts WHERE id = ?').get(id);
+    if (!existing) return res.status(404).json({ error: 'Alert not found' });
+
+    db.prepare('UPDATE offender_alerts SET status = ?, updated_at = ? WHERE id = ?').run('cleared', now, id);
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'clear', 'offender_alert', ?, '{}', ?, ?)`).run(req.user!.userId, req.params.id, req.ip || 'unknown', now);
+      VALUES (?, 'clear', 'offender_alert', ?, '{}', ?, ?)`).run(req.user!.userId, id, req.ip || 'unknown', now);
 
-    res.json({ data: { id: parseInt(req.params.id as string, 10), status: 'cleared' } });
+    res.json({ data: { id, status: 'cleared' } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
