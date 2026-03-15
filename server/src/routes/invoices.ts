@@ -764,10 +764,12 @@ router.post('/:id/payments', requireRole('admin', 'manager'), (req: Request, res
 
     // Auto-transition status
     const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;
-    if (updated.balance_due <= 0 && updated.status !== 'paid') {
-      db.prepare("UPDATE invoices SET status = 'paid', paid_date = ?, updated_at = ? WHERE id = ?").run(localToday(), now, req.params.id);
-    } else if (updated.amount_paid > 0 && updated.balance_due > 0 && updated.status === 'sent') {
-      db.prepare("UPDATE invoices SET status = 'partial', updated_at = ? WHERE id = ?").run(now, req.params.id);
+    if (updated) {
+      if (updated.balance_due <= 0 && updated.status !== 'paid') {
+        db.prepare("UPDATE invoices SET status = 'paid', paid_date = ?, updated_at = ? WHERE id = ?").run(localToday(), now, req.params.id);
+      } else if (updated.amount_paid > 0 && updated.balance_due > 0 && updated.status === 'sent') {
+        db.prepare("UPDATE invoices SET status = 'partial', updated_at = ? WHERE id = ?").run(now, req.params.id);
+      }
     }
 
     db.prepare(
@@ -804,10 +806,12 @@ router.delete('/:id/payments/:paymentId', requireRole('admin', 'manager'), (req:
 
     // May need to revert status from paid/partial back to sent
     const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;
-    if (updated.amount_paid <= 0 && (updated.status === 'paid' || updated.status === 'partial')) {
-      db.prepare("UPDATE invoices SET status = 'sent', paid_date = NULL, updated_at = ? WHERE id = ?").run(now, req.params.id);
-    } else if (updated.balance_due > 0 && updated.status === 'paid') {
-      db.prepare("UPDATE invoices SET status = 'partial', paid_date = NULL, updated_at = ? WHERE id = ?").run(now, req.params.id);
+    if (updated) {
+      if (updated.amount_paid <= 0 && (updated.status === 'paid' || updated.status === 'partial')) {
+        db.prepare("UPDATE invoices SET status = 'sent', paid_date = NULL, updated_at = ? WHERE id = ?").run(now, req.params.id);
+      } else if (updated.balance_due > 0 && updated.status === 'paid') {
+        db.prepare("UPDATE invoices SET status = 'partial', paid_date = NULL, updated_at = ? WHERE id = ?").run(now, req.params.id);
+      }
     }
 
     db.prepare(

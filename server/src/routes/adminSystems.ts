@@ -237,7 +237,7 @@ router.get('/health/detailed', requireRole('admin', 'manager'), (req: Request, r
     for (const table of tables) {
       try {
         const row = db.prepare(`SELECT COUNT(*) as count FROM ${table}`).get() as any;
-        tableCounts[table] = row.count;
+        tableCounts[table] = row?.count ?? 0;
       } catch {
         tableCounts[table] = 0;
       }
@@ -247,21 +247,21 @@ router.get('/health/detailed', requireRole('admin', 'manager'), (req: Request, r
     let activeSessions = 0;
     try {
       const row = db.prepare("SELECT COUNT(*) as count FROM sessions WHERE is_active = 1").get() as any;
-      activeSessions = row.count;
+      activeSessions = row?.count ?? 0;
     } catch { /* ignore */ }
 
     // Active units
     let activeUnits = 0;
     try {
       const row = db.prepare("SELECT COUNT(*) as count FROM units WHERE status != 'off_duty'").get() as any;
-      activeUnits = row.count;
+      activeUnits = row?.count ?? 0;
     } catch { /* ignore */ }
 
     // Pending calls
     let pendingCalls = 0;
     try {
       const row = db.prepare("SELECT COUNT(*) as count FROM calls_for_service WHERE status NOT IN ('closed','cancelled','archived')").get() as any;
-      pendingCalls = row.count;
+      pendingCalls = row?.count ?? 0;
     } catch { /* ignore */ }
 
     // WebSocket connected clients
@@ -272,9 +272,9 @@ router.get('/health/detailed', requireRole('admin', 'manager'), (req: Request, r
     let loginFailed = 0;
     try {
       const successRow = db.prepare("SELECT COUNT(*) as count FROM login_attempts WHERE success = 1 AND created_at >= datetime('now', '-1 day')").get() as any;
-      loginSuccessful = successRow.count;
+      loginSuccessful = successRow?.count ?? 0;
       const failRow = db.prepare("SELECT COUNT(*) as count FROM login_attempts WHERE success = 0 AND created_at >= datetime('now', '-1 day')").get() as any;
-      loginFailed = failRow.count;
+      loginFailed = failRow?.count ?? 0;
     } catch { /* ignore */ }
 
     // Recent errors from activity_log
@@ -985,15 +985,17 @@ router.delete('/departments/:id', requireRole('admin'), (req: Request, res: Resp
 
     // Check if any users are assigned to this department
     const userCount = db.prepare("SELECT COUNT(*) as count FROM users WHERE department = ?").get(existing.name) as any;
-    if (userCount.count > 0) {
-      res.status(400).json({ error: `Cannot delete department with ${userCount.count} assigned user(s)` });
+    const userCountVal = userCount?.count ?? 0;
+    if (userCountVal > 0) {
+      res.status(400).json({ error: `Cannot delete department with ${userCountVal} assigned user(s)` });
       return;
     }
 
     // Check if any child departments reference this as parent
     const childCount = db.prepare('SELECT COUNT(*) as count FROM departments WHERE parent_id = ?').get(existing.id) as any;
-    if (childCount.count > 0) {
-      res.status(400).json({ error: `Cannot delete department with ${childCount.count} child department(s)` });
+    const childCountVal = childCount?.count ?? 0;
+    if (childCountVal > 0) {
+      res.status(400).json({ error: `Cannot delete department with ${childCountVal} child department(s)` });
       return;
     }
 

@@ -321,7 +321,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
                 setState((p) => ({ ...p, unitCallSign: unit.call_sign, unitId: unit.id }));
               }
             })
-            .catch(() => {});
+            .catch((err) => { console.warn('[useGpsTracking] fetch my-unit failed:', err); });
         }
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : 'Failed to send GPS position';
@@ -828,7 +828,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibility);
-      if (wakeLock) wakeLock.release().catch(() => {});
+      if (wakeLock) wakeLock.release().catch((err: any) => { console.warn('[useGpsTracking] wake lock release failed:', err); });
     };
   }, []);
 

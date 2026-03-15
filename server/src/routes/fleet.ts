@@ -663,6 +663,7 @@ router.post('/:id/archive', requireRole('admin', 'manager'), (req: Request, res:
       req.user!.userId, vehicle.id, `Archived fleet vehicle: ${vehicle.vehicle_number}`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT fv.*, u.call_sign AS assigned_unit_call_sign FROM fleet_vehicles fv LEFT JOIN units u ON fv.assigned_unit_id = u.id WHERE fv.id = ?').get(vehicle.id) as any;
+    if (!updated) { res.status(404).json({ error: 'Vehicle not found after update' }); return; }
     res.json({ ...updated, equipment: safeParseJson(updated.equipment, []) });
   } catch (error: any) {
     console.error('Archive fleet vehicle error:', error);
@@ -685,6 +686,7 @@ router.post('/:id/unarchive', requireRole('admin', 'manager'), (req: Request, re
       req.user!.userId, vehicle.id, `Unarchived fleet vehicle: ${vehicle.vehicle_number}`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT fv.*, u.call_sign AS assigned_unit_call_sign FROM fleet_vehicles fv LEFT JOIN units u ON fv.assigned_unit_id = u.id WHERE fv.id = ?').get(vehicle.id) as any;
+    if (!updated) { res.status(404).json({ error: 'Vehicle not found after update' }); return; }
     res.json({ ...updated, equipment: safeParseJson(updated.equipment, []) });
   } catch (error: any) {
     console.error('Unarchive fleet vehicle error:', error);
@@ -1282,6 +1284,7 @@ router.put('/inspections/:id', requireRole('admin', 'manager', 'supervisor'), (r
     }
 
     const updated = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(req.params.id) as any;
+    if (!updated) { res.status(404).json({ error: 'Inspection not found after update' }); return; }
     res.json({ ...updated, items: safeParseJson(updated.items, []) });
   } catch (error: any) {
     console.error('Update inspection error:', error);
@@ -1316,6 +1319,7 @@ router.post('/inspections/:id/archive', requireRole('admin', 'manager'), (req: R
     const now = localNow();
     db.prepare('UPDATE fleet_inspections SET archived_at = ? WHERE id = ?').run(now, record.id);
     const updated = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(record.id) as any;
+    if (!updated) { res.status(404).json({ error: 'Inspection not found after update' }); return; }
     res.json({ ...updated, items: safeParseJson(updated.items, []) });
   } catch (error: any) {
     console.error('Archive inspection error:', error);
@@ -1332,6 +1336,7 @@ router.post('/inspections/:id/unarchive', requireRole('admin', 'manager'), (req:
     if (!record.archived_at) { res.status(400).json({ error: 'Not archived' }); return; }
     db.prepare('UPDATE fleet_inspections SET archived_at = NULL WHERE id = ?').run(record.id);
     const updated = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(record.id) as any;
+    if (!updated) { res.status(404).json({ error: 'Inspection not found after update' }); return; }
     res.json({ ...updated, items: safeParseJson(updated.items, []) });
   } catch (error: any) {
     console.error('Unarchive inspection error:', error);

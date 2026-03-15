@@ -78,9 +78,9 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
     if (!document.fullscreenElement) {
-      containerRef.current.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
+      containerRef.current.requestFullscreen().then(() => setIsFullscreen(true)).catch((err) => { console.warn('[VideoPlayer] enter fullscreen failed:', err); });
     } else {
-      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
+      document.exitFullscreen().then(() => setIsFullscreen(false)).catch((err) => { console.warn('[VideoPlayer] exit fullscreen failed:', err); });
     }
   };
 

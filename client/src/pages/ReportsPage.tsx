@@ -650,7 +650,7 @@ function PatrolTrackingCard() {
           setUnits(res.map((u: any) => ({ id: u.id, call_sign: u.call_sign || `Unit ${u.id}` })));
         }
       })
-      .catch(() => {});
+      .catch((err) => { console.warn('[ReportsPage] fetch units failed:', err); });
   }, []);
 
   const handleGenerate = async () => {

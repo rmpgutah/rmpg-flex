@@ -163,7 +163,7 @@ router.get('/dashboard', (req: Request, res: Response) => {
       const smTotal = db.prepare(`SELECT COUNT(*) as count FROM sm_jobs`).get() as any;
       const smPending = db.prepare(`SELECT COUNT(*) as count FROM sm_jobs WHERE status IN ('pending', 'assigned', 'in_progress')`).get() as any;
       const smCompleted = db.prepare(`SELECT COUNT(*) as count FROM sm_jobs WHERE status IN ('completed', 'served')`).get() as any;
-      smStats = { totalJobs: smTotal.count, pendingJobs: smPending.count, completedJobs: smCompleted.count };
+      smStats = { totalJobs: smTotal?.count ?? 0, pendingJobs: smPending?.count ?? 0, completedJobs: smCompleted?.count ?? 0 };
     } catch { /* sm_jobs table may not exist */ }
 
     // PSO avg response time (separate from general)

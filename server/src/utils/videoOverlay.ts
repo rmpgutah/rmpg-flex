@@ -322,8 +322,9 @@ export async function reprocessPendingOverlays(): Promise<void> {
     }
   }
 
-  // Dash cam videos
-  const pendingDashcam = db.prepare(`
+  // Dash cam videos — guard against missing table (created by dashcamVideos route init)
+  const dashcamTableExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='dashcam_videos'").get();
+  const pendingDashcam: any[] = dashcamTableExists ? db.prepare(`
     SELECT v.id, v.file_path, v.recorded_at, v.speed_mph, v.latitude, v.longitude, v.address,
            fv.vehicle_number, fv.year, fv.make, fv.model,
            un.call_sign
@@ -333,7 +334,7 @@ export async function reprocessPendingOverlays(): Promise<void> {
     WHERE v.overlay_status IN ('pending', 'error')
     ORDER BY v.id DESC
     LIMIT ?
-  `).all(REPROCESS_BATCH_SIZE) as any[];
+  `).all(REPROCESS_BATCH_SIZE) as any[] : [];
 
   if (pendingDashcam.length > 0) {
     console.log(`[Video Overlay] Reprocessing ${pendingDashcam.length} pending dashcam video(s)...`);

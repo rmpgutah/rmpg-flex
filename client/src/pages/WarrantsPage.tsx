@@ -603,7 +603,7 @@ export default function WarrantsPage() {
   useEffect(() => {
     apiFetch<{ data: ActiveWarrantHit[] }>('/warrants/watch/active')
       .then(res => setWatchActiveHits(res.data || []))
-      .catch(() => {});
+      .catch((err) => { console.warn('[WarrantsPage] fetch active warrant hits failed:', err); });
   }, []);
 
   // Fetch full watch data when switching to watch or history tab
@@ -617,7 +617,7 @@ export default function WarrantsPage() {
     setCoverageLoading(true);
     apiFetch<{ data: ScraperSource[] }>('/warrants/scraped/status')
       .then(res => setCoverageSources(res.data || []))
-      .catch(() => {})
+      .catch((err) => { console.warn('[WarrantsPage] fetch scraper coverage status failed:', err); })
       .finally(() => setCoverageLoading(false));
   }, [activeTab]);
 

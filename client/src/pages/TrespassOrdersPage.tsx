@@ -100,7 +100,7 @@ export default function TrespassOrdersPage() {
   // Fetch properties for dropdown
   useEffect(() => {
     let cancelled = false;
-    apiFetch<any[]>('/records/properties').then(r => { if (!cancelled) setProperties(Array.isArray(r) ? r : []); }).catch(() => {});
+    apiFetch<any[]>('/records/properties').then(r => { if (!cancelled) setProperties(Array.isArray(r) ? r : []); }).catch((err) => { console.warn('[TrespassOrdersPage] fetch properties failed:', err); });
     return () => { cancelled = true; };
   }, []);
 

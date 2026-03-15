@@ -507,15 +507,15 @@ export default function DispatchPage() {
         })
         .filter(Boolean);
       setDispositionCodes(disps);
-    }).catch(() => {});
+    }).catch((err) => { console.warn('[DispatchPage] fetch disposition codes failed:', err); });
     // Fetch clients list for client selector
     apiFetch<any[]>('/admin/clients')
       .then((data) => setClientsList((Array.isArray(data) ? data : []).filter((c: any) => c.status === 'active').map((c: any) => ({ id: String(c.id), name: c.name, contact_name: c.contact_name || '', contact_phone: c.contact_phone || '', address: c.address || '' }))))
-      .catch(() => {});
+      .catch((err) => { console.warn('[DispatchPage] fetch clients list failed:', err); });
     // Fetch properties list (non-archived) for property selector
     apiFetch<any[]>('/records/properties')
       .then((data) => setPropertiesList((Array.isArray(data) ? data : []).map((p: any) => ({ id: String(p.id), name: p.name }))))
-      .catch(() => {});
+      .catch((err) => { console.warn('[DispatchPage] fetch properties list failed:', err); });
   }, [fetchData]);
 
   // Live sync — auto-refresh when any device modifies dispatch data (silent to avoid unmounting UI)
@@ -1570,7 +1570,7 @@ export default function DispatchPage() {
         method: 'PUT',
         body: JSON.stringify({ details: editTimelineText.trim() }),
       });
-      setActivityEntries((prev) => prev.map((e) => e.id == entryId ? { ...e, details: editTimelineText.trim() } : e));
+      setActivityEntries((prev) => prev.map((e) => e.id === entryId ? { ...e, details: editTimelineText.trim() } : e));
       setEditingTimelineId(null);
       setEditTimelineText('');
     } catch (err) {

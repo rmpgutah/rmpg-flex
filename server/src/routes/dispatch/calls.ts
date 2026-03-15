@@ -263,6 +263,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       );
 
       const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(result.lastInsertRowid) as any;
+      if (!call) throw new Error('Failed to retrieve newly created call');
 
       // Log activity
       const isHistorical = !!customCreatedAt;

@@ -245,7 +245,7 @@ export default function CrmPage() {
       if (cancelled) return;
       const list = Array.isArray(r) ? r : r?.data ?? [];
       setOfficers(list.map((u: any) => ({ id: String(u.id), full_name: u.full_name || `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username })));
-    }).catch(() => {})]).finally(() => { if (!cancelled) setIsLoading(false); });
+    }).catch((err) => { console.warn('[CrmPage] fetch personnel failed:', err); })]).finally(() => { if (!cancelled) setIsLoading(false); });
     return () => { cancelled = true; };
   }, [fetchDashboard, fetchClients, fetchTasks]);
 

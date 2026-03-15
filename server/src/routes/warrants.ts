@@ -206,7 +206,7 @@ router.get('/utah/count', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare('SELECT COUNT(*) as count FROM utah_warrants').get() as any;
-    res.json({ count: row.count });
+    res.json({ count: row?.count ?? 0 });
   } catch {
     res.json({ count: 0 });
   }

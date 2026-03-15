@@ -287,11 +287,11 @@ export default function IncidentsPage() {
         })
         .filter(Boolean);
       setDispositionCodes(disps);
-    }).catch(() => {});
+    }).catch((err) => { console.warn('[IncidentsPage] fetch disposition codes failed:', err); });
     // Fetch clients list for client selector
     apiFetch<any[]>('/admin/clients')
       .then((data) => setClientsList((Array.isArray(data) ? data : []).filter((c: any) => c.status === 'active').map((c: any) => ({ id: String(c.id), name: c.name }))))
-      .catch(() => {});
+      .catch((err) => { console.warn('[IncidentsPage] fetch clients list failed:', err); });
   }, [fetchIncidents]);
 
   // Live sync — auto-refresh when any device modifies incidents (silent to avoid unmounting UI)

@@ -73,9 +73,9 @@ router.get('/stats', (req: Request, res: Response) => {
         },
         by_type: typeMap,
         total: Object.values(statusMap).reduce((a, b) => a + b, 0),
-        fines_issued: finesIssued.total,
-        fines_collected: finesCollected.total,
-        today_count: todayCount.count,
+        fines_issued: finesIssued?.total ?? 0,
+        fines_collected: finesCollected?.total ?? 0,
+        today_count: todayCount?.count ?? 0,
       },
     });
   } catch (error: any) {
@@ -200,8 +200,8 @@ router.get('/', (req: Request, res: Response) => {
       pagination: {
         page: pageNum,
         limit: limitNum,
-        total: countRow.total,
-        totalPages: Math.ceil(countRow.total / limitNum),
+        total: countRow?.total ?? 0,
+        totalPages: Math.ceil((countRow?.total ?? 0) / limitNum),
       },
     });
   } catch (error: any) {

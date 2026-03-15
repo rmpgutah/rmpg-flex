@@ -328,7 +328,8 @@ router.post('/:id/exhibits', (req: Request, res: Response) => {
     if (!description?.trim()) return res.status(400).json({ error: 'Description is required' });
 
     // Auto-generate exhibit number (A, B, C, ...)
-    const count = (db.prepare('SELECT COUNT(*) as c FROM forensic_exhibits WHERE forensic_case_id = ?').get(req.params.id) as any).c;
+    const countRow = db.prepare('SELECT COUNT(*) as c FROM forensic_exhibits WHERE forensic_case_id = ?').get(req.params.id) as any;
+    const count = countRow?.c ?? 0;
     const exhibit_number = String.fromCharCode(65 + count); // A=65
 
     const now = localNow();
@@ -1007,6 +1008,7 @@ router.put('/:id/links/:linkId', (req: Request, res: Response) => {
     }
 
     const updated = db.prepare('SELECT * FROM forensic_case_links WHERE id = ?').get(linkId) as any;
+    if (!updated) { res.status(404).json({ error: 'Link not found after update' }); return; }
     res.json({ ...updated, resolved: resolveLinkedRecord(updated.linked_type, updated.linked_id) });
   } catch (error: any) {
     console.error('Update link error:', error);
