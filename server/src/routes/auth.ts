@@ -868,7 +868,7 @@ router.put('/profile', authenticateToken, (req: Request, res: Response) => {
       });
     } catch { /* never break the response */ }
 
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Update profile error:', error);
     res.status(500).json({ error: 'Internal server error' });

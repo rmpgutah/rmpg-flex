@@ -98,7 +98,7 @@ router.post('/calls/:id/dispatch', requireRole('admin', 'manager', 'supervisor',
       console.error('[Dispatch] Officer notification failed (non-fatal):', notifErr.message);
     }
 
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Dispatch error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -191,7 +191,7 @@ router.post('/calls/:id/assign-unit', requireRole('admin', 'manager', 'superviso
     `).get(unit_id);
     if (unitData) broadcastUnitUpdate({ action: 'unit_status_changed', unit: unitData });
 
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Assign unit error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -265,7 +265,7 @@ router.post('/calls/:id/unassign-unit', requireRole('admin', 'manager', 'supervi
     `).get(unit_id);
     if (unassignedUnit) broadcastUnitUpdate({ action: 'unit_status_changed', unit: unassignedUnit });
 
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Unassign unit error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -463,7 +463,7 @@ router.post('/calls/:id/status', requireRole('admin', 'manager', 'supervisor', '
       }
     }
 
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Status update error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -559,7 +559,7 @@ router.post('/calls/:id/revert-status', requireRole('admin', 'manager', 'supervi
       if (unitData) broadcastUnitUpdate({ action: 'unit_status_changed', unit: unitData });
     }
 
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Revert status error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -601,7 +601,7 @@ router.post('/calls/:id/hold', requireRole('admin', 'manager', 'supervisor', 'di
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
     broadcastDispatchUpdate({ action: 'call_status_changed', call: updated, status: 'on_hold' });
 
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Hold call error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -641,7 +641,7 @@ router.post('/calls/:id/resume', requireRole('admin', 'manager', 'supervisor', '
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
     broadcastDispatchUpdate({ action: 'call_status_changed', call: updated, status: restoreStatus });
 
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Resume call error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -730,7 +730,7 @@ router.post('/calls/:id/le-notification', requireRole('admin', 'manager', 'super
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id);
     broadcastDispatchUpdate({ action: 'call_updated', call: updated });
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('LE notification error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -839,7 +839,7 @@ router.put('/calls/:id/persons/:linkId', requireRole('admin', 'manager', 'superv
       LEFT JOIN users u ON cp.added_by = u.id
       WHERE cp.id = ?
     `).get(link.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Update call person error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -981,7 +981,7 @@ router.put('/calls/:id/vehicles/:linkId', requireRole('admin', 'manager', 'super
       LEFT JOIN users u ON cv.added_by = u.id
       WHERE cv.id = ?
     `).get(link.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Update call vehicle error:', error);
     res.status(500).json({ error: 'Internal server error' });

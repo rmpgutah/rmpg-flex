@@ -83,13 +83,14 @@ router.get('/', (req: Request, res: Response) => {
       LIMIT ? OFFSET ?
     `).all(...params, perPageNum, offset);
 
+    const total = countRow?.total ?? 0;
     res.json({
       data: warrants,
       pagination: {
         page: pageNum,
         per_page: perPageNum,
-        total: countRow.total,
-        totalPages: Math.ceil(countRow.total / perPageNum),
+        total,
+        totalPages: perPageNum > 0 ? Math.ceil(total / perPageNum) : 0,
       },
     });
   } catch (error: any) {
@@ -604,7 +605,7 @@ router.put('/:id', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), 
       req.ip || 'unknown',
     );
 
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Update warrant error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -689,7 +690,7 @@ router.put('/:id/serve', requireRole('admin', 'manager', 'supervisor', 'officer'
       'warrant', updated.id, 'normal', 'warrant.served', req.user!.userId,
     );
 
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Serve warrant error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -742,7 +743,7 @@ router.post('/:id/archive', requireRole('admin', 'manager', 'supervisor'), (req:
       FROM warrants w LEFT JOIN persons p ON w.subject_person_id = p.id
       LEFT JOIN users u ON w.entered_by = u.id WHERE w.id = ?
     `).get(warrant.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Archive warrant error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -769,7 +770,7 @@ router.post('/:id/unarchive', requireRole('admin', 'manager', 'supervisor'), (re
       FROM warrants w LEFT JOIN persons p ON w.subject_person_id = p.id
       LEFT JOIN users u ON w.entered_by = u.id WHERE w.id = ?
     `).get(warrant.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Unarchive warrant error:', error);
     res.status(500).json({ error: 'Internal server error' });

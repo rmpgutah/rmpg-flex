@@ -107,7 +107,7 @@ router.put('/', (req: Request, res: Response) => {
     db.prepare(`UPDATE user_preferences SET ${setClauses.join(', ')} WHERE user_id = ?`).run(...values);
 
     const updated = db.prepare('SELECT * FROM user_preferences WHERE user_id = ?').get(userId);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('[UserPreferences] PUT error:', error.message);
     res.status(500).json({ error: 'Internal server error' });

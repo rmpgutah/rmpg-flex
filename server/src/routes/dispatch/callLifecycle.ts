@@ -115,7 +115,7 @@ router.post('/calls/:id/archive', requireRole('admin', 'manager', 'dispatcher'),
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
     broadcastDispatchUpdate({ action: 'call_archived', call: updated });
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Archive call error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -148,7 +148,7 @@ router.post('/calls/:id/unarchive', requireRole('admin', 'manager', 'dispatcher'
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
     broadcastDispatchUpdate({ action: 'call_unarchived', call: updated });
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Unarchive call error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -319,7 +319,7 @@ router.put('/calls/:id/timeline/:entryId', requireRole('admin', 'manager', 'supe
     db.prepare(`UPDATE activity_log SET ${updates.join(', ')} WHERE id = ?`).run(...params);
 
     const updated = db.prepare('SELECT al.*, u.full_name as user_name FROM activity_log al LEFT JOIN users u ON al.user_id = u.id WHERE al.id = ?').get(entry.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Update timeline entry error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -547,7 +547,7 @@ router.put('/calls/:id/mileage', requireRole('admin', 'manager', 'dispatcher', '
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id);
     broadcastDispatchUpdate({ action: 'call_updated', call: updated });
 
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Mileage update error:', error);
     res.status(500).json({ error: 'Internal server error' });

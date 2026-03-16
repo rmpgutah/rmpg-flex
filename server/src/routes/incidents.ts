@@ -501,7 +501,7 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (re
     `).run(req.user!.userId, req.params.id, `Updated incident ${incident.incident_number}`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Update incident error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -563,7 +563,7 @@ router.post('/:id/archive', requireRole('admin', 'manager', 'supervisor'), (req:
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'incident_archived', 'incident', ?, ?, ?)`).run(req.user!.userId, incident.id, `Archived ${incident.incident_number}`, req.ip || 'unknown');
     const updated = db.prepare('SELECT * FROM incidents WHERE id = ?').get(incident.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Archive incident error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -581,7 +581,7 @@ router.post('/:id/unarchive', requireRole('admin', 'manager', 'supervisor'), (re
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'incident_unarchived', 'incident', ?, ?, ?)`).run(req.user!.userId, incident.id, `Restored ${incident.incident_number} from archive`, req.ip || 'unknown');
     const updated = db.prepare('SELECT * FROM incidents WHERE id = ?').get(incident.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Unarchive incident error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -618,7 +618,7 @@ router.put('/:id/submit', requireRole('admin', 'manager', 'supervisor', 'officer
     `).run(req.user!.userId, incident.id, `Submitted ${incident.incident_number} for review`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT * FROM incidents WHERE id = ?').get(incident.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Submit incident error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -653,7 +653,7 @@ router.put('/:id/approve', requireRole('admin', 'manager', 'supervisor'), (req: 
     `).run(req.user!.userId, incident.id, `Approved ${incident.incident_number}`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT * FROM incidents WHERE id = ?').get(incident.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Approve incident error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -688,7 +688,7 @@ router.put('/:id/return', requireRole('admin', 'manager', 'supervisor'), (req: R
     `).run(req.user!.userId, incident.id, `Returned ${incident.incident_number}: ${comments || 'No comments'}`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT * FROM incidents WHERE id = ?').get(incident.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Return incident error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -792,7 +792,7 @@ router.put('/:id/persons/:personId', requireRole('admin', 'manager', 'supervisor
       WHERE ip.id = ?
     `).get(link.id);
 
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Update person link error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -931,7 +931,7 @@ router.put('/:id/vehicles/:vehicleId', requireRole('admin', 'manager', 'supervis
       WHERE iv.id = ?
     `).get(link.id);
 
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Update vehicle link error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -1182,7 +1182,7 @@ router.put('/:incidentId/supplements/:supId', requireRole('admin', 'manager', 's
       WHERE sr.id = ?
     `).get(req.params.supId);
 
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Update supplement error:', error);
     res.status(500).json({ error: 'Internal server error' });

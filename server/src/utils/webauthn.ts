@@ -74,12 +74,18 @@ function getCredentialById(credentialId: string): (WebAuthnCredential & { userna
 // ── Pending challenge storage (in-memory, short-lived) ────
 // Maps challenge → { userId, expires }
 const pendingChallenges = new Map<string, { userId: number; expires: number }>();
+const MAX_PENDING_CHALLENGES = 1000;
 
 function storePendingChallenge(challenge: string, userId: number): void {
   // Clean expired entries
   const now = Date.now();
   for (const [key, val] of pendingChallenges) {
     if (val.expires < now) pendingChallenges.delete(key);
+  }
+  // Enforce size cap to prevent unbounded memory growth
+  if (pendingChallenges.size >= MAX_PENDING_CHALLENGES) {
+    const oldest = [...pendingChallenges.entries()].sort((a, b) => a[1].expires - b[1].expires)[0];
+    if (oldest) pendingChallenges.delete(oldest[0]);
   }
   // Store with 5-minute expiry
   pendingChallenges.set(challenge, { userId, expires: now + 5 * 60 * 1000 });

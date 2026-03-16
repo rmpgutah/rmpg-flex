@@ -685,7 +685,7 @@ router.put('/calls/:id', requireRole('admin', 'manager', 'supervisor', 'dispatch
 
     broadcastDispatchUpdate({ action: 'call_updated', call: updated });
 
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Update call error:', error);
     res.status(500).json({ error: 'Internal server error' });

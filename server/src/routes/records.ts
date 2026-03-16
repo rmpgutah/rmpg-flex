@@ -551,7 +551,7 @@ router.put('/persons/:id', requireRole('admin', 'manager', 'supervisor', 'office
     `).run(req.user!.userId, req.params.id, `Updated person record: ${person.first_name} ${person.last_name}`, req.ip || 'unknown');
 
     const updated = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Update person error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -622,7 +622,7 @@ router.post('/persons/:id/screen-ofac', requireRole('admin', 'manager', 'supervi
     screenPersonOfac(person.id, person.first_name, person.last_name);
 
     const updated = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('OFAC re-screen error:', error);
     res.status(500).json({ error: 'OFAC re-screen failed' });
@@ -915,7 +915,7 @@ router.put('/vehicles/:id', requireRole('admin', 'manager', 'supervisor', 'offic
     `).run(req.user!.userId, req.params.id, `Updated vehicle: ${vehicle.plate_number || 'No plate'} ${vehicle.make || ''} ${vehicle.model || ''}`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Update vehicle error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -1313,7 +1313,7 @@ router.put('/evidence/:id', requireRole('admin', 'manager', 'supervisor', 'offic
       LEFT JOIN users u ON e.collected_by = u.id
       WHERE e.id = ?
     `).get(req.params.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Update evidence error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -1361,7 +1361,7 @@ router.post('/evidence/:id/archive', requireRole('admin', 'manager', 'supervisor
       req.user!.userId, evidence.id, `Archived evidence: ${evidence.description || 'ID ' + evidence.id}`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT * FROM evidence WHERE id = ?').get(evidence.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Archive evidence error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -1383,7 +1383,7 @@ router.post('/evidence/:id/unarchive', requireRole('admin', 'manager', 'supervis
       req.user!.userId, evidence.id, `Unarchived evidence: ${evidence.description || 'ID ' + evidence.id}`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT * FROM evidence WHERE id = ?').get(evidence.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Unarchive evidence error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -1591,7 +1591,7 @@ router.put('/properties/:id', requireRole('admin', 'manager', 'supervisor', 'off
       LEFT JOIN clients c ON p.client_id = c.id
       WHERE p.id = ?
     `).get(req.params.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Update property error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -2069,7 +2069,7 @@ router.put('/criminal-history/:id', requireRole('admin', 'manager', 'supervisor'
     );
 
     const updated = db.prepare('SELECT * FROM criminal_history WHERE id = ?').get(req.params.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Update criminal history error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -2223,7 +2223,7 @@ router.put('/client-persons/:id', requireRole('admin', 'manager', 'supervisor', 
     );
 
     const updated = db.prepare('SELECT * FROM client_persons WHERE id = ?').get(req.params.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Update client-person link error:', error);
     res.status(500).json({ error: 'Internal server error' });

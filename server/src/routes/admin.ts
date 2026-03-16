@@ -167,7 +167,7 @@ router.put('/clients/:id', (req: Request, res: Response) => {
     `).run(req.user!.userId, req.params.id, `Updated client: ${client.name}`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT * FROM clients WHERE id = ?').get(req.params.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Update client error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -222,7 +222,7 @@ router.post('/clients/:id/archive', (req: Request, res: Response) => {
       req.user!.userId, client.id, `Archived client: ${client.name}`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT * FROM clients WHERE id = ?').get(client.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Archive client error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -244,7 +244,7 @@ router.post('/clients/:id/unarchive', (req: Request, res: Response) => {
       req.user!.userId, client.id, `Unarchived client: ${client.name}`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT * FROM clients WHERE id = ?').get(client.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Unarchive client error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -336,7 +336,7 @@ router.put('/call-templates/:id', (req: Request, res: Response) => {
     }
 
     const updated = db.prepare('SELECT * FROM call_templates WHERE id = ?').get(req.params.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Update call template error:', error);
     res.status(500).json({ error: 'Internal server error' });

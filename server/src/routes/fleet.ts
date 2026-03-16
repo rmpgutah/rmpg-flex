@@ -852,7 +852,7 @@ router.put('/maintenance/:id', requireRole('admin', 'manager', 'supervisor'), (r
     }
 
     const updated = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(req.params.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Update maintenance error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -886,7 +886,7 @@ router.post('/maintenance/:id/archive', requireRole('admin', 'manager'), (req: R
     const now = localNow();
     db.prepare('UPDATE fleet_maintenance SET archived_at = ? WHERE id = ?').run(now, record.id);
     const updated = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(record.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Archive maintenance error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -902,7 +902,7 @@ router.post('/maintenance/:id/unarchive', requireRole('admin', 'manager'), (req:
     if (!record.archived_at) { res.status(400).json({ error: 'Not archived' }); return; }
     db.prepare('UPDATE fleet_maintenance SET archived_at = NULL WHERE id = ?').run(record.id);
     const updated = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(record.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Unarchive maintenance error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -1076,7 +1076,7 @@ router.put('/fuel/:id', requireRole('admin', 'manager', 'supervisor', 'officer')
     }
 
     const updated = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(req.params.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Update fuel log error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -1110,7 +1110,7 @@ router.post('/fuel/:id/archive', requireRole('admin', 'manager'), (req: Request,
     const now = localNow();
     db.prepare('UPDATE fleet_fuel_logs SET archived_at = ? WHERE id = ?').run(now, record.id);
     const updated = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(record.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Archive fuel log error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -1126,7 +1126,7 @@ router.post('/fuel/:id/unarchive', requireRole('admin', 'manager'), (req: Reques
     if (!record.archived_at) { res.status(400).json({ error: 'Not archived' }); return; }
     db.prepare('UPDATE fleet_fuel_logs SET archived_at = NULL WHERE id = ?').run(record.id);
     const updated = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(record.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Unarchive fuel log error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -1996,7 +1996,7 @@ router.put('/dashcam-videos/:id', requireRole('admin'), (req: Request, res: Resp
       WHERE v.id = ?
     `).get(req.params.id);
 
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Update dashcam video error:', error);
     res.status(500).json({ error: 'Internal server error' });

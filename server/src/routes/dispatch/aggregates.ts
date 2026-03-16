@@ -425,7 +425,7 @@ router.get('/safety-screen', requireRole('admin', 'manager', 'supervisor', 'offi
         SELECT * FROM persons
         WHERE (first_name LIKE ? AND last_name LIKE ?)
            OR (first_name LIKE ? AND last_name LIKE ?)
-           OR (first_name || ' ' || last_name LIKE ?)
+           OR ((first_name || ' ' || last_name) LIKE ?)
         LIMIT 10
       `).all(
         `%${parts[0]}%`, `%${parts[1]}%`,

@@ -157,7 +157,7 @@ router.put('/checkpoints/:id', requireRole('admin', 'manager', 'supervisor'), (r
       WHERE pc.id = ?
     `).get(id);
 
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error) {
     console.error('Error updating checkpoint:', error);
     res.status(500).json({ error: 'Failed to update checkpoint' });
@@ -212,7 +212,7 @@ router.post('/checkpoints/:id/archive', requireRole('admin', 'manager', 'supervi
       req.user!.userId, checkpoint.id, `Archived checkpoint: ${checkpoint.name}`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT pc.*, p.name as property_name FROM patrol_checkpoints pc LEFT JOIN properties p ON pc.property_id = p.id WHERE pc.id = ?').get(checkpoint.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Archive checkpoint error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -234,7 +234,7 @@ router.post('/checkpoints/:id/unarchive', requireRole('admin', 'manager', 'super
       req.user!.userId, checkpoint.id, `Unarchived checkpoint: ${checkpoint.name}`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT pc.*, p.name as property_name FROM patrol_checkpoints pc LEFT JOIN properties p ON pc.property_id = p.id WHERE pc.id = ?').get(checkpoint.id);
-    res.json(updated);
+    res.json(updated ?? null);
   } catch (error: any) {
     console.error('Unarchive checkpoint error:', error);
     res.status(500).json({ error: 'Internal server error' });
