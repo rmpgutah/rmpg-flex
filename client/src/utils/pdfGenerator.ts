@@ -966,20 +966,24 @@ export function addFormattedText(doc: jsPDF, text: string, x: number, y: number,
         charIdx = i;
 
         // For lines without formatting markers, use justified word spacing
+        // Only justify if enough words exist and spacing won't be absurdly wide
         if (!hasMarkers(lineSeg) && !isLastLine && wrappedLine.trim().length > 0) {
           const words = wrappedLine.split(/\s+/).filter(w => w.length > 0);
           if (words.length > 1) {
             doc.setFont('courier', 'normal'); doc.setFontSize(fontSize); doc.setTextColor(...COLOR.TEXT_PRIMARY);
             const textWidth = doc.getTextWidth(words.join(''));
             const extraSpace = (maxWidth - textWidth) / (words.length - 1);
-            let cx = x;
-            for (let wi = 0; wi < words.length; wi++) {
-              doc.text(words[wi], cx, y);
-              cx += doc.getTextWidth(words[wi]) + (wi < words.length - 1 ? extraSpace : 0);
+            // Cap justification: if extra space per gap exceeds 3mm, left-align instead
+            if (extraSpace <= 3) {
+              let cx = x;
+              for (let wi = 0; wi < words.length; wi++) {
+                doc.text(words[wi], cx, y);
+                cx += doc.getTextWidth(words[wi]) + (wi < words.length - 1 ? extraSpace : 0);
+              }
+              y += lineH;
+              while (charIdx < hardLine.length && hardLine[charIdx] === ' ') charIdx++;
+              continue;
             }
-            y += lineH;
-            while (charIdx < hardLine.length && hardLine[charIdx] === ' ') charIdx++;
-            continue;
           }
         }
 

@@ -756,6 +756,12 @@ function fmtCurrency(val?: number): string {
   return `$${val.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
 }
 
+/** Capitalize the first letter of each word (e.g., "suspect" → "Suspect", "co owner" → "Co Owner") */
+function titleCase(str: string): string {
+  if (!str) return '';
+  return str.replace(/\b\w/g, c => c.toUpperCase());
+}
+
 // ── Call for Service Report ──────────────────────────────────
 
 function generateCallReport(doc: jsPDF, data: CallPdfData) {
@@ -943,21 +949,21 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = checkPageBreak(doc, y, 25, prio);
     const sec = openAutoSection(doc, `Linked Persons (${data.linked_persons.length})`, y); y = sec.contentY;
     const personHeaders = [
-      { label: 'ROLE', x: lx },
-      { label: 'NAME', x: LAYOUT.PAGE_MARGIN + 30 },
+      { label: 'NAME', x: lx },
+      { label: 'ROLE', x: LAYOUT.PAGE_MARGIN + 50 },
       { label: 'DOB', x: LAYOUT.PAGE_MARGIN + 80 },
       { label: 'RACE/SEX', x: LAYOUT.PAGE_MARGIN + 110 },
       { label: 'PHONE', x: LAYOUT.PAGE_MARGIN + 140 },
     ];
     const personRows = data.linked_persons.map(p => [
-      (p.role || '').replace(/_/g, ' ').toUpperCase(),
       `${p.last_name || ''}, ${p.first_name || ''}`.trim().replace(/^,\s*/, ''),
+      titleCase((p.role || '').replace(/_/g, ' ')),
       p.dob || '',
       [p.race, p.gender].filter(Boolean).join('/'),
       p.phone || '',
     ]);
     y = addTableWithShading(doc, personHeaders, personRows, y,
-      [lx, LAYOUT.PAGE_MARGIN + 30, LAYOUT.PAGE_MARGIN + 80, LAYOUT.PAGE_MARGIN + 110, LAYOUT.PAGE_MARGIN + 140]);
+      [lx, LAYOUT.PAGE_MARGIN + 50, LAYOUT.PAGE_MARGIN + 80, LAYOUT.PAGE_MARGIN + 110, LAYOUT.PAGE_MARGIN + 140]);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -973,7 +979,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       { label: 'OWNER', x: LAYOUT.PAGE_MARGIN + 140 },
     ];
     const vehRows = data.linked_vehicles.map(v => [
-      (v.role || '').replace(/_/g, ' ').toUpperCase(),
+      titleCase((v.role || '').replace(/_/g, ' ')),
       [v.year, v.make, v.model].filter(Boolean).join(' '),
       v.color || '',
       (v.plate_number || '') + (v.plate_state ? `/${v.plate_state}` : ''),
@@ -1507,10 +1513,10 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     const sec = openAutoSection(doc, `Warrants (${data.warrants.length})`, y); y = sec.contentY;
     const warrantRows = data.warrants.map(w => [
       w.warrant_number || '—',
-      (w.type || '').toUpperCase(),
-      (w.status || '').toUpperCase(),
+      titleCase(w.type || ''),
+      titleCase(w.status || ''),
       w.charge_description || '—',
-      (w.offense_level || '').toUpperCase(),
+      titleCase(w.offense_level || ''),
       fmtDate(w.date_issued),
     ]);
     y = addTableWithShading(
@@ -1536,9 +1542,9 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     const sec = openAutoSection(doc, `Incident History (${data.incidents.length})`, y); y = sec.contentY;
     const incidentRows = data.incidents.map(inc => [
       inc.incident_number || '—',
-      (inc.incident_type || '').replace(/_/g, ' ').toUpperCase(),
-      (inc.role || '').toUpperCase(),
-      (inc.status || '').toUpperCase(),
+      titleCase((inc.incident_type || '').replace(/_/g, ' ')),
+      titleCase(inc.role || ''),
+      titleCase(inc.status || ''),
       fmtDate(inc.created_at),
     ]);
     y = addTableWithShading(
@@ -1563,8 +1569,8 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     const sec = openAutoSection(doc, `Citations (${data.citations.length})`, y); y = sec.contentY;
     const citationRows = data.citations.map(c => [
       c.citation_number || '—',
-      (c.type || '').toUpperCase(),
-      (c.status || '').toUpperCase(),
+      titleCase(c.type || ''),
+      titleCase(c.status || ''),
       c.violation_description || c.statute_citation || '—',
       fmtDate(c.violation_date),
     ]);
