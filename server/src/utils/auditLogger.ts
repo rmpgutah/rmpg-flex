@@ -237,8 +237,10 @@ const SENSITIVE_PATTERNS = [
 ];
 
 function maskSensitiveData(text: string): string {
-  let masked = text;
+  if (!text || text.length === 0) return text;
+  let masked = text.length > 2000 ? text.substring(0, 2000) : text;
   for (const pattern of SENSITIVE_PATTERNS) {
+    pattern.lastIndex = 0; // Reset global regex state
     masked = masked.replace(pattern, '[REDACTED]');
   }
   return masked;
