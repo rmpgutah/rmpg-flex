@@ -34,6 +34,7 @@ import {
   Search,
   Building2,
   Terminal,
+  Briefcase,
 } from 'lucide-react';
 import type { CallForService, Unit, CallStatus, CallNote, UnitStatus } from '../../types';
 import CallCard from '../../components/CallCard';
@@ -149,6 +150,8 @@ export default function DispatchPage() {
   const [showCreatePersonModal, setShowCreatePersonModal] = useState(false);
   const [showCreateVehicleModal, setShowCreateVehicleModal] = useState(false);
   const [isCreatingRecord, setIsCreatingRecord] = useState(false);
+  const [serveLink, setServeLink] = useState<any>(null);
+  const [sendingToServe, setSendingToServe] = useState(false);
 
   // Clean up search timers and abort controllers on unmount
   useEffect(() => {
@@ -771,7 +774,7 @@ export default function DispatchPage() {
 
   // Fetch linked incidents and activity when a call is selected
   useEffect(() => {
-    if (!selectedCall) { setLinkedIncidents([]); setActivityEntries([]); setCallWarnings([]); return; }
+    if (!selectedCall) { setLinkedIncidents([]); setActivityEntries([]); setCallWarnings([]); setServeLink(null); return; }
     let cancelled = false;
     setIsEditing(false);
     setShowAttachUnitDropdown(false);
@@ -793,6 +796,15 @@ export default function DispatchPage() {
         const warnings = await apiFetch<WarningTag[]>(`/dispatch/calls/${selectedCall.id}/warnings`);
         if (!cancelled) setCallWarnings(Array.isArray(warnings) ? warnings : []);
       } catch { if (!cancelled) setCallWarnings([]); }
+      // Fetch serve queue link for PSO calls
+      if (selectedCall.incident_type === 'pso_client_request') {
+        try {
+          const serveData = await apiFetch(`/dispatch/calls/${selectedCall.id}/serve-link`);
+          if (!cancelled) setServeLink(serveData);
+        } catch { if (!cancelled) setServeLink(null); }
+      } else {
+        if (!cancelled) setServeLink(null);
+      }
     })();
     return () => { cancelled = true; };
   }, [selectedCall?.id]);
@@ -2039,6 +2051,67 @@ export default function DispatchPage() {
                       {selectedCall.disposition && <div><span className="text-rmpg-400">Disposition:</span> {selectedCall.disposition}</div>}
                     </div>
 
+                    {/* Serve Queue Integration */}
+                    {selectedCall.process_served_to && (
+                      <div className="mt-2 pt-2 border-t border-rmpg-600">
+                        {serveLink ? (
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{
+                                background: serveLink.status === 'served' ? '#22c55e' : serveLink.status === 'failed' ? '#ef4444' : '#f59e0b'
+                              }} />
+                              <span className="text-[10px] font-bold text-rmpg-300 uppercase">Serve Queue</span>
+                              <span className="text-[10px] font-mono text-cyan-400">
+                                {serveLink.attempt_count}/{serveLink.max_attempts} attempts
+                              </span>
+                              <span className="text-[10px] font-mono px-1 rounded" style={{
+                                background: serveLink.status === 'served' ? '#22c55e20' : serveLink.status === 'failed' ? '#dc262620' : '#f59e0b20',
+                                color: serveLink.status === 'served' ? '#4ade80' : serveLink.status === 'failed' ? '#f87171' : '#fbbf24',
+                              }}>
+                                {serveLink.status?.toUpperCase()}
+                              </span>
+                            </div>
+                            <button
+                              className="text-[10px] text-blue-400 hover:text-blue-300 underline"
+                              onClick={() => window.open('/serve', '_blank')}
+                            >
+                              View in Process Server
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            className="w-full py-2 px-3 text-xs font-semibold rounded flex items-center justify-center gap-2 transition-colors"
+                            style={{
+                              background: sendingToServe ? '#374151' : '#7c3aed20',
+                              border: '1px solid #7c3aed50',
+                              color: sendingToServe ? '#9ca3af' : '#a78bfa',
+                            }}
+                            disabled={sendingToServe}
+                            onClick={async () => {
+                              setSendingToServe(true);
+                              try {
+                                const result = await apiFetch(`/dispatch/calls/${selectedCall.id}/send-to-serve`, {
+                                  method: 'POST',
+                                  body: JSON.stringify({}),
+                                });
+                                if (result) {
+                                  setServeLink(result);
+                                  addToast('Sent to Serve Queue', 'success');
+                                }
+                              } catch (err: any) {
+                                addToast(`Failed: ${err?.message || 'Unknown error'}`, 'error');
+                              } finally {
+                                setSendingToServe(false);
+                              }
+                            }}
+                          >
+                            <Briefcase style={{ width: 14, height: 14 }} />
+                            {sendingToServe ? 'Sending...' : 'Send to Serve Queue'}
+                          </button>
+                        )}
+                      </div>
+                    )}
+
                     {/* Visit History (mobile) */}
                     {selectedCall.visit_history && selectedCall.visit_history.length > 0 && (
                       <div className="mt-3 pt-2 border-t border-rmpg-600">
@@ -2551,6 +2624,34 @@ export default function DispatchPage() {
                         title="Schedule a return visit for this PSO call"
                       >
                         <RotateCcw style={{ width: 10, height: 10 }} /> Return Visit
+                      </button>
+                    )}
+                    {/* Send to Serve Queue — PSO calls with process_served_to */}
+                    {selectedCall.incident_type === 'pso_client_request' && selectedCall.process_served_to && !serveLink && (
+                      <button
+                        className="toolbar-btn"
+                        style={{ background: '#7c3aed20', borderColor: '#7c3aed50', color: '#a78bfa' }}
+                        disabled={sendingToServe}
+                        onClick={async () => {
+                          setSendingToServe(true);
+                          try {
+                            const result = await apiFetch(`/dispatch/calls/${selectedCall.id}/send-to-serve`, {
+                              method: 'POST',
+                              body: JSON.stringify({}),
+                            });
+                            if (result) {
+                              setServeLink(result);
+                              addToast('Sent to Serve Queue', 'success');
+                            }
+                          } catch (err: any) {
+                            addToast(`Failed: ${err?.message || 'Unknown error'}`, 'error');
+                          } finally {
+                            setSendingToServe(false);
+                          }
+                        }}
+                        title="Send this process service to the serve queue"
+                      >
+                        <Briefcase style={{ width: 10, height: 10 }} /> {sendingToServe ? 'Sending...' : 'Serve Queue'}
                       </button>
                     )}
                     {/* Revert status button — go back one step */}
