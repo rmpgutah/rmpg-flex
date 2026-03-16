@@ -945,8 +945,15 @@ export default function IncidentsPage() {
       // LE coordination
       responding_le_agency: inc?.responding_le_agency,
       le_case_number: inc?.le_case_number,
-      // Process Service fields (from linked call)
+      // PSO / Process Service fields
       pso_service_type: inc?.pso_service_type,
+      pso_attempt_number: inc?.pso_attempt_number,
+      pso_requestor_name: inc?.pso_requestor_name,
+      pso_requestor_phone: inc?.pso_requestor_phone,
+      pso_requestor_email: inc?.pso_requestor_email,
+      pso_billing_code: inc?.pso_billing_code,
+      pso_authorization: inc?.pso_authorization,
+      contract_id: inc?.contract_id,
       process_service_type: inc?.process_service_type,
       process_served_to: inc?.process_served_to,
       process_served_address: inc?.process_served_address,
@@ -1083,17 +1090,33 @@ export default function IncidentsPage() {
         )}
 
         {/* Flags (always visible, no collapse) */}
-        {(inc.alcohol_involved || inc.drugs_involved || inc.domestic_violence) && (
-          <div className="flex items-center gap-2 mb-3">
-            {inc.alcohol_involved && (
-              <span className="px-2 py-0.5 bg-amber-900/40 text-amber-300 text-[10px] uppercase font-bold border border-amber-700/40">Alcohol</span>
-            )}
-            {inc.drugs_involved && (
-              <span className="px-2 py-0.5 bg-purple-900/40 text-purple-300 text-[10px] uppercase font-bold border border-purple-700/40">Drugs</span>
-            )}
-            {inc.domestic_violence && (
-              <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Domestic Violence</span>
-            )}
+        {(inc.alcohol_involved || inc.drugs_involved || inc.domestic_violence || inc.felony_in_progress ||
+          inc.officer_safety_caution || inc.mental_health_crisis || inc.injuries_reported || inc.juvenile_involved ||
+          inc.gang_related || inc.hazmat || inc.body_camera_active || inc.evidence_collected || inc.photos_taken ||
+          inc.vehicle_pursuit || inc.foot_pursuit || inc.le_notified || inc.supervisor_notified ||
+          inc.k9_requested || inc.ems_requested || inc.fire_requested || inc.trespass_issued) && (
+          <div className="flex flex-wrap items-center gap-1.5 mb-3">
+            {inc.alcohol_involved && <span className="px-2 py-0.5 bg-amber-900/40 text-amber-300 text-[10px] uppercase font-bold border border-amber-700/40">Alcohol</span>}
+            {inc.drugs_involved && <span className="px-2 py-0.5 bg-purple-900/40 text-purple-300 text-[10px] uppercase font-bold border border-purple-700/40">Drugs</span>}
+            {inc.domestic_violence && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">DV</span>}
+            {inc.felony_in_progress && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Felony IP</span>}
+            {inc.officer_safety_caution && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Ofc Safety</span>}
+            {inc.mental_health_crisis && <span className="px-2 py-0.5 bg-blue-900/40 text-blue-300 text-[10px] uppercase font-bold border border-blue-700/40">Mental Health</span>}
+            {inc.injuries_reported && <span className="px-2 py-0.5 bg-orange-900/40 text-orange-300 text-[10px] uppercase font-bold border border-orange-700/40">Injuries</span>}
+            {inc.juvenile_involved && <span className="px-2 py-0.5 bg-cyan-900/40 text-cyan-300 text-[10px] uppercase font-bold border border-cyan-700/40">Juvenile</span>}
+            {inc.gang_related && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Gang</span>}
+            {inc.hazmat && <span className="px-2 py-0.5 bg-yellow-900/40 text-yellow-300 text-[10px] uppercase font-bold border border-yellow-700/40">HAZMAT</span>}
+            {inc.body_camera_active && <span className="px-2 py-0.5 bg-green-900/40 text-green-300 text-[10px] uppercase font-bold border border-green-700/40">BWC</span>}
+            {inc.evidence_collected && <span className="px-2 py-0.5 bg-green-900/40 text-green-300 text-[10px] uppercase font-bold border border-green-700/40">Evidence</span>}
+            {inc.photos_taken && <span className="px-2 py-0.5 bg-green-900/40 text-green-300 text-[10px] uppercase font-bold border border-green-700/40">Photos</span>}
+            {inc.trespass_issued && <span className="px-2 py-0.5 bg-amber-900/40 text-amber-300 text-[10px] uppercase font-bold border border-amber-700/40">Trespass</span>}
+            {inc.vehicle_pursuit && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Veh Pursuit</span>}
+            {inc.foot_pursuit && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Foot Pursuit</span>}
+            {inc.k9_requested && <span className="px-2 py-0.5 bg-blue-900/40 text-blue-300 text-[10px] uppercase font-bold border border-blue-700/40">K9</span>}
+            {inc.ems_requested && <span className="px-2 py-0.5 bg-blue-900/40 text-blue-300 text-[10px] uppercase font-bold border border-blue-700/40">EMS</span>}
+            {inc.fire_requested && <span className="px-2 py-0.5 bg-orange-900/40 text-orange-300 text-[10px] uppercase font-bold border border-orange-700/40">Fire</span>}
+            {inc.le_notified && <span className="px-2 py-0.5 bg-blue-900/40 text-blue-300 text-[10px] uppercase font-bold border border-blue-700/40">LE Notified</span>}
+            {inc.supervisor_notified && <span className="px-2 py-0.5 bg-blue-900/40 text-blue-300 text-[10px] uppercase font-bold border border-blue-700/40">Supvr</span>}
           </div>
         )}
 

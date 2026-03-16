@@ -275,21 +275,33 @@ router.post('/calls/:id/generate-incident', requireRole('admin', 'manager', 'sup
 
     const result = db.prepare(`
       INSERT INTO incidents (incident_number, call_id, incident_type, priority, status, location_address,
-        property_id, latitude, longitude, narrative, officer_id, client_id,
+        property_id, latitude, longitude, narrative, officer_id, client_id, contract_id,
         occurred_date, occurred_time, end_date, end_time,
         pso_service_type, pso_attempt_number, pso_requestor_name, pso_requestor_phone,
         pso_requestor_email, pso_billing_code, pso_authorization,
-        process_service_type, process_served_to, process_served_address, process_service_result, process_attempts)
-      VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?,
+        process_service_type, process_served_to, process_served_address, process_service_result, process_attempts,
+        alcohol_involved, drugs_involved, domestic_violence, weapons_involved,
+        injuries_reported, mental_health_crisis, juvenile_involved, felony_in_progress,
+        officer_safety_caution, k9_requested, ems_requested, fire_requested,
+        hazmat, gang_related, evidence_collected, body_camera_active, photos_taken,
+        trespass_issued, vehicle_pursuit, foot_pursuit, le_notified, supervisor_notified,
+        section_id, zone_id, beat_id, disposition)
+      VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?, ?,
-        ?, ?, ?, ?, ?)
+        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?)
     `).run(
       incidentNumber, call.id, call.incident_type, call.priority,
       call.location_address || call.property_address || null,
       call.property_id || null, call.latitude ?? null, call.longitude ?? null,
-      narrative, req.user!.userId, call.client_id || null,
+      narrative, req.user!.userId, call.client_id || null, call.contract_id || null,
       started.date || null, started.time || null, ended.date || null, ended.time || null,
       call.pso_service_type || null, call.pso_attempt_number || null,
       call.pso_requestor_name || null, call.pso_requestor_phone || null,
@@ -297,7 +309,22 @@ router.post('/calls/:id/generate-incident', requireRole('admin', 'manager', 'sup
       call.pso_authorization || null,
       call.process_service_type || null, call.process_served_to || null,
       call.process_served_address || null, call.process_service_result || null,
-      call.process_attempts || null
+      call.process_attempts || null,
+      // Flags from dispatch call
+      call.alcohol_involved ? 1 : 0, call.drugs_involved ? 1 : 0,
+      call.domestic_violence ? 1 : 0, call.weapons_involved || null,
+      call.injuries_reported ? 1 : 0, call.mental_health_crisis ? 1 : 0,
+      call.juvenile_involved ? 1 : 0, call.felony_in_progress ? 1 : 0,
+      call.officer_safety_caution ? 1 : 0, call.k9_requested ? 1 : 0,
+      call.ems_requested ? 1 : 0, call.fire_requested ? 1 : 0,
+      call.hazmat ? 1 : 0, call.gang_related ? 1 : 0,
+      call.evidence_collected ? 1 : 0, call.body_camera_active ? 1 : 0,
+      call.photos_taken ? 1 : 0, call.trespass_issued ? 1 : 0,
+      call.vehicle_pursuit ? 1 : 0, call.foot_pursuit ? 1 : 0,
+      call.le_notified ? 1 : 0, call.supervisor_notified ? 1 : 0,
+      // District from dispatch call
+      call.section_id || null, call.zone_id || null, call.beat_id || null,
+      call.disposition || null
     );
 
     // Auto-link persons from the dispatch call to the new incident

@@ -82,6 +82,7 @@ export interface IncidentFormData {
   longitude: number | null;
   // Client linkage
   client_id: string;
+  contract_id: string;
   // PSO / Process Service
   pso_service_type: string;
   pso_attempt_number: string;
@@ -95,6 +96,25 @@ export interface IncidentFormData {
   process_served_address: string;
   process_service_result: string;
   process_attempts: string;
+  // Operational flags
+  injuries_reported: boolean;
+  mental_health_crisis: boolean;
+  juvenile_involved: boolean;
+  felony_in_progress: boolean;
+  officer_safety_caution: boolean;
+  k9_requested: boolean;
+  ems_requested: boolean;
+  fire_requested: boolean;
+  hazmat: boolean;
+  gang_related: boolean;
+  evidence_collected: boolean;
+  body_camera_active: boolean;
+  photos_taken: boolean;
+  trespass_issued: boolean;
+  vehicle_pursuit: boolean;
+  foot_pursuit: boolean;
+  le_notified: boolean;
+  supervisor_notified: boolean;
 }
 
 // Helpers to detect type-specific sub-sections
@@ -197,6 +217,7 @@ const EMPTY_FORM: IncidentFormData = {
   latitude: null,
   longitude: null,
   client_id: '',
+  contract_id: '',
   // PSO / Process Service
   pso_service_type: '',
   pso_attempt_number: '',
@@ -210,6 +231,25 @@ const EMPTY_FORM: IncidentFormData = {
   process_served_address: '',
   process_service_result: '',
   process_attempts: '',
+  // Operational flags
+  injuries_reported: false,
+  mental_health_crisis: false,
+  juvenile_involved: false,
+  felony_in_progress: false,
+  officer_safety_caution: false,
+  k9_requested: false,
+  ems_requested: false,
+  fire_requested: false,
+  hazmat: false,
+  gang_related: false,
+  evidence_collected: false,
+  body_camera_active: false,
+  photos_taken: false,
+  trespass_issued: false,
+  vehicle_pursuit: false,
+  foot_pursuit: false,
+  le_notified: false,
+  supervisor_notified: false,
 };
 
 export default function IncidentFormModal({
@@ -289,6 +329,7 @@ export default function IncidentFormModal({
           longitude: inc.longitude ?? null,
           // Client
           client_id: inc.client_id ? String(inc.client_id) : '',
+          contract_id: inc.contract_id || '',
           // PSO / Process Service
           pso_service_type: inc.pso_service_type || '',
           pso_attempt_number: inc.pso_attempt_number != null ? String(inc.pso_attempt_number) : '',
@@ -302,6 +343,25 @@ export default function IncidentFormModal({
           process_served_address: inc.process_served_address || '',
           process_service_result: inc.process_service_result || '',
           process_attempts: inc.process_attempts != null ? String(inc.process_attempts) : '',
+          // Operational flags
+          injuries_reported: !!inc.injuries_reported,
+          mental_health_crisis: !!inc.mental_health_crisis,
+          juvenile_involved: !!inc.juvenile_involved,
+          felony_in_progress: !!inc.felony_in_progress,
+          officer_safety_caution: !!inc.officer_safety_caution,
+          k9_requested: !!inc.k9_requested,
+          ems_requested: !!inc.ems_requested,
+          fire_requested: !!inc.fire_requested,
+          hazmat: !!inc.hazmat,
+          gang_related: !!inc.gang_related,
+          evidence_collected: !!inc.evidence_collected,
+          body_camera_active: !!inc.body_camera_active,
+          photos_taken: !!inc.photos_taken,
+          trespass_issued: !!inc.trespass_issued,
+          vehicle_pursuit: !!inc.vehicle_pursuit,
+          foot_pursuit: !!inc.foot_pursuit,
+          le_notified: !!inc.le_notified,
+          supervisor_notified: !!inc.supervisor_notified,
         };
         setFormData(initial);
         snapshot(initial);
@@ -460,22 +520,28 @@ export default function IncidentFormModal({
             />
           </div>
 
-          {/* Client */}
-          {clients.length > 0 && (
+          {/* Client & Contract */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {clients.length > 0 && (
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Client</label>
+                <select
+                  className="select-dark mt-1"
+                  value={formData.client_id}
+                  onChange={(e) => update('client_id', e.target.value)}
+                >
+                  <option value="">— No Client —</option>
+                  {clients.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Client</label>
-              <select
-                className="select-dark mt-1"
-                value={formData.client_id}
-                onChange={(e) => update('client_id', e.target.value)}
-              >
-                <option value="">— No Client —</option>
-                {clients.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Contract ID</label>
+              <input type="text" className="input-dark mt-1" placeholder="e.g. 15330838" value={formData.contract_id} onChange={(e) => update('contract_id', e.target.value)} />
             </div>
-          )}
+          </div>
 
           {/* Occurred Date/Time */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -904,37 +970,52 @@ export default function IncidentFormModal({
       {/* ── Flags & LE Section ── */}
       {activeSection === 'flags' && (
         <>
-          {/* Boolean Flags */}
+          {/* Critical Flags */}
           <div>
-            <label className="text-[10px] text-rmpg-400 uppercase font-semibold mb-2 block">Incident Flags</label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-              <label className="flex items-center gap-2 p-2 bg-rmpg-800/50 border border-rmpg-600 cursor-pointer hover:border-rmpg-400 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={formData.alcohol_involved}
-                  onChange={(e) => update('alcohol_involved', e.target.checked)}
-                  className="w-4 h-4 accent-red-500"
-                />
-                <span className="text-xs text-rmpg-200">Alcohol Involved</span>
-              </label>
-              <label className="flex items-center gap-2 p-2 bg-rmpg-800/50 border border-rmpg-600 cursor-pointer hover:border-rmpg-400 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={formData.drugs_involved}
-                  onChange={(e) => update('drugs_involved', e.target.checked)}
-                  className="w-4 h-4 accent-red-500"
-                />
-                <span className="text-xs text-rmpg-200">Drugs Involved</span>
-              </label>
-              <label className="flex items-center gap-2 p-2 bg-rmpg-800/50 border border-rmpg-600 cursor-pointer hover:border-rmpg-400 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={formData.domestic_violence}
-                  onChange={(e) => update('domestic_violence', e.target.checked)}
-                  className="w-4 h-4 accent-red-500"
-                />
-                <span className="text-xs text-rmpg-200">Domestic Violence</span>
-              </label>
+            <label className="text-[10px] text-rmpg-400 uppercase font-semibold mb-2 block">Critical Flags</label>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+              {([
+                ['alcohol_involved', 'Alcohol Involved'],
+                ['drugs_involved', 'Drugs Involved'],
+                ['domestic_violence', 'Domestic Violence'],
+                ['felony_in_progress', 'Felony in Progress'],
+                ['officer_safety_caution', 'Officer Safety'],
+                ['mental_health_crisis', 'Mental Health Crisis'],
+                ['injuries_reported', 'Injuries Reported'],
+                ['juvenile_involved', 'Juvenile Involved'],
+                ['gang_related', 'Gang Related'],
+                ['hazmat', 'HAZMAT'],
+              ] as [keyof IncidentFormData, string][]).map(([key, label]) => (
+                <label key={key} className="flex items-center gap-2 p-2 bg-rmpg-800/50 border border-rmpg-600 cursor-pointer hover:border-rmpg-400 transition-colors">
+                  <input type="checkbox" checked={!!formData[key]} onChange={(e) => update(key, e.target.checked)} className="w-4 h-4 accent-red-500" />
+                  <span className="text-xs text-rmpg-200">{label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Operational Flags */}
+          <div>
+            <label className="text-[10px] text-rmpg-400 uppercase font-semibold mb-2 block">Operations &amp; Resources</label>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+              {([
+                ['body_camera_active', 'Body Camera Active'],
+                ['evidence_collected', 'Evidence Collected'],
+                ['photos_taken', 'Photos Taken'],
+                ['trespass_issued', 'Trespass Issued'],
+                ['k9_requested', 'K9 Requested'],
+                ['ems_requested', 'EMS Requested'],
+                ['fire_requested', 'Fire Requested'],
+                ['vehicle_pursuit', 'Vehicle Pursuit'],
+                ['foot_pursuit', 'Foot Pursuit'],
+                ['le_notified', 'LE Notified'],
+                ['supervisor_notified', 'Supervisor Notified'],
+              ] as [keyof IncidentFormData, string][]).map(([key, label]) => (
+                <label key={key} className="flex items-center gap-2 p-2 bg-rmpg-800/50 border border-rmpg-600 cursor-pointer hover:border-rmpg-400 transition-colors">
+                  <input type="checkbox" checked={!!formData[key]} onChange={(e) => update(key, e.target.checked)} className="w-4 h-4 accent-amber-500" />
+                  <span className="text-xs text-rmpg-200">{label}</span>
+                </label>
+              ))}
             </div>
           </div>
 
