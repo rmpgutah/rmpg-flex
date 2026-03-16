@@ -106,6 +106,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Enforcement',
     items: [
+      { path: '/serve', icon: Briefcase, label: 'Process Server' },
       { path: '/warrants', icon: AlertTriangle, label: 'Warrants' },
       { path: '/citations', icon: FileWarning, label: 'Citations' },
       { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders' },
