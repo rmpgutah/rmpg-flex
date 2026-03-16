@@ -12,7 +12,6 @@ import { auditLog } from '../utils/auditLogger';
 import { broadcast, broadcastDispatchUpdate } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
 import config from '../config';
-import crypto from 'crypto';
 
 const router = Router();
 router.use(authenticateToken);
@@ -156,18 +155,17 @@ router.post('/routes', requireRole(...WRITE_ROLES), (req: Request, res: Response
       const updated = db.prepare('SELECT * FROM serve_routes WHERE id = ?').get(existing.id);
       res.json(updated);
     } else {
-      const id = crypto.randomUUID();
-      db.prepare(`
-        INSERT INTO serve_routes (id, officer_id, route_date, optimized_order_json, waypoints_json, total_distance_miles, total_time_minutes, start_lat, start_lng, end_lat, end_lng, notes, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      const info = db.prepare(`
+        INSERT INTO serve_routes (officer_id, route_date, optimized_order_json, waypoints_json, total_distance_miles, total_time_minutes, start_lat, start_lng, end_lat, end_lng, notes, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
-        id, officer_id, route_date,
+        officer_id, route_date,
         optimized_order_json ?? null, waypoints_json ?? null,
         total_distance_miles ?? null, total_time_minutes ?? null,
         start_lat ?? null, start_lng ?? null, end_lat ?? null, end_lng ?? null,
         notes ?? null, now, now,
       );
-      const created = db.prepare('SELECT * FROM serve_routes WHERE id = ?').get(id);
+      const created = db.prepare('SELECT * FROM serve_routes WHERE id = ?').get(info.lastInsertRowid);
       res.status(201).json(created);
     }
   } catch (err: any) {
@@ -198,13 +196,13 @@ router.post('/sync-from-sm', requireRole('admin', 'manager', 'supervisor'), (req
 
     const insertStmt = db.prepare(`
       INSERT INTO serve_queue (
-        id, sm_job_id, officer_id, serve_date, recipient_name,
+        sm_job_id, officer_id, serve_date, recipient_name,
         recipient_address, recipient_city, recipient_state, recipient_zip,
         recipient_lat, recipient_lng, document_type, case_number,
         court_name, jurisdiction, client_name, attorney_name,
         priority, deadline, max_attempts, service_instructions, notes,
         status, attempt_count, sort_order, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, 999, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, 999, ?, ?)
     `);
 
     const imported: any[] = [];
@@ -212,7 +210,6 @@ router.post('/sync-from-sm', requireRole('admin', 'manager', 'supervisor'), (req
 
     const txn = db.transaction(() => {
       for (const sm of unimported) {
-        const id = crypto.randomUUID();
         // Parse first address from addresses_json
         let addr = '', city = '', state = '', zip = '', lat: number | null = null, lng: number | null = null;
         try {
@@ -228,8 +225,8 @@ router.post('/sync-from-sm', requireRole('admin', 'manager', 'supervisor'), (req
           }
         } catch (e) { console.warn('[serve] Failed to parse address for serve job:', e); }
 
-        insertStmt.run(
-          id, sm.id, sm.employee_process_server_id || null, today,
+        const info = insertStmt.run(
+          sm.id, sm.employee_process_server_id || null, today,
           sm.recipient_name || '', addr, city, state, zip, lat, lng,
           'civil', sm.court_case_number || '',
           '', '', sm.client_company_name || '', '',
@@ -237,7 +234,7 @@ router.post('/sync-from-sm', requireRole('admin', 'manager', 'supervisor'), (req
           3, sm.service_instructions || '', sm.notes_local || '',
           now, now,
         );
-        imported.push({ id, sm_job_id: sm.id, recipient_name: sm.recipient_name });
+        imported.push({ id: info.lastInsertRowid, sm_job_id: sm.id, recipient_name: sm.recipient_name });
       }
     });
     txn();
@@ -358,7 +355,6 @@ router.post('/', requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
-    const id = crypto.randomUUID();
 
     const {
       sm_job_id, officer_id, serve_date, recipient_name, recipient_address,
@@ -372,18 +368,18 @@ router.post('/', requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
       return res.status(400).json({ error: 'recipient_name is required' });
     }
 
-    db.prepare(`
+    const info = db.prepare(`
       INSERT INTO serve_queue (
-        id, sm_job_id, officer_id, serve_date, recipient_name,
+        sm_job_id, officer_id, serve_date, recipient_name,
         recipient_address, recipient_city, recipient_state, recipient_zip,
         recipient_lat, recipient_lng, document_type, case_number,
         court_name, jurisdiction, client_name, attorney_name,
         priority, time_window, deadline, max_attempts,
         service_instructions, notes, status, attempt_count, sort_order,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, 999, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, 999, ?, ?)
     `).run(
-      id, sm_job_id ?? null, officer_id ?? req.user!.userId,
+      sm_job_id ?? null, officer_id ?? req.user!.userId,
       serve_date ?? localToday(),
       recipient_name ?? '', recipient_address ?? '', recipient_city ?? '',
       recipient_state ?? '', recipient_zip ?? '', recipient_lat ?? null, recipient_lng ?? null,
@@ -393,6 +389,7 @@ router.post('/', requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
       service_instructions ?? '', notes ?? '', now, now,
     );
 
+    const id = info.lastInsertRowid;
     const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(id);
     auditLog(req, 'CREATE', 'serve_queue', id, `Created serve job for ${recipient_name || 'unknown'}`);
     broadcast('serve', 'serve_created', job);
@@ -553,8 +550,6 @@ router.post('/:id/attempt', validateParamIdOrUuid, requireRole(...WRITE_ROLES), 
 
     const now = localNow();
     const attemptNumber = (job.attempt_count ?? 0) + 1;
-    const attemptId = crypto.randomUUID();
-
     // Determine new status
     let newStatus = 'in_progress';
     if (result === 'served' || result === 'posted') {
@@ -564,19 +559,21 @@ router.post('/:id/attempt', validateParamIdOrUuid, requireRole(...WRITE_ROLES), 
     }
 
     // Atomic: insert attempt + update job status in one transaction
+    let attemptId: number | bigint;
     db.transaction(() => {
-      db.prepare(`
+      const attemptInfo = db.prepare(`
         INSERT INTO serve_attempts (
-          id, serve_queue_id, attempt_number, attempted_at, attempted_by,
+          serve_queue_id, attempt_number, attempted_at, attempted_by,
           result, gps_lat, gps_lng, notes, method, recipient_response,
           photo_url, signature_url, mileage, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
-        attemptId, req.params.id, attemptNumber, now, req.user!.userId,
+        req.params.id, attemptNumber, now, req.user!.userId,
         result || 'no_answer', gps_lat ?? null, gps_lng ?? null,
         notes ?? '', method ?? 'personal', recipient_response ?? '',
         photo_url ?? null, signature_url ?? null, mileage ?? null, now,
       );
+      attemptId = attemptInfo.lastInsertRowid;
 
       db.prepare(`
         UPDATE serve_queue SET
@@ -725,15 +722,13 @@ router.post('/:id/skip-trace', validateParamIdOrUuid, requireRole(...WRITE_ROLES
 
     // Save to serve_skip_traces
     const now = localNow();
-    const traceId = crypto.randomUUID();
-
-    db.prepare(`
+    const traceInfo = db.prepare(`
       INSERT INTO serve_skip_traces (
-        id, serve_queue_id, searched_at, search_type, search_query,
+        serve_queue_id, searched_at, search_type, search_query,
         results_json, addresses_found_json, searched_by, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      traceId, req.params.id, now,
+      req.params.id, now,
       address ? 'bynameaddress' : 'byname',
       address ? `${name} | ${address}` : name,
       JSON.stringify(stData),
@@ -742,7 +737,7 @@ router.post('/:id/skip-trace', validateParamIdOrUuid, requireRole(...WRITE_ROLES
       now,
     );
 
-    const trace = db.prepare('SELECT * FROM serve_skip_traces WHERE id = ?').get(traceId);
+    const trace = db.prepare('SELECT * FROM serve_skip_traces WHERE id = ?').get(traceInfo.lastInsertRowid);
     auditLog(req, 'CREATE', 'serve_queue', String(req.params.id), `Skip trace for ${name}: ${addresses.length} addresses found`);
 
     res.json({ trace, addresses });

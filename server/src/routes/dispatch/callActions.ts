@@ -1158,11 +1158,6 @@ router.post('/calls/:id/send-to-serve', validateParamId, requireRole('admin', 'm
       return;
     }
 
-    if (!call.process_served_to) {
-      res.status(400).json({ error: 'Call must have a process service recipient (process_served_to) before sending to serve queue' });
-      return;
-    }
-
     // Block duplicate — check if already linked
     const existing = db.prepare('SELECT id FROM serve_queue WHERE call_id = ?').get(call.id) as any;
     if (existing) {
@@ -1171,11 +1166,13 @@ router.post('/calls/:id/send-to-serve', validateParamId, requireRole('admin', 'm
     }
 
     const now = localNow();
-    const id = crypto.randomUUID();
+
+    // Use process_served_to, or fall back to reporting party / caller name / subject
+    const recipientName = call.process_served_to || call.reporting_party || call.caller_name || call.subject || 'Unknown';
 
     // Parse address into components if possible (simple comma split)
-    const addrParts = (call.process_served_address || '').split(',').map((s: string) => s.trim());
-    const recipientAddress = addrParts[0] || call.process_served_address || call.location_address || '';
+    const addrParts = (call.process_served_address || call.location_address || '').split(',').map((s: string) => s.trim());
+    const recipientAddress = addrParts[0] || call.location_address || '';
     const recipientCity = addrParts[1] || '';
     const recipientState = addrParts[2] || 'UT';
     const recipientZip = addrParts[3] || '';
@@ -1198,18 +1195,18 @@ router.post('/calls/:id/send-to-serve', validateParamId, requireRole('admin', 'm
     };
     const documentType = docTypeMap[call.process_service_type] || call.process_service_type || 'civil';
 
-    db.prepare(`
+    const info = db.prepare(`
       INSERT INTO serve_queue (
-        id, call_id, officer_id, serve_date, recipient_name,
+        call_id, officer_id, serve_date, recipient_name,
         recipient_address, recipient_city, recipient_state, recipient_zip,
         recipient_lat, recipient_lng, document_type, case_number,
         client_name, priority, max_attempts, service_instructions, notes,
         status, attempt_count, sort_order, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, 999, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, 999, ?, ?)
     `).run(
-      id, call.id, officerId,
+      call.id, officerId,
       localToday(),
-      call.process_served_to,
+      recipientName,
       recipientAddress, recipientCity, recipientState, recipientZip,
       call.latitude || null, call.longitude || null,
       documentType, call.case_number || '',
@@ -1218,9 +1215,10 @@ router.post('/calls/:id/send-to-serve', validateParamId, requireRole('admin', 'm
       now, now,
     );
 
+    const id = info.lastInsertRowid;
     const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(id);
 
-    auditLog(req, 'CREATE', 'serve_queue', String(id), `Sent dispatch call ${call.call_number} to serve queue for ${call.process_served_to}`);
+    auditLog(req, 'CREATE', 'serve_queue', String(id), `Sent dispatch call ${call.call_number} to serve queue for ${recipientName}`);
     broadcast('serve', 'serve_created', job);
 
     // Also update the call's activity log
