@@ -2399,8 +2399,20 @@ export interface ServeJob {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  call_id: number | null;
   attempts?: ServeAttempt[];
   skipTraces?: ServeSkipTrace[];
+}
+
+export interface ServeJobLinkedCall {
+  id: number;
+  call_number: string;
+  status: string;
+  priority: string;
+  assigned_unit_ids: string;
+  pso_requestor_name: string | null;
+  contract_id: string | null;
+  pso_service_windows: string | null;
 }
 
 export interface ServeAttempt {

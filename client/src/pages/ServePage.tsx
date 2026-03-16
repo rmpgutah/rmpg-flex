@@ -81,6 +81,7 @@ export default function ServePage() {
 
   // ── Data ────────────────────────────────────────────────────────────
   const [jobs, setJobs] = useState<ServeJob[]>([]);
+  const [linkedCalls, setLinkedCalls] = useState<Record<number, any>>({});
   const [stats, setStats] = useState<StatsSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -141,7 +142,25 @@ export default function ServePage() {
     setLoading(true);
     try {
       const data = await apiFetch<ServeJob[]>(`/api/process-server?date=${selectedDate}`);
-      setJobs(data || []);
+      const fetchedJobs = data || [];
+      setJobs(fetchedJobs);
+
+      // Fetch linked dispatch calls for jobs that have call_id
+      const jobsWithCalls = fetchedJobs.filter((j: any) => j.call_id);
+      if (jobsWithCalls.length > 0) {
+        const callMap: Record<number, any> = {};
+        await Promise.all(
+          jobsWithCalls.map(async (j: any) => {
+            try {
+              const call = await apiFetch(`/api/dispatch/calls/${j.call_id}`);
+              if (call) callMap[j.id] = call;
+            } catch {}
+          })
+        );
+        setLinkedCalls(callMap);
+      } else {
+        setLinkedCalls({});
+      }
     } catch {
       // silently fail — user can retry
     } finally {
@@ -603,6 +622,7 @@ export default function ServePage() {
                   <ServeJobCard
                     key={job.id}
                     job={job}
+                    linkedCall={linkedCalls[job.id] || null}
                     onAttempt={(id) => {
                       const j = jobs.find(jj => jj.id === id);
                       if (j) setAttemptJob(j);

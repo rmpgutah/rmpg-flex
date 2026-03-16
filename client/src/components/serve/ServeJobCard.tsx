@@ -13,10 +13,11 @@ import {
   Calendar,
   User,
 } from 'lucide-react';
-import type { ServeJob } from '../../types';
+import type { ServeJob, ServeJobLinkedCall } from '../../types';
 
 interface ServeJobCardProps {
   job: ServeJob;
+  linkedCall?: ServeJobLinkedCall | null;
   onAttempt: (jobId: number) => void;
   onNavigate: (jobId: number) => void;
   onSkipTrace: (jobId: number) => void;
@@ -75,6 +76,7 @@ function AttemptDots({ count, max }: { count: number; max: number }) {
 
 export default React.memo(function ServeJobCard({
   job,
+  linkedCall,
   onAttempt,
   onNavigate,
   onSkipTrace,
@@ -181,6 +183,44 @@ export default React.memo(function ServeJobCard({
       {/* Expandable details */}
       {isExpanded && (
         <div className="px-2 pb-2 border-t border-rmpg-700/40 pt-2 space-y-2 text-xs">
+          {/* Linked Dispatch Call */}
+          {linkedCall && (
+            <div className="p-2 rounded border mb-2" style={{ background: '#1a5a9e10', borderColor: '#1a5a9e30' }}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[10px] font-bold text-blue-300 uppercase">Dispatch Link</span>
+                <button
+                  className="text-[10px] text-blue-400 hover:text-blue-300 underline"
+                  onClick={(e) => { e.stopPropagation(); window.open(`/dispatch?call=${linkedCall.call_number}`, '_blank'); }}
+                >
+                  {linkedCall.call_number}
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px] text-rmpg-300">
+                <div><span className="text-rmpg-400">Status:</span> <span className="font-mono">{linkedCall.status?.toUpperCase()}</span></div>
+                <div><span className="text-rmpg-400">Priority:</span> <span className="font-mono">{linkedCall.priority?.toUpperCase()}</span></div>
+                {linkedCall.pso_requestor_name && (
+                  <div><span className="text-rmpg-400">Requestor:</span> {linkedCall.pso_requestor_name}</div>
+                )}
+                {linkedCall.contract_id && (
+                  <div><span className="text-rmpg-400">Contract:</span> <span className="font-mono text-cyan-400">{linkedCall.contract_id}</span></div>
+                )}
+              </div>
+              {/* PSO Compliance mini-indicator */}
+              {linkedCall.pso_service_windows && (() => {
+                try {
+                  const w = JSON.parse(linkedCall.pso_service_windows);
+                  const met = [w.early_morning, w.daytime, w.evening, w.weekend].filter(Boolean).length;
+                  return (
+                    <div className="mt-1 flex items-center gap-1 text-[9px]">
+                      <span className="text-rmpg-400">Compliance:</span>
+                      <span className="font-mono" style={{ color: met === 4 ? '#4ade80' : '#fbbf24' }}>{met}/4 windows</span>
+                    </div>
+                  );
+                } catch { return null; }
+              })()}
+            </div>
+          )}
+
           {/* Case / court / jurisdiction */}
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-rmpg-300">
             {job.case_number && (
