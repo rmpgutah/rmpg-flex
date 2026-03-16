@@ -17,7 +17,7 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
 
   try {
     const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${GOOGLE_MAPS_API_KEY}`;
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
     if (!res.ok) return null;
 
     const data = await res.json();
@@ -41,7 +41,7 @@ export async function reverseGeocodeAddress(lat: number, lng: number): Promise<s
 
   try {
     const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${GOOGLE_MAPS_API_KEY}`;
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
     if (!res.ok) return null;
 
     const data = await res.json();
@@ -75,7 +75,7 @@ export async function reverseGeocodeDetailed(lat: number, lng: number): Promise<
 
   try {
     const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&result_type=street_address|route|intersection&key=${GOOGLE_MAPS_API_KEY}`;
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
     if (!res.ok) return null;
 
     const data = await res.json();

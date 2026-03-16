@@ -28,12 +28,24 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
     'payment=()', 'usb=()', 'bluetooth=()', 'serial=()',
     'hid=()', 'magnetometer=()', 'gyroscope=()',
     'accelerometer=()', 'ambient-light-sensor=()',
+    'autoplay=()', 'display-capture=()', 'document-domain=()',
+    'encrypted-media=(self)', 'fullscreen=(self)',
+    'idle-detection=()', 'screen-wake-lock=()',
+    'interest-cohort=()',  // Block FLoC — prevent privacy-invasive ad tracking
+    'browsing-topics=()',  // Block Topics API (FLoC successor)
+    'join-ad-interest-group=()', // Block FLEDGE/Protected Audience API
+    'run-ad-auction=()',   // Block FLEDGE ad auctions
   ].join(', '));
 
   // Cross-Origin isolation headers — prevent cross-origin attacks
   res.set('Cross-Origin-Opener-Policy', 'same-origin');
   res.set('Cross-Origin-Resource-Policy', 'same-origin');
+  res.set('Cross-Origin-Embedder-Policy', 'credentialless');
   res.set('X-Permitted-Cross-Domain-Policies', 'none');
+
+  // Prevent DNS prefetching — stops browsers from resolving domains in page content
+  // before they're needed, reducing information leakage about what data officers are viewing
+  res.set('X-DNS-Prefetch-Control', 'off');
 
   // Prevent caching of API responses containing sensitive law enforcement data
   // Static assets are cached separately with their own Cache-Control in index.ts
@@ -71,7 +83,13 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
     "child-src 'self' blob:",
     "manifest-src 'self'",
     "frame-ancestors 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "form-action 'self'",
   ].join('; '));
+
+  // Prevent IE from opening downloads directly in the browser context
+  res.set('X-Download-Options', 'noopen');
 
   // Remove powered-by header
   res.removeHeader('X-Powered-By');

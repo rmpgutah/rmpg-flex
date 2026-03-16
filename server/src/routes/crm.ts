@@ -10,6 +10,7 @@ import { authenticateToken as authenticate, requireRole } from '../middleware/au
 import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
 import { localNow } from '../utils/timeUtils';
+import { escapeLike, validateParamId } from '../middleware/sanitize';
 
 const router = Router();
 router.use(authenticate);
@@ -110,9 +111,11 @@ router.get('/tasks', requireRole('admin', 'manager', 'contract_manager'), (req: 
     const params: any[] = [];
 
     if (status) {
-      const statuses = (status as string).split(',');
-      sql += ` AND t.status IN (${statuses.map(() => '?').join(',')})`;
-      params.push(...statuses);
+      const statuses = (status as string).split(',').filter(Boolean);
+      if (statuses.length > 0) {
+        sql += ` AND t.status IN (${statuses.map(() => '?').join(',')})`;
+        params.push(...statuses);
+      }
     }
     if (client_id) { sql += ' AND t.client_id = ?'; params.push(client_id); }
     if (assigned_to) { sql += ' AND t.assigned_to = ?'; params.push(assigned_to); }
@@ -154,7 +157,7 @@ router.post('/tasks', requireRole('admin', 'manager', 'contract_manager'), (req:
   }
 });
 
-router.put('/tasks/:id', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.put('/tasks/:id', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -196,7 +199,7 @@ router.put('/tasks/:id', requireRole('admin', 'manager', 'contract_manager'), (r
   }
 });
 
-router.delete('/tasks/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/tasks/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -280,8 +283,8 @@ router.get('/contacts', requireRole('admin', 'manager', 'contract_manager'), (re
     const params: any[] = [];
 
     if (search) {
-      sql += " AND (p.first_name || ' ' || p.last_name LIKE ? OR p.phone LIKE ? OR p.email LIKE ?)";
-      const q = `%${search}%`;
+      sql += " AND (p.first_name || ' ' || p.last_name LIKE ? ESCAPE '\\' OR p.phone LIKE ? ESCAPE '\\' OR p.email LIKE ? ESCAPE '\\')";
+      const q = `%${escapeLike(String(search))}%`;
       params.push(q, q, q);
     }
     if (relationship) { sql += ' AND cp.relationship = ?'; params.push(relationship); }

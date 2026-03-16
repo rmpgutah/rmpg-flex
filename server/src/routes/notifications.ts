@@ -4,6 +4,7 @@ import { authenticateToken } from '../middleware/auth';
 import { sendToUser } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
 import { sendNotificationEmail } from '../utils/emailSender';
+import { validateParamId } from '../middleware/sanitize';
 
 const router = Router();
 
@@ -31,8 +32,10 @@ const TYPE_TO_PREF_KEY: Record<string, string> = {
  */
 function isInQuietHours(quietStart: string | null, quietEnd: string | null): boolean {
   if (!quietStart || !quietEnd) return false;
+  // Use Mountain Time (America/Denver) — the operational timezone for all RMPG officers
   const now = new Date();
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const mtNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/Denver' }));
+  const currentMinutes = mtNow.getHours() * 60 + mtNow.getMinutes();
 
   const sp = quietStart.split(':').map(Number);
   const ep = quietEnd.split(':').map(Number);
@@ -115,7 +118,7 @@ export function createNotification(
     if (triggerEvent) {
       _sendEmailIfEnabled(db, userId, prefs, prefKey, triggerEvent, title, body);
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating notification:', error?.message || 'Unknown error');
   }
 }
@@ -311,7 +314,7 @@ router.get('/unread-count', (req: Request, res: Response) => {
 });
 
 // PUT /api/notifications/:id/read - Mark notification as read
-router.put('/:id/read', (req: Request, res: Response) => {
+router.put('/:id/read', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
 
@@ -358,7 +361,7 @@ router.post('/mark-all-read', (req: Request, res: Response) => {
 });
 
 // DELETE /api/notifications/:id - Delete a notification
-router.delete('/:id', (req: Request, res: Response) => {
+router.delete('/:id', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
 

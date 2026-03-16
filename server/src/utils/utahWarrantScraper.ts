@@ -125,7 +125,7 @@ async function fetchJson<T>(url: string, options: RequestInit, retries = MAX_RET
 export async function searchUtahWarrantsLive(
   firstName: string,
   lastName: string
-): Promise<UtahWarrantResult[]> {
+): Promise<UtahWarrantResult[] | null> {
   if (!firstName.trim() || !lastName.trim()) return [];
 
   const results: UtahWarrantResult[] = [];
@@ -141,14 +141,23 @@ export async function searchUtahWarrantsLive(
     }),
   });
 
+  // null = API failure (timeout/error) — caller must not treat as "no warrants"
+  if (personData === null) return null;
+
   if (!personData?.persons?.length) return [];
 
   // Step 2: For each person, fetch their warrants
+  let anyWarrantFetchFailed = false;
   for (const person of personData.persons) {
     const warrantData = await fetchJson<{ warrants?: UtahApiWarrant[] }>(
       WARRANTS_URL(person.id),
       { method: 'GET' }
     );
+
+    if (warrantData === null) {
+      anyWarrantFetchFailed = true;
+      continue; // Skip this person's warrants — don't treat as empty
+    }
 
     if (warrantData?.warrants?.length) {
       for (const w of warrantData.warrants) {
@@ -170,9 +179,20 @@ export async function searchUtahWarrantsLive(
     }
   }
 
+  // If any warrant fetch failed, flag partial data — caller must not
+  // use partial results to mark warrants as cleared
+  if (anyWarrantFetchFailed && results.length === 0) {
+    return null;
+  }
+
   // Step 3: Cache results locally for repeat lookups
   if (results.length > 0) {
     cacheResults(results);
+  }
+
+  // Attach partial failure flag so callers know data may be incomplete
+  if (anyWarrantFetchFailed && results.length > 0) {
+    (results as any).__hasPartialErrors = true;
   }
 
   return results;
@@ -270,11 +290,11 @@ export async function searchUtahWarrants(
   if (parts.length >= 2) {
     // Try "first last" ordering
     const liveResults = await searchUtahWarrantsLive(parts[0], parts[parts.length - 1]);
-    if (liveResults.length > 0) return liveResults;
+    if (liveResults && liveResults.length > 0) return liveResults;
 
     // Try reversed "last first" ordering
     const reversedResults = await searchUtahWarrantsLive(parts[parts.length - 1], parts[0]);
-    if (reversedResults.length > 0) return reversedResults;
+    if (reversedResults && reversedResults.length > 0) return reversedResults;
   }
 
   // Fall back to cache if live search fails or only one name part
@@ -332,7 +352,27 @@ function generateRunId(): string {
  * and compares results against the previous scan to detect new warrants
  * and cleared warrants.
  */
+let _scanInProgress = false;
+
 export async function runWarrantWatchScan(): Promise<{
+  personsChecked: number;
+  newWarrants: number;
+  clearedWarrants: number;
+  errors: number;
+}> {
+  if (_scanInProgress) {
+    console.warn('[Warrant Watch] Scan already in progress, skipping');
+    return { personsChecked: 0, newWarrants: 0, clearedWarrants: 0, errors: 0 };
+  }
+  _scanInProgress = true;
+  try {
+    return await _runWarrantWatchScanImpl();
+  } finally {
+    _scanInProgress = false;
+  }
+}
+
+async function _runWarrantWatchScanImpl(): Promise<{
   personsChecked: number;
   newWarrants: number;
   clearedWarrants: number;
@@ -410,6 +450,12 @@ export async function runWarrantWatchScan(): Promise<{
         personsChecked++;
 
         const personName = `${person.first_name} ${person.last_name}`;
+
+        // null = API failure — skip this person entirely (don't clear their warrants)
+        if (results === null) {
+          errors++;
+          continue;
+        }
 
         // Track which warrants we found this scan for this person
         const foundWarrantIds = new Set<string>();

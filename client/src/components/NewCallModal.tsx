@@ -175,7 +175,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const { identify: identifyDistrict } = useDistrictIdentify();
-  const { districts, sections, zones, beats, sectionLabels, zoneLabels, beatLabels } = useDistrictOptions();
+  const { sections, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
 
   // Person/vehicle record search for linking
   const [personSearchResults, setPersonSearchResults] = useState<any[]>([]);
@@ -762,20 +762,14 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Zone</label>
               <select className="select-dark" value={formData.zone_id} onChange={(e) => { update('zone_id', e.target.value); update('beat_id', ''); }}>
                 <option value="">— Select —</option>
-                {(formData.section_id
-                  ? Array.from(new Set(districts.filter(d => d.section_id === formData.section_id).map(d => d.zone_id))).sort()
-                  : zones
-                ).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
+                {zonesForSection(formData.section_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Beat</label>
               <select className="select-dark" value={formData.beat_id} onChange={(e) => update('beat_id', e.target.value)}>
                 <option value="">— Select —</option>
-                {(formData.zone_id
-                  ? Array.from(new Set(districts.filter(d => d.zone_id === formData.zone_id).map(d => d.beat_id))).sort()
-                  : beats
-                ).map(b => <option key={b} value={b}>{beatLabels.get(b) || b}</option>)}
+                {beatsForZone(formData.zone_id).map(b => <option key={b} value={b}>{getBeatLabel(formData.zone_id, b)}</option>)}
               </select>
             </div>
           </div>}

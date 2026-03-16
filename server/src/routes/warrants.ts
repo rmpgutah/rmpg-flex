@@ -14,11 +14,25 @@ import {
   getCourtRecordStats,
 } from '../utils/courtRecordsScraper';
 import { createNotificationForRoles } from './notifications';
+import { escapeLike, validateParamId } from '../middleware/sanitize';
+import { auditLog } from '../utils/auditLogger';
+import { universalWarrantCheck } from '../utils/universalWarrantScanner';
 
 const router = Router();
 
 // All warrant routes require authentication
 router.use(authenticateToken);
+
+// Validate :id params as positive integers
+router.param('id', (req: Request, res: Response, next) => {
+  const raw = String(req.params.id);
+  const n = parseInt(raw, 10);
+  if (isNaN(n) || n < 1 || String(n) !== raw) {
+    res.status(400).json({ error: 'Invalid ID parameter' });
+    return;
+  }
+  next();
+});
 
 // GET /api/warrants - List warrants with filters
 router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
@@ -46,8 +60,8 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     }
     if (subject_name) {
       const nameStr = String(subject_name).slice(0, 200); // Prevent excessively long search terms
-      whereClause += " AND (p.first_name || ' ' || p.last_name) LIKE ?";
-      params.push(`%${nameStr}%`);
+      whereClause += " AND (p.first_name || ' ' || p.last_name) LIKE ? ESCAPE '\\'";
+      params.push(`%${escapeLike(nameStr)}%`);
     }
 
     // Archive filter
@@ -137,6 +151,19 @@ router.get('/export', requireRole('dispatcher', 'supervisor', 'admin', 'manager'
   } catch (error: any) {
     console.error('Export warrants error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/warrants/check/:personId — manual universal warrant check
+router.post('/check/:personId', requireRole('admin', 'manager', 'supervisor', 'officer'), async (req: Request, res: Response) => {
+  try {
+    const personId = parseInt(String(req.params.personId), 10);
+    if (isNaN(personId) || personId <= 0) { res.status(400).json({ error: 'Invalid person ID' }); return; }
+    const result = await universalWarrantCheck(personId, true);
+    res.json(result);
+  } catch (err: any) {
+    console.error('[Warrant Check] Manual check error:', err.message);
+    res.status(500).json({ error: 'Warrant check failed' });
   }
 });
 
@@ -237,7 +264,7 @@ router.get('/utah/sync-status', (req: Request, res: Response) => {
 // ─── WARRANT WATCH — Automated scan log & controls ──────────────
 
 // GET /api/warrants/watch/log — View warrant watch event log
-router.get('/watch/log', (req: Request, res: Response) => {
+router.get('/watch/log', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { event, person_id, page = '1', limit = '50' } = req.query;
@@ -282,7 +309,7 @@ router.get('/watch/log', (req: Request, res: Response) => {
 });
 
 // GET /api/warrants/watch/active — List persons with currently active warrants
-router.get('/watch/active', (req: Request, res: Response) => {
+router.get('/watch/active', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
 
@@ -321,7 +348,7 @@ router.get('/watch/active', (req: Request, res: Response) => {
 });
 
 // GET /api/warrants/watch/runs — View scan run history
-router.get('/watch/runs', (req: Request, res: Response) => {
+router.get('/watch/runs', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { limit = '20' } = req.query;
@@ -356,8 +383,186 @@ router.post('/watch/scan', requireRole('admin', 'manager', 'supervisor'), async 
   }
 });
 
+// ─── DASHBOARD & UNIFIED LIST ENDPOINTS ──────────────────────────────────────
+// NOTE: These must be declared BEFORE /:id to avoid being caught by the param route
+
+// GET /api/warrants/dashboard/stats — Aggregate counts for warrant dashboard
+router.get('/dashboard/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const activeWarrants = (db.prepare('SELECT COUNT(*) as cnt FROM warrants WHERE status = ?').get('active') as any)?.cnt ?? 0;
+
+    const hitsToday = (db.prepare(`
+      SELECT COUNT(*) as cnt FROM warrant_watch_log
+      WHERE event = 'warrant_found' AND created_at >= datetime('now', 'localtime', '-24 hours')
+    `).get() as any)?.cnt ?? 0;
+
+    const personsFlagged = (db.prepare(`
+      SELECT COUNT(*) as cnt FROM persons
+      WHERE flags LIKE '%ACTIVE_WARRANT%' AND archived_at IS NULL
+    `).get() as any)?.cnt ?? 0;
+
+    const totalSources = (db.prepare('SELECT COUNT(*) as cnt FROM warrant_scraper_config WHERE enabled = 1').get() as any)?.cnt ?? 0;
+    const healthySources = (db.prepare('SELECT COUNT(*) as cnt FROM warrant_scraper_config WHERE enabled = 1 AND consecutive_errors < 5').get() as any)?.cnt ?? 0;
+
+    res.json({ activeWarrants, hitsToday, personsFlagged, sourcesOnline: healthySources, sourcesTotal: totalSources });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to load stats' });
+  }
+});
+
+// GET /api/warrants/dashboard/feed — Time-filtered alert feed
+router.get('/dashboard/feed', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const range = req.query.range as string || '24h';
+    const event = req.query.event as string || 'all';
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+    const offset = Math.max(0, Math.min(parseInt(req.query.offset as string) || 0, 10000));
+
+    const rangeMap: Record<string, string> = {
+      '1h': '-1 hours', '8h': '-8 hours', '24h': '-24 hours', '7d': '-7 days',
+    };
+    const timeFilter = rangeMap[range] || '-24 hours';
+
+    let sql = `
+      SELECT wl.*, p.photo_url, p.dob
+      FROM warrant_watch_log wl
+      LEFT JOIN persons p ON wl.person_id = p.id
+      WHERE wl.created_at >= datetime('now', 'localtime', ?)
+    `;
+    const params: any[] = [timeFilter];
+
+    if (event !== 'all') {
+      sql += ' AND wl.event = ?';
+      params.push(event === 'found' ? 'warrant_found' : 'warrant_cleared');
+    }
+
+    sql += ' ORDER BY wl.created_at DESC LIMIT ? OFFSET ?';
+    params.push(limit, offset);
+
+    const feed = db.prepare(sql).all(...params);
+    res.json(feed);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to load feed' });
+  }
+});
+
+// GET /api/warrants/dashboard/priority — Top active warrants by severity
+router.get('/dashboard/priority', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const limit = Math.min(parseInt(req.query.limit as string) || 10, 50);
+
+    const warrants = db.prepare(`
+      SELECT w.*, p.first_name as subject_first_name, p.last_name as subject_last_name,
+        p.photo_url as subject_photo_url, p.dob as subject_dob
+      FROM warrants w
+      LEFT JOIN persons p ON w.subject_person_id = p.id
+      WHERE w.status = 'active'
+      ORDER BY
+        CASE w.offense_level WHEN 'felony' THEN 1 WHEN 'misdemeanor' THEN 2 WHEN 'infraction' THEN 3 ELSE 4 END,
+        w.created_at DESC
+      LIMIT ?
+    `).all(limit);
+
+    res.json(warrants);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to load priority warrants' });
+  }
+});
+
+// GET /api/warrants/unified — Filterable warrant list with pagination
+router.get('/unified', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const status = req.query.status as string || 'all';
+    const source = req.query.source as string || 'all';
+    const type = req.query.type as string || 'all';
+    const severity = req.query.severity as string || 'all';
+    const q = (req.query.q as string || '').trim();
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+    const offset = Math.max(0, Math.min(parseInt(req.query.offset as string) || 0, 10000));
+
+    let whereClauses = ['w.archived_at IS NULL'];
+    const params: any[] = [];
+
+    if (status !== 'all') { whereClauses.push('w.status = ?'); params.push(status); }
+    if (source !== 'all') { whereClauses.push('w.source = ?'); params.push(source); }
+    if (type !== 'all') { whereClauses.push('w.type = ?'); params.push(type); }
+    if (severity !== 'all') { whereClauses.push('w.offense_level = ?'); params.push(severity); }
+    if (q) {
+      whereClauses.push(`(w.warrant_number LIKE ? ESCAPE '\\' OR w.charge_description LIKE ? ESCAPE '\\' OR p.first_name LIKE ? ESCAPE '\\' OR p.last_name LIKE ? ESCAPE '\\')`);
+      const like = `%${escapeLike(q)}%`;
+      params.push(like, like, like, like);
+    }
+
+    const whereStr = whereClauses.join(' AND ');
+
+    const warrants = db.prepare(`
+      SELECT w.*, p.first_name as subject_first_name, p.last_name as subject_last_name,
+        p.photo_url as subject_photo_url, p.dob as subject_dob
+      FROM warrants w
+      LEFT JOIN persons p ON w.subject_person_id = p.id
+      WHERE ${whereStr}
+      ORDER BY
+        CASE w.status WHEN 'active' THEN 1 ELSE 2 END,
+        CASE w.offense_level WHEN 'felony' THEN 1 WHEN 'misdemeanor' THEN 2 ELSE 3 END,
+        w.created_at DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, limit, offset);
+
+    // Count query for pagination
+    const countParams = [...params]; // Same params without limit/offset
+    const total = (db.prepare(`
+      SELECT COUNT(*) as cnt FROM warrants w
+      LEFT JOIN persons p ON w.subject_person_id = p.id
+      WHERE ${whereStr}
+    `).get(...countParams) as any).cnt;
+
+    res.json({ warrants, total });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to load warrants' });
+  }
+});
+
+// GET /api/warrants/person/:personId/profile — Full warrant profile for a person
+router.get('/person/:personId/profile', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const personId = parseInt(String(req.params.personId), 10);
+    if (isNaN(personId) || personId <= 0) { res.status(400).json({ error: 'Invalid person ID' }); return; }
+
+    const person = db.prepare(`
+      SELECT id, first_name, last_name, middle_name, dob, gender, race,
+        photo_url, flags, address, phone
+      FROM persons WHERE id = ?
+    `).get(personId);
+
+    if (!person) { res.status(404).json({ error: 'Person not found' }); return; }
+
+    const warrants = db.prepare(`
+      SELECT * FROM warrants WHERE subject_person_id = ? ORDER BY
+        CASE status WHEN 'active' THEN 1 ELSE 2 END, created_at DESC
+    `).all(personId);
+
+    const scanHistory = db.prepare(`
+      SELECT * FROM warrant_watch_log WHERE person_id = ?
+      ORDER BY created_at DESC LIMIT 50
+    `).all(personId);
+
+    const lastChecked = (db.prepare(`
+      SELECT MAX(created_at) as last_check FROM warrant_watch_log WHERE person_id = ?
+    `).get(personId) as any)?.last_check;
+
+    res.json({ person, warrants, scanHistory, lastChecked });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to load person profile' });
+  }
+});
+
 // GET /api/warrants/:id - Get single warrant with details
-router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
 
@@ -489,17 +694,6 @@ router.post('/', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), (r
       WHERE w.id = ?
     `).get(warrantId) as any;
 
-    // Log activity
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'warrant_created', 'warrant', ?, ?, ?)
-    `).run(
-      req.user!.userId,
-      warrantId,
-      `Created warrant ${warrantNumber}: ${type} - ${charge_description}`,
-      req.ip || 'unknown',
-    );
-
     // Broadcast warrant event (minimal payload — no subject PII over WebSocket)
     broadcast('alerts', 'warrant', {
       action: 'created',
@@ -517,6 +711,8 @@ router.post('/', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), (r
       'warrant', warrant.id, 'high', 'warrant.created', req.user!.userId,
     );
 
+    auditLog(req, 'warrant_created', 'warrant', Number(warrantId), `Created warrant for ${warrant.subject_name || 'unknown subject'}`);
+
     res.status(201).json(warrant);
   } catch (error: any) {
     console.error('Create warrant error:', error?.message || 'Unknown error');
@@ -525,7 +721,7 @@ router.post('/', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), (r
 });
 
 // PUT /api/warrants/:id - Update warrant
-router.put('/:id', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), (req: Request, res: Response) => {
+router.put('/:id', validateParamId, requireRole('dispatcher', 'supervisor', 'admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
 
@@ -595,16 +791,7 @@ router.put('/:id', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), 
       WHERE w.id = ?
     `).get(req.params.id) as any;
 
-    // Log activity
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'warrant_updated', 'warrant', ?, ?, ?)
-    `).run(
-      req.user!.userId,
-      req.params.id,
-      `Updated warrant ${warrant.warrant_number}`,
-      req.ip || 'unknown',
-    );
+    auditLog(req, 'warrant_updated', 'warrant', String(req.params.id), `Updated warrant #${req.params.id}`);
 
     res.json(updated);
   } catch (error: any) {
@@ -614,7 +801,7 @@ router.put('/:id', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), 
 });
 
 // PUT /api/warrants/:id/serve - Serve a warrant
-router.put('/:id/serve', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/:id/serve', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
 
@@ -663,17 +850,6 @@ router.put('/:id/serve', requireRole('admin', 'manager', 'supervisor', 'officer'
       WHERE w.id = ?
     `).get(req.params.id) as any;
 
-    // Log activity
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'warrant_served', 'warrant', ?, ?, ?)
-    `).run(
-      req.user!.userId,
-      req.params.id,
-      `Served warrant ${warrant.warrant_number}${served_location ? ` at ${served_location}` : ''}`,
-      req.ip || 'unknown',
-    );
-
     // Broadcast warrant served event (minimal payload — no subject PII over WebSocket)
     broadcast('alerts', 'warrant', {
       action: 'served',
@@ -691,6 +867,8 @@ router.put('/:id/serve', requireRole('admin', 'manager', 'supervisor', 'officer'
       'warrant', updated.id, 'normal', 'warrant.served', req.user!.userId,
     );
 
+    auditLog(req, 'warrant_served', 'warrant', String(req.params.id), `Marked warrant #${req.params.id} as served`);
+
     res.json(updated);
   } catch (error: any) {
     console.error('Serve warrant error:', error?.message || 'Unknown error');
@@ -699,7 +877,7 @@ router.put('/:id/serve', requireRole('admin', 'manager', 'supervisor', 'officer'
 });
 
 // DELETE /api/warrants/:id - Delete warrant (non-active only)
-router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const warrant = db.prepare('SELECT * FROM warrants WHERE id = ?').get(req.params.id) as any;
@@ -709,13 +887,8 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
       return;
     }
 
-    const delTx = db.transaction(() => {
-      db.prepare('DELETE FROM warrants WHERE id = ?').run(warrant.id);
-      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'warrant_deleted', 'warrant', ?, ?, ?)`).run(
-        req.user!.userId, warrant.id, `Deleted warrant ${warrant.warrant_number}: ${warrant.charge_description}`, req.ip || 'unknown');
-    });
-    delTx();
+    db.prepare('DELETE FROM warrants WHERE id = ?').run(warrant.id);
+    auditLog(req, 'warrant_deleted', 'warrant', warrant.id, `Deleted warrant #${warrant.id}`);
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
     console.error('Delete warrant error:', error?.message || 'Unknown error');
@@ -724,7 +897,7 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
 });
 
 // POST /api/warrants/:id/archive
-router.post('/:id/archive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/:id/archive', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const warrant = db.prepare('SELECT * FROM warrants WHERE id = ?').get(req.params.id) as any;
@@ -734,16 +907,13 @@ router.post('/:id/archive', requireRole('admin', 'manager', 'supervisor'), (req:
     const now = localNow();
     db.prepare('UPDATE warrants SET archived_at = ? WHERE id = ?').run(now, warrant.id);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'warrant_archived', 'warrant', ?, ?, ?)`).run(
-      req.user!.userId, warrant.id, `Archived warrant ${warrant.warrant_number}`, req.ip || 'unknown');
-
     const updated = db.prepare(`
       SELECT w.*, p.first_name as subject_first_name, p.last_name as subject_last_name,
         (p.first_name || ' ' || p.last_name) as subject_name, u.full_name as entered_by_name
       FROM warrants w LEFT JOIN persons p ON w.subject_person_id = p.id
       LEFT JOIN users u ON w.entered_by = u.id WHERE w.id = ?
     `).get(warrant.id);
+    auditLog(req, 'warrant_updated', 'warrant', warrant.id, `Archived warrant #${warrant.id}`);
     res.json(updated);
   } catch (error: any) {
     console.error('Archive warrant error:', error?.message || 'Unknown error');
@@ -752,7 +922,7 @@ router.post('/:id/archive', requireRole('admin', 'manager', 'supervisor'), (req:
 });
 
 // POST /api/warrants/:id/unarchive
-router.post('/:id/unarchive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/:id/unarchive', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const warrant = db.prepare('SELECT * FROM warrants WHERE id = ?').get(req.params.id) as any;
@@ -761,16 +931,13 @@ router.post('/:id/unarchive', requireRole('admin', 'manager', 'supervisor'), (re
 
     db.prepare('UPDATE warrants SET archived_at = NULL WHERE id = ?').run(warrant.id);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'warrant_unarchived', 'warrant', ?, ?, ?)`).run(
-      req.user!.userId, warrant.id, `Unarchived warrant ${warrant.warrant_number}`, req.ip || 'unknown');
-
     const updated = db.prepare(`
       SELECT w.*, p.first_name as subject_first_name, p.last_name as subject_last_name,
         (p.first_name || ' ' || p.last_name) as subject_name, u.full_name as entered_by_name
       FROM warrants w LEFT JOIN persons p ON w.subject_person_id = p.id
       LEFT JOIN users u ON w.entered_by = u.id WHERE w.id = ?
     `).get(warrant.id);
+    auditLog(req, 'warrant_updated', 'warrant', warrant.id, `Unarchived warrant #${warrant.id}`);
     res.json(updated);
   } catch (error: any) {
     console.error('Unarchive warrant error:', error?.message || 'Unknown error');
@@ -783,7 +950,7 @@ router.post('/:id/unarchive', requireRole('admin', 'manager', 'supervisor'), (re
 // ═══════════════════════════════════════════════════════════════
 
 // GET /api/warrants/scraped/search — Search scraped warrants by name
-router.get('/scraped/search', (req: Request, res: Response) => {
+router.get('/scraped/search', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const { q, state, status, page = '1', limit = '50' } = req.query;
     if (!q || String(q).trim().length < 2) {
@@ -814,7 +981,7 @@ router.get('/scraped/search', (req: Request, res: Response) => {
 });
 
 // GET /api/warrants/scraped/active — All active scraped warrants
-router.get('/scraped/active', (req: Request, res: Response) => {
+router.get('/scraped/active', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const { state, limit = '200' } = req.query;
     const data = getActiveScrapedWarrants({
@@ -829,7 +996,7 @@ router.get('/scraped/active', (req: Request, res: Response) => {
 });
 
 // GET /api/warrants/scraped/stats — Warrant scraper statistics
-router.get('/scraped/stats', (req: Request, res: Response) => {
+router.get('/scraped/stats', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const stats = getWarrantScraperStats();
     res.json(stats);
@@ -851,7 +1018,7 @@ router.get('/scraped/status', requireRole('admin', 'manager', 'supervisor'), (re
 });
 
 // GET /api/warrants/scraped/person/:personId — Check person for active warrants
-router.get('/scraped/person/:personId', (req: Request, res: Response) => {
+router.get('/scraped/person/:personId', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const personId = parseInt(String(req.params.personId), 10);
     if (isNaN(personId)) {
@@ -912,7 +1079,7 @@ router.put('/scraped/enable/:sourceKey', requireRole('admin', 'manager'), (req: 
 // ════════════════════════════════════════════════════════════
 
 // GET /api/warrants/court-records/search?firstName=&lastName=
-router.get('/court-records/search', async (req: Request, res: Response) => {
+router.get('/court-records/search', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (req: Request, res: Response) => {
   try {
     const firstName = String(req.query.firstName || '').trim();
     const lastName = String(req.query.lastName || '').trim();
@@ -921,7 +1088,7 @@ router.get('/court-records/search', async (req: Request, res: Response) => {
       return;
     }
 
-    const states = req.query.states ? String(req.query.states).split(',') : undefined;
+    const states = req.query.states ? String(req.query.states).split(',').filter(Boolean) : undefined;
     const result = await searchCourtRecords(firstName, lastName, { states });
     res.json(result);
   } catch (error: any) {
@@ -931,7 +1098,7 @@ router.get('/court-records/search', async (req: Request, res: Response) => {
 });
 
 // GET /api/warrants/court-records/person/:personId
-router.get('/court-records/person/:personId', (req: Request, res: Response) => {
+router.get('/court-records/person/:personId', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const personId = parseInt(String(req.params.personId), 10);
     if (isNaN(personId)) {

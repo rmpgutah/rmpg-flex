@@ -12,6 +12,7 @@ import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
 import { localNow } from '../utils/timeUtils';
 import { calculateLeadScore, runScraper, getRegisteredScraper } from '../utils/leadScraperBase';
+import { escapeLike, validateParamId } from '../middleware/sanitize';
 
 // Import scrapers so they register themselves
 import '../utils/utahBizScraper';
@@ -48,9 +49,11 @@ router.get('/leads', requireRole('admin', 'manager', 'contract_manager'), (req: 
       params.push(source);
     }
     if (pipeline_stage) {
-      const stages = (pipeline_stage as string).split(',').slice(0, 20);
-      sql += ` AND l.pipeline_stage IN (${stages.map(() => '?').join(',')})`;
-      params.push(...stages);
+      const stages = (pipeline_stage as string).split(',').filter(Boolean).slice(0, 20);
+      if (stages.length > 0) {
+        sql += ` AND l.pipeline_stage IN (${stages.map(() => '?').join(',')})`;
+        params.push(...stages);
+      }
     }
     if (score_min) {
       sql += ' AND l.lead_score >= ?';
@@ -65,8 +68,8 @@ router.get('/leads', requireRole('admin', 'manager', 'contract_manager'), (req: 
       }
     }
     if (search) {
-      sql += " AND (l.business_name LIKE ? OR l.contact_name LIKE ? OR l.address LIKE ? OR l.city LIKE ?)";
-      const q = `%${search}%`;
+      sql += " AND (l.business_name LIKE ? ESCAPE '\\' OR l.contact_name LIKE ? ESCAPE '\\' OR l.address LIKE ? ESCAPE '\\' OR l.city LIKE ? ESCAPE '\\')";
+      const q = `%${escapeLike(String(search))}%`;
       params.push(q, q, q, q);
     }
     if (date_from) {
@@ -78,8 +81,8 @@ router.get('/leads', requireRole('admin', 'manager', 'contract_manager'), (req: 
       params.push(date_to + ' 23:59:59');
     }
     if (service_interest) {
-      sql += ' AND l.service_interest LIKE ?';
-      params.push(`%${service_interest}%`);
+      sql += " AND l.service_interest LIKE ? ESCAPE '\\'";
+      params.push(`%${escapeLike(String(service_interest))}%`);
     }
 
     sql += ' ORDER BY l.lead_score DESC, l.created_at DESC LIMIT 500';
@@ -93,7 +96,7 @@ router.get('/leads', requireRole('admin', 'manager', 'contract_manager'), (req: 
 });
 
 // ── Get Single Lead ─────────────────────────────────────────
-router.get('/leads/:id', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.get('/leads/:id', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -194,7 +197,7 @@ router.post('/leads', requireRole('admin', 'manager', 'contract_manager'), (req:
 });
 
 // ── Update Lead ─────────────────────────────────────────────
-router.put('/leads/:id', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.put('/leads/:id', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -258,7 +261,7 @@ router.put('/leads/:id', requireRole('admin', 'manager', 'contract_manager'), (r
 });
 
 // ── Delete Lead ─────────────────────────────────────────────
-router.delete('/leads/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/leads/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -280,7 +283,7 @@ router.delete('/leads/:id', requireRole('admin', 'manager'), (req: Request, res:
 });
 
 // ── Move Pipeline Stage ─────────────────────────────────────
-router.put('/leads/:id/stage', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.put('/leads/:id/stage', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -332,7 +335,7 @@ router.put('/leads/:id/stage', requireRole('admin', 'manager', 'contract_manager
 });
 
 // ── Assign Lead ─────────────────────────────────────────────
-router.put('/leads/:id/assign', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.put('/leads/:id/assign', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -375,7 +378,7 @@ router.put('/leads/:id/assign', requireRole('admin', 'manager', 'contract_manage
 });
 
 // ── Convert Lead to Client ──────────────────────────────────
-router.post('/leads/:id/convert', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.post('/leads/:id/convert', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -482,7 +485,7 @@ router.post('/leads/bulk-action', requireRole('admin', 'manager', 'contract_mana
         break;
 
       default:
-        res.status(400).json({ error: `Unknown action: ${action}` });
+        res.status(400).json({ error: 'Unknown action. Must be one of: mark_contacted, assign, dismiss' });
         return;
     }
 
@@ -630,7 +633,7 @@ router.post('/scrape-sources/:key/poll-now', requireRole('admin', 'manager'), as
     const sourceKey = String(key);
     const scraper = getRegisteredScraper(sourceKey);
     if (!scraper) {
-      res.status(404).json({ error: `No scraper registered for source: ${sourceKey}` });
+      res.status(404).json({ error: 'No scraper registered for the specified source' });
       return;
     }
 

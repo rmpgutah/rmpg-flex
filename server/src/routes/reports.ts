@@ -5,6 +5,7 @@ import { reverseGeocodeDetailed } from '../utils/geocode';
 import { identifyBeat } from '../utils/geofence';
 import { listDailyReports, getReportPath, generateAndSaveDailyReport } from '../utils/dailyReportGenerator';
 import { localToday } from '../utils/timeUtils';
+import { escapeLike, quoteIdent } from '../middleware/sanitize';
 
 const router = Router();
 
@@ -438,8 +439,8 @@ router.get('/officer-activity', (req: Request, res: Response) => {
       if (unit) {
         const callCount = db.prepare(`
           SELECT COUNT(*) as count FROM calls_for_service
-          WHERE assigned_unit_ids LIKE ? ${dateFilter}
-        `).get(`%${unit.id}%`, ...params) as any;
+          WHERE assigned_unit_ids LIKE ? ESCAPE '\\' ${dateFilter}
+        `).get(`%${escapeLike(String(unit.id))}%`, ...params) as any;
         callsResponded = callCount.count;
       }
 
@@ -607,10 +608,10 @@ router.get('/shift-activity/:officerId', (req: Request, res: Response) => {
       SELECT c.*
       FROM calls_for_service c
       WHERE DATE(c.created_at) = ? AND (
-        c.dispatcher_id = ? OR c.assigned_unit_ids LIKE ?
+        c.dispatcher_id = ? OR c.assigned_unit_ids LIKE ? ESCAPE '\\'
       )
       ORDER BY c.created_at ASC
-    `).all(date, officerId, `%${unitId}%`) as any[];
+    `).all(date, officerId, `%${escapeLike(unitId)}%`) as any[];
 
     // Incidents authored today
     const incidents = db.prepare(`
@@ -854,27 +855,28 @@ router.post('/custom', requireRole('admin', 'manager'), (req: Request, res: Resp
     const selectedCols = (columns || allowedCols).filter((c: string) => allowedCols.includes(c));
     if (selectedCols.length === 0) return res.status(400).json({ error: 'No valid columns selected' });
 
-    // Quote SQL identifiers to prevent injection even if allowlists are modified
-    const q = (id: string) => `"${id.replace(/"/g, '')}"`;
-
-    let sql = `SELECT ${selectedCols.map(q).join(', ')} FROM ${q(source)}`;
+    let sql = `SELECT ${selectedCols.map(quoteIdent).join(', ')} FROM ${quoteIdent(source)}`;
     const params: any[] = [];
     const conditions: string[] = [];
+
+    // Validate filter operators to prevent injection via operator field
+    const VALID_OPERATORS = new Set(['eq', 'contains', 'gte', 'lte']);
 
     if (filters && Array.isArray(filters)) {
       for (const f of filters) {
         if (!allowedCols.includes(f.column)) continue;
-        const col = q(f.column);
+        if (!VALID_OPERATORS.has(f.operator)) continue;
+        const col = quoteIdent(f.column);
         if (f.operator === 'eq') { conditions.push(`${col} = ?`); params.push(f.value); }
-        else if (f.operator === 'contains') { conditions.push(`${col} LIKE ?`); params.push(`%${f.value}%`); }
+        else if (f.operator === 'contains') { conditions.push(`${col} LIKE ? ESCAPE '\\'`); params.push(`%${escapeLike(String(f.value))}%`); }
         else if (f.operator === 'gte') { conditions.push(`${col} >= ?`); params.push(f.value); }
         else if (f.operator === 'lte') { conditions.push(`${col} <= ?`); params.push(f.value); }
       }
     }
 
     if (conditions.length > 0) sql += ` WHERE ${conditions.join(' AND ')}`;
-    if (groupBy && allowedCols.includes(groupBy)) sql += ` GROUP BY ${q(groupBy)}`;
-    if (sortBy && allowedCols.includes(sortBy)) sql += ` ORDER BY ${q(sortBy)} ${sortDir === 'asc' ? 'ASC' : 'DESC'}`;
+    if (groupBy && allowedCols.includes(groupBy)) sql += ` GROUP BY ${quoteIdent(groupBy)}`;
+    if (sortBy && allowedCols.includes(sortBy)) sql += ` ORDER BY ${quoteIdent(sortBy)} ${sortDir === 'asc' ? 'ASC' : 'DESC'}`;
     const parsedLimit = parseInt(queryLimit, 10);
     const safeLimit = Math.min(isNaN(parsedLimit) ? 500 : parsedLimit, 2000);
     sql += ` LIMIT ?`;
@@ -890,7 +892,7 @@ router.post('/custom', requireRole('admin', 'manager'), (req: Request, res: Resp
 
 // ─── GET /crime-analysis ─────────────────────────────────
 // Crime analysis / ILP dashboard data
-router.get('/crime-analysis', (req: Request, res: Response) => {
+router.get('/crime-analysis', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { days = '90' } = req.query;

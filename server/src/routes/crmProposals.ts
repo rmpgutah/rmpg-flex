@@ -10,6 +10,7 @@ import { Router, Request, Response } from 'express';
 import { authenticateToken as authenticate, requireRole } from '../middleware/auth';
 import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
+import { validateParamId } from '../middleware/sanitize';
 import { localNow, localToday } from '../utils/timeUtils';
 
 const router = Router();
@@ -55,9 +56,11 @@ router.get('/proposals', requireRole('admin', 'manager', 'contract_manager'), (r
     const params: any[] = [];
 
     if (stage) {
-      const stages = (stage as string).split(',');
-      sql += ` AND p.stage IN (${stages.map(() => '?').join(',')})`;
-      params.push(...stages);
+      const stages = (stage as string).split(',').filter(Boolean);
+      if (stages.length > 0) {
+        sql += ` AND p.stage IN (${stages.map(() => '?').join(',')})`;
+        params.push(...stages);
+      }
     }
     if (lead_id) {
       sql += ' AND p.lead_id = ?';
@@ -87,7 +90,7 @@ router.get('/proposals', requireRole('admin', 'manager', 'contract_manager'), (r
 });
 
 // ── Get Single Proposal ─────────────────────────────────────
-router.get('/proposals/:id', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.get('/proposals/:id', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -144,8 +147,10 @@ router.post('/proposals', requireRole('admin', 'manager', 'contract_manager'), (
       let finalScope = scope_of_work || null;
       let finalTerms = terms || null;
       let finalMonthly: number | null = monthly_value != null ? Number(monthly_value) : null;
+      if (finalMonthly != null && (isNaN(finalMonthly) || !isFinite(finalMonthly))) finalMonthly = null;
       let finalBilling = billing_frequency || 'monthly';
       let finalContractMonths: number | null = contract_length_months != null ? Number(contract_length_months) : null;
+      if (finalContractMonths != null && (isNaN(finalContractMonths) || !isFinite(finalContractMonths))) finalContractMonths = null;
 
       if (template_type && !scope_of_work && !terms) {
         const template = db.prepare(
@@ -163,6 +168,7 @@ router.post('/proposals', requireRole('admin', 'manager', 'contract_manager'), (
 
       // Calculate total_value if not provided — guard against null multiplication
       let finalTotal: number | null = total_value != null ? Number(total_value) : null;
+      if (finalTotal != null && (isNaN(finalTotal) || !isFinite(finalTotal))) finalTotal = null;
       if (finalTotal == null && finalMonthly != null && finalContractMonths != null) {
         finalTotal = finalMonthly * finalContractMonths;
       }
@@ -226,7 +232,7 @@ router.post('/proposals', requireRole('admin', 'manager', 'contract_manager'), (
 });
 
 // ── Update Proposal ─────────────────────────────────────────
-router.put('/proposals/:id', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.put('/proposals/:id', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -284,7 +290,7 @@ router.put('/proposals/:id', requireRole('admin', 'manager', 'contract_manager')
 });
 
 // ── Delete Proposal ─────────────────────────────────────────
-router.delete('/proposals/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/proposals/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -308,7 +314,7 @@ router.delete('/proposals/:id', requireRole('admin', 'manager'), (req: Request, 
 });
 
 // ── Update Proposal Stage ───────────────────────────────────
-router.put('/proposals/:id/stage', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.put('/proposals/:id/stage', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -435,7 +441,7 @@ router.post('/proposal-templates', requireRole('admin'), (req: Request, res: Res
   }
 });
 
-router.put('/proposal-templates/:id', requireRole('admin'), (req: Request, res: Response) => {
+router.put('/proposal-templates/:id', validateParamId, requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -482,7 +488,7 @@ router.put('/proposal-templates/:id', requireRole('admin'), (req: Request, res: 
   }
 });
 
-router.delete('/proposal-templates/:id', requireRole('admin'), (req: Request, res: Response) => {
+router.delete('/proposal-templates/:id', validateParamId, requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;

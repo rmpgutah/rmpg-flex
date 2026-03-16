@@ -11,6 +11,9 @@ import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 import { queueOverlayProcessing, type BodyCamOverlayConfig } from '../utils/videoOverlay';
+import { validateEmail, validatePhone, validateBadgeNumber, validateAll } from '../utils/inputValidation';
+import { validateParamId } from '../middleware/sanitize';
+import { auditLog } from '../utils/auditLogger';
 
 const execFileAsync = promisify(execFile);
 
@@ -151,7 +154,8 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
 });
 
 // GET /api/personnel/:id - Get user details
-router.get('/:id', (req: Request, res: Response, next) => {
+// Restrict to sworn/dispatch/command roles — contract_manager must NOT see officer PII
+router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), validateParamId, (req: Request, res: Response, next) => {
   try {
     // Check for route conflicts with sub-paths handled by mountScheduleRoutes
     const subPaths = ['schedules', 'time', 'credentials', 'training', 'training-requirements', 'deployments', 'coverage-gaps', 'analytics', 'activity', 'equipment', 'body-cameras', 'bodycam-videos'];
@@ -254,6 +258,17 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       return;
     }
 
+    // Validate field formats
+    const validationError = validateAll(
+      validateEmail(email),
+      validatePhone(phone),
+      validateBadgeNumber(badge_number),
+    );
+    if (validationError) {
+      res.status(400).json({ error: validationError });
+      return;
+    }
+
     // Validate role against allowlist
     const VALID_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'];
     if (!VALID_ROLES.includes(role)) {
@@ -330,12 +345,23 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
 });
 
 // PUT /api/personnel/:id - Update user
-router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id) as any;
+    const user = db.prepare('SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, status, archived_at FROM users WHERE id = ?').get(req.params.id) as any;
     if (!user) {
       res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    // Validate field formats on update
+    const updateValidationError = validateAll(
+      validateEmail(req.body.email),
+      validatePhone(req.body.phone),
+      validateBadgeNumber(req.body.badge_number),
+    );
+    if (updateValidationError) {
+      res.status(400).json({ error: updateValidationError });
       return;
     }
 
@@ -425,10 +451,10 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
 });
 
 // DELETE /api/personnel/:id - Soft-delete (terminate) user
-router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id) as any;
+    const user = db.prepare('SELECT id, username, full_name, status FROM users WHERE id = ?').get(req.params.id) as any;
     if (!user) {
       res.status(404).json({ error: 'User not found' });
       return;
@@ -456,6 +482,9 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
     });
     delTx();
 
+    auditLog(req, 'TERMINATE' as any, 'user' as any, Number(req.params.id),
+      `Terminated user: ${user.username} (${user.full_name || 'N/A'})`);
+
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
     console.error('Delete user error:', error?.message || 'Unknown error');
@@ -464,10 +493,10 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
 });
 
 // POST /api/personnel/:id/archive - Archive terminated user
-router.post('/:id/archive', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/:id/archive', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id) as any;
+    const user = db.prepare('SELECT id, full_name, status, archived_at FROM users WHERE id = ?').get(req.params.id) as any;
     if (!user) { res.status(404).json({ error: 'User not found' }); return; }
     if (user.status !== 'terminated') {
       res.status(400).json({ error: 'Only terminated users can be archived' }); return;
@@ -493,10 +522,10 @@ router.post('/:id/archive', requireRole('admin', 'manager'), (req: Request, res:
 });
 
 // POST /api/personnel/:id/unarchive
-router.post('/:id/unarchive', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/:id/unarchive', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id) as any;
+    const user = db.prepare('SELECT id, full_name, status, archived_at FROM users WHERE id = ?').get(req.params.id) as any;
     if (!user) { res.status(404).json({ error: 'User not found' }); return; }
     if (!user.archived_at) { res.status(400).json({ error: 'User is not archived' }); return; }
 
@@ -531,6 +560,15 @@ router.get('/bodycam-videos/:videoId/stream', (req: Request, res: Response) => {
       return;
     }
 
+    // IDOR protection: only the video's officer, admins, managers, or supervisors may stream
+    const callerRole = req.user?.role;
+    const isOwner = video.officer_id === req.user?.userId;
+    const isPrivileged = ['admin', 'manager', 'supervisor'].includes(callerRole || '');
+    if (!isOwner && !isPrivileged) {
+      res.status(403).json({ error: 'You do not have permission to view this video' });
+      return;
+    }
+
     // Serve processed (overlaid) file if available, otherwise original
     const servePath = (video.overlay_status === 'complete' && video.processed_file_path)
       ? path.resolve(BODYCAM_DIR, video.processed_file_path)
@@ -538,7 +576,7 @@ router.get('/bodycam-videos/:videoId/stream', (req: Request, res: Response) => {
 
     const filePath = fs.existsSync(servePath) ? servePath : path.resolve(BODYCAM_DIR, video.file_path);
 
-    if (!filePath.startsWith(BODYCAM_DIR) || !fs.existsSync(filePath)) {
+    if (path.relative(BODYCAM_DIR, filePath).startsWith('..') || !fs.existsSync(filePath)) {
       res.status(404).json({ error: 'Video file not found on disk' });
       return;
     }
@@ -566,19 +604,23 @@ router.get('/bodycam-videos/:videoId/stream', (req: Request, res: Response) => {
         'Accept-Ranges': 'bytes',
         'Content-Length': chunkSize,
         'Content-Type': mimeType,
+        'X-Content-Type-Options': 'nosniff',
       });
 
       const stream = fs.createReadStream(filePath, { start, end });
-      stream.on('error', (err) => { console.error('Bodycam stream error:', err); res.destroy(); });
+      stream.once('error', (err) => { console.error('Bodycam stream error:', err); if (!res.headersSent) res.status(500).end(); else res.destroy(); });
+      res.on('error', () => { stream.destroy(); });
       stream.pipe(res);
     } else {
       res.writeHead(200, {
         'Content-Length': fileSize,
         'Content-Type': mimeType,
+        'X-Content-Type-Options': 'nosniff',
       });
 
       const stream = fs.createReadStream(filePath);
-      stream.on('error', (err) => { console.error('Bodycam stream error:', err); res.destroy(); });
+      stream.once('error', (err) => { console.error('Bodycam stream error:', err); if (!res.headersSent) res.status(500).end(); else res.destroy(); });
+      res.on('error', () => { stream.destroy(); });
       stream.pipe(res);
     }
   } catch (error: any) {
@@ -597,22 +639,35 @@ router.get('/bodycam-videos/:videoId/download', (req: Request, res: Response) =>
       return;
     }
 
+    // IDOR protection: only the video's officer, admins, managers, or supervisors may download
+    const callerRole = req.user?.role;
+    const isOwner = video.officer_id === req.user?.userId;
+    const isPrivileged = ['admin', 'manager', 'supervisor'].includes(callerRole || '');
+    if (!isOwner && !isPrivileged) {
+      res.status(403).json({ error: 'You do not have permission to download this video' });
+      return;
+    }
+
     const servePath = (video.overlay_status === 'complete' && video.processed_file_path)
       ? path.resolve(BODYCAM_DIR, video.processed_file_path)
       : path.resolve(BODYCAM_DIR, video.file_path);
 
     const filePath = fs.existsSync(servePath) ? servePath : path.resolve(BODYCAM_DIR, video.file_path);
 
-    if (!filePath.startsWith(BODYCAM_DIR) || !fs.existsSync(filePath)) {
+    if (path.relative(BODYCAM_DIR, filePath).startsWith('..') || !fs.existsSync(filePath)) {
       res.status(404).json({ error: 'Video file not found on disk' });
       return;
     }
 
     const stat = fs.statSync(filePath);
-    const safeTitle = (video.title || `bodycam_${video.id}`).replace(/[^a-zA-Z0-9_\-. ]/g, '_');
+    // Sanitize filename: strip non-alphanumeric chars and CRLF/null bytes to prevent header injection
+    const safeTitle = (video.title || `bodycam_${video.id}`)
+      .replace(/[\r\n\0"]/g, '')
+      .replace(/[^a-zA-Z0-9_\-. ]/g, '_');
     res.writeHead(200, {
       'Content-Type': 'video/mp4',
       'Content-Length': stat.size,
+      'X-Content-Type-Options': 'nosniff',
       'Content-Disposition': `attachment; filename="BWC_${safeTitle}.mp4"`,
     });
     const dlStream = fs.createReadStream(filePath);
@@ -1202,7 +1257,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
   parentRouter.get('/personnel/activity/:userId', authenticateToken, (req: Request, res: Response) => {
     try {
       const db = getDb();
-      const limit = parseInt(req.query.limit as string, 10) || 50;
+      const limit = Math.min(500, Math.max(1, parseInt(req.query.limit as string, 10) || 50));
 
       const activity = db.prepare(`
         SELECT al.*, u.full_name as user_name, u.badge_number
@@ -2062,7 +2117,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const videos = db.prepare('SELECT * FROM bodycam_videos WHERE camera_id = ?').all(req.params.cameraId) as any[];
       for (const vid of videos) {
         const filePath = path.resolve(BODYCAM_DIR, vid.file_path);
-        if (filePath.startsWith(BODYCAM_DIR) && fs.existsSync(filePath)) {
+        if (!path.relative(BODYCAM_DIR, filePath).startsWith('..') && fs.existsSync(filePath)) {
           fs.unlinkSync(filePath);
         }
       }
@@ -2125,7 +2180,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
           if (!video) { results.errors++; continue; }
           // Delete file from disk
           const filePath = path.resolve(BODYCAM_DIR, video.file_path);
-          if (filePath.startsWith(BODYCAM_DIR) && fs.existsSync(filePath)) {
+          if (!path.relative(BODYCAM_DIR, filePath).startsWith('..') && fs.existsSync(filePath)) {
             try { fs.unlinkSync(filePath); } catch { results.errors++; }
           }
           db.prepare('DELETE FROM bodycam_videos WHERE id = ?').run(id);
@@ -2192,7 +2247,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
           const videos = db.prepare('SELECT * FROM bodycam_videos WHERE camera_id = ?').all(camId) as any[];
           for (const vid of videos) {
             const filePath = path.resolve(BODYCAM_DIR, vid.file_path);
-            if (filePath.startsWith(BODYCAM_DIR) && fs.existsSync(filePath)) {
+            if (!path.relative(BODYCAM_DIR, filePath).startsWith('..') && fs.existsSync(filePath)) {
               try { fs.unlinkSync(filePath); } catch { /* ok */ }
             }
             results.videosDeleted++;
@@ -2264,7 +2319,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
     chunkUpload.single('chunk')(req, res, (multerErr: any) => {
       if (multerErr) {
         console.error('Chunk upload multer error:', multerErr?.message);
-        res.status(400).json({ error: multerErr.message || 'Chunk upload failed' });
+        res.status(400).json({ error: 'Chunk upload failed' });
         return;
       }
 
@@ -2416,7 +2471,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.status(201).json(video);
     } catch (error: any) {
       console.error('Upload complete error:', error?.message, error?.stack);
-      res.status(500).json({ error: `Upload finalization failed: ${error?.message || 'Internal server error'}` });
+      res.status(500).json({ error: 'Upload finalization failed' });
     }
   });
 
@@ -2453,7 +2508,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       fs.accessSync(BODYCAM_DIR, fs.constants.W_OK);
     } catch (dirErr: any) {
       console.error('Bodycam upload dir not writable:', BODYCAM_DIR, dirErr);
-      res.status(503).json({ error: `Upload storage is unavailable: ${dirErr.message}` });
+      res.status(503).json({ error: 'Upload storage is unavailable' });
       return;
     }
 
@@ -2461,7 +2516,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       bodycamUpload.single('video')(req, res, (multerErr: any) => {
         if (multerErr) {
           console.error('Multer upload error:', multerErr?.message, multerErr?.code, multerErr?.stack);
-          res.status(400).json({ error: multerErr.message || 'Upload failed' });
+          res.status(400).json({ error: 'Upload failed' });
           return;
         }
 
@@ -2540,13 +2595,13 @@ export function mountScheduleRoutes(parentRouter: Router): void {
           res.status(201).json(video);
         } catch (error: any) {
           console.error('Upload bodycam video DB error:', error?.message, error?.stack);
-          res.status(500).json({ error: `Upload processing failed: ${error?.message || 'Internal server error'}` });
+          res.status(500).json({ error: 'Upload processing failed' });
         }
       });
     } catch (outerErr: any) {
       console.error('Bodycam upload outer error:', outerErr?.message, outerErr?.stack);
       if (!res.headersSent) {
-        res.status(500).json({ error: `Upload failed: ${outerErr?.message || 'Internal server error'}` });
+        res.status(500).json({ error: 'Upload failed' });
       }
     }
   });
@@ -2636,7 +2691,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       // Delete original file from disk
       const filePath = path.resolve(BODYCAM_DIR, existing.file_path);
-      if (filePath.startsWith(BODYCAM_DIR) && fs.existsSync(filePath)) {
+      if (!path.relative(BODYCAM_DIR, filePath).startsWith('..') && fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
       }
       // Delete processed overlay file if it exists
@@ -2678,7 +2733,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       const filePath = fs.existsSync(servePath) ? servePath : path.resolve(BODYCAM_DIR, video.file_path);
 
-      if (!filePath.startsWith(BODYCAM_DIR) || !fs.existsSync(filePath)) {
+      if (path.relative(BODYCAM_DIR, filePath).startsWith('..') || !fs.existsSync(filePath)) {
         res.status(404).json({ error: 'Video file not found on disk' });
         return;
       }

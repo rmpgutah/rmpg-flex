@@ -11,17 +11,42 @@
 import { getDb } from '../models/database';
 
 /** Validate a SQL identifier (table/column name) to prevent injection.
- *  Allows: alphanumeric, underscores, dots (table.col), quoted identifiers,
- *  and common SQL keywords for JOINs/aliases (LEFT, JOIN, ON, AS, DESC, ASC, etc.).
- *  Rejects anything that looks like it could contain injected SQL. */
+ *  Uses an ALLOWLIST approach — only permits characters that are valid in SQL identifiers.
+ *  For simple identifiers (table/column names): alphanumeric + underscores only.
+ *  For compound expressions (JOINs, SELECT lists): also allows dots, spaces, commas,
+ *  parens, *, and quoted identifiers — but still rejects semicolons, comments, and
+ *  dangerous statement keywords that should never appear in an identifier context. */
 function assertSafeIdentifier(value: string, label: string): void {
-  // Strip quoted identifiers for validation
+  if (!value || typeof value !== 'string') {
+    throw new Error(`Empty or invalid ${label}`);
+  }
+
+  // Strip quoted identifiers (e.g. "column_name") for validation — these are safe
   const stripped = value.replace(/"[^"]+"/g, 'QUOTED');
-  // Allow: word chars, dots, commas, parens, spaces, *, and common SQL keywords
-  // Reject: semicolons, --, /*, UNION, DROP, DELETE, INSERT, UPDATE (as standalone words)
-  const dangerous = /[;]|--|\bUNION\b|\bDROP\b|\bDELETE\b|\bINSERT\b|\bUPDATE\b|\bEXEC\b/i;
-  if (dangerous.test(stripped)) {
-    throw new Error(`Unsafe SQL identifier in ${label}: "${value}"`);
+
+  // ALLOWLIST: Only permit characters valid in SQL identifier expressions
+  // Letters, digits, underscores, dots, spaces, commas, parens, *, =, <, >, !, single quotes (for values)
+  // This covers: table.column, aliases, JOIN...ON expressions, ORDER BY, SELECT lists
+  const ALLOWED_CHARS = /^[a-zA-Z0-9_.*, ()=<>!|'\-\n\r\t]+$/;
+  if (!ALLOWED_CHARS.test(stripped)) {
+    throw new Error(`Unsafe characters in ${label}: "${value}"`);
+  }
+
+  // DENYLIST (defense-in-depth): reject dangerous SQL statement keywords
+  // even if individual characters pass — prevents multi-statement injection
+  const DANGEROUS_KEYWORDS = /\b(UNION|EXEC|EXECUTE|ATTACH|DETACH|PRAGMA|LOAD_EXTENSION|VACUUM)\b/i;
+  if (DANGEROUS_KEYWORDS.test(stripped)) {
+    throw new Error(`Unsafe SQL keyword in ${label}: "${value}"`);
+  }
+
+  // Block SQL comment sequences
+  if (/--|\/\*|\*\//.test(stripped)) {
+    throw new Error(`SQL comment sequence in ${label}: "${value}"`);
+  }
+
+  // Block semicolons (statement terminators)
+  if (/;/.test(stripped)) {
+    throw new Error(`Statement terminator in ${label}: "${value}"`);
   }
 }
 

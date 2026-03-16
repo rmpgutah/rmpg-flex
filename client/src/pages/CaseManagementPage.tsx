@@ -127,7 +127,7 @@ export default function CaseManagementPage() {
   useEffect(() => { fetchStats(); }, [fetchStats]);
   useEffect(() => {
     let cancelled = false;
-    apiFetch<{ data: any[] }>('/personnel?per_page=200').then(r => { if (!cancelled) setUsers(r.data || []); }).catch((err) => { console.warn('[CaseManagementPage] fetch personnel failed:', err); });
+    apiFetch<any>('/personnel').then(r => { if (!cancelled) setUsers(Array.isArray(r) ? r : (r?.data || [])); }).catch((err) => { console.warn('[CaseManagementPage] fetch personnel failed:', err); });
     return () => { cancelled = true; };
   }, []);
   useLiveSync('records', () => { fetchCases({ silent: true }); fetchStats(); });

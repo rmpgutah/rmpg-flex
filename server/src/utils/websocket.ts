@@ -84,6 +84,23 @@ const clientMessageRates: Map<string, { count: number; resetAt: number }> = new 
 const WS_RATE_LIMIT_WINDOW_MS = 1000; // 1 second window
 const WS_RATE_LIMIT_MAX = 15;         // max messages per second
 
+/** Per-IP message rate limiting — prevents abuse via multiple client connections */
+const ipMessageRates: Map<string, { count: number; resetAt: number }> = new Map();
+const WS_IP_RATE_LIMIT_MAX = 60;      // max messages per second per IP (across all connections)
+
+/** Per-message-type rate limits — prevents flooding of sensitive message types */
+const MESSAGE_TYPE_LIMITS: Record<string, number> = {
+  'panic_audio': 5,           // 5 per second
+  'radio_channel_join': 3,    // 3 per second
+  'radio_channel_leave': 3,
+  'radio_audio': 10,          // 10 per second (streaming audio)
+  'private_call_offer': 2,
+  'private_call_answer': 2,
+  'subscribe': 5,
+  'unsubscribe': 5,
+};
+const messageTypeRates: Map<string, { count: number; resetAt: number }> = new Map();
+
 // Periodic cleanup of stale rate-limit entries and orphaned radio state (every 5 min)
 setInterval(() => {
   const now = Date.now();
@@ -93,6 +110,20 @@ setInterval(() => {
     if (now > rate.resetAt && !clients.has(id)) rateKeysToDelete.push(id);
   }
   for (const k of rateKeysToDelete) clientMessageRates.delete(k);
+
+  // Clean stale IP rate entries
+  const ipRateKeysToDelete: string[] = [];
+  for (const [ip, rate] of ipMessageRates) {
+    if (now > rate.resetAt) ipRateKeysToDelete.push(ip);
+  }
+  for (const k of ipRateKeysToDelete) ipMessageRates.delete(k);
+
+  // Clean stale per-message-type rate entries
+  const typeRateKeysToDelete: string[] = [];
+  for (const [key, rate] of messageTypeRates) {
+    if (now > rate.resetAt) typeRateKeysToDelete.push(key);
+  }
+  for (const k of typeRateKeysToDelete) messageTypeRates.delete(k);
 
   const logKeysToDelete: string[] = [];
   for (const key of loggedTransmissions) {
@@ -143,6 +174,10 @@ const ALLOWED_ORIGINS = new Set([
 const MAX_WS_CONNECTIONS_PER_IP = 10;
 const ipConnectionCounts: Map<string, number> = new Map();
 
+// Per-user connection limit — prevents a single authenticated user from hogging resources
+const MAX_WS_CONNECTIONS_PER_USER = 5;
+const userConnectionCounts: Map<number, number> = new Map();
+
 // Periodic token re-validation interval (check every 2 minutes)
 const TOKEN_REVALIDATION_INTERVAL_MS = 2 * 60 * 1000;
 
@@ -187,7 +222,9 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
     }
 
     // ── Per-IP connection limit ────────────────────────────────
-    const clientIp = req.socket.remoteAddress || 'unknown';
+    const forwarded = req.headers['x-forwarded-for'];
+    const clientIp = (typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : null)
+      || req.socket.remoteAddress || 'unknown';
     const currentCount = ipConnectionCounts.get(clientIp) || 0;
     if (currentCount >= MAX_WS_CONNECTIONS_PER_IP) {
       console.warn(`[WS] Rejected connection from ${clientIp} — exceeds ${MAX_WS_CONNECTIONS_PER_IP} connections`);
@@ -210,12 +247,19 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
     // Try to authenticate from URL query parameter (token in ?token=...)
     // NOTE: URL tokens are less secure than header-based auth (visible in logs/history)
     // Kept for backward compatibility — clients should migrate to message-based auth
+    // SECURITY: URL tokens are logged in server access logs and browser history
     const url = req.url || '';
     const tokenMatch = url.match(/[?&]token=([^&]+)/);
     if (tokenMatch) {
       const token = decodeURIComponent(tokenMatch[1]);
       console.warn(`[WS] Client authenticating via URL token (deprecated) from ${clientIp}`);
       authenticateClient(client, token);
+      // Notify client to migrate away from URL token auth
+      safeSend(ws, JSON.stringify({
+        type: 'warning',
+        code: 'URL_TOKEN_DEPRECATED',
+        message: 'URL token authentication is deprecated. Use message-based auth instead.',
+      }));
     }
 
     // Auto-disconnect unauthenticated clients after timeout
@@ -248,8 +292,45 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
         return;
       }
 
+      // Per-IP rate limiting — prevents abuse via spawning multiple WebSocket connections
+      let ipRate = ipMessageRates.get(clientIp);
+      if (!ipRate || now > ipRate.resetAt) {
+        ipRate = { count: 0, resetAt: now + WS_RATE_LIMIT_WINDOW_MS };
+        ipMessageRates.set(clientIp, ipRate);
+      }
+      ipRate.count++;
+      if (ipRate.count > WS_IP_RATE_LIMIT_MAX) {
+        safeSend(ws, JSON.stringify({ type: 'error', code: 'RATE_LIMITED', message: 'Too many messages from this IP' }));
+        ws.close(4008, 'IP rate limit exceeded');
+        clients.delete(clientId);
+        return;
+      }
+
+      // Reject oversized messages before parsing
+      if (data.length > 65536) {
+        safeSend(ws, JSON.stringify({ type: 'error', code: 'MESSAGE_TOO_LARGE', message: 'Message exceeds 64KB limit' }));
+        return;
+      }
+
       try {
         const message = JSON.parse(data.toString());
+
+        // Per-message-type rate limiting for sensitive operations
+        const msgType = message?.type;
+        if (msgType && MESSAGE_TYPE_LIMITS[msgType]) {
+          const typeKey = `${clientId}:${msgType}`;
+          let typeRate = messageTypeRates.get(typeKey);
+          if (!typeRate || now > typeRate.resetAt) {
+            typeRate = { count: 0, resetAt: now + WS_RATE_LIMIT_WINDOW_MS };
+            messageTypeRates.set(typeKey, typeRate);
+          }
+          typeRate.count++;
+          if (typeRate.count > MESSAGE_TYPE_LIMITS[msgType]) {
+            safeSend(ws, JSON.stringify({ type: 'error', code: 'TYPE_RATE_LIMITED', message: `Too many ${msgType} messages` }));
+            return;
+          }
+        }
+
         try {
           handleClientMessage(clientId, message);
         } catch (handlerErr) {
@@ -268,6 +349,13 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
       const count = ipConnectionCounts.get(clientIp) || 1;
       if (count <= 1) ipConnectionCounts.delete(clientIp);
       else ipConnectionCounts.set(clientIp, count - 1);
+      // Decrement per-user connection counter
+      const closingClient = clients.get(clientId);
+      if (closingClient?.userId) {
+        const uc = userConnectionCounts.get(closingClient.userId) || 1;
+        if (uc <= 1) userConnectionCounts.delete(closingClient.userId);
+        else userConnectionCounts.set(closingClient.userId, uc - 1);
+      }
       // Clean up private call and radio state before removing client
       try { handlePrivateCallDisconnect(clientId); } catch (e) { console.error('[WS] Error in private call disconnect:', e); }
       try { handleRadioDisconnect(clientId); } catch (e) { console.error('[WS] Error in radio disconnect:', e); }
@@ -329,7 +417,19 @@ function generateClientId(): string {
 
 function authenticateClient(client: WSClient, token: string): boolean {
   try {
-    const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
+    // Verify with iss/aud claims for consistency with main authenticateToken
+    const JWT_VERIFY_OPTIONS = { issuer: 'rmpg-flex', audience: 'rmpg-flex-api' };
+    let decoded: JwtPayload;
+    try {
+      decoded = jwt.verify(token, config.jwt.secret, JWT_VERIFY_OPTIONS) as JwtPayload;
+    } catch (strictErr: any) {
+      // Legacy token backward compat — enforce strict validation after 2026-04-15
+      if (strictErr.message?.includes('jwt issuer invalid') || strictErr.message?.includes('jwt audience invalid')) {
+        decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
+      } else {
+        throw strictErr;
+      }
+    }
 
     // Only accept access tokens — reject refresh and mfa_pending tokens
     if (decoded.type !== 'access') {
@@ -339,6 +439,18 @@ function authenticateClient(client: WSClient, token: string): boolean {
       }));
       return false;
     }
+
+    // Per-user connection limit — prevent resource abuse
+    const userCount = userConnectionCounts.get(decoded.userId) || 0;
+    if (userCount >= MAX_WS_CONNECTIONS_PER_USER) {
+      safeSend(client.ws, JSON.stringify({
+        type: 'auth_error',
+        message: 'Too many active connections for this user',
+      }));
+      client.ws.close(4010, 'User connection limit exceeded');
+      return false;
+    }
+    userConnectionCounts.set(decoded.userId, userCount + 1);
 
     client.userId = decoded.userId;
     client.username = decoded.username;

@@ -5,7 +5,6 @@ import {
   Search,
   Edit,
   Trash2,
-  Eye,
   CheckCircle,
   XCircle,
   Clock,
@@ -24,6 +23,9 @@ import {
   Globe,
   Shield,
   FileText,
+  Activity,
+  ChevronRight,
+  Zap,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import RmpgLogo from '../components/RmpgLogo';
@@ -31,7 +33,7 @@ import PrintButton from '../components/PrintButton';
 import ExportButton from '../components/ExportButton';
 import PrintRecordButton from '../components/PrintRecordButton';
 import ConfirmDialog from '../components/ConfirmDialog';
-import StatusBadge from '../components/StatusBadge';
+import WarrantBadge from '../components/WarrantBadge';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -40,6 +42,7 @@ import type { StatuteResult } from '../components/StatuteLookup';
 import { useFormValidation } from '../hooks/useFormValidation';
 import EmptyState from '../components/EmptyState';
 import { formatDate, formatDateTime } from '../utils/dateUtils';
+import { useAuth } from '../context/AuthContext';
 
 // ============================================================
 // Types
@@ -77,6 +80,7 @@ interface Warrant {
   expires_at: string | null;
   notes: string | null;
   archived_at: string | null;
+  source?: string | null;
   created_at: string;
   updated_at: string;
   activity?: ActivityEntry[];
@@ -97,40 +101,79 @@ interface Person {
   dob?: string;
 }
 
-interface WatchLogEntry {
+// Dashboard types
+interface DashboardStats {
+  activeWarrants: number;
+  hitsToday: number;
+  personsFlagged: number;
+  sourcesOnline: number;
+  sourcesTotal: number;
+}
+
+interface FeedEntry {
   id: number;
   person_id: number;
   person_name: string;
-  event: 'warrant_found' | 'warrant_cleared';
-  utah_warrant_id: string | null;
-  utah_person_id: string | null;
-  court_name: string | null;
-  case_id: string | null;
+  event: string;
+  utah_warrant_id?: string;
   charges: string | null;
-  issue_date: string | null;
-  scan_run_id: string;
+  court_name: string | null;
   created_at: string;
   photo_url?: string | null;
-  dob?: string | null;
-  caution_flags?: string | null;
 }
 
-interface ActiveWarrantHit {
-  person_id: number;
-  person_name: string;
-  utah_warrant_id: string;
-  utah_person_id: string;
-  court_name: string | null;
-  case_id: string | null;
-  charges: string | null;
-  issue_date: string | null;
-  first_detected: string;
-  photo_url?: string | null;
-  dob?: string | null;
-  caution_flags?: string | null;
-  address?: string | null;
-  city?: string | null;
-  state?: string | null;
+interface PriorityWarrant {
+  id: number;
+  warrant_number: string;
+  type: string;
+  status: string;
+  charge_description: string;
+  offense_level: string | null;
+  subject_first_name: string | null;
+  subject_last_name: string | null;
+  subject_photo_url: string | null;
+  bail_amount: number | null;
+  source: string | null;
+  created_at: string;
+}
+
+// Person profile (slide-out)
+interface PersonProfile {
+  person: {
+    id: number;
+    first_name: string;
+    last_name: string;
+    dob?: string;
+    photo_url?: string | null;
+    flags?: string | any[];
+  };
+  warrants: Warrant[];
+  scanHistory: { id: number; event: string; details: string; created_at: string }[];
+  lastChecked: string | null;
+}
+
+// Unified warrants list
+interface UnifiedWarrant extends Warrant {
+  source?: string | null;
+}
+
+// Coverage / Sources
+interface ScraperSource {
+  id: number;
+  source_key: string;
+  state: string;
+  county: string;
+  source_url: string;
+  parser_type: string;
+  enabled: number;
+  scrape_interval_minutes: number;
+  last_scraped_at: string | null;
+  last_error: string | null;
+  consecutive_failures: number;
+  active_warrants: number;
+  total_warrants: number;
+  auto_recovering: boolean;
+  backoff_attempt: number;
 }
 
 interface WatchRun {
@@ -144,34 +187,6 @@ interface WatchRun {
   errors: number;
   status: 'running' | 'completed' | 'failed';
   error_message: string | null;
-}
-
-interface UtahWarrantResult {
-  utah_person_id: string;
-  first_name: string;
-  middle_name: string | null;
-  last_name: string;
-  age: number | null;
-  city: string | null;
-  utah_warrant_id: string;
-  issue_date: string | null;
-  court_name: string | null;
-  case_id: string | null;
-  charges: string | null;
-  fetched_at?: string;
-  source?: string;
-}
-
-type UtahWarrant = UtahWarrantResult;
-
-interface UtahSyncStatus {
-  lastSync: string | null;
-  status: string;
-  personsFound: number;
-  warrantsFound: number;
-  durationMs: number;
-  lastError: string | null;
-  currentCount: number;
 }
 
 // ============================================================
@@ -217,107 +232,45 @@ const TYPE_COLORS: Record<string, string> = {
   other: 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50',
 };
 
-type TabId = 'local' | 'watch' | 'utah' | 'all_states' | 'coverage' | 'history';
-
-const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-  { id: 'local', label: 'LOCAL WARRANTS', icon: Gavel },
-  { id: 'watch', label: 'WARRANT WATCH', icon: Radar },
-  { id: 'utah', label: 'UTAH SEARCH', icon: Globe },
-  { id: 'all_states', label: 'ALL STATES', icon: FileText },
-  { id: 'coverage', label: 'COVERAGE', icon: Shield },
-  { id: 'history', label: 'SCAN HISTORY', icon: History },
-];
-
-// State abbreviation → full name mapping for display
-const STATE_NAMES: Record<string, string> = {
-  AL: 'Alabama', AK: 'Alaska', AZ: 'Arizona', AR: 'Arkansas', CA: 'California',
-  CO: 'Colorado', CT: 'Connecticut', DE: 'Delaware', FL: 'Florida', GA: 'Georgia',
-  HI: 'Hawaii', ID: 'Idaho', IL: 'Illinois', IN: 'Indiana', IA: 'Iowa',
-  KS: 'Kansas', KY: 'Kentucky', LA: 'Louisiana', ME: 'Maine', MD: 'Maryland',
-  MA: 'Massachusetts', MI: 'Michigan', MN: 'Minnesota', MS: 'Mississippi', MO: 'Missouri',
-  MT: 'Montana', NE: 'Nebraska', NV: 'Nevada', NH: 'New Hampshire', NJ: 'New Jersey',
-  NM: 'New Mexico', NY: 'New York', NC: 'North Carolina', ND: 'North Dakota', OH: 'Ohio',
-  OK: 'Oklahoma', OR: 'Oregon', PA: 'Pennsylvania', RI: 'Rhode Island', SC: 'South Carolina',
-  SD: 'South Dakota', TN: 'Tennessee', TX: 'Texas', UT: 'Utah', VT: 'Vermont',
-  VA: 'Virginia', WA: 'Washington', WV: 'West Virginia', WI: 'Wisconsin', WY: 'Wyoming',
-  US: 'Federal', ALL: 'All States',
+const SEVERITY_COLORS: Record<string, string> = {
+  felony: 'bg-red-900/50 text-red-400 border-red-700/50',
+  misdemeanor: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
+  infraction: 'bg-yellow-900/50 text-yellow-400 border-yellow-700/50',
+  civil: 'bg-purple-900/50 text-purple-400 border-purple-700/50',
 };
 
-interface ScrapedWarrant {
-  id: number;
-  source_key: string;
-  warrant_id: string;
-  full_name: string;
-  first_name: string | null;
-  last_name: string | null;
-  middle_name: string | null;
-  date_of_birth: string | null;
-  age: number | null;
-  gender: string | null;
-  race: string | null;
-  city: string | null;
-  state: string;
-  warrant_type: string | null;
-  case_number: string | null;
-  court_name: string | null;
-  issue_date: string | null;
-  charge_description: string | null;
-  bail_amount: string | null;
-  offense_level: string | null;
-  photo_url: string | null;
-  detail_url: string | null;
-  status: string;
-  source_display_name: string | null;
-  first_seen_at: string | null;
-  last_seen_at: string | null;
-}
+type TabId = 'dashboard' | 'warrants' | 'sources';
 
-interface ScraperSource {
-  id: number;
-  source_key: string;
-  state: string;
-  county: string;
-  source_url: string;
-  parser_type: string;
-  enabled: number;
-  scrape_interval_minutes: number;
-  last_scraped_at: string | null;
-  last_error: string | null;
-  consecutive_failures: number;
-  active_warrants: number;
-  total_warrants: number;
-  auto_recovering: boolean;
-  backoff_attempt: number;
-}
+const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: string }>; roleGated?: boolean }[] = [
+  { id: 'dashboard', label: 'DASHBOARD', icon: Activity },
+  { id: 'warrants', label: 'WARRANTS', icon: Gavel },
+  { id: 'sources', label: 'SOURCES', icon: Shield, roleGated: true },
+];
+
+const FEED_RANGES = ['1H', '8H', '24H', '7D'] as const;
+type FeedRange = typeof FEED_RANGES[number];
+
+const FEED_RANGE_PARAMS: Record<FeedRange, string> = {
+  '1H': '1h',
+  '8H': '8h',
+  '24H': '24h',
+  '7D': '7d',
+};
 
 // ============================================================
 // Helpers
 // ============================================================
-
-// formatDate and formatDateTime imported from ../utils/dateUtils
 
 function formatCurrency(amount: number | null): string {
   if (amount == null) return '-';
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 }
 
-/** Parse JSON charges array into a readable string */
 function chargesFromJson(charges: string | null): string {
   if (!charges) return '';
   try { return JSON.parse(charges).join('; '); } catch { return charges; }
 }
 
-/** Check if a date string is in the current month */
-function isThisMonth(dt: string | null): boolean {
-  if (!dt) return false;
-  try {
-    const d = new Date(dt.replace(' ', 'T'));
-    const now = new Date();
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-  } catch { return false; }
-}
-
-/** Compute duration between two date strings */
 function computeDuration(start: string, end: string | null): string {
   if (!end) return 'In progress...';
   try {
@@ -330,6 +283,21 @@ function computeDuration(start: string, end: string | null): string {
     const hrs = Math.floor(mins / 60);
     return `${hrs}h ${mins % 60}m`;
   } catch { return '-'; }
+}
+
+function relativeTime(dt: string): string {
+  try {
+    const ms = Date.now() - new Date(dt.replace(' ', 'T')).getTime();
+    if (ms < 0) return 'just now';
+    const secs = Math.floor(ms / 1000);
+    if (secs < 60) return `${secs}s ago`;
+    const mins = Math.floor(secs / 60);
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    return `${days}d ago`;
+  } catch { return dt; }
 }
 
 // ============================================================
@@ -374,45 +342,45 @@ function CoverageSourceCard({ source }: { source: ScraperSource }) {
 
 export default function WarrantsPage() {
   const isMobile = useIsMobile();
+  const { user } = useAuth();
   const warrantFormTitleId = useId();
   const serveTitleId = useId();
 
-  // ── Tab state ──
-  const [activeTab, setActiveTab] = useState<TabId>('local');
+  const isAdminOrManager = user?.role === 'admin' || user?.role === 'manager';
 
-  // ── Local warrants data ──
-  const warrantDetailRef = useRef<HTMLDivElement>(null);
-  const scanPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [warrants, setWarrants] = useState<Warrant[]>([]);
+  // ── Tab state ──
+  const [activeTab, setActiveTab] = useState<TabId>('dashboard');
+
+  // ============================================================
+  // DASHBOARD STATE
+  // ============================================================
+  const [dashStats, setDashStats] = useState<DashboardStats | null>(null);
+  const [dashStatsLoading, setDashStatsLoading] = useState(false);
+  const [feedEntries, setFeedEntries] = useState<FeedEntry[]>([]);
+  const [feedLoading, setFeedLoading] = useState(false);
+  const [feedRange, setFeedRange] = useState<FeedRange>('24H');
+  const [feedEventFilter, setFeedEventFilter] = useState<string>('');
+  const [priorityWarrants, setPriorityWarrants] = useState<PriorityWarrant[]>([]);
+  const [priorityLoading, setPriorityLoading] = useState(false);
+  const [dashSearch, setDashSearch] = useState('');
+
+  // ============================================================
+  // WARRANTS TAB STATE
+  // ============================================================
+  const [warrants, setWarrants] = useState<UnifiedWarrant[]>([]);
   const [selectedWarrant, setSelectedWarrant] = useState<Warrant | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Filters
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [filterType, setFilterType] = useState<string>('');
+  const [filterSource, setFilterSource] = useState<string>('');
+  const [filterSeverity, setFilterSeverity] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
-
-  // Source tab: local vs utah
-  const [warrantSource, setWarrantSource] = useState<'local' | 'utah'>('local');
-
-  // Pagination (local)
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
-
-  // Utah state warrants
-  const [utahWarrants, setUtahWarrants] = useState<UtahWarrant[]>([]);
-  const [utahLoading, setUtahLoading] = useState(false);
-  const [utahSearchQuery, setUtahSearchQuery] = useState('');
-  const [utahPage, setUtahPage] = useState(1);
-  const [utahTotalPages, setUtahTotalPages] = useState(1);
-  const [utahTotalCount, setUtahTotalCount] = useState(0);
-  const [selectedUtahWarrant, setSelectedUtahWarrant] = useState<UtahWarrant | null>(null);
-  const [utahSyncStatus, setUtahSyncStatus] = useState<UtahSyncStatus | null>(null);
-  const [utahCountBadge, setUtahCountBadge] = useState<number>(0);
+  const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
 
   // Form modal
   const [formOpen, setFormOpen] = useState(false);
@@ -449,37 +417,73 @@ export default function WarrantsPage() {
   const [showPersonDropdown, setShowPersonDropdown] = useState(false);
   const [selectedPersonName, setSelectedPersonName] = useState('');
 
-  // ── Warrant Watch state ──
-  const [watchActiveHits, setWatchActiveHits] = useState<ActiveWarrantHit[]>([]);
-  const [watchLog, setWatchLog] = useState<WatchLogEntry[]>([]);
-  const [watchRuns, setWatchRuns] = useState<WatchRun[]>([]);
-  const [watchLoading, setWatchLoading] = useState(false);
-  const [scanRunning, setScanRunning] = useState(false);
-
-  // ── Utah Search state ──
-  const [utahResults, setUtahResults] = useState<UtahWarrantResult[]>([]);
-  const [utahSearching, setUtahSearching] = useState(false);
-  const [utahSearched, setUtahSearched] = useState(false);
-  const [utahResultSource, setUtahResultSource] = useState<'live' | 'cache' | ''>('');
-
-  // ── All States search state ──
-  const [allStatesQuery, setAllStatesQuery] = useState('');
-  const [allStatesFilter, setAllStatesFilter] = useState(''); // state abbreviation filter
-  const [allStatesStatusFilter, setAllStatesStatusFilter] = useState('active');
-  const [allStatesResults, setAllStatesResults] = useState<ScrapedWarrant[]>([]);
-  const [allStatesTotal, setAllStatesTotal] = useState(0);
-  const [allStatesPage, setAllStatesPage] = useState(1);
-  const [allStatesTotalPages, setAllStatesTotalPages] = useState(1);
-  const [allStatesLoading, setAllStatesLoading] = useState(false);
-  const [allStatesSearched, setAllStatesSearched] = useState(false);
-  const [allStatesExpanded, setAllStatesExpanded] = useState<Set<number>>(new Set());
-
-  // ── Coverage state ──
-  const [coverageSources, setCoverageSources] = useState<ScraperSource[]>([]);
-  const [coverageLoading, setCoverageLoading] = useState(false);
+  // ============================================================
+  // PERSON PROFILE SLIDE-OUT STATE
+  // ============================================================
+  const [personProfileOpen, setPersonProfileOpen] = useState(false);
+  const [personProfile, setPersonProfile] = useState<PersonProfile | null>(null);
+  const [personProfileLoading, setPersonProfileLoading] = useState(false);
+  const [checkingPerson, setCheckingPerson] = useState(false);
 
   // ============================================================
-  // Fetch — Local Warrants
+  // SOURCES TAB STATE
+  // ============================================================
+  const [coverageSources, setCoverageSources] = useState<ScraperSource[]>([]);
+  const [coverageLoading, setCoverageLoading] = useState(false);
+  const [watchRuns, setWatchRuns] = useState<WatchRun[]>([]);
+  const [watchRunsLoading, setWatchRunsLoading] = useState(false);
+  const scanPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [scanRunning, setScanRunning] = useState(false);
+
+  // ============================================================
+  // DASHBOARD FETCHES
+  // ============================================================
+
+  const fetchDashStats = useCallback(async () => {
+    setDashStatsLoading(true);
+    try {
+      const res = await apiFetch<DashboardStats>('/warrants/dashboard/stats');
+      setDashStats(res);
+    } catch { /* silent */ }
+    finally { setDashStatsLoading(false); }
+  }, []);
+
+  const fetchFeed = useCallback(async () => {
+    setFeedLoading(true);
+    try {
+      const res = await apiFetch<{ data: FeedEntry[] }>(`/warrants/dashboard/feed?range=${FEED_RANGE_PARAMS[feedRange]}`);
+      setFeedEntries(res.data || (Array.isArray(res) ? res : []));
+    } catch { setFeedEntries([]); }
+    finally { setFeedLoading(false); }
+  }, [feedRange]);
+
+  const fetchPriority = useCallback(async () => {
+    setPriorityLoading(true);
+    try {
+      const res = await apiFetch<{ data: PriorityWarrant[] }>('/warrants/dashboard/priority');
+      setPriorityWarrants(res.data || (Array.isArray(res) ? res : []));
+    } catch { setPriorityWarrants([]); }
+    finally { setPriorityLoading(false); }
+  }, []);
+
+  // Auto-refresh dashboard stats every 30s
+  useEffect(() => {
+    if (activeTab !== 'dashboard') return;
+    fetchDashStats();
+    fetchPriority();
+    const interval = setInterval(fetchDashStats, 30_000);
+    return () => clearInterval(interval);
+  }, [activeTab, fetchDashStats, fetchPriority]);
+
+  // Fetch feed when range changes
+  useEffect(() => {
+    if (activeTab !== 'dashboard') return;
+    fetchFeed();
+  }, [activeTab, fetchFeed]);
+
+  // ============================================================
+  // WARRANTS TAB FETCHES
   // ============================================================
 
   const fetchWarrants = useCallback(async (options?: { silent?: boolean }) => {
@@ -488,72 +492,46 @@ export default function WarrantsPage() {
       const params = new URLSearchParams();
       if (filterStatus) params.set('status', filterStatus);
       if (filterType) params.set('type', filterType);
+      if (filterSource) params.set('source', filterSource);
+      if (filterSeverity) params.set('severity', filterSeverity);
       if (searchQuery) params.set('subject_name', searchQuery);
       params.set('archived', showArchived ? 'true' : 'false');
       params.set('page', String(page));
       params.set('per_page', '50');
 
-      const res = await apiFetch<{ data: Warrant[]; pagination: { total: number; totalPages: number } }>(
-        `/warrants?${params.toString()}`
-      );
-      setWarrants(res.data || []);
-      setTotalPages(res.pagination?.totalPages || 1);
-      setTotalCount(res.pagination?.total || 0);
+      // Try unified endpoint first, fall back to standard
+      try {
+        const res = await apiFetch<{ warrants: UnifiedWarrant[]; total: number }>(
+          `/warrants/unified?${params.toString()}`
+        );
+        setWarrants(res.warrants || []);
+        setTotalCount(res.total || 0);
+        setTotalPages(Math.ceil((res.total || 0) / 50) || 1);
+      } catch {
+        // Fallback to standard endpoint
+        const res = await apiFetch<{ data: Warrant[]; pagination: { total: number; totalPages: number } }>(
+          `/warrants?${params.toString()}`
+        );
+        setWarrants(res.data || []);
+        setTotalPages(res.pagination?.totalPages || 1);
+        setTotalCount(res.pagination?.total || 0);
+      }
     } catch (err: any) {
       if (!options?.silent) setError(err?.message || 'Failed to load warrants');
     } finally {
       if (!options?.silent) setLoading(false);
     }
-  }, [filterStatus, filterType, searchQuery, showArchived, page]);
+  }, [filterStatus, filterType, filterSource, filterSeverity, searchQuery, showArchived, page]);
 
-  useEffect(() => { fetchWarrants(); }, [fetchWarrants]);
+  useEffect(() => {
+    if (activeTab === 'warrants') fetchWarrants();
+  }, [activeTab, fetchWarrants]);
 
-  // Live sync — auto-refresh when any device modifies warrants
+  // Live sync
   const silentRefreshWarrants = useCallback(() => fetchWarrants({ silent: true }), [fetchWarrants]);
   useLiveSync('alerts', silentRefreshWarrants);
 
-  // ── Utah warrants fetch ──
-  const fetchUtahWarrants = useCallback(async () => {
-    setUtahLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (utahSearchQuery) params.set('search', utahSearchQuery);
-      params.set('page', String(utahPage));
-      params.set('per_page', '50');
-
-      const res = await apiFetch<{
-        data: UtahWarrant[];
-        pagination: { total: number; totalPages: number };
-      }>(`/warrants/utah?${params.toString()}`);
-      setUtahWarrants(res.data || []);
-      setUtahTotalPages(res.pagination?.totalPages || 1);
-      setUtahTotalCount(res.pagination?.total || 0);
-    } catch {
-      setUtahWarrants([]);
-    } finally {
-      setUtahLoading(false);
-    }
-  }, [utahSearchQuery, utahPage]);
-
-  // Fetch Utah warrants only when user triggers search (not on tab switch)
-  // Auto-fetch removed — real-time search requires explicit name input
-
-  // Fetch Utah badge count + sync status on mount
-  useEffect(() => {
-    const fetchUtahMeta = async () => {
-      try {
-        const [countRes, syncRes] = await Promise.all([
-          apiFetch<{ count: number }>('/warrants/utah/count'),
-          apiFetch<UtahSyncStatus>('/warrants/utah/sync-status'),
-        ]);
-        setUtahCountBadge(countRes.count);
-        setUtahSyncStatus(syncRes);
-      } catch { /* Utah warrants not available */ }
-    };
-    fetchUtahMeta();
-  }, []);
-
-  // Fetch warrant detail (local)
+  // Fetch warrant detail
   const fetchWarrantDetail = useCallback(async (id: number) => {
     try {
       const detail = await apiFetch<Warrant>(`/warrants/${id}`);
@@ -561,7 +539,7 @@ export default function WarrantsPage() {
     } catch { /* keep existing */ }
   }, []);
 
-  // Person search
+  // Person search for form
   useEffect(() => {
     if (!personSearch || personSearch.length < 2) {
       setPersonResults([]);
@@ -579,98 +557,70 @@ export default function WarrantsPage() {
   }, [personSearch]);
 
   // ============================================================
-  // Fetch — Warrant Watch
+  // PERSON PROFILE
   // ============================================================
 
-  const fetchWatchData = useCallback(async () => {
-    setWatchLoading(true);
+  const openPersonProfile = useCallback(async (personId: number) => {
+    setPersonProfileOpen(true);
+    setPersonProfileLoading(true);
+    setPersonProfile(null);
     try {
-      const [activeRes, logRes, runsRes] = await Promise.all([
-        apiFetch<{ data: ActiveWarrantHit[] }>('/warrants/watch/active'),
-        apiFetch<{ data: WatchLogEntry[] }>('/warrants/watch/log?limit=100'),
-        apiFetch<{ data: WatchRun[] }>('/warrants/watch/runs?limit=20'),
-      ]);
-      setWatchActiveHits(activeRes.data || []);
-      setWatchLog(logRes.data || []);
-      setWatchRuns(runsRes.data || []);
-      const running = (runsRes.data || []).some(r => r.status === 'running');
-      setScanRunning(running);
-    } catch { /* silent fail */ }
-    finally { setWatchLoading(false); }
-  }, []);
-
-  // Fetch active hits count on mount for badge + stats
-  useEffect(() => {
-    apiFetch<{ data: ActiveWarrantHit[] }>('/warrants/watch/active')
-      .then(res => setWatchActiveHits(res.data || []))
-      .catch((err) => { console.warn('[WarrantsPage] fetch active warrant hits failed:', err); });
-  }, []);
-
-  // Fetch full watch data when switching to watch or history tab
-  useEffect(() => {
-    if (activeTab === 'watch' || activeTab === 'history') fetchWatchData();
-  }, [activeTab, fetchWatchData]);
-
-  // Fetch coverage data when switching to coverage tab
-  useEffect(() => {
-    if (activeTab !== 'coverage') return;
-    setCoverageLoading(true);
-    apiFetch<{ data: ScraperSource[] }>('/warrants/scraped/status')
-      .then(res => setCoverageSources(res.data || []))
-      .catch((err) => { console.warn('[WarrantsPage] fetch scraper coverage status failed:', err); })
-      .finally(() => setCoverageLoading(false));
-  }, [activeTab]);
-
-  // ── All States search ──
-  const searchAllStates = useCallback(async (pageNum?: number) => {
-    const pg = pageNum || 1;
-    setAllStatesLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (allStatesQuery.trim()) params.set('q', allStatesQuery.trim());
-      if (allStatesFilter) params.set('state', allStatesFilter);
-      if (allStatesStatusFilter) params.set('status', allStatesStatusFilter);
-      params.set('page', String(pg));
-      params.set('limit', '50');
-
-      // If no search query, use the /active endpoint for browsing
-      if (!allStatesQuery.trim()) {
-        const res = await apiFetch<{ data: ScrapedWarrant[]; total: number }>(`/warrants/scraped/active?${params.toString()}`);
-        setAllStatesResults(res.data || []);
-        setAllStatesTotal(res.total || res.data?.length || 0);
-        setAllStatesTotalPages(1); // active endpoint doesn't paginate the same way
-      } else {
-        const res = await apiFetch<{ data: ScrapedWarrant[]; total: number; pagination: { page: number; totalPages: number } }>(
-          `/warrants/scraped/search?${params.toString()}`
-        );
-        setAllStatesResults(res.data || []);
-        setAllStatesTotal(res.total || 0);
-        setAllStatesTotalPages(res.pagination?.totalPages || 1);
-      }
-      setAllStatesPage(pg);
-      setAllStatesSearched(true);
+      const res = await apiFetch<PersonProfile>(`/warrants/person/${personId}/profile`);
+      setPersonProfile(res);
     } catch {
-      setAllStatesResults([]);
-      setAllStatesTotal(0);
-    } finally {
-      setAllStatesLoading(false);
+      // If profile endpoint not available, close
+      setPersonProfileOpen(false);
     }
-  }, [allStatesQuery, allStatesFilter, allStatesStatusFilter]);
+    finally { setPersonProfileLoading(false); }
+  }, []);
 
-  // Auto-load active warrants when switching to All States tab
+  const handleRunCheck = useCallback(async (personId: number) => {
+    setCheckingPerson(true);
+    try {
+      await apiFetch<any>(`/warrants/check/${personId}`, { method: 'POST' });
+      // Re-fetch profile
+      const res = await apiFetch<PersonProfile>(`/warrants/person/${personId}/profile`);
+      setPersonProfile(res);
+    } catch { /* silent */ }
+    finally { setCheckingPerson(false); }
+  }, []);
+
+  // ============================================================
+  // SOURCES TAB FETCHES
+  // ============================================================
+
+  const fetchCoverage = useCallback(async () => {
+    setCoverageLoading(true);
+    try {
+      const res = await apiFetch<{ data: ScraperSource[] }>('/warrants/scraped/status');
+      setCoverageSources(res.data || []);
+    } catch { /* silent */ }
+    finally { setCoverageLoading(false); }
+  }, []);
+
+  const fetchWatchRuns = useCallback(async () => {
+    setWatchRunsLoading(true);
+    try {
+      const res = await apiFetch<{ data: WatchRun[] }>('/warrants/watch/runs?limit=20');
+      setWatchRuns(res.data || []);
+      const running = (res.data || []).some(r => r.status === 'running');
+      setScanRunning(running);
+    } catch { /* silent */ }
+    finally { setWatchRunsLoading(false); }
+  }, []);
+
   useEffect(() => {
-    if (activeTab !== 'all_states') return;
-    if (!allStatesSearched) searchAllStates();
-  }, [activeTab, allStatesSearched, searchAllStates]);
+    if (activeTab !== 'sources') return;
+    fetchCoverage();
+    fetchWatchRuns();
+  }, [activeTab, fetchCoverage, fetchWatchRuns]);
 
   const handleTriggerScan = useCallback(async () => {
-    // Clear any previous poll before starting a new one
     if (scanPollRef.current) clearInterval(scanPollRef.current);
     if (scanTimeoutRef.current) clearTimeout(scanTimeoutRef.current);
     setScanRunning(true);
     try {
       await apiFetch('/warrants/watch/scan', { method: 'POST' });
-      // Poll for completion
       scanPollRef.current = setInterval(async () => {
         try {
           const res = await apiFetch<{ data: WatchRun[] }>('/warrants/watch/runs?limit=1');
@@ -679,11 +629,11 @@ export default function WarrantsPage() {
             if (scanPollRef.current) { clearInterval(scanPollRef.current); scanPollRef.current = null; }
             if (scanTimeoutRef.current) { clearTimeout(scanTimeoutRef.current); scanTimeoutRef.current = null; }
             setScanRunning(false);
-            fetchWatchData();
+            fetchWatchRuns();
+            fetchDashStats();
           }
         } catch { /* keep polling */ }
       }, 5000);
-      // Auto-stop polling after 30 minutes
       scanTimeoutRef.current = setTimeout(() => {
         if (scanPollRef.current) { clearInterval(scanPollRef.current); scanPollRef.current = null; }
         setScanRunning(false);
@@ -691,9 +641,8 @@ export default function WarrantsPage() {
     } catch {
       setScanRunning(false);
     }
-  }, [fetchWatchData]);
+  }, [fetchWatchRuns, fetchDashStats]);
 
-  // Cleanup scan polling on unmount
   useEffect(() => {
     return () => {
       if (scanPollRef.current) clearInterval(scanPollRef.current);
@@ -702,29 +651,7 @@ export default function WarrantsPage() {
   }, []);
 
   // ============================================================
-  // Utah Search
-  // ============================================================
-
-  const handleUtahSearch = useCallback(async () => {
-    if (!utahSearchQuery.trim() || utahSearchQuery.trim().length < 2) return;
-    setUtahSearching(true);
-    setUtahSearched(false);
-    try {
-      const res = await apiFetch<{ data: UtahWarrantResult[]; source: string }>(
-        `/warrants/utah?search=${encodeURIComponent(utahSearchQuery.trim())}`
-      );
-      setUtahResults(res.data || []);
-      setUtahResultSource((res.source || '') as 'live' | 'cache');
-      setUtahSearched(true);
-    } catch {
-      setUtahResults([]);
-      setUtahSearched(true);
-    }
-    finally { setUtahSearching(false); }
-  }, [utahSearchQuery]);
-
-  // ============================================================
-  // Handlers — Local Warrants
+  // WARRANT HANDLERS (create / edit / serve / delete)
   // ============================================================
 
   const openNewForm = () => {
@@ -764,72 +691,6 @@ export default function WarrantsPage() {
       statute_citation: (w as any).statute_citation || '',
     });
     setSelectedPersonName(w.subject_name || '');
-    setPersonSearch('');
-    setFormOpen(true);
-  };
-
-  /** Pre-fill form from a Warrant Watch hit */
-  const handleCreateFromHit = (hit: ActiveWarrantHit) => {
-    setEditingWarrant(null);
-    clearAllErrors();
-    setFormData({
-      type: 'arrest',
-      subject_person_id: String(hit.person_id),
-      issuing_court: hit.court_name || '',
-      issuing_judge: '',
-      charge_description: chargesFromJson(hit.charges),
-      bail_amount: '',
-      offense_level: '',
-      expires_at: '',
-      notes: `Utah State Warrant ${hit.utah_warrant_id} — Case ${hit.case_id || 'N/A'}`,
-      statute_id: null,
-      statute_citation: '',
-    });
-    setSelectedPersonName(hit.person_name);
-    setPersonSearch('');
-    setFormOpen(true);
-  };
-
-  /** Pre-fill form from a Utah search result (no local person_id) */
-  const handleCreateFromUtahResult = (r: UtahWarrantResult) => {
-    setEditingWarrant(null);
-    clearAllErrors();
-    setFormData({
-      type: 'arrest',
-      subject_person_id: '',
-      issuing_court: r.court_name || '',
-      issuing_judge: '',
-      charge_description: chargesFromJson(r.charges),
-      bail_amount: '',
-      offense_level: '',
-      expires_at: '',
-      notes: `Utah State Warrant ${r.utah_warrant_id} — ${r.first_name} ${r.last_name}${r.city ? `, ${r.city}` : ''} — Case ${r.case_id || 'N/A'}`,
-      statute_id: null,
-      statute_citation: '',
-    });
-    setSelectedPersonName('');
-    setPersonSearch('');
-    setFormOpen(true);
-  };
-
-  /** Pre-fill form from a scraped (multi-state) warrant result */
-  const handleCreateFromScrapedWarrant = (w: ScrapedWarrant) => {
-    setEditingWarrant(null);
-    clearAllErrors();
-    setFormData({
-      type: w.warrant_type?.toLowerCase() || 'arrest',
-      subject_person_id: '',
-      issuing_court: w.court_name || '',
-      issuing_judge: '',
-      charge_description: w.charge_description || '',
-      bail_amount: w.bail_amount || '',
-      offense_level: w.offense_level?.toLowerCase() || '',
-      expires_at: '',
-      notes: `${STATE_NAMES[w.state] || w.state} Warrant — ${w.full_name}${w.city ? `, ${w.city}` : ''} — Case ${w.case_number || 'N/A'} — Source: ${w.source_display_name || w.source_key}`,
-      statute_id: null,
-      statute_citation: '',
-    });
-    setSelectedPersonName('');
     setPersonSearch('');
     setFormOpen(true);
   };
@@ -949,30 +810,32 @@ export default function WarrantsPage() {
   };
 
   // ============================================================
-  // Computed
+  // COMPUTED
   // ============================================================
 
-  const activeCount = warrants.filter((w) => w.status === 'active').length;
-  const servedMtd = warrants.filter((w) => w.status === 'served' && isThisMonth(w.served_at)).length;
+  const filteredFeed = feedEventFilter
+    ? feedEntries.filter(e => e.event === feedEventFilter)
+    : feedEntries;
+
+  // Quick search on dashboard (searches priority + feed by name)
+  const dashSearchLower = dashSearch.toLowerCase().trim();
 
   // ============================================================
-  // Render
+  // RENDER
   // ============================================================
 
   return (
     <div className="absolute inset-0 flex flex-col overflow-hidden bg-surface-deep">
-      {/* ══════════════════════════════════════════════════════════
-          TITLE BAR
-         ══════════════════════════════════════════════════════════ */}
+      {/* ---- TITLE BAR ---- */}
       <PanelTitleBar title="WARRANTS" icon={AlertTriangle}>
         <RmpgLogo height={16} iconOnly />
         <span className="toolbar-separator" />
-        {activeTab === 'local' && !showArchived && (
+        {activeTab === 'warrants' && !showArchived && (
           <button onClick={openNewForm} className="toolbar-btn toolbar-btn-primary text-[9px]">
             <Plus className="w-3 h-3" /> New Warrant
           </button>
         )}
-        {activeTab === 'local' && (
+        {activeTab === 'warrants' && (
           <button
             onClick={() => { setShowArchived(!showArchived); setPage(1); }}
             className={`toolbar-btn text-[9px] ${showArchived ? 'text-amber-400' : ''}`}
@@ -982,7 +845,7 @@ export default function WarrantsPage() {
             {showArchived ? 'Showing Archived' : 'Archives'}
           </button>
         )}
-        {(activeTab === 'watch' || activeTab === 'history') && (
+        {activeTab === 'sources' && isAdminOrManager && (
           <>
             <button
               onClick={handleTriggerScan}
@@ -995,7 +858,7 @@ export default function WarrantsPage() {
                 : <><PlayCircle className="w-3 h-3" /> Run Scan Now</>
               }
             </button>
-            <button onClick={fetchWatchData} className="toolbar-btn text-[9px]" title="Refresh watch data">
+            <button onClick={() => { fetchCoverage(); fetchWatchRuns(); }} className="toolbar-btn text-[9px]" title="Refresh">
               <RotateCcw className="w-3 h-3" />
             </button>
           </>
@@ -1005,11 +868,10 @@ export default function WarrantsPage() {
         <PrintButton />
       </PanelTitleBar>
 
-      {/* ══════════════════════════════════════════════════════════
-          TAB BAR
-         ══════════════════════════════════════════════════════════ */}
+      {/* ---- TAB BAR ---- */}
       <div className={`tab-bar ${isMobile ? 'overflow-x-auto' : ''}`}>
         {TABS.map((tab) => {
+          if (tab.roleGated && !isAdminOrManager) return null;
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
           return (
@@ -1020,10 +882,9 @@ export default function WarrantsPage() {
             >
               <Icon className="w-3 h-3" />
               <span className="whitespace-nowrap">{tab.label}</span>
-              {/* Watch hits badge */}
-              {tab.id === 'watch' && watchActiveHits.length > 0 && (
+              {tab.id === 'dashboard' && dashStats && dashStats.activeWarrants > 0 && (
                 <span className="ml-1 px-1 rounded bg-red-600 text-white text-[8px] font-bold leading-tight">
-                  {watchActiveHits.length}
+                  {dashStats.activeWarrants}
                 </span>
               )}
             </button>
@@ -1031,34 +892,33 @@ export default function WarrantsPage() {
         })}
       </div>
 
-      {/* ══════════════════════════════════════════════════════════
-          STATS BAR
-         ══════════════════════════════════════════════════════════ */}
+      {/* ---- STATS BAR ---- */}
       <div className="panel-inset bg-[var(--surface-sunken)] flex items-center gap-0 border-b border-[#1e3048] text-[10px] font-mono flex-wrap">
-        {/* Active */}
         <div className="flex items-center gap-1.5 px-3 py-1 border-r border-[#1e3048]">
-          <span className={`led-dot ${activeCount > 0 ? 'led-red' : 'led-off'}`} />
+          <span className={`led-dot ${(dashStats?.activeWarrants || 0) > 0 ? 'led-red' : 'led-off'}`} />
           <span className="text-rmpg-400">ACTIVE</span>
-          <span className={`font-bold tabular-nums ${activeCount > 0 ? 'text-red-400' : 'text-rmpg-300'}`}>{activeCount}</span>
+          <span className={`font-bold tabular-nums ${(dashStats?.activeWarrants || 0) > 0 ? 'text-red-400' : 'text-rmpg-300'}`}>
+            {dashStats?.activeWarrants ?? '-'}
+          </span>
         </div>
-        {/* Watch Hits */}
         <div className="flex items-center gap-1.5 px-3 py-1 border-r border-[#1e3048]">
-          <span className={`led-dot ${watchActiveHits.length > 0 ? 'led-amber animate-led-blink' : 'led-off'}`} />
-          <span className="text-rmpg-400">WATCH HITS</span>
-          <span className={`font-bold tabular-nums ${watchActiveHits.length > 0 ? 'text-amber-400' : 'text-rmpg-300'}`}>{watchActiveHits.length}</span>
+          <span className={`led-dot ${(dashStats?.hitsToday || 0) > 0 ? 'led-amber animate-led-blink' : 'led-off'}`} />
+          <span className="text-rmpg-400">HITS TODAY</span>
+          <span className={`font-bold tabular-nums ${(dashStats?.hitsToday || 0) > 0 ? 'text-amber-400' : 'text-rmpg-300'}`}>
+            {dashStats?.hitsToday ?? '-'}
+          </span>
         </div>
-        {/* Served MTD */}
         <div className="flex items-center gap-1.5 px-3 py-1 border-r border-[#1e3048]">
-          <span className={`led-dot ${servedMtd > 0 ? 'led-green' : 'led-off'}`} />
-          <span className="text-rmpg-400">SERVED MTD</span>
-          <span className="font-bold tabular-nums text-rmpg-300">{servedMtd}</span>
+          <span className="text-rmpg-400">FLAGGED</span>
+          <span className="font-bold tabular-nums text-rmpg-300">{dashStats?.personsFlagged ?? '-'}</span>
         </div>
-        {/* Total */}
         <div className="flex items-center gap-1.5 px-3 py-1 border-r border-[#1e3048]">
-          <span className="text-rmpg-400">TOTAL</span>
-          <span className="font-bold tabular-nums text-rmpg-300">{totalCount}</span>
+          <span className={`led-dot ${(dashStats?.sourcesOnline || 0) > 0 ? 'led-green' : 'led-off'}`} />
+          <span className="text-rmpg-400">SOURCES</span>
+          <span className={`font-bold tabular-nums ${(dashStats?.sourcesOnline || 0) > 0 ? 'text-green-400' : 'text-red-400'}`}>
+            {dashStats ? `${dashStats.sourcesOnline}/${dashStats.sourcesTotal}` : '-'}
+          </span>
         </div>
-        {/* Scan Status */}
         <div className="flex items-center gap-1.5 px-3 py-1">
           <span className={`led-dot ${scanRunning ? 'led-green animate-led-pulse' : 'led-off'}`} />
           <span className="text-rmpg-400">SCAN</span>
@@ -1068,12 +928,206 @@ export default function WarrantsPage() {
         </div>
       </div>
 
-      {/* ══════════════════════════════════════════════════════════
-          TAB CONTENT
-         ══════════════════════════════════════════════════════════ */}
+      {/* ================================================================
+          TAB 1: DASHBOARD
+         ================================================================ */}
+      {activeTab === 'dashboard' && (
+        <div className="flex-1 overflow-auto">
+          <div className="p-4 space-y-4">
+            {/* Quick Search */}
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-rmpg-500" />
+              <input
+                type="text"
+                className="input-dark w-full pl-9 text-xs"
+                placeholder="Quick search warrants by name, number, or charge..."
+                value={dashSearch}
+                onChange={(e) => setDashSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && dashSearch.trim()) {
+                    setSearchQuery(dashSearch.trim());
+                    setActiveTab('warrants');
+                  }
+                }}
+              />
+              {dashSearch && (
+                <button onClick={() => setDashSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
 
-      {/* ─── LOCAL WARRANTS TAB ─── */}
-      {activeTab === 'local' && (
+            {/* Stat Cards */}
+            <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-4'} gap-3`}>
+              <div className={`panel-inset p-3 rounded-sm text-center ${(dashStats?.activeWarrants || 0) > 0 ? 'bg-red-900/20 border border-red-900/40' : 'bg-surface-sunken'}`}>
+                <div className={`text-2xl font-bold font-mono tabular-nums ${(dashStats?.activeWarrants || 0) > 0 ? 'text-red-400' : 'text-white'}`}>
+                  {dashStatsLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : (dashStats?.activeWarrants ?? 0)}
+                </div>
+                <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Active Warrants</div>
+              </div>
+              <div className={`panel-inset p-3 rounded-sm text-center ${(dashStats?.hitsToday || 0) > 0 ? 'bg-amber-900/20 border border-amber-900/40' : 'bg-surface-sunken'}`}>
+                <div className={`text-2xl font-bold font-mono tabular-nums ${(dashStats?.hitsToday || 0) > 0 ? 'text-amber-400' : 'text-white'}`}>
+                  {dashStatsLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : (dashStats?.hitsToday ?? 0)}
+                </div>
+                <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Hits Today</div>
+              </div>
+              <div className="panel-inset bg-surface-sunken p-3 rounded-sm text-center">
+                <div className="text-2xl font-bold font-mono tabular-nums text-white">
+                  {dashStatsLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : (dashStats?.personsFlagged ?? 0)}
+                </div>
+                <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Persons Flagged</div>
+              </div>
+              <div className={`panel-inset p-3 rounded-sm text-center ${dashStats && dashStats.sourcesOnline < dashStats.sourcesTotal ? 'bg-red-900/10 border border-red-900/30' : 'bg-surface-sunken'}`}>
+                <div className={`text-2xl font-bold font-mono tabular-nums ${dashStats && dashStats.sourcesOnline >= dashStats.sourcesTotal ? 'text-green-400' : dashStats ? 'text-amber-400' : 'text-white'}`}>
+                  {dashStatsLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : dashStats ? `${dashStats.sourcesOnline}/${dashStats.sourcesTotal}` : '-'}
+                </div>
+                <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Sources Online</div>
+              </div>
+            </div>
+
+            {/* Main content: Feed (left) + Priority (right) */}
+            <div className={`${isMobile ? 'space-y-4' : 'flex gap-4'}`}>
+              {/* Alert Feed — left 65% */}
+              <div className={`${isMobile ? '' : 'w-[65%]'} flex flex-col`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <h2 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider flex items-center gap-2">
+                    <Zap className="w-3.5 h-3.5 text-brand-400" />
+                    Alert Feed
+                  </h2>
+                  <div className="flex gap-1 ml-auto">
+                    {FEED_RANGES.map(r => (
+                      <button
+                        key={r}
+                        onClick={() => setFeedRange(r)}
+                        className={`px-1.5 py-0.5 text-[9px] font-bold rounded-sm border transition-colors ${
+                          feedRange === r
+                            ? 'bg-brand-900/40 text-brand-300 border-brand-600/50'
+                            : 'bg-rmpg-800/50 text-rmpg-400 border-rmpg-700/50 hover:text-rmpg-200'
+                        }`}
+                      >
+                        {r}
+                      </button>
+                    ))}
+                    <select
+                      className="input-dark text-[9px] py-0 px-1 w-24 ml-1"
+                      value={feedEventFilter}
+                      onChange={(e) => setFeedEventFilter(e.target.value)}
+                    >
+                      <option value="">All Events</option>
+                      <option value="warrant_found">Found</option>
+                      <option value="warrant_cleared">Cleared</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="panel-inset bg-surface-sunken rounded-sm flex-1 max-h-[400px] overflow-auto">
+                  {feedLoading ? (
+                    <div className="flex items-center justify-center h-32 text-rmpg-400">
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading feed...
+                    </div>
+                  ) : filteredFeed.length === 0 ? (
+                    <div className="flex items-center justify-center h-32 text-rmpg-500 text-xs">
+                      No events in this time range
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-rmpg-800/50">
+                      {filteredFeed.map(entry => (
+                        <div key={entry.id} className="flex items-center gap-2 px-3 py-2 hover:bg-surface-raised/50 transition-colors">
+                          <span className="text-[9px] text-rmpg-500 font-mono shrink-0 w-14">{relativeTime(entry.created_at)}</span>
+                          <button
+                            onClick={() => entry.person_id && openPersonProfile(entry.person_id)}
+                            className="text-xs font-medium text-brand-300 hover:text-brand-200 transition-colors truncate"
+                            title="View person profile"
+                          >
+                            {entry.person_name}
+                          </button>
+                          <span className={`inline-flex px-1.5 py-0.5 text-[8px] font-bold rounded border shrink-0 ${
+                            entry.event === 'warrant_found' || entry.event === 'FOUND'
+                              ? 'bg-red-900/50 text-red-400 border-red-700/50'
+                              : 'bg-green-900/50 text-green-400 border-green-700/50'
+                          }`}>
+                            {entry.event === 'warrant_found' || entry.event === 'FOUND' ? 'FOUND' : 'CLEARED'}
+                          </span>
+                          {entry.charges && (
+                            <span className="text-[9px] text-rmpg-400 truncate max-w-[180px]">{chargesFromJson(entry.charges)}</span>
+                          )}
+                          {entry.court_name && (
+                            <span className="text-[9px] text-rmpg-500 truncate ml-auto shrink-0">{entry.court_name}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Priority Warrants — right 35% */}
+              <div className={`${isMobile ? '' : 'w-[35%]'} flex flex-col`}>
+                <h2 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider flex items-center gap-2 mb-2">
+                  <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
+                  Priority Warrants
+                </h2>
+
+                <div className="space-y-2 max-h-[400px] overflow-auto">
+                  {priorityLoading ? (
+                    <div className="panel-inset bg-surface-sunken rounded-sm flex items-center justify-center h-32 text-rmpg-400">
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading...
+                    </div>
+                  ) : priorityWarrants.length === 0 ? (
+                    <div className="panel-inset bg-surface-sunken rounded-sm flex items-center justify-center h-32 text-rmpg-500 text-xs">
+                      No priority warrants
+                    </div>
+                  ) : (
+                    priorityWarrants.map(pw => (
+                      <div key={pw.id} className="panel-inset bg-surface-sunken p-2.5 rounded-sm border border-red-900/20 hover:border-red-900/40 transition-colors">
+                        <div className="flex items-start gap-2">
+                          {pw.subject_photo_url ? (
+                            <img src={pw.subject_photo_url} alt="" className="w-9 h-9 rounded-sm object-cover border border-rmpg-600 shrink-0" />
+                          ) : (
+                            <div className="w-9 h-9 rounded-sm bg-rmpg-800 border border-rmpg-600 flex items-center justify-center shrink-0">
+                              <User className="w-4 h-4 text-rmpg-500" />
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-xs font-bold text-white truncate">
+                                {[pw.subject_first_name, pw.subject_last_name].filter(Boolean).join(' ') || 'Unknown'}
+                              </span>
+                              <span className={`inline-flex px-1 py-0.5 text-[8px] font-bold rounded border ${
+                                pw.offense_level === 'felony' ? SEVERITY_COLORS.felony
+                                  : pw.offense_level === 'misdemeanor' ? SEVERITY_COLORS.misdemeanor
+                                  : 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50'
+                              }`}>
+                                {(pw.offense_level || pw.type || 'WARRANT').toUpperCase()}
+                              </span>
+                            </div>
+                            <div className="text-[10px] text-rmpg-300 truncate mt-0.5">{pw.charge_description}</div>
+                            <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-400">
+                              {pw.bail_amount != null && pw.bail_amount > 0 && (
+                                <span className="text-green-400 font-mono font-bold">{formatCurrency(pw.bail_amount)}</span>
+                              )}
+                              {pw.source && (
+                                <span className="inline-flex px-1 py-0.5 text-[8px] rounded bg-blue-900/30 text-blue-300 border border-blue-700/30">
+                                  {pw.source}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================
+          TAB 2: WARRANTS (Unified List)
+         ================================================================ */}
+      {activeTab === 'warrants' && (
         <div className={`flex-1 ${isMobile ? 'flex flex-col' : 'flex'} overflow-hidden`}>
           {/* LEFT: Warrant List */}
           <div className={`${isMobile ? (selectedWarrant ? 'hidden' : 'flex-1') : 'w-[55%]'} flex flex-col ${!isMobile ? 'border-r border-rmpg-600' : ''}`}>
@@ -1084,15 +1138,15 @@ export default function WarrantsPage() {
                 <input
                   type="text"
                   className={`input-dark w-full pl-7 ${isMobile ? 'text-sm py-2.5' : 'text-xs'}`}
-                  placeholder="Search by subject name..."
+                  placeholder="Search by name, warrant #, or charge..."
                   value={searchQuery}
                   onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
                   style={isMobile ? { minHeight: 44 } : undefined}
                 />
               </div>
-              <div className={`flex ${isMobile ? 'gap-1.5' : 'gap-2'}`}>
+              <div className={`flex ${isMobile ? 'gap-1.5 flex-wrap' : 'gap-2'}`}>
                 <select
-                  className={`input-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-28'}`}
+                  className={`input-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-24'}`}
                   value={filterStatus}
                   onChange={(e) => { setFilterStatus(e.target.value); setPage(1); }}
                   style={isMobile ? { minHeight: 44 } : undefined}
@@ -1111,6 +1165,17 @@ export default function WarrantsPage() {
                   <option value="">All Types</option>
                   {WARRANT_TYPES.map((t) => (
                     <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+                <select
+                  className={`input-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-28'}`}
+                  value={filterSeverity}
+                  onChange={(e) => { setFilterSeverity(e.target.value); setPage(1); }}
+                  style={isMobile ? { minHeight: 44 } : undefined}
+                >
+                  <option value="">All Severity</option>
+                  {OFFENSE_LEVELS.map((l) => (
+                    <option key={l.value} value={l.value}>{l.label}</option>
                   ))}
                 </select>
               </div>
@@ -1138,19 +1203,8 @@ export default function WarrantsPage() {
                   action={!showArchived ? { label: 'New Warrant', onClick: openNewForm } : undefined}
                 />
               ) : isMobile ? (
-                /* Mobile: card-style list for better touch targets */
                 <div>
-                  {warrants.filter((w) => {
-                    if (!searchQuery.trim()) return true;
-                    const q = searchQuery.toLowerCase();
-                    return (
-                      (w.warrant_number || '').toLowerCase().includes(q) ||
-                      (w.charge_description || '').toLowerCase().includes(q) ||
-                      (w.subject_first_name || '').toLowerCase().includes(q) ||
-                      (w.subject_last_name || '').toLowerCase().includes(q) ||
-                      (w.subject_name || '').toLowerCase().includes(q)
-                    );
-                  }).map((w) => (
+                  {warrants.map((w) => (
                     <button
                       key={w.id}
                       onClick={() => fetchWarrantDetail(w.id)}
@@ -1170,7 +1224,10 @@ export default function WarrantsPage() {
                       </div>
                       <div className="text-sm text-rmpg-200 font-medium">{w.subject_name || 'Unknown'}</div>
                       <div className="text-xs text-rmpg-400 truncate mt-0.5">{w.charge_description}</div>
-                      <div className="text-[10px] text-rmpg-500 mt-0.5">{formatDate(w.created_at)}{w.offense_level ? ` \u2022 ${w.offense_level}` : ''}</div>
+                      <div className="text-[10px] text-rmpg-500 mt-0.5">
+                        {formatDate(w.created_at)}{w.offense_level ? ` \u2022 ${w.offense_level}` : ''}
+                        {w.source ? ` \u2022 ${w.source}` : ''}
+                      </div>
                     </button>
                   ))}
                 </div>
@@ -1178,46 +1235,61 @@ export default function WarrantsPage() {
                 <table className="table-dark">
                   <thead>
                     <tr>
-                      <th style={{ width: 120 }}>Number</th>
-                      <th style={{ width: 80 }}>Type</th>
+                      <th style={{ width: 80 }}>Status</th>
+                      <th style={{ width: 120 }}>Warrant #</th>
                       <th>Subject</th>
+                      <th style={{ width: 80 }}>Type</th>
                       <th>Charge</th>
-                      <th style={{ width: 90 }}>Status</th>
-                      <th style={{ width: 90 }}>Offense</th>
-                      <th style={{ width: 110 }}>Created</th>
+                      <th style={{ width: 80 }}>Severity</th>
+                      <th style={{ width: 90 }}>Court</th>
+                      <th style={{ width: 80 }}>Bail</th>
+                      <th style={{ width: 95 }}>Date</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {warrants.filter((w) => {
-                      if (!searchQuery.trim()) return true;
-                      const q = searchQuery.toLowerCase();
-                      return (
-                        (w.warrant_number || '').toLowerCase().includes(q) ||
-                        (w.charge_description || '').toLowerCase().includes(q) ||
-                        (w.subject_first_name || '').toLowerCase().includes(q) ||
-                        (w.subject_last_name || '').toLowerCase().includes(q) ||
-                        (w.subject_name || '').toLowerCase().includes(q)
-                      );
-                    }).map((w) => (
+                    {warrants.map((w) => (
                       <tr
                         key={w.id}
                         onClick={() => fetchWarrantDetail(w.id)}
                         className={`cursor-pointer ${selectedWarrant?.id === w.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : ''}`}
                       >
-                        <td className="font-mono text-xs text-white font-bold">{w.warrant_number || '-'}</td>
-                        <td>
-                          <span className={`inline-flex px-1.5 py-0.5 text-[10px] font-bold rounded border ${TYPE_COLORS[w.type] || TYPE_COLORS.other}`}>
-                            {w.type.toUpperCase()}
-                          </span>
-                        </td>
-                        <td className="text-rmpg-200 text-xs">{w.subject_name || <span className="text-rmpg-500">Unknown</span>}</td>
-                        <td className="text-xs text-rmpg-300 truncate max-w-[200px]">{w.charge_description}</td>
                         <td>
                           <span className={`inline-flex px-1.5 py-0.5 text-[10px] font-bold rounded border ${STATUS_COLORS[w.status] || ''}`}>
                             {w.status.toUpperCase()}
                           </span>
                         </td>
-                        <td className="text-xs text-rmpg-400">{w.offense_level ? w.offense_level.charAt(0).toUpperCase() + w.offense_level.slice(1) : '-'}</td>
+                        <td className="font-mono text-xs text-white font-bold">{w.warrant_number || '-'}</td>
+                        <td className="text-xs">
+                          <div className="flex items-center gap-2">
+                            {w.subject_photo_url ? (
+                              <img src={w.subject_photo_url} alt="" className="w-6 h-6 rounded-sm object-cover border border-rmpg-600" />
+                            ) : null}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (w.subject_person_id) openPersonProfile(w.subject_person_id);
+                              }}
+                              className={`text-rmpg-200 ${w.subject_person_id ? 'hover:text-brand-300 cursor-pointer' : ''}`}
+                            >
+                              {w.subject_name || <span className="text-rmpg-500">Unknown</span>}
+                            </button>
+                          </div>
+                        </td>
+                        <td>
+                          <span className={`inline-flex px-1.5 py-0.5 text-[10px] font-bold rounded border ${TYPE_COLORS[w.type] || TYPE_COLORS.other}`}>
+                            {w.type.toUpperCase()}
+                          </span>
+                        </td>
+                        <td className="text-xs text-rmpg-300 truncate max-w-[200px]">{w.charge_description}</td>
+                        <td>
+                          {w.offense_level ? (
+                            <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded border ${SEVERITY_COLORS[w.offense_level] || 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50'}`}>
+                              {w.offense_level.toUpperCase()}
+                            </span>
+                          ) : <span className="text-rmpg-500">-</span>}
+                        </td>
+                        <td className="text-[10px] text-rmpg-400 truncate">{w.issuing_court || '-'}</td>
+                        <td className="text-xs text-rmpg-400 font-mono">{w.bail_amount ? formatCurrency(w.bail_amount) : '-'}</td>
                         <td className="text-xs text-rmpg-400">{formatDate(w.created_at)}</td>
                       </tr>
                     ))}
@@ -1233,21 +1305,21 @@ export default function WarrantsPage() {
                   Page {page} of {totalPages} ({totalCount} results)
                 </span>
                 <div className="flex gap-1">
-                  <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1} className="toolbar-btn text-[9px]" style={isMobile ? { minHeight: 48, minWidth: 48 } : undefined}>Prev</button>
-                  <button onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page >= totalPages} className="toolbar-btn text-[9px]" style={isMobile ? { minHeight: 48, minWidth: 48 } : undefined}>Next</button>
+                  <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1} className="toolbar-btn text-[9px]">Prev</button>
+                  <button onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page >= totalPages} className="toolbar-btn text-[9px]">Next</button>
                 </div>
               </div>
             )}
           </div>
 
           {/* RIGHT: Warrant Detail */}
-          <div ref={warrantDetailRef} className={`${isMobile ? (selectedWarrant ? 'flex-1' : 'hidden') : 'flex-1'} flex flex-col overflow-hidden`}>
+          <div className={`${isMobile ? (selectedWarrant ? 'flex-1' : 'hidden') : 'flex-1'} flex flex-col overflow-hidden`}>
             <div className={`flex ${isMobile ? 'flex-wrap gap-1' : 'items-center gap-1'} px-3 py-1 border-b border-[#1e3048] bg-[var(--grid-header-bg)]`}>
               <Gavel className="w-3 h-3 text-brand-400" />
               <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">Warrant Detail</span>
               <span className="flex-1" />
               {isMobile && selectedWarrant && (
-                <button onClick={() => setSelectedWarrant(null)} className="toolbar-btn text-[9px]" style={isMobile ? { minHeight: 44 } : undefined}>← Back</button>
+                <button onClick={() => setSelectedWarrant(null)} className="toolbar-btn text-[9px]" style={isMobile ? { minHeight: 44 } : undefined}>&larr; Back</button>
               )}
               <PrintRecordButton recordType="warrant" recordData={selectedWarrant} identifier={selectedWarrant?.warrant_number} entityType="warrant" entityId={selectedWarrant?.id} label="Print" />
               {selectedWarrant && !selectedWarrant.archived_at && (
@@ -1299,7 +1371,7 @@ export default function WarrantsPage() {
                           {selectedWarrant.status.toUpperCase()}
                         </span>
                         {selectedWarrant.offense_level && (
-                          <span className="inline-flex px-2 py-0.5 text-[10px] font-bold rounded border bg-rmpg-700/40 text-rmpg-200 border-rmpg-600/50">
+                          <span className={`inline-flex px-2 py-0.5 text-[10px] font-bold rounded border ${SEVERITY_COLORS[selectedWarrant.offense_level] || 'bg-rmpg-700/40 text-rmpg-200 border-rmpg-600/50'}`}>
                             {selectedWarrant.offense_level.toUpperCase()}
                           </span>
                         )}
@@ -1489,546 +1561,18 @@ export default function WarrantsPage() {
         </div>
       )}
 
-      {/* ─── WARRANT WATCH TAB ─── */}
-      {activeTab === 'watch' && (
-        <div className="flex-1 overflow-auto">
-          {watchLoading ? (
-            <div className="flex items-center justify-center h-64 text-rmpg-400">
-              <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading watch data...
-            </div>
-          ) : (
-            <div className="p-4 space-y-6">
-              {/* ── Active Hits Section ── */}
-              <div>
-                <h2 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider flex items-center gap-2 mb-3">
-                  <span className={`led-dot ${watchActiveHits.length > 0 ? 'led-red animate-led-blink' : 'led-off'}`} />
-                  Active Warrant Hits
-                  {watchActiveHits.length > 0 && (
-                    <span className="ml-1 px-1.5 rounded bg-red-600 text-white text-[9px] font-bold">{watchActiveHits.length}</span>
-                  )}
-                </h2>
-
-                {watchActiveHits.length === 0 ? (
-                  <div className="panel-inset bg-surface-sunken p-6 text-center">
-                    <CheckCircle className="w-8 h-8 mx-auto mb-2 text-green-500/40" />
-                    <p className="text-sm text-rmpg-400">No Active Warrant Hits</p>
-                    <p className="text-[10px] text-rmpg-500 mt-1">No known persons currently have active Utah state warrants</p>
-                  </div>
-                ) : (
-                  <div className={`grid ${isMobile ? 'grid-cols-1' : 'grid-cols-2 xl:grid-cols-3'} gap-3`}>
-                    {watchActiveHits.map((hit) => {
-                      let chargeList: string[] = [];
-                      try { chargeList = JSON.parse(hit.charges || '[]'); } catch { /* ignore */ }
-                      return (
-                        <div key={`${hit.person_id}-${hit.utah_warrant_id}`} className="panel-inset bg-surface-sunken p-3 rounded-sm border border-red-900/30">
-                          <div className="flex items-start gap-3">
-                            {hit.photo_url ? (
-                              <img src={hit.photo_url} alt="" className="w-12 h-12 rounded-sm object-cover border border-rmpg-600" />
-                            ) : (
-                              <div className="w-12 h-12 rounded-sm bg-rmpg-800 border border-rmpg-600 flex items-center justify-center">
-                                <User className="w-6 h-6 text-rmpg-500" />
-                              </div>
-                            )}
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm font-bold text-white">{hit.person_name}</span>
-                                <span className="inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded border bg-red-900/50 text-red-400 border-red-700/50">
-                                  WARRANT
-                                </span>
-                                {hit.caution_flags && (
-                                  <span className="inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded border bg-amber-900/50 text-amber-400 border-amber-700/50">
-                                    <AlertTriangle className="w-2.5 h-2.5 mr-0.5" /> CAUTION
-                                  </span>
-                                )}
-                              </div>
-                              {hit.dob && <div className="text-[10px] text-rmpg-400 mt-0.5">DOB: {formatDate(hit.dob)}</div>}
-                              {(hit.address || hit.city) && (
-                                <div className="text-[10px] text-rmpg-400 flex items-center gap-1">
-                                  <MapPin className="w-2.5 h-2.5" />
-                                  {[hit.address, hit.city, hit.state].filter(Boolean).join(', ')}
-                                </div>
-                              )}
-                              <div className="mt-1.5 text-[10px] text-rmpg-300">
-                                <span className="text-rmpg-500">Court:</span> {hit.court_name || 'Unknown'}
-                                {hit.case_id && <><span className="ml-2 text-rmpg-500">Case:</span> {hit.case_id}</>}
-                              </div>
-                              {chargeList.length > 0 && (
-                                <div className="mt-1.5 flex flex-wrap gap-1">
-                                  {chargeList.map((c, i) => (
-                                    <span key={i} className="inline-flex px-1.5 py-0.5 text-[9px] rounded bg-amber-900/30 text-amber-300 border border-amber-700/30">
-                                      {c}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-                              <div className="mt-1.5 flex items-center justify-between">
-                                <span className="text-[9px] text-rmpg-500">
-                                  Issued: {hit.issue_date ? formatDate(hit.issue_date) : 'Unknown'} · Detected: {formatDateTime(hit.first_detected)}
-                                </span>
-                                <button
-                                  onClick={() => handleCreateFromHit(hit)}
-                                  className="toolbar-btn text-[9px] text-brand-400 hover:text-brand-300"
-                                  title="Create local warrant from this hit"
-                                >
-                                  <Plus className="w-3 h-3" /> Create Local
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* ── Event Log Section ── */}
-              <div>
-                <h2 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider flex items-center gap-2 mb-3">
-                  <History className="w-3.5 h-3.5 text-brand-400" />
-                  Event Log
-                  <span className="text-rmpg-500 font-normal">({watchLog.length} events)</span>
-                </h2>
-
-                {watchLog.length === 0 ? (
-                  <div className="panel-inset bg-surface-sunken p-6 text-center">
-                    <History className="w-8 h-8 mx-auto mb-2 text-rmpg-500/40" />
-                    <p className="text-sm text-rmpg-400">No Watch Events Yet</p>
-                    <p className="text-[10px] text-rmpg-500 mt-1">Events will appear here after the first automated scan runs</p>
-                  </div>
-                ) : (
-                  <div className="space-y-1">
-                    {watchLog.map((entry) => (
-                      <div key={entry.id} className={`flex items-center gap-2 px-3 py-2 rounded-sm border ${
-                        entry.event === 'warrant_found'
-                          ? 'bg-red-900/10 border-red-900/30'
-                          : 'bg-green-900/10 border-green-900/30'
-                      }`}>
-                        {entry.event === 'warrant_found'
-                          ? <AlertTriangle className="w-3.5 h-3.5 text-red-400 shrink-0" />
-                          : <CheckCircle className="w-3.5 h-3.5 text-green-400 shrink-0" />
-                        }
-                        <span className="text-xs font-medium text-white">{entry.person_name}</span>
-                        <span className={`text-[10px] font-bold ${entry.event === 'warrant_found' ? 'text-red-400' : 'text-green-400'}`}>
-                          {entry.event === 'warrant_found' ? 'WARRANT FOUND' : 'WARRANT CLEARED'}
-                        </span>
-                        {entry.court_name && <span className="text-[10px] text-rmpg-400">— {entry.court_name}</span>}
-                        {entry.charges && (
-                          <span className="text-[10px] text-rmpg-500 truncate max-w-[200px]">· {chargesFromJson(entry.charges)}</span>
-                        )}
-                        <span className="ml-auto text-[9px] text-rmpg-500 shrink-0 font-mono">{formatDateTime(entry.created_at)}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ─── UTAH SEARCH TAB ─── */}
-      {activeTab === 'utah' && (
+      {/* ================================================================
+          TAB 3: SOURCES (admin/manager only)
+         ================================================================ */}
+      {activeTab === 'sources' && isAdminOrManager && (
         <div className="flex-1 overflow-auto">
           <div className="p-4 space-y-4">
-            {/* Search bar */}
-            <div className="panel-inset bg-surface-sunken p-4 rounded-sm">
-              <h2 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider flex items-center gap-2 mb-3">
-                <Globe className="w-3.5 h-3.5 text-brand-400" />
-                Search warrants.utah.gov
-              </h2>
-              <div className="flex items-center gap-2">
-                <div className="relative flex-1">
-                  <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
-                  <input
-                    type="text"
-                    className="input-dark text-xs w-full pl-7"
-                    placeholder="Enter first and last name (e.g. JOHN SMITH)..."
-                    value={utahSearchQuery}
-                    onChange={(e) => setUtahSearchQuery(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleUtahSearch(); }}
-                  />
-                </div>
-                <button
-                  onClick={handleUtahSearch}
-                  disabled={utahSearching || utahSearchQuery.trim().length < 2}
-                  className="toolbar-btn toolbar-btn-primary text-[9px]"
-                >
-                  {utahSearching
-                    ? <><Loader2 className="w-3 h-3 animate-spin" /> Searching...</>
-                    : <><Search className="w-3 h-3" /> Search Utah</>
-                  }
-                </button>
-              </div>
-              <p className="text-[9px] text-rmpg-500 mt-2">
-                Enter both first and last name for a live search. Single names will search the local cache only.
-              </p>
-            </div>
-
-            {/* Results */}
-            {utahSearched && (
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <h2 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">
-                    Results ({utahResults.length})
-                  </h2>
-                  {utahResultSource && (
-                    <span className={`inline-flex px-1.5 py-0.5 text-[8px] font-bold rounded border ${
-                      utahResultSource === 'live'
-                        ? 'bg-green-900/50 text-green-400 border-green-700/50'
-                        : 'bg-amber-900/50 text-amber-400 border-amber-700/50'
-                    }`}>
-                      {utahResultSource === 'live' ? '● LIVE' : '● CACHE'}
-                    </span>
-                  )}
-                </div>
-
-                {utahResults.length === 0 ? (
-                  <div className="panel-inset bg-surface-sunken p-6 text-center">
-                    <Shield className="w-8 h-8 mx-auto mb-2 text-green-500/40" />
-                    <p className="text-sm text-rmpg-400">No Warrants Found</p>
-                    <p className="text-[10px] text-rmpg-500 mt-1">No active warrants found on warrants.utah.gov for this name</p>
-                  </div>
-                ) : (
-                  <div className={`grid ${isMobile ? 'grid-cols-1' : 'grid-cols-2 xl:grid-cols-3'} gap-3`}>
-                    {utahResults.map((r) => {
-                      let chargeList: string[] = [];
-                      try { chargeList = JSON.parse(r.charges || '[]'); } catch { /* ignore */ }
-                      return (
-                        <div key={`${r.utah_person_id}-${r.utah_warrant_id}`} className="panel-inset bg-surface-sunken p-3 rounded-sm border border-[#1e3048]">
-                          <div className="flex items-start gap-3">
-                            <div className="w-10 h-10 rounded-sm bg-rmpg-800 border border-rmpg-600 flex items-center justify-center">
-                              <User className="w-5 h-5 text-rmpg-500" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm font-bold text-white">
-                                  {r.first_name} {r.middle_name ? `${r.middle_name} ` : ''}{r.last_name}
-                                </span>
-                                <span className="inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded border bg-red-900/50 text-red-400 border-red-700/50">
-                                  WARRANT
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-3 mt-0.5 text-[10px] text-rmpg-400">
-                                {r.age && <span>Age: {r.age}</span>}
-                                {r.city && <span className="flex items-center gap-0.5"><MapPin className="w-2.5 h-2.5" /> {r.city}</span>}
-                              </div>
-                              <div className="mt-1.5 text-[10px] text-rmpg-300">
-                                <span className="text-rmpg-500">Court:</span> {r.court_name || 'Unknown'}
-                                {r.case_id && <><span className="ml-2 text-rmpg-500">Case:</span> {r.case_id}</>}
-                              </div>
-                              {chargeList.length > 0 && (
-                                <div className="mt-1.5 flex flex-wrap gap-1">
-                                  {chargeList.map((c, i) => (
-                                    <span key={i} className="inline-flex px-1.5 py-0.5 text-[9px] rounded bg-amber-900/30 text-amber-300 border border-amber-700/30">
-                                      {c}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-                              <div className="mt-1.5 flex items-center justify-between">
-                                <span className="text-[9px] text-rmpg-500">
-                                  Issued: {r.issue_date ? formatDate(r.issue_date) : 'Unknown'}
-                                  {r.fetched_at && ` · Cached: ${formatDateTime(r.fetched_at)}`}
-                                </span>
-                                <button
-                                  onClick={() => handleCreateFromUtahResult(r)}
-                                  className="toolbar-btn text-[9px] text-brand-400 hover:text-brand-300"
-                                  title="Create local warrant from this result"
-                                >
-                                  <Plus className="w-3 h-3" /> Create Local
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Pre-search state */}
-            {!utahSearched && !utahSearching && (
-              <div className="panel-inset bg-surface-sunken p-8 text-center">
-                <Globe className="w-10 h-10 mx-auto mb-3 text-brand-400/30" />
-                <p className="text-sm text-rmpg-400">Search Utah State Warrants</p>
-                <p className="text-[10px] text-rmpg-500 mt-1 max-w-md mx-auto">
-                  Query warrants.utah.gov in real time. Enter a first and last name above to search for active warrants across all Utah courts.
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ─── ALL STATES TAB ─── */}
-      {activeTab === 'all_states' && (
-        <div className="flex-1 overflow-auto">
-          <div className="p-4 space-y-4">
-            {/* Search + Filters */}
-            <div className="panel-inset bg-surface-sunken p-4 rounded-sm">
-              <h2 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider flex items-center gap-2 mb-3">
-                <FileText className="w-3.5 h-3.5 text-brand-400" />
-                Search All State Warrants
-              </h2>
-              <div className="flex flex-wrap items-center gap-2">
-                {/* Name search */}
-                <div className="relative flex-1 min-w-[180px]">
-                  <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
-                  <input
-                    type="text"
-                    className="input-dark text-xs w-full pl-7"
-                    placeholder="Search by name..."
-                    value={allStatesQuery}
-                    onChange={(e) => setAllStatesQuery(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') { setAllStatesPage(1); searchAllStates(1); } }}
-                  />
-                </div>
-                {/* State filter */}
-                <select
-                  className="input-dark text-xs min-w-[120px]"
-                  value={allStatesFilter}
-                  onChange={(e) => { setAllStatesFilter(e.target.value); setAllStatesSearched(false); }}
-                >
-                  <option value="">All States</option>
-                  {Object.entries(STATE_NAMES)
-                    .filter(([k]) => k !== 'ALL')
-                    .sort(([, a], [, b]) => a.localeCompare(b))
-                    .map(([abbr, name]) => (
-                      <option key={abbr} value={abbr}>{name} ({abbr})</option>
-                    ))}
-                </select>
-                {/* Status filter */}
-                <select
-                  className="input-dark text-xs min-w-[100px]"
-                  value={allStatesStatusFilter}
-                  onChange={(e) => { setAllStatesStatusFilter(e.target.value); setAllStatesSearched(false); }}
-                >
-                  <option value="">All Statuses</option>
-                  <option value="active">Active</option>
-                  <option value="served">Served</option>
-                  <option value="cleared">Cleared</option>
-                  <option value="expired">Expired</option>
-                </select>
-                {/* Search button */}
-                <button
-                  onClick={() => { setAllStatesPage(1); searchAllStates(1); }}
-                  disabled={allStatesLoading}
-                  className="toolbar-btn toolbar-btn-primary text-[9px]"
-                >
-                  {allStatesLoading
-                    ? <><Loader2 className="w-3 h-3 animate-spin" /> Searching...</>
-                    : <><Search className="w-3 h-3" /> Search</>
-                  }
-                </button>
-              </div>
-              <p className="text-[9px] text-rmpg-500 mt-2">
-                Browse scraped warrants from all configured state sources. Leave name blank to browse all active warrants.
-              </p>
-            </div>
-
-            {/* Results count */}
-            {allStatesSearched && (
-              <div className="flex items-center justify-between">
-                <h2 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">
-                  {allStatesTotal.toLocaleString()} Warrant{allStatesTotal !== 1 ? 's' : ''} Found
-                </h2>
-                {allStatesTotalPages > 1 && (
-                  <div className="flex items-center gap-2 text-[10px]">
-                    <button
-                      onClick={() => searchAllStates(allStatesPage - 1)}
-                      disabled={allStatesPage <= 1 || allStatesLoading}
-                      className="toolbar-btn text-[9px]"
-                    >
-                      ← Prev
-                    </button>
-                    <span className="text-rmpg-400">
-                      Page {allStatesPage} of {allStatesTotalPages}
-                    </span>
-                    <button
-                      onClick={() => searchAllStates(allStatesPage + 1)}
-                      disabled={allStatesPage >= allStatesTotalPages || allStatesLoading}
-                      className="toolbar-btn text-[9px]"
-                    >
-                      Next →
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Loading */}
-            {allStatesLoading && (
-              <div className="flex items-center justify-center h-40 text-rmpg-400">
-                <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading warrants...
-              </div>
-            )}
-
-            {/* Results grid */}
-            {allStatesSearched && !allStatesLoading && allStatesResults.length === 0 && (
-              <div className="panel-inset bg-surface-sunken p-8 text-center">
-                <Shield className="w-10 h-10 mx-auto mb-3 text-green-500/30" />
-                <p className="text-sm text-rmpg-400">No Warrants Found</p>
-                <p className="text-[10px] text-rmpg-500 mt-1">
-                  No warrants match your search criteria. Try adjusting filters or search terms.
-                </p>
-              </div>
-            )}
-
-            {allStatesSearched && !allStatesLoading && allStatesResults.length > 0 && (
-              <div className={`grid ${isMobile ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-2 xl:grid-cols-3'} gap-3`}>
-                {allStatesResults.map((w) => {
-                  const isExpanded = allStatesExpanded.has(w.id);
-                  return (
-                    <div
-                      key={w.id}
-                      className="panel-inset bg-surface-sunken p-3 rounded-sm border border-[#1e3048] hover:border-brand-600/40 transition-colors cursor-pointer"
-                      onClick={() => {
-                        setAllStatesExpanded(prev => {
-                          const next = new Set(prev);
-                          if (next.has(w.id)) next.delete(w.id);
-                          else next.add(w.id);
-                          return next;
-                        });
-                      }}
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className="w-10 h-10 rounded-sm bg-rmpg-800 border border-rmpg-600 flex items-center justify-center flex-shrink-0">
-                          <User className="w-5 h-5 text-rmpg-500" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-bold text-white truncate">
-                              {w.full_name || `${w.first_name || ''} ${w.last_name || ''}`.trim() || 'Unknown'}
-                            </span>
-                            <span className={`inline-flex px-1.5 py-0.5 text-[8px] font-bold rounded border ${
-                              w.status === 'active'
-                                ? 'bg-red-900/50 text-red-400 border-red-700/50'
-                                : w.status === 'served'
-                                  ? 'bg-green-900/50 text-green-400 border-green-700/50'
-                                  : 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50'
-                            }`}>
-                              {w.status?.toUpperCase() || 'ACTIVE'}
-                            </span>
-                            <span className="inline-flex px-1.5 py-0.5 text-[8px] font-bold rounded border bg-blue-900/40 text-blue-300 border-blue-700/40">
-                              {STATE_NAMES[w.state] || w.state}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-3 mt-0.5 text-[10px] text-rmpg-400 flex-wrap">
-                            {w.age && <span>Age: {w.age}</span>}
-                            {w.date_of_birth && <span>DOB: {w.date_of_birth}</span>}
-                            {w.city && <span className="flex items-center gap-0.5"><MapPin className="w-2.5 h-2.5" /> {w.city}{w.state ? `, ${w.state}` : ''}</span>}
-                            {w.gender && <span>{w.gender}</span>}
-                            {w.race && <span>{w.race}</span>}
-                          </div>
-                          <div className="mt-1.5 text-[10px] text-rmpg-300">
-                            {w.warrant_type && <><span className="text-rmpg-500">Type:</span> {w.warrant_type} · </>}
-                            {w.court_name && <><span className="text-rmpg-500">Court:</span> {w.court_name}</>}
-                            {w.case_number && <span className="ml-2"><span className="text-rmpg-500">Case:</span> {w.case_number}</span>}
-                          </div>
-                          {w.charge_description && (
-                            <div className="mt-1.5 flex flex-wrap gap-1">
-                              <span className="inline-flex px-1.5 py-0.5 text-[9px] rounded bg-amber-900/30 text-amber-300 border border-amber-700/30">
-                                {w.charge_description}
-                              </span>
-                            </div>
-                          )}
-                          {w.offense_level && (
-                            <span className={`mt-1 inline-flex px-1.5 py-0.5 text-[8px] font-bold rounded border ${
-                              w.offense_level.toLowerCase().includes('felon')
-                                ? 'bg-red-900/40 text-red-300 border-red-700/40'
-                                : w.offense_level.toLowerCase().includes('misdemeanor')
-                                  ? 'bg-amber-900/40 text-amber-300 border-amber-700/40'
-                                  : 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/40'
-                            }`}>
-                              {w.offense_level}
-                            </span>
-                          )}
-
-                          {/* Expanded details */}
-                          {isExpanded && (
-                            <div className="mt-2 pt-2 border-t border-rmpg-700/50 space-y-1 text-[10px]">
-                              {w.bail_amount && <div><span className="text-rmpg-500">Bail:</span> <span className="text-green-400 font-mono">{w.bail_amount}</span></div>}
-                              {w.issue_date && <div><span className="text-rmpg-500">Issued:</span> {w.issue_date}</div>}
-                              {w.source_display_name && <div><span className="text-rmpg-500">Source:</span> {w.source_display_name}</div>}
-                              {w.detail_url && (
-                                <a
-                                  href={w.detail_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-brand-400 hover:text-brand-300 underline"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  View Original →
-                                </a>
-                              )}
-                              {w.last_seen_at && <div className="text-rmpg-500">Last verified: {formatDateTime(w.last_seen_at)}</div>}
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleCreateFromScrapedWarrant(w);
-                                }}
-                                className="toolbar-btn text-[9px] text-brand-400 hover:text-brand-300 mt-1"
-                                title="Create local warrant from this result"
-                              >
-                                <Plus className="w-3 h-3" /> Create Local Warrant
-                              </button>
-                            </div>
-                          )}
-
-                          <div className="mt-1 flex items-center justify-between">
-                            <span className="text-[9px] text-rmpg-500">
-                              {w.issue_date && `Issued: ${w.issue_date}`}
-                              {w.last_seen_at && ` · Cached: ${formatDateTime(w.last_seen_at)}`}
-                            </span>
-                            <ChevronDown className={`w-3 h-3 text-rmpg-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Bottom pagination */}
-            {allStatesSearched && !allStatesLoading && allStatesTotalPages > 1 && (
-              <div className="flex items-center justify-center gap-2 py-2 text-[10px]">
-                <button
-                  onClick={() => searchAllStates(allStatesPage - 1)}
-                  disabled={allStatesPage <= 1}
-                  className="toolbar-btn text-[9px]"
-                >
-                  ← Previous
-                </button>
-                <span className="text-rmpg-400">
-                  Page {allStatesPage} of {allStatesTotalPages}
-                </span>
-                <button
-                  onClick={() => searchAllStates(allStatesPage + 1)}
-                  disabled={allStatesPage >= allStatesTotalPages}
-                  className="toolbar-btn text-[9px]"
-                >
-                  Next →
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ─── COVERAGE TAB ─── */}
-      {activeTab === 'coverage' && (
-        <div className="flex-1 overflow-auto">
-          <div className="p-4 space-y-4">
+            {/* Coverage Section */}
             {coverageLoading ? (
               <div className="flex items-center justify-center h-64 text-rmpg-400">
                 <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading coverage data...
               </div>
             ) : (() => {
-              // Group sources by state
               const byState = new Map<string, ScraperSource[]>();
               for (const src of coverageSources) {
                 const list = byState.get(src.state) || [];
@@ -2036,7 +1580,6 @@ export default function WarrantsPage() {
                 byState.set(src.state, list);
               }
 
-              // Compute aggregate stats
               const totalSources = coverageSources.length;
               const enabledSources = coverageSources.filter(s => s.enabled).length;
               const statesWithSources = new Set(coverageSources.map(s => s.state).filter(s => s !== 'ALL'));
@@ -2045,10 +1588,9 @@ export default function WarrantsPage() {
               const recentlyScraped = coverageSources.filter(s => {
                 if (!s.last_scraped_at) return false;
                 const ago = Date.now() - new Date(s.last_scraped_at.replace(' ', 'T')).getTime();
-                return ago < 3 * 60 * 60 * 1000; // within 3 hours
+                return ago < 3 * 60 * 60 * 1000;
               }).length;
 
-              // Separate federal from states
               const federalSources = byState.get('US') || [];
               const stateCodes = [...byState.keys()].filter(k => k !== 'US' && k !== 'ALL').sort();
 
@@ -2098,13 +1640,8 @@ export default function WarrantsPage() {
                         const active = sources.reduce((sum, s) => sum + s.active_warrants, 0);
                         const enabled = sources.filter(s => s.enabled).length;
                         const hasErrors = sources.some(s => s.consecutive_failures > 0);
-                        const lastScraped = sources
-                          .map(s => s.last_scraped_at)
-                          .filter(Boolean)
-                          .sort()
-                          .pop();
+                        const lastScraped = sources.map(s => s.last_scraped_at).filter(Boolean).sort().pop();
                         const isRecent = lastScraped && (Date.now() - new Date(lastScraped.replace(' ', 'T')).getTime()) < 3 * 60 * 60 * 1000;
-                        const isSurrounding = ['CO', 'WY', 'ID', 'NV', 'AZ', 'NM'].includes(state);
 
                         return (
                           <div
@@ -2119,29 +1656,9 @@ export default function WarrantsPage() {
                                     : 'border-brand-600/30 bg-brand-900/10'
                             }`}
                           >
-                            <div className="flex items-center justify-center gap-1">
-                              <span className={`text-sm font-bold font-mono ${
-                                isSurrounding ? 'text-amber-300' : 'text-white'
-                              }`}>
-                                {state}
-                              </span>
-                              {isSurrounding && (
-                                <span className="text-[7px] bg-amber-900/50 text-amber-400 px-1 rounded border border-amber-700/30">
-                                  ADJ
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-[9px] text-rmpg-400 mt-0.5">
-                              {STATE_NAMES[state] || state}
-                            </div>
-                            <div className="text-[10px] text-rmpg-300 mt-1">
-                              {sources.length} source{sources.length !== 1 ? 's' : ''}
-                            </div>
-                            {active > 0 && (
-                              <div className="text-[9px] text-red-400 font-bold mt-0.5">
-                                {active} active
-                              </div>
-                            )}
+                            <div className="text-sm font-bold font-mono text-white">{state}</div>
+                            <div className="text-[10px] text-rmpg-300 mt-1">{sources.length} source{sources.length !== 1 ? 's' : ''}</div>
+                            {active > 0 && <div className="text-[9px] text-red-400 font-bold mt-0.5">{active} active</div>}
                             <div className={`mt-1 inline-flex items-center gap-1 text-[8px] px-1.5 py-0.5 rounded ${
                               enabled === 0
                                 ? 'bg-rmpg-700/50 text-rmpg-500'
@@ -2152,13 +1669,7 @@ export default function WarrantsPage() {
                                     : 'bg-brand-900/50 text-brand-300'
                             }`}>
                               <span className={`w-1.5 h-1.5 rounded-full ${
-                                enabled === 0
-                                  ? 'bg-rmpg-600'
-                                  : isRecent
-                                    ? 'bg-green-400'
-                                    : hasErrors
-                                      ? 'bg-amber-400'
-                                      : 'bg-brand-400'
+                                enabled === 0 ? 'bg-rmpg-600' : isRecent ? 'bg-green-400' : hasErrors ? 'bg-amber-400' : 'bg-brand-400'
                               }`} />
                               {enabled === 0 ? 'DISABLED' : isRecent ? 'ACTIVE' : hasErrors ? 'ERRORS' : 'ENABLED'}
                             </div>
@@ -2197,12 +1708,12 @@ export default function WarrantsPage() {
                               <td className="px-2 py-1 text-center">
                                 {src.enabled ? (
                                   src.consecutive_failures > 0 ? (
-                                    <span className="text-amber-400">⚠ {src.consecutive_failures} failures</span>
+                                    <span className="text-amber-400">{src.consecutive_failures} failures</span>
                                   ) : (
-                                    <span className="text-green-400">● Enabled</span>
+                                    <span className="text-green-400">Enabled</span>
                                   )
                                 ) : (
-                                  <span className="text-rmpg-500">○ Disabled</span>
+                                  <span className="text-rmpg-500">Disabled</span>
                                 )}
                               </td>
                               <td className="px-2 py-1 text-right text-rmpg-400">{src.scrape_interval_minutes}m</td>
@@ -2220,97 +1731,248 @@ export default function WarrantsPage() {
                 </>
               );
             })()}
+
+            {/* Scan History Section */}
+            <div className="panel-inset bg-surface-sunken p-3 rounded-sm">
+              <h3 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider flex items-center gap-2 mb-3">
+                <History className="w-3.5 h-3.5 text-brand-400" />
+                Scan History
+                <span className="text-rmpg-500 font-normal">({watchRuns.length} runs)</span>
+              </h3>
+
+              {watchRunsLoading ? (
+                <div className="flex items-center justify-center h-32 text-rmpg-400">
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading scan history...
+                </div>
+              ) : watchRuns.length === 0 ? (
+                <div className="text-center py-6">
+                  <Clock className="w-8 h-8 mx-auto mb-2 text-rmpg-500/40" />
+                  <p className="text-sm text-rmpg-400">No Scans Yet</p>
+                  <p className="text-[10px] text-rmpg-500 mt-1">Automated scans run at noon and midnight Mountain Time.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {watchRuns.map((run) => (
+                    <div key={run.id} className="panel-beveled p-3 rounded-sm">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="font-mono text-xs text-rmpg-200 font-bold">{run.run_id}</span>
+                        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold rounded border ${
+                          run.status === 'completed' ? 'bg-green-900/50 text-green-400 border-green-700/50'
+                            : run.status === 'running' ? 'bg-blue-900/50 text-blue-400 border-blue-700/50'
+                            : 'bg-red-900/50 text-red-400 border-red-700/50'
+                        }`}>
+                          {run.status === 'running' && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
+                          <span className={`led-dot ${
+                            run.status === 'completed' ? 'led-green' : run.status === 'running' ? 'led-blue animate-led-pulse' : 'led-red'
+                          }`} />
+                          {run.status.toUpperCase()}
+                        </span>
+                        <span className="ml-auto text-[10px] text-rmpg-500 font-mono">
+                          {computeDuration(run.started_at, run.completed_at)}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-4 gap-4 text-center">
+                        <div className="panel-beveled p-2">
+                          <div className="text-[9px] text-rmpg-500 uppercase">Persons</div>
+                          <div className="text-base font-bold font-mono text-white tabular-nums">{run.persons_checked}</div>
+                        </div>
+                        <div className="panel-beveled p-2">
+                          <div className="text-[9px] text-rmpg-500 uppercase">New Warrants</div>
+                          <div className={`text-base font-bold font-mono tabular-nums ${run.new_warrants_found > 0 ? 'text-red-400' : 'text-white'}`}>
+                            {run.new_warrants_found}
+                          </div>
+                        </div>
+                        <div className="panel-beveled p-2">
+                          <div className="text-[9px] text-rmpg-500 uppercase">Cleared</div>
+                          <div className={`text-base font-bold font-mono tabular-nums ${run.warrants_cleared > 0 ? 'text-green-400' : 'text-white'}`}>
+                            {run.warrants_cleared}
+                          </div>
+                        </div>
+                        <div className="panel-beveled p-2">
+                          <div className="text-[9px] text-rmpg-500 uppercase">Errors</div>
+                          <div className={`text-base font-bold font-mono tabular-nums ${run.errors > 0 ? 'text-amber-400' : 'text-white'}`}>
+                            {run.errors}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-2 text-[10px] text-rmpg-500 font-mono">
+                        Started: {formatDateTime(run.started_at)}
+                        {run.completed_at && ` \u2192 Completed: ${formatDateTime(run.completed_at)}`}
+                      </div>
+                      {run.error_message && (
+                        <div className="mt-1 text-[10px] text-red-400 bg-red-900/20 px-2 py-1 rounded-sm">{run.error_message}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
 
-      {/* ─── SCAN HISTORY TAB ─── */}
-      {activeTab === 'history' && (
-        <div className="flex-1 overflow-auto">
-          {watchLoading ? (
-            <div className="flex items-center justify-center h-64 text-rmpg-400">
-              <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading scan history...
-            </div>
-          ) : watchRuns.length === 0 ? (
-            <div className="p-4">
-              <EmptyState
-                icon={Clock}
-                title="No Scans Yet"
-                description="Automated scans run at noon and midnight Mountain Time. You can also trigger one manually with the 'Run Scan Now' button."
-              />
-            </div>
-          ) : (
-            <div className="p-4 space-y-3">
-              <h2 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider flex items-center gap-2 mb-1">
-                <History className="w-3.5 h-3.5 text-brand-400" />
-                Warrant Watch Scan Runs
-                <span className="text-rmpg-500 font-normal">({watchRuns.length} runs)</span>
+      {/* ================================================================
+          PERSON PROFILE SLIDE-OUT
+         ================================================================ */}
+      {personProfileOpen && (
+        <div className="fixed inset-0 z-40 flex justify-end" onClick={() => setPersonProfileOpen(false)}>
+          <div className="absolute inset-0 bg-black/40" />
+          <div
+            className={`relative ${isMobile ? 'w-full' : 'w-[420px]'} h-full bg-surface-base border-l border-rmpg-600 shadow-2xl flex flex-col overflow-hidden`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-600 bg-[var(--grid-header-bg)]">
+              <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                <User className="w-4 h-4 text-brand-400" /> Person Warrant Profile
               </h2>
+              <button onClick={() => setPersonProfileOpen(false)} className="text-rmpg-400 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
-              {watchRuns.map((run) => (
-                <div key={run.id} className="panel-inset bg-surface-sunken p-4 rounded-sm">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="font-mono text-xs text-rmpg-200 font-bold">{run.run_id}</span>
-                    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold rounded border ${
-                      run.status === 'completed' ? 'bg-green-900/50 text-green-400 border-green-700/50'
-                        : run.status === 'running' ? 'bg-blue-900/50 text-blue-400 border-blue-700/50'
-                        : 'bg-red-900/50 text-red-400 border-red-700/50'
-                    }`}>
-                      {run.status === 'running' && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
-                      <span className={`led-dot ${
-                        run.status === 'completed' ? 'led-green' : run.status === 'running' ? 'led-blue animate-led-pulse' : 'led-red'
-                      }`} />
-                      {run.status.toUpperCase()}
-                    </span>
-                    <span className="ml-auto text-[10px] text-rmpg-500 font-mono">
-                      {computeDuration(run.started_at, run.completed_at)}
-                    </span>
+            {personProfileLoading ? (
+              <div className="flex-1 flex items-center justify-center text-rmpg-400">
+                <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading profile...
+              </div>
+            ) : personProfile ? (
+              <div className="flex-1 overflow-auto p-4 space-y-4">
+                {/* Person header */}
+                <div className="panel-beveled p-4 flex items-start gap-3">
+                  {personProfile.person.photo_url ? (
+                    <img src={personProfile.person.photo_url} alt="" className="w-16 h-16 rounded-sm object-cover border border-rmpg-600" />
+                  ) : (
+                    <div className="w-16 h-16 rounded-sm bg-rmpg-800 border border-rmpg-600 flex items-center justify-center">
+                      <User className="w-8 h-8 text-rmpg-500" />
+                    </div>
+                  )}
+                  <div>
+                    <h3 className="text-base font-bold text-white">
+                      {personProfile.person.first_name} {personProfile.person.last_name}
+                    </h3>
+                    {personProfile.person.dob && (
+                      <div className="text-xs text-rmpg-400 mt-0.5">DOB: {formatDate(personProfile.person.dob)}</div>
+                    )}
+                    {personProfile.person.flags && (
+                      <div className="mt-1">
+                        <WarrantBadge flags={personProfile.person.flags} size="md" />
+                      </div>
+                    )}
+                    {personProfile.lastChecked && (
+                      <div className="text-[10px] text-rmpg-500 mt-1">Last checked: {relativeTime(personProfile.lastChecked)}</div>
+                    )}
                   </div>
+                </div>
 
-                  <div className="grid grid-cols-4 gap-4 text-center">
-                    <div className="panel-beveled p-2">
-                      <div className="text-[9px] text-rmpg-500 uppercase">Persons</div>
-                      <div className="text-base font-bold font-mono text-white tabular-nums">{run.persons_checked}</div>
-                    </div>
-                    <div className="panel-beveled p-2">
-                      <div className="text-[9px] text-rmpg-500 uppercase">New Warrants</div>
-                      <div className={`text-base font-bold font-mono tabular-nums ${run.new_warrants_found > 0 ? 'text-red-400' : 'text-white'}`}>
-                        {run.new_warrants_found}
-                      </div>
-                    </div>
-                    <div className="panel-beveled p-2">
-                      <div className="text-[9px] text-rmpg-500 uppercase">Cleared</div>
-                      <div className={`text-base font-bold font-mono tabular-nums ${run.warrants_cleared > 0 ? 'text-green-400' : 'text-white'}`}>
-                        {run.warrants_cleared}
-                      </div>
-                    </div>
-                    <div className="panel-beveled p-2">
-                      <div className="text-[9px] text-rmpg-500 uppercase">Errors</div>
-                      <div className={`text-base font-bold font-mono tabular-nums ${run.errors > 0 ? 'text-amber-400' : 'text-white'}`}>
-                        {run.errors}
-                      </div>
-                    </div>
-                  </div>
+                {/* Quick actions */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleRunCheck(personProfile.person.id)}
+                    disabled={checkingPerson}
+                    className="toolbar-btn toolbar-btn-primary text-[9px] flex-1"
+                  >
+                    {checkingPerson ? <Loader2 className="w-3 h-3 animate-spin" /> : <Radar className="w-3 h-3" />}
+                    Run Check Now
+                  </button>
+                  <button
+                    onClick={() => {
+                      setPersonProfileOpen(false);
+                      setFormData(prev => ({
+                        ...prev,
+                        type: 'arrest',
+                        subject_person_id: String(personProfile.person.id),
+                      }));
+                      setSelectedPersonName(`${personProfile.person.first_name} ${personProfile.person.last_name}`);
+                      openNewForm();
+                      // Re-set person ID after openNewForm resets
+                      setTimeout(() => {
+                        setFormData(prev => ({
+                          ...prev,
+                          subject_person_id: String(personProfile.person.id),
+                        }));
+                        setSelectedPersonName(`${personProfile.person.first_name} ${personProfile.person.last_name}`);
+                      }, 0);
+                    }}
+                    className="toolbar-btn text-[9px] flex-1"
+                  >
+                    <Plus className="w-3 h-3" /> Create Manual Warrant
+                  </button>
+                </div>
 
-                  <div className="mt-2 text-[10px] text-rmpg-500 font-mono">
-                    Started: {formatDateTime(run.started_at)}
-                    {run.completed_at && ` → Completed: ${formatDateTime(run.completed_at)}`}
-                  </div>
-                  {run.error_message && (
-                    <div className="mt-1 text-[10px] text-red-400 bg-red-900/20 px-2 py-1 rounded-sm">{run.error_message}</div>
+                {/* Warrants list */}
+                <div>
+                  <h4 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider flex items-center gap-2 mb-2">
+                    <Gavel className="w-3.5 h-3.5 text-brand-400" />
+                    Warrants ({personProfile.warrants.length})
+                  </h4>
+                  {personProfile.warrants.length === 0 ? (
+                    <div className="panel-inset bg-surface-sunken p-4 text-center text-xs text-rmpg-500">
+                      No warrants on file
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {personProfile.warrants.map(w => (
+                        <div key={w.id} className="panel-inset bg-surface-sunken p-3 rounded-sm">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-mono text-xs text-white font-bold">{w.warrant_number}</span>
+                            <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded border ${STATUS_COLORS[w.status] || ''}`}>
+                              {w.status.toUpperCase()}
+                            </span>
+                            <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded border ${TYPE_COLORS[w.type] || TYPE_COLORS.other}`}>
+                              {w.type.toUpperCase()}
+                            </span>
+                          </div>
+                          <div className="text-xs text-rmpg-300">{w.charge_description}</div>
+                          <div className="text-[10px] text-rmpg-500 mt-1">
+                            {formatDate(w.created_at)}
+                            {w.issuing_court && ` \u2022 ${w.issuing_court}`}
+                            {w.bail_amount ? ` \u2022 Bail: ${formatCurrency(w.bail_amount)}` : ''}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
-              ))}
-            </div>
-          )}
+
+                {/* Scan history timeline */}
+                {personProfile.scanHistory && personProfile.scanHistory.length > 0 && (
+                  <div>
+                    <h4 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider flex items-center gap-2 mb-2">
+                      <History className="w-3.5 h-3.5 text-brand-400" />
+                      Scan History
+                    </h4>
+                    <div className="space-y-1">
+                      {personProfile.scanHistory.map(entry => (
+                        <div key={entry.id} className={`flex items-center gap-2 px-2 py-1.5 rounded-sm text-xs ${
+                          entry.event.includes('found') ? 'bg-red-900/10 border border-red-900/20' : 'bg-green-900/10 border border-green-900/20'
+                        }`}>
+                          {entry.event.includes('found')
+                            ? <AlertTriangle className="w-3 h-3 text-red-400 shrink-0" />
+                            : <CheckCircle className="w-3 h-3 text-green-400 shrink-0" />
+                          }
+                          <span className="text-rmpg-300 flex-1">{entry.details || entry.event}</span>
+                          <span className="text-[9px] text-rmpg-500 font-mono shrink-0">{relativeTime(entry.created_at)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-rmpg-500 text-sm">
+                Profile not available
+              </div>
+            )}
+          </div>
         </div>
       )}
 
-      {/* ══════════════════════════════════════════════════════════
+      {/* ================================================================
           MODALS
-         ══════════════════════════════════════════════════════════ */}
+         ================================================================ */}
 
-      {/* ── FORM MODAL ── */}
+      {/* FORM MODAL */}
       {formOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-labelledby={warrantFormTitleId}>
           <div className={`panel-beveled ${isMobile ? 'w-full h-full' : 'w-[550px] max-h-[85vh]'} overflow-auto bg-surface-base`}>
@@ -2471,7 +2133,7 @@ export default function WarrantsPage() {
         </div>
       )}
 
-      {/* ── SERVE MODAL ── */}
+      {/* SERVE MODAL */}
       {serveModalOpen && selectedWarrant && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-labelledby={serveTitleId}>
           <div className={`panel-beveled ${isMobile ? 'w-full mx-4' : 'w-[400px]'} bg-surface-base`}>
@@ -2505,14 +2167,14 @@ export default function WarrantsPage() {
         </div>
       )}
 
-      {/* ── MOBILE FAB ── */}
-      {isMobile && activeTab === 'local' && !selectedWarrant && !showArchived && !formOpen && (
+      {/* MOBILE FAB */}
+      {isMobile && activeTab === 'warrants' && !selectedWarrant && !showArchived && !formOpen && (
         <button onClick={openNewForm} className="mobile-fab" aria-label="New Warrant">
           <Plus className="w-6 h-6" />
         </button>
       )}
 
-      {/* ── DELETE CONFIRM ── */}
+      {/* DELETE CONFIRM */}
       <ConfirmDialog
         isOpen={deletingWarrant !== null}
         onClose={() => setDeletingWarrant(null)}

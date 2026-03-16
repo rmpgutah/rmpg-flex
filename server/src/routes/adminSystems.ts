@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { validateParamId } from '../middleware/sanitize';
+import { rateLimit } from '../middleware/rateLimiter';
 import { localNow } from '../utils/timeUtils';
 import { getConnectedClientCount } from '../utils/websocket';
 import { createNotification } from './notifications';
@@ -8,7 +10,7 @@ import { sendNotificationEmail } from '../utils/emailSender';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -167,7 +169,7 @@ router.use((_req, _res, next) => {
     try {
       initTables();
       tablesInitialized = true;
-    } catch (err) {
+    } catch (err: any) {
       console.error('adminSystems initTables retry failed:', err?.message || 'Unknown error');
     }
   }
@@ -219,14 +221,18 @@ router.get('/training', requireRole('admin', 'manager', 'supervisor'), (req: Req
 
 // POST /health/client-error — Logs client-side React errors to server log
 router.post('/health/client-error', authenticateToken, (req: Request, res: Response) => {
-  const { message, componentStack, url, timestamp } = req.body || {};
-  const user = (req as any).user;
-  console.error(
-    `[CLIENT ERROR] user=${user?.username || '?'} url=${url || '?'} time=${timestamp || '?'}`,
-    `\n  message: ${message || 'unknown'}`,
-    componentStack ? `\n  components: ${componentStack.trim().split('\n').slice(0, 5).join(' > ')}` : '',
-  );
-  res.json({ received: true });
+  try {
+    const { message, componentStack, url, timestamp } = req.body || {};
+    const user = (req as any).user;
+    console.error(
+      `[CLIENT ERROR] user=${user?.username || '?'} url=${url || '?'} time=${timestamp || '?'}`,
+      `\n  message: ${message || 'unknown'}`,
+      componentStack ? `\n  components: ${String(componentStack).trim().split('\n').slice(0, 5).join(' > ')}` : '',
+    );
+    res.json({ received: true });
+  } catch {
+    res.json({ received: true });
+  }
 });
 
 // ============================================================
@@ -332,8 +338,10 @@ router.get('/health/detailed', requireRole('admin', 'manager'), (req: Request, r
     let diskUsed = 0;
     let diskFree = 0;
     try {
-      const dfOutput = execSync("df -k / | tail -1", { encoding: 'utf-8', timeout: 3000 });
-      const parts = dfOutput.trim().split(/\s+/);
+      const dfOutput = execFileSync('df', ['-k', '/'], { encoding: 'utf-8', timeout: 3000 });
+      const dfLines = dfOutput.trim().split('\n');
+      const lastLine = dfLines[dfLines.length - 1];
+      const parts = lastLine.trim().split(/\s+/);
       if (parts.length >= 4) {
         diskTotal = parseInt(parts[1], 10) * 1024; // KB to bytes
         diskUsed = parseInt(parts[2], 10) * 1024;
@@ -367,9 +375,12 @@ router.get('/health/detailed', requireRole('admin', 'manager'), (req: Request, r
     try {
       // Quick single-sample via /proc/stat (Linux) or vm_stat (macOS)
       if (os.platform() === 'linux') {
-        const topOutput = execSync("top -bn1 | head -3 | grep 'Cpu'", { encoding: 'utf-8', timeout: 3000 });
-        const idleMatch = topOutput.match(/(\d+\.?\d*)\s*id/);
-        if (idleMatch) cpuUsagePercent = Math.round((100 - parseFloat(idleMatch[1])) * 10) / 10;
+        const topOutput = execFileSync('top', ['-bn1'], { encoding: 'utf-8', timeout: 3000 });
+        const cpuLine = topOutput.split('\n').find(l => l.includes('Cpu'));
+        if (cpuLine) {
+          const idleMatch = cpuLine.match(/(\d+\.?\d*)\s*id/);
+          if (idleMatch) cpuUsagePercent = Math.round((100 - parseFloat(idleMatch[1])) * 10) / 10;
+        }
       } else {
         // macOS fallback — approximate from load average vs core count
         cpuUsagePercent = cpus.length > 0 ? Math.round((loadAvg[0] / cpus.length) * 100 * 10) / 10 : null;
@@ -380,9 +391,11 @@ router.get('/health/detailed', requireRole('admin', 'manager'), (req: Request, r
     let networkIO: { rxBytes: number; txBytes: number } | null = null;
     try {
       if (os.platform() === 'linux') {
-        const netDev = execSync("cat /proc/net/dev | grep -v 'lo:' | tail -n +3", { encoding: 'utf-8', timeout: 3000 });
+        const netDev = fs.readFileSync('/proc/net/dev', 'utf-8');
         let totalRx = 0, totalTx = 0;
-        for (const line of netDev.trim().split('\n')) {
+        // Skip header lines and loopback interface
+        const netLines = netDev.trim().split('\n').slice(2).filter(l => !l.includes('lo:'));
+        for (const line of netLines) {
           const parts = line.trim().split(/\s+/);
           if (parts.length >= 10) {
             totalRx += parseInt(parts[1], 10) || 0;
@@ -396,8 +409,8 @@ router.get('/health/detailed', requireRole('admin', 'manager'), (req: Request, r
     // Process count (Linux)
     let processCount: number | null = null;
     try {
-      const psOutput = execSync("ps aux --no-heading 2>/dev/null | wc -l || ps aux | wc -l", { encoding: 'utf-8', timeout: 3000 });
-      processCount = parseInt(psOutput.trim(), 10) || null;
+      const psOutput = execFileSync('ps', ['aux', '--no-heading'], { encoding: 'utf-8', timeout: 3000 });
+      processCount = psOutput.trim().split('\n').filter(l => l.trim()).length || null;
     } catch { /* ignore */ }
 
     // Read version from changelog
@@ -592,7 +605,7 @@ router.post('/announcements', requireRole('admin', 'manager'), (req: Request, re
 });
 
 // PUT /announcements/:id — Admin/manager: update announcement
-router.put('/announcements/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.put('/announcements/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM system_announcements WHERE id = ?').get(req.params.id) as any;
@@ -640,7 +653,7 @@ router.put('/announcements/:id', requireRole('admin', 'manager'), (req: Request,
 });
 
 // DELETE /announcements/:id — Admin only: delete announcement
-router.delete('/announcements/:id', requireRole('admin'), (req: Request, res: Response) => {
+router.delete('/announcements/:id', validateParamId, requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM system_announcements WHERE id = ?').get(req.params.id) as any;
@@ -680,7 +693,7 @@ router.get('/retention', requireRole('admin', 'manager'), (req: Request, res: Re
 });
 
 // PUT /retention/:id — Update a retention policy
-router.put('/retention/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.put('/retention/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM retention_policies WHERE id = ?').get(req.params.id) as any;
@@ -955,7 +968,7 @@ router.post('/departments', requireRole('admin', 'manager'), (req: Request, res:
 });
 
 // PUT /departments/:id — Update department
-router.put('/departments/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.put('/departments/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM departments WHERE id = ?').get(req.params.id) as any;
@@ -1008,7 +1021,7 @@ router.put('/departments/:id', requireRole('admin', 'manager'), (req: Request, r
 });
 
 // DELETE /departments/:id — Delete department (only if no users assigned)
-router.delete('/departments/:id', requireRole('admin'), (req: Request, res: Response) => {
+router.delete('/departments/:id', validateParamId, requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM departments WHERE id = ?').get(req.params.id) as any;
@@ -1127,7 +1140,7 @@ router.post('/notification-rules', requireRole('admin', 'manager'), (req: Reques
 });
 
 // PUT /notification-rules/:id — Update rule
-router.put('/notification-rules/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.put('/notification-rules/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM notification_rules WHERE id = ?').get(req.params.id) as any;
@@ -1179,7 +1192,7 @@ router.put('/notification-rules/:id', requireRole('admin', 'manager'), (req: Req
 });
 
 // DELETE /notification-rules/:id — Delete rule
-router.delete('/notification-rules/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/notification-rules/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM notification_rules WHERE id = ?').get(req.params.id) as any;
@@ -1203,7 +1216,8 @@ router.delete('/notification-rules/:id', requireRole('admin', 'manager'), (req: 
 });
 
 // POST /notification-rules/:id/test — Send a test notification using this rule
-router.post('/notification-rules/:id/test', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+const testNotifRateLimit = rateLimit({ windowMs: 60_000, maxRequests: 5, message: 'Too many test notifications — try again in a minute' });
+router.post('/notification-rules/:id/test', validateParamId, requireRole('admin', 'manager'), testNotifRateLimit, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const rule = db.prepare('SELECT * FROM notification_rules WHERE id = ?').get(req.params.id) as any;

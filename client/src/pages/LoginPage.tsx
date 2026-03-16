@@ -148,12 +148,15 @@ export default function LoginPage() {
     return () => clearTimeout(timer);
   }, [loginStep]);
 
-  // Auto-submit TOTP when 6 digits entered
+  // Auto-submit TOTP when 6 digits entered (with ref guard to prevent double-submit)
+  const totpSubmittedRef = useRef(false);
   useEffect(() => {
     const trimmed = totpCode.replace(/\s/g, '');
-    if (trimmed.length === 6 && loginStep === 'verify_2fa' && !loginBusy) {
+    if (trimmed.length === 6 && loginStep === 'verify_2fa' && !loginBusy && !totpSubmittedRef.current) {
+      totpSubmittedRef.current = true;
       handleTotpSubmit(trimmed);
     }
+    if (trimmed.length < 6) totpSubmittedRef.current = false;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [totpCode, loginStep, loginBusy]);
 

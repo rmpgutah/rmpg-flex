@@ -10,7 +10,9 @@ import { Router, Request, Response } from 'express';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
+import { escapeLike, validateParamId } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
+import config from '../config';
 import {
   CONFIG_KEYS,
   GRAPH_SCOPES,
@@ -50,7 +52,16 @@ function textToEmailHtml(text: string, signature?: string): string {
   // Basic markdown: **bold**, *italic*, [text](url)
   escaped = escaped.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   escaped = escaped.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  escaped = escaped.replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" style="color:#1a5a9e;">$1</a>');
+  escaped = escaped.replace(/\[(.+?)\]\((.+?)\)/g, (_match, linkText, url) => {
+    // Only allow safe URL schemes — block javascript:, data:, vbscript: etc.
+    const trimmedUrl = url.trim().toLowerCase();
+    if (trimmedUrl.startsWith('http://') || trimmedUrl.startsWith('https://') || trimmedUrl.startsWith('mailto:')) {
+      // Escape URL for safe insertion into href attribute — prevents attribute injection
+      const safeUrl = url.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+      return `<a href="${safeUrl}" style="color:#1a5a9e;">${linkText}</a>`;
+    }
+    return `${linkText} (${url})`;
+  });
   const bodyHtml = escaped.replace(/\n/g, '<br>');
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"></head>
@@ -74,7 +85,7 @@ router.get('/oauth/callback', async (req: Request, res: Response) => {
 
     if (error) {
       console.error('[OAuth] Microsoft returned error:', error, error_description);
-      res.redirect(`/admin?tab=email&status=error&message=${encodeURIComponent(String(error_description || error))}`);
+      res.redirect('/admin?tab=email&status=error&message=Microsoft+authorization+failed');
       return;
     }
 
@@ -93,8 +104,9 @@ router.get('/oauth/callback', async (req: Request, res: Response) => {
     // Clear state to prevent replay
     deleteConfigValue(CONFIG_KEYS.oauthState);
 
-    // Exchange code for tokens — always use https (req.protocol may report http incorrectly)
-    const redirectUri = `https://${req.get('host')}/api/email/oauth/callback`;
+    // Exchange code for tokens — use hardcoded production domain to prevent Host header injection
+    const host = config.isProduction ? 'rmpgutah.us' : (req.get('host') || 'localhost:3001');
+    const redirectUri = `https://${host}/api/email/oauth/callback`;
     await exchangeCodeForTokens(String(code), redirectUri);
 
     // Enable integration and start poller
@@ -105,7 +117,7 @@ router.get('/oauth/callback', async (req: Request, res: Response) => {
     res.redirect('/admin?tab=email&status=authorized');
   } catch (err: any) {
     console.error('[OAuth] Token exchange failed:', err.message);
-    res.redirect(`/admin?tab=email&status=error&message=${encodeURIComponent(err.message)}`);
+    res.redirect('/admin?tab=email&status=error&message=Token+exchange+failed');
   }
 });
 
@@ -210,7 +222,7 @@ router.get('/folders', async (req: Request, res: Response) => {
 });
 
 // GET /api/email/folders/:id/children — List child folders
-router.get('/folders/:id/children', async (req: Request, res: Response) => {
+router.get('/folders/:id/children', validateParamId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.json([]); return; }
     const client = await getGraphClient();
@@ -248,7 +260,7 @@ router.post('/folders', async (req: Request, res: Response) => {
 });
 
 // PATCH /api/email/folders/:id — Rename a folder
-router.patch('/folders/:id', async (req: Request, res: Response) => {
+router.patch('/folders/:id', validateParamId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
     const { displayName } = req.body;
@@ -265,7 +277,7 @@ router.patch('/folders/:id', async (req: Request, res: Response) => {
 });
 
 // DELETE /api/email/folders/:id — Delete a folder
-router.delete('/folders/:id', async (req: Request, res: Response) => {
+router.delete('/folders/:id', validateParamId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
     const client = await getGraphClient();
@@ -295,9 +307,11 @@ router.get('/messages', async (req: Request, res: Response) => {
     if (isAuthorized()) {
       try {
         const client = await getGraphClient();
-        let apiPath = folder === 'inbox'
+        // Sanitize folder ID to prevent path traversal in Graph API URL
+        const safeFolder = String(folder).replace(/[^a-zA-Z0-9_-]/g, '');
+        let apiPath = safeFolder === 'inbox'
           ? '/me/mailFolders/inbox/messages'
-          : `/me/mailFolders/${folder}/messages`;
+          : `/me/mailFolders/${safeFolder}/messages`;
 
         let query = client
           .api(apiPath)
@@ -307,7 +321,9 @@ router.get('/messages', async (req: Request, res: Response) => {
           .skip((pageNum - 1) * perPage);
 
         if (search) {
-          query = query.search(`"${String(search)}"`);
+          // Sanitize search term — escape double quotes to prevent KQL injection
+          const safeSearch = String(search).replace(/"/g, '\\"').slice(0, 200);
+          query = query.search(`"${safeSearch}"`);
         }
 
         const result = await query.get();
@@ -354,8 +370,8 @@ router.get('/messages', async (req: Request, res: Response) => {
     }
 
     if (search) {
-      conditions.push('(subject LIKE ? OR from_address LIKE ? OR from_name LIKE ? OR body_preview LIKE ?)');
-      const term = `%${search}%`;
+      conditions.push("(subject LIKE ? ESCAPE '\\' OR from_address LIKE ? ESCAPE '\\' OR from_name LIKE ? ESCAPE '\\' OR body_preview LIKE ? ESCAPE '\\')");
+      const term = `%${escapeLike(String(search))}%`;
       params.push(term, term, term, term);
     }
 
@@ -474,7 +490,7 @@ router.post('/messages/mark-all-read', async (req: Request, res: Response) => {
 });
 
 // GET /api/email/messages/:id — Full message with body
-router.get('/messages/:id', async (req: Request, res: Response) => {
+router.get('/messages/:id', validateParamId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) {
       res.status(503).json({ error: 'Email not authorized' });
@@ -525,7 +541,7 @@ router.get('/messages/:id', async (req: Request, res: Response) => {
 });
 
 // GET /api/email/messages/:id/attachments — List attachments
-router.get('/messages/:id/attachments', async (req: Request, res: Response) => {
+router.get('/messages/:id/attachments', validateParamId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
 
@@ -550,7 +566,7 @@ router.get('/messages/:id/attachments', async (req: Request, res: Response) => {
 });
 
 // GET /api/email/messages/:id/attachments/:aid — Download attachment
-router.get('/messages/:id/attachments/:aid', async (req: Request, res: Response) => {
+router.get('/messages/:id/attachments/:aid', validateParamId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
 
@@ -615,7 +631,7 @@ router.post('/send', async (req: Request, res: Response) => {
 });
 
 // POST /api/email/messages/:id/reply — Reply to message
-router.post('/messages/:id/reply', async (req: Request, res: Response) => {
+router.post('/messages/:id/reply', validateParamId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
 
@@ -636,7 +652,7 @@ router.post('/messages/:id/reply', async (req: Request, res: Response) => {
 });
 
 // POST /api/email/messages/:id/reply-all — Reply all
-router.post('/messages/:id/reply-all', async (req: Request, res: Response) => {
+router.post('/messages/:id/reply-all', validateParamId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
 
@@ -657,7 +673,7 @@ router.post('/messages/:id/reply-all', async (req: Request, res: Response) => {
 });
 
 // POST /api/email/messages/:id/forward — Forward message
-router.post('/messages/:id/forward', async (req: Request, res: Response) => {
+router.post('/messages/:id/forward', validateParamId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
 
@@ -684,7 +700,7 @@ router.post('/messages/:id/forward', async (req: Request, res: Response) => {
 });
 
 // PATCH /api/email/messages/:id — Update message (read/unread, flag)
-router.patch('/messages/:id', async (req: Request, res: Response) => {
+router.patch('/messages/:id', validateParamId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
 
@@ -716,7 +732,7 @@ router.patch('/messages/:id', async (req: Request, res: Response) => {
 });
 
 // DELETE /api/email/messages/:id — Move to trash
-router.delete('/messages/:id', async (req: Request, res: Response) => {
+router.delete('/messages/:id', validateParamId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
 
@@ -740,7 +756,7 @@ router.delete('/messages/:id', async (req: Request, res: Response) => {
 });
 
 // POST /api/email/messages/:id/move — Move to folder
-router.post('/messages/:id/move', async (req: Request, res: Response) => {
+router.post('/messages/:id/move', validateParamId, async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
 
@@ -785,7 +801,7 @@ router.get('/templates', (_req: Request, res: Response) => {
 });
 
 // GET /api/email/templates/:id — Get single template
-router.get('/templates/:id', (req: Request, res: Response) => {
+router.get('/templates/:id', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const template = db.prepare('SELECT * FROM email_templates WHERE id = ?').get(req.params.id);
@@ -818,7 +834,7 @@ router.post('/templates', (req: Request, res: Response) => {
 });
 
 // PUT /api/email/templates/:id — Update template
-router.put('/templates/:id', (req: Request, res: Response) => {
+router.put('/templates/:id', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { name, category, subject, body } = req.body;
@@ -841,7 +857,7 @@ router.put('/templates/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/email/templates/:id — Delete template
-router.delete('/templates/:id', (req: Request, res: Response) => {
+router.delete('/templates/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const template = db.prepare('SELECT * FROM email_templates WHERE id = ?').get(req.params.id) as any;
@@ -871,13 +887,13 @@ router.get('/contacts/search', (req: Request, res: Response) => {
     }
 
     const db = getDb();
-    const query = `%${String(q).trim()}%`;
+    const query = `%${escapeLike(String(q).trim())}%`;
     const results: { name: string; email: string; type: string }[] = [];
 
     // Search users (internal contacts)
     const users = db.prepare(`
       SELECT full_name, email FROM users
-      WHERE (full_name LIKE ? OR email LIKE ? OR username LIKE ?)
+      WHERE (full_name LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\' OR username LIKE ? ESCAPE '\\')
         AND email IS NOT NULL AND email != ''
         AND active = 1
       ORDER BY full_name LIMIT 10
@@ -890,7 +906,7 @@ router.get('/contacts/search', (req: Request, res: Response) => {
     // Search persons (external contacts)
     const persons = db.prepare(`
       SELECT first_name, last_name, email FROM persons
-      WHERE (first_name || ' ' || last_name LIKE ? OR email LIKE ?)
+      WHERE (first_name || ' ' || last_name LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\')
         AND email IS NOT NULL AND email != ''
         AND archived_at IS NULL
       ORDER BY last_name, first_name LIMIT 10
@@ -993,7 +1009,7 @@ router.get('/links/incident/:incidentId', (req: Request, res: Response) => {
 });
 
 // DELETE /api/email/link/:id — Remove a link
-router.delete('/link/:id', (req: Request, res: Response) => {
+router.delete('/link/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     db.prepare('DELETE FROM email_incident_links WHERE id = ?').run(req.params.id);
@@ -1062,7 +1078,7 @@ router.get('/scheduled', (req: Request, res: Response) => {
 });
 
 // DELETE /api/email/scheduled/:id — Cancel a scheduled email
-router.delete('/scheduled/:id', (req: Request, res: Response) => {
+router.delete('/scheduled/:id', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare('SELECT * FROM scheduled_emails WHERE id = ? AND created_by = ?')
@@ -1112,11 +1128,14 @@ router.delete('/admin/credentials', requireRole('admin'), (req: Request, res: Re
     }
     clearCachedAuth();
 
-    // Clear cached emails
+    // Clear cached emails atomically
     const db = getDb();
-    db.prepare('DELETE FROM email_cache').run();
-    db.prepare('DELETE FROM email_attachments').run();
-    db.prepare('DELETE FROM email_folders').run();
+    const clearCache = db.transaction(() => {
+      db.prepare('DELETE FROM email_cache').run();
+      db.prepare('DELETE FROM email_attachments').run();
+      db.prepare('DELETE FROM email_folders').run();
+    });
+    clearCache();
 
     auditLog(req, 'DELETE', 'system_config', 0, 'ms_email_credentials_cleared');
     res.json({ success: true });

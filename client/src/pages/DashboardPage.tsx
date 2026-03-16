@@ -225,7 +225,7 @@ export default function DashboardPage() {
         apiFetch<DashboardApiResponse>('/reports/dashboard'),
         apiFetch<{ data: ActivityApiEntry[] }>('/comms/activity-feed?limit=20').then(r => r.data),
         apiFetch<BoloApiEntry[]>('/comms/bolos/active'),
-        apiFetch<any>('/warrants?status=active&per_page=1').catch(() => ({ total: 0 })),
+        apiFetch<any>('/warrants?status=active&per_page=1').catch(() => ({ pagination: { total: 0 } })),
       ]);
 
       setStats(mapDashboardStats(dashboardRaw));
@@ -236,7 +236,7 @@ export default function DashboardPage() {
           .filter((b) => b.status === 'active')
           .map(mapBoloEntry)
       );
-      setActiveWarrants(warrantsRaw?.total ?? 0);
+      setActiveWarrants(warrantsRaw?.pagination?.total ?? warrantsRaw?.total ?? 0);
     } catch (err) {
       if (!options?.silent) {
         console.error('Dashboard fetch error:', err);

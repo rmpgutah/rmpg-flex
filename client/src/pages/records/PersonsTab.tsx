@@ -31,6 +31,7 @@ import PersonHistoryPanel from '../../components/PersonHistoryPanel';
 import CollapsibleSection from '../../components/CollapsibleSection';
 import type { Person, RecordAlert, RecordEntityType } from '../../types';
 import type { PersonFormData } from '../../components/PersonFormModal';
+import WarrantBadge from '../../components/WarrantBadge';
 
 // ── DB Mapper ──────────────────────────────────────
 
@@ -439,6 +440,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
                   {person.watchlist_match && (
                     <span className="px-1 py-0.5 text-[8px] font-bold bg-red-900/80 text-red-300 border border-red-500/70 animate-pulse">OFAC</span>
                   )}
+                  <WarrantBadge flags={person.flags} size="sm" />
                 </div>
                 <div className="flex items-center gap-3 mt-0.5 text-[10px] text-rmpg-400">
                   {person.date_of_birth && <span>DOB: {person.date_of_birth}</span>}

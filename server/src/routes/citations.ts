@@ -8,11 +8,12 @@
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { validateEnum, requireInt, validateParamId } from '../middleware/sanitize';
+import { validateEnum, requireInt, validateParamId, escapeLike } from '../middleware/sanitize';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 import { createNotificationForRoles } from './notifications';
 import { resolveDistrict } from '../utils/districtResolver';
+import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 
@@ -105,11 +106,11 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', '
       return;
     }
 
-    const searchTerm = `%${q}%`;
+    const searchTerm = `%${escapeLike(q as string)}%`;
 
     const citations = db.prepare(`
       SELECT * FROM citations
-      WHERE citation_number LIKE ? OR person_name LIKE ? OR statute_citation LIKE ? OR violation_description LIKE ?
+      WHERE citation_number LIKE ? ESCAPE '\\' OR person_name LIKE ? ESCAPE '\\' OR statute_citation LIKE ? ESCAPE '\\' OR violation_description LIKE ? ESCAPE '\\'
       ORDER BY created_at DESC
       LIMIT 25
     `).all(searchTerm, searchTerm, searchTerm, searchTerm);
@@ -173,8 +174,8 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     }
 
     if (q) {
-      const searchTerm = `%${q}%`;
-      whereClause += ' AND (c.citation_number LIKE ? OR c.person_name LIKE ? OR c.violation_description LIKE ?)';
+      const searchTerm = `%${escapeLike(q as string)}%`;
+      whereClause += " AND (c.citation_number LIKE ? ESCAPE '\\' OR c.person_name LIKE ? ESCAPE '\\' OR c.violation_description LIKE ? ESCAPE '\\')";
       params.push(searchTerm, searchTerm, searchTerm);
     }
 
@@ -221,7 +222,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
 });
 
 // ─── GET /api/citations/:id ──────────────────────────────
-router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
 
@@ -317,7 +318,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispa
     const createCitation = db.transaction(() => {
       const year = new Date().getFullYear();
       const lastCit = db.prepare(
-        "SELECT citation_number FROM citations WHERE citation_number LIKE ? ORDER BY id DESC LIMIT 1"
+        "SELECT citation_number FROM citations WHERE citation_number LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT 1"
       ).get(`CIT-${year}-%`) as any;
       let seq = 1;
       if (lastCit) {
@@ -368,16 +369,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispa
 
     const { result, citation_number } = createCitation();
 
-    // Activity log
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'citation_created', 'citation', ?, ?, ?)
-    `).run(
-      req.user!.userId,
-      result.lastInsertRowid,
-      `Created citation ${citation_number}${person_name ? ` for ${person_name}` : ''}`,
-      req.ip || 'unknown'
-    );
+    auditLog(req, 'citation_created', 'citation', Number(result.lastInsertRowid), `Created citation ${citation_number}${person_name ? ` for ${person_name}` : ''}`);
 
     const created = db.prepare('SELECT * FROM citations WHERE id = ?').get(result.lastInsertRowid);
     if (!created) { res.status(500).json({ error: 'Failed to retrieve created citation' }); return; }
@@ -398,7 +390,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispa
 });
 
 // ─── PUT /api/citations/:id ──────────────────────────────
-router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const citation = db.prepare('SELECT * FROM citations WHERE id = ?').get(req.params.id) as any;
@@ -459,16 +451,7 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dis
       db.prepare(`UPDATE citations SET ${fields.join(', ')} WHERE id = ?`).run(...values);
     }
 
-    // Activity log
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'citation_updated', 'citation', ?, ?, ?)
-    `).run(
-      req.user!.userId,
-      req.params.id,
-      `Updated citation ${citation.citation_number}`,
-      req.ip || 'unknown'
-    );
+    auditLog(req, 'citation_updated', 'citation', Number(req.params.id), `Updated citation ${citation.citation_number}`);
 
     const updated = db.prepare('SELECT * FROM citations WHERE id = ?').get(req.params.id);
     res.json({ data: updated });
@@ -480,7 +463,7 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dis
 
 // ─── DELETE /api/citations/:id ────────────────────────────
 // Soft-delete: sets status to 'voided'
-router.delete('/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.delete('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const citation = db.prepare('SELECT * FROM citations WHERE id = ?').get(req.params.id) as any;
@@ -493,15 +476,7 @@ router.delete('/:id', requireRole('admin', 'manager', 'supervisor'), (req: Reque
       UPDATE citations SET status = 'voided', updated_at = ? WHERE id = ?
     `).run(localNow(), req.params.id);
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'citation_voided', 'citation', ?, ?, ?)
-    `).run(
-      req.user!.userId,
-      req.params.id,
-      `Voided citation ${citation.citation_number}`,
-      req.ip || 'unknown'
-    );
+    auditLog(req, 'citation_voided', 'citation', Number(req.params.id), `Voided citation ${citation.citation_number}`);
 
     res.json({ message: 'Citation voided', data: { id: citation.id, status: 'voided' } });
   } catch (error: any) {

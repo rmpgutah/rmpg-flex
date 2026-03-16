@@ -48,7 +48,7 @@ const EMPTY_FORM = {
 export default function TrespassOrdersPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
-  const { sections: sectionOptions, zones: zoneOptions, beats: beatOptions } = useDistrictOptions();
+  const { sections: sectionOptions, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
   const { errors: formErrors, validate: validateForm, clearAllErrors } = useFormValidation();
 
   const [orders, setOrders] = useState<TrespassOrder[]>([]);
@@ -473,22 +473,22 @@ export default function TrespassOrdersPage() {
                   {formErrors.location && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.location}</p>}</div>
               </div>
 
-              {/* Section / Zone / Beat */}
+              {/* Section / Zone / Beat — cascading */}
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className="block text-xs text-gray-400 mb-1">Section</label>
                   <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
-                    value={formData.section_id || ''} onChange={e => update('section_id', e.target.value)}>
+                    value={formData.section_id || ''} onChange={e => { update('section_id', e.target.value); update('zone_id', ''); update('beat_id', ''); }}>
                     <option value="">—</option>
-                    {sectionOptions.map(s => <option key={s} value={s}>{s}</option>)}
+                    {sectionOptions.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs text-gray-400 mb-1">Zone</label>
                   <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
-                    value={formData.zone_id || ''} onChange={e => update('zone_id', e.target.value)}>
+                    value={formData.zone_id || ''} onChange={e => { update('zone_id', e.target.value); update('beat_id', ''); }}>
                     <option value="">—</option>
-                    {zoneOptions.map(z => <option key={z} value={z}>{z}</option>)}
+                    {zonesForSection(formData.section_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
                   </select>
                 </div>
                 <div>
@@ -496,7 +496,7 @@ export default function TrespassOrdersPage() {
                   <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
                     value={formData.beat_id || ''} onChange={e => update('beat_id', e.target.value)}>
                     <option value="">—</option>
-                    {beatOptions.map(b => <option key={b} value={b}>{b}</option>)}
+                    {beatsForZone(formData.zone_id).map(b => <option key={b} value={b}>{getBeatLabel(formData.zone_id, b)}</option>)}
                   </select>
                 </div>
               </div>

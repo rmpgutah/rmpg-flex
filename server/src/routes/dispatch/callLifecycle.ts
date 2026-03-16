@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../../models/database';
 import { requireRole } from '../../middleware/auth';
+import { validateParamId } from '../../middleware/sanitize';
 import { broadcastDispatchUpdate } from '../../utils/websocket';
 import { generateIncidentNumber } from '../../utils/caseNumbers';
 import { localNow } from '../../utils/timeUtils';
@@ -18,6 +19,10 @@ router.post('/calls/archive-bulk', requireRole('admin', 'manager', 'dispatcher')
     let callsToArchive: any[] = [];
 
     if (call_ids && Array.isArray(call_ids) && call_ids.length > 0) {
+      if (call_ids.length > 500) {
+        res.status(400).json({ error: 'Cannot archive more than 500 calls at once' });
+        return;
+      }
       // Archive specific calls by ID
       const placeholders = call_ids.map(() => '?').join(',');
       callsToArchive = db.prepare(
@@ -74,7 +79,7 @@ router.post('/calls/archive-bulk', requireRole('admin', 'manager', 'dispatcher')
 });
 
 // POST /api/dispatch/calls/:id/archive - Archive a closed/cleared call
-router.post('/calls/:id/archive', requireRole('admin', 'manager', 'dispatcher'), (req: Request, res: Response) => {
+router.post('/calls/:id/archive', validateParamId, requireRole('admin', 'manager', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -123,7 +128,7 @@ router.post('/calls/:id/archive', requireRole('admin', 'manager', 'dispatcher'),
 });
 
 // POST /api/dispatch/calls/:id/unarchive - Restore archived call back to closed
-router.post('/calls/:id/unarchive', requireRole('admin', 'manager', 'dispatcher'), (req: Request, res: Response) => {
+router.post('/calls/:id/unarchive', validateParamId, requireRole('admin', 'manager', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -156,7 +161,7 @@ router.post('/calls/:id/unarchive', requireRole('admin', 'manager', 'dispatcher'
 });
 
 // DELETE /api/dispatch/calls/:id - Hard delete a call (admin/manager only)
-router.delete('/calls/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/calls/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -203,7 +208,7 @@ router.delete('/calls/:id', requireRole('admin', 'manager'), (req: Request, res:
 });
 
 // POST /api/dispatch/calls/:id/generate-incident - Generate incident report from a cleared/closed call
-router.post('/calls/:id/generate-incident', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/calls/:id/generate-incident', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare(`
@@ -257,16 +262,86 @@ router.post('/calls/:id/generate-incident', requireRole('admin', 'manager', 'sup
 
     const narrative = narrativeParts.join('\n');
 
+    // Extract Mountain Time date/time from call timestamps
+    const toMountain = (iso: string | null) => {
+      if (!iso) return { date: '', time: '' };
+      const d = new Date(iso.includes('T') ? iso : iso.replace(' ', 'T') + 'Z');
+      if (isNaN(d.getTime())) return { date: '', time: '' };
+      const mt = d.toLocaleString('en-US', { timeZone: 'America/Denver', hour12: false });
+      const [datePart, timePart] = mt.split(', ');
+      const [m, day, yr] = datePart.split('/');
+      return {
+        date: `${yr}-${m.padStart(2, '0')}-${day.padStart(2, '0')}`,
+        time: timePart?.slice(0, 5) || '',
+      };
+    };
+    const started = toMountain(call.created_at);
+    const ended = toMountain(call.cleared_at);
+
     const result = db.prepare(`
       INSERT INTO incidents (incident_number, call_id, incident_type, priority, status, location_address,
-        property_id, latitude, longitude, narrative, officer_id)
-      VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?)
+        property_id, latitude, longitude, narrative, officer_id, client_id, contract_id,
+        occurred_date, occurred_time, end_date, end_time,
+        pso_service_type, pso_attempt_number, pso_requestor_name, pso_requestor_phone,
+        pso_requestor_email, pso_billing_code, pso_authorization,
+        process_service_type, process_served_to, process_served_address, process_service_result, process_served_at, process_attempts,
+        alcohol_involved, drugs_involved, domestic_violence, weapons_involved,
+        injuries_reported, mental_health_crisis, juvenile_involved, felony_in_progress,
+        officer_safety_caution, k9_requested, ems_requested, fire_requested,
+        hazmat, gang_related, evidence_collected, body_camera_active, photos_taken,
+        trespass_issued, vehicle_pursuit, foot_pursuit, le_notified, supervisor_notified,
+        section_id, zone_id, beat_id, disposition)
+      VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?, ?)
     `).run(
       incidentNumber, call.id, call.incident_type, call.priority,
       call.location_address || call.property_address || null,
       call.property_id || null, call.latitude ?? null, call.longitude ?? null,
-      narrative, req.user!.userId
+      narrative, req.user!.userId, call.client_id || null, call.contract_id || null,
+      started.date || null, started.time || null, ended.date || null, ended.time || null,
+      call.pso_service_type || null, call.pso_attempt_number || null,
+      call.pso_requestor_name || null, call.pso_requestor_phone || null,
+      call.pso_requestor_email || null, call.pso_billing_code || null,
+      call.pso_authorization || null,
+      call.process_service_type || null, call.process_served_to || null,
+      call.process_served_address || null, call.process_service_result || null,
+      call.process_served_at || null, call.process_attempts || null,
+      // Flags from dispatch call
+      call.alcohol_involved ? 1 : 0, call.drugs_involved ? 1 : 0,
+      call.domestic_violence ? 1 : 0, call.weapons_involved || null,
+      call.injuries_reported ? 1 : 0, call.mental_health_crisis ? 1 : 0,
+      call.juvenile_involved ? 1 : 0, call.felony_in_progress ? 1 : 0,
+      call.officer_safety_caution ? 1 : 0, call.k9_requested ? 1 : 0,
+      call.ems_requested ? 1 : 0, call.fire_requested ? 1 : 0,
+      call.hazmat ? 1 : 0, call.gang_related ? 1 : 0,
+      call.evidence_collected ? 1 : 0, call.body_camera_active ? 1 : 0,
+      call.photos_taken ? 1 : 0, call.trespass_issued ? 1 : 0,
+      call.vehicle_pursuit ? 1 : 0, call.foot_pursuit ? 1 : 0,
+      call.le_notified ? 1 : 0, call.supervisor_notified ? 1 : 0,
+      // District from dispatch call
+      call.section_id || null, call.zone_id || null, call.beat_id || null,
+      call.disposition || null
     );
+
+    // Auto-link persons from the dispatch call to the new incident
+    const callPersons = db.prepare('SELECT person_id, role, notes FROM call_persons WHERE call_id = ?').all(call.id) as any[];
+    if (callPersons.length > 0) {
+      const insertPerson = db.prepare(
+        'INSERT OR IGNORE INTO incident_persons (incident_id, person_id, role, notes, added_by) VALUES (?, ?, ?, ?, ?)'
+      );
+      for (const cp of callPersons) {
+        insertPerson.run(result.lastInsertRowid, cp.person_id, cp.role, cp.notes, req.user!.userId);
+      }
+    }
 
     const incident = db.prepare(`
       SELECT i.*, o.full_name as officer_name, o.badge_number, c.call_number
@@ -294,7 +369,7 @@ router.post('/calls/:id/generate-incident', requireRole('admin', 'manager', 'sup
 });
 
 // PUT /api/dispatch/calls/:id/timeline/:entryId - Edit a timeline/activity entry
-router.put('/calls/:id/timeline/:entryId', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+router.put('/calls/:id/timeline/:entryId', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const entry = db.prepare('SELECT * FROM activity_log WHERE id = ? AND entity_type = ? AND entity_id = ?')
@@ -327,7 +402,7 @@ router.put('/calls/:id/timeline/:entryId', requireRole('admin', 'manager', 'supe
 });
 
 // DELETE /api/dispatch/calls/:id/timeline/:entryId - Delete a timeline/activity entry
-router.delete('/calls/:id/timeline/:entryId', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+router.delete('/calls/:id/timeline/:entryId', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const entry = db.prepare('SELECT * FROM activity_log WHERE id = ? AND entity_type = ? AND entity_id = ?')
@@ -346,7 +421,7 @@ router.delete('/calls/:id/timeline/:entryId', requireRole('admin', 'manager', 's
 });
 
 // POST /api/dispatch/calls/:id/timeline - Add a manual timeline entry
-router.post('/calls/:id/timeline', requireRole('admin', 'manager', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+router.post('/calls/:id/timeline', validateParamId, requireRole('admin', 'manager', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -377,7 +452,7 @@ router.post('/calls/:id/timeline', requireRole('admin', 'manager', 'dispatcher',
 });
 
 // GET /api/dispatch/calls/:id/warnings - Get warning tags for a call
-router.get('/calls/:id/warnings', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/calls/:id/warnings', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -501,7 +576,7 @@ router.get('/calls/:id/warnings', requireRole('admin', 'manager', 'supervisor', 
 });
 
 // PUT /api/dispatch/calls/:id/mileage - Update starting/ending mileage
-router.put('/calls/:id/mileage', requireRole('admin', 'manager', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+router.put('/calls/:id/mileage', validateParamId, requireRole('admin', 'manager', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;

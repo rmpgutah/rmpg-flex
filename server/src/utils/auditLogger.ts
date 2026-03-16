@@ -45,6 +45,30 @@ export type AuditAction =
   | 'evidence_created'
   | 'evidence_updated'
   | 'evidence_deleted'
+  | 'person_archived'
+  | 'person_unarchived'
+  | 'vehicle_archived'
+  | 'vehicle_unarchived'
+  | 'evidence_archived'
+  | 'evidence_unarchived'
+  | 'property_created'
+  | 'property_updated'
+  | 'property_deleted'
+  | 'property_archived'
+  | 'property_unarchived'
+  | 'custody_entry'
+  | 'evidence_check_in'
+  | 'evidence_check_out'
+  | 'evidence_transfer'
+  | 'evidence_lab_submit'
+  | 'evidence_release'
+  | 'evidence_dispose'
+  | 'criminal_history_created'
+  | 'criminal_history_updated'
+  | 'criminal_history_deleted'
+  | 'client_person_linked'
+  | 'client_person_updated'
+  | 'client_person_unlinked'
   | 'record_linked'
   | 'record_unlinked'
   // Warrants & Citations
@@ -163,11 +187,26 @@ export type AuditAction =
   | 'crm_task_updated'
   | 'crm_task_deleted'
   | 'crm_activity_logged'
+  // Offline Sync
+  | 'offline_sync_pull'
+  | 'offline_sync_push'
+  | 'offline_secret_accessed'
+  | 'offline_secret_generated'
+  | 'offline_secrets_bulk_generated'
+  // User Preferences
+  | 'preferences_updated'
+  | 'preferences_reset'
+  // Microbilt / OFAC
+  | 'microbilt_credentials_updated'
+  | 'microbilt_credentials_cleared'
+  | 'microbilt_products_updated'
+  | 'ofac_search'
   // Generic CRUD (used by newer routes)
   | 'CREATE'
   | 'UPDATE'
   | 'DELETE'
-  | 'SEARCH';
+  | 'SEARCH'
+  | 'BLOCK';
 
 export type AuditEntityType =
   | 'user'
@@ -223,7 +262,19 @@ export type AuditEntityType =
   | 'crm_proposals'
   | 'crm_proposal_templates'
   | 'lead_scrape_sources'
-  | 'forensic_case';
+  | 'forensic_case'
+  | 'offline_sync'
+  | 'offline_secret'
+  | 'user_preferences'
+  | 'ofac_screening'
+  | 'property'
+  | 'record_link'
+  | 'criminal_history'
+  | 'court_event'
+  | 'field_interview'
+  | 'trespass_order'
+  | 'code_violation'
+  | 'vehicle_tow';
 
 // Sensitive field patterns that must never appear in audit log details
 const SENSITIVE_PATTERNS = [
@@ -237,8 +288,10 @@ const SENSITIVE_PATTERNS = [
 ];
 
 function maskSensitiveData(text: string): string {
-  let masked = text;
+  if (!text || text.length === 0) return text;
+  let masked = text.length > 2000 ? text.substring(0, 2000) : text;
   for (const pattern of SENSITIVE_PATTERNS) {
+    pattern.lastIndex = 0; // Reset global regex state
     masked = masked.replace(pattern, '[REDACTED]');
   }
   return masked;

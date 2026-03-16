@@ -249,10 +249,12 @@ function TemplatePicker({ onSelect, onClose }: { onSelect: (template: EmailTempl
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    let cancelled = false;
     apiFetch<EmailTemplate[]>('/email/templates')
-      .then(data => setTemplates(data || []))
-      .catch((err) => { console.warn('[EmailPage] fetch templates failed:', err); })
-      .finally(() => setLoading(false));
+      .then(data => { if (!cancelled) setTemplates(data || []); })
+      .catch((err) => { if (!cancelled) console.warn('[EmailPage] fetch templates failed:', err); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -1501,7 +1503,7 @@ export default function EmailPage() {
       if (searchInput !== search) { setSearch(searchInput); setPage(1); fetchMessages(1, selectedFolder, searchInput); }
     }, 500);
     return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
-  }, [searchInput]); // eslint-disable-line
+  }, [searchInput, search, selectedFolder, fetchMessages]);
 
   // Keyboard shortcuts
   useEffect(() => {

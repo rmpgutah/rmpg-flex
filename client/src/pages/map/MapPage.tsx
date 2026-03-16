@@ -186,6 +186,14 @@ export default function MapPage() {
   const addressMarkerRef = useRef<any>(null);
   const addressDismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Clean up address search/dismiss timers on unmount
+  useEffect(() => {
+    return () => {
+      if (addressSearchTimer.current) clearTimeout(addressSearchTimer.current);
+      if (addressDismissTimer.current) clearTimeout(addressDismissTimer.current);
+    };
+  }, []);
+
   // GPS own-position
   const gps = useGpsTracking();
   const selfMarkerRef = useRef<any>(null);

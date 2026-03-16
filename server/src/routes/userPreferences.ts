@@ -9,6 +9,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
+import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 router.use(authenticateToken);
@@ -107,6 +108,10 @@ router.put('/', (req: Request, res: Response) => {
     db.prepare(`UPDATE user_preferences SET ${setClauses.join(', ')} WHERE user_id = ?`).run(...values);
 
     const updated = db.prepare('SELECT * FROM user_preferences WHERE user_id = ?').get(userId);
+
+    auditLog(req, 'preferences_updated', 'user_preferences', userId,
+      `Updated preferences: ${Object.keys(validUpdates).join(', ')}`);
+
     res.json(updated);
   } catch (error: any) {
     console.error('[UserPreferences] PUT error:', error.message);
@@ -121,6 +126,9 @@ router.post('/reset', (req: Request, res: Response) => {
     const userId = req.user!.userId;
 
     db.prepare('DELETE FROM user_preferences WHERE user_id = ?').run(userId);
+
+    auditLog(req, 'preferences_reset', 'user_preferences', userId,
+      'Reset all preferences to defaults');
 
     res.json({ ...DEFAULTS, user_id: userId });
   } catch (error: any) {

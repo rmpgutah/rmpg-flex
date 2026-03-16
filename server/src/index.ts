@@ -26,6 +26,7 @@ import { startClearPathGpsMediaPoller, stopClearPathGpsMediaPoller } from './uti
 import { startEmailPoller, stopEmailPoller } from './utils/emailPoller';
 import { scheduleOfacSync, searchOfacLocal, stopOfacSync } from './utils/ofacScraper';
 import { scheduleUtahWarrantSync, stopUtahWarrantSync } from './utils/utahWarrantScraper';
+import { runUniversalWarrantScan } from './utils/universalWarrantScanner';
 import { scheduleWarrantScraper, stopWarrantScraper } from './utils/multiStateWarrantScraper';
 import { scheduleCourtRecordsScan, stopCourtRecordsScan } from './utils/courtRecordsScraper';
 import { scheduleArrestSync, stopArrestSync } from './utils/arrestScraper';
@@ -128,15 +129,37 @@ if (config.isProduction || config.ssl.enabled) {
   });
 }
 
+// ─── DNS Rebinding Protection ────────────────────────
+// Validate Host header to prevent DNS rebinding attacks that could bypass same-origin policy
+if (config.isProduction) {
+  const allowedHosts = new Set([
+    config.primaryDomain,
+    `www.${config.primaryDomain}`,
+    `crm.${config.primaryDomain}`,
+  ]);
+  app.use((req, res, next) => {
+    const host = (req.hostname || req.headers.host?.split(':')[0] || '').toLowerCase();
+    if (!allowedHosts.has(host)) {
+      res.status(421).json({ error: 'Misdirected request' });
+      return;
+    }
+    next();
+  });
+}
+
 // ─── Security Middleware ─────────────────────────────
 app.use(securityHeaders);
 app.use(cors({
   origin: config.corsOrigins,
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'X-CSRF-Token', 'X-Requested-With'],
+  exposedHeaders: ['X-Request-ID', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'Retry-After'],
+  maxAge: 600, // 10 minutes — browser caches preflight results
 }));
 
 // ─── GitHub Webhook (must come BEFORE express.json() for raw body HMAC) ──
-app.post('/api/webhook/github', webhookRateLimit, express.raw({ type: 'application/json', limit: '5mb' }), (req, res) => {
+app.post('/api/webhook/github', webhookRateLimit, express.raw({ type: 'application/json', limit: '256kb' }), (req, res) => {
   const WEBHOOK_SECRET_FILE = path.resolve(__dirname, '../../.webhook-secret');
   let secret = '';
   try { secret = fs.readFileSync(WEBHOOK_SECRET_FILE, 'utf8').trim(); } catch { /* no secret file */ }
@@ -177,9 +200,17 @@ app.post('/api/webhook/github', webhookRateLimit, express.raw({ type: 'applicati
     return;
   }
 
-  const commitSha = (payload.after || '').slice(0, 8);
-  const pusher = payload.pusher?.name || 'unknown';
+  const commitSha = (payload.after || '').slice(0, 8).replace(/[^a-f0-9]/gi, '');
+  const pusher = (payload.pusher?.name || 'unknown').slice(0, 50).replace(/[\x00-\x1f\x7f]/g, '');
   console.log(`[Webhook] DEPLOY TRIGGERED — commit=${commitSha}, by=${pusher}`);
+
+  // Prevent concurrent deploys — reject if one is already running
+  if ((global as any).__deployInProgress) {
+    console.warn('[Webhook] Deploy rejected — another deploy is already in progress');
+    res.status(429).json({ status: 'busy', reason: 'Deploy already in progress' });
+    return;
+  }
+  (global as any).__deployInProgress = true;
 
   // Respond immediately, deploy runs async
   res.json({ status: 'deploying', commit: commitSha });
@@ -192,6 +223,7 @@ app.post('/api/webhook/github', webhookRateLimit, express.raw({ type: 'applicati
     timeout: 300000,
     env: { ...process.env, HOME: '/root' },
   }, (error, stdout, stderr) => {
+    (global as any).__deployInProgress = false;
     if (error) {
       console.error(`[Webhook] DEPLOY FAILED — ${error.message}`);
       if (stderr) console.error(`[Webhook] STDERR: ${stderr.slice(0, 500)}`);
@@ -214,7 +246,9 @@ if (config.isProduction) {
   app.use('/api', (req, res, next) => {
     // Skip safe methods (GET, HEAD, OPTIONS) and auth routes (login needs to work without header)
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
-    if (req.path.startsWith('/auth/login') || req.path.startsWith('/auth/refresh')
+    // Only exempt login/register/refresh (pre-auth routes) and webhooks — NOT change-password, verify-2fa, etc.
+    const csrfExemptPaths = ['/auth/login', '/auth/register', '/auth/refresh', '/auth/password-policy'];
+    if (csrfExemptPaths.some(p => req.path.startsWith(p))
         || req.path.startsWith('/webhook/')) return next();
 
     const csrfHeader = req.headers['x-requested-with'];
@@ -229,6 +263,8 @@ if (config.isProduction) {
 // ─── Per-route body size limits ──────────────────────
 // Auth endpoints should have tiny payloads — prevent abuse with oversized bodies
 app.use('/api/auth', express.json({ limit: '16kb' }));
+// Offline sync — limit to 256kb to prevent data exfiltration abuse via oversized pushes
+app.use('/api/offline', express.json({ limit: '256kb' }));
 
 // Request timeout — 30s default, skip for upload routes (large files)
 app.use((req, res, next) => {
@@ -463,8 +499,9 @@ app.get('*', (req, res) => {
 
 // ─── Global Error Handler ────────────────────────────
 // Catches unhandled middleware errors (multer, body-parser, etc.)
-app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error('Unhandled Express error:', err?.message || err, err?.stack || '');
+app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const requestId = req.headers['x-request-id'] || '';
+  console.error(`[${requestId}] Unhandled Express error:`, err?.message || err, err?.stack || '');
   if (!res.headersSent) {
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -637,7 +674,20 @@ try {
     scheduleOfacSync();
 
     // Start Utah state warrant scraper (syncs daily at midnight from warrants.utah.gov)
-    scheduleUtahWarrantSync();
+    // scheduleUtahWarrantSync(); // Replaced by universal warrant scanner below
+
+    // Universal warrant scanner — replaces Utah-only warrant watch
+    let universalScanInterval: ReturnType<typeof setInterval> | null = null;
+    setTimeout(async () => {
+      try { await runUniversalWarrantScan(); } catch (err: any) {
+        console.error('[Universal Warrant Scan] Initial scan error:', err.message);
+      }
+      universalScanInterval = setInterval(async () => {
+        try { await runUniversalWarrantScan(); } catch (err: any) {
+          console.error('[Universal Warrant Scan] Scheduled error:', err.message);
+        }
+      }, 60 * 60 * 1000); // hourly
+    }, 2 * 60 * 1000); // 2-minute startup delay
 
     // Start multi-state warrant scraper (county sheriff warrant pages + arrest record extraction)
     scheduleWarrantScraper();

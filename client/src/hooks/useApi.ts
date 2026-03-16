@@ -139,6 +139,7 @@ export function useApi<T = unknown>(options?: UseApiOptions) {
       const token = getToken();
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
         ...customHeaders,
       };
 
@@ -237,7 +238,7 @@ async function tryRefreshToken(): Promise<string | null> {
 
       const res = await fetch('/api/auth/refresh', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
         body: JSON.stringify({ refreshToken }),
         signal: controller.signal,
       }).finally(() => clearTimeout(timeout));

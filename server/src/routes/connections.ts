@@ -9,6 +9,7 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { escapeLike } from '../middleware/sanitize';
 
 const router = Router();
 router.use(authenticateToken);
@@ -165,7 +166,7 @@ function findConnections(db: any, type: string, id: number): Connection[] {
         }
 
         // cases.linked_persons (JSON array) → cases
-        const casesWithPerson = db.prepare("SELECT id, linked_persons FROM cases WHERE linked_persons LIKE ?").all(`%${id}%`) as any[];
+        const casesWithPerson = db.prepare("SELECT id, linked_persons FROM cases WHERE linked_persons LIKE ?").all(`%${escapeLike(String(id))}%`) as any[];
         for (const c of casesWithPerson) {
           try {
             const linkedIds = JSON.parse(c.linked_persons || '[]');
@@ -242,7 +243,7 @@ function findConnections(db: any, type: string, id: number): Connection[] {
         }
 
         // cases.linked_incidents (JSON array) → cases
-        const casesWithInc = db.prepare("SELECT id, linked_incidents FROM cases WHERE linked_incidents LIKE ?").all(`%${id}%`) as any[];
+        const casesWithInc = db.prepare("SELECT id, linked_incidents FROM cases WHERE linked_incidents LIKE ?").all(`%${escapeLike(String(id))}%`) as any[];
         for (const c of casesWithInc) {
           try {
             const linkedIds = JSON.parse(c.linked_incidents || '[]');
@@ -310,7 +311,7 @@ function findConnections(db: any, type: string, id: number): Connection[] {
         }
 
         // cases.linked_evidence (JSON array) → cases
-        const casesWithEv = db.prepare("SELECT id, linked_evidence FROM cases WHERE linked_evidence LIKE ?").all(`%${id}%`) as any[];
+        const casesWithEv = db.prepare("SELECT id, linked_evidence FROM cases WHERE linked_evidence LIKE ?").all(`%${escapeLike(String(id))}%`) as any[];
         for (const c of casesWithEv) {
           try {
             const linkedIds = JSON.parse(c.linked_evidence || '[]');
@@ -427,14 +428,14 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', '
       return res.json([]);
     }
 
-    const term = `%${String(q).trim()}%`;
+    const term = `%${escapeLike(String(q).trim())}%`;
     const results: Array<{ id: number; type: string; label: string }> = [];
 
     // Persons
     try {
       const persons = db.prepare(`
         SELECT id, first_name, last_name FROM persons
-        WHERE first_name LIKE ? OR last_name LIKE ? OR (first_name || ' ' || last_name) LIKE ?
+        WHERE first_name LIKE ? ESCAPE '\\' OR last_name LIKE ? ESCAPE '\\' OR (first_name || ' ' || last_name) LIKE ? ESCAPE '\\'
         LIMIT 8
       `).all(term, term, term) as any[];
       results.push(...persons.map((p: any) => ({ id: p.id, type: 'person', label: `${p.first_name} ${p.last_name}` })));
@@ -444,7 +445,7 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', '
     try {
       const vehicles = db.prepare(`
         SELECT id, make, model, plate_number, color FROM vehicles_records
-        WHERE make LIKE ? OR model LIKE ? OR plate_number LIKE ? OR vin LIKE ?
+        WHERE make LIKE ? ESCAPE '\\' OR model LIKE ? ESCAPE '\\' OR plate_number LIKE ? ESCAPE '\\' OR vin LIKE ? ESCAPE '\\'
         LIMIT 8
       `).all(term, term, term, term) as any[];
       results.push(...vehicles.map((v: any) => ({ id: v.id, type: 'vehicle', label: `${v.color || ''} ${v.make || ''} ${v.model || ''} ${v.plate_number ? `(${v.plate_number})` : ''}`.trim() })));
@@ -454,7 +455,7 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', '
     try {
       const properties = db.prepare(`
         SELECT id, name, address FROM properties
-        WHERE name LIKE ? OR address LIKE ?
+        WHERE name LIKE ? ESCAPE '\\' OR address LIKE ? ESCAPE '\\'
         LIMIT 8
       `).all(term, term) as any[];
       results.push(...properties.map((p: any) => ({ id: p.id, type: 'property', label: p.name })));
@@ -464,7 +465,7 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', '
     try {
       const cases = db.prepare(`
         SELECT id, case_number, title FROM cases
-        WHERE case_number LIKE ? OR title LIKE ?
+        WHERE case_number LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\'
         LIMIT 8
       `).all(term, term) as any[];
       results.push(...cases.map((c: any) => ({ id: c.id, type: 'case', label: `${c.case_number} - ${c.title}` })));
@@ -474,7 +475,7 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', '
     try {
       const incidents = db.prepare(`
         SELECT id, incident_number, incident_type FROM incidents
-        WHERE incident_number LIKE ? OR incident_type LIKE ? OR location_address LIKE ?
+        WHERE incident_number LIKE ? ESCAPE '\\' OR incident_type LIKE ? ESCAPE '\\' OR location_address LIKE ? ESCAPE '\\'
         LIMIT 8
       `).all(term, term, term) as any[];
       results.push(...incidents.map((i: any) => ({ id: i.id, type: 'incident', label: `${i.incident_number || ''} ${i.incident_type}`.trim() })));
@@ -484,7 +485,7 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', '
     try {
       const evidence = db.prepare(`
         SELECT id, evidence_number, description FROM evidence
-        WHERE evidence_number LIKE ? OR description LIKE ?
+        WHERE evidence_number LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\'
         LIMIT 8
       `).all(term, term) as any[];
       results.push(...evidence.map((e: any) => ({ id: e.id, type: 'evidence', label: `${e.evidence_number || ''} ${e.description || ''}`.trim() })));

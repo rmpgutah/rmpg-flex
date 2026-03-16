@@ -69,7 +69,7 @@ const EMPTY_TOW = {
 export default function CodeEnforcementPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
-  const { sections: sectionOptions, zones: zoneOptions, beats: beatOptions } = useDistrictOptions();
+  const { sections: sectionOptions, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
   const { errors: vFormErrors, validate: validateVForm, clearAllErrors: clearVErrors } = useFormValidation();
   const { errors: tFormErrors, validate: validateTForm, clearAllErrors: clearTErrors } = useFormValidation();
 
@@ -489,17 +489,17 @@ export default function CodeEnforcementPage() {
                 <div>
                   <label className="field-label">Section</label>
                   <select className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none"
-                    value={vFormData.section_id || ''} onChange={e => setVFormData(p => ({...p, section_id: e.target.value}))}>
+                    value={vFormData.section_id || ''} onChange={e => setVFormData(p => ({...p, section_id: e.target.value, zone_id: '', beat_id: ''}))}>
                     <option value="">—</option>
-                    {sectionOptions.map(s => <option key={s} value={s}>{s}</option>)}
+                    {sectionOptions.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="field-label">Zone</label>
                   <select className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none"
-                    value={vFormData.zone_id || ''} onChange={e => setVFormData(p => ({...p, zone_id: e.target.value}))}>
+                    value={vFormData.zone_id || ''} onChange={e => setVFormData(p => ({...p, zone_id: e.target.value, beat_id: ''}))}>
                     <option value="">—</option>
-                    {zoneOptions.map(z => <option key={z} value={z}>{z}</option>)}
+                    {zonesForSection(vFormData.section_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
                   </select>
                 </div>
                 <div>
@@ -507,7 +507,7 @@ export default function CodeEnforcementPage() {
                   <select className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none"
                     value={vFormData.beat_id || ''} onChange={e => setVFormData(p => ({...p, beat_id: e.target.value}))}>
                     <option value="">—</option>
-                    {beatOptions.map(b => <option key={b} value={b}>{b}</option>)}
+                    {beatsForZone(vFormData.zone_id).map(b => <option key={b} value={b}>{getBeatLabel(vFormData.zone_id, b)}</option>)}
                   </select>
                 </div>
               </div>

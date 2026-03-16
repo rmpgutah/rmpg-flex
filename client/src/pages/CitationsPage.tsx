@@ -207,7 +207,7 @@ function formatCurrency(n: number | null | undefined): string {
 export default function CitationsPage() {
   const { user } = useAuth();
   const isMobile = useIsMobile();
-  const { sections: sectionOptions, zones: zoneOptions, beats: beatOptions } = useDistrictOptions();
+  const { sections: sectionOptions, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
   const { identify: identifyDistrict } = useDistrictIdentify();
 
   // List state
@@ -1071,22 +1071,22 @@ export default function CitationsPage() {
               <label className="field-label">Location</label>
               <input type="text" value={form.location} onChange={e => updateField('location', e.target.value)} placeholder="Address or intersection" className="input-dark w-full py-2 text-xs" />
             </div>
-            {/* Section / Zone / Beat */}
+            {/* Section / Zone / Beat — cascading */}
             <div className="grid grid-cols-3 gap-2">
               <div>
                 <label className="block text-xs text-gray-400 mb-1">Section</label>
                 <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
-                  value={form.section_id || ''} onChange={(e) => updateField('section_id', e.target.value)}>
+                  value={form.section_id || ''} onChange={(e) => { updateField('section_id', e.target.value); updateField('zone_id', ''); updateField('beat_id', ''); }}>
                   <option value="">—</option>
-                  {sectionOptions.map(s => <option key={s} value={s}>{s}</option>)}
+                  {sectionOptions.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
                 </select>
               </div>
               <div>
                 <label className="block text-xs text-gray-400 mb-1">Zone</label>
                 <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
-                  value={form.zone_id || ''} onChange={(e) => updateField('zone_id', e.target.value)}>
+                  value={form.zone_id || ''} onChange={(e) => { updateField('zone_id', e.target.value); updateField('beat_id', ''); }}>
                   <option value="">—</option>
-                  {zoneOptions.map(z => <option key={z} value={z}>{z}</option>)}
+                  {zonesForSection(form.section_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
                 </select>
               </div>
               <div>
@@ -1094,7 +1094,7 @@ export default function CitationsPage() {
                 <select className="w-full bg-[#1a2636] border border-[#2a3a4a] rounded px-2 py-1.5 text-sm text-white"
                   value={form.beat_id || ''} onChange={(e) => updateField('beat_id', e.target.value)}>
                   <option value="">—</option>
-                  {beatOptions.map(b => <option key={b} value={b}>{b}</option>)}
+                  {beatsForZone(form.zone_id).map(b => <option key={b} value={b}>{getBeatLabel(form.zone_id, b)}</option>)}
                 </select>
               </div>
             </div>

@@ -13,8 +13,10 @@ import multer from 'multer';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
+import { escapeLike } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
 import { broadcast } from '../utils/websocket';
+import { validateParamId } from '../middleware/sanitize';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -25,6 +27,14 @@ const router = Router();
 const DASHCAM_DIR = process.env.RMPG_UPLOADS_DIR
   ? path.join(process.env.RMPG_UPLOADS_DIR, 'dashcam')
   : path.resolve(__dirname, '../../uploads/dashcam');
+
+/** Resolve a relative file path safely within DASHCAM_DIR — returns null if traversal detected */
+function safeDashcamPath(relativePath: string): string | null {
+  const resolved = path.resolve(DASHCAM_DIR, path.normalize(relativePath));
+  const rel = path.relative(DASHCAM_DIR, resolved);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) return null;
+  return resolved;
+}
 
 if (!fs.existsSync(DASHCAM_DIR)) {
   fs.mkdirSync(DASHCAM_DIR, { recursive: true });
@@ -75,7 +85,7 @@ router.get('/', authenticateToken, (req: Request, res: Response) => {
     const db = getDb();
     const { vehicle_id, unit_id, case_number, search, limit: limitStr, offset: offsetStr } = req.query;
     const limit = Math.min(parseInt(String(limitStr), 10) || 50, 500);
-    const offset = parseInt(String(offsetStr), 10) || 0;
+    const offset = Math.max(0, Math.min(parseInt(String(offsetStr), 10) || 0, 10000));
 
     let query = `
       SELECT v.*,
@@ -96,8 +106,8 @@ router.get('/', authenticateToken, (req: Request, res: Response) => {
     if (unit_id) { query += ' AND v.unit_id = ?'; params.push(unit_id); }
     if (case_number) { query += ' AND v.case_number = ?'; params.push(case_number); }
     if (search) {
-      const q = `%${String(search)}%`;
-      query += ' AND (v.title LIKE ? OR v.case_number LIKE ? OR v.address LIKE ? OR COALESCE(fv.vehicle_number, fv_unit.vehicle_number) LIKE ? OR u.call_sign LIKE ?)';
+      const q = `%${escapeLike(String(search))}%`;
+      query += " AND (v.title LIKE ? ESCAPE '\\' OR v.case_number LIKE ? ESCAPE '\\' OR v.address LIKE ? ESCAPE '\\' OR COALESCE(fv.vehicle_number, fv_unit.vehicle_number) LIKE ? ESCAPE '\\' OR u.call_sign LIKE ? ESCAPE '\\')";
       params.push(q, q, q, q, q);
     }
 
@@ -117,7 +127,7 @@ router.get('/', authenticateToken, (req: Request, res: Response) => {
 // ============================================================
 // GET /api/fleet/dashcam-videos/:id — Single video detail
 // ============================================================
-router.get('/:id', authenticateToken, (req: Request, res: Response) => {
+router.get('/:id', validateParamId, authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const video = db.prepare(`
@@ -223,7 +233,7 @@ router.post('/', authenticateToken, requireRole('admin', 'manager', 'supervisor'
 // ============================================================
 // PUT /api/fleet/dashcam-videos/:id — Update video metadata
 // ============================================================
-router.put('/:id', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/:id', validateParamId, authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(String(req.params.id), 10);
@@ -283,7 +293,7 @@ router.put('/:id', authenticateToken, requireRole('admin', 'manager', 'superviso
 // ============================================================
 // DELETE /api/fleet/dashcam-videos/:id — Delete video + file
 // ============================================================
-router.delete('/:id', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
+router.delete('/:id', validateParamId, authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(String(req.params.id), 10);
@@ -294,10 +304,9 @@ router.delete('/:id', authenticateToken, requireRole('admin'), (req: Request, re
       return;
     }
 
-    // Delete file from disk — normalize and verify containment with path.sep to prevent traversal
-    const normalizedPath = path.normalize(video.file_path).replace(/^(\.\.(\/|\\|$))+/, '');
-    const filePath = path.resolve(DASHCAM_DIR, normalizedPath);
-    if (filePath.startsWith(path.resolve(DASHCAM_DIR) + path.sep) && fs.existsSync(filePath)) {
+    // Delete file from disk — verify path is contained within DASHCAM_DIR
+    const filePath = safeDashcamPath(video.file_path);
+    if (filePath && fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
     }
 
@@ -316,7 +325,7 @@ router.delete('/:id', authenticateToken, requireRole('admin'), (req: Request, re
 // ============================================================
 // GET /api/fleet/dashcam-videos/:id/stream — Stream with Range
 // ============================================================
-router.get('/:id/stream', (req: Request, res: Response, next) => {
+router.get('/:id/stream', validateParamId, (req: Request, res: Response, next) => {
   // Accept token from query string for <video> elements (can't set Authorization header)
   if (!req.headers['authorization'] && typeof req.query.token === 'string' && req.query.token.length < 2048) {
     req.headers['authorization'] = `Bearer ${req.query.token}`;
@@ -331,10 +340,9 @@ router.get('/:id/stream', (req: Request, res: Response, next) => {
       return;
     }
 
-    // Prevent path traversal: normalize, resolve, and verify containment
-    const normalizedPath = path.normalize(video.file_path).replace(/^(\.\.(\/|\\|$))+/, '');
-    const filePath = path.resolve(DASHCAM_DIR, normalizedPath);
-    if (!filePath.startsWith(path.resolve(DASHCAM_DIR) + path.sep) || !fs.existsSync(filePath)) {
+    // Prevent path traversal: resolve within DASHCAM_DIR and verify containment
+    const filePath = safeDashcamPath(video.file_path);
+    if (!filePath || !fs.existsSync(filePath)) {
       res.status(404).json({ error: 'Video file not found on disk' });
       return;
     }
@@ -389,7 +397,7 @@ router.get('/:id/stream', (req: Request, res: Response, next) => {
 // ============================================================
 // GET /api/fleet/dashcam-videos/:id/links — List linked entities
 // ============================================================
-router.get('/:id/links', authenticateToken, (req: Request, res: Response) => {
+router.get('/:id/links', validateParamId, authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const videoId = parseInt(String(req.params.id), 10);
@@ -409,7 +417,7 @@ router.get('/:id/links', authenticateToken, (req: Request, res: Response) => {
 // ============================================================
 // POST /api/fleet/dashcam-videos/:id/links — Link video to entity
 // ============================================================
-router.post('/:id/links', authenticateToken, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/:id/links', validateParamId, authenticateToken, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const videoId = parseInt(String(req.params.id), 10);
@@ -463,7 +471,7 @@ router.post('/:id/links', authenticateToken, requireRole('admin', 'manager', 'su
 // ============================================================
 // DELETE /api/fleet/dashcam-videos/:id/links/:linkId — Remove link
 // ============================================================
-router.delete('/:id/links/:linkId', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.delete('/:id/links/:linkId', validateParamId, authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const linkId = parseInt(String(req.params.linkId), 10);
@@ -517,24 +525,44 @@ router.post('/webhook/clearpathgps', webhookUpload.single('video'), (req: Reques
       unit_call_sign, vehicle_number,
     } = req.body;
 
+    // Validate and sanitize webhook input — external data must be bounded
+    const safeStr = (v: any, maxLen: number): string | null =>
+      typeof v === 'string' ? v.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '').slice(0, maxLen) : null;
+    const safeDevice = safeStr(device_id, 100);
+    const safeDeviceName = safeStr(device_name, 200);
+    const safeEventType = safeStr(event_type, 100);
+    const safeEventTs = safeStr(event_timestamp, 50);
+    const safeAddress = safeStr(address, 500);
+    const safeCallSign = safeStr(unit_call_sign, 50);
+    const safeVehicleNum = safeStr(vehicle_number, 50);
+    const safeLat = latitude != null ? parseFloat(String(latitude)) : null;
+    const safeLon = longitude != null ? parseFloat(String(longitude)) : null;
+    const safeSpeed = speed_mph != null ? parseFloat(String(speed_mph)) : null;
+    if ((safeLat != null && (isNaN(safeLat) || safeLat < -90 || safeLat > 90)) ||
+        (safeLon != null && (isNaN(safeLon) || safeLon < -180 || safeLon > 180)) ||
+        (safeSpeed != null && (isNaN(safeSpeed) || safeSpeed < 0 || safeSpeed > 999))) {
+      res.status(400).json({ error: 'Invalid numeric values' });
+      return;
+    }
+
     // Resolve unit from device mapping or call sign
     let unitId: number | null = null;
     let vehicleId: number | null = null;
 
-    if (device_id) {
+    if (safeDevice) {
       const mapping = db.prepare(
         'SELECT unit_id FROM cpg_device_mappings WHERE cpg_device_id = ? AND is_active = 1'
-      ).get(device_id) as any;
+      ).get(safeDevice) as any;
       if (mapping) unitId = mapping.unit_id;
     }
 
-    if (!unitId && unit_call_sign) {
-      const unit = db.prepare('SELECT id FROM units WHERE call_sign = ?').get(unit_call_sign) as any;
+    if (!unitId && safeCallSign) {
+      const unit = db.prepare('SELECT id FROM units WHERE call_sign = ?').get(safeCallSign) as any;
       if (unit) unitId = unit.id;
     }
 
-    if (vehicle_number) {
-      const vehicle = db.prepare('SELECT id FROM fleet_vehicles WHERE vehicle_number = ?').get(vehicle_number) as any;
+    if (safeVehicleNum) {
+      const vehicle = db.prepare('SELECT id FROM fleet_vehicles WHERE vehicle_number = ?').get(safeVehicleNum) as any;
       if (vehicle) vehicleId = vehicle.id;
     } else if (unitId) {
       // Resolve vehicle from fleet_vehicles assigned to this unit
@@ -543,7 +571,7 @@ router.post('/webhook/clearpathgps', webhookUpload.single('video'), (req: Reques
     }
 
     const now = localNow();
-    const title = `${event_type || 'camera_event'} — ${device_name || device_id || 'ClearPathGPS'} — ${event_timestamp || now}`;
+    const title = `${safeEventType || 'camera_event'} — ${safeDeviceName || safeDevice || 'ClearPathGPS'} — ${safeEventTs || now}`;
 
     if (req.file) {
       // Video file was uploaded with the webhook
@@ -560,11 +588,11 @@ router.post('/webhook/clearpathgps', webhookUpload.single('video'), (req: Reques
         req.file.filename,
         req.file.size,
         req.file.mimetype || 'video/mp4',
-        event_timestamp || now,
-        speed_mph ? parseFloat(String(speed_mph)) : null,
-        latitude ? parseFloat(String(latitude)) : null,
-        longitude ? parseFloat(String(longitude)) : null,
-        address || null,
+        safeEventTs || now,
+        safeSpeed,
+        safeLat,
+        safeLon,
+        safeAddress,
         `Auto-captured: ${event_type || 'camera_event'}. Device: ${device_name || device_id || 'unknown'}`,
         now, now,
       );
@@ -575,14 +603,14 @@ router.post('/webhook/clearpathgps', webhookUpload.single('video'), (req: Reques
         id: videoId,
         title,
         source: 'clearpathgps',
-        event_type,
+        event_type: safeEventType,
       });
 
-      console.log(`[ClearPathGPS Webhook] Video saved: id=${videoId}, event=${event_type}, device=${device_name || device_id}`);
+      console.log(`[ClearPathGPS Webhook] Video saved: id=${videoId}, event=${safeEventType}, device=${safeDeviceName || safeDevice}`);
       res.json({ success: true, video_id: videoId });
     } else {
       // No video file — just log the event
-      console.log(`[ClearPathGPS Webhook] Event received (no video): event=${event_type}, device=${device_name || device_id}`);
+      console.log(`[ClearPathGPS Webhook] Event received (no video): event=${safeEventType}, device=${safeDeviceName || safeDevice}`);
       res.json({ success: true, message: 'Event received, no video file attached' });
     }
   } catch (error: any) {

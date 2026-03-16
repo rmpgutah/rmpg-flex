@@ -9,24 +9,37 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
+import { escapeLike, validateParamId } from '../middleware/sanitize';
+import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 router.use(authenticateToken);
+
+// Validate :id params as positive integers
+router.param('id', (req: Request, res: Response, next) => {
+  const raw = String(req.params.id);
+  const n = parseInt(raw, 10);
+  if (isNaN(n) || n < 1 || String(n) !== raw) {
+    res.status(400).json({ error: 'Invalid ID parameter' });
+    return;
+  }
+  next();
+});
 
 function nextEventNumber(): string {
   const db = getDb();
   const yr = parseInt(localToday().slice(0, 4), 10);
   const prefix = `CT-${yr}-`;
   const last = db.prepare(
-    "SELECT event_number FROM court_events WHERE event_number LIKE ? ORDER BY id DESC LIMIT 1"
-  ).get(`${prefix}%`) as { event_number: string } | undefined;
+    "SELECT event_number FROM court_events WHERE event_number LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT 1"
+  ).get(`${escapeLike(prefix)}%`) as { event_number: string } | undefined;
   const parsed = last ? parseInt(last.event_number.replace(prefix, ''), 10) : 0;
   const seq = (isNaN(parsed) ? 0 : parsed) + 1;
   return `${prefix}${String(seq).padStart(4, '0')}`;
 }
 
 // ─── GET /events ─────────────────────────────────────────
-router.get('/events', (req: Request, res: Response) => {
+router.get('/events', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { status, event_type, date_from, date_to, officer_id, search, page = '1', limit = '50' } = req.query;
@@ -40,10 +53,10 @@ router.get('/events', (req: Request, res: Response) => {
     if (event_type) { where += ' AND e.event_type = ?'; params.push(event_type); }
     if (date_from) { where += ' AND e.event_date >= ?'; params.push(date_from); }
     if (date_to) { where += ' AND e.event_date <= ?'; params.push(date_to); }
-    if (officer_id) { where += " AND e.officers_required LIKE ?"; params.push(`%${officer_id}%`); }
+    if (officer_id) { where += " AND e.officers_required LIKE ? ESCAPE '\\'"; params.push(`%${escapeLike(String(officer_id))}%`); }
     if (search) {
-      where += ' AND (e.event_number LIKE ? OR e.defendant_name LIKE ? OR e.court_case_number LIKE ? OR e.court_name LIKE ?)';
-      const s = `%${search}%`; params.push(s, s, s, s);
+      where += " AND (e.event_number LIKE ? ESCAPE '\\' OR e.defendant_name LIKE ? ESCAPE '\\' OR e.court_case_number LIKE ? ESCAPE '\\' OR e.court_name LIKE ? ESCAPE '\\')";
+      const s = `%${escapeLike(String(search))}%`; params.push(s, s, s, s);
     }
 
     const total = (db.prepare(`SELECT COUNT(*) as count FROM court_events e ${where}`).get(...params) as any)?.count || 0;
@@ -71,16 +84,16 @@ router.get('/events/upcoming', requireRole('admin', 'manager', 'supervisor', 'of
     const rows = db.prepare(`
       SELECT * FROM court_events
       WHERE event_date >= ? AND status = 'scheduled'
-      AND (officers_required LIKE ? OR created_by = ?)
+      AND (officers_required LIKE ? ESCAPE '\\' OR created_by = ?)
       ORDER BY event_date ASC, event_time ASC
       LIMIT 30
-    `).all(today, `%${userId}%`, userId);
+    `).all(today, `%${escapeLike(String(userId))}%`, userId);
     res.json({ data: rows });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─── GET /calendar ───────────────────────────────────────
-router.get('/calendar', (req: Request, res: Response) => {
+router.get('/calendar', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { month, year } = req.query;
@@ -110,7 +123,7 @@ router.get('/calendar', (req: Request, res: Response) => {
 });
 
 // ─── GET /events/:id ─────────────────────────────────────
-router.get('/events/:id', (req: Request, res: Response) => {
+router.get('/events/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare(`
@@ -155,9 +168,7 @@ router.post('/events', requireRole('admin', 'manager', 'supervisor', 'officer'),
     });
     const { result, event_number } = createEvent();
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'create', 'court_event', ?, ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ event_number }), req.ip || 'unknown', now);
-
+    auditLog(req, 'CREATE', 'court_event', Number(result.lastInsertRowid), 'Created court event');
     res.status(201).json({ data: { id: result.lastInsertRowid, event_number } });
   } catch (error: any) {
     console.error('Create court event error:', error?.message || 'Unknown error');
@@ -166,7 +177,7 @@ router.post('/events', requireRole('admin', 'manager', 'supervisor', 'officer'),
 });
 
 // ─── PUT /events/:id ─────────────────────────────────────
-router.put('/events/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/events/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT id FROM court_events WHERE id = ?').get(req.params.id);
@@ -187,12 +198,13 @@ router.put('/events/:id', requireRole('admin', 'manager', 'supervisor', 'officer
     }
     params.push(req.params.id);
     db.prepare(`UPDATE court_events SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+    auditLog(req, 'UPDATE', 'court_event', String(req.params.id), `Updated court event #${req.params.id}`);
     res.json({ data: { id: parseInt(req.params.id as string, 10) } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─── PUT /events/:id/outcome ─────────────────────────────
-router.put('/events/:id/outcome', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/events/:id/outcome', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -204,9 +216,7 @@ router.put('/events/:id/outcome', requireRole('admin', 'manager', 'supervisor'),
         status = 'completed', updated_at = ? WHERE id = ?
     `).run(outcome, sentence || null, fine_amount ?? null, notes || null, now, req.params.id);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'outcome', 'court_event', ?, ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ outcome }), req.ip || 'unknown', now);
-
+    auditLog(req, 'UPDATE', 'court_event', String(req.params.id), `Recorded court event outcome #${req.params.id}`);
     res.json({ data: { id: parseInt(req.params.id as string, 10), outcome } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });

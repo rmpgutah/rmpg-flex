@@ -55,14 +55,16 @@ export function parseTimestamp(dateStr: string | null | undefined): Date {
       const fmt = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Denver', timeZoneName: 'shortOffset' });
       const parts = fmt.formatToParts(naive);
       const tzPart = parts.find(p => p.type === 'timeZoneName');
-      // tzPart.value is like "GMT-7" or "GMT-6"
+      // tzPart.value is like "GMT-7", "GMT-6", "UTC-7", or "GMT+05:30"
       if (tzPart?.value) {
-        const match = tzPart.value.match(/GMT([+-]\d+)/);
+        const match = tzPart.value.match(/(?:GMT|UTC)([+-]\d{1,2})(?::(\d{2}))?/);
         if (match) {
           const offset = parseInt(match[1], 10);
-          const sign = offset <= 0 ? '-' : '+';
+          const minutes = match[2] ? parseInt(match[2], 10) : 0;
+          const sign = offset <= 0 && minutes === 0 ? '-' : offset < 0 ? '-' : '+';
           const absH = String(Math.abs(offset)).padStart(2, '0');
-          return new Date(dateStr.replace(' ', 'T') + `${sign}${absH}:00`);
+          const absM = String(minutes).padStart(2, '0');
+          return new Date(dateStr.replace(' ', 'T') + `${sign}${absH}:${absM}`);
         }
       }
     } catch { /* fallback below */ }

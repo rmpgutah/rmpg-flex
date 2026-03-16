@@ -132,7 +132,7 @@ export function clearImageCache(): void {
 
 export const FORM_NUMBERS: Record<string, string> = {
   // Incident reports (PS-1xx)
-  incident: 'FORM PS-101',
+  incident: 'FORM UIR-205',
   trespass: 'FORM PS-102',
   accident: 'FORM PS-103',
   medical: 'FORM PS-104',

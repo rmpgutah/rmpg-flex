@@ -93,6 +93,18 @@ export function requireInt(value: unknown, fieldName: string): number | null {
   return n;
 }
 
+/** Escape SQL LIKE wildcard characters (%, _, \) so user input is treated literally.
+ *  Use with `LIKE ? ESCAPE '\'` in your SQL queries. */
+export function escapeLike(str: string): string {
+  return String(str).replace(/[%_\\]/g, '\\$&');
+}
+
+/** Quote a SQL identifier (table/column name) by wrapping in double quotes
+ *  and escaping any embedded double quotes. Prevents SQL injection via identifiers. */
+export function quoteIdent(name: string): string {
+  return `"${String(name).replace(/"/g, '""')}"`;
+}
+
 /** Express middleware that validates req.params.id is a positive integer.
  *  Use on routes like `router.get('/:id', validateParamId, handler)` to reject
  *  non-numeric IDs before they reach DB queries or business logic. */
@@ -108,6 +120,22 @@ export function validateParamId(req: Request, res: Response, next: NextFunction)
   next();
 }
 
+/** Safely parse pagination parameters from query string.
+ *  Returns clamped, validated { page, limit, offset } values.
+ *  - page: positive integer (default 1)
+ *  - limit: positive integer clamped to [1, maxLimit] (default defaultLimit)
+ *  - offset: computed from page and limit */
+export function safePagination(
+  query: Record<string, any>,
+  defaultLimit = 50,
+  maxLimit = 200,
+): { page: number; limit: number; offset: number } {
+  const page = Math.max(1, parseInt(String(query.page ?? query.p ?? '1'), 10) || 1);
+  const rawLimit = parseInt(String(query.limit ?? query.per_page ?? String(defaultLimit)), 10);
+  const limit = Math.min(maxLimit, Math.max(1, isNaN(rawLimit) ? defaultLimit : rawLimit));
+  return { page, limit, offset: (page - 1) * limit };
+}
+
 export function sanitizeInput(req: Request, _res: Response, next: NextFunction): void {
   if (req.body && typeof req.body === 'object') {
     req.body = sanitizeObject(req.body);
@@ -119,6 +147,17 @@ export function sanitizeInput(req: Request, _res: Response, next: NextFunction):
       if (typeof value === 'string') {
         const trimmed = value.trim().slice(0, MAX_QUERY_PARAM_LENGTH);
         (req.query as Record<string, string>)[key] = sanitizeStr(trimmed, key);
+      }
+    }
+  }
+
+  // Sanitize URL params — strip dangerous HTML tag characters from string params
+  // (numeric IDs are already validated by validateParamId, but string params like
+  // filenames, call_signs, etc. could carry XSS payloads into error messages or logs)
+  if (req.params) {
+    for (const [key, value] of Object.entries(req.params)) {
+      if (typeof value === 'string') {
+        (req.params as Record<string, string>)[key] = sanitizeStr(value.trim(), key);
       }
     }
   }

@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../../models/database';
 import { requireRole } from '../../middleware/auth';
+import { validateParamId } from '../../middleware/sanitize';
 import { broadcastUnitUpdate } from '../../utils/websocket';
 import { localNow } from '../../utils/timeUtils';
 
@@ -64,7 +65,7 @@ router.post('/units', requireRole('admin', 'manager', 'dispatcher'), (req: Reque
 });
 
 // PUT /api/dispatch/units/:id - Edit unit details (call_sign, officer_id, status, vehicle_id)
-router.put('/units/:id', requireRole('admin', 'manager', 'dispatcher'), (req: Request, res: Response) => {
+router.put('/units/:id', validateParamId, requireRole('admin', 'manager', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const unit = db.prepare('SELECT * FROM units WHERE id = ?').get(req.params.id) as any;
@@ -137,7 +138,7 @@ router.put('/units/:id', requireRole('admin', 'manager', 'dispatcher'), (req: Re
 });
 
 // DELETE /api/dispatch/units/:id - Delete a unit
-router.delete('/units/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/units/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const unit = db.prepare('SELECT * FROM units WHERE id = ?').get(req.params.id) as any;
@@ -167,7 +168,7 @@ router.delete('/units/:id', requireRole('admin', 'manager'), (req: Request, res:
 });
 
 // PUT /api/dispatch/units/:id/status - Update unit status and location
-router.put('/units/:id/status', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+router.put('/units/:id/status', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const unit = db.prepare('SELECT * FROM units WHERE id = ?').get(req.params.id) as any;

@@ -3,7 +3,7 @@ import bcryptjs from 'bcryptjs';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { migrateIncidentNumbers } from '../utils/caseNumbers';
+import { migrateIncidentNumbers, generateCaseNumber } from '../utils/caseNumbers';
 import crypto from 'crypto';
 import { localNow } from '../utils/timeUtils';
 import { seedAllStatutes } from '../seeds/seedAllStatutes';
@@ -39,6 +39,11 @@ export function initDatabase(): Database.Database {
   // Enable WAL mode for better concurrent read performance
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
+
+  // Security pragmas — prevent recovery of deleted PII and schema manipulation
+  db.pragma('secure_delete = ON');        // Overwrite deleted data with zeros (CJIS compliance)
+  db.pragma('trusted_schema = OFF');      // Reject untrusted schema extensions (SQL injection defense)
+  db.pragma('cell_size_check = ON');      // Detect corrupt/oversized cells before they cause issues
 
   // Performance pragmas — session-level, reset on reconnection
   db.pragma('busy_timeout = 5000');       // Wait 5s on lock instead of instant SQLITE_BUSY
@@ -2853,6 +2858,20 @@ function migrateSchema(): void {
   // on maps. WiFi/IP points have reduced accuracy vs hardware GPS.
   addCol('gps_breadcrumbs', 'source', "TEXT DEFAULT 'unknown'");
 
+  // ── PSO fields on incidents (auto-filled from dispatch call on generation) ──
+  addCol('incidents', 'pso_service_type', 'TEXT');
+  addCol('incidents', 'pso_attempt_number', 'INTEGER');
+  addCol('incidents', 'pso_requestor_name', 'TEXT');
+  addCol('incidents', 'pso_requestor_phone', 'TEXT');
+  addCol('incidents', 'pso_requestor_email', 'TEXT');
+  addCol('incidents', 'pso_billing_code', 'TEXT');
+  addCol('incidents', 'pso_authorization', 'TEXT');
+  addCol('incidents', 'process_service_type', 'TEXT');
+  addCol('incidents', 'process_served_to', 'TEXT');
+  addCol('incidents', 'process_served_address', 'TEXT');
+  addCol('incidents', 'process_service_result', 'TEXT');
+  addCol('incidents', 'process_attempts', 'INTEGER');
+
   // ── Backfill case numbers for dispatch calls that don't have one ──
   try {
     const callsWithoutCase = db.prepare(
@@ -2878,7 +2897,6 @@ function migrateSchema(): void {
         daily_activity: 'admin', special_event: 'admin', training_exercise: 'admin',
       };
 
-      const { generateCaseNumber } = require('../utils/caseNumbers');
       const backfillTx = db.transaction(() => {
         for (const call of callsWithoutCase) {
           const caseType = INCIDENT_TO_CASE_TYPE[call.incident_type] || 'general';
@@ -2988,6 +3006,8 @@ function migrateSchema(): void {
         beat_descriptor TEXT
       )
     `);
+    // Beat must be unique within its zone+section; zone_id is inherently unique within a section
+    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_district_beat_unique ON dispatch_districts (section_id, zone_id, beat_id)`);
   } catch { /* already exists */ }
 
   // Seed dispatch_districts — delete & reseed to pick up expanded coverage
@@ -3040,6 +3060,14 @@ function migrateSchema(): void {
   // ── Contract ID for PSO Client Request incidents ──
   addCol('calls_for_service', 'contract_id', 'TEXT');
   addCol('incidents', 'contract_id', 'TEXT');
+
+  // ── Process Service served-at timestamp on incidents ──
+  addCol('incidents', 'process_served_at', 'TEXT');
+
+  // ── Original 3 flags that were only on calls — ensure they exist on incidents too ──
+  addCol('incidents', 'injuries_reported', 'INTEGER DEFAULT 0');
+  addCol('incidents', 'le_notified', 'INTEGER DEFAULT 0');
+  addCol('incidents', 'supervisor_notified', 'INTEGER DEFAULT 0');
 
   // ── Additional operational flags for calls and incidents ──
   const flagTables = ['calls_for_service', 'incidents'] as const;
@@ -3792,6 +3820,23 @@ function migrateSchema(): void {
   addCol('jail_roster_config', 'state', "TEXT DEFAULT 'UT'");
   addCol('arrest_records', 'state', "TEXT DEFAULT 'UT'");
 
+  // ── WARRANT SYSTEM REDESIGN — universal scanner fields ──
+  addCol('warrants', 'source', "TEXT DEFAULT 'manual'");
+  addCol('warrants', 'external_warrant_id', 'TEXT');
+  addCol('warrants', 'external_source_key', 'TEXT');
+  addCol('warrants', 'auto_created', 'INTEGER DEFAULT 0');
+
+  try {
+    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_warrants_external_id ON warrants(external_warrant_id) WHERE external_warrant_id IS NOT NULL');
+  } catch { /* already exists */ }
+
+  // ── ARREST RECORDS — columns needed by warrant scraper extraction ──
+  addCol('arrest_records', 'gender', 'TEXT');
+  addCol('arrest_records', 'race', 'TEXT');
+  addCol('arrest_records', 'bail_amount', 'TEXT');
+  addCol('arrest_records', 'booking_number', 'TEXT');
+  addCol('arrest_records', 'agency', 'TEXT');
+
   // Backfill state='UT' on existing scraper records
   try {
     db.prepare("UPDATE arrest_records SET state = 'UT' WHERE entry_source = 'scraper' AND state IS NULL").run();
@@ -4000,6 +4045,43 @@ function migrateSchema(): void {
   addCol('calls_for_service', 'pso_service_windows', 'TEXT'); // JSON: { early_morning: bool, daytime: bool, evening: bool, weekend: bool }
   addCol('call_visit_history', 'time_window', 'TEXT');  // early_morning | daytime | evening
   addCol('call_visit_history', 'is_weekend', 'INTEGER DEFAULT 0');
+
+  // ── Backfill dispatch_code from S/Z/B IDs on all calls ────────
+  // Ensures dispatch_code always matches current section_id/zone_id/beat_id
+  // Uses a single UPDATE...FROM to avoid N+1 queries during startup
+  try {
+    // Backfill calls that have a matching dispatch_districts row
+    const result1 = db.prepare(`
+      UPDATE calls_for_service SET
+        dispatch_code = dd.dispatch_code,
+        section_name = dd.section_name,
+        zone_name = dd.zone_name,
+        beat_name = dd.beat_name,
+        beat_descriptor = dd.beat_descriptor
+      FROM dispatch_districts dd
+      WHERE calls_for_service.section_id = dd.section_id
+        AND calls_for_service.zone_id = dd.zone_id
+        AND calls_for_service.beat_id = dd.beat_id
+        AND (calls_for_service.dispatch_code IS NULL OR calls_for_service.dispatch_code != dd.dispatch_code)
+    `).run();
+    // Backfill calls with no matching district — use fallback S-Z/B format
+    const result2 = db.prepare(`
+      UPDATE calls_for_service SET
+        dispatch_code = section_id || '-' || zone_id || '/' || beat_id
+      WHERE section_id IS NOT NULL AND zone_id IS NOT NULL AND beat_id IS NOT NULL
+        AND dispatch_code IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM dispatch_districts dd
+          WHERE dd.section_id = calls_for_service.section_id
+            AND dd.zone_id = calls_for_service.zone_id
+            AND dd.beat_id = calls_for_service.beat_id
+        )
+    `).run();
+    const backfilled = result1.changes + result2.changes;
+    if (backfilled > 0) console.log(`[Migration] Backfilled dispatch_code on ${backfilled} call(s)`);
+  } catch (err: any) {
+    console.warn('[Migration] dispatch_code backfill warning:', err?.message);
+  }
 
   console.log('Schema migration completed.');
 }
@@ -4737,7 +4819,7 @@ function seedData(): void {
   const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number };
   if (userCount.count === 0) {
     const randomPassword = crypto.randomBytes(16).toString('hex');
-    const hash = (pw: string) => bcryptjs.hashSync(pw, 10);
+    const hash = (pw: string) => bcryptjs.hashSync(pw, 12);
     db.prepare(`
       INSERT INTO users (username, password_hash, full_name, email, role, badge_number, phone, status, must_change_password, password_changed_at, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 1, ?, ?, ?)
@@ -4755,8 +4837,8 @@ function seedData(): void {
       console.log('╚══════════════════════════════════════════════════╝');
       console.log('');
     } catch {
-      // If file write fails (e.g. read-only filesystem), log password as fallback
-      console.log(`[SECURITY] Initial admin password: ${randomPassword} — change on first login`);
+      // If file write fails, log only that it failed — never log passwords
+      console.error('[SECURITY] Could not write initial credentials file. Run with write access to server/data/ to generate credentials.');
     }
   }
 

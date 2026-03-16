@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { validateParamId } from '../middleware/sanitize';
 import { sendCsv } from '../utils/csvExport';
 import { localNow } from '../utils/timeUtils';
 
@@ -23,7 +24,7 @@ router.get('/checkpoints', requireRole('admin', 'manager', 'supervisor', 'office
     `).all();
 
     res.json(checkpoints);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching checkpoints:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to fetch checkpoints' });
   }
@@ -44,7 +45,7 @@ router.get('/checkpoints/property/:propertyId', requireRole('admin', 'manager', 
     `).all(req.params.propertyId);
 
     res.json(checkpoints);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching property checkpoints:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to fetch property checkpoints' });
   }
@@ -100,14 +101,14 @@ router.post('/checkpoints', requireRole('admin', 'manager', 'supervisor'), (req:
     );
 
     res.status(201).json(checkpoint);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating checkpoint:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to create checkpoint' });
   }
 });
 
 // PUT /api/patrol/checkpoints/:id - Update checkpoint
-router.put('/checkpoints/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/checkpoints/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { property_id, name, description, latitude, longitude, scan_required_interval_minutes, is_active } = req.body;
@@ -146,9 +147,9 @@ router.put('/checkpoints/:id', requireRole('admin', 'manager', 'supervisor'), (r
 
     // Activity log
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'checkpoint_updated', 'patrol_checkpoint', ?, ?, ?)
-    `).run(req.user!.userId, id, `Updated checkpoint: ${existing.name}`, req.ip || 'unknown');
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'checkpoint_updated', 'patrol_checkpoint', ?, ?, ?, ?)
+    `).run(req.user!.userId, id, `Updated checkpoint: ${existing.name}`, req.ip || 'unknown', localNow());
 
     const updated = db.prepare(`
       SELECT pc.*, p.name as property_name
@@ -158,14 +159,14 @@ router.put('/checkpoints/:id', requireRole('admin', 'manager', 'supervisor'), (r
     `).get(id);
 
     res.json(updated);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error updating checkpoint:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to update checkpoint' });
   }
 });
 
 // DELETE /api/patrol/checkpoints/:id - Delete checkpoint
-router.delete('/checkpoints/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.delete('/checkpoints/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const db = getDb();
@@ -190,14 +191,14 @@ router.delete('/checkpoints/:id', requireRole('admin', 'manager', 'supervisor'),
     );
 
     res.json({ message: 'Checkpoint deleted successfully' });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error deleting checkpoint:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to delete checkpoint' });
   }
 });
 
 // POST /api/patrol/checkpoints/:id/archive
-router.post('/checkpoints/:id/archive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/checkpoints/:id/archive', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const checkpoint = db.prepare('SELECT * FROM patrol_checkpoints WHERE id = ?').get(req.params.id) as any;
@@ -220,7 +221,7 @@ router.post('/checkpoints/:id/archive', requireRole('admin', 'manager', 'supervi
 });
 
 // POST /api/patrol/checkpoints/:id/unarchive
-router.post('/checkpoints/:id/unarchive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/checkpoints/:id/unarchive', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const checkpoint = db.prepare('SELECT * FROM patrol_checkpoints WHERE id = ?').get(req.params.id) as any;
@@ -312,7 +313,7 @@ router.post('/scan', requireRole('admin', 'manager', 'supervisor', 'officer'), (
     );
 
     res.status(201).json({ ...(scan as any), checkpoint_name: checkpoint.name, status });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error recording scan:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to record scan' });
   }
@@ -354,6 +355,7 @@ router.get('/scans/export', requireRole('admin', 'manager', 'supervisor'), (req:
       LEFT JOIN users u ON ps.officer_id = u.id
       ${whereClause}
       ORDER BY ps.scanned_at DESC
+      LIMIT 50000
     `).all(...params);
 
     sendCsv(res, 'patrol_scans_export.csv', [
@@ -417,7 +419,7 @@ router.get('/scans', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
 
 
     res.json(scans);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching scans:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to fetch scans' });
   }
@@ -489,7 +491,7 @@ router.get('/compliance', requireRole('admin', 'manager', 'supervisor', 'officer
     });
 
     res.json(compliance);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching compliance stats:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to fetch compliance stats' });
   }
