@@ -252,9 +252,24 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
     const pendingActions: string[] = [];
     const needsPasswordChange = user.force_password_change === 1 || user.must_change_password === 1 || isPasswordExpired(user);
     // 2FA is mandatory for ALL users regardless of account age or role.
-    // Any user without an active, verified TOTP secret must complete setup.
-    const needs2FASetup = user.totp_setup_required === 1 || user.totp_enabled !== 1;
-    const has2FA = user.totp_enabled === 1 && user.totp_setup_required !== 1;
+    // Check the actual TOTP secret table — the source of truth for verified 2FA.
+    // This prevents the "already configured" error when totp_setup_required flag
+    // is stale but a verified secret already exists.
+    let hasVerifiedTotp = false;
+    try {
+      const totpRow = db.prepare('SELECT is_verified FROM user_totp_secrets WHERE user_id = ?').get(user.id) as { is_verified: number } | undefined;
+      hasVerifiedTotp = !!totpRow?.is_verified;
+    } catch { /* table may not exist yet */ }
+
+    const has2FA = hasVerifiedTotp || (user.totp_enabled === 1 && user.totp_setup_required !== 1);
+    const needs2FASetup = !has2FA;
+
+    // Auto-fix stale totp_setup_required flag if user already has verified TOTP
+    if (hasVerifiedTotp && user.totp_setup_required === 1) {
+      try {
+        db.prepare('UPDATE users SET totp_setup_required = 0, totp_enabled = 1 WHERE id = ?').run(user.id);
+      } catch { /* non-fatal */ }
+    }
 
     // Also check WebAuthn
     let hasWebAuthn = false;
