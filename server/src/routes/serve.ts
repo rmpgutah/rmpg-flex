@@ -51,18 +51,13 @@ router.get('/stats/summary', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Re
 
     const attemptsToday = db.prepare(`
       SELECT COUNT(*) as count FROM serve_attempts
-      WHERE DATE(attempted_at) = ?
-    `).get(today) as any;
-
-    const mileageToday = db.prepare(`
-      SELECT COALESCE(SUM(mileage), 0) as total FROM serve_attempts
-      WHERE DATE(attempted_at) = ?
+      WHERE DATE(attempt_at) = ?
     `).get(today) as any;
 
     res.json({
       ...counts,
       attempts_today: attemptsToday?.count || 0,
-      mileage_today: mileageToday?.total || 0,
+      mileage_today: 0,
     });
   } catch (err: any) {
     console.error('[SERVE] Stats error:', err);
@@ -460,15 +455,15 @@ router.post('/:id/attempt', validateParamId, requireRole(...WRITE_ROLES), (req: 
     const attemptNumber = (job.attempt_count ?? 0) + 1;
     const attemptInfo = db.prepare(`
       INSERT INTO serve_attempts (
-        serve_queue_id, attempt_number, attempted_at, attempted_by,
-        result, gps_lat, gps_lng, notes, method, recipient_response,
-        photo_url, signature_url, mileage, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        serve_queue_id, attempt_number, attempt_at, officer_id,
+        result, latitude, longitude, notes, attempt_type,
+        photo_ids, signature_data, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       req.params.id, attemptNumber, now, req.user!.userId,
       result || 'no_answer', gps_lat ?? null, gps_lng ?? null,
-      notes ?? '', method ?? 'personal', recipient_response ?? '',
-      photo_url ?? null, signature_url ?? null, mileage ?? null, now,
+      notes ?? '', method ?? 'personal',
+      photo_url ? JSON.stringify([photo_url]) : '[]', signature_url ?? null, now,
     );
     const attemptId = attemptInfo.lastInsertRowid;
 
