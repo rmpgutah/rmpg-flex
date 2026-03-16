@@ -115,7 +115,7 @@ export const config = {
     secret: jwtSecret,
     accessExpiry: process.env.JWT_ACCESS_EXPIRY || '15m',
     refreshExpiry: process.env.JWT_REFRESH_EXPIRY || '12h',
-    maxSessionHours: envInt('MAX_SESSION_HOURS', 8),
+    maxSessionHours: Math.max(1, envInt('MAX_SESSION_HOURS', 8)),
   },
 
   // Security

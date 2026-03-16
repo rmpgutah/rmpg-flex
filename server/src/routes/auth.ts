@@ -420,16 +420,20 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
     // Include sessionId in a fresh access token so IP binding works
     const accessTokenWithSession = generateAccessToken({ ...payload, sessionId });
 
-    // Log the login to activity log
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'user_login', 'user', ?, 'User logged in', ?)
-    `).run(user.id, user.id, ip);
+    // Log the login to activity log — must never block login
+    try {
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'user_login', 'user', ?, 'User logged in', ?)
+      `).run(user.id, user.id, ip);
+    } catch { /* audit log failure must never prevent login */ }
 
     // Update login statistics
-    db.prepare(`
-      UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login_at = ? WHERE id = ?
-    `).run(localNow(), user.id);
+    try {
+      db.prepare(`
+        UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login_at = ? WHERE id = ?
+      `).run(localNow(), user.id);
+    } catch { /* stats failure must never prevent login */ }
 
     // Login notification — alert user if logging in from a new IP
     try {
