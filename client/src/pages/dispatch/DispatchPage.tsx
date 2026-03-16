@@ -392,6 +392,7 @@ export default function DispatchPage() {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
           body: JSON.stringify(body),
@@ -1099,6 +1100,7 @@ export default function DispatchPage() {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
+              'X-Requested-With': 'XMLHttpRequest',
               ...(token ? { Authorization: `Bearer ${token}` } : {}),
             },
           });
@@ -1246,6 +1248,7 @@ export default function DispatchPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
       });

@@ -708,18 +708,25 @@ function callPriorityLabel(p: string): string {
 }
 
 /** Format: MM/DD/YYYY @ HH:MM:SS AM/PM */
+/** Convert a date to Mountain Time components */
+function toMountain(d: Date): { mm: string; dd: string; yyyy: number; h: number; min: string; sec: string; ampm: string } {
+  const mt = new Date(d.toLocaleString('en-US', { timeZone: 'America/Denver' }));
+  const mm = String(mt.getMonth() + 1).padStart(2, '0');
+  const dd = String(mt.getDate()).padStart(2, '0');
+  const yyyy = mt.getFullYear();
+  let h = mt.getHours();
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return { mm, dd, yyyy, h, min: String(mt.getMinutes()).padStart(2, '0'), sec: String(mt.getSeconds()).padStart(2, '0'), ampm };
+}
+
 function fmtTimestamp(ts?: string): string {
   if (!ts) return '';
   try {
     const d = new Date(ts);
     if (isNaN(d.getTime())) return ts;
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    const yyyy = d.getFullYear();
-    let h = d.getHours();
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    h = h % 12 || 12;
-    return `${mm}/${dd}/${yyyy} @ ${String(h).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')} ${ampm}`;
+    const { mm, dd, yyyy, h, min, sec, ampm } = toMountain(d);
+    return `${mm}/${dd}/${yyyy} @ ${String(h).padStart(2, '0')}:${min}:${sec} ${ampm}`;
   } catch { return ts; }
 }
 
@@ -729,7 +736,8 @@ function fmtDate(ts?: string | null): string {
   try {
     const d = new Date(ts);
     if (isNaN(d.getTime())) return ts;
-    return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${d.getFullYear()}`;
+    const { mm, dd, yyyy } = toMountain(d);
+    return `${mm}/${dd}/${yyyy}`;
   } catch { return ts; }
 }
 
@@ -739,13 +747,8 @@ function fmtDateTime(ts?: string | null): string {
   try {
     const d = new Date(ts);
     if (isNaN(d.getTime())) return ts;
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    const yyyy = d.getFullYear();
-    let h = d.getHours();
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    h = h % 12 || 12;
-    return `${mm}/${dd}/${yyyy} @ ${String(h).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} ${ampm}`;
+    const { mm, dd, yyyy, h, min, ampm } = toMountain(d);
+    return `${mm}/${dd}/${yyyy} @ ${String(h).padStart(2, '0')}:${min} ${ampm}`;
   } catch { return ts; }
 }
 
@@ -765,13 +768,13 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   const gridX = getGridStartX();
   const gridW = getGridContentWidth(doc);
 
-  setActiveCaseNumber(data.call_number);
+  setActiveCaseNumber(data.case_number || data.call_number);
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
     agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
     formTitle: 'CALL FOR SERVICE REPORT',
     formNumber: 'FORM PS-201',
-    caseNumber: data.call_number,
+    caseNumber: data.case_number || data.call_number,
     reportDate: fmtTimestamp(data.created_at || ''),
   });
 

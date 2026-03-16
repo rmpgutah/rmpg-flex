@@ -137,7 +137,7 @@ export default function SecurityKeyManager() {
     try {
       const res = await fetch(`/api/auth/webauthn/credentials/${id}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${token}`, 'X-Requested-With': 'XMLHttpRequest' },
       });
       if (res.ok) {
         setCredentials(prev => prev.filter(c => c.id !== id));
