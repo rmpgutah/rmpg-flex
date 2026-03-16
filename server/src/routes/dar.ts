@@ -9,7 +9,7 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
-import { escapeLike } from '../middleware/sanitize';
+import { escapeLike, validateParamId } from '../middleware/sanitize';
 import { localNow, localToday } from '../utils/timeUtils';
 
 const router = Router();
@@ -80,7 +80,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: 
 });
 
 // ─── GET /:id ────────────────────────────────────────────
-router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare('SELECT * FROM daily_activity_reports WHERE id = ?').get(req.params.id);
@@ -267,7 +267,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
 });
 
 // ─── PUT /:id ────────────────────────────────────────────
-router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT id, officer_id FROM daily_activity_reports WHERE id = ?').get(req.params.id) as any;
@@ -296,7 +296,7 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (re
 });
 
 // ─── PUT /:id/submit ────────────────────────────────────
-router.put('/:id/submit', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/:id/submit', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT id FROM daily_activity_reports WHERE id = ?').get(req.params.id);
@@ -313,7 +313,7 @@ router.put('/:id/submit', requireRole('admin', 'manager', 'supervisor', 'officer
 });
 
 // ─── PUT /:id/approve ───────────────────────────────────
-router.put('/:id/approve', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/:id/approve', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT id FROM daily_activity_reports WHERE id = ?').get(req.params.id);
@@ -333,7 +333,7 @@ router.put('/:id/approve', requireRole('admin', 'manager', 'supervisor'), (req: 
 });
 
 // ─── PUT /:id/return ────────────────────────────────────
-router.put('/:id/return', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/:id/return', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT id FROM daily_activity_reports WHERE id = ?').get(req.params.id);

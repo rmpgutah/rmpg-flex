@@ -5,7 +5,7 @@ import { broadcast } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
 import { createNotificationForRoles } from './notifications';
 import { resolveDistrict } from '../utils/districtResolver';
-import { escapeLike } from '../middleware/sanitize';
+import { escapeLike, validateParamId } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
@@ -91,7 +91,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
 });
 
 // GET /:id — Single FI detail
-router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare(`
@@ -197,7 +197,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
 });
 
 // PUT /:id — Update FI
-router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT id FROM field_interviews WHERE id = ?').get(req.params.id);
@@ -256,7 +256,7 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (re
 });
 
 // POST /:id/archive
-router.post('/:id/archive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/:id/archive', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT id FROM field_interviews WHERE id = ?').get(req.params.id);
@@ -271,7 +271,7 @@ router.post('/:id/archive', requireRole('admin', 'manager', 'supervisor'), (req:
 });
 
 // POST /:id/unarchive
-router.post('/:id/unarchive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/:id/unarchive', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT id FROM field_interviews WHERE id = ?').get(req.params.id);
@@ -286,7 +286,7 @@ router.post('/:id/unarchive', requireRole('admin', 'manager', 'supervisor'), (re
 });
 
 // DELETE /:id — Soft delete (archive)
-router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT id FROM field_interviews WHERE id = ?').get(req.params.id);

@@ -12,7 +12,7 @@ import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
 import { localNow } from '../utils/timeUtils';
 import { calculateLeadScore, runScraper, getRegisteredScraper } from '../utils/leadScraperBase';
-import { escapeLike } from '../middleware/sanitize';
+import { escapeLike, validateParamId } from '../middleware/sanitize';
 
 // Import scrapers so they register themselves
 import '../utils/utahBizScraper';
@@ -94,7 +94,7 @@ router.get('/leads', requireRole('admin', 'manager', 'contract_manager'), (req: 
 });
 
 // ── Get Single Lead ─────────────────────────────────────────
-router.get('/leads/:id', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.get('/leads/:id', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -195,7 +195,7 @@ router.post('/leads', requireRole('admin', 'manager', 'contract_manager'), (req:
 });
 
 // ── Update Lead ─────────────────────────────────────────────
-router.put('/leads/:id', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.put('/leads/:id', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -259,7 +259,7 @@ router.put('/leads/:id', requireRole('admin', 'manager', 'contract_manager'), (r
 });
 
 // ── Delete Lead ─────────────────────────────────────────────
-router.delete('/leads/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/leads/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -281,7 +281,7 @@ router.delete('/leads/:id', requireRole('admin', 'manager'), (req: Request, res:
 });
 
 // ── Move Pipeline Stage ─────────────────────────────────────
-router.put('/leads/:id/stage', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.put('/leads/:id/stage', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -333,7 +333,7 @@ router.put('/leads/:id/stage', requireRole('admin', 'manager', 'contract_manager
 });
 
 // ── Assign Lead ─────────────────────────────────────────────
-router.put('/leads/:id/assign', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.put('/leads/:id/assign', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -376,7 +376,7 @@ router.put('/leads/:id/assign', requireRole('admin', 'manager', 'contract_manage
 });
 
 // ── Convert Lead to Client ──────────────────────────────────
-router.post('/leads/:id/convert', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.post('/leads/:id/convert', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;

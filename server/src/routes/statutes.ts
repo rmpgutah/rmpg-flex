@@ -9,6 +9,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
+import { validateParamId, escapeLike } from '../middleware/sanitize';
 
 const router = Router();
 
@@ -53,8 +54,8 @@ router.get('/', (req: Request, res: Response) => {
 
     if (q) {
       const searchStr = String(q).slice(0, 200); // Prevent excessively long search terms
-      where += ' AND (citation LIKE ? OR short_title LIKE ? OR description LIKE ? OR definition LIKE ?)';
-      const searchTerm = `%${searchStr}%`;
+      where += " AND (citation LIKE ? ESCAPE '\\' OR short_title LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\' OR definition LIKE ? ESCAPE '\\')";
+      const searchTerm = `%${escapeLike(searchStr)}%`;
       params.push(searchTerm, searchTerm, searchTerm, searchTerm);
     }
 
@@ -121,8 +122,8 @@ router.get('/search', (req: Request, res: Response) => {
       return;
     }
 
-    let where = 'WHERE is_active = 1 AND (citation LIKE ? OR short_title LIKE ?)';
-    const searchTerm = `%${q}%`;
+    let where = "WHERE is_active = 1 AND (citation LIKE ? ESCAPE '\\' OR short_title LIKE ? ESCAPE '\\')";
+    const searchTerm = `%${escapeLike(String(q))}%`;
     const params: any[] = [searchTerm, searchTerm];
 
     if (state) {
@@ -140,10 +141,10 @@ router.get('/search', (req: Request, res: Response) => {
       FROM utah_statutes
       ${where}
       ORDER BY
-        CASE WHEN citation LIKE ? THEN 0 ELSE 1 END,
+        CASE WHEN citation LIKE ? ESCAPE '\\' THEN 0 ELSE 1 END,
         state, title, chapter, section
       LIMIT ?
-    `).all(...params, `${q}%`, limitNum);
+    `).all(...params, `${escapeLike(String(q))}%`, limitNum);
 
     res.json({ data: statutes });
   } catch (error: any) {
@@ -153,7 +154,7 @@ router.get('/search', (req: Request, res: Response) => {
 });
 
 // GET /api/statutes/:id — Get single statute
-router.get('/:id', (req: Request, res: Response) => {
+router.get('/:id', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const statute = db.prepare('SELECT * FROM utah_statutes WHERE id = ?').get(req.params.id);
@@ -194,7 +195,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
 });
 
 // PUT /api/statutes/:id — Update statute (admin only)
-router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { citation, short_title, description, definition, offense_level, category, subcategory, is_active } = req.body;
@@ -232,7 +233,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
 });
 
 // DELETE /api/statutes/:id — Deactivate statute (admin only)
-router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     db.prepare('UPDATE utah_statutes SET is_active = 0 WHERE id = ?').run(req.params.id);

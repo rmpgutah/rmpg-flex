@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { validateParamId } from '../middleware/sanitize';
 import { sendCsv } from '../utils/csvExport';
 import { localNow } from '../utils/timeUtils';
 
@@ -107,7 +108,7 @@ router.post('/checkpoints', requireRole('admin', 'manager', 'supervisor'), (req:
 });
 
 // PUT /api/patrol/checkpoints/:id - Update checkpoint
-router.put('/checkpoints/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/checkpoints/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { property_id, name, description, latitude, longitude, scan_required_interval_minutes, is_active } = req.body;
@@ -165,7 +166,7 @@ router.put('/checkpoints/:id', requireRole('admin', 'manager', 'supervisor'), (r
 });
 
 // DELETE /api/patrol/checkpoints/:id - Delete checkpoint
-router.delete('/checkpoints/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.delete('/checkpoints/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const db = getDb();
@@ -197,7 +198,7 @@ router.delete('/checkpoints/:id', requireRole('admin', 'manager', 'supervisor'),
 });
 
 // POST /api/patrol/checkpoints/:id/archive
-router.post('/checkpoints/:id/archive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/checkpoints/:id/archive', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const checkpoint = db.prepare('SELECT * FROM patrol_checkpoints WHERE id = ?').get(req.params.id) as any;
@@ -220,7 +221,7 @@ router.post('/checkpoints/:id/archive', requireRole('admin', 'manager', 'supervi
 });
 
 // POST /api/patrol/checkpoints/:id/unarchive
-router.post('/checkpoints/:id/unarchive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/checkpoints/:id/unarchive', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const checkpoint = db.prepare('SELECT * FROM patrol_checkpoints WHERE id = ?').get(req.params.id) as any;
@@ -354,6 +355,7 @@ router.get('/scans/export', requireRole('admin', 'manager', 'supervisor'), (req:
       LEFT JOIN users u ON ps.officer_id = u.id
       ${whereClause}
       ORDER BY ps.scanned_at DESC
+      LIMIT 50000
     `).all(...params);
 
     sendCsv(res, 'patrol_scans_export.csv', [

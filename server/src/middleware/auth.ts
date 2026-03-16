@@ -1,8 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt, { type SignOptions } from 'jsonwebtoken';
+import jwt, { type SignOptions, type VerifyOptions } from 'jsonwebtoken';
 import crypto from 'crypto';
 import config from '../config';
 import { getDb } from '../models/database';
+
+// JWT issuer/audience claims — bind tokens to this application to prevent
+// cross-application token reuse if the same JWT_SECRET were ever shared
+const JWT_ISSUER = 'rmpg-flex';
+const JWT_AUDIENCE = 'rmpg-flex-api';
 
 export interface JwtPayload {
   userId: number;
@@ -23,6 +28,13 @@ declare global {
   }
 }
 
+// Shared verify options — validates issuer/audience if present in the token,
+// but does not reject tokens missing these claims (backward-compatible during rollout)
+const JWT_VERIFY_OPTIONS: VerifyOptions = {
+  issuer: JWT_ISSUER,
+  audience: JWT_AUDIENCE,
+};
+
 export function authenticateToken(req: Request, res: Response, next: NextFunction): void {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.substring(7) : null;
@@ -33,7 +45,19 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
   }
 
   try {
-    const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
+    // Try strict verification first (with issuer/audience)
+    let decoded: JwtPayload;
+    try {
+      decoded = jwt.verify(token, config.jwt.secret, JWT_VERIFY_OPTIONS) as JwtPayload;
+    } catch (strictErr: any) {
+      // If the error is specifically about issuer/audience mismatch on a legacy token
+      // (missing iss/aud claims), fall back to basic verification for backward compat
+      if (strictErr.message?.includes('jwt issuer invalid') || strictErr.message?.includes('jwt audience invalid')) {
+        decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
+      } else {
+        throw strictErr;
+      }
+    }
 
     // Reject refresh tokens and MFA-pending tokens used as access tokens
     if (decoded.type === 'refresh' || decoded.type === 'mfa_pending') {
@@ -127,7 +151,11 @@ export function requireRole(...roles: string[]) {
 }
 
 export function generateAccessToken(payload: Omit<JwtPayload, 'type'>): string {
-  const options: SignOptions = { expiresIn: config.jwt.accessExpiry as SignOptions['expiresIn'] };
+  const options: SignOptions = {
+    expiresIn: config.jwt.accessExpiry as SignOptions['expiresIn'],
+    issuer: JWT_ISSUER,
+    audience: JWT_AUDIENCE,
+  };
   return jwt.sign(
     { ...payload, type: 'access' },
     config.jwt.secret,
@@ -136,7 +164,11 @@ export function generateAccessToken(payload: Omit<JwtPayload, 'type'>): string {
 }
 
 export function generateRefreshToken(payload: Omit<JwtPayload, 'type'>): string {
-  const options: SignOptions = { expiresIn: config.jwt.refreshExpiry as SignOptions['expiresIn'] };
+  const options: SignOptions = {
+    expiresIn: config.jwt.refreshExpiry as SignOptions['expiresIn'],
+    issuer: JWT_ISSUER,
+    audience: JWT_AUDIENCE,
+  };
   return jwt.sign(
     { ...payload, type: 'refresh' },
     config.jwt.secret,
@@ -145,7 +177,16 @@ export function generateRefreshToken(payload: Omit<JwtPayload, 'type'>): string 
 }
 
 export function verifyRefreshToken(token: string): JwtPayload {
-  const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
+  let decoded: JwtPayload;
+  try {
+    decoded = jwt.verify(token, config.jwt.secret, JWT_VERIFY_OPTIONS) as JwtPayload;
+  } catch (err: any) {
+    if (err.message?.includes('jwt issuer invalid') || err.message?.includes('jwt audience invalid')) {
+      decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
+    } else {
+      throw err;
+    }
+  }
   if (decoded.type !== 'refresh') {
     throw new Error('Invalid token type');
   }
@@ -157,7 +198,7 @@ export function generate2faPendingToken(payload: Omit<JwtPayload, 'type'>): stri
   return jwt.sign(
     { ...payload, type: 'mfa_pending' },
     config.jwt.secret,
-    { expiresIn: '5m' }
+    { expiresIn: '5m', issuer: JWT_ISSUER, audience: JWT_AUDIENCE }
   );
 }
 
@@ -172,7 +213,16 @@ export function authenticateTempToken(req: Request, res: Response, next: NextFun
   }
 
   try {
-    const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
+    let decoded: JwtPayload;
+    try {
+      decoded = jwt.verify(token, config.jwt.secret, JWT_VERIFY_OPTIONS) as JwtPayload;
+    } catch (strictErr: any) {
+      if (strictErr.message?.includes('jwt issuer invalid') || strictErr.message?.includes('jwt audience invalid')) {
+        decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
+      } else {
+        throw strictErr;
+      }
+    }
 
     if (decoded.type !== 'mfa_pending') {
       res.status(403).json({ error: 'Invalid token type — MFA token required' });
@@ -201,7 +251,16 @@ export function authenticateAnyToken(req: Request, res: Response, next: NextFunc
   }
 
   try {
-    const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
+    let decoded: JwtPayload;
+    try {
+      decoded = jwt.verify(token, config.jwt.secret, JWT_VERIFY_OPTIONS) as JwtPayload;
+    } catch (strictErr: any) {
+      if (strictErr.message?.includes('jwt issuer invalid') || strictErr.message?.includes('jwt audience invalid')) {
+        decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
+      } else {
+        throw strictErr;
+      }
+    }
 
     // Block refresh tokens — they should never be used as access tokens
     if (decoded.type === 'refresh') {
@@ -222,7 +281,11 @@ export function authenticateAnyToken(req: Request, res: Response, next: NextFunc
 
 export function generateTempToken(payload: Omit<JwtPayload, 'type'>, pendingActions: string[] = []): string {
   const expiryStr = (config as any).twoFactor?.tempTokenExpiry || '5m';
-  const options: SignOptions = { expiresIn: expiryStr as SignOptions['expiresIn'] };
+  const options: SignOptions = {
+    expiresIn: expiryStr as SignOptions['expiresIn'],
+    issuer: JWT_ISSUER,
+    audience: JWT_AUDIENCE,
+  };
   return jwt.sign(
     { ...payload, type: 'mfa_pending', pendingActions },
     config.jwt.secret,

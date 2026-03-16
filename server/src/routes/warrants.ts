@@ -14,7 +14,7 @@ import {
   getCourtRecordStats,
 } from '../utils/courtRecordsScraper';
 import { createNotificationForRoles } from './notifications';
-import { escapeLike } from '../middleware/sanitize';
+import { escapeLike, validateParamId } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
@@ -370,7 +370,7 @@ router.post('/watch/scan', requireRole('admin', 'manager', 'supervisor'), async 
 });
 
 // GET /api/warrants/:id - Get single warrant with details
-router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
 
@@ -529,7 +529,7 @@ router.post('/', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), (r
 });
 
 // PUT /api/warrants/:id - Update warrant
-router.put('/:id', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), (req: Request, res: Response) => {
+router.put('/:id', validateParamId, requireRole('dispatcher', 'supervisor', 'admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
 
@@ -609,7 +609,7 @@ router.put('/:id', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), 
 });
 
 // PUT /api/warrants/:id/serve - Serve a warrant
-router.put('/:id/serve', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/:id/serve', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
 
@@ -685,7 +685,7 @@ router.put('/:id/serve', requireRole('admin', 'manager', 'supervisor', 'officer'
 });
 
 // DELETE /api/warrants/:id - Delete warrant (non-active only)
-router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const warrant = db.prepare('SELECT * FROM warrants WHERE id = ?').get(req.params.id) as any;
@@ -705,7 +705,7 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
 });
 
 // POST /api/warrants/:id/archive
-router.post('/:id/archive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/:id/archive', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const warrant = db.prepare('SELECT * FROM warrants WHERE id = ?').get(req.params.id) as any;
@@ -730,7 +730,7 @@ router.post('/:id/archive', requireRole('admin', 'manager', 'supervisor'), (req:
 });
 
 // POST /api/warrants/:id/unarchive
-router.post('/:id/unarchive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/:id/unarchive', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const warrant = db.prepare('SELECT * FROM warrants WHERE id = ?').get(req.params.id) as any;

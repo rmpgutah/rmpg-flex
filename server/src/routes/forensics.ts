@@ -12,6 +12,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 import { auditLog } from '../utils/auditLogger';
 import { computeFileHashes, computeContentFingerprint } from '../utils/ipedManager';
+import { validateParamId, escapeLike } from '../middleware/sanitize';
 import path from 'path';
 import fs from 'fs';
 
@@ -95,8 +96,8 @@ router.get('/', (req: Request, res: Response) => {
     if (priority) { where += ' AND fc.priority = ?'; params.push(priority); }
     if (examiner) { where += ' AND fc.assigned_examiner_id = ?'; params.push(examiner); }
     if (search) {
-      where += ` AND (fc.lab_case_number LIKE ? OR fc.title LIKE ? OR fc.synopsis LIKE ? OR fc.requesting_officer_name LIKE ?)`;
-      const s = `%${search}%`;
+      where += ` AND (fc.lab_case_number LIKE ? ESCAPE '\\' OR fc.title LIKE ? ESCAPE '\\' OR fc.synopsis LIKE ? ESCAPE '\\' OR fc.requesting_officer_name LIKE ? ESCAPE '\\')`;
+      const s = `%${escapeLike(String(search))}%`;
       params.push(s, s, s, s);
     }
 
@@ -127,7 +128,7 @@ router.get('/', (req: Request, res: Response) => {
 
 // ─── GET /:id — Get single case with details ─────────────
 
-router.get('/:id', (req: Request, res: Response) => {
+router.get('/:id', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.id) as any;
@@ -198,7 +199,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
 
 // ─── PUT /:id — Update forensic case ─────────────────────
 
-router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -299,7 +300,7 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (re
 
 // ─── DELETE /:id ─────────────────────────────────────────
 
-router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.id);
@@ -318,7 +319,7 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
 
 // ─── GET /:id/exhibits ───────────────────────────────────
 
-router.get('/:id/exhibits', (req: Request, res: Response) => {
+router.get('/:id/exhibits', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const exhibits = db.prepare('SELECT * FROM forensic_exhibits WHERE forensic_case_id = ? ORDER BY exhibit_number').all(req.params.id);
@@ -330,7 +331,7 @@ router.get('/:id/exhibits', (req: Request, res: Response) => {
 
 // ─── POST /:id/exhibits ─────────────────────────────────
 
-router.post('/:id/exhibits', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/:id/exhibits', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -401,7 +402,7 @@ router.put('/:caseId/exhibits/:exhibitId', requireRole('admin', 'manager', 'supe
 
 // ─── GET /:id/analyses ───────────────────────────────────
 
-router.get('/:id/analyses', (req: Request, res: Response) => {
+router.get('/:id/analyses', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const analyses = db.prepare('SELECT * FROM forensic_analyses WHERE forensic_case_id = ? ORDER BY created_at DESC').all(req.params.id);
@@ -413,7 +414,7 @@ router.get('/:id/analyses', (req: Request, res: Response) => {
 
 // ─── POST /:id/analyses ─────────────────────────────────
 
-router.post('/:id/analyses', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/:id/analyses', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -494,7 +495,7 @@ router.put('/:caseId/analyses/:analysisId', requireRole('admin', 'manager', 'sup
 
 // ═══ TIMELINE ═══════════════════════════════════════════
 
-router.get('/:id/timeline', (req: Request, res: Response) => {
+router.get('/:id/timeline', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const timeline = db.prepare('SELECT * FROM forensic_timeline WHERE forensic_case_id = ? ORDER BY created_at DESC').all(req.params.id);
@@ -506,7 +507,7 @@ router.get('/:id/timeline', (req: Request, res: Response) => {
 
 // ─── POST /:id/timeline — Add manual note/entry ──────────
 
-router.post('/:id/timeline', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/:id/timeline', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -524,7 +525,7 @@ router.post('/:id/timeline', requireRole('admin', 'manager', 'supervisor', 'offi
 
 // ─── GET /:id/hashes — List hashes for a forensic case ──
 
-router.get('/:id/hashes', (req: Request, res: Response) => {
+router.get('/:id/hashes', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const caseRow = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.id) as any;
@@ -552,7 +553,7 @@ router.get('/:id/hashes', (req: Request, res: Response) => {
 
 // ─── POST /:id/hashes/compute — Compute hashes for an exhibit's file or a direct path ──
 
-router.post('/:id/hashes/compute', requireRole('admin', 'manager', 'supervisor', 'officer'), async (req: Request, res: Response) => {
+router.post('/:id/hashes/compute', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), async (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -675,7 +676,7 @@ router.post('/:id/hashes/compute', requireRole('admin', 'manager', 'supervisor',
 
 // ─── POST /:id/hashes/manual — Manually add a hash record (e.g., from external tools) ──
 
-router.post('/:id/hashes/manual', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/:id/hashes/manual', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -726,7 +727,7 @@ router.post('/:id/hashes/manual', requireRole('admin', 'manager', 'supervisor', 
 
 // ─── PUT /:id/hashes/:hashId — Update hash record (flag, review, set match) ──
 
-router.put('/:id/hashes/:hashId', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/:id/hashes/:hashId', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -787,7 +788,7 @@ router.put('/:id/hashes/:hashId', requireRole('admin', 'manager', 'supervisor', 
 
 // ─── DELETE /:id/hashes/:hashId — Delete hash record ──
 
-router.delete('/:id/hashes/:hashId', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/:id/hashes/:hashId', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare(`
@@ -813,7 +814,7 @@ router.delete('/:id/hashes/:hashId', requireRole('admin', 'manager'), (req: Requ
 
 // ─── POST /:id/hashes/verify — Verify a hash against known hash sets ──
 
-router.post('/:id/hashes/verify', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/:id/hashes/verify', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { hash_value, hash_type = 'sha256' } = req.body;
@@ -919,7 +920,7 @@ function resolveLinkedRecord(type: string, id: number): any {
 }
 
 // ─── GET /:id/links — List all linked evidence for a case ────
-router.get('/:id/links', (req: Request, res: Response) => {
+router.get('/:id/links', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const caseId = parseInt(req.params.id as string, 10);
@@ -959,7 +960,7 @@ router.get('/:id/links', (req: Request, res: Response) => {
 });
 
 // ─── POST /:id/links — Link evidence to a forensic case ─────
-router.post('/:id/links', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/:id/links', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const caseId = parseInt(req.params.id as string, 10);
@@ -1000,7 +1001,7 @@ router.post('/:id/links', requireRole('admin', 'manager', 'supervisor', 'officer
 });
 
 // ─── PUT /:id/links/:linkId — Update link metadata ──────────
-router.put('/:id/links/:linkId', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/:id/links/:linkId', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const caseId = parseInt(req.params.id as string, 10);
@@ -1040,7 +1041,7 @@ router.put('/:id/links/:linkId', requireRole('admin', 'manager', 'supervisor', '
 });
 
 // ─── DELETE /:id/links/:linkId — Remove a link ──────────────
-router.delete('/:id/links/:linkId', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/:id/links/:linkId', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const caseId = parseInt(req.params.id as string, 10);
@@ -1065,7 +1066,7 @@ router.delete('/:id/links/:linkId', requireRole('admin', 'manager'), (req: Reque
 });
 
 // ─── GET /:id/links/search — Search available records to link ─
-router.get('/:id/links/search', (req: Request, res: Response) => {
+router.get('/:id/links/search', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const caseId = parseInt(req.params.id as string, 10);
@@ -1073,7 +1074,7 @@ router.get('/:id/links/search', (req: Request, res: Response) => {
 
     if (!type) return res.status(400).json({ error: 'type parameter required' });
 
-    const search = q ? `%${String(q).toLowerCase()}%` : '%';
+    const search = q ? `%${escapeLike(String(q).toLowerCase())}%` : '%';
 
     // Get already-linked IDs for this type so we can mark them
     const alreadyLinked = db.prepare(
@@ -1088,7 +1089,7 @@ router.get('/:id/links/search', (req: Request, res: Response) => {
           SELECT bv.id, bv.title, bv.classification, bv.case_number, bv.recorded_at, bv.file_size,
             u.full_name as officer_name
           FROM bodycam_videos bv LEFT JOIN users u ON bv.officer_id = u.id
-          WHERE LOWER(bv.title) LIKE ? OR LOWER(bv.case_number) LIKE ? OR LOWER(u.full_name) LIKE ?
+          WHERE LOWER(bv.title) LIKE ? ESCAPE '\\' OR LOWER(bv.case_number) LIKE ? ESCAPE '\\' OR LOWER(u.full_name) LIKE ? ESCAPE '\\'
           ORDER BY bv.created_at DESC LIMIT 50
         `).all(search, search, search);
         break;
@@ -1097,7 +1098,7 @@ router.get('/:id/links/search', (req: Request, res: Response) => {
         results = db.prepare(`
           SELECT id, cpg_device_id, event_type, event_timestamp, speed_mph, address
           FROM dashcam_events
-          WHERE LOWER(address) LIKE ? OR LOWER(event_type) LIKE ? OR LOWER(cpg_device_id) LIKE ?
+          WHERE LOWER(address) LIKE ? ESCAPE '\\' OR LOWER(event_type) LIKE ? ESCAPE '\\' OR LOWER(cpg_device_id) LIKE ? ESCAPE '\\'
           ORDER BY event_timestamp DESC LIMIT 50
         `).all(search, search, search);
         break;
@@ -1107,7 +1108,7 @@ router.get('/:id/links/search', (req: Request, res: Response) => {
           SELECT e.id, e.evidence_number, e.description, e.evidence_type, e.status,
             u.full_name as collected_by_name
           FROM evidence e LEFT JOIN users u ON e.collected_by = u.id
-          WHERE LOWER(e.evidence_number) LIKE ? OR LOWER(e.description) LIKE ? OR LOWER(e.evidence_type) LIKE ?
+          WHERE LOWER(e.evidence_number) LIKE ? ESCAPE '\\' OR LOWER(e.description) LIKE ? ESCAPE '\\' OR LOWER(e.evidence_type) LIKE ? ESCAPE '\\'
           ORDER BY e.created_at DESC LIMIT 50
         `).all(search, search, search);
         break;
@@ -1117,7 +1118,7 @@ router.get('/:id/links/search', (req: Request, res: Response) => {
           SELECT a.id, a.original_name, a.mime_type, a.file_size, a.entity_type, a.entity_id,
             u.full_name as uploaded_by_name
           FROM attachments a LEFT JOIN users u ON a.uploaded_by = u.id
-          WHERE LOWER(a.original_name) LIKE ?
+          WHERE LOWER(a.original_name) LIKE ? ESCAPE '\\'
           ORDER BY a.created_at DESC LIMIT 50
         `).all(search);
         break;
@@ -1127,7 +1128,7 @@ router.get('/:id/links/search', (req: Request, res: Response) => {
           SELECT i.id, i.incident_number, i.incident_type, i.status, i.location_address,
             u.full_name as officer_name
           FROM incidents i LEFT JOIN users u ON i.officer_id = u.id
-          WHERE LOWER(i.incident_number) LIKE ? OR LOWER(i.incident_type) LIKE ? OR LOWER(i.location_address) LIKE ?
+          WHERE LOWER(i.incident_number) LIKE ? ESCAPE '\\' OR LOWER(i.incident_type) LIKE ? ESCAPE '\\' OR LOWER(i.location_address) LIKE ? ESCAPE '\\'
           ORDER BY i.created_at DESC LIMIT 50
         `).all(search, search, search);
         break;
@@ -1137,7 +1138,7 @@ router.get('/:id/links/search', (req: Request, res: Response) => {
           SELECT sr.id, sr.report_number, sr.subject, sr.report_type, sr.status,
             u.full_name as author_name
           FROM supplemental_reports sr LEFT JOIN users u ON sr.author_id = u.id
-          WHERE LOWER(sr.report_number) LIKE ? OR LOWER(sr.subject) LIKE ?
+          WHERE LOWER(sr.report_number) LIKE ? ESCAPE '\\' OR LOWER(sr.subject) LIKE ? ESCAPE '\\'
           ORDER BY sr.created_at DESC LIMIT 50
         `).all(search, search);
         break;
@@ -1146,7 +1147,7 @@ router.get('/:id/links/search', (req: Request, res: Response) => {
         results = db.prepare(`
           SELECT c.id, c.case_number, c.title, c.case_type, c.status, c.priority
           FROM cases c
-          WHERE LOWER(c.case_number) LIKE ? OR LOWER(c.title) LIKE ?
+          WHERE LOWER(c.case_number) LIKE ? ESCAPE '\\' OR LOWER(c.title) LIKE ? ESCAPE '\\'
           ORDER BY c.created_at DESC LIMIT 50
         `).all(search, search);
         break;
@@ -1155,7 +1156,7 @@ router.get('/:id/links/search', (req: Request, res: Response) => {
         results = db.prepare(`
           SELECT id, channel, recorded_at, duration_seconds
           FROM radio_transcripts
-          WHERE LOWER(channel) LIKE ? OR LOWER(transcript_text) LIKE ?
+          WHERE LOWER(channel) LIKE ? ESCAPE '\\' OR LOWER(transcript_text) LIKE ? ESCAPE '\\'
           ORDER BY recorded_at DESC LIMIT 50
         `).all(search, search);
         break;
@@ -1164,7 +1165,7 @@ router.get('/:id/links/search', (req: Request, res: Response) => {
         results = db.prepare(`
           SELECT id, fi_number, subject_name, location, reason, status
           FROM field_interviews
-          WHERE LOWER(fi_number) LIKE ? OR LOWER(subject_name) LIKE ? OR LOWER(location) LIKE ?
+          WHERE LOWER(fi_number) LIKE ? ESCAPE '\\' OR LOWER(subject_name) LIKE ? ESCAPE '\\' OR LOWER(location) LIKE ? ESCAPE '\\'
           ORDER BY created_at DESC LIMIT 50
         `).all(search, search, search);
         break;
@@ -1173,7 +1174,7 @@ router.get('/:id/links/search', (req: Request, res: Response) => {
         results = db.prepare(`
           SELECT id, citation_number, violation_description, violator_name, status, issued_date
           FROM citations
-          WHERE LOWER(citation_number) LIKE ? OR LOWER(violation_description) LIKE ? OR LOWER(violator_name) LIKE ?
+          WHERE LOWER(citation_number) LIKE ? ESCAPE '\\' OR LOWER(violation_description) LIKE ? ESCAPE '\\' OR LOWER(violator_name) LIKE ? ESCAPE '\\'
           ORDER BY created_at DESC LIMIT 50
         `).all(search, search, search);
         break;
@@ -1182,7 +1183,7 @@ router.get('/:id/links/search', (req: Request, res: Response) => {
         results = db.prepare(`
           SELECT id, dar_number, officer_name, shift_date, status
           FROM daily_activity_reports
-          WHERE LOWER(dar_number) LIKE ? OR LOWER(officer_name) LIKE ?
+          WHERE LOWER(dar_number) LIKE ? ESCAPE '\\' OR LOWER(officer_name) LIKE ? ESCAPE '\\'
           ORDER BY created_at DESC LIMIT 50
         `).all(search, search);
         break;
@@ -1205,7 +1206,7 @@ router.get('/:id/links/search', (req: Request, res: Response) => {
 });
 
 // ─── GET /:id/links/summary — Case linkage summary for formatting ─
-router.get('/:id/links/summary', (req: Request, res: Response) => {
+router.get('/:id/links/summary', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const caseId = parseInt(req.params.id as string, 10);

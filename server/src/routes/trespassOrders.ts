@@ -5,7 +5,7 @@ import { broadcast } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
 import { createNotificationForRoles } from './notifications';
 import { resolveDistrict } from '../utils/districtResolver';
-import { escapeLike } from '../middleware/sanitize';
+import { escapeLike, validateParamId } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
@@ -126,7 +126,7 @@ router.get('/check', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
 });
 
 // GET /:id — Single order detail
-router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare(`
@@ -253,7 +253,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
 });
 
 // PUT /:id — Update order
-router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -295,7 +295,7 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (re
 });
 
 // PUT /:id/serve — Mark order as served
-router.put('/:id/serve', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/:id/serve', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -317,7 +317,7 @@ router.put('/:id/serve', requireRole('admin', 'manager', 'supervisor', 'officer'
 });
 
 // PUT /:id/lift — Lift order
-router.put('/:id/lift', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/:id/lift', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -337,7 +337,7 @@ router.put('/:id/lift', requireRole('admin', 'manager', 'supervisor'), (req: Req
 });
 
 // PUT /:id/violate — Record violation
-router.put('/:id/violate', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/:id/violate', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();

@@ -14,6 +14,7 @@ import { getDb } from '../models/database';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { validateParamId } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
 import { auditLog } from '../utils/auditLogger';
 import {
@@ -271,7 +272,7 @@ router.get('/jobs', (req: Request, res: Response) => {
 });
 
 // ── GET /jobs/:id — Job details ─────────────────────────────
-router.get('/jobs/:id', (req: Request, res: Response) => {
+router.get('/jobs/:id', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id as string, 10);
@@ -301,7 +302,7 @@ router.get('/jobs/:id', (req: Request, res: Response) => {
 });
 
 // ── POST /jobs/:id/cancel — Cancel running job ──────────────
-router.post('/jobs/:id/cancel', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/jobs/:id/cancel', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });

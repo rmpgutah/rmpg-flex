@@ -752,6 +752,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
           Authorization: `Bearer ${tempToken}`,
         },
         body: JSON.stringify({ newPassword, deviceFingerprint: deviceFingerprintRef.current }),

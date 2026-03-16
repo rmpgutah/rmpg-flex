@@ -20,6 +20,7 @@ import { authRateLimit, mfaRateLimit, refreshRateLimit, passwordRateLimit } from
 import { validatePassword, getPasswordPolicyDescription, checkPasswordHistory, isPasswordExpired } from '../middleware/validatePassword';
 import config from '../config';
 import { localNow } from '../utils/timeUtils';
+import { auditLog } from '../utils/auditLogger';
 import {
   generateTotpSecret as legacyGenerateTotpSecret,
   generateQrCodeDataUrl,
@@ -497,6 +498,15 @@ router.post('/refresh', refreshRateLimit, (req: Request, res: Response) => {
     if (!session) {
       res.status(401).json({ error: 'Session not found or expired', code: 'SESSION_INVALID' });
       return;
+    }
+
+    // Detect device fingerprint mismatch — potential token theft
+    const currentUa = req.headers['user-agent'] || '';
+    const currentUaHash = crypto.createHash('sha256').update(currentUa).digest('hex').slice(0, 16);
+    if (session.ua_hash && currentUaHash !== session.ua_hash) {
+      console.warn(`[Security] Session refresh UA mismatch for user ${decoded.userId} session ${session.session_id} — stored=${session.ua_hash} current=${currentUaHash}`);
+      auditLog(req, 'session_anomaly' as any, 'user' as any, decoded.userId,
+        `Refresh token used from different user-agent for session ${session.session_id} (possible token theft)`);
     }
 
     const user = db.prepare('SELECT id, status, role, full_name, username FROM users WHERE id = ?')

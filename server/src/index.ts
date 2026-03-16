@@ -133,6 +133,10 @@ app.use(securityHeaders);
 app.use(cors({
   origin: config.corsOrigins,
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'X-CSRF-Token'],
+  exposedHeaders: ['X-Request-ID', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'Retry-After'],
+  maxAge: 600, // 10 minutes — browser caches preflight results
 }));
 
 // ─── GitHub Webhook (must come BEFORE express.json() for raw body HMAC) ──
@@ -466,8 +470,9 @@ app.get('*', (req, res) => {
 
 // ─── Global Error Handler ────────────────────────────
 // Catches unhandled middleware errors (multer, body-parser, etc.)
-app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error('Unhandled Express error:', err?.message || err, err?.stack || '');
+app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const requestId = req.headers['x-request-id'] || '';
+  console.error(`[${requestId}] Unhandled Express error:`, err?.message || err, err?.stack || '');
   if (!res.headersSent) {
     res.status(500).json({ error: 'Internal server error' });
   }

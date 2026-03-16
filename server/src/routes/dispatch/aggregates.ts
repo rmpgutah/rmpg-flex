@@ -6,6 +6,7 @@ import { generateCallNumber } from '../../utils/caseNumbers';
 import { localNow } from '../../utils/timeUtils';
 import { reverseGeocodeAddress } from '../../utils/geocode';
 import { identifyBeat } from '../../utils/geofence';
+import { escapeLike } from '../../middleware/sanitize';
 
 const router = Router();
 
@@ -340,7 +341,7 @@ router.get('/premise-history', requireRole('admin', 'manager', 'supervisor', 'of
       return;
     }
 
-    const searchTerm = `%${address}%`;
+    const searchTerm = `%${escapeLike(String(address))}%`;
 
     // Find prior calls at this address (fuzzy match on location_address)
     const calls = db.prepare(`
@@ -349,7 +350,7 @@ router.get('/premise-history', requireRole('admin', 'manager', 'supervisor', 'of
         c.weapons_involved, c.domestic_violence, c.injuries_reported,
         c.alcohol_involved, c.drugs_involved, c.description
       FROM calls_for_service c
-      WHERE c.location_address LIKE ?
+      WHERE c.location_address LIKE ? ESCAPE '\\'
       ORDER BY c.created_at DESC
       LIMIT 20
     `).all(searchTerm) as any[];
@@ -381,7 +382,7 @@ router.get('/premise-history', requireRole('admin', 'manager', 'supervisor', 'of
     let propertyHazard: string | null = null;
     try {
       const prop = db.prepare(`
-        SELECT hazard_notes FROM properties WHERE address LIKE ? AND hazard_notes IS NOT NULL LIMIT 1
+        SELECT hazard_notes FROM properties WHERE address LIKE ? ESCAPE '\\' AND hazard_notes IS NOT NULL LIMIT 1
       `).get(searchTerm) as any;
       if (prop?.hazard_notes) {
         propertyHazard = prop.hazard_notes;
@@ -424,21 +425,21 @@ router.get('/safety-screen', requireRole('admin', 'manager', 'supervisor', 'offi
       // Try both orderings: "first last" and "last, first"
       personRows = db.prepare(`
         SELECT * FROM persons
-        WHERE (first_name LIKE ? AND last_name LIKE ?)
-           OR (first_name LIKE ? AND last_name LIKE ?)
-           OR (first_name || ' ' || last_name LIKE ?)
+        WHERE (first_name LIKE ? ESCAPE '\\' AND last_name LIKE ? ESCAPE '\\')
+           OR (first_name LIKE ? ESCAPE '\\' AND last_name LIKE ? ESCAPE '\\')
+           OR (first_name || ' ' || last_name LIKE ? ESCAPE '\\')
         LIMIT 10
       `).all(
-        `%${parts[0]}%`, `%${parts[1]}%`,
-        `%${parts[1]}%`, `%${parts[0]}%`,
-        `%${searchName}%`
+        `%${escapeLike(parts[0])}%`, `%${escapeLike(parts[1])}%`,
+        `%${escapeLike(parts[1])}%`, `%${escapeLike(parts[0])}%`,
+        `%${escapeLike(searchName)}%`
       );
     } else if (parts.length === 1) {
       personRows = db.prepare(`
         SELECT * FROM persons
-        WHERE first_name LIKE ? OR last_name LIKE ?
+        WHERE first_name LIKE ? ESCAPE '\\' OR last_name LIKE ? ESCAPE '\\'
         LIMIT 10
-      `).all(`%${parts[0]}%`, `%${parts[0]}%`);
+      `).all(`%${escapeLike(parts[0])}%`, `%${escapeLike(parts[0])}%`);
     }
 
     // Enrich each person with warrants and criminal history
@@ -464,12 +465,12 @@ router.get('/safety-screen', requireRole('admin', 'manager', 'supervisor', 'offi
         FROM warrants w
         LEFT JOIN persons p ON w.subject_person_id = p.id
         WHERE w.status = 'active'
-          AND ((p.first_name LIKE ? AND p.last_name LIKE ?)
-            OR (p.first_name LIKE ? AND p.last_name LIKE ?))
+          AND ((p.first_name LIKE ? ESCAPE '\\' AND p.last_name LIKE ? ESCAPE '\\')
+            OR (p.first_name LIKE ? ESCAPE '\\' AND p.last_name LIKE ? ESCAPE '\\'))
         LIMIT 10
       `).all(
-        `%${parts[0]}%`, `%${parts[1]}%`,
-        `%${parts[1]}%`, `%${parts[0]}%`
+        `%${escapeLike(parts[0])}%`, `%${escapeLike(parts[1])}%`,
+        `%${escapeLike(parts[1])}%`, `%${escapeLike(parts[0])}%`
       );
     } else if (parts.length === 1) {
       directWarrantHits = db.prepare(`
@@ -477,9 +478,9 @@ router.get('/safety-screen', requireRole('admin', 'manager', 'supervisor', 'offi
         FROM warrants w
         LEFT JOIN persons p ON w.subject_person_id = p.id
         WHERE w.status = 'active'
-          AND (p.first_name LIKE ? OR p.last_name LIKE ?)
+          AND (p.first_name LIKE ? ESCAPE '\\' OR p.last_name LIKE ? ESCAPE '\\')
         LIMIT 10
-      `).all(`%${parts[0]}%`, `%${parts[0]}%`);
+      `).all(`%${escapeLike(parts[0])}%`, `%${escapeLike(parts[0])}%`);
     }
 
     // Deduplicate warrant hits (already found via person enrichment)

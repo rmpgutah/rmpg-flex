@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { validateParamId } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
 
 const router = Router();
@@ -46,7 +47,7 @@ router.get('/', (req: Request, res: Response) => {
 });
 
 // ─── GET /api/company-documents/:id ─── Get single document ───
-router.get('/:id', (req: Request, res: Response) => {
+router.get('/:id', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const docId = parseInt(String(req.params.id), 10);
@@ -123,7 +124,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
 });
 
 // ─── PUT /api/company-documents/:id ─── Update document (admin/manager) ───
-router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(String(req.params.id), 10);
@@ -184,7 +185,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
 });
 
 // ─── DELETE /api/company-documents/:id ─── Delete document (admin/manager) ───
-router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(String(req.params.id), 10);

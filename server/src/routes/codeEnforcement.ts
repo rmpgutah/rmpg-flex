@@ -9,6 +9,7 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { validateParamId, escapeLike } from '../middleware/sanitize';
 import { localNow, localToday } from '../utils/timeUtils';
 import { resolveDistrict } from '../utils/districtResolver';
 import { auditLog } from '../utils/auditLogger';
@@ -79,8 +80,8 @@ router.get('/violations', (req: Request, res: Response) => {
     if (violation_type) { where += ' AND violation_type = ?'; params.push(violation_type); }
     if (severity) { where += ' AND severity = ?'; params.push(severity); }
     if (search) {
-      where += ' AND (violation_number LIKE ? OR location LIKE ? OR description LIKE ? OR violator_name LIKE ?)';
-      const s = `%${search}%`; params.push(s, s, s, s);
+      where += " AND (violation_number LIKE ? ESCAPE '\\' OR location LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\' OR violator_name LIKE ? ESCAPE '\\')";
+      const s = `%${escapeLike(String(search))}%`; params.push(s, s, s, s);
     }
 
     const total = (db.prepare(`SELECT COUNT(*) as count FROM code_violations ${where}`).get(...params) as any)?.count || 0;
@@ -92,7 +93,7 @@ router.get('/violations', (req: Request, res: Response) => {
   }
 });
 
-router.get('/violations/:id', (req: Request, res: Response) => {
+router.get('/violations/:id', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare('SELECT * FROM code_violations WHERE id = ?').get(req.params.id);
@@ -152,7 +153,7 @@ router.post('/violations', requireRole('admin', 'manager', 'supervisor', 'office
   }
 });
 
-router.put('/violations/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/violations/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT id FROM code_violations WHERE id = ?').get(req.params.id);
@@ -174,7 +175,7 @@ router.put('/violations/:id', requireRole('admin', 'manager', 'supervisor', 'off
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.put('/violations/:id/status', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/violations/:id/status', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT id FROM code_violations WHERE id = ?').get(req.params.id);
@@ -213,8 +214,8 @@ router.get('/tows', (req: Request, res: Response) => {
     const params: any[] = [];
     if (status) { where += ' AND status = ?'; params.push(status); }
     if (search) {
-      where += ' AND (tow_number LIKE ? OR vehicle_plate LIKE ? OR tow_from LIKE ? OR tow_company LIKE ?)';
-      const s = `%${search}%`; params.push(s, s, s, s);
+      where += " AND (tow_number LIKE ? ESCAPE '\\' OR vehicle_plate LIKE ? ESCAPE '\\' OR tow_from LIKE ? ESCAPE '\\' OR tow_company LIKE ? ESCAPE '\\')";
+      const s = `%${escapeLike(String(search))}%`; params.push(s, s, s, s);
     }
 
     const total = (db.prepare(`SELECT COUNT(*) as count FROM vehicle_tows ${where}`).get(...params) as any)?.count || 0;
@@ -223,7 +224,7 @@ router.get('/tows', (req: Request, res: Response) => {
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.get('/tows/:id', (req: Request, res: Response) => {
+router.get('/tows/:id', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare('SELECT * FROM vehicle_tows WHERE id = ?').get(req.params.id);
@@ -273,7 +274,7 @@ router.post('/tows', requireRole('admin', 'manager', 'supervisor', 'officer'), (
   }
 });
 
-router.put('/tows/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/tows/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT id FROM vehicle_tows WHERE id = ?').get(req.params.id);
@@ -295,7 +296,7 @@ router.put('/tows/:id', requireRole('admin', 'manager', 'supervisor', 'officer')
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.put('/tows/:id/status', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/tows/:id/status', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT id FROM vehicle_tows WHERE id = ?').get(req.params.id);

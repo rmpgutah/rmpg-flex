@@ -26,6 +26,7 @@ import config from '../config';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { localNow } from '../utils/timeUtils';
+import { validateParamId } from '../middleware/sanitize';
 
 const router = Router();
 
@@ -259,7 +260,7 @@ router.post('/register-verify', authenticateToken, async (req: Request, res: Res
 
 // ─── DELETE /api/auth/webauthn/credentials/:id ──────
 // Remove a registered security key
-router.delete('/credentials/:id', authenticateToken, (req: Request, res: Response) => {
+router.delete('/credentials/:id', validateParamId, authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const credId = parseInt(req.params.id as string, 10);

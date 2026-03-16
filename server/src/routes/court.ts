@@ -9,7 +9,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
-import { escapeLike } from '../middleware/sanitize';
+import { escapeLike, validateParamId } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
@@ -123,7 +123,7 @@ router.get('/calendar', requireRole('admin', 'manager', 'supervisor', 'officer',
 });
 
 // ─── GET /events/:id ─────────────────────────────────────
-router.get('/events/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/events/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare(`
@@ -177,7 +177,7 @@ router.post('/events', requireRole('admin', 'manager', 'supervisor', 'officer'),
 });
 
 // ─── PUT /events/:id ─────────────────────────────────────
-router.put('/events/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/events/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT id FROM court_events WHERE id = ?').get(req.params.id);
@@ -204,7 +204,7 @@ router.put('/events/:id', requireRole('admin', 'manager', 'supervisor', 'officer
 });
 
 // ─── PUT /events/:id/outcome ─────────────────────────────
-router.put('/events/:id/outcome', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/events/:id/outcome', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();

@@ -1955,7 +1955,7 @@ export default function WarrantsPage() {
                               {w.source_display_name && <div><span className="text-rmpg-500">Source:</span> {w.source_display_name}</div>}
                               {w.detail_url && (
                                 <a
-                                  href={w.detail_url}
+                                  href={/^https?:\/\//i.test(w.detail_url) ? w.detail_url : '#'}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="text-brand-400 hover:text-brand-300 underline"

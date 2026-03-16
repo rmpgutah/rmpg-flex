@@ -17,7 +17,13 @@ function escapeCsvValue(value: any): string {
     return '';
   }
 
-  const str = String(value);
+  let str = String(value);
+
+  // CSV formula injection protection — prefix dangerous characters so spreadsheets
+  // don't interpret cell values as formulas (e.g., =cmd|'/C calc'!A0)
+  if (/^[=+\-@\t\r]/.test(str)) {
+    str = `'${str}`;
+  }
 
   if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
     return `"${str.replace(/"/g, '""')}"`;

@@ -643,7 +643,7 @@ export default function LeadsTab() {
                   {selectedLead.source_id && <span className="text-[10px] text-rmpg-400 font-mono">#{selectedLead.source_id}</span>}
                 </div>
                 {selectedLead.source_url && (
-                  <a href={selectedLead.source_url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-brand-400 hover:underline flex items-center gap-1">
+                  <a href={/^https?:\/\//i.test(selectedLead.source_url) ? selectedLead.source_url : '#'} target="_blank" rel="noopener noreferrer" className="text-[10px] text-brand-400 hover:underline flex items-center gap-1">
                     <ExternalLink className="w-3 h-3" /> View Source
                   </a>
                 )}

@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { validateParamId } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
 import { getConnectedClientCount } from '../utils/websocket';
 import { createNotification } from './notifications';
@@ -592,7 +593,7 @@ router.post('/announcements', requireRole('admin', 'manager'), (req: Request, re
 });
 
 // PUT /announcements/:id — Admin/manager: update announcement
-router.put('/announcements/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.put('/announcements/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM system_announcements WHERE id = ?').get(req.params.id) as any;
@@ -640,7 +641,7 @@ router.put('/announcements/:id', requireRole('admin', 'manager'), (req: Request,
 });
 
 // DELETE /announcements/:id — Admin only: delete announcement
-router.delete('/announcements/:id', requireRole('admin'), (req: Request, res: Response) => {
+router.delete('/announcements/:id', validateParamId, requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM system_announcements WHERE id = ?').get(req.params.id) as any;
@@ -680,7 +681,7 @@ router.get('/retention', requireRole('admin', 'manager'), (req: Request, res: Re
 });
 
 // PUT /retention/:id — Update a retention policy
-router.put('/retention/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.put('/retention/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM retention_policies WHERE id = ?').get(req.params.id) as any;
@@ -955,7 +956,7 @@ router.post('/departments', requireRole('admin', 'manager'), (req: Request, res:
 });
 
 // PUT /departments/:id — Update department
-router.put('/departments/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.put('/departments/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM departments WHERE id = ?').get(req.params.id) as any;
@@ -1008,7 +1009,7 @@ router.put('/departments/:id', requireRole('admin', 'manager'), (req: Request, r
 });
 
 // DELETE /departments/:id — Delete department (only if no users assigned)
-router.delete('/departments/:id', requireRole('admin'), (req: Request, res: Response) => {
+router.delete('/departments/:id', validateParamId, requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM departments WHERE id = ?').get(req.params.id) as any;
@@ -1127,7 +1128,7 @@ router.post('/notification-rules', requireRole('admin', 'manager'), (req: Reques
 });
 
 // PUT /notification-rules/:id — Update rule
-router.put('/notification-rules/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.put('/notification-rules/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM notification_rules WHERE id = ?').get(req.params.id) as any;
@@ -1179,7 +1180,7 @@ router.put('/notification-rules/:id', requireRole('admin', 'manager'), (req: Req
 });
 
 // DELETE /notification-rules/:id — Delete rule
-router.delete('/notification-rules/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/notification-rules/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM notification_rules WHERE id = ?').get(req.params.id) as any;
@@ -1203,7 +1204,7 @@ router.delete('/notification-rules/:id', requireRole('admin', 'manager'), (req: 
 });
 
 // POST /notification-rules/:id/test — Send a test notification using this rule
-router.post('/notification-rules/:id/test', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/notification-rules/:id/test', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const rule = db.prepare('SELECT * FROM notification_rules WHERE id = ?').get(req.params.id) as any;

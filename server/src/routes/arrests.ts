@@ -13,6 +13,7 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { validateParamId } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
 import config from '../config';
 import {
@@ -188,7 +189,7 @@ router.post('/manual', requireRole('admin', 'manager', 'officer', 'supervisor'),
 });
 
 // ── PUT /manual/:id — Update a booking record ───────────────
-router.put('/manual/:id', requireRole('admin', 'manager', 'officer', 'supervisor'), (req: Request, res: Response) => {
+router.put('/manual/:id', validateParamId, requireRole('admin', 'manager', 'officer', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -255,7 +256,7 @@ router.put('/manual/:id', requireRole('admin', 'manager', 'officer', 'supervisor
 });
 
 // ── DELETE /manual/:id — Delete a booking record ────────────
-router.delete('/manual/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/manual/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id as string, 10);
@@ -278,7 +279,7 @@ router.delete('/manual/:id', requireRole('admin', 'manager'), (req: Request, res
 });
 
 // ── GET /manual/:id — Get a single booking record ───────────
-router.get('/manual/:id', (req: Request, res: Response) => {
+router.get('/manual/:id', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id as string, 10);
@@ -681,7 +682,7 @@ router.put('/counties', requireRole('admin', 'manager'), (req: Request, res: Res
 });
 
 // ── GET /:id/cross-links ────────────────────────────────────
-router.get('/:id/cross-links', (req: Request, res: Response) => {
+router.get('/:id/cross-links', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id as string, 10);
@@ -695,7 +696,7 @@ router.get('/:id/cross-links', (req: Request, res: Response) => {
 
 // ── PUT /:id/link-person ────────────────────────────────────
 // Manually link an arrest record to a person record
-router.put('/:id/link-person', requireRole('admin', 'manager', 'officer', 'supervisor'), (req: Request, res: Response) => {
+router.put('/:id/link-person', validateParamId, requireRole('admin', 'manager', 'officer', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id as string, 10);
@@ -731,7 +732,7 @@ router.put('/:id/link-person', requireRole('admin', 'manager', 'officer', 'super
 
 // ── DELETE /:id/link-person ─────────────────────────────────
 // Remove manual person link from arrest record
-router.delete('/:id/link-person', requireRole('admin', 'manager', 'officer', 'supervisor'), (req: Request, res: Response) => {
+router.delete('/:id/link-person', validateParamId, requireRole('admin', 'manager', 'officer', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id as string, 10);

@@ -376,12 +376,12 @@ export function closeAutoSection(doc: jsPDF, sectionY: number, contentEndY: numb
         const bottomY = pageH - LAYOUT.FOOTER_HEIGHT - 2;
         doc.rect(LAYOUT.PAGE_MARGIN, sectionY, cw, bottomY - sectionY);
       } else if (p === currentPage) {
-        // Last page: from continuation header to contentEndY
-        const topY = LAYOUT.HEADER_TOP + 2;
+        // Last page: from below continuation header to contentEndY
+        const topY = 10; // Just below continuation header (contY=4 + contH=5 + 1mm gap)
         doc.rect(LAYOUT.PAGE_MARGIN, topY, cw, Math.max((contentEndY + padding) - topY, 12));
       } else {
         // Middle pages: full page border
-        const topY = LAYOUT.HEADER_TOP + 2;
+        const topY = 10;
         const bottomY = pageH - LAYOUT.FOOTER_HEIGHT - 2;
         doc.rect(LAYOUT.PAGE_MARGIN, topY, cw, bottomY - topY);
       }
@@ -722,25 +722,24 @@ export function addSignatureBlock(
     } catch { /* signature image unavailable — fall back to empty line */ }
   }
 
-  // Signature line — full width
+  // Signature line + "X" marker — only for unsigned blocks
   const sigLineY = row1Y + sigRowH - 3;
-  doc.setDrawColor(...COLOR.TEXT_PRIMARY);
-  doc.setLineWidth(BORDER.SIGNATURE_LINE);
-  doc.line(x + SPACING.MD, sigLineY, x + width - SPACING.MD, sigLineY);
-
   if (!sigData?.signatureImage) {
+    doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+    doc.setLineWidth(BORDER.SIGNATURE_LINE);
+    doc.line(x + SPACING.MD, sigLineY, x + width - SPACING.MD, sigLineY);
+
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_SIGNATURE_X);
     doc.setTextColor(...COLOR.TEXT_TERTIARY);
     doc.text('X', x + SPACING.CONTENT_INSET, sigLineY - 2);
-  }
 
-  // "SIGNATURE" label below the line (centered under line)
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
-  doc.setTextColor(...COLOR.TEXT_TERTIARY);
-  const sigLabelW = doc.getTextWidth('SIGNATURE');
-  doc.text('SIGNATURE', x + width / 2 - sigLabelW / 2, sigLineY + 2.5);
+    // "SIGNATURE" label below the line
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
+    const sigLabelW = doc.getTextWidth('SIGNATURE');
+    doc.text('SIGNATURE', x + width / 2 - sigLabelW / 2, sigLineY + 2.5);
+  }
 
   // ── ROW 2: Officer info grid — three solid-bordered cells ──
   const row2Y = row1Y + sigRowH;
@@ -777,13 +776,6 @@ export function addSignatureBlock(
     const defaultDate = `${pad(now.getMonth() + 1)}/${pad(now.getDate())}/${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
     const dateStr = sigData.date || defaultDate;
     doc.text(dateStr, x + colW * 2 + SPACING.MD, valY);
-  } else {
-    // Solid write lines inside each cell for manual entry
-    doc.setDrawColor(0, 0, 0);
-    doc.setLineWidth(BORDER.SIGNATURE_LINE);
-    doc.line(x + SPACING.MD, valY, x + colW - SPACING.MD, valY);
-    doc.line(x + colW + SPACING.MD, valY, x + colW * 2 - SPACING.MD, valY);
-    doc.line(x + colW * 2 + SPACING.MD, valY, x + width - SPACING.MD, valY);
   }
 
   // Outer border around entire block (signature area + info row)
@@ -1103,21 +1095,22 @@ function addSupplementsSection(doc: jsPDF, data: IncidentData, y: number): numbe
     if (sup.subject) {
       metaRows.push({ cells: [
         { label: 'SUBJECT', value: sup.subject, ratio: 1 },
-      ]});
+      ], height: 11 });
     }
 
     // Render as boxed section with banner title + grid cells
     y = drawFormSection(doc, {
-      sideTab: { label: supTitle, color: COLOR.BG_SECTION_HDR },
+      sideTab: { label: supTitle },
       topBanner: true,
       rows: metaRows,
       y,
+      onPageBreak: formSectionPageBreak,
       afterGrid: (gridEndY: number) => {
-        // Render narrative below the grid cells
+        // Render narrative below the grid cells (enough gap to clear cell value text)
         if (sup.narrative) {
-          const narY = gridEndY + SPACING.SM;
+          const narY = gridEndY + SPACING.LG;
           const endY = addFormattedText(doc, sup.narrative, lx, narY, ffw);
-          return endY + SPACING.SM;
+          return endY + SPACING.MD;
         }
         return gridEndY;
       },
@@ -1279,10 +1272,16 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.setDrawColor(...COLOR.TEXT_PRIMARY);
 
-    // Content starts below continuation header with breathing room
-    return contY + contH + SPACING.LG + 1;
+    // Content starts below continuation header (tight but clear of bar)
+    return contY + contH + 1;
   }
   return y;
+}
+
+/** Page break handler for drawFormSection — forces a page break with continuation header */
+function formSectionPageBreak(doc: jsPDF, _neededH: number): number {
+  // Force a page break by passing a Y beyond the page
+  return checkPageBreak(doc, doc.internal.pageSize.getHeight(), 1);
 }
 
 /**
@@ -1670,10 +1669,15 @@ function addGpsActivityLogSection(doc: jsPDF, data: IncidentData, y: number, pri
 // ── Report Templates ─────────────────────────────────────────
 
 function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
+  const pageW = doc.internal.pageSize.getWidth();
+  const cw = getContentWidth(doc);
   const ffw = getFullFieldWidth(doc);
   const hfw = getHalfFieldWidth(doc);
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
+  const mx = LAYOUT.PAGE_MARGIN;  // margin x
+  const capFirst = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+
 
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
@@ -1685,277 +1689,332 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   });
 
   // ═══════════════════════════════════════════════════════════
-  // ADMINISTRATIVE
+  // SECTION 1 — ADMINISTRATIVE DATA (dense NIBRS grid)
   // ═══════════════════════════════════════════════════════════
-  { const sec = openAutoSection(doc, 'Administrative', y); y = sec.contentY;
-    y = addThreeColumnFields(doc, [
-      { label: 'Incident Type', value: formatIncidentType(data.incident_type) },
-      { label: 'Type Code', value: getTypeCode(data.incident_type) },
-      { label: 'Incident #', value: data.incident_number || '' },
-      { label: 'Case Status', value: data.status?.toUpperCase() || '' },
-      { label: 'Priority', value: data.priority || '' },
-      { label: 'Disposition', value: data.disposition || '' },
-    ], y);
-    { const yL = addFieldPair(doc, 'Reporting Officer', `${data.officer_name || ''}${data.badge_number ? '  #' + data.badge_number : ''}`, lx, y, hfw);
-      const yR = addFieldPair(doc, 'Source', data.source || '', rx, y, hfw);
-      y = Math.max(yL, yR); }
-    y = addFieldPair(doc, 'Location of Incident', data.location || '', lx, y, ffw);
-    y = addThreeColumnFields(doc, [
-      { label: 'Occurred Date', value: data.occurred_date || '' },
-      { label: 'Occurred Time', value: data.occurred_time || '' },
-      { label: 'End Date', value: data.end_date || '' },
-      { label: 'End Time', value: data.end_time || '' },
-      { label: 'Section ID', value: data.section_id || '' },
-      { label: 'Zone ID', value: data.zone_id || '' },
-      { label: 'Beat ID', value: data.beat_id || '' },
-      { label: 'Dispatch Code', value: data.dispatch_code || '' },
-      { label: 'Responding Agency', value: data.responding_le_agency || '' },
-    ], y);
-    if (data.le_case_number) {
-      y = addFieldPair(doc, 'LE Case #', data.le_case_number, lx, y, hfw);
+  y = drawFormSection(doc, {
+    sideTab: { label: 'ADMINISTRATIVE' },
+    topBanner: true,
+    onPageBreak: formSectionPageBreak,
+    rows: [
+      { cells: [
+        { label: '1. INCIDENT TYPE', value: formatIncidentType(data.incident_type), ratio: 3, valueBold: true },
+        { label: '2. TYPE CODE', value: getTypeCode(data.incident_type), ratio: 1, align: 'center' },
+        { label: '3. INCIDENT #', value: data.incident_number || '', ratio: 2, valueBold: true },
+        { label: '4. STATUS', value: data.status?.toUpperCase() || '', ratio: 1, align: 'center' },
+      ]},
+      { cells: [
+        { label: '5. OCCURRED DATE', value: data.occurred_date || '', ratio: 1 },
+        { label: '6. TIME', value: data.occurred_time || '', ratio: 1, align: 'center' },
+        { label: '7. END DATE', value: data.end_date || '', ratio: 1 },
+        { label: '8. END TIME', value: data.end_time || '', ratio: 1, align: 'center' },
+        { label: '9. PRIORITY', value: data.priority || '', ratio: 1, align: 'center', valueBold: true },
+        { label: '10. DISPOSITION', value: data.disposition || '', ratio: 1 },
+      ]},
+      { cells: [
+        { label: '11. REPORTING OFFICER', value: data.officer_name || '', ratio: 3, valueBold: true },
+        { label: '12. BADGE #', value: data.badge_number || '', ratio: 1, align: 'center' },
+        { label: '13. SOURCE', value: data.source || '', ratio: 1 },
+      ]},
+      { cells: [
+        { label: '14. LOCATION OF INCIDENT', value: data.location || '', ratio: 1, valueBold: true },
+      ]},
+      { cells: [
+        { label: '15. DISPATCH CODE', value: data.dispatch_code || '', ratio: 1, align: 'center', valueBold: true },
+        { label: '16. SECTION', value: data.section_id || '', ratio: 1, align: 'center' },
+        { label: '17. ZONE', value: data.zone_id || '', ratio: 1, align: 'center' },
+        { label: '18. BEAT', value: data.beat_id || '', ratio: 1, align: 'center' },
+        { label: '19. RESPONDING AGENCY', value: data.responding_le_agency || '', ratio: 2 },
+        { label: '20. LE CASE #', value: data.le_case_number || '', ratio: 1 },
+      ]},
+    ],
+    y,
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // SECTION 2 — CLASSIFICATION & CONTRACT
+  // ═══════════════════════════════════════════════════════════
+  { const classRows: FormRow[] = [];
+    const row1: FormCell[] = [];
+    if (data.property_name) row1.push({ label: 'PROPERTY / LOCATION NAME', value: data.property_name, ratio: 2 });
+    if (data.client_name) row1.push({ label: 'CLIENT', value: data.client_name, ratio: 1 });
+    if (data.contract_id) row1.push({ label: 'CONTRACT ID', value: data.contract_id, ratio: 1, align: 'center' });
+    if (data.call_number) row1.push({ label: 'CFS CALL #', value: data.call_number, ratio: 1 });
+    if (row1.length > 0) {
+      classRows.push({ cells: row1 });
+      y = drawFormSection(doc, {
+        sideTab: { label: 'CLASSIFICATION' },
+        topBanner: true,
+        onPageBreak: formSectionPageBreak,
+        rows: classRows,
+        y,
+      });
     }
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // ── Classification ──────────────────────────────────────────
-  { const metaFields: { label: string; value: string }[] = [];
-    if (data.property_name) metaFields.push({ label: 'Property', value: data.property_name });
-    if (data.client_name) metaFields.push({ label: 'Client', value: data.client_name });
-    if (data.contract_id) metaFields.push({ label: 'Contract ID', value: data.contract_id });
-    if (data.call_number) metaFields.push({ label: 'Call Number', value: data.call_number });
-    if (metaFields.length > 0) {
-      const sec = openAutoSection(doc, 'Classification', y); y = sec.contentY;
-      y = addThreeColumnFields(doc, metaFields, y);
-      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-    }
-  }
-
-  // ── Scene / Conditions ──────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════
+  // SECTION 3 — SCENE / CONDITIONS
+  // ═══════════════════════════════════════════════════════════
   { const hasScene = data.scene_safety || data.weather_conditions || data.lighting_conditions || data.weapons_involved || data.direction_of_travel;
     if (hasScene) {
-    y = checkPageBreak(doc, y, 18, data.priority);
-    const sec = openAutoSection(doc, 'Scene / Conditions', y); y = sec.contentY;
-    y = addThreeColumnFields(doc, [
-      { label: 'Scene Safety', value: data.scene_safety || '' },
-      { label: 'Weather', value: data.weather_conditions || '' },
-      { label: 'Lighting', value: data.lighting_conditions || '' },
-    ], y);
-    { const yL = addFieldPair(doc, 'Weapons Involved', data.weapons_involved || '', lx, y, hfw);
-      const yR = addFieldPair(doc, 'Direction of Travel', data.direction_of_travel || '', rx, y, hfw);
-      y = Math.max(yL, yR); }
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+      y = drawFormSection(doc, {
+        sideTab: { label: 'SCENE / CONDITIONS' },
+        topBanner: true,
+        onPageBreak: formSectionPageBreak,
+        rows: [
+          { cells: [
+            { label: 'SCENE SAFETY', value: data.scene_safety || '\u2014', ratio: 1 },
+            { label: 'WEATHER', value: data.weather_conditions || '\u2014', ratio: 1 },
+            { label: 'LIGHTING', value: data.lighting_conditions || '\u2014', ratio: 1 },
+          ]},
+          { cells: [
+            { label: 'WEAPONS INVOLVED', value: data.weapons_involved || 'None', ratio: 1 },
+            { label: 'DIRECTION OF TRAVEL', value: data.direction_of_travel || '\u2014', ratio: 1 },
+          ]},
+        ],
+        y,
+      });
     }
   }
 
-  // ── Injuries / Damage ───────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════
+  // SECTION 4 — INJURIES / DAMAGE
+  // ═══════════════════════════════════════════════════════════
   if (data.injuries || data.injury_description || data.damage_estimate || data.damage_description) {
-    const sec = openAutoSection(doc, 'Injuries / Damage', y); y = sec.contentY;
-    { const yL = addFieldPair(doc, 'Injuries', data.injuries || 'None', lx, y, hfw);
-      const yR = addFieldPair(doc, 'Injury Description', data.injury_description || '', rx, y, hfw);
-      y = Math.max(yL, yR); }
-    { const yL = addFieldPair(doc, 'Damage Estimate', data.damage_estimate ? '$' + data.damage_estimate : '', lx, y, hfw);
-      const yR = addFieldPair(doc, 'Damage Description', data.damage_description || '', rx, y, hfw);
-      y = Math.max(yL, yR); }
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    y = drawFormSection(doc, {
+      sideTab: { label: 'INJURIES / DAMAGE' },
+      topBanner: true,
+      onPageBreak: formSectionPageBreak,
+      rows: [
+        { cells: [
+          { label: 'INJURIES', value: capFirst(data.injuries || 'None'), ratio: 1 },
+          { label: 'INJURY DESCRIPTION', value: data.injury_description || '', ratio: 2 },
+        ]},
+        { cells: [
+          { label: 'DAMAGE ESTIMATE', value: data.damage_estimate ? '$' + data.damage_estimate : '\u2014', ratio: 1 },
+          { label: 'DAMAGE DESCRIPTION', value: data.damage_description || '', ratio: 2 },
+        ]},
+      ],
+      y,
+    });
   }
 
-  // ── Flags — 6-column grid ───────────────────────────────────
-  y = checkPageBreak(doc, y, 30, data.priority);
-  { const sec = openAutoSection(doc, 'Flags', y); y = sec.contentY;
-    const flagCols = 6;
-    const flagColW = ffw / flagCols;
-    const flagRowH = 4.5;
-    const flagGrid: { label: string; checked: boolean }[][] = [
-      [
-        { label: 'Injuries', checked: !!data.injuries_reported },
-        { label: 'Alcohol', checked: !!data.alcohol_involved },
-        { label: 'Drugs', checked: !!data.drugs_involved },
-        { label: 'DV', checked: !!data.domestic_violence },
-        { label: 'Mental Health', checked: !!data.mental_health_crisis },
-        { label: 'Juvenile', checked: !!data.juvenile_involved },
-      ],
-      [
-        { label: 'Felony IP', checked: !!data.felony_in_progress },
-        { label: 'Ofc Safety', checked: !!data.officer_safety_caution },
-        { label: 'Gang', checked: !!data.gang_related },
-        { label: 'HAZMAT', checked: !!data.hazmat },
-        { label: 'Weapons', checked: !!data.weapons_involved },
-        { label: 'Veh Pursuit', checked: !!data.vehicle_pursuit },
-      ],
-      [
-        { label: 'K9 Req', checked: !!data.k9_requested },
-        { label: 'EMS Req', checked: !!data.ems_requested },
-        { label: 'Fire Req', checked: !!data.fire_requested },
-        { label: 'BWC Active', checked: !!data.body_camera_active },
-        { label: 'Evidence', checked: !!data.evidence_collected },
-        { label: 'Photos', checked: !!data.photos_taken },
-      ],
-      [
-        { label: 'Supvr Notified', checked: !!data.supervisor_notified },
-        { label: 'LE Notified', checked: !!data.le_notified },
-        { label: 'Trespass', checked: !!data.trespass_issued },
-        { label: 'Foot Pursuit', checked: !!data.foot_pursuit },
-      ],
-    ];
-    for (const row of flagGrid) {
-      for (let c = 0; c < row.length; c++) {
-        addCheckboxField(doc, row[c].label, row[c].checked, lx + c * flagColW, y);
-      }
-      y += flagRowH;
-    }
-    y += SPACING.SM;
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
+  // ═══════════════════════════════════════════════════════════
+  // SECTION 5 — OPERATIONAL FLAGS (checkbox grid)
+  // ═══════════════════════════════════════════════════════════
+  y = checkPageBreak(doc, y, 42, data.priority);
+  y = drawFormSection(doc, {
+    sideTab: { label: 'OPERATIONAL FLAGS' },
+    topBanner: true,
+    onPageBreak: formSectionPageBreak,
+    rows: [
+      { cells: [
+        { label: 'INJURIES', value: '', checkbox: true, checked: !!data.injuries_reported, ratio: 1 },
+        { label: 'ALCOHOL', value: '', checkbox: true, checked: !!data.alcohol_involved, ratio: 1 },
+        { label: 'DRUGS', value: '', checkbox: true, checked: !!data.drugs_involved, ratio: 1 },
+        { label: 'DV', value: '', checkbox: true, checked: !!data.domestic_violence, ratio: 1 },
+        { label: 'MENTAL HEALTH', value: '', checkbox: true, checked: !!data.mental_health_crisis, ratio: 1 },
+        { label: 'JUVENILE', value: '', checkbox: true, checked: !!data.juvenile_involved, ratio: 1 },
+      ]},
+      { cells: [
+        { label: 'FELONY I/P', value: '', checkbox: true, checked: !!data.felony_in_progress, ratio: 1 },
+        { label: 'OFC SAFETY', value: '', checkbox: true, checked: !!data.officer_safety_caution, ratio: 1 },
+        { label: 'GANG', value: '', checkbox: true, checked: !!data.gang_related, ratio: 1 },
+        { label: 'HAZMAT', value: '', checkbox: true, checked: !!data.hazmat, ratio: 1 },
+        { label: 'WEAPONS', value: '', checkbox: true, checked: !!data.weapons_involved, ratio: 1 },
+        { label: 'VEH PURSUIT', value: '', checkbox: true, checked: !!data.vehicle_pursuit, ratio: 1 },
+      ]},
+      { cells: [
+        { label: 'K9 REQ', value: '', checkbox: true, checked: !!data.k9_requested, ratio: 1 },
+        { label: 'EMS REQ', value: '', checkbox: true, checked: !!data.ems_requested, ratio: 1 },
+        { label: 'FIRE REQ', value: '', checkbox: true, checked: !!data.fire_requested, ratio: 1 },
+        { label: 'BWC ACTIVE', value: '', checkbox: true, checked: !!data.body_camera_active, ratio: 1 },
+        { label: 'EVIDENCE', value: '', checkbox: true, checked: !!data.evidence_collected, ratio: 1 },
+        { label: 'PHOTOS', value: '', checkbox: true, checked: !!data.photos_taken, ratio: 1 },
+      ]},
+      { cells: [
+        { label: 'SUPVR NOTIFIED', value: '', checkbox: true, checked: !!data.supervisor_notified, ratio: 1 },
+        { label: 'LE NOTIFIED', value: '', checkbox: true, checked: !!data.le_notified, ratio: 1 },
+        { label: 'TRESPASS', value: '', checkbox: true, checked: !!data.trespass_issued, ratio: 1 },
+        { label: 'FOOT PURSUIT', value: '', checkbox: true, checked: !!data.foot_pursuit, ratio: 1 },
+        { label: '', value: '', ratio: 1 },
+        { label: '', value: '', ratio: 1 },
+      ]},
+    ],
+    y,
+  });
 
-  // ── Persons Involved ────────────────────────────────────────
-  y = checkPageBreak(doc, y, 25, data.priority);
+  // ═══════════════════════════════════════════════════════════
+  // SECTION 6 — PERSONS INVOLVED
+  // ═══════════════════════════════════════════════════════════
+  y = checkPageBreak(doc, y, 20, data.priority);
   const persons = data.linked_persons || [];
   { const sec = openAutoSection(doc, `Persons Involved (${persons.length})`, y); y = sec.contentY;
     if (persons.length > 0) {
-      const colPositions = [lx, LAYOUT.PAGE_MARGIN + 30, LAYOUT.PAGE_MARGIN + 70, LAYOUT.PAGE_MARGIN + 110];
+      const colPositions = [lx, mx + 30, mx + 70, mx + 110];
       const tableHeaders = [
         { label: 'ROLE', x: colPositions[0] },
         { label: 'LAST NAME', x: colPositions[1] },
         { label: 'FIRST NAME', x: colPositions[2] },
         { label: 'DOB', x: colPositions[3] },
       ];
-      const capFirst = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
       const tableRows = persons.map((p) => [
         capFirst(p.role?.replace(/_/g, ' ') || ''),
-        p.last_name || '',
+        (p.last_name || '').toUpperCase(),
         p.first_name || '',
         p.dob || '',
       ]);
       y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
     } else {
-      doc.setFontSize(FONT.SIZE_TABLE_BODY);
-      doc.setTextColor(...COLOR.TEXT_TERTIARY);
-      doc.text('None recorded', lx, y);
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      y += SPACING.XL;
+      doc.setFontSize(FONT.SIZE_TABLE_BODY); doc.setTextColor(...COLOR.TEXT_TERTIARY);
+      doc.text('None recorded', lx, y); doc.setTextColor(...COLOR.TEXT_PRIMARY); y += SPACING.XL;
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // ── Vehicles Involved ───────────────────────────────────────
-  y = checkPageBreak(doc, y, 25, data.priority);
+  // ═══════════════════════════════════════════════════════════
+  // SECTION 7 — VEHICLES INVOLVED
+  // ═══════════════════════════════════════════════════════════
+  y = checkPageBreak(doc, y, 20, data.priority);
   const vehicles = data.linked_vehicles || [];
   { const sec = openAutoSection(doc, `Vehicles Involved (${vehicles.length})`, y); y = sec.contentY;
     if (vehicles.length > 0) {
-      const colPositions = [lx, LAYOUT.PAGE_MARGIN + 30, LAYOUT.PAGE_MARGIN + 65, LAYOUT.PAGE_MARGIN + 120];
+      const colPositions = [lx, mx + 30, mx + 65, mx + 120];
       const tableHeaders = [
         { label: 'ROLE', x: colPositions[0] },
         { label: 'PLATE', x: colPositions[1] },
         { label: 'YEAR/MAKE/MODEL', x: colPositions[2] },
         { label: 'COLOR', x: colPositions[3] },
       ];
-      const capRole = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
       const tableRows = vehicles.map((v) => [
-        capRole(v.role?.replace(/_/g, ' ') || ''),
+        capFirst(v.role?.replace(/_/g, ' ') || ''),
         `${v.plate_number || 'N/A'}${v.state ? ' (' + v.state + ')' : ''}`,
         [v.year, v.make, v.model].filter(Boolean).join(' '),
         v.color || '',
       ]);
       y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
     } else {
-      doc.setFontSize(FONT.SIZE_TABLE_BODY);
-      doc.setTextColor(...COLOR.TEXT_TERTIARY);
-      doc.text('None recorded', lx, y);
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      y += SPACING.XL;
+      doc.setFontSize(FONT.SIZE_TABLE_BODY); doc.setTextColor(...COLOR.TEXT_TERTIARY);
+      doc.text('None recorded', lx, y); doc.setTextColor(...COLOR.TEXT_PRIMARY); y += SPACING.XL;
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // ── Evidence ────────────────────────────────────────────────
-  y = checkPageBreak(doc, y, 25, data.priority);
+  // ═══════════════════════════════════════════════════════════
+  // SECTION 8 — EVIDENCE / PROPERTY
+  // ═══════════════════════════════════════════════════════════
+  y = checkPageBreak(doc, y, 20, data.priority);
   const evidence = data.evidence || [];
-  { const sec = openAutoSection(doc, `Evidence (${evidence.length})`, y); y = sec.contentY;
+  { const sec = openAutoSection(doc, `Evidence / Property (${evidence.length})`, y); y = sec.contentY;
     if (evidence.length > 0) {
-      const colPositions = [lx, LAYOUT.PAGE_MARGIN + 35, LAYOUT.PAGE_MARGIN + 60, LAYOUT.PAGE_MARGIN + 130];
+      const colPositions = [lx, mx + 36, mx + 60, mx + 130];
       const tableHeaders = [
         { label: 'ITEM #', x: colPositions[0] },
         { label: 'TYPE', x: colPositions[1] },
         { label: 'DESCRIPTION', x: colPositions[2] },
-        { label: 'STORAGE', x: colPositions[3] },
+        { label: 'STORAGE LOCATION', x: colPositions[3] },
       ];
-      const capType = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
       const tableRows = evidence.map((e) => [
         e.evidence_number || '',
-        capType(e.evidence_type || ''),
+        capFirst(e.evidence_type || ''),
         e.description || '',
         e.storage_location || '',
       ]);
       y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
     } else {
-      doc.setFontSize(FONT.SIZE_TABLE_BODY);
-      doc.setTextColor(...COLOR.TEXT_TERTIARY);
-      doc.text('None recorded', lx, y);
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      y += SPACING.XL;
+      doc.setFontSize(FONT.SIZE_TABLE_BODY); doc.setTextColor(...COLOR.TEXT_TERTIARY);
+      doc.text('None recorded', lx, y); doc.setTextColor(...COLOR.TEXT_PRIMARY); y += SPACING.XL;
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // ── External Agency Coordination ────────────────────────────
+  // ═══════════════════════════════════════════════════════════
+  // SECTION 9 — EXTERNAL AGENCY COORDINATION
+  // ═══════════════════════════════════════════════════════════
   if (data.responding_le_agency || data.le_case_number) {
-    y = checkPageBreak(doc, y, 20, data.priority);
-    const sec = openAutoSection(doc, 'External Agency Coordination', y); y = sec.contentY;
-    { const yL = addFieldPair(doc, 'Responding Agency', data.responding_le_agency || '', lx, y, hfw);
-      const yR = addFieldPair(doc, 'LE Case #', data.le_case_number || '', rx, y, hfw);
-      y = Math.max(yL, yR); }
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    y = checkPageBreak(doc, y, 14, data.priority);
+    y = drawFormSection(doc, {
+      sideTab: { label: 'EXTERNAL AGENCY' },
+      topBanner: true,
+      onPageBreak: formSectionPageBreak,
+      rows: [{ cells: [
+        { label: 'RESPONDING AGENCY', value: data.responding_le_agency || '', ratio: 2 },
+        { label: 'LE CASE #', value: data.le_case_number || '', ratio: 1 },
+      ]}],
+      y,
+    });
   }
 
-  // ── Dispatch / Call Details (before officer narrative) ──────
+  // ═══════════════════════════════════════════════════════════
+  // SECTION 10 — DISPATCH / CALL DETAILS
+  // ═══════════════════════════════════════════════════════════
   if (data.call_number || data.call_type || data.caller_name || data.call_notes) {
-    y = checkPageBreak(doc, y, 25, data.priority);
-    const sec = openAutoSection(doc, 'Dispatch / Call Details', y); y = sec.contentY;
-    const callMeta: { label: string; value: string }[] = [];
-    if (data.call_number) callMeta.push({ label: 'Call Number', value: data.call_number });
-    if (data.call_type) callMeta.push({ label: 'Call Type', value: data.call_type.replace(/_/g, ' ').toUpperCase() });
-    if (data.call_created_at) callMeta.push({ label: 'Dispatched', value: data.call_created_at });
-    if (data.caller_name) callMeta.push({ label: 'Caller', value: data.caller_name });
-    if (data.caller_phone) callMeta.push({ label: 'Caller Phone', value: data.caller_phone });
+    y = checkPageBreak(doc, y, 22, data.priority);
+    const dispatchRows: FormRow[] = [];
+    const r1: FormCell[] = [];
+    if (data.call_number) r1.push({ label: 'CFS CALL #', value: data.call_number, ratio: 1, valueBold: true });
+    if (data.call_type) r1.push({ label: 'CALL TYPE', value: data.call_type.replace(/_/g, ' ').toUpperCase(), ratio: 1 });
+    if (data.call_created_at) r1.push({ label: 'DISPATCHED', value: data.call_created_at, ratio: 1 });
+    if (r1.length > 0) dispatchRows.push({ cells: r1 });
+    const r2: FormCell[] = [];
+    if (data.caller_name) r2.push({ label: 'CALLER NAME', value: data.caller_name, ratio: 2 });
+    if (data.caller_phone) r2.push({ label: 'CALLER PHONE', value: data.caller_phone, ratio: 1 });
     const geoStr = (data.latitude != null && data.longitude != null) ? `${Number(data.latitude).toFixed(5)}, ${Number(data.longitude).toFixed(5)}` : '';
-    if (geoStr) callMeta.push({ label: 'Geo Coordinates', value: geoStr });
-    if (callMeta.length > 0) y = addThreeColumnFields(doc, callMeta, y);
-    if (data.call_notes) {
-      y += SPACING.SM;
-      y = addFormattedText(doc, data.call_notes, lx, y, ffw);
-      y += SPACING.SM;
+    if (geoStr) r2.push({ label: 'GEO COORDINATES', value: geoStr, ratio: 1 });
+    if (r2.length > 0) dispatchRows.push({ cells: r2 });
+    if (dispatchRows.length > 0) {
+      y = drawFormSection(doc, {
+        sideTab: { label: 'DISPATCH DATA' },
+        topBanner: true,
+        onPageBreak: formSectionPageBreak,
+        rows: dispatchRows,
+        y,
+        afterGrid: (gridY: number) => {
+          if (data.call_notes) {
+            const ny = gridY + SPACING.LG;
+            const endY = addFormattedText(doc, data.call_notes, lx, ny, ffw);
+            return endY + SPACING.MD;
+          }
+          return gridY;
+        },
+      });
     }
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ── GPS Coordinates (standalone if no call data) ───────────
   if (!data.call_number && data.latitude != null && data.longitude != null) {
-    const sec = openAutoSection(doc, 'Geo Location', y); y = sec.contentY;
-    { const yL = addFieldPair(doc, 'Latitude', String(data.latitude), lx, y, hfw);
-      const yR = addFieldPair(doc, 'Longitude', String(data.longitude), rx, y, hfw);
-      y = Math.max(yL, yR); }
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    y = drawFormSection(doc, {
+      sideTab: { label: 'GEO LOCATION' },
+      topBanner: true,
+      onPageBreak: formSectionPageBreak,
+      rows: [{ cells: [
+        { label: 'LATITUDE', value: String(data.latitude), ratio: 1 },
+        { label: 'LONGITUDE', value: String(data.longitude), ratio: 1 },
+      ]}],
+      y,
+    });
   }
 
-  // ── Narrative ───────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════
+  // SECTION 11 — OFFICER NARRATIVE
+  // ═══════════════════════════════════════════════════════════
   y = addNarrativeSection(doc, 'Officer Narrative', data.narrative || '', y, data.priority);
 
-  // ── Supplement Reports ────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════
+  // SECTION 12 — SUPPLEMENT REPORTS
+  // ═══════════════════════════════════════════════════════════
   y = addSupplementsSection(doc, data, y);
 
-  // ── Attachments ─────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════
+  // SECTION 13 — ATTACHMENTS / EVIDENCE PHOTOS
+  // ═══════════════════════════════════════════════════════════
   if (data.attachment_images && data.attachment_images.length > 0) {
     y = addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
   }
 
-  // ── Signatures ──────────────────────────────────────────────
-  y = checkPageBreak(doc, y, 40, data.priority);
-  { const sec = openAutoSection(doc, 'Signatures', y); y = sec.contentY;
-    { const yL = addSignatureBlock(doc, 'Reporting Officer', lx, y, hfw, getOfficerSig());
-      const yR = addSignatureBlock(doc, 'Supervisor Review', rx, y, hfw);
-      y = Math.max(yL, yR); }
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
+  // ═══════════════════════════════════════════════════════════
+  // SECTION 14 — SIGNATURES / APPROVAL
+  // ═══════════════════════════════════════════════════════════
+  y = addStackedSignatures(doc, 'Reporting Officer', 'Supervisor Review', y, getOfficerSig(), undefined, data.priority);
 }
 
 function generateTrespassWarning(doc: jsPDF, data: IncidentData) {
@@ -2090,6 +2149,7 @@ function generateAccidentReport(doc: jsPDF, data: IncidentData) {
   // ═══════════════════════════════════════════════════════════
   y = drawFormSection(doc, {
     sideTab: { label: 'ADMINISTRATIVE' },
+    onPageBreak: formSectionPageBreak,
     rows: [
       { cells: [
         { label: '1. INCIDENT #', value: data.incident_number || '', ratio: 2, valueBold: true },
@@ -2376,13 +2436,7 @@ function generateUseOfForceReport(doc: jsPDF, data: IncidentData) {
     y = addAttachmentsSection(doc, data.attachment_images, y, 'ATTACHMENTS / EVIDENCE PHOTOS', data.priority);
   }
 
-  y = checkPageBreak(doc, y, 40, data.priority);
-  { const sec = openAutoSection(doc, 'Signatures', y); y = sec.contentY;
-    { const yL = addSignatureBlock(doc, 'Reporting Officer', lx, y, hfw, getOfficerSig());
-      const yR = addSignatureBlock(doc, 'Supervisor Review', rx, y, hfw);
-      y = Math.max(yL, yR); }
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
+  y = addStackedSignatures(doc, 'Reporting Officer', 'Supervisor Review', y, getOfficerSig(), undefined, data.priority);
 }
 
 function generateDailyActivityReport(doc: jsPDF, data: IncidentData) {
@@ -2408,6 +2462,7 @@ function generateDailyActivityReport(doc: jsPDF, data: IncidentData) {
   // ═══════════════════════════════════════════════════════════
   y = drawFormSection(doc, {
     sideTab: { label: 'SHIFT' },
+    onPageBreak: formSectionPageBreak,
     rows: [
       { cells: [
         { label: '1. OFFICER NAME', value: data.officer_name || '', ratio: 2, valueBold: true },

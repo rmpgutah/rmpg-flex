@@ -104,7 +104,9 @@ export default function TrainingDocsPage() {
 
   const handleDownload = (doc: any) => {
     if (doc.content_type === 'link' && doc.external_url) {
-      window.open(doc.external_url, '_blank', 'noopener,noreferrer');
+      if (/^https?:\/\//i.test(doc.external_url)) {
+        window.open(doc.external_url, '_blank', 'noopener,noreferrer');
+      }
       return;
     }
     if (doc.file_id) {

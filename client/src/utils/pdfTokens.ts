@@ -119,8 +119,8 @@ export const SPACING = {
   SIGNATURE_SUB_GAP:  5,     // Gap between sig line and sub-fields
 
   FORM_CELL_PAD:      1,     // Padding inside form cells
-  FORM_CELL_LABEL_H:  3.5,   // Form cell label height
-  FORM_CELL_H:        7,     // Form cell total height
+  FORM_CELL_LABEL_H:  3,     // Form cell label strip height
+  FORM_CELL_H:        9,     // Form cell total height (label + value + padding)
 } as const;
 
 // ── Layout Tokens ────────────────────────────────────────────

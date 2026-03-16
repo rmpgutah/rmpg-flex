@@ -13,8 +13,10 @@ import multer from 'multer';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
+import { escapeLike } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
 import { broadcast } from '../utils/websocket';
+import { validateParamId } from '../middleware/sanitize';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -96,8 +98,8 @@ router.get('/', authenticateToken, (req: Request, res: Response) => {
     if (unit_id) { query += ' AND v.unit_id = ?'; params.push(unit_id); }
     if (case_number) { query += ' AND v.case_number = ?'; params.push(case_number); }
     if (search) {
-      const q = `%${String(search)}%`;
-      query += ' AND (v.title LIKE ? OR v.case_number LIKE ? OR v.address LIKE ? OR COALESCE(fv.vehicle_number, fv_unit.vehicle_number) LIKE ? OR u.call_sign LIKE ?)';
+      const q = `%${escapeLike(String(search))}%`;
+      query += " AND (v.title LIKE ? ESCAPE '\\' OR v.case_number LIKE ? ESCAPE '\\' OR v.address LIKE ? ESCAPE '\\' OR COALESCE(fv.vehicle_number, fv_unit.vehicle_number) LIKE ? ESCAPE '\\' OR u.call_sign LIKE ? ESCAPE '\\')";
       params.push(q, q, q, q, q);
     }
 
@@ -117,7 +119,7 @@ router.get('/', authenticateToken, (req: Request, res: Response) => {
 // ============================================================
 // GET /api/fleet/dashcam-videos/:id — Single video detail
 // ============================================================
-router.get('/:id', authenticateToken, (req: Request, res: Response) => {
+router.get('/:id', validateParamId, authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const video = db.prepare(`
@@ -316,7 +318,7 @@ router.delete('/:id', authenticateToken, requireRole('admin'), (req: Request, re
 // ============================================================
 // GET /api/fleet/dashcam-videos/:id/stream — Stream with Range
 // ============================================================
-router.get('/:id/stream', (req: Request, res: Response, next) => {
+router.get('/:id/stream', validateParamId, (req: Request, res: Response, next) => {
   // Accept token from query string for <video> elements (can't set Authorization header)
   if (!req.headers['authorization'] && typeof req.query.token === 'string' && req.query.token.length < 2048) {
     req.headers['authorization'] = `Bearer ${req.query.token}`;

@@ -9,7 +9,7 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
-import { escapeLike } from '../middleware/sanitize';
+import { escapeLike, validateParamId } from '../middleware/sanitize';
 import { localNow, localToday } from '../utils/timeUtils';
 
 const router = Router();
@@ -239,7 +239,7 @@ router.get('/', requireRole('admin', 'manager', 'contract_manager'), (req: Reque
 
 // ─── GET /api/invoices/:id ────────────────────────────────
 // Full invoice detail with line items and payments
-router.get('/:id', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.get('/:id', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const invoice = db.prepare(`
@@ -330,7 +330,7 @@ router.post('/', requireRole('admin', 'manager', 'contract_manager'), (req: Requ
 
 // ─── POST /api/invoices/:id/generate ──────────────────────
 // Auto-generate line items from billing period
-router.post('/:id/generate', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.post('/:id/generate', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -550,7 +550,7 @@ router.post('/:id/generate', requireRole('admin', 'manager', 'contract_manager')
 
 // ─── PUT /api/invoices/:id ────────────────────────────────
 // Update invoice fields
-router.put('/:id', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.put('/:id', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -608,7 +608,7 @@ router.put('/:id', requireRole('admin', 'manager', 'contract_manager'), (req: Re
 
 // ─── PUT /api/invoices/:id/status ─────────────────────────
 // Status transition with validation
-router.put('/:id/status', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.put('/:id/status', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -669,7 +669,7 @@ router.put('/:id/status', requireRole('admin', 'manager'), (req: Request, res: R
 
 // ─── POST /api/invoices/:id/line-items ────────────────────
 // Add a line item
-router.post('/:id/line-items', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.post('/:id/line-items', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -707,7 +707,7 @@ router.post('/:id/line-items', requireRole('admin', 'manager', 'contract_manager
 
 // ─── PUT /api/invoices/:id/line-items/:itemId ─────────────
 // Update a line item
-router.put('/:id/line-items/:itemId', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.put('/:id/line-items/:itemId', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -744,7 +744,7 @@ router.put('/:id/line-items/:itemId', requireRole('admin', 'manager', 'contract_
 });
 
 // ─── DELETE /api/invoices/:id/line-items/:itemId ──────────
-router.delete('/:id/line-items/:itemId', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/:id/line-items/:itemId', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const item = db.prepare(
@@ -763,7 +763,7 @@ router.delete('/:id/line-items/:itemId', requireRole('admin', 'manager'), (req: 
 
 // ─── POST /api/invoices/:id/payments ──────────────────────
 // Record a payment
-router.post('/:id/payments', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/:id/payments', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -813,7 +813,7 @@ router.post('/:id/payments', requireRole('admin', 'manager'), (req: Request, res
 
 // ─── DELETE /api/invoices/:id/payments/:paymentId ─────────
 // Reverse a payment
-router.delete('/:id/payments/:paymentId', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/:id/payments/:paymentId', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -850,7 +850,7 @@ router.delete('/:id/payments/:paymentId', requireRole('admin', 'manager'), (req:
 
 // ─── GET /api/invoices/:id/pdf-data ───────────────────────
 // Return all data needed for client-side PDF generation
-router.get('/:id/pdf-data', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.get('/:id/pdf-data', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const invoice = db.prepare(`
@@ -889,7 +889,7 @@ router.get('/:id/pdf-data', requireRole('admin', 'manager', 'contract_manager'),
 // ─── GET /api/invoices/:id/person-chain ─────────────────
 // Get Person ↔ Client ↔ Incident traceability data for this invoice
 // Shows all persons linked to the client, and their involvement in invoiced incidents
-router.get('/:id/person-chain', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.get('/:id/person-chain', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;

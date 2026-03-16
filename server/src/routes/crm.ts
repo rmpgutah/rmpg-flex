@@ -10,7 +10,7 @@ import { authenticateToken as authenticate, requireRole } from '../middleware/au
 import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
 import { localNow } from '../utils/timeUtils';
-import { escapeLike } from '../middleware/sanitize';
+import { escapeLike, validateParamId } from '../middleware/sanitize';
 
 const router = Router();
 router.use(authenticate);
@@ -155,7 +155,7 @@ router.post('/tasks', requireRole('admin', 'manager', 'contract_manager'), (req:
   }
 });
 
-router.put('/tasks/:id', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.put('/tasks/:id', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -197,7 +197,7 @@ router.put('/tasks/:id', requireRole('admin', 'manager', 'contract_manager'), (r
   }
 });
 
-router.delete('/tasks/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/tasks/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;

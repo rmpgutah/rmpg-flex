@@ -92,19 +92,24 @@ export function drawFormCell(
   doc.rect(x, y, w, h);
 
   // Label (tiny, Helvetica, gray — inside cell top-left)
+  const labelBaseY = y + pad + 1.2;
   if (cell.label) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
     doc.setTextColor(...COLOR.TEXT_TERTIARY);
-    doc.text(cell.label.toUpperCase(), x + pad, y + pad + 1.5);
+    doc.text(cell.label.toUpperCase(), x + pad, labelBaseY);
   }
 
-  // Value (Courier, black — below label)
+  // Value area starts below label strip
+  const valueAreaTop = y + SPACING.FORM_CELL_LABEL_H + pad;
+  const valueAreaH = h - SPACING.FORM_CELL_LABEL_H - pad;
+
+  // Value (Courier, black — centered in value area)
   if (cell.checkbox) {
-    // Render checkbox square
+    // Render checkbox square centered vertically in value area
     const cbSize = 2.8;
     const cbX = x + pad;
-    const cbY = y + SPACING.FORM_CELL_LABEL_H + pad + 0.5;
+    const cbY = valueAreaTop + (valueAreaH - cbSize) / 2;
     doc.setDrawColor(...COLOR.BORDER_FORM_GRID);
     doc.setLineWidth(BORDER.CHECKBOX);
     doc.rect(cbX, cbY, cbSize, cbSize);
@@ -125,9 +130,10 @@ export function drawFormCell(
     doc.setFontSize(cell.valueFontSize || FONT.SIZE_FORM_CELL_VALUE);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
-    // Center value vertically between label bottom and cell bottom
-    const labelBottom = SPACING.FORM_CELL_LABEL_H + pad + 1;
-    const valueY = y + labelBottom + (h - labelBottom) / 2 + 0.8;
+    // Center value text baseline in the value area
+    const fontSize = cell.valueFontSize || FONT.SIZE_FORM_CELL_VALUE;
+    const textH = fontSize * 0.35;  // Approximate cap height in mm
+    const valueY = valueAreaTop + (valueAreaH + textH) / 2;
     const maxW = w - 2 * pad;
 
     if (cell.align === 'center') {
@@ -389,6 +395,8 @@ export function drawFormSection(
     afterGrid?: (y: number) => number;
     /** If true, render tab label as a horizontal banner above the grid instead of a vertical sidebar */
     topBanner?: boolean;
+    /** Optional page break handler — called when section doesn't fit; should add page + draw continuation header, return new Y */
+    onPageBreak?: (doc: jsPDF, neededH: number) => number;
   },
 ): number {
   const pageH = doc.internal.pageSize.getHeight();
@@ -412,22 +420,31 @@ export function drawFormSection(
   // Check if section fits on current page
   let curY = config.y;
   if (curY + totalH > pageH - bottomMargin) {
-    doc.addPage();
-    curY = LAYOUT.PAGE_MARGIN + LAYOUT.HEADER_HEIGHT + LAYOUT.ACCENT_STRIP_H + 2;
+    if (config.onPageBreak) {
+      curY = config.onPageBreak(doc, totalH);
+    } else {
+      doc.addPage();
+      curY = LAYOUT.PAGE_MARGIN; // Safe fallback — callers should provide onPageBreak
+    }
   }
 
   const sectionStartY = curY;
 
   if (useBanner) {
-    // ── Draw horizontal banner ──
-    doc.setFillColor(...(config.sideTab.color || COLOR.BG_SIDEBAR_TAB));
-    doc.setDrawColor(...COLOR.BORDER_FORM_GRID);
-    doc.setLineWidth(BORDER.FORM_CELL);
-    doc.rect(gridX, curY, gridW, bannerH, 'FD');
+    // ── Draw horizontal banner (matches openAutoSection header style) ──
+    const bgColor = config.sideTab.color || COLOR.BG_SECTION_HDR;
+    doc.setFillColor(...bgColor);
+    doc.rect(gridX, curY, gridW, bannerH, 'F');
+    // Clean border around header
+    doc.setDrawColor(...COLOR.BORDER_SECTION);
+    doc.setLineWidth(BORDER.SECTION_OUTER);
+    doc.rect(gridX, curY, gridW, bannerH);
+    // White text, vertically centered
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL + 1);
+    doc.setFontSize(FONT.SIZE_SECTION_TITLE);
     doc.setTextColor(...COLOR.TEXT_INVERTED);
-    doc.text(config.sideTab.label.toUpperCase(), gridX + 2, curY + 3.4);
+    const textY = curY + bannerH / 2 + FONT.SIZE_SECTION_TITLE * 0.14;
+    doc.text(config.sideTab.label.toUpperCase(), gridX + SPACING.CONTENT_INSET + 1, textY);
     curY += bannerH;
   }
 
@@ -439,7 +456,13 @@ export function drawFormSection(
     curY = config.afterGrid(curY);
   }
 
-  if (!useBanner) {
+  if (useBanner) {
+    // Enclosing section border around entire section (banner + grid + afterGrid)
+    const totalH = curY - sectionStartY;
+    doc.setDrawColor(...COLOR.BORDER_SECTION);
+    doc.setLineWidth(BORDER.SECTION_OUTER);
+    doc.rect(gridX, sectionStartY, gridW, totalH);
+  } else {
     // Draw sidebar tab spanning the full section height (legacy mode)
     const sectionH = curY - sectionStartY;
     drawSideTab(

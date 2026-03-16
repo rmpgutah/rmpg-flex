@@ -11,6 +11,7 @@ import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 import { generateCaseNumber } from '../utils/caseNumbers';
+import { validateParamId, escapeLike } from '../middleware/sanitize';
 
 const router = Router();
 router.use(authenticateToken);
@@ -60,8 +61,8 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     if (priority) { where += ' AND c.priority = ?'; params.push(priority); }
     if (investigator) { where += ' AND c.lead_investigator_id = ?'; params.push(investigator); }
     if (search) {
-      where += ' AND (c.case_number LIKE ? OR c.title LIKE ? OR c.summary LIKE ?)';
-      const s = `%${search}%`;
+      where += " AND (c.case_number LIKE ? ESCAPE '\\' OR c.title LIKE ? ESCAPE '\\' OR c.summary LIKE ? ESCAPE '\\')";
+      const s = `%${escapeLike(String(search))}%`;
       params.push(s, s, s);
     }
 
@@ -85,7 +86,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
 });
 
 // ─── GET /:id ────────────────────────────────────────────
-router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare(`
@@ -135,7 +136,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
 });
 
 // ─── PUT /:id ────────────────────────────────────────────
-router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -170,7 +171,7 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (re
 });
 
 // ─── PUT /:id/status ────────────────────────────────────
-router.put('/:id/status', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/:id/status', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -200,7 +201,7 @@ router.put('/:id/status', requireRole('admin', 'manager', 'supervisor'), (req: R
 });
 
 // ─── POST /:id/notes ────────────────────────────────────
-router.post('/:id/notes', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/:id/notes', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -222,7 +223,7 @@ router.post('/:id/notes', requireRole('admin', 'manager', 'supervisor', 'officer
 });
 
 // ─── GET /:id/notes ─────────────────────────────────────
-router.get('/:id/notes', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id/notes', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const notes = db.prepare(`
@@ -236,7 +237,7 @@ router.get('/:id/notes', requireRole('admin', 'manager', 'supervisor', 'officer'
 });
 
 // ─── POST /:id/calculate-solvability ────────────────────
-router.post('/:id/calculate-solvability', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/:id/calculate-solvability', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();

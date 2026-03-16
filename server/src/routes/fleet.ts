@@ -11,6 +11,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 import { queueOverlayProcessing, type DashCamOverlayConfig } from '../utils/videoOverlay';
 import { auditLog } from '../utils/auditLogger';
+import { validateParamId } from '../middleware/sanitize';
 
 const execFileAsync = promisify(execFile);
 const __filename_f = fileURLToPath(import.meta.url);
@@ -284,7 +285,7 @@ router.get('/analytics', requireRole('admin', 'manager', 'supervisor'), (req: Re
 });
 
 // ─── GET /api/fleet/:id ─ Get single fleet vehicle ────────────────
-router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response, next: NextFunction) => {
+router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response, next: NextFunction) => {
   try {
     // Avoid matching sub-routes that are handled by other route definitions
     if (['maintenance', 'analytics', 'dashcam-videos'].includes(req.params.id as string)) {
@@ -417,7 +418,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
 });
 
 // ─── PUT /api/fleet/:id ─ Update fleet vehicle ───────────────────
-router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -507,7 +508,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
 });
 
 // ─── PUT /api/fleet/:id/assign ─ Assign vehicle to unit ──────────
-router.put('/:id/assign', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/:id/assign', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -592,7 +593,7 @@ router.put('/:id/assign', requireRole('admin', 'manager', 'supervisor'), (req: R
 });
 
 // DELETE /api/fleet/:id - Delete fleet vehicle (retired + unassigned only)
-router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(req.params.id) as any;
@@ -622,7 +623,7 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
 });
 
 // POST /api/fleet/:id/archive
-router.post('/:id/archive', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/:id/archive', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(req.params.id) as any;
@@ -644,7 +645,7 @@ router.post('/:id/archive', requireRole('admin', 'manager'), (req: Request, res:
 });
 
 // POST /api/fleet/:id/unarchive
-router.post('/:id/unarchive', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/:id/unarchive', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE id = ?').get(req.params.id) as any;
@@ -665,7 +666,7 @@ router.post('/:id/unarchive', requireRole('admin', 'manager'), (req: Request, re
 });
 
 // ─── GET /api/fleet/:id/maintenance ─ Maintenance history ────────
-router.get('/:id/maintenance', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id/maintenance', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -678,8 +679,8 @@ router.get('/:id/maintenance', requireRole('admin', 'manager', 'supervisor', 'of
       return;
     }
 
-    const pageNum = parseInt(page as string, 10) || 1;
-    const perPage = parseInt(per_page as string, 10) || 25;
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 25));
     const offset = (pageNum - 1) * perPage;
 
     const countRow = db.prepare(
@@ -709,7 +710,7 @@ router.get('/:id/maintenance', requireRole('admin', 'manager', 'supervisor', 'of
 });
 
 // ─── POST /api/fleet/:id/maintenance ─ Log maintenance record ────
-router.post('/:id/maintenance', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/:id/maintenance', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -870,7 +871,7 @@ router.post('/maintenance/:id/unarchive', requireRole('admin', 'manager'), (req:
 });
 
 // ─── GET /api/fleet/:id/fuel ─ Fuel logs with summary ─────────────
-router.get('/:id/fuel', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id/fuel', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -945,7 +946,7 @@ router.get('/:id/fuel', requireRole('admin', 'manager', 'supervisor', 'officer',
 });
 
 // ─── POST /api/fleet/:id/fuel ─ Log a fuel entry ─────────────────
-router.post('/:id/fuel', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/:id/fuel', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -1086,7 +1087,7 @@ router.post('/fuel/:id/unarchive', requireRole('admin', 'manager'), (req: Reques
 });
 
 // ─── GET /api/fleet/:id/inspections ─ Inspection history ──────────
-router.get('/:id/inspections', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id/inspections', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -1105,8 +1106,8 @@ router.get('/:id/inspections', requireRole('admin', 'manager', 'supervisor', 'of
       params.push(type);
     }
 
-    const pageNum = parseInt(page as string, 10) || 1;
-    const perPage = parseInt(per_page as string, 10) || 25;
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 25));
     const offset = (pageNum - 1) * perPage;
 
     const countRow = db.prepare(`SELECT COUNT(*) as total FROM fleet_inspections ${whereClause}`).get(...params) as any;
@@ -1140,7 +1141,7 @@ router.get('/:id/inspections', requireRole('admin', 'manager', 'supervisor', 'of
 });
 
 // ─── POST /api/fleet/:id/inspections ─ Create inspection ─────────
-router.post('/:id/inspections', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/:id/inspections', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -1294,7 +1295,7 @@ router.post('/inspections/:id/unarchive', requireRole('admin', 'manager'), (req:
 });
 
 // ─── GET /api/fleet/:id/assignments ─ Assignment history ──────────
-router.get('/:id/assignments', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id/assignments', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -1335,7 +1336,7 @@ router.get('/:id/assignments', requireRole('admin', 'manager', 'supervisor', 'of
 });
 
 // ─── GET /api/fleet/:id/personnel ─ Aggregated officer data ───────
-router.get('/:id/personnel', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.get('/:id/personnel', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -1420,7 +1421,7 @@ router.get('/:id/personnel', requireRole('admin', 'manager', 'supervisor'), (req
 });
 
 // ─── POST /api/fleet/:id/personnel-notes ─ Add note ──────────────
-router.post('/:id/personnel-notes', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/:id/personnel-notes', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -1458,7 +1459,7 @@ router.post('/:id/personnel-notes', requireRole('admin', 'manager', 'supervisor'
 });
 
 // ─── DELETE /api/fleet/:id/personnel-notes/:noteId ─ Delete note ──
-router.delete('/:id/personnel-notes/:noteId', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/:id/personnel-notes/:noteId', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id, noteId } = req.params;

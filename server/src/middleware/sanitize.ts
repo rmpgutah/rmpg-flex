@@ -120,6 +120,22 @@ export function validateParamId(req: Request, res: Response, next: NextFunction)
   next();
 }
 
+/** Safely parse pagination parameters from query string.
+ *  Returns clamped, validated { page, limit, offset } values.
+ *  - page: positive integer (default 1)
+ *  - limit: positive integer clamped to [1, maxLimit] (default defaultLimit)
+ *  - offset: computed from page and limit */
+export function safePagination(
+  query: Record<string, any>,
+  defaultLimit = 50,
+  maxLimit = 200,
+): { page: number; limit: number; offset: number } {
+  const page = Math.max(1, parseInt(String(query.page ?? query.p ?? '1'), 10) || 1);
+  const rawLimit = parseInt(String(query.limit ?? query.per_page ?? String(defaultLimit)), 10);
+  const limit = Math.min(maxLimit, Math.max(1, isNaN(rawLimit) ? defaultLimit : rawLimit));
+  return { page, limit, offset: (page - 1) * limit };
+}
+
 export function sanitizeInput(req: Request, _res: Response, next: NextFunction): void {
   if (req.body && typeof req.body === 'object') {
     req.body = sanitizeObject(req.body);

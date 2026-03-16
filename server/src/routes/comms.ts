@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
-import { validateEnum, escapeLike } from '../middleware/sanitize';
+import { validateEnum, escapeLike, validateParamId } from '../middleware/sanitize';
 import { broadcastNewMessage, broadcastAlert, sendToUser } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
 import path from 'path';
@@ -159,7 +159,7 @@ router.get('/messages', (req: Request, res: Response) => {
 });
 
 // PUT /api/comms/messages/:id/read - Mark message as read
-router.put('/messages/:id/read', (req: Request, res: Response) => {
+router.put('/messages/:id/read', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -193,7 +193,7 @@ router.post('/messages/mark-all-read', (req: Request, res: Response) => {
 });
 
 // DELETE /api/comms/messages/:id - Delete message
-router.delete('/messages/:id', (req: Request, res: Response) => {
+router.delete('/messages/:id', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const message = db.prepare('SELECT * FROM messages WHERE id = ?').get(req.params.id) as any;
@@ -347,7 +347,7 @@ router.get('/bolos/check', (req: Request, res: Response) => {
 });
 
 // GET /api/comms/bolos/:id - Get single BOLO
-router.get('/bolos/:id', (req: Request, res: Response) => {
+router.get('/bolos/:id', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const bolo = db.prepare(`
@@ -446,7 +446,7 @@ router.post('/bolos', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
 });
 
 // PUT /api/comms/bolos/:id - Update BOLO
-router.put('/bolos/:id', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+router.put('/bolos/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const bolo = db.prepare('SELECT * FROM bolos WHERE id = ?').get(req.params.id) as any;
@@ -504,7 +504,7 @@ router.put('/bolos/:id', requireRole('admin', 'manager', 'supervisor', 'dispatch
 });
 
 // DELETE /api/comms/bolos/:id - Cancel BOLO
-router.delete('/bolos/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.delete('/bolos/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const bolo = db.prepare('SELECT * FROM bolos WHERE id = ?').get(req.params.id) as any;
@@ -528,7 +528,7 @@ router.delete('/bolos/:id', requireRole('admin', 'manager', 'supervisor'), (req:
 });
 
 // POST /api/comms/bolos/:id/archive
-router.post('/bolos/:id/archive', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+router.post('/bolos/:id/archive', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const bolo = db.prepare('SELECT * FROM bolos WHERE id = ?').get(req.params.id) as any;
@@ -551,7 +551,7 @@ router.post('/bolos/:id/archive', requireRole('admin', 'manager', 'supervisor', 
 });
 
 // POST /api/comms/bolos/:id/unarchive
-router.post('/bolos/:id/unarchive', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+router.post('/bolos/:id/unarchive', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const bolo = db.prepare('SELECT * FROM bolos WHERE id = ?').get(req.params.id) as any;
@@ -708,7 +708,7 @@ router.get('/radio-channels', (req: Request, res: Response) => {
 // ─── RADIO AUDIO FILE ─────────────────────────────────
 
 // GET /api/comms/radio/audio/:id — Stream a saved radio recording
-router.get('/radio/audio/:id', (req: Request, res: Response) => {
+router.get('/radio/audio/:id', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare('SELECT audio_file, file_size FROM radio_transcripts WHERE id = ?').get(req.params.id) as any;

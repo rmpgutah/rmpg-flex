@@ -31,6 +31,10 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
     'autoplay=()', 'display-capture=()', 'document-domain=()',
     'encrypted-media=(self)', 'fullscreen=(self)',
     'idle-detection=()', 'screen-wake-lock=()',
+    'interest-cohort=()',  // Block FLoC — prevent privacy-invasive ad tracking
+    'browsing-topics=()',  // Block Topics API (FLoC successor)
+    'join-ad-interest-group=()', // Block FLEDGE/Protected Audience API
+    'run-ad-auction=()',   // Block FLEDGE ad auctions
   ].join(', '));
 
   // Cross-Origin isolation headers — prevent cross-origin attacks

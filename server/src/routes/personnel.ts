@@ -12,6 +12,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 import { queueOverlayProcessing, type BodyCamOverlayConfig } from '../utils/videoOverlay';
 import { validateEmail, validatePhone, validateBadgeNumber, validateAll } from '../utils/inputValidation';
+import { validateParamId } from '../middleware/sanitize';
 
 const execFileAsync = promisify(execFile);
 
@@ -152,7 +153,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
 });
 
 // GET /api/personnel/:id - Get user details
-router.get('/:id', (req: Request, res: Response, next) => {
+router.get('/:id', validateParamId, (req: Request, res: Response, next) => {
   try {
     // Check for route conflicts with sub-paths handled by mountScheduleRoutes
     const subPaths = ['schedules', 'time', 'credentials', 'training', 'training-requirements', 'deployments', 'coverage-gaps', 'analytics', 'activity', 'equipment', 'body-cameras', 'bodycam-videos'];
@@ -342,7 +343,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
 });
 
 // PUT /api/personnel/:id - Update user
-router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = db.prepare('SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, status, archived_at FROM users WHERE id = ?').get(req.params.id) as any;
@@ -448,7 +449,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
 });
 
 // DELETE /api/personnel/:id - Soft-delete (terminate) user
-router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = db.prepare('SELECT id, username, full_name, status FROM users WHERE id = ?').get(req.params.id) as any;
@@ -487,7 +488,7 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
 });
 
 // POST /api/personnel/:id/archive - Archive terminated user
-router.post('/:id/archive', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/:id/archive', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = db.prepare('SELECT id, full_name, status, archived_at FROM users WHERE id = ?').get(req.params.id) as any;
@@ -516,7 +517,7 @@ router.post('/:id/archive', requireRole('admin', 'manager'), (req: Request, res:
 });
 
 // POST /api/personnel/:id/unarchive
-router.post('/:id/unarchive', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/:id/unarchive', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = db.prepare('SELECT id, full_name, status, archived_at FROM users WHERE id = ?').get(req.params.id) as any;
@@ -1225,7 +1226,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
   parentRouter.get('/personnel/activity/:userId', authenticateToken, (req: Request, res: Response) => {
     try {
       const db = getDb();
-      const limit = parseInt(req.query.limit as string, 10) || 50;
+      const limit = Math.min(500, Math.max(1, parseInt(req.query.limit as string, 10) || 50));
 
       const activity = db.prepare(`
         SELECT al.*, u.full_name as user_name, u.badge_number

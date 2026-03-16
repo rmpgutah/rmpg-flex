@@ -13,7 +13,7 @@ import {
   testConnection, getApiKey, encryptApiKey,
   ServeManagerError,
 } from '../utils/serveManagerClient';
-import { escapeLike } from '../middleware/sanitize';
+import { escapeLike, validateParamId } from '../middleware/sanitize';
 
 const router = Router();
 router.use(authenticateToken);
@@ -370,7 +370,7 @@ router.get('/jobs', requireRole('admin', 'manager', 'supervisor', 'officer'), as
 });
 
 // GET /jobs/:id
-router.get('/jobs/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), async (req: Request, res: Response) => {
+router.get('/jobs/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), async (req: Request, res: Response) => {
   try {
     if (!requireApiKey(req, res)) return;
     ensureTables();
@@ -423,7 +423,7 @@ router.post('/jobs', requireRole('admin', 'manager'), async (req: Request, res: 
 });
 
 // PUT /jobs/:id — update on SM
-router.put('/jobs/:id', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+router.put('/jobs/:id', validateParamId, requireRole('admin', 'manager'), async (req: Request, res: Response) => {
   try {
     if (!requireApiKey(req, res)) return;
     const now = localNow();
@@ -445,7 +445,7 @@ router.put('/jobs/:id', requireRole('admin', 'manager'), async (req: Request, re
 });
 
 // POST /jobs/:id/cancel
-router.post('/jobs/:id/cancel', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+router.post('/jobs/:id/cancel', validateParamId, requireRole('admin', 'manager'), async (req: Request, res: Response) => {
   try {
     if (!requireApiKey(req, res)) return;
     const now = localNow();
@@ -705,7 +705,7 @@ router.get('/sync/log', requireRole('admin', 'manager'), (req: Request, res: Res
 // ============================================================
 
 // PUT /jobs/:id/link — link SM job to local warrant/call
-router.put('/jobs/:id/link', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.put('/jobs/:id/link', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     ensureTables();
     const db = getDb();

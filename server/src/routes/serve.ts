@@ -7,6 +7,7 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { validateParamId } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
 import { broadcast } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
@@ -340,7 +341,7 @@ router.post('/', requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
 });
 
 // ── GET /:id — Get single job with attempts + skip traces ───
-router.get('/:id', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id', validateParamId, requireRole(...WRITE_ROLES, 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
@@ -366,7 +367,7 @@ router.get('/:id', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Request, res
 });
 
 // ── PUT /:id — Update serve job ─────────────────────────────
-router.put('/:id', requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
+router.put('/:id', validateParamId, requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
@@ -416,7 +417,7 @@ router.put('/:id', requireRole(...WRITE_ROLES), (req: Request, res: Response) =>
 });
 
 // ── POST /:id/attempt — Record service attempt ─────────────
-router.post('/:id/attempt', requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
+router.post('/:id/attempt', validateParamId, requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
@@ -492,7 +493,7 @@ router.post('/:id/attempt', requireRole(...WRITE_ROLES), (req: Request, res: Res
 });
 
 // ── POST /:id/skip-trace — Run skip trace for job ───────────
-router.post('/:id/skip-trace', requireRole(...WRITE_ROLES), async (req: Request, res: Response) => {
+router.post('/:id/skip-trace', validateParamId, requireRole(...WRITE_ROLES), async (req: Request, res: Response) => {
   try {
     const db = getDb();
     const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;

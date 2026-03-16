@@ -13,6 +13,7 @@
 // API docs: https://developer.microbilt.com/apis
 
 import { Router, Request, Response } from 'express';
+import { escapeLike } from '../middleware/sanitize';
 import crypto from 'crypto';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
@@ -310,7 +311,7 @@ router.post('/ofac/search', requireRole('admin', 'manager', 'supervisor', 'offic
       return;
     }
 
-    const searchTerm = `%${searchName}%`;
+    const searchTerm = `%${escapeLike(searchName)}%`;
 
     // Search SDN entries by name
     const entries = db.prepare(`
@@ -320,7 +321,7 @@ router.post('/ofac/search', requireRole('admin', 'manager', 'supervisor', 'offic
       FROM ofac_sdn_entries e
       LEFT JOIN ofac_sdn_aliases a ON e.ent_num = a.ent_num
       LEFT JOIN ofac_sdn_addresses addr ON e.ent_num = addr.ent_num
-      WHERE e.sdn_name LIKE ? OR a.alias_name LIKE ?
+      WHERE e.sdn_name LIKE ? ESCAPE '\\' OR a.alias_name LIKE ? ESCAPE '\\'
       GROUP BY e.id
       ORDER BY e.sdn_name
       LIMIT 10

@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { sendCsv } from '../utils/csvExport';
-import { escapeLike } from '../middleware/sanitize';
+import { escapeLike, validateParamId } from '../middleware/sanitize';
 import { localNow, localToday } from '../utils/timeUtils';
 import { searchUtahWarrants } from '../utils/utahWarrantScraper';
 import { searchOfacLocal } from '../utils/ofacScraper';
@@ -173,6 +173,7 @@ router.get('/persons/export', requireRole('admin', 'manager', 'supervisor'), (re
       FROM persons
       ${whereClause}
       ORDER BY last_name, first_name
+      LIMIT 50000
     `).all(...params);
 
     sendCsv(res, 'persons_export.csv', [
@@ -193,7 +194,7 @@ router.get('/persons/export', requireRole('admin', 'manager', 'supervisor'), (re
 });
 
 // GET /api/records/persons/:id - Get person details
-router.get('/persons/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/persons/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     let person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id) as any;
@@ -233,7 +234,7 @@ router.get('/persons/:id', requireRole('admin', 'manager', 'supervisor', 'office
 });
 
 // GET /api/records/persons/:id/history - Get person's incident history
-router.get('/persons/:id/history', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/persons/:id/history', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id) as any;
@@ -272,7 +273,7 @@ router.get('/persons/:id/history', requireRole('admin', 'manager', 'supervisor',
 });
 
 // GET /api/records/persons/:id/system-history - Aggregated system history
-router.get('/persons/:id/system-history', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/persons/:id/system-history', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id) as any;
@@ -461,7 +462,7 @@ router.post('/persons', requireRole('admin', 'manager', 'supervisor', 'officer',
 });
 
 // PUT /api/records/persons/:id - Update person
-router.put('/persons/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.put('/persons/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id) as any;
@@ -555,7 +556,7 @@ router.put('/persons/:id', requireRole('admin', 'manager', 'supervisor', 'office
 });
 
 // DELETE /api/records/persons/:id - Delete person
-router.delete('/persons/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/persons/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id) as any;
@@ -606,7 +607,7 @@ router.post('/persons/screen-all-ofac', requireRole('admin', 'manager', 'supervi
 });
 
 // POST /api/records/persons/:id/screen-ofac - Force re-screen a single person
-router.post('/persons/:id/screen-ofac', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/persons/:id/screen-ofac', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const person = db.prepare(`SELECT ${PERSON_COLUMNS}, watchlist_match, watchlist_checked_at FROM persons WHERE id = ?`).get(req.params.id) as any;
@@ -624,7 +625,7 @@ router.post('/persons/:id/screen-ofac', requireRole('admin', 'manager', 'supervi
 });
 
 // POST /api/records/persons/:id/archive
-router.post('/persons/:id/archive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/persons/:id/archive', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id) as any;
@@ -638,7 +639,7 @@ router.post('/persons/:id/archive', requireRole('admin', 'manager', 'supervisor'
 });
 
 // POST /api/records/persons/:id/unarchive
-router.post('/persons/:id/unarchive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/persons/:id/unarchive', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id) as any;
@@ -735,6 +736,7 @@ router.get('/vehicles/export', requireRole('admin', 'manager', 'supervisor'), (r
       FROM vehicles_records v
       LEFT JOIN persons p ON v.owner_person_id = p.id
       ORDER BY v.created_at DESC
+      LIMIT 50000
     `).all();
 
     sendCsv(res, 'vehicles_export.csv', [
@@ -755,7 +757,7 @@ router.get('/vehicles/export', requireRole('admin', 'manager', 'supervisor'), (r
 });
 
 // GET /api/records/vehicles/:id - Get vehicle
-router.get('/vehicles/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/vehicles/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const vehicle = db.prepare(`
@@ -833,7 +835,7 @@ router.post('/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer'
 });
 
 // PUT /api/records/vehicles/:id - Update vehicle
-router.put('/vehicles/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.put('/vehicles/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
@@ -908,7 +910,7 @@ router.put('/vehicles/:id', requireRole('admin', 'manager', 'supervisor', 'offic
 });
 
 // DELETE /api/records/vehicles/:id - Delete vehicle
-router.delete('/vehicles/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/vehicles/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
@@ -931,7 +933,7 @@ router.delete('/vehicles/:id', requireRole('admin', 'manager'), (req: Request, r
 });
 
 // POST /api/records/vehicles/:id/archive
-router.post('/vehicles/:id/archive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/vehicles/:id/archive', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const v = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
@@ -945,7 +947,7 @@ router.post('/vehicles/:id/archive', requireRole('admin', 'manager', 'supervisor
 });
 
 // POST /api/records/vehicles/:id/unarchive
-router.post('/vehicles/:id/unarchive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/vehicles/:id/unarchive', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const v = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
@@ -998,7 +1000,7 @@ router.get('/properties', requireRole('admin', 'manager', 'supervisor', 'officer
 });
 
 // GET /api/records/properties/:id - Get property details
-router.get('/properties/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/properties/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const property = db.prepare(`
@@ -1136,7 +1138,7 @@ router.post('/properties', requireRole('admin', 'manager', 'supervisor', 'office
 // ─── INCIDENT CROSS-REFERENCES ───────────────────────
 
 // GET /api/records/persons/:id/incidents - All incidents linked to a person
-router.get('/persons/:id/incidents', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/persons/:id/incidents', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id) as any;
@@ -1164,7 +1166,7 @@ router.get('/persons/:id/incidents', requireRole('admin', 'manager', 'supervisor
 });
 
 // GET /api/records/vehicles/:id/incidents - All incidents linked to a vehicle
-router.get('/vehicles/:id/incidents', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/vehicles/:id/incidents', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
@@ -1236,7 +1238,7 @@ router.get('/evidence', requireRole('admin', 'manager', 'supervisor', 'officer',
 });
 
 // PUT /api/records/evidence/:id - Update evidence
-router.put('/evidence/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.put('/evidence/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
@@ -1294,7 +1296,7 @@ router.put('/evidence/:id', requireRole('admin', 'manager', 'supervisor', 'offic
 });
 
 // DELETE /api/records/evidence/:id - Delete evidence
-router.delete('/evidence/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/evidence/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
@@ -1313,7 +1315,7 @@ router.delete('/evidence/:id', requireRole('admin', 'manager'), (req: Request, r
 });
 
 // POST /api/records/evidence/:id/archive
-router.post('/evidence/:id/archive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/evidence/:id/archive', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
@@ -1333,7 +1335,7 @@ router.post('/evidence/:id/archive', requireRole('admin', 'manager', 'supervisor
 });
 
 // POST /api/records/evidence/:id/unarchive
-router.post('/evidence/:id/unarchive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/evidence/:id/unarchive', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
@@ -1352,7 +1354,7 @@ router.post('/evidence/:id/unarchive', requireRole('admin', 'manager', 'supervis
 });
 
 // POST /api/records/evidence/:id/custody - Add chain of custody entry
-router.post('/evidence/:id/custody', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.post('/evidence/:id/custody', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
@@ -1446,7 +1448,7 @@ router.get('/evidence/locations', requireRole('admin', 'manager', 'supervisor', 
 });
 
 // POST /api/records/evidence/:id/chain-action — Enhanced chain-of-custody action
-router.post('/evidence/:id/chain-action', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.post('/evidence/:id/chain-action', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
@@ -1491,7 +1493,7 @@ router.post('/evidence/:id/chain-action', requireRole('admin', 'manager', 'super
 });
 
 // PUT /api/records/properties/:id - Update property
-router.put('/properties/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.put('/properties/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const property = db.prepare('SELECT * FROM properties WHERE id = ?').get(req.params.id) as any;
@@ -1547,7 +1549,7 @@ router.put('/properties/:id', requireRole('admin', 'manager', 'supervisor', 'off
 });
 
 // DELETE /api/records/properties/:id - Delete property
-router.delete('/properties/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/properties/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const property = db.prepare('SELECT * FROM properties WHERE id = ?').get(req.params.id) as any;
@@ -1578,7 +1580,7 @@ router.delete('/properties/:id', requireRole('admin', 'manager'), (req: Request,
 });
 
 // POST /api/records/properties/:id/archive
-router.post('/properties/:id/archive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/properties/:id/archive', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const prop = db.prepare('SELECT * FROM properties WHERE id = ?').get(req.params.id) as any;
@@ -1592,7 +1594,7 @@ router.post('/properties/:id/archive', requireRole('admin', 'manager', 'supervis
 });
 
 // POST /api/records/properties/:id/unarchive
-router.post('/properties/:id/unarchive', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.post('/properties/:id/unarchive', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const prop = db.prepare('SELECT * FROM properties WHERE id = ?').get(req.params.id) as any;
@@ -1792,7 +1794,7 @@ router.post('/links', requireRole('admin', 'manager', 'supervisor', 'officer', '
 });
 
 // DELETE /api/records/links/:id - Remove a record link
-router.delete('/links/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/links/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const link = db.prepare('SELECT * FROM record_links WHERE id = ?').get(req.params.id) as any;
@@ -1908,7 +1910,7 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', '
 // ═══════════════════════════════════════════════════
 
 // GET /api/records/persons/:id/criminal-history
-router.get('/persons/:id/criminal-history', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/persons/:id/criminal-history', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const rows = db.prepare(`
@@ -1926,7 +1928,7 @@ router.get('/persons/:id/criminal-history', requireRole('admin', 'manager', 'sup
 });
 
 // POST /api/records/persons/:id/criminal-history
-router.post('/persons/:id/criminal-history', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.post('/persons/:id/criminal-history', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = (req as any).user;
@@ -1967,7 +1969,7 @@ router.post('/persons/:id/criminal-history', requireRole('admin', 'manager', 'su
 });
 
 // PUT /api/records/criminal-history/:id
-router.put('/criminal-history/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.put('/criminal-history/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const {
@@ -2011,7 +2013,7 @@ router.put('/criminal-history/:id', requireRole('admin', 'manager', 'supervisor'
 });
 
 // DELETE /api/records/criminal-history/:id
-router.delete('/criminal-history/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/criminal-history/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     db.prepare('DELETE FROM criminal_history WHERE id = ?').run(req.params.id);
@@ -2028,7 +2030,7 @@ router.delete('/criminal-history/:id', requireRole('admin', 'manager'), (req: Re
 // ═══════════════════════════════════════════════════
 
 // GET /api/records/persons/:id/clients - Get all clients linked to a person
-router.get('/persons/:id/clients', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/persons/:id/clients', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const rows = db.prepare(`
@@ -2049,7 +2051,7 @@ router.get('/persons/:id/clients', requireRole('admin', 'manager', 'supervisor',
 });
 
 // GET /api/records/clients/:id/persons - Get all persons linked to a client
-router.get('/clients/:id/persons', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/clients/:id/persons', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const rows = db.prepare(`
@@ -2120,7 +2122,7 @@ router.post('/client-persons', requireRole('admin', 'manager', 'supervisor', 'of
 });
 
 // PUT /api/records/client-persons/:id - Update link details
-router.put('/client-persons/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.put('/client-persons/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const link = db.prepare('SELECT * FROM client_persons WHERE id = ?').get(req.params.id) as any;
@@ -2161,7 +2163,7 @@ router.put('/client-persons/:id', requireRole('admin', 'manager', 'supervisor', 
 });
 
 // DELETE /api/records/client-persons/:id - Remove link
-router.delete('/client-persons/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/client-persons/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const link = db.prepare(`
@@ -2186,7 +2188,7 @@ router.delete('/client-persons/:id', requireRole('admin', 'manager'), (req: Requ
 
 // GET /api/records/persons/:id/invoice-summary - Get billable summary for a person
 // Shows all clients they're linked to, incidents for those clients, and invoice history
-router.get('/persons/:id/invoice-summary', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/persons/:id/invoice-summary', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const person = db.prepare('SELECT id, first_name, last_name FROM persons WHERE id = ?').get(req.params.id) as any;

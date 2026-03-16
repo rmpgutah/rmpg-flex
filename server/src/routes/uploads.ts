@@ -7,7 +7,17 @@ import { fileURLToPath } from 'url';
 import jwt from 'jsonwebtoken';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole, type JwtPayload } from '../middleware/auth';
+import { rateLimit } from '../middleware/rateLimiter';
+import { validateParamId } from '../middleware/sanitize';
 import config from '../config';
+
+// Rate limiter for file uploads — prevent abuse/DoS via large uploads
+const uploadRateLimit = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  maxRequests: 30,           // 30 uploads per 5 minutes per user
+  keyGenerator: (req) => `upload:${req.user?.userId || req.ip || 'unknown'}`,
+  message: 'Too many file uploads. Please try again later.',
+});
 
 /** Sanitize a filename for safe use in Content-Disposition headers.
  *  Strips CRLF, null bytes, double quotes, and non-printable chars
@@ -203,7 +213,7 @@ const router = Router();
 // ─── GET /api/uploads/entity/:type/:id ─── List files for entity ───
 // (Must be before /:fileId catch-all to avoid route conflict)
 // Each attachment now includes `access_sig` + `access_exp` for session-independent file URLs.
-router.get('/entity/:type/:id', authenticateToken, (req: Request, res: Response) => {
+router.get('/entity/:type/:id', validateParamId, authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const attachments = db.prepare(`
@@ -350,7 +360,7 @@ router.get('/:fileId/thumbnail', authenticateTokenOrQuery, (req: Request, res: R
 router.use(authenticateToken);
 
 // ─── POST /api/uploads ─── Upload one or more files ───
-router.post('/', upload.array('files', 10), (req: Request, res: Response) => {
+router.post('/', uploadRateLimit, upload.array('files', 10), (req: Request, res: Response) => {
   try {
     const files = req.files as Express.Multer.File[];
     if (!files || files.length === 0) {
