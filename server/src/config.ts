@@ -120,8 +120,8 @@ export const config = {
 
   // Security
   security: {
-    maxLoginAttempts: envInt('MAX_LOGIN_ATTEMPTS', 5),
-    lockoutDurationMinutes: envInt('LOCKOUT_DURATION_MINUTES', 15),
+    maxLoginAttempts: envInt('MAX_LOGIN_ATTEMPTS', 8),
+    lockoutDurationMinutes: envInt('LOCKOUT_DURATION_MINUTES', 10),
     rateLimitWindowMs: envInt('RATE_LIMIT_WINDOW_MS', 1 * 60 * 1000),
     rateLimitMaxRequests: envInt('RATE_LIMIT_MAX_REQUESTS', 300),
   },

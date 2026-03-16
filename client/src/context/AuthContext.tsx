@@ -62,7 +62,8 @@ const electron = typeof window !== 'undefined' ? (window as any).electron : null
 const REFRESH_BUFFER_MS = 60 * 1000;
 
 // Max time (ms) any auth fetch is allowed before aborting — prevents infinite "Initializing..."
-const AUTH_FETCH_TIMEOUT_MS = 8000;
+// 15s is generous for field conditions (vehicle WiFi, cell data in dead zones)
+const AUTH_FETCH_TIMEOUT_MS = 15000;
 
 function parseJwtExpiry(token: string): number | null {
   try {

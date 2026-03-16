@@ -293,7 +293,21 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
 
     // Build list of pending actions
     const pendingActions: string[] = [];
-    const needsPasswordChange = user.force_password_change === 1 || user.must_change_password === 1 || isPasswordExpired(user.password_changed_at);
+
+    // Backfill password_changed_at for users who never had it set (prevents
+    // isPasswordExpired from treating null as "expired" and trapping them)
+    if (!user.password_changed_at) {
+      try {
+        db.prepare('UPDATE users SET password_changed_at = ? WHERE id = ? AND password_changed_at IS NULL')
+          .run(localNow(), user.id);
+        user.password_changed_at = localNow();
+      } catch { /* non-fatal */ }
+    }
+
+    // Defensive: if isPasswordExpired throws, don't block login — treat as not expired
+    let passwordExpired = false;
+    try { passwordExpired = isPasswordExpired(user.password_changed_at); } catch { /* fail open */ }
+    const needsPasswordChange = user.force_password_change === 1 || user.must_change_password === 1 || passwordExpired;
     // 2FA is mandatory for ALL users regardless of account age or role.
     // Check the actual TOTP secret table — the source of truth for verified 2FA.
     // This prevents the "already configured" error when totp_setup_required flag
@@ -1286,7 +1300,8 @@ router.post('/verify-2fa', mfaRateLimit, (req: Request, res: Response) => {
 
     // ── Check if password change is required before issuing final tokens ──
     const pwUser = db.prepare('SELECT password_changed_at FROM users WHERE id = ?').get(user.id) as any;
-    const needsPasswordChange = user.must_change_password === 1 || isPasswordExpired(pwUser?.password_changed_at);
+    let _pwExp = false; try { _pwExp = isPasswordExpired(pwUser?.password_changed_at); } catch { /* fail open */ }
+    const needsPasswordChange = user.must_change_password === 1 || _pwExp;
 
     const payload: Omit<JwtPayload, 'type'> = {
       userId: user.id,
@@ -1712,7 +1727,8 @@ router.post('/2fa/setup/verify', authenticateAnyToken, mfaRateLimit, (req: Reque
         FROM users WHERE id = ?
       `).get(userId) as any;
 
-      const needsPasswordChange = user.force_password_change === 1 || isPasswordExpired(user.password_changed_at);
+      let _pwExpired = false; try { _pwExpired = isPasswordExpired(user.password_changed_at); } catch { /* fail open */ }
+      const needsPasswordChange = user.force_password_change === 1 || _pwExpired;
       if (needsPasswordChange) {
         const tempToken = generateTempToken(
           { userId: user.id, username: user.username, role: user.role, fullName: user.full_name },
@@ -1957,7 +1973,8 @@ router.post('/login/verify-2fa', authenticateTempToken, mfaRateLimit, (req: Requ
       return;
     }
 
-    const needsPasswordChange = user.force_password_change === 1 || isPasswordExpired(user.password_changed_at);
+    let _pwExpired = false; try { _pwExpired = isPasswordExpired(user.password_changed_at); } catch { /* fail open */ }
+      const needsPasswordChange = user.force_password_change === 1 || _pwExpired;
     if (needsPasswordChange) {
       const tempToken = generateTempToken(
         { userId: user.id, username: user.username, role: user.role, fullName: user.full_name },
@@ -2109,7 +2126,8 @@ router.post('/login/verify-backup-code', authenticateTempToken, mfaRateLimit, (r
       return;
     }
 
-    const needsPasswordChange = user.force_password_change === 1 || isPasswordExpired(user.password_changed_at);
+    let _pwExpired = false; try { _pwExpired = isPasswordExpired(user.password_changed_at); } catch { /* fail open */ }
+      const needsPasswordChange = user.force_password_change === 1 || _pwExpired;
     if (needsPasswordChange) {
       const tempToken = generateTempToken(
         { userId: user.id, username: user.username, role: user.role, fullName: user.full_name },

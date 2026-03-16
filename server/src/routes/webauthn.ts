@@ -488,9 +488,11 @@ router.post('/authenticate-verify', mfaRateLimit, async (req: Request, res: Resp
     };
 
     // ── Check if password change is required before issuing final tokens ──
+    let _pwExpired = false;
+    try { _pwExpired = isPasswordExpired(user.password_changed_at); } catch { /* fail open */ }
     const needsPasswordChange = user.must_change_password === 1
       || user.force_password_change === 1
-      || isPasswordExpired(user.password_changed_at);
+      || _pwExpired;
 
     if (needsPasswordChange) {
       const pwTempToken = generateTempToken(payload, ['password_change']);
