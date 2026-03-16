@@ -95,7 +95,7 @@ export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, 
         <label className="field-label mb-1 block">Title *</label>
         <input
           type="text"
-          className="input-field w-full"
+          className="input-dark"
           value={form.title}
           onChange={e => set('title', e.target.value)}
           required
@@ -107,7 +107,7 @@ export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, 
         <div>
           <label className="field-label mb-1 block">Classification</label>
           <select
-            className="input-field w-full"
+            className="select-dark"
             value={form.classification}
             onChange={e => set('classification', e.target.value)}
           >
@@ -120,7 +120,7 @@ export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, 
           <label className="field-label mb-1 block">Case Number</label>
           <input
             type="text"
-            className="input-field w-full"
+            className="input-dark"
             value={form.case_number}
             onChange={e => set('case_number', e.target.value)}
             placeholder="e.g. RKY26-00042-CRM"
@@ -134,7 +134,7 @@ export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, 
           <label className="field-label mb-1 block">Speed (MPH)</label>
           <input
             type="number"
-            className="input-field w-full"
+            className="input-dark"
             value={form.speed_mph}
             onChange={e => set('speed_mph', e.target.value)}
             placeholder="e.g. 45"
@@ -147,7 +147,7 @@ export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, 
           <label className="field-label mb-1 block">Address</label>
           <input
             type="text"
-            className="input-field w-full"
+            className="input-dark"
             value={form.address}
             onChange={e => set('address', e.target.value)}
             placeholder="e.g. 1200 N Main St, Vernal"
@@ -161,7 +161,7 @@ export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, 
           <label className="field-label mb-1 block">Latitude</label>
           <input
             type="number"
-            className="input-field w-full"
+            className="input-dark"
             value={form.latitude}
             onChange={e => set('latitude', e.target.value)}
             placeholder="e.g. 40.4555"
@@ -172,7 +172,7 @@ export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, 
           <label className="field-label mb-1 block">Longitude</label>
           <input
             type="number"
-            className="input-field w-full"
+            className="input-dark"
             value={form.longitude}
             onChange={e => set('longitude', e.target.value)}
             placeholder="e.g. -109.5287"
@@ -185,7 +185,7 @@ export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, 
       <div>
         <label className="field-label mb-1 block">Notes</label>
         <textarea
-          className="input-field w-full"
+          className="textarea-dark"
           rows={3}
           value={form.notes}
           onChange={e => set('notes', e.target.value)}
