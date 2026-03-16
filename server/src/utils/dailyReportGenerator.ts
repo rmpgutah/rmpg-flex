@@ -174,7 +174,7 @@ async function collectDailyBreadcrumbs(dateStr: string): Promise<UnitTrail[]> {
   const trails: UnitTrail[] = [];
 
   for (const [uid, trail] of Object.entries(trailMap)) {
-    const unitId = parseInt(uid);
+    const unitId = parseInt(uid, 10);
     const points: ProcessedPoint[] = [];
     let totalDistance = 0;
     let maxSpeed = 0;

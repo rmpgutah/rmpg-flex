@@ -437,7 +437,7 @@ router.get('/status', (_req: Request, res: Response) => {
     const syncStatus = getArrestSyncStatus();
     const enabledCounties = getConfigValue(CONFIG_KEYS.enabledCounties);
     let counties: string[] = [];
-    try { counties = JSON.parse(enabledCounties || '[]'); } catch {}
+    try { counties = JSON.parse(enabledCounties || '[]'); } catch (e) { console.warn('[arrests] Failed to parse enabled counties:', e); }
 
     // Detect if API is offline (recent errors all mention 404)
     const apiOffline = syncStatus.lastError?.includes('404') || syncStatus.lastError?.includes('offline');
@@ -660,7 +660,7 @@ router.get('/counties', async (req: Request, res: Response) => {
     const countsMap = new Map(counts.map(c => [c.sourceId, c.count]));
     const enabledStr = getConfigValue(CONFIG_KEYS.enabledCounties);
     let enabled: string[] = [];
-    try { enabled = JSON.parse(enabledStr || '[]'); } catch {}
+    try { enabled = JSON.parse(enabledStr || '[]'); } catch (e) { console.warn('[arrests] Failed to parse enabled counties:', e); }
     const sources = UTAH_COUNTY_DEFAULTS.map(c => ({
       ...c, recordCount: countsMap.get(c.sourceId) || 0,
       enabled: enabled.length === 0 || enabled.includes(c.sourceId),

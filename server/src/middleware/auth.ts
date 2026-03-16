@@ -61,7 +61,11 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
           }
           // 'warn' mode: log but allow through
         }
-      } catch { /* DB not available - allow through */ }
+      } catch {
+      // DB unavailable — deny request rather than silently bypassing IP binding
+      res.status(503).json({ error: 'Service temporarily unavailable' });
+      return;
+    }
     }
 
     req.user = decoded;
@@ -89,7 +93,7 @@ export function requireRole(...roles: string[]) {
     }
 
     if (!roles.includes(req.user.role)) {
-      res.status(403).json({ error: 'Insufficient permissions', required: roles });
+      res.status(403).json({ error: 'Insufficient permissions' });
       return;
     }
 

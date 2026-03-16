@@ -40,7 +40,7 @@ router.get('/', (req: Request, res: Response) => {
     if (status) { where += ' AND t.status = ?'; params.push(status); }
     if (property_id) { where += ' AND t.property_id = ?'; params.push(property_id); }
     if (search) {
-      where += ` AND (t.subject_first_name || ' ' || t.subject_last_name LIKE ? OR t.order_number LIKE ? OR t.location LIKE ? OR t.property_name LIKE ?)`;
+      where += ` AND ((t.subject_first_name || ' ' || t.subject_last_name) LIKE ? OR t.order_number LIKE ? OR t.location LIKE ? OR t.property_name LIKE ?)`;
       const s = `%${search}%`;
       params.push(s, s, s, s);
     }
@@ -68,9 +68,10 @@ router.get('/', (req: Request, res: Response) => {
       LIMIT ? OFFSET ?
     `).all(...params, perPage, offset);
 
+    const total = countRow?.total ?? 0;
     res.json({
       data: rows,
-      pagination: { page: pageNum, per_page: perPage, total: countRow.total, totalPages: Math.ceil(countRow.total / perPage) },
+      pagination: { page: pageNum, per_page: perPage, total, totalPages: Math.ceil(total / perPage) },
     });
   } catch (err: any) {
     res.status(500).json({ error: 'Internal server error' });

@@ -181,7 +181,7 @@ async function handleGetCalls(query: Record<string, string>): Promise<OfflineRes
   calls.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
 
   // Limit
-  const limit = parseInt(query.limit) || 200;
+  const limit = parseInt(query.limit, 10) || 200;
   calls = calls.slice(0, limit);
 
   // Parse JSON fields to match server response shape
@@ -410,7 +410,7 @@ async function handleGetIncidents(query: Record<string, string>): Promise<Offlin
   // Sort by created_at descending
   incidents.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
 
-  const limit = parseInt(query.limit) || 100;
+  const limit = parseInt(query.limit, 10) || 100;
   incidents = incidents.slice(0, limit);
 
   return { status: 200, data: incidents };
@@ -473,7 +473,7 @@ async function handleSearchPersons(query: Record<string, string>): Promise<Offli
     return cmp !== 0 ? cmp : (a.first_name || '').localeCompare(b.first_name || '');
   });
 
-  const limit = parseInt(query.limit) || 50;
+  const limit = parseInt(query.limit, 10) || 50;
   persons = persons.slice(0, limit);
 
   return {
@@ -501,7 +501,7 @@ async function handleSearchVehicles(query: Record<string, string>): Promise<Offl
 
   vehicles.sort((a, b) => (a.plate_number || '').localeCompare(b.plate_number || ''));
 
-  const limit = parseInt(query.limit) || 50;
+  const limit = parseInt(query.limit, 10) || 50;
   vehicles = vehicles.slice(0, limit);
 
   return {

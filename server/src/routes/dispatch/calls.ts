@@ -9,6 +9,23 @@ import { identifyBeat } from '../../utils/geofence';
 import { broadcastDispatchUpdate } from '../../utils/websocket';
 import { createNotificationForRoles } from '../notifications';
 
+// ── PSO Service Window helpers (shared with callActions.ts) ──
+type ServiceWindow = 'early_morning' | 'daytime' | 'evening';
+
+function classifyServiceWindow(isoTimestamp: string): { window: ServiceWindow; isWeekend: boolean } {
+  const d = new Date(isoTimestamp);
+  const mt = new Date(d.toLocaleString('en-US', { timeZone: 'America/Denver' }));
+  const hour = mt.getHours();
+  const day = mt.getDay();
+  const isWeekend = day === 0 || day === 6;
+  let window: ServiceWindow;
+  if (hour >= 6 && hour < 9) window = 'early_morning';
+  else if (hour >= 9 && hour < 18) window = 'daytime';
+  else if (hour >= 18 && hour < 21) window = 'evening';
+  else window = hour < 6 ? 'early_morning' : 'evening';
+  return { window, isWeekend };
+}
+
 /** Safely coerce a value to SQLite integer boolean (1/0).
  *  Handles string "false"/"0" correctly (JS truthy would be wrong). */
 function toBoolInt(val: any): number {
@@ -105,7 +122,7 @@ router.get('/calls', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
       },
     });
   } catch (error: any) {
-    console.error('Get calls error:', error);
+    console.error('Get calls error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -310,7 +327,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
 
     res.status(201).json(call);
   } catch (error: any) {
-    console.error('Create call error:', error);
+    console.error('Create call error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -363,7 +380,7 @@ router.get('/calls/export', requireRole('admin', 'manager', 'supervisor'), (req:
       { key: 'cleared_at', header: 'Cleared At' },
     ], rows);
   } catch (error: any) {
-    console.error('Export calls error:', error);
+    console.error('Export calls error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -393,7 +410,7 @@ router.get('/calls/check-duplicate', requireRole('admin', 'manager', 'supervisor
 
     res.json({ duplicates, count: duplicates.length });
   } catch (error: any) {
-    console.error('Duplicate check error:', error);
+    console.error('Duplicate check error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -464,7 +481,7 @@ router.get('/calls/:id', requireRole('admin', 'manager', 'supervisor', 'officer'
       visit_history,
     });
   } catch (error: any) {
-    console.error('Get call error:', error);
+    console.error('Get call error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -687,7 +704,7 @@ router.put('/calls/:id', requireRole('admin', 'manager', 'supervisor', 'dispatch
 
     res.json(updated);
   } catch (error: any) {
-    console.error('Update call error:', error);
+    console.error('Update call error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -723,7 +740,8 @@ router.post('/calls/:id/redispatch', requireRole('admin', 'manager', 'supervisor
     const ordinal = (n: number) => {
       const s = ['th', 'st', 'nd', 'rd'];
       const v = n % 100;
-      return n + (s[(v - 20) % 10] || s[v] || s[0]);
+      if (v >= 11 && v <= 13) return n + 'th';
+      return n + (s[n % 10] || s[0]);
     };
 
     // ── Snapshot current visit into history BEFORE resetting ──
@@ -738,17 +756,23 @@ router.post('/calls/:id/redispatch', requireRole('admin', 'manager', 'supervisor
       }
     } catch { /* ignore parse errors */ }
 
+    // Classify this visit's time window for PSO compliance tracking
+    const attemptTime = call.onscene_at || call.cleared_at || call.closed_at || now;
+    const { window: timeWindow, isWeekend } = classifyServiceWindow(attemptTime);
+
     db.prepare(`
       INSERT INTO call_visit_history
         (call_id, visit_number, status, dispatched_at, enroute_at, onscene_at, cleared_at, closed_at,
-         assigned_units, responding_vehicle_id, starting_mileage, ending_mileage, disposition, note, created_by, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         assigned_units, responding_vehicle_id, starting_mileage, ending_mileage, disposition, note, created_by, created_at,
+         time_window, is_weekend)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       req.params.id, currentAttempt, call.status,
       call.dispatched_at, call.enroute_at, call.onscene_at, call.cleared_at, call.closed_at,
       JSON.stringify(assignedCallSigns), call.responding_vehicle_id || null,
       call.starting_mileage ?? null, call.ending_mileage ?? null,
-      call.disposition || null, null, req.user?.fullName || 'Dispatch', now
+      call.disposition || null, null, req.user?.fullName || 'Dispatch', now,
+      timeWindow, isWeekend ? 1 : 0
     );
 
     // Parse existing notes to append re-dispatch note
@@ -800,7 +824,7 @@ router.post('/calls/:id/redispatch', requireRole('admin', 'manager', 'supervisor
 
     res.json({ ...updated, visit_history: visitHistory });
   } catch (error: any) {
-    console.error('Re-dispatch call error:', error);
+    console.error('Re-dispatch call error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -817,7 +841,57 @@ router.get('/calls/:id/visit-history', requireRole('admin', 'manager', 'supervis
     const history = db.prepare('SELECT * FROM call_visit_history WHERE call_id = ? ORDER BY visit_number ASC').all(req.params.id);
     res.json(history);
   } catch (error: any) {
-    console.error('Visit history error:', error);
+    console.error('Visit history error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/dispatch/calls/:id/pso-compliance - Check PSO service window compliance
+router.get('/calls/:id/pso-compliance', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT id, incident_type, pso_service_windows, pso_attempt_number, pso_72hr_deadline, created_at FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) {
+      res.status(404).json({ error: 'Call not found' });
+      return;
+    }
+    if (call.incident_type !== 'pso_client_request') {
+      res.status(400).json({ error: 'Not a PSO call' });
+      return;
+    }
+
+    let windows = { early_morning: false, daytime: false, evening: false, weekend: false };
+    if (call.pso_service_windows) {
+      try { windows = JSON.parse(call.pso_service_windows); } catch { /* use defaults */ }
+    }
+
+    const compliant = windows.early_morning && windows.daytime && windows.evening && windows.weekend;
+
+    // Calculate 72-hour deadline from call creation
+    const createdAt = new Date(call.created_at);
+    const deadline72hr = new Date(createdAt.getTime() + 72 * 60 * 60 * 1000);
+    const now = new Date();
+    const hoursRemaining = Math.max(0, (deadline72hr.getTime() - now.getTime()) / (60 * 60 * 1000));
+
+    // Get visit history with time windows
+    const visits = db.prepare('SELECT visit_number, time_window, is_weekend, onscene_at, cleared_at, disposition FROM call_visit_history WHERE call_id = ? ORDER BY visit_number ASC').all(req.params.id);
+
+    res.json({
+      compliant,
+      windows,
+      missing: [
+        ...(!windows.early_morning ? ['6AM-9AM attempt'] : []),
+        ...(!windows.daytime ? ['9AM-6PM attempt'] : []),
+        ...(!windows.evening ? ['6PM-9PM attempt'] : []),
+        ...(!windows.weekend ? ['weekend attempt'] : []),
+      ],
+      attempt_number: call.pso_attempt_number || 1,
+      deadline_72hr: deadline72hr.toISOString(),
+      hours_remaining: Math.round(hoursRemaining * 10) / 10,
+      visits,
+    });
+  } catch (error: any) {
+    console.error('PSO compliance check error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -412,7 +412,7 @@ router.get('/graph', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
 
     res.json(graph);
   } catch (error: any) {
-    console.error('Connection graph error:', error);
+    console.error('Connection graph error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to build connection graph' });
   }
 });
@@ -492,7 +492,7 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', '
 
     res.json(results);
   } catch (error: any) {
-    console.error('Connection search error:', error);
+    console.error('Connection search error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Search failed' });
   }
 });

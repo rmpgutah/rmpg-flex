@@ -207,7 +207,7 @@ export default function AdminRetentionTab({ LoadingSpinner, error, setError }: P
                       min={7}
                       max={3650}
                       value={p.retention_days}
-                      onChange={(e) => updatePolicy(p.id, { retention_days: parseInt(e.target.value) || 365 })}
+                      onChange={(e) => updatePolicy(p.id, { retention_days: parseInt(e.target.value, 10) || 365 })}
                       className="input-dark text-[10px] w-16 text-center font-mono"
                     />
                   </td>

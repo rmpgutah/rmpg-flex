@@ -21,7 +21,7 @@ router.get('/units', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
 
     res.json(units);
   } catch (error: any) {
-    console.error('Get units error:', error);
+    console.error('Get units error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -58,7 +58,7 @@ router.post('/units', requireRole('admin', 'manager', 'dispatcher'), (req: Reque
     broadcastUnitUpdate({ action: 'unit_created', unit });
     res.status(201).json(unit);
   } catch (error: any) {
-    console.error('Create unit error:', error);
+    console.error('Create unit error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -131,7 +131,7 @@ router.put('/units/:id', requireRole('admin', 'manager', 'dispatcher'), (req: Re
     broadcastUnitUpdate({ action: 'unit_updated', unit: updated });
     res.json(updated);
   } catch (error: any) {
-    console.error('Update unit error:', error);
+    console.error('Update unit error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -161,7 +161,7 @@ router.delete('/units/:id', requireRole('admin', 'manager'), (req: Request, res:
     broadcastUnitUpdate({ action: 'unit_deleted', unit_id: req.params.id });
     res.json({ success: true });
   } catch (error: any) {
-    console.error('Delete unit error:', error);
+    console.error('Delete unit error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -232,7 +232,7 @@ router.put('/units/:id/status', requireRole('admin', 'manager', 'supervisor', 'd
 
     res.json(updated);
   } catch (error: any) {
-    console.error('Unit status update error:', error);
+    console.error('Unit status update error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

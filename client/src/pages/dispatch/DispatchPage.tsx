@@ -2027,6 +2027,12 @@ export default function DispatchPage() {
                               <div className="flex items-center gap-2 mb-0.5">
                                 <span className="font-bold text-amber-300">VISIT #{visit.visit_number}</span>
                                 <span className="text-rmpg-300">{(visit.status || '').toUpperCase()}</span>
+                                {visit.time_window && (
+                                  <span className="px-1 rounded text-[8px] font-mono" style={{ background: '#1a5a9e20', border: '1px solid #1a5a9e40', color: '#6ba3d4' }}>
+                                    {visit.time_window === 'early_morning' ? '6-9AM' : visit.time_window === 'daytime' ? '9AM-6PM' : '6-9PM'}
+                                    {visit.is_weekend ? ' (wknd)' : ''}
+                                  </span>
+                                )}
                               </div>
                               <div className="text-rmpg-400 space-y-0.5">
                                 {visit.dispatched_at && <div>Dispatched: {formatTime(visit.dispatched_at)}</div>}
@@ -2038,6 +2044,51 @@ export default function DispatchPage() {
                         </div>
                       </div>
                     )}
+
+                    {/* PSO Service Window Compliance Checklist (mobile) */}
+                    {(() => {
+                      const w = typeof selectedCall.pso_service_windows === 'string'
+                        ? (() => { try { return JSON.parse(selectedCall.pso_service_windows); } catch { return null; } })()
+                        : selectedCall.pso_service_windows;
+                      const windows = { early_morning: !!w?.early_morning, daytime: !!w?.daytime, evening: !!w?.evening, weekend: !!w?.weekend };
+                      const allMet = windows.early_morning && windows.daytime && windows.evening && windows.weekend;
+                      const metCount = [windows.early_morning, windows.daytime, windows.evening, windows.weekend].filter(Boolean).length;
+                      return (
+                        <div className="mt-3 pt-2 border-t border-rmpg-600">
+                          <div className="field-label mb-1.5 flex items-center gap-2">
+                            Service Windows
+                            <span className="text-[9px] font-mono px-1 rounded" style={{
+                              background: allMet ? '#22c55e20' : '#f59e0b20',
+                              border: `1px solid ${allMet ? '#22c55e40' : '#f59e0b40'}`,
+                              color: allMet ? '#4ade80' : '#fbbf24',
+                            }}>
+                              {metCount}/4
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-1">
+                            {([
+                              { key: 'early_morning', label: '6AM – 9AM', met: windows.early_morning },
+                              { key: 'daytime', label: '9AM – 6PM', met: windows.daytime },
+                              { key: 'evening', label: '6PM – 9PM', met: windows.evening },
+                              { key: 'weekend', label: 'Weekend', met: windows.weekend },
+                            ] as const).map(({ key, label, met }) => (
+                              <div key={key} className="flex items-center gap-1.5 text-[10px] py-0.5 px-1.5 rounded" style={{
+                                background: met ? '#22c55e10' : '#dc262610',
+                                border: `1px solid ${met ? '#22c55e30' : '#dc262630'}`,
+                              }}>
+                                <span style={{ color: met ? '#4ade80' : '#ef4444' }}>{met ? '✓' : '✗'}</span>
+                                <span style={{ color: met ? '#86efac' : '#fca5a5' }}>{label}</span>
+                              </div>
+                            ))}
+                          </div>
+                          {allMet && (
+                            <div className="mt-1.5 text-[9px] text-center font-bold uppercase tracking-wider" style={{ color: '#4ade80' }}>
+                              Due Diligence Complete
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     {/* 72-hour countdown (mobile) */}
                     {['cleared', 'closed'].includes(selectedCall.status) && (() => {
@@ -3387,6 +3438,48 @@ export default function DispatchPage() {
                         )}
                       </div>
                     )}
+
+                    {/* PSO Service Window Compliance Checklist (desktop) */}
+                    {!isEditing && selectedCall.incident_type === 'pso_client_request' && (() => {
+                      const w = typeof selectedCall.pso_service_windows === 'string'
+                        ? (() => { try { return JSON.parse(selectedCall.pso_service_windows as string); } catch { return null; } })()
+                        : selectedCall.pso_service_windows;
+                      const windows = { early_morning: !!w?.early_morning, daytime: !!w?.daytime, evening: !!w?.evening, weekend: !!w?.weekend };
+                      const allMet = windows.early_morning && windows.daytime && windows.evening && windows.weekend;
+                      const metCount = [windows.early_morning, windows.daytime, windows.evening, windows.weekend].filter(Boolean).length;
+                      return (
+                        <div className="mt-2 pt-2 border-t border-rmpg-700">
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <span className="text-[9px] font-bold uppercase tracking-wider text-rmpg-400">Service Windows</span>
+                            <span className="text-[8px] font-mono px-1 rounded" style={{
+                              background: allMet ? '#22c55e20' : '#f59e0b20',
+                              border: `1px solid ${allMet ? '#22c55e40' : '#f59e0b40'}`,
+                              color: allMet ? '#4ade80' : '#fbbf24',
+                            }}>
+                              {metCount}/4
+                            </span>
+                            {allMet && <span className="text-[8px] font-bold uppercase tracking-wider" style={{ color: '#4ade80' }}>✓ Due Diligence Complete</span>}
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {([
+                              { key: 'early_morning', label: '6AM – 9AM', met: windows.early_morning },
+                              { key: 'daytime', label: '9AM – 6PM', met: windows.daytime },
+                              { key: 'evening', label: '6PM – 9PM', met: windows.evening },
+                              { key: 'weekend', label: 'Weekend', met: windows.weekend },
+                            ] as const).map(({ key, label, met }) => (
+                              <span key={key} className="inline-flex items-center gap-1 text-[9px] py-0.5 px-2 rounded font-mono" style={{
+                                background: met ? '#22c55e10' : '#dc262610',
+                                border: `1px solid ${met ? '#22c55e30' : '#dc262630'}`,
+                                color: met ? '#86efac' : '#fca5a5',
+                              }}>
+                                <span style={{ color: met ? '#4ade80' : '#ef4444', fontSize: '8px' }}>{met ? '●' : '○'}</span>
+                                {label}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
 

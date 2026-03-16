@@ -1448,7 +1448,7 @@ export default function EmailPage() {
       if (p === 1) setMessages(data.messages); else setMessages(prev => [...prev, ...data.messages]);
       setHasMore(data.hasMore || false);
       setPage(p);
-    } catch { } finally { setLoading(false); }
+    } catch (e) { console.warn('[Email] fetch messages failed:', e); } finally { setLoading(false); }
   }, [selectedFolder, search]);
 
   const fetchFullMessage = useCallback(async (id: string) => {
@@ -1459,7 +1459,7 @@ export default function EmailPage() {
       setMessages(prev => prev.map(m => m.id === id ? { ...m, isRead: true } : m));
       try { const atts = await apiFetch<EmailAttachment[]>(`/email/messages/${id}/attachments`); setAttachments(atts); }
       catch { setAttachments([]); }
-    } catch { } finally { setLoadingMessage(false); }
+    } catch (e) { console.warn('[Email] fetch message failed:', e); } finally { setLoadingMessage(false); }
   }, []);
 
   const fetchChildFolders = useCallback(async (parentId: string) => {

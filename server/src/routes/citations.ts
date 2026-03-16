@@ -24,7 +24,7 @@ router.use(authenticateToken);
 
 // ─── GET /api/citations/stats ─────────────────────────────
 // Dashboard statistics: counts by status/type, fines totals
-router.get('/stats', (req: Request, res: Response) => {
+router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const today = localToday();
@@ -79,13 +79,13 @@ router.get('/stats', (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('Get citation stats error:', error);
+    console.error('Get citation stats error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── GET /api/citations/search ────────────────────────────
-router.get('/search', (req: Request, res: Response) => {
+router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { q } = req.query;
@@ -106,13 +106,13 @@ router.get('/search', (req: Request, res: Response) => {
 
     res.json({ data: citations });
   } catch (error: any) {
-    console.error('Search citations error:', error);
+    console.error('Search citations error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── GET /api/citations/person/:personId ──────────────────
-router.get('/person/:personId', (req: Request, res: Response) => {
+router.get('/person/:personId', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
 
@@ -124,14 +124,14 @@ router.get('/person/:personId', (req: Request, res: Response) => {
 
     res.json({ data: citations });
   } catch (error: any) {
-    console.error('Get person citations error:', error);
+    console.error('Get person citations error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── GET /api/citations ───────────────────────────────────
 // List with pagination and filters
-router.get('/', (req: Request, res: Response) => {
+router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const {
@@ -205,13 +205,13 @@ router.get('/', (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('Get citations error:', error);
+    console.error('Get citations error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── GET /api/citations/:id ──────────────────────────────
-router.get('/:id', (req: Request, res: Response) => {
+router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
 
@@ -224,7 +224,7 @@ router.get('/:id', (req: Request, res: Response) => {
 
     res.json({ data: citation });
   } catch (error: any) {
-    console.error('Get citation error:', error);
+    console.error('Get citation error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -377,7 +377,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispa
 
     res.status(201).json({ data: created });
   } catch (error: any) {
-    console.error('Create citation error:', error);
+    console.error('Create citation error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -458,7 +458,7 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dis
     const updated = db.prepare('SELECT * FROM citations WHERE id = ?').get(req.params.id);
     res.json({ data: updated });
   } catch (error: any) {
-    console.error('Update citation error:', error);
+    console.error('Update citation error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -490,7 +490,7 @@ router.delete('/:id', requireRole('admin', 'manager', 'supervisor'), (req: Reque
 
     res.json({ message: 'Citation voided', data: { id: citation.id, status: 'voided' } });
   } catch (error: any) {
-    console.error('Void citation error:', error);
+    console.error('Void citation error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

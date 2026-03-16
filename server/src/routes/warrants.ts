@@ -21,7 +21,7 @@ const router = Router();
 router.use(authenticateToken);
 
 // GET /api/warrants - List warrants with filters
-router.get('/', (req: Request, res: Response) => {
+router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const {
@@ -83,17 +83,18 @@ router.get('/', (req: Request, res: Response) => {
       LIMIT ? OFFSET ?
     `).all(...params, perPageNum, offset);
 
+    const total = countRow?.total ?? 0;
     res.json({
       data: warrants,
       pagination: {
         page: pageNum,
         per_page: perPageNum,
-        total: countRow.total,
-        totalPages: Math.ceil(countRow.total / perPageNum),
+        total,
+        totalPages: Math.ceil(total / perPageNum),
       },
     });
   } catch (error: any) {
-    console.error('Get warrants error:', error);
+    console.error('Get warrants error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -133,13 +134,13 @@ router.get('/export', requireRole('dispatcher', 'supervisor', 'admin', 'manager'
     res.setHeader('Content-Disposition', `attachment; filename="warrants_export_${new Date().toISOString().slice(0,10)}.csv"`);
     res.send(csv);
   } catch (error: any) {
-    console.error('Export warrants error:', error);
+    console.error('Export warrants error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // GET /api/warrants/check/:personId - Check if person has active warrants
-router.get('/check/:personId', (req: Request, res: Response) => {
+router.get('/check/:personId', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { personId } = req.params;
@@ -165,7 +166,7 @@ router.get('/check/:personId', (req: Request, res: Response) => {
       warrants,
     });
   } catch (error: any) {
-    console.error('Check warrants error:', error);
+    console.error('Check warrants error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -198,7 +199,7 @@ router.get('/utah', async (req: Request, res: Response) => {
       source: results.length > 0 && results[0].source === 'UTAH_STATE' ? 'live' : 'cache',
     });
   } catch (error: any) {
-    console.error('Utah warrants search error:', error);
+    console.error('Utah warrants search error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -274,7 +275,7 @@ router.get('/watch/log', (req: Request, res: Response) => {
       pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) },
     });
   } catch (error: any) {
-    console.error('Get warrant watch log error:', error);
+    console.error('Get warrant watch log error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -313,7 +314,7 @@ router.get('/watch/active', (req: Request, res: Response) => {
 
     res.json({ data: rows, total: rows.length });
   } catch (error: any) {
-    console.error('Get active warrant watch error:', error);
+    console.error('Get active warrant watch error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -333,7 +334,7 @@ router.get('/watch/runs', (req: Request, res: Response) => {
 
     res.json({ data: runs });
   } catch (error: any) {
-    console.error('Get warrant watch runs error:', error);
+    console.error('Get warrant watch runs error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -349,13 +350,13 @@ router.post('/watch/scan', requireRole('admin', 'manager', 'supervisor'), async 
       console.error('[Warrant Watch] Manual scan failed:', err.message);
     });
   } catch (error: any) {
-    console.error('Trigger warrant watch scan error:', error);
+    console.error('Trigger warrant watch scan error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // GET /api/warrants/:id - Get single warrant with details
-router.get('/:id', (req: Request, res: Response) => {
+router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
 
@@ -401,7 +402,7 @@ router.get('/:id', (req: Request, res: Response) => {
       activity,
     });
   } catch (error: any) {
-    console.error('Get warrant error:', error);
+    console.error('Get warrant error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -517,7 +518,7 @@ router.post('/', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), (r
 
     res.status(201).json(warrant);
   } catch (error: any) {
-    console.error('Create warrant error:', error);
+    console.error('Create warrant error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -606,7 +607,7 @@ router.put('/:id', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), 
 
     res.json(updated);
   } catch (error: any) {
-    console.error('Update warrant error:', error);
+    console.error('Update warrant error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -691,7 +692,7 @@ router.put('/:id/serve', requireRole('admin', 'manager', 'supervisor', 'officer'
 
     res.json(updated);
   } catch (error: any) {
-    console.error('Serve warrant error:', error);
+    console.error('Serve warrant error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -716,7 +717,7 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
     delTx();
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
-    console.error('Delete warrant error:', error);
+    console.error('Delete warrant error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -744,7 +745,7 @@ router.post('/:id/archive', requireRole('admin', 'manager', 'supervisor'), (req:
     `).get(warrant.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Archive warrant error:', error);
+    console.error('Archive warrant error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -771,7 +772,7 @@ router.post('/:id/unarchive', requireRole('admin', 'manager', 'supervisor'), (re
     `).get(warrant.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Unarchive warrant error:', error);
+    console.error('Unarchive warrant error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -806,7 +807,7 @@ router.get('/scraped/search', (req: Request, res: Response) => {
       pagination: { page: pageNum, limit: limitNum, total: result.total, totalPages: Math.ceil(result.total / limitNum) },
     });
   } catch (error: any) {
-    console.error('Search scraped warrants error:', error);
+    console.error('Search scraped warrants error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -821,7 +822,7 @@ router.get('/scraped/active', (req: Request, res: Response) => {
     });
     res.json({ data, total: data.length });
   } catch (error: any) {
-    console.error('Get active scraped warrants error:', error);
+    console.error('Get active scraped warrants error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -832,7 +833,7 @@ router.get('/scraped/stats', (req: Request, res: Response) => {
     const stats = getWarrantScraperStats();
     res.json(stats);
   } catch (error: any) {
-    console.error('Get warrant scraper stats error:', error);
+    console.error('Get warrant scraper stats error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -843,7 +844,7 @@ router.get('/scraped/status', requireRole('admin', 'manager', 'supervisor'), (re
     const status = getWarrantScraperStatus();
     res.json({ data: status });
   } catch (error: any) {
-    console.error('Get warrant scraper status error:', error);
+    console.error('Get warrant scraper status error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -859,7 +860,7 @@ router.get('/scraped/person/:personId', (req: Request, res: Response) => {
     const warrants = checkPersonWarrants(personId);
     res.json({ data: warrants, total: warrants.length, has_active_warrants: warrants.length > 0 });
   } catch (error: any) {
-    console.error('Check person warrants error:', error);
+    console.error('Check person warrants error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -875,7 +876,7 @@ router.post('/scraped/scrape/:sourceKey', requireRole('admin', 'manager'), async
       console.error(`[Warrant Scraper] Manual scrape failed for ${sourceKey}:`, err.message);
     });
   } catch (error: any) {
-    console.error('Manual warrant scrape error:', error);
+    console.error('Manual warrant scrape error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -887,7 +888,7 @@ router.post('/scraped/reset/:sourceKey', requireRole('admin', 'manager'), (req: 
     resetWarrantSourceErrors(sourceKey);
     res.json({ message: `Errors reset for ${sourceKey}`, success: true });
   } catch (error: any) {
-    console.error('Reset warrant source errors:', error);
+    console.error('Reset warrant source errors:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -900,7 +901,7 @@ router.put('/scraped/enable/:sourceKey', requireRole('admin', 'manager'), (req: 
     setWarrantSourceEnabled(sourceKey, Boolean(enabled));
     res.json({ message: `Source ${sourceKey} ${enabled ? 'enabled' : 'disabled'}`, success: true });
   } catch (error: any) {
-    console.error('Toggle warrant source error:', error);
+    console.error('Toggle warrant source error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -923,7 +924,7 @@ router.get('/court-records/search', async (req: Request, res: Response) => {
     const result = await searchCourtRecords(firstName, lastName, { states });
     res.json(result);
   } catch (error: any) {
-    console.error('Court records search error:', error);
+    console.error('Court records search error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -940,7 +941,7 @@ router.get('/court-records/person/:personId', (req: Request, res: Response) => {
     const records = getCourtRecordsByPersonId(personId);
     res.json({ records, total: records.length });
   } catch (error: any) {
-    console.error('Court records by person error:', error);
+    console.error('Court records by person error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -951,7 +952,7 @@ router.get('/court-records/stats', requireRole('admin', 'manager', 'supervisor')
     const stats = getCourtRecordStats();
     res.json(stats);
   } catch (error: any) {
-    console.error('Court records stats error:', error);
+    console.error('Court records stats error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

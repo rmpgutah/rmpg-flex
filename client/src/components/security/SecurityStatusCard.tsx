@@ -154,7 +154,7 @@ export default function SecurityStatusCard() {
           className="px-3 py-1.5 text-[9px] font-mono"
           style={{ borderTop: '1px solid #1e3048', color: '#4b5563' }}
         >
-          Password last changed: {new Date(status.passwordChangedAt).toLocaleDateString()}
+          Password last changed: {status.passwordChangedAt ? new Date(status.passwordChangedAt).toLocaleDateString() : 'N/A'}
         </div>
       )}
     </div>

@@ -81,7 +81,7 @@ router.use((req: Request, _res: Response, next: NextFunction) => {
 router.use(authenticateToken);
 
 // ─── GET /api/fleet ─ List fleet vehicles with filters ────────────
-router.get('/', (req: Request, res: Response) => {
+router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const {
@@ -148,13 +148,13 @@ router.get('/', (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('Error fetching fleet vehicles:', error);
+    console.error('Error fetching fleet vehicles:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to fetch fleet vehicles' });
   }
 });
 
 // ─── GET /api/fleet/analytics ─ Fleet-wide aggregate analytics ────
-router.get('/analytics', (req: Request, res: Response) => {
+router.get('/analytics', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { period = '90d' } = req.query;
@@ -277,13 +277,13 @@ router.get('/analytics', (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('Error fetching fleet analytics:', error);
+    console.error('Error fetching fleet analytics:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to fetch fleet analytics' });
   }
 });
 
 // ─── GET /api/fleet/:id ─ Get single fleet vehicle ────────────────
-router.get('/:id', (req: Request, res: Response, next: NextFunction) => {
+router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response, next: NextFunction) => {
   try {
     // Avoid matching sub-routes that are handled by other route definitions
     if (['maintenance', 'analytics', 'dashcam-videos'].includes(req.params.id as string)) {
@@ -331,7 +331,7 @@ router.get('/:id', (req: Request, res: Response, next: NextFunction) => {
       recent_maintenance: maintenance,
     });
   } catch (error: any) {
-    console.error('Error fetching fleet vehicle:', error);
+    console.error('Error fetching fleet vehicle:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to fetch fleet vehicle' });
   }
 });
@@ -419,7 +419,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       equipment: safeParseJson(created.equipment, []),
     });
   } catch (error: any) {
-    console.error('Error creating fleet vehicle:', error);
+    console.error('Error creating fleet vehicle:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to create fleet vehicle' });
   }
 });
@@ -518,7 +518,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
       equipment: safeParseJson(updated.equipment, []),
     });
   } catch (error: any) {
-    console.error('Error updating fleet vehicle:', error);
+    console.error('Error updating fleet vehicle:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to update fleet vehicle' });
   }
 });
@@ -612,7 +612,7 @@ router.put('/:id/assign', requireRole('admin', 'manager', 'supervisor'), (req: R
       equipment: safeParseJson(updated.equipment, []),
     });
   } catch (error: any) {
-    console.error('Error assigning fleet vehicle:', error);
+    console.error('Error assigning fleet vehicle:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to assign fleet vehicle' });
   }
 });
@@ -644,7 +644,7 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
     delTx();
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
-    console.error('Delete fleet vehicle error:', error);
+    console.error('Delete fleet vehicle error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -668,7 +668,7 @@ router.post('/:id/archive', requireRole('admin', 'manager'), (req: Request, res:
     if (!updated) { res.status(404).json({ error: 'Vehicle not found after update' }); return; }
     res.json({ ...updated, equipment: safeParseJson(updated.equipment, []) });
   } catch (error: any) {
-    console.error('Archive fleet vehicle error:', error);
+    console.error('Archive fleet vehicle error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -691,13 +691,13 @@ router.post('/:id/unarchive', requireRole('admin', 'manager'), (req: Request, re
     if (!updated) { res.status(404).json({ error: 'Vehicle not found after update' }); return; }
     res.json({ ...updated, equipment: safeParseJson(updated.equipment, []) });
   } catch (error: any) {
-    console.error('Unarchive fleet vehicle error:', error);
+    console.error('Unarchive fleet vehicle error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── GET /api/fleet/:id/maintenance ─ Maintenance history ────────
-router.get('/:id/maintenance', (req: Request, res: Response) => {
+router.get('/:id/maintenance', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -735,7 +735,7 @@ router.get('/:id/maintenance', (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('Error fetching maintenance history:', error);
+    console.error('Error fetching maintenance history:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to fetch maintenance history' });
   }
 });
@@ -823,7 +823,7 @@ router.post('/:id/maintenance', requireRole('admin', 'manager', 'supervisor'), (
 
     res.status(201).json(record);
   } catch (error: any) {
-    console.error('Error logging maintenance record:', error);
+    console.error('Error logging maintenance record:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to log maintenance record' });
   }
 });
@@ -854,7 +854,7 @@ router.put('/maintenance/:id', requireRole('admin', 'manager', 'supervisor'), (r
     const updated = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(req.params.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Update maintenance error:', error);
+    console.error('Update maintenance error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -871,7 +871,7 @@ router.delete('/maintenance/:id', requireRole('admin', 'manager'), (req: Request
       req.user!.userId, record.vehicle_id, `Deleted maintenance record: ${record.description}`, req.ip || 'unknown');
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
-    console.error('Delete maintenance error:', error);
+    console.error('Delete maintenance error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -888,7 +888,7 @@ router.post('/maintenance/:id/archive', requireRole('admin', 'manager'), (req: R
     const updated = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(record.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Archive maintenance error:', error);
+    console.error('Archive maintenance error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -904,13 +904,13 @@ router.post('/maintenance/:id/unarchive', requireRole('admin', 'manager'), (req:
     const updated = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(record.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Unarchive maintenance error:', error);
+    console.error('Unarchive maintenance error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── GET /api/fleet/:id/fuel ─ Fuel logs with summary ─────────────
-router.get('/:id/fuel', (req: Request, res: Response) => {
+router.get('/:id/fuel', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -979,7 +979,7 @@ router.get('/:id/fuel', (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('Error fetching fuel logs:', error);
+    console.error('Error fetching fuel logs:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to fetch fuel logs' });
   }
 });
@@ -1047,7 +1047,7 @@ router.post('/:id/fuel', requireRole('admin', 'manager', 'supervisor', 'officer'
 
     res.status(201).json(record);
   } catch (error: any) {
-    console.error('Error logging fuel entry:', error);
+    console.error('Error logging fuel entry:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to log fuel entry' });
   }
 });
@@ -1078,7 +1078,7 @@ router.put('/fuel/:id', requireRole('admin', 'manager', 'supervisor', 'officer')
     const updated = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(req.params.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Update fuel log error:', error);
+    console.error('Update fuel log error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1095,7 +1095,7 @@ router.delete('/fuel/:id', requireRole('admin', 'manager'), (req: Request, res: 
       req.user!.userId, record.vehicle_id, `Deleted fuel log: ${record.gallons} gal on ${record.fuel_date}`, req.ip || 'unknown');
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
-    console.error('Delete fuel log error:', error);
+    console.error('Delete fuel log error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1112,7 +1112,7 @@ router.post('/fuel/:id/archive', requireRole('admin', 'manager'), (req: Request,
     const updated = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(record.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Archive fuel log error:', error);
+    console.error('Archive fuel log error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1128,13 +1128,13 @@ router.post('/fuel/:id/unarchive', requireRole('admin', 'manager'), (req: Reques
     const updated = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(record.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Unarchive fuel log error:', error);
+    console.error('Unarchive fuel log error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── GET /api/fleet/:id/inspections ─ Inspection history ──────────
-router.get('/:id/inspections', (req: Request, res: Response) => {
+router.get('/:id/inspections', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -1182,7 +1182,7 @@ router.get('/:id/inspections', (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('Error fetching inspections:', error);
+    console.error('Error fetching inspections:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to fetch inspections' });
   }
 });
@@ -1257,7 +1257,7 @@ router.post('/:id/inspections', requireRole('admin', 'manager', 'supervisor', 'o
       items: safeParseJson(record.items, []),
     });
   } catch (error: any) {
-    console.error('Error creating inspection:', error);
+    console.error('Error creating inspection:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to create inspection' });
   }
 });
@@ -1292,7 +1292,7 @@ router.put('/inspections/:id', requireRole('admin', 'manager', 'supervisor'), (r
     if (!updated) { res.status(404).json({ error: 'Inspection not found after update' }); return; }
     res.json({ ...updated, items: safeParseJson(updated.items, []) });
   } catch (error: any) {
-    console.error('Update inspection error:', error);
+    console.error('Update inspection error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1309,7 +1309,7 @@ router.delete('/inspections/:id', requireRole('admin', 'manager'), (req: Request
       req.user!.userId, record.vehicle_id, `Deleted ${record.inspection_type} inspection`, req.ip || 'unknown');
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
-    console.error('Delete inspection error:', error);
+    console.error('Delete inspection error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1327,7 +1327,7 @@ router.post('/inspections/:id/archive', requireRole('admin', 'manager'), (req: R
     if (!updated) { res.status(404).json({ error: 'Inspection not found after update' }); return; }
     res.json({ ...updated, items: safeParseJson(updated.items, []) });
   } catch (error: any) {
-    console.error('Archive inspection error:', error);
+    console.error('Archive inspection error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1344,13 +1344,13 @@ router.post('/inspections/:id/unarchive', requireRole('admin', 'manager'), (req:
     if (!updated) { res.status(404).json({ error: 'Inspection not found after update' }); return; }
     res.json({ ...updated, items: safeParseJson(updated.items, []) });
   } catch (error: any) {
-    console.error('Unarchive inspection error:', error);
+    console.error('Unarchive inspection error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── GET /api/fleet/:id/assignments ─ Assignment history ──────────
-router.get('/:id/assignments', (req: Request, res: Response) => {
+router.get('/:id/assignments', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -1385,7 +1385,7 @@ router.get('/:id/assignments', (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('Error fetching assignment history:', error);
+    console.error('Error fetching assignment history:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to fetch assignment history' });
   }
 });
@@ -1470,7 +1470,7 @@ router.get('/:id/personnel', requireRole('admin', 'manager', 'supervisor'), (req
       notes,
     });
   } catch (error: any) {
-    console.error('Error fetching fleet personnel:', error);
+    console.error('Error fetching fleet personnel:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to fetch fleet personnel data' });
   }
 });
@@ -1506,7 +1506,7 @@ router.post('/:id/personnel-notes', requireRole('admin', 'manager', 'supervisor'
 
     res.status(201).json(created);
   } catch (error: any) {
-    console.error('Error creating personnel note:', error);
+    console.error('Error creating personnel note:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to create personnel note' });
   }
 });
@@ -1526,7 +1526,7 @@ router.delete('/:id/personnel-notes/:noteId', requireRole('admin', 'manager'), (
     db.prepare('DELETE FROM fleet_personnel_notes WHERE id = ?').run(noteId);
     res.json({ success: true });
   } catch (error: any) {
-    console.error('Error deleting personnel note:', error);
+    console.error('Error deleting personnel note:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to delete personnel note' });
   }
 });
@@ -1670,7 +1670,7 @@ router.post('/import/simply-fleet', requireRole('admin', 'manager'), (req: Reque
       services: { inserted: serviceInserted, skipped: serviceSkipped },
     });
   } catch (error: any) {
-    console.error('Simply Fleet import error:', error);
+    console.error('Simply Fleet import error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to import Simply Fleet data' });
   }
 });
@@ -1680,7 +1680,7 @@ router.post('/import/simply-fleet', requireRole('admin', 'manager'), (req: Reque
 // ═══════════════════════════════════════════════════════════════
 
 // ── GET /api/fleet/dashcam-videos — List all dash cam videos ──
-router.get('/dashcam-videos', (req: Request, res: Response) => {
+router.get('/dashcam-videos', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { vehicle_id, unit_id, classification } = req.query;
@@ -1705,13 +1705,13 @@ router.get('/dashcam-videos', (req: Request, res: Response) => {
 
     res.json(videos);
   } catch (error: any) {
-    console.error('Get dashcam videos error:', error);
+    console.error('Get dashcam videos error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ── GET /api/fleet/:vehicleId/dashcam-videos — Videos for a vehicle ──
-router.get('/:vehicleId/dashcam-videos', (req: Request, res: Response) => {
+router.get('/:vehicleId/dashcam-videos', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const videos = db.prepare(`
@@ -1725,7 +1725,7 @@ router.get('/:vehicleId/dashcam-videos', (req: Request, res: Response) => {
 
     res.json(videos);
   } catch (error: any) {
-    console.error('Get vehicle dashcam videos error:', error);
+    console.error('Get vehicle dashcam videos error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1914,7 +1914,7 @@ router.get('/dashcam-videos/:id/stream', (req: Request, res: Response) => {
       fs.createReadStream(filePath).pipe(res);
     }
   } catch (error: any) {
-    console.error('Stream dashcam video error:', error);
+    console.error('Stream dashcam video error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1949,7 +1949,7 @@ router.get('/dashcam-videos/:id/download', (req: Request, res: Response) => {
     });
     fs.createReadStream(filePath).pipe(res);
   } catch (error: any) {
-    console.error('Download dashcam video error:', error);
+    console.error('Download dashcam video error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1998,7 +1998,7 @@ router.put('/dashcam-videos/:id', requireRole('admin'), (req: Request, res: Resp
 
     res.json(updated);
   } catch (error: any) {
-    console.error('Update dashcam video error:', error);
+    console.error('Update dashcam video error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -2029,7 +2029,7 @@ router.delete('/dashcam-videos/:id', requireRole('admin'), (req: Request, res: R
     db.prepare('DELETE FROM dashcam_videos WHERE id = ?').run(req.params.id);
     res.json({ message: 'Dash cam video deleted' });
   } catch (error: any) {
-    console.error('Delete dashcam video error:', error);
+    console.error('Delete dashcam video error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -2074,7 +2074,7 @@ router.post('/dashcam-videos/:id/reprocess', requireRole('admin'), (req: Request
     queueOverlayProcessing(video.id, 'dashcam', inputPath, config);
     res.json({ message: 'Overlay reprocessing queued', videoId: video.id });
   } catch (error: any) {
-    console.error('Reprocess dashcam overlay error:', error);
+    console.error('Reprocess dashcam overlay error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

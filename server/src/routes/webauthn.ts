@@ -104,7 +104,7 @@ router.get('/credentials', authenticateToken, (req: Request, res: Response) => {
       lastUsedAt: c.last_used_at,
     })));
   } catch (error: any) {
-    console.error('WebAuthn list credentials error:', error);
+    console.error('WebAuthn list credentials error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -155,7 +155,7 @@ router.post('/register-options', authenticateToken, async (req: Request, res: Re
 
     res.json({ options, challengeId });
   } catch (error: any) {
-    console.error('WebAuthn register-options error:', error);
+    console.error('WebAuthn register-options error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -250,7 +250,7 @@ router.post('/register-verify', authenticateToken, async (req: Request, res: Res
       },
     });
   } catch (error: any) {
-    console.error('WebAuthn register-verify error:', error);
+    console.error('WebAuthn register-verify error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -304,7 +304,7 @@ router.delete('/credentials/:id', authenticateToken, (req: Request, res: Respons
 
     res.json({ message: 'Security key removed' });
   } catch (error: any) {
-    console.error('WebAuthn delete credential error:', error);
+    console.error('WebAuthn delete credential error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -367,7 +367,7 @@ router.post('/authenticate-options', async (req: Request, res: Response) => {
 
     res.json({ options, challengeId, hasSecurityKeys: true });
   } catch (error: any) {
-    console.error('WebAuthn authenticate-options error:', error);
+    console.error('WebAuthn authenticate-options error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -552,7 +552,7 @@ router.post('/authenticate-verify', async (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('WebAuthn authenticate-verify error:', error);
+    console.error('WebAuthn authenticate-verify error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

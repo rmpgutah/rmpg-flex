@@ -8,7 +8,7 @@ const router = Router();
 router.use(authenticateToken);
 
 // GET /api/admin/config/:category - Get config items by category
-router.get('/config/:category', (req: Request, res: Response) => {
+router.get('/config/:category', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const items = db.prepare(`
@@ -19,13 +19,13 @@ router.get('/config/:category', (req: Request, res: Response) => {
 
     res.json(items);
   } catch (error: any) {
-    console.error('Get config error:', error);
+    console.error('Get config error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // GET /api/admin/config - Get all active config
-router.get('/config', (req: Request, res: Response) => {
+router.get('/config', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const items = db.prepare(`
@@ -43,7 +43,7 @@ router.get('/config', (req: Request, res: Response) => {
 
     res.json(grouped);
   } catch (error: any) {
-    console.error('Get all config error:', error);
+    console.error('Get all config error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -87,7 +87,7 @@ router.post('/config', requireRole('admin', 'manager'), (req: Request, res: Resp
       res.status(409).json({ error: 'This configuration value already exists' });
       return;
     }
-    console.error('Create config error:', error);
+    console.error('Create config error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -123,7 +123,7 @@ router.put('/config/:id', requireRole('admin', 'manager'), (req: Request, res: R
     const updated = db.prepare('SELECT * FROM system_config WHERE id = ?').get(item.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Update config error:', error);
+    console.error('Update config error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -148,7 +148,7 @@ router.delete('/config/:id', requireRole('admin', 'manager'), (req: Request, res
 
     res.json({ message: 'Config item removed' });
   } catch (error: any) {
-    console.error('Delete config error:', error);
+    console.error('Delete config error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

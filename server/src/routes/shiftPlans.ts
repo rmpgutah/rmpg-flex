@@ -97,7 +97,7 @@ router.get('/shift-plans', requireRole('admin', 'manager', 'supervisor', 'dispat
 
     res.json(plans);
   } catch (error: any) {
-    console.error('Get shift plans error:', error);
+    console.error('Get shift plans error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -137,7 +137,7 @@ router.get('/shift-plans/coverage/:date', requireRole('admin', 'manager', 'super
 
     res.json(allAssignments);
   } catch (error: any) {
-    console.error('Get shift coverage error:', error);
+    console.error('Get shift coverage error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -163,7 +163,7 @@ router.get('/shift-plans/:id', requireRole('admin', 'manager', 'supervisor', 'di
 
     res.json(parseAssignments(row));
   } catch (error: any) {
-    console.error('Get shift plan error:', error);
+    console.error('Get shift plan error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -239,7 +239,7 @@ router.post('/shift-plans', requireRole('admin', 'manager', 'supervisor'), (req:
 
     res.status(existing ? 200 : 201).json(parseAssignments(plan));
   } catch (error: any) {
-    console.error('Create/upsert shift plan error:', error);
+    console.error('Create/upsert shift plan error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -298,7 +298,7 @@ router.put('/shift-plans/:id', requireRole('admin', 'manager', 'supervisor'), (r
     if (!updated) return res.status(404).json({ error: 'Shift plan not found after update' });
     res.json(parseAssignments(updated));
   } catch (error: any) {
-    console.error('Update shift plan error:', error);
+    console.error('Update shift plan error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -324,7 +324,7 @@ router.delete('/shift-plans/:id', requireRole('admin', 'manager'), (req: Request
 
     res.json({ message: 'Shift plan deleted' });
   } catch (error: any) {
-    console.error('Delete shift plan error:', error);
+    console.error('Delete shift plan error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -369,7 +369,7 @@ router.post('/shift-plans/:id/activate', requireRole('admin', 'manager', 'superv
 
     res.json(parseAssignments(updated));
   } catch (error: any) {
-    console.error('Activate shift plan error:', error);
+    console.error('Activate shift plan error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

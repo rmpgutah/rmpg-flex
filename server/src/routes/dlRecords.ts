@@ -47,7 +47,7 @@ router.get('/', requireRole('admin', 'manager', 'officer', 'supervisor'), (req: 
 
     res.json({ records, total, page, limit, totalPages: Math.ceil(total / limit) });
   } catch (error: any) {
-    console.error('[DL Records] List error:', error);
+    console.error('[DL Records] List error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to list DL records' });
   }
 });
@@ -64,7 +64,7 @@ router.get('/:id', requireRole('admin', 'manager', 'officer', 'supervisor'), (re
 
     res.json(record);
   } catch (error: any) {
-    console.error('[DL Records] Get error:', error);
+    console.error('[DL Records] Get error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to get DL record' });
   }
 });
@@ -129,7 +129,7 @@ router.post('/', requireRole('admin', 'manager', 'officer'), (req: Request, res:
 
     res.json({ success: true, recordId, message: 'DL record saved' });
   } catch (error: any) {
-    console.error('[DL Records] Manual entry error:', error);
+    console.error('[DL Records] Manual entry error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to save DL record' });
   }
 });
@@ -153,7 +153,7 @@ router.delete('/:id', requireRole('admin'), (req: Request, res: Response) => {
 
     res.json({ success: true, message: 'DL record deleted' });
   } catch (error: any) {
-    console.error('[DL Records] Delete error:', error);
+    console.error('[DL Records] Delete error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to delete DL record' });
   }
 });

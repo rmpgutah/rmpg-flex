@@ -41,7 +41,7 @@ router.get('/', (req: Request, res: Response) => {
     if (status) { where += ' AND fi.status = ?'; params.push(status); }
     if (officer_id) { where += ' AND fi.officer_id = ?'; params.push(officer_id); }
     if (search) {
-      where += ` AND (fi.subject_first_name || ' ' || fi.subject_last_name LIKE ? OR fi.fi_number LIKE ? OR fi.location LIKE ? OR fi.narrative LIKE ?)`;
+      where += ` AND ((fi.subject_first_name || ' ' || fi.subject_last_name) LIKE ? OR fi.fi_number LIKE ? OR fi.location LIKE ? OR fi.narrative LIKE ?)`;
       const s = `%${search}%`;
       params.push(s, s, s, s);
     }
@@ -67,9 +67,10 @@ router.get('/', (req: Request, res: Response) => {
       LIMIT ? OFFSET ?
     `).all(...params, perPage, offset);
 
+    const total = countRow?.total ?? 0;
     res.json({
       data: rows,
-      pagination: { page: pageNum, per_page: perPage, total: countRow.total, totalPages: Math.ceil(countRow.total / perPage) },
+      pagination: { page: pageNum, per_page: perPage, total, totalPages: Math.ceil(total / perPage) },
     });
   } catch (err: any) {
     res.status(500).json({ error: 'Internal server error' });

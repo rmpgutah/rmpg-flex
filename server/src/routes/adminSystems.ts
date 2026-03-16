@@ -158,7 +158,7 @@ router.use((_req, _res, next) => {
       initTables();
       tablesInitialized = true;
     } catch (err) {
-      console.error('adminSystems initTables retry failed:', err);
+      console.error('adminSystems initTables retry failed:', err?.message || 'Unknown error');
     }
   }
   next();
@@ -180,7 +180,7 @@ router.get('/users', requireRole('admin', 'manager', 'supervisor'), (req: Reques
     `).all();
     res.json(rows);
   } catch (err: any) {
-    console.error('GET /admin/users error:', err);
+    console.error('GET /admin/users error:', err?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to fetch users' });
   }
 });
@@ -198,7 +198,7 @@ router.get('/training', requireRole('admin', 'manager', 'supervisor'), (req: Req
     `).all();
     res.json(rows);
   } catch (err: any) {
-    console.error('GET /admin/training error:', err);
+    console.error('GET /admin/training error:', err?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to fetch training records' });
   }
 });
@@ -453,7 +453,7 @@ router.get('/health/detailed', requireRole('admin', 'manager'), (req: Request, r
       recentErrors: recentErrors,
     });
   } catch (error: any) {
-    console.error('Health detailed error:', error);
+    console.error('Health detailed error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -465,7 +465,7 @@ router.get('/changelog', requireRole('admin', 'manager'), (_req: Request, res: R
     const data = JSON.parse(fs.readFileSync(changelogPath, 'utf-8'));
     res.json(data);
   } catch (error: any) {
-    console.error('Changelog read error:', error);
+    console.error('Changelog read error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Could not read changelog' });
   }
 });
@@ -506,7 +506,7 @@ router.get('/announcements', (req: Request, res: Response) => {
 
     res.json(filtered);
   } catch (error: any) {
-    console.error('Get announcements error:', error);
+    console.error('Get announcements error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -524,7 +524,7 @@ router.get('/announcements/all', requireRole('admin'), (req: Request, res: Respo
 
     res.json(announcements);
   } catch (error: any) {
-    console.error('Get all announcements error:', error);
+    console.error('Get all announcements error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -569,7 +569,7 @@ router.post('/announcements', requireRole('admin', 'manager'), (req: Request, re
 
     res.status(201).json(announcement || { id: result.lastInsertRowid });
   } catch (error: any) {
-    console.error('Create announcement error:', error);
+    console.error('Create announcement error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -617,7 +617,7 @@ router.put('/announcements/:id', requireRole('admin', 'manager'), (req: Request,
     const updated = db.prepare('SELECT * FROM system_announcements WHERE id = ?').get(req.params.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Update announcement error:', error);
+    console.error('Update announcement error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -641,7 +641,7 @@ router.delete('/announcements/:id', requireRole('admin'), (req: Request, res: Re
 
     res.json({ message: 'Announcement deleted' });
   } catch (error: any) {
-    console.error('Delete announcement error:', error);
+    console.error('Delete announcement error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -657,7 +657,7 @@ router.get('/retention', requireRole('admin', 'manager'), (req: Request, res: Re
     const policies = db.prepare('SELECT * FROM retention_policies ORDER BY entity_type').all();
     res.json(policies);
   } catch (error: any) {
-    console.error('Get retention policies error:', error);
+    console.error('Get retention policies error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -702,7 +702,7 @@ router.put('/retention/:id', requireRole('admin', 'manager'), (req: Request, res
     const updated = db.prepare('SELECT * FROM retention_policies WHERE id = ?').get(req.params.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Update retention policy error:', error);
+    console.error('Update retention policy error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -793,7 +793,7 @@ router.post('/retention/run', requireRole('admin'), (req: Request, res: Response
 
     res.json({ executed_at: now, results });
   } catch (error: any) {
-    console.error('Run retention policies error:', error);
+    console.error('Run retention policies error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -860,7 +860,7 @@ router.get('/retention/preview', requireRole('admin', 'manager'), (req: Request,
 
     res.json(previews);
   } catch (error: any) {
-    console.error('Retention preview error:', error);
+    console.error('Retention preview error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -884,7 +884,7 @@ router.get('/departments', (req: Request, res: Response) => {
 
     res.json(departments);
   } catch (error: any) {
-    console.error('Get departments error:', error);
+    console.error('Get departments error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -932,7 +932,7 @@ router.post('/departments', requireRole('admin', 'manager'), (req: Request, res:
       res.status(409).json({ error: 'A department with this name or code already exists' });
       return;
     }
-    console.error('Create department error:', error);
+    console.error('Create department error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -985,7 +985,7 @@ router.put('/departments/:id', requireRole('admin', 'manager'), (req: Request, r
       res.status(409).json({ error: 'A department with this name or code already exists' });
       return;
     }
-    console.error('Update department error:', error);
+    console.error('Update department error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1025,7 +1025,7 @@ router.delete('/departments/:id', requireRole('admin'), (req: Request, res: Resp
 
     res.json({ message: 'Department deleted' });
   } catch (error: any) {
-    console.error('Delete department error:', error);
+    console.error('Delete department error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1047,7 +1047,7 @@ router.get('/notification-rules', requireRole('admin', 'manager'), (req: Request
 
     res.json(rules);
   } catch (error: any) {
-    console.error('Get notification rules error:', error);
+    console.error('Get notification rules error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1104,7 +1104,7 @@ router.post('/notification-rules', requireRole('admin', 'manager'), (req: Reques
 
     res.status(201).json(rule);
   } catch (error: any) {
-    console.error('Create notification rule error:', error);
+    console.error('Create notification rule error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1156,7 +1156,7 @@ router.put('/notification-rules/:id', requireRole('admin', 'manager'), (req: Req
 
     res.json(updated);
   } catch (error: any) {
-    console.error('Update notification rule error:', error);
+    console.error('Update notification rule error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1180,7 +1180,7 @@ router.delete('/notification-rules/:id', requireRole('admin', 'manager'), (req: 
 
     res.json({ message: 'Notification rule deleted' });
   } catch (error: any) {
-    console.error('Delete notification rule error:', error);
+    console.error('Delete notification rule error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1265,7 +1265,7 @@ router.post('/notification-rules/:id/test', requireRole('admin', 'manager'), (re
 
     res.json({ message: `Test notification sent to ${sentCount} user(s)`, sent_to: targetUserIds });
   } catch (error: any) {
-    console.error('Test notification rule error:', error);
+    console.error('Test notification rule error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -48,7 +48,7 @@ router.get('/status', authenticateToken, (req: Request, res: Response) => {
       unreadSecurityNotifications: unreadNotifs.count,
     });
   } catch (error: any) {
-    console.error('Security status error:', error);
+    console.error('Security status error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -89,7 +89,7 @@ router.get('/login-history', authenticateToken, (req: Request, res: Response) =>
       offset,
     });
   } catch (error: any) {
-    console.error('Login history error:', error);
+    console.error('Login history error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -108,7 +108,7 @@ router.get('/trusted-devices', authenticateToken, (req: Request, res: Response) 
 
     res.json(devices);
   } catch (error: any) {
-    console.error('Trusted devices error:', error);
+    console.error('Trusted devices error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -139,7 +139,7 @@ router.delete('/trusted-devices/:id', authenticateToken, (req: Request, res: Res
 
     res.json({ message: 'Trusted device removed' });
   } catch (error: any) {
-    console.error('Remove device error:', error);
+    console.error('Remove device error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -166,7 +166,7 @@ router.get('/notifications', authenticateToken, (req: Request, res: Response) =>
 
     res.json({ notifications: rows, total: total.count, limit, offset });
   } catch (error: any) {
-    console.error('Security notifications error:', error);
+    console.error('Security notifications error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -184,7 +184,7 @@ router.put('/notifications/:id/read', authenticateToken, (req: Request, res: Res
 
     res.json({ message: 'Marked as read' });
   } catch (error: any) {
-    console.error('Mark notification read error:', error);
+    console.error('Mark notification read error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -200,7 +200,7 @@ router.put('/notifications/read-all', authenticateToken, (req: Request, res: Res
 
     res.json({ message: 'All marked as read' });
   } catch (error: any) {
-    console.error('Mark all read error:', error);
+    console.error('Mark all read error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

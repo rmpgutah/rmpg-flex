@@ -116,11 +116,11 @@ export default function CaseManagementPage() {
   }, [page, searchQuery, filterStatus, filterType, filterPriority]);
 
   const fetchStats = useCallback(async () => {
-    try { const res = await apiFetch<{ data: any }>('/cases/stats'); setStats(res.data); } catch {}
+    try { const res = await apiFetch<{ data: any }>('/cases/stats'); setStats(res.data); } catch (e) { console.warn('[Cases] fetch stats failed:', e); }
   }, []);
 
   const fetchNotes = useCallback(async (caseId: number) => {
-    try { const res = await apiFetch<{ data: CaseNote[] }>(`/cases/${caseId}/notes`); setNotes(res.data || []); } catch {}
+    try { const res = await apiFetch<{ data: CaseNote[] }>(`/cases/${caseId}/notes`); setNotes(res.data || []); } catch (e) { console.warn('[Cases] fetch notes failed:', e); }
   }, []);
 
   useEffect(() => { fetchCases(); }, [fetchCases]);

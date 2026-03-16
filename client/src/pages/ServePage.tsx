@@ -941,7 +941,7 @@ export default function ServePage() {
                 min={1}
                 max={10}
                 value={formData.max_attempts}
-                onChange={e => handleFormChange('max_attempts', parseInt(e.target.value) || 3)}
+                onChange={e => handleFormChange('max_attempts', parseInt(e.target.value, 10) || 3)}
                 className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
               />
             </div>

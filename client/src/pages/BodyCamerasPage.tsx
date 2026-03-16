@@ -100,7 +100,7 @@ export default function BodyCamerasPage() {
   const handleSubmit = async (data: BodyCameraFormData) => {
     setIsSubmitting(true);
     try {
-      const payload = { ...data, storage_capacity_gb: parseInt(data.storage_capacity_gb) || 32 };
+      const payload = { ...data, storage_capacity_gb: parseInt(data.storage_capacity_gb, 10) || 32 };
       if (editMode === 'edit' && editData?.id) {
         await apiFetch(`/personnel/body-cameras/${editData.id}`, { method: 'PUT', body: JSON.stringify(payload) });
       } else {

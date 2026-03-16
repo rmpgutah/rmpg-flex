@@ -135,7 +135,7 @@ export default function IncidentDetailWindow() {
           onSignAndExport={async (reportType, signature) => {
             if (!incident) return;
             let attachmentImages: any[] = [];
-            try { attachmentImages = await fetchEntityImages('incident', incident.id); } catch {}
+            try { attachmentImages = await fetchEntityImages('incident', incident.id); } catch (e) { console.warn('[IncidentDetail] fetch images failed:', e); }
             await downloadPdfReport(reportType, {
               ...incident,
               location: incident.location_address || '',
@@ -282,7 +282,7 @@ export default function IncidentDetailWindow() {
                 let flags: string[] = [];
                 try { flags = JSON.parse(p.flags || '[]'); } catch { /* ignore */ }
                 return (
-                  <tr key={i} className="border-t border-rmpg-700/50">
+                  <tr key={p.id || `person-${i}`} className="border-t border-rmpg-700/50">
                     <td className="py-1.5">
                       <span className="px-1.5 py-0.5 bg-brand-900/40 text-brand-300 text-[10px] uppercase font-bold border border-brand-600/40">
                         {(p.role || '').replace(/_/g, ' ')}
@@ -317,7 +317,7 @@ export default function IncidentDetailWindow() {
             </thead>
             <tbody>
               {vehicles.map((v: any, i: number) => (
-                <tr key={i} className="border-t border-rmpg-700/50">
+                <tr key={v.id || `vehicle-${i}`} className="border-t border-rmpg-700/50">
                   <td className="py-1.5">
                     <span className="px-1.5 py-0.5 bg-amber-900/40 text-amber-300 text-[10px] uppercase font-bold border border-amber-600/40">
                       {(v.role || '').replace(/_/g, ' ')}
@@ -352,7 +352,7 @@ export default function IncidentDetailWindow() {
             </thead>
             <tbody>
               {evidence.map((e: any, i: number) => (
-                <tr key={i} className="border-t border-rmpg-700/50">
+                <tr key={e.id || `evidence-${i}`} className="border-t border-rmpg-700/50">
                   <td className="py-1.5 text-white font-mono font-bold">{e.evidence_number}</td>
                   <td className="py-1.5">
                     <span className="px-1.5 py-0.5 bg-purple-900/40 text-purple-300 text-[10px] uppercase font-bold border border-purple-600/40">

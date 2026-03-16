@@ -34,7 +34,7 @@ router.get('/search', async (req: Request, res: Response) => {
 
     res.json({ data: results, total: results.length });
   } catch (error: any) {
-    console.error('CDOC search error:', error);
+    console.error('CDOC search error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Colorado DOC search failed' });
   }
 });
@@ -49,7 +49,7 @@ router.get('/offender/:docNumber', (req: Request, res: Response) => {
     }
     res.json(offender);
   } catch (error: any) {
-    console.error('CDOC offender lookup error:', error);
+    console.error('CDOC offender lookup error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -60,7 +60,7 @@ router.get('/stats', requireRole('admin', 'manager', 'supervisor'), (req: Reques
     const stats = getCdocStats();
     res.json(stats);
   } catch (error: any) {
-    console.error('CDOC stats error:', error);
+    console.error('CDOC stats error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -689,6 +689,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         heartbeatRestartCountRef.current++;
         if (heartbeatRestartCountRef.current > MAX_HEARTBEAT_RESTARTS) {
           console.error('[GPS] Max heartbeat restarts reached, stopping restart attempts');
+          if (heartbeatRef.current) { clearInterval(heartbeatRef.current); heartbeatRef.current = null; }
           setState((prev) => ({ ...prev, error: 'GPS signal lost. Refresh the page to retry.' }));
           return;
         }
@@ -749,6 +750,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     if (!conn) return;
 
     let prevType = conn.type || conn.effectiveType || 'unknown';
+    let networkRestartTimer: ReturnType<typeof setTimeout> | null = null;
 
     const handleNetworkChange = () => {
       const newType = conn.type || conn.effectiveType || 'unknown';
@@ -777,7 +779,6 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       prevType = newType;
     };
 
-    let networkRestartTimer: ReturnType<typeof setTimeout> | null = null;
     conn.addEventListener('change', handleNetworkChange);
     return () => {
       conn.removeEventListener('change', handleNetworkChange);
@@ -811,13 +812,15 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   // (supported on Chrome Android, Chrome Desktop, Edge, etc.)
   useEffect(() => {
     let wakeLock: any = null;
+    const handleWakeLockRelease = () => {
+      // Wake lock released (e.g., user switched tabs) — will re-acquire via visibilitychange
+      wakeLock = null;
+    };
     const requestWakeLock = async () => {
       try {
         if ('wakeLock' in navigator) {
           wakeLock = await (navigator as any).wakeLock.request('screen');
-          wakeLock.addEventListener('release', () => {
-            // Re-acquire on release (e.g., when user switches tabs then comes back)
-          });
+          wakeLock.addEventListener('release', handleWakeLockRelease);
         }
       } catch {
         // WakeLock not available or permission denied — degrade gracefully
@@ -834,7 +837,10 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibility);
-      if (wakeLock) wakeLock.release().catch((err: any) => { console.warn('[useGpsTracking] wake lock release failed:', err); });
+      if (wakeLock) {
+        wakeLock.removeEventListener('release', handleWakeLockRelease);
+        wakeLock.release().catch((err: any) => { console.warn('[useGpsTracking] wake lock release failed:', err); });
+      }
     };
   }, []);
 

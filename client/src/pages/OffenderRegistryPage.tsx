@@ -245,7 +245,7 @@ export default function OffenderRegistryPage() {
   }, [page, searchQuery, filterType, filterSeverity]);
 
   const fetchStats = useCallback(async () => {
-    try { const res = await apiFetch<{ data: any }>('/offender-registry/stats'); setStats(res.data); } catch {}
+    try { const res = await apiFetch<{ data: any }>('/offender-registry/stats'); setStats(res.data); } catch (e) { console.warn('[OffenderRegistry] fetch stats failed:', e); }
   }, []);
 
   useEffect(() => { fetchAlerts(); }, [fetchAlerts]);

@@ -8,6 +8,59 @@ import { createNotification, createNotificationForRoles } from '../notifications
 
 const router = Router();
 
+// ── PSO Service Window Classification ──────────────────────────────
+// Required attempt windows for PSO due diligence:
+//   1 attempt between 6AM-9AM (early_morning)
+//   1 attempt between 9AM-6PM (daytime)
+//   1 attempt between 6PM-9PM (evening)
+//   1 attempt must be on a weekend (Saturday or Sunday)
+// All times are Mountain Time (America/Denver).
+
+type ServiceWindow = 'early_morning' | 'daytime' | 'evening';
+
+interface PsoServiceWindows {
+  early_morning: boolean;  // 6AM-9AM
+  daytime: boolean;        // 9AM-6PM
+  evening: boolean;        // 6PM-9PM
+  weekend: boolean;        // Any attempt on Sat/Sun
+}
+
+function classifyServiceWindow(isoTimestamp: string): { window: ServiceWindow; isWeekend: boolean } {
+  // Parse to Mountain Time
+  const d = new Date(isoTimestamp);
+  const mt = new Date(d.toLocaleString('en-US', { timeZone: 'America/Denver' }));
+  const hour = mt.getHours();
+  const day = mt.getDay(); // 0=Sun, 6=Sat
+  const isWeekend = day === 0 || day === 6;
+
+  let window: ServiceWindow;
+  if (hour >= 6 && hour < 9) window = 'early_morning';
+  else if (hour >= 9 && hour < 18) window = 'daytime';
+  else if (hour >= 18 && hour < 21) window = 'evening';
+  else window = hour < 6 ? 'early_morning' : 'evening'; // Before 6AM → early_morning bucket, after 9PM → evening bucket
+
+  return { window, isWeekend };
+}
+
+function parsePsoWindows(json: string | null | undefined): PsoServiceWindows {
+  if (!json) return { early_morning: false, daytime: false, evening: false, weekend: false };
+  try {
+    const parsed = JSON.parse(json);
+    return {
+      early_morning: !!parsed.early_morning,
+      daytime: !!parsed.daytime,
+      evening: !!parsed.evening,
+      weekend: !!parsed.weekend,
+    };
+  } catch {
+    return { early_morning: false, daytime: false, evening: false, weekend: false };
+  }
+}
+
+function isPsoCompliant(windows: PsoServiceWindows): boolean {
+  return windows.early_morning && windows.daytime && windows.evening && windows.weekend;
+}
+
 // POST /api/dispatch/calls/:id/dispatch - Dispatch unit(s) to call
 router.post('/calls/:id/dispatch', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
   try {
@@ -100,7 +153,7 @@ router.post('/calls/:id/dispatch', requireRole('admin', 'manager', 'supervisor',
 
     res.json(updated);
   } catch (error: any) {
-    console.error('Dispatch error:', error);
+    console.error('Dispatch error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -193,7 +246,7 @@ router.post('/calls/:id/assign-unit', requireRole('admin', 'manager', 'superviso
 
     res.json(updated);
   } catch (error: any) {
-    console.error('Assign unit error:', error);
+    console.error('Assign unit error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -267,7 +320,7 @@ router.post('/calls/:id/unassign-unit', requireRole('admin', 'manager', 'supervi
 
     res.json(updated);
   } catch (error: any) {
-    console.error('Unassign unit error:', error);
+    console.error('Unassign unit error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -325,6 +378,27 @@ router.post('/calls/:id/status', requireRole('admin', 'manager', 'supervisor', '
               });
               return;
             }
+          }
+        }
+
+        // Prevent archiving PSO calls that haven't met service window requirements
+        // Required: 1 early morning (6-9AM), 1 daytime (9AM-6PM), 1 evening (6-9PM), 1 weekend
+        const windows = parsePsoWindows(call.pso_service_windows);
+        if (!isPsoCompliant(windows)) {
+          const canOverride = ['admin', 'manager'].includes(req.user?.role || '');
+          if (!canOverride) {
+            const missing: string[] = [];
+            if (!windows.early_morning) missing.push('6AM-9AM attempt');
+            if (!windows.daytime) missing.push('9AM-6PM attempt');
+            if (!windows.evening) missing.push('6PM-9PM attempt');
+            if (!windows.weekend) missing.push('weekend attempt');
+            res.status(403).json({
+              error: `PSO service window requirements not met. Missing: ${missing.join(', ')}`,
+              code: 'PSO_WINDOWS_INCOMPLETE',
+              missing,
+              windows,
+            });
+            return;
           }
         }
       }
@@ -386,6 +460,16 @@ router.post('/calls/:id/status', requireRole('admin', 'manager', 'supervisor', '
           new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
           call.id,
         );
+
+        // ── PSO Service Window Compliance: classify this attempt's time window ──
+        const attemptTime = call.onscene_at || now; // Use onscene time, fallback to now
+        const { window: timeWindow, isWeekend } = classifyServiceWindow(attemptTime);
+        const currentWindows = parsePsoWindows(call.pso_service_windows);
+        currentWindows[timeWindow] = true;
+        if (isWeekend) currentWindows.weekend = true;
+        db.prepare(`
+          UPDATE calls_for_service SET pso_service_windows = ? WHERE id = ?
+        `).run(JSON.stringify(currentWindows), call.id);
       }
 
       // ── Reset overdue flag when call leaves active status ──
@@ -465,7 +549,7 @@ router.post('/calls/:id/status', requireRole('admin', 'manager', 'supervisor', '
 
     res.json(updated);
   } catch (error: any) {
-    console.error('Status update error:', error);
+    console.error('Status update error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -561,7 +645,7 @@ router.post('/calls/:id/revert-status', requireRole('admin', 'manager', 'supervi
 
     res.json(updated);
   } catch (error: any) {
-    console.error('Revert status error:', error);
+    console.error('Revert status error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -603,7 +687,7 @@ router.post('/calls/:id/hold', requireRole('admin', 'manager', 'supervisor', 'di
 
     res.json(updated);
   } catch (error: any) {
-    console.error('Hold call error:', error);
+    console.error('Hold call error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -643,7 +727,7 @@ router.post('/calls/:id/resume', requireRole('admin', 'manager', 'supervisor', '
 
     res.json(updated);
   } catch (error: any) {
-    console.error('Resume call error:', error);
+    console.error('Resume call error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -687,7 +771,7 @@ router.post('/calls/:id/promote-to-incident', requireRole('admin', 'manager', 's
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(result.lastInsertRowid) || { id: result.lastInsertRowid };
     res.status(201).json(incident);
   } catch (error: any) {
-    console.error('Promote to incident error:', error);
+    console.error('Promote to incident error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -732,7 +816,7 @@ router.post('/calls/:id/le-notification', requireRole('admin', 'manager', 'super
     broadcastDispatchUpdate({ action: 'call_updated', call: updated });
     res.json(updated);
   } catch (error: any) {
-    console.error('LE notification error:', error);
+    console.error('LE notification error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -758,7 +842,7 @@ router.get('/calls/:id/persons', requireRole('admin', 'manager', 'supervisor', '
     `).all(req.params.id);
     res.json(rows);
   } catch (error: any) {
-    console.error('Get call persons error:', error);
+    console.error('Get call persons error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -804,7 +888,7 @@ router.post('/calls/:id/persons', requireRole('admin', 'manager', 'supervisor', 
     broadcastDispatchUpdate({ action: 'call_person_linked', call_id: call.id, person: linked });
     res.status(201).json(linked);
   } catch (error: any) {
-    console.error('Link call person error:', error);
+    console.error('Link call person error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -841,7 +925,7 @@ router.put('/calls/:id/persons/:linkId', requireRole('admin', 'manager', 'superv
     `).get(link.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Update call person error:', error);
+    console.error('Update call person error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -868,7 +952,7 @@ router.delete('/calls/:id/persons/:linkId', requireRole('admin', 'manager', 'sup
     broadcastDispatchUpdate({ action: 'call_person_unlinked', call_id: Number(req.params.id), link_id: link.id });
     res.json({ success: true });
   } catch (error: any) {
-    console.error('Unlink call person error:', error);
+    console.error('Unlink call person error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -896,7 +980,7 @@ router.get('/calls/:id/vehicles', requireRole('admin', 'manager', 'supervisor', 
     `).all(req.params.id);
     res.json(rows);
   } catch (error: any) {
-    console.error('Get call vehicles error:', error);
+    console.error('Get call vehicles error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -944,7 +1028,7 @@ router.post('/calls/:id/vehicles', requireRole('admin', 'manager', 'supervisor',
     broadcastDispatchUpdate({ action: 'call_vehicle_linked', call_id: call.id, vehicle: linked });
     res.status(201).json(linked);
   } catch (error: any) {
-    console.error('Link call vehicle error:', error);
+    console.error('Link call vehicle error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -983,7 +1067,7 @@ router.put('/calls/:id/vehicles/:linkId', requireRole('admin', 'manager', 'super
     `).get(link.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Update call vehicle error:', error);
+    console.error('Update call vehicle error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1011,7 +1095,7 @@ router.delete('/calls/:id/vehicles/:linkId', requireRole('admin', 'manager', 'su
     broadcastDispatchUpdate({ action: 'call_vehicle_unlinked', call_id: Number(req.params.id), link_id: link.id });
     res.json({ success: true });
   } catch (error: any) {
-    console.error('Unlink call vehicle error:', error);
+    console.error('Unlink call vehicle error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -358,10 +358,10 @@ export function generatePrintableInvoiceHtml(data: InvoicePdfData): string {
 
   const paymentRows = payments.map(p => `
     <tr>
-      <td style="padding: 4px 8px; font-size: 11px; border-bottom: 1px solid #eee;">${p.payment_date?.substring(0, 10) || ''}</td>
+      <td style="padding: 4px 8px; font-size: 11px; border-bottom: 1px solid #eee;">${escHtml(p.payment_date?.substring(0, 10))}</td>
       <td style="padding: 4px 8px; font-size: 11px; color: #00783c; font-weight: bold; border-bottom: 1px solid #eee;">${fmt(p.amount)}</td>
-      <td style="padding: 4px 8px; font-size: 11px; text-transform: uppercase; border-bottom: 1px solid #eee;">${p.payment_method || ''}</td>
-      <td style="padding: 4px 8px; font-size: 11px; border-bottom: 1px solid #eee;">${p.reference_number || ''}</td>
+      <td style="padding: 4px 8px; font-size: 11px; text-transform: uppercase; border-bottom: 1px solid #eee;">${escHtml(p.payment_method)}</td>
+      <td style="padding: 4px 8px; font-size: 11px; border-bottom: 1px solid #eee;">${escHtml(p.reference_number)}</td>
     </tr>
   `).join('');
 
@@ -413,17 +413,17 @@ export function generatePrintableInvoiceHtml(data: InvoicePdfData): string {
 
   <div class="invoice-title">
     <h2>INVOICE</h2>
-    <span class="invoice-number">${data.invoice_number}</span>
+    <span class="invoice-number">${escHtml(data.invoice_number)}</span>
   </div>
 
   <div class="section-bar">SECTION 1 &mdash; INVOICE INFORMATION</div>
   <div class="section-body">
     <div class="field-grid">
-      <div class="field-box"><div class="label">Invoice #</div><div class="value">${data.invoice_number}</div></div>
-      <div class="field-box"><div class="label">Status</div><div class="value">${(data.status || 'draft').toUpperCase()}</div></div>
+      <div class="field-box"><div class="label">Invoice #</div><div class="value">${escHtml(data.invoice_number)}</div></div>
+      <div class="field-box"><div class="label">Status</div><div class="value">${escHtml((data.status || 'draft').toUpperCase())}</div></div>
       <div class="field-box"><div class="label">Issue Date</div><div class="value">${data.issue_date?.substring(0, 10) || '&mdash;'}</div></div>
       <div class="field-box"><div class="label">Due Date</div><div class="value">${data.due_date?.substring(0, 10) || '&mdash;'}</div></div>
-      <div class="field-box"><div class="label">Terms</div><div class="value">${data.payment_terms || 'Net 30'}</div></div>
+      <div class="field-box"><div class="label">Terms</div><div class="value">${escHtml(data.payment_terms) || 'Net 30'}</div></div>
       <div class="field-box"><div class="label">Period</div><div class="value">${data.period_start?.substring(0, 10)} to ${data.period_end?.substring(0, 10)}</div></div>
     </div>
   </div>

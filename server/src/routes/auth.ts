@@ -417,7 +417,7 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('Login error:', error);
+    console.error('Login error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -484,7 +484,7 @@ router.post('/refresh', refreshRateLimit, (req: Request, res: Response) => {
       expiresIn: config.jwt.accessExpiry,
     });
   } catch (error: any) {
-    console.error('Refresh token error:', error);
+    console.error('Refresh token error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -517,7 +517,7 @@ router.post('/logout', authenticateToken, (req: Request, res: Response) => {
 
     res.json({ message: 'Logged out successfully' });
   } catch (error: any) {
-    console.error('Logout error:', error);
+    console.error('Logout error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -568,7 +568,7 @@ router.get('/me', authenticateToken, (req: Request, res: Response) => {
       passwordExpiresAt: user.password_expires_at,
     });
   } catch (error: any) {
-    console.error('Get user error:', error);
+    console.error('Get user error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -590,7 +590,7 @@ router.get('/sessions', authenticateToken, (req: Request, res: Response) => {
 
     res.json(sessions);
   } catch (error: any) {
-    console.error('Get sessions error:', error);
+    console.error('Get sessions error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -621,7 +621,7 @@ router.delete('/sessions/:sessionId', authenticateToken, (req: Request, res: Res
 
     res.json({ message: 'Session revoked' });
   } catch (error: any) {
-    console.error('Revoke session error:', error);
+    console.error('Revoke session error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -651,7 +651,7 @@ router.post('/logout-all', authenticateToken, (req: Request, res: Response) => {
 
     res.json({ message: 'All sessions revoked', count: result.changes });
   } catch (error: any) {
-    console.error('Logout all sessions error:', error);
+    console.error('Logout all sessions error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -688,7 +688,7 @@ router.get('/session-timeout', authenticateToken, (_req: Request, res: Response)
 
     res.json({ timeoutMinutes });
   } catch (error: any) {
-    console.error('Get session timeout error:', error);
+    console.error('Get session timeout error:', error?.message || 'Unknown error');
     res.json({ timeoutMinutes: 480 }); // safe fallback
   }
 });
@@ -788,21 +788,12 @@ router.post('/change-password', passwordRateLimit, authenticateToken, (req: Requ
       `Your RMPG Flex password was changed.\n\nIP: ${ip}\nDevice: ${parseDeviceName(userAgent)}\nTime: ${localNow()}\n\nAll active sessions have been terminated. If this was not you, contact your administrator immediately.`
     ).catch(() => { /* email failure should never block response */ });
 
-    createSecurityNotification(
-      user.id,
-      'password_changed',
-      'Password changed',
-      'Your password was changed.',
-      ip,
-      parseDeviceName(userAgent)
-    );
-
     // Invalidate all sessions
     db.prepare('UPDATE sessions SET is_active = 0 WHERE user_id = ?').run(user.id);
 
     res.json({ message: 'Password changed successfully. Please log in again.' });
   } catch (error: any) {
-    console.error('Change password error:', error);
+    console.error('Change password error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -870,7 +861,7 @@ router.put('/profile', authenticateToken, (req: Request, res: Response) => {
 
     res.json(updated);
   } catch (error: any) {
-    console.error('Update profile error:', error);
+    console.error('Update profile error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -918,7 +909,7 @@ router.put('/profile-image', authenticateToken, (req: Request, res: Response) =>
 
     res.json({ success: true });
   } catch (error: any) {
-    console.error('Save profile image error:', error);
+    console.error('Save profile image error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -932,7 +923,7 @@ router.get('/profile-image', authenticateToken, (req: Request, res: Response) =>
       .get(req.user!.userId) as { profile_image: string | null } | undefined;
     res.json({ profile_image: row?.profile_image || null });
   } catch (error: any) {
-    console.error('Get profile image error:', error);
+    console.error('Get profile image error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -946,7 +937,7 @@ router.get('/signature', authenticateToken, (req: Request, res: Response) => {
       .get(req.user!.userId) as { digital_signature: string | null } | undefined;
     res.json({ signature: row?.digital_signature || null });
   } catch (error: any) {
-    console.error('Get signature error:', error);
+    console.error('Get signature error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -976,7 +967,7 @@ router.put('/signature', authenticateToken, (req: Request, res: Response) => {
 
     res.json({ success: true });
   } catch (error: any) {
-    console.error('Save signature error:', error);
+    console.error('Save signature error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1230,7 +1221,7 @@ router.post('/verify-2fa', mfaRateLimit, (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('2FA verification error:', error);
+    console.error('2FA verification error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1263,7 +1254,7 @@ router.post('/unlock-account', authenticateToken, requireRole('admin'), (req: Re
       clearedAttempts: result.changes,
     });
   } catch (error: any) {
-    console.error('Unlock account error:', error);
+    console.error('Unlock account error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to unlock account' });
   }
 });
@@ -1283,7 +1274,7 @@ router.get('/totp/status', authenticateToken, (req: Request, res: Response) => {
       required,
     });
   } catch (error: any) {
-    console.error('TOTP status error:', error);
+    console.error('TOTP status error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1329,7 +1320,7 @@ router.post('/totp/setup', authenticateToken, async (req: Request, res: Response
       backupCodes,
     });
   } catch (error: any) {
-    console.error('TOTP setup error:', error);
+    console.error('TOTP setup error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1374,7 +1365,7 @@ router.post('/totp/verify-setup', authenticateToken, (req: Request, res: Respons
 
     res.json({ enabled: true, message: 'Two-factor authentication is now active.' });
   } catch (error: any) {
-    console.error('TOTP verify-setup error:', error);
+    console.error('TOTP verify-setup error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1420,7 +1411,7 @@ router.post('/totp/disable', authenticateToken, (req: Request, res: Response) =>
 
     res.json({ enabled: false, message: 'Two-factor authentication has been disabled.' });
   } catch (error: any) {
-    console.error('TOTP disable error:', error);
+    console.error('TOTP disable error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1484,7 +1475,7 @@ router.post('/2fa/setup', authenticateAnyToken, async (req: Request, res: Respon
       issuer: (config as any).twoFactor?.issuer || 'RMPG Flex',
     });
   } catch (error: any) {
-    console.error('2FA setup error:', error);
+    console.error('2FA setup error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1615,7 +1606,7 @@ router.post('/2fa/setup/verify', authenticateAnyToken, (req: Request, res: Respo
       backupCodes: codes,
     });
   } catch (error: any) {
-    console.error('2FA setup verify error:', error);
+    console.error('2FA setup verify error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1640,7 +1631,7 @@ router.get('/2fa/status', authenticateToken, (req: Request, res: Response) => {
       backupCodesRemaining: backupCount.count,
     });
   } catch (error: any) {
-    console.error('2FA status error:', error);
+    console.error('2FA status error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1691,7 +1682,7 @@ router.post('/2fa/backup-codes/regenerate', authenticateToken, (req: Request, re
 
     res.json({ backupCodes: codes });
   } catch (error: any) {
-    console.error('Backup codes regenerate error:', error);
+    console.error('Backup codes regenerate error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1740,7 +1731,7 @@ router.post('/2fa/disable', authenticateToken, (req: Request, res: Response) => 
 
     res.json({ message: '2FA disabled. You will need to set it up again on next login.' });
   } catch (error: any) {
-    console.error('2FA disable error:', error);
+    console.error('2FA disable error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1869,7 +1860,7 @@ router.post('/login/verify-2fa', authenticateTempToken, (req: Request, res: Resp
       },
     });
   } catch (error: any) {
-    console.error('2FA verify error:', error);
+    console.error('2FA verify error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -2025,7 +2016,7 @@ router.post('/login/verify-backup-code', authenticateTempToken, (req: Request, r
       ...(remaining <= 2 && { warning: `Only ${remaining} backup code(s) remaining. Please regenerate.` }),
     });
   } catch (error: any) {
-    console.error('Backup code verify error:', error);
+    console.error('Backup code verify error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -2147,7 +2138,7 @@ router.post('/login/change-password', authenticateTempToken, (req: Request, res:
       },
     });
   } catch (error: any) {
-    console.error('Login password change error:', error);
+    console.error('Login password change error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

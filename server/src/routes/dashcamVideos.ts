@@ -53,6 +53,20 @@ const upload = multer({
   },
 });
 
+// Separate upload config for webhook — stricter size limit (500 MB)
+const webhookUpload = multer({
+  storage,
+  limits: { fileSize: 500 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm', 'video/x-matroska'];
+    if (allowed.includes(file.mimetype) || file.originalname.match(/\.(mp4|mov|avi|webm|mkv)$/i)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only video files are allowed'));
+    }
+  },
+});
+
 // ============================================================
 // GET /api/fleet/dashcam-videos — List all dash cam videos
 // ============================================================
@@ -95,7 +109,7 @@ router.get('/', authenticateToken, (req: Request, res: Response) => {
 
     res.json({ videos, total });
   } catch (error: any) {
-    console.error('List dashcam videos error:', error);
+    console.error('List dashcam videos error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -126,7 +140,7 @@ router.get('/:id', authenticateToken, (req: Request, res: Response) => {
     }
     res.json(video);
   } catch (error: any) {
-    console.error('Get dashcam video error:', error);
+    console.error('Get dashcam video error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -198,7 +212,7 @@ router.post('/', authenticateToken, requireRole('admin', 'manager', 'supervisor'
 
     res.json({ success: true, id });
   } catch (error: any) {
-    console.error('Upload dashcam video error:', error);
+    console.error('Upload dashcam video error:', error?.message || 'Unknown error');
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }
@@ -261,7 +275,7 @@ router.put('/:id', authenticateToken, requireRole('admin', 'manager', 'superviso
 
     res.json({ success: true });
   } catch (error: any) {
-    console.error('Update dashcam video error:', error);
+    console.error('Update dashcam video error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -293,7 +307,7 @@ router.delete('/:id', authenticateToken, requireRole('admin'), (req: Request, re
 
     res.json({ success: true });
   } catch (error: any) {
-    console.error('Delete dashcam video error:', error);
+    console.error('Delete dashcam video error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -316,11 +330,19 @@ router.get('/:id/stream', (req: Request, res: Response, next) => {
       return;
     }
 
-    const filePath = path.resolve(DASHCAM_DIR, video.file_path);
-    if (!filePath.startsWith(DASHCAM_DIR) || !fs.existsSync(filePath)) {
+    // Prevent path traversal: normalize, resolve, and verify containment
+    const normalizedPath = path.normalize(video.file_path).replace(/^(\.\.(\/|\\|$))+/, '');
+    const filePath = path.resolve(DASHCAM_DIR, normalizedPath);
+    if (!filePath.startsWith(path.resolve(DASHCAM_DIR) + path.sep) || !fs.existsSync(filePath)) {
       res.status(404).json({ error: 'Video file not found on disk' });
       return;
     }
+
+    // Security headers: prevent caching of sensitive video content, block embedding
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.set('Content-Disposition', 'inline');
+    res.set('Referrer-Policy', 'no-referrer');
 
     const stat = fs.statSync(filePath);
     const fileSize = stat.size;
@@ -346,7 +368,7 @@ router.get('/:id/stream', (req: Request, res: Response, next) => {
         'Content-Type': video.mime_type || 'video/mp4',
       });
       const stream = fs.createReadStream(filePath, { start, end });
-      stream.on('error', (err) => { console.error('Dashcam stream error:', err); res.destroy(); });
+      stream.on('error', (err) => { console.error('Dashcam stream error:', err?.message || 'Unknown error'); res.destroy(); });
       stream.pipe(res);
     } else {
       res.writeHead(200, {
@@ -354,11 +376,11 @@ router.get('/:id/stream', (req: Request, res: Response, next) => {
         'Content-Type': video.mime_type || 'video/mp4',
       });
       const stream = fs.createReadStream(filePath);
-      stream.on('error', (err) => { console.error('Dashcam stream error:', err); res.destroy(); });
+      stream.on('error', (err) => { console.error('Dashcam stream error:', err?.message || 'Unknown error'); res.destroy(); });
       stream.pipe(res);
     }
   } catch (error: any) {
-    console.error('Stream dashcam video error:', error);
+    console.error('Stream dashcam video error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -378,7 +400,7 @@ router.get('/:id/links', authenticateToken, (req: Request, res: Response) => {
 
     res.json(links);
   } catch (error: any) {
-    console.error('List dashcam video links error:', error);
+    console.error('List dashcam video links error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -432,7 +454,7 @@ router.post('/:id/links', authenticateToken, requireRole('admin', 'manager', 'su
 
     res.json({ success: true, id: result.lastInsertRowid });
   } catch (error: any) {
-    console.error('Link dashcam video error:', error);
+    console.error('Link dashcam video error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -460,7 +482,7 @@ router.delete('/:id/links/:linkId', authenticateToken, requireRole('admin', 'man
 
     res.json({ success: true });
   } catch (error: any) {
-    console.error('Unlink dashcam video error:', error);
+    console.error('Unlink dashcam video error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -470,7 +492,7 @@ router.delete('/:id/links/:linkId', authenticateToken, requireRole('admin', 'man
 // ClearPathGPS video event webhook — accepts video file uploads
 // triggered by ClearPath GPS camera events (hard brake, impact, etc.)
 // ============================================================
-router.post('/webhook/clearpathgps', upload.single('video'), (req: Request, res: Response) => {
+router.post('/webhook/clearpathgps', webhookUpload.single('video'), (req: Request, res: Response) => {
   try {
     const db = getDb();
 
@@ -481,9 +503,10 @@ router.post('/webhook/clearpathgps', upload.single('video'), (req: Request, res:
       res.status(503).json({ error: 'Webhook not configured' });
       return;
     }
-    const providedSecret = req.headers['x-webhook-secret'] || req.body?.webhook_secret;
-    if (!providedSecret || providedSecret !== webhookSecret) {
-      res.status(401).json({ error: 'Invalid webhook secret' });
+    const providedSecret = String(req.headers['x-webhook-secret'] || req.body?.webhook_secret || '');
+    if (!providedSecret || providedSecret.length !== webhookSecret.length ||
+        !crypto.timingSafeEqual(Buffer.from(providedSecret), Buffer.from(webhookSecret))) {
+      res.status(401).json({ error: 'Unauthorized' });
       return;
     }
 
@@ -562,7 +585,7 @@ router.post('/webhook/clearpathgps', upload.single('video'), (req: Request, res:
       res.json({ success: true, message: 'Event received, no video file attached' });
     }
   } catch (error: any) {
-    console.error('ClearPathGPS webhook error:', error);
+    console.error('ClearPathGPS webhook error:', error?.message || 'Unknown error');
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }

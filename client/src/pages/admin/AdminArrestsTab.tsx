@@ -776,7 +776,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
                           {/* Interval selector */}
                           <select
                             value={county.scrape_interval_minutes || 30}
-                            onChange={e => handleIntervalChange(county.county, parseInt(e.target.value))}
+                            onChange={e => handleIntervalChange(county.county, parseInt(e.target.value, 10))}
                             className="bg-surface-base border border-rmpg-700 text-rmpg-400 text-[9px] px-1 py-0.5 rounded-sm"
                           >
                             <option value="15">15 min</option>

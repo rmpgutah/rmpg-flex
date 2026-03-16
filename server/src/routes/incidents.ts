@@ -12,7 +12,7 @@ const router = Router();
 router.use(authenticateToken);
 
 // GET /api/incidents - List incidents with filters
-router.get('/', (req: Request, res: Response) => {
+router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { status, priority, officerId, startDate, endDate, archived, page = '1', limit = '50' } = req.query;
@@ -86,13 +86,13 @@ router.get('/', (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('Get incidents error:', error);
+    console.error('Get incidents error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // GET /api/incidents/stats - Incident statistics
-router.get('/stats', (req: Request, res: Response) => {
+router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
 
@@ -127,13 +127,13 @@ router.get('/stats', (req: Request, res: Response) => {
       lastMonth: lastMonth?.count ?? 0,
     });
   } catch (error: any) {
-    console.error('Get incident stats error:', error);
+    console.error('Get incident stats error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // GET /api/incidents/export - Export incidents as CSV
-router.get('/export', (req: Request, res: Response) => {
+router.get('/export', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { status, priority, officerId, startDate, endDate } = req.query;
@@ -189,13 +189,13 @@ router.get('/export', (req: Request, res: Response) => {
       { key: 'updated_at', header: 'Updated At' },
     ], rows);
   } catch (error: any) {
-    console.error('Export incidents error:', error);
+    console.error('Export incidents error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // GET /api/incidents/:id - Get single incident
-router.get('/:id', (req: Request, res: Response) => {
+router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const incident = db.prepare(`
@@ -273,7 +273,7 @@ router.get('/:id', (req: Request, res: Response) => {
       activity,
     });
   } catch (error: any) {
-    console.error('Get incident error:', error);
+    console.error('Get incident error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -344,68 +344,72 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
       } catch { /* geofence not configured, skip */ }
     }
 
-    const result = db.prepare(`
-      INSERT INTO incidents (incident_number, call_id, incident_type, priority, status, location_address,
-        property_id, latitude, longitude, narrative, officer_id,
-        occurred_date, occurred_time, end_date, end_time,
-        weather_conditions, lighting_conditions,
-        injuries, injury_description, damage_estimate, damage_description,
-        weapons_involved, alcohol_involved, drugs_involved, domestic_violence,
-        disposition, zone_beat, section_id, zone_id, beat_id, responding_le_agency, le_case_number,
-        statute_id, statute_citation, citation_fine, client_id,
-        road_conditions, traffic_control, vehicle_1_info, vehicle_2_info, diagram_notes,
-        patient_status, ems_transport, patient_vitals, treatment_rendered,
-        trespass_warning_issued, trespass_effective_date, trespass_expiry_date, property_boundaries,
-        force_type, force_justification, subject_injuries, officer_injuries, de_escalation_attempts)
-      VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?,
-        ?, ?, ?, ?,
-        ?, ?,
-        ?, ?, ?, ?,
-        ?, ?, ?, ?,
-        ?, ?, ?, ?, ?, ?, ?,
-        ?, ?, ?, ?,
-        ?, ?, ?, ?, ?,
-        ?, ?, ?, ?,
-        ?, ?, ?, ?,
-        ?, ?, ?, ?, ?)
-    `).run(
-      incidentNumber, call_id || null, incident_type, priority || 'P3',
-      location_address || null, property_id || null, latitude ?? null,
-      longitude ?? null, narrative || null, req.user!.userId,
-      occurred_date || null, occurred_time || null, end_date || null, end_time || null,
-      weather_conditions || null, lighting_conditions || null,
-      injuries ?? 'none', injury_description || null, damage_estimate ?? null, damage_description || null,
-      weapons_involved || null,
-      alcohol_involved ? 1 : 0, drugs_involved ? 1 : 0, domestic_violence ? 1 : 0,
-      disposition || null, autoZoneBeat, autoSectionId, autoZoneId, autoBeatId,
-      responding_le_agency || null, le_case_number || null,
-      statute_id || null, statute_citation || null, citation_fine ?? null,
-      resolvedClientId,
-      road_conditions || null, traffic_control || null, vehicle_1_info || null, vehicle_2_info || null, diagram_notes || null,
-      patient_status || null, ems_transport || null, patient_vitals || null, treatment_rendered || null,
-      trespass_warning_issued ? 1 : 0, trespass_effective_date || null, trespass_expiry_date || null, property_boundaries || null,
-      force_type || null, force_justification || null, subject_injuries || null, officer_injuries || null, de_escalation_attempts || null,
-    );
+    const createTx = db.transaction(() => {
+      const result = db.prepare(`
+        INSERT INTO incidents (incident_number, call_id, incident_type, priority, status, location_address,
+          property_id, latitude, longitude, narrative, officer_id,
+          occurred_date, occurred_time, end_date, end_time,
+          weather_conditions, lighting_conditions,
+          injuries, injury_description, damage_estimate, damage_description,
+          weapons_involved, alcohol_involved, drugs_involved, domestic_violence,
+          disposition, zone_beat, section_id, zone_id, beat_id, responding_le_agency, le_case_number,
+          statute_id, statute_citation, citation_fine, client_id,
+          road_conditions, traffic_control, vehicle_1_info, vehicle_2_info, diagram_notes,
+          patient_status, ems_transport, patient_vitals, treatment_rendered,
+          trespass_warning_issued, trespass_effective_date, trespass_expiry_date, property_boundaries,
+          force_type, force_justification, subject_injuries, officer_injuries, de_escalation_attempts)
+        VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?,
+          ?, ?,
+          ?, ?, ?, ?,
+          ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?,
+          ?, ?, ?, ?, ?,
+          ?, ?, ?, ?,
+          ?, ?, ?, ?,
+          ?, ?, ?, ?, ?)
+      `).run(
+        incidentNumber, call_id || null, incident_type, priority || 'P3',
+        location_address || null, property_id || null, latitude ?? null,
+        longitude ?? null, narrative || null, req.user!.userId,
+        occurred_date || null, occurred_time || null, end_date || null, end_time || null,
+        weather_conditions || null, lighting_conditions || null,
+        injuries ?? 'none', injury_description || null, damage_estimate ?? null, damage_description || null,
+        weapons_involved || null,
+        alcohol_involved ? 1 : 0, drugs_involved ? 1 : 0, domestic_violence ? 1 : 0,
+        disposition || null, autoZoneBeat, autoSectionId, autoZoneId, autoBeatId,
+        responding_le_agency || null, le_case_number || null,
+        statute_id || null, statute_citation || null, citation_fine ?? null,
+        resolvedClientId,
+        road_conditions || null, traffic_control || null, vehicle_1_info || null, vehicle_2_info || null, diagram_notes || null,
+        patient_status || null, ems_transport || null, patient_vitals || null, treatment_rendered || null,
+        trespass_warning_issued ? 1 : 0, trespass_effective_date || null, trespass_expiry_date || null, property_boundaries || null,
+        force_type || null, force_justification || null, subject_injuries || null, officer_injuries || null, de_escalation_attempts || null,
+      );
 
-    const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(result.lastInsertRowid);
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'incident_created', 'incident', ?, ?, ?)
+      `).run(req.user!.userId, result.lastInsertRowid, `Created ${incidentNumber}`, req.ip || 'unknown');
+
+      return db.prepare('SELECT * FROM incidents WHERE id = ?').get(result.lastInsertRowid);
+    });
+
+    const incident = createTx();
     if (!incident) { res.status(500).json({ error: 'Failed to retrieve created incident' }); return; }
-
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'incident_created', 'incident', ?, ?, ?)
-    `).run(req.user!.userId, result.lastInsertRowid, `Created ${incidentNumber}`, req.ip || 'unknown');
 
     // Notify supervisors of new incident report
     createNotificationForRoles(
       ['admin', 'manager', 'supervisor'],
       'incident', `New Incident: ${incidentNumber}`,
       `${incident_type} — ${location_address || 'No address'}`,
-      'incident', Number(result.lastInsertRowid), 'normal', 'incident.created', req.user!.userId,
+      'incident', Number((incident as any).id), 'normal', 'incident.created', req.user!.userId,
     );
 
     res.status(201).json(incident);
   } catch (error: any) {
-    console.error('Create incident error:', error);
+    console.error('Create incident error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -503,7 +507,7 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (re
     const updated = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Update incident error:', error);
+    console.error('Update incident error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -543,7 +547,7 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
 
     res.json({ message: 'Incident deleted' });
   } catch (error: any) {
-    console.error('Delete incident error:', error);
+    console.error('Delete incident error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -559,13 +563,16 @@ router.post('/:id/archive', requireRole('admin', 'manager', 'supervisor'), (req:
       res.status(400).json({ error: 'Can only archive approved or closed incidents' }); return;
     }
     const now = localNow();
-    db.prepare('UPDATE incidents SET archived_at = ? WHERE id = ?').run(now, incident.id);
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'incident_archived', 'incident', ?, ?, ?)`).run(req.user!.userId, incident.id, `Archived ${incident.incident_number}`, req.ip || 'unknown');
+    const archiveTx = db.transaction(() => {
+      db.prepare('UPDATE incidents SET archived_at = ? WHERE id = ?').run(now, incident.id);
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'incident_archived', 'incident', ?, ?, ?)`).run(req.user!.userId, incident.id, `Archived ${incident.incident_number}`, req.ip || 'unknown');
+    });
+    archiveTx();
     const updated = db.prepare('SELECT * FROM incidents WHERE id = ?').get(incident.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Archive incident error:', error);
+    console.error('Archive incident error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -577,13 +584,16 @@ router.post('/:id/unarchive', requireRole('admin', 'manager', 'supervisor'), (re
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id) as any;
     if (!incident) { res.status(404).json({ error: 'Incident not found' }); return; }
     if (!incident.archived_at) { res.status(400).json({ error: 'Incident is not archived' }); return; }
-    db.prepare('UPDATE incidents SET archived_at = NULL WHERE id = ?').run(incident.id);
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'incident_unarchived', 'incident', ?, ?, ?)`).run(req.user!.userId, incident.id, `Restored ${incident.incident_number} from archive`, req.ip || 'unknown');
+    const unarchiveTx = db.transaction(() => {
+      db.prepare('UPDATE incidents SET archived_at = NULL WHERE id = ?').run(incident.id);
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'incident_unarchived', 'incident', ?, ?, ?)`).run(req.user!.userId, incident.id, `Restored ${incident.incident_number} from archive`, req.ip || 'unknown');
+    });
+    unarchiveTx();
     const updated = db.prepare('SELECT * FROM incidents WHERE id = ?').get(incident.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Unarchive incident error:', error);
+    console.error('Unarchive incident error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -608,19 +618,22 @@ router.put('/:id/submit', requireRole('admin', 'manager', 'supervisor', 'officer
       return;
     }
 
-    db.prepare(`
-      UPDATE incidents SET status = 'submitted', updated_at = ? WHERE id = ?
-    `).run(localNow(), incident.id);
+    const submitTx = db.transaction(() => {
+      db.prepare(`
+        UPDATE incidents SET status = 'submitted', updated_at = ? WHERE id = ?
+      `).run(localNow(), incident.id);
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'incident_submitted', 'incident', ?, ?, ?)
-    `).run(req.user!.userId, incident.id, `Submitted ${incident.incident_number} for review`, req.ip || 'unknown');
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'incident_submitted', 'incident', ?, ?, ?)
+      `).run(req.user!.userId, incident.id, `Submitted ${incident.incident_number} for review`, req.ip || 'unknown');
+    });
+    submitTx();
 
     const updated = db.prepare('SELECT * FROM incidents WHERE id = ?').get(incident.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Submit incident error:', error);
+    console.error('Submit incident error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -642,20 +655,23 @@ router.put('/:id/approve', requireRole('admin', 'manager', 'supervisor'), (req: 
 
     const now = localNow();
 
-    db.prepare(`
-      UPDATE incidents SET status = 'approved', supervisor_id = ?, approved_at = ?, updated_at = ?
-      WHERE id = ?
-    `).run(req.user!.userId, now, localNow(), incident.id);
+    const approveTx = db.transaction(() => {
+      db.prepare(`
+        UPDATE incidents SET status = 'approved', supervisor_id = ?, approved_at = ?, updated_at = ?
+        WHERE id = ?
+      `).run(req.user!.userId, now, localNow(), incident.id);
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'incident_approved', 'incident', ?, ?, ?)
-    `).run(req.user!.userId, incident.id, `Approved ${incident.incident_number}`, req.ip || 'unknown');
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'incident_approved', 'incident', ?, ?, ?)
+      `).run(req.user!.userId, incident.id, `Approved ${incident.incident_number}`, req.ip || 'unknown');
+    });
+    approveTx();
 
     const updated = db.prepare('SELECT * FROM incidents WHERE id = ?').get(incident.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Approve incident error:', error);
+    console.error('Approve incident error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -677,20 +693,23 @@ router.put('/:id/return', requireRole('admin', 'manager', 'supervisor'), (req: R
 
     const { comments } = req.body;
 
-    db.prepare(`
-      UPDATE incidents SET status = 'returned', supervisor_id = ?, updated_at = ?
-      WHERE id = ?
-    `).run(req.user!.userId, localNow(), incident.id);
+    const returnTx = db.transaction(() => {
+      db.prepare(`
+        UPDATE incidents SET status = 'returned', supervisor_id = ?, updated_at = ?
+        WHERE id = ?
+      `).run(req.user!.userId, localNow(), incident.id);
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'incident_returned', 'incident', ?, ?, ?)
-    `).run(req.user!.userId, incident.id, `Returned ${incident.incident_number}: ${comments || 'No comments'}`, req.ip || 'unknown');
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'incident_returned', 'incident', ?, ?, ?)
+      `).run(req.user!.userId, incident.id, `Returned ${incident.incident_number}: ${comments || 'No comments'}`, req.ip || 'unknown');
+    });
+    returnTx();
 
     const updated = db.prepare('SELECT * FROM incidents WHERE id = ?').get(incident.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Return incident error:', error);
+    console.error('Return incident error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -752,7 +771,7 @@ router.post('/:id/persons', requireRole('admin', 'manager', 'supervisor', 'offic
 
     res.status(201).json(linked);
   } catch (error: any) {
-    console.error('Link person error:', error);
+    console.error('Link person error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -794,7 +813,7 @@ router.put('/:id/persons/:personId', requireRole('admin', 'manager', 'supervisor
 
     res.json(updated);
   } catch (error: any) {
-    console.error('Update person link error:', error);
+    console.error('Update person link error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -826,7 +845,7 @@ router.delete('/:id/persons/:personId', requireRole('admin', 'manager', 'supervi
 
     res.json({ message: 'Person unlinked from incident' });
   } catch (error: any) {
-    console.error('Unlink person error:', error);
+    console.error('Unlink person error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -889,7 +908,7 @@ router.post('/:id/vehicles', requireRole('admin', 'manager', 'supervisor', 'offi
 
     res.status(201).json(linked);
   } catch (error: any) {
-    console.error('Link vehicle error:', error);
+    console.error('Link vehicle error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -933,7 +952,7 @@ router.put('/:id/vehicles/:vehicleId', requireRole('admin', 'manager', 'supervis
 
     res.json(updated);
   } catch (error: any) {
-    console.error('Update vehicle link error:', error);
+    console.error('Update vehicle link error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -965,7 +984,7 @@ router.delete('/:id/vehicles/:vehicleId', requireRole('admin', 'manager', 'super
 
     res.json({ message: 'Vehicle unlinked from incident' });
   } catch (error: any) {
-    console.error('Unlink vehicle error:', error);
+    console.error('Unlink vehicle error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1040,7 +1059,7 @@ router.post('/:id/evidence', requireRole('admin', 'manager', 'supervisor', 'offi
 
     res.status(201).json(evidence);
   } catch (error: any) {
-    console.error('Create evidence error:', error);
+    console.error('Create evidence error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1048,7 +1067,7 @@ router.post('/:id/evidence', requireRole('admin', 'manager', 'supervisor', 'offi
 // ─── SUPPLEMENTS ─────────────────────────────────────
 
 // GET /api/incidents/:id/supplements - List supplemental reports for an incident
-router.get('/:id/supplements', (req: Request, res: Response) => {
+router.get('/:id/supplements', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const incident = db.prepare('SELECT id FROM incidents WHERE id = ?').get(req.params.id) as any;
@@ -1071,7 +1090,7 @@ router.get('/:id/supplements', (req: Request, res: Response) => {
 
     res.json(supplements);
   } catch (error: any) {
-    console.error('List supplements error:', error);
+    console.error('List supplements error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1130,7 +1149,7 @@ router.post('/:id/supplements', requireRole('admin', 'manager', 'supervisor', 'o
 
     res.status(201).json(supplement);
   } catch (error: any) {
-    console.error('Create supplement error:', error);
+    console.error('Create supplement error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1184,7 +1203,7 @@ router.put('/:incidentId/supplements/:supId', requireRole('admin', 'manager', 's
 
     res.json(updated);
   } catch (error: any) {
-    console.error('Update supplement error:', error);
+    console.error('Update supplement error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1207,7 +1226,7 @@ router.delete('/:incidentId/supplements/:supId', requireRole('admin', 'manager')
     db.prepare('DELETE FROM supplemental_reports WHERE id = ?').run(req.params.supId);
     res.json({ success: true });
   } catch (error: any) {
-    console.error('Delete supplement error:', error);
+    console.error('Delete supplement error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -217,7 +217,7 @@ export default function SecurityKeyManager() {
 
               <div className="text-right flex-shrink-0">
                 <div className="text-[9px] font-mono" style={{ color: '#8a9aaa' }}>
-                  Added {new Date(cred.createdAt).toLocaleDateString()}
+                  Added {cred.createdAt ? new Date(cred.createdAt).toLocaleDateString() : 'N/A'}
                 </div>
               </div>
 

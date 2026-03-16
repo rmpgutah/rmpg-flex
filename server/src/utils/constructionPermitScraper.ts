@@ -154,7 +154,7 @@ function normalizeDate(dateStr: string): string {
 
   // Unix timestamp in ms
   if (/^\d{13}$/.test(dateStr)) {
-    return new Date(parseInt(dateStr)).toISOString().slice(0, 10);
+    return new Date(parseInt(dateStr, 10)).toISOString().slice(0, 10);
   }
 
   // MM/DD/YYYY

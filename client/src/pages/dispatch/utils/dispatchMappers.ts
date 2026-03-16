@@ -76,6 +76,9 @@ export function mapDbCall(row: any): CallForService {
     pso_billing_code: row.pso_billing_code || undefined,
     pso_authorization: row.pso_authorization || undefined,
     pso_attempt_number: row.pso_attempt_number || undefined,
+    pso_service_windows: row.pso_service_windows
+      ? (() => { try { return JSON.parse(row.pso_service_windows); } catch { return undefined; } })()
+      : undefined,
     // Subject/threat info
     weapons_involved: row.weapons_involved || undefined,
     injuries_reported: !!row.injuries_reported,

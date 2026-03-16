@@ -16,7 +16,7 @@ const router = Router();
 router.use(authenticateToken);
 
 // ─── GET /stats ──────────────────────────────────────────
-router.get('/stats', (req: Request, res: Response) => {
+router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const statusCounts = db.prepare(`
@@ -38,13 +38,13 @@ router.get('/stats', (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('Get case stats error:', error);
+    console.error('Get case stats error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── GET / ───────────────────────────────────────────────
-router.get('/', (req: Request, res: Response) => {
+router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { status, case_type, priority, investigator, search, page = '1', limit = '50' } = req.query;
@@ -79,13 +79,13 @@ router.get('/', (req: Request, res: Response) => {
 
     res.json({ data: rows, pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) } });
   } catch (error: any) {
-    console.error('Get cases error:', error);
+    console.error('Get cases error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── GET /:id ────────────────────────────────────────────
-router.get('/:id', (req: Request, res: Response) => {
+router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare(`
@@ -96,7 +96,7 @@ router.get('/:id', (req: Request, res: Response) => {
     if (!row) return res.status(404).json({ error: 'Case not found' });
     res.json({ data: row });
   } catch (error: any) {
-    console.error('Get case error:', error);
+    console.error('Get case error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -129,7 +129,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
 
     res.status(201).json({ data: { id: result.lastInsertRowid, case_number } });
   } catch (error: any) {
-    console.error('Create case error:', error);
+    console.error('Create case error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -164,7 +164,7 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (re
 
     res.json({ data: { id: parseInt(req.params.id as string, 10) } });
   } catch (error: any) {
-    console.error('Update case error:', error);
+    console.error('Update case error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -194,7 +194,7 @@ router.put('/:id/status', requireRole('admin', 'manager', 'supervisor'), (req: R
 
     res.json({ data: { id: parseInt(req.params.id as string, 10), status } });
   } catch (error: any) {
-    console.error('Update case status error:', error);
+    console.error('Update case status error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -216,13 +216,13 @@ router.post('/:id/notes', requireRole('admin', 'manager', 'supervisor', 'officer
     db.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(now, req.params.id);
     res.status(201).json({ data: { id: result.lastInsertRowid } });
   } catch (error: any) {
-    console.error('Create case note error:', error);
+    console.error('Create case note error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── GET /:id/notes ─────────────────────────────────────
-router.get('/:id/notes', (req: Request, res: Response) => {
+router.get('/:id/notes', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const notes = db.prepare(`
@@ -230,7 +230,7 @@ router.get('/:id/notes', (req: Request, res: Response) => {
     `).all(req.params.id);
     res.json({ data: notes });
   } catch (error: any) {
-    console.error('Get case notes error:', error);
+    console.error('Get case notes error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -257,7 +257,7 @@ router.post('/:id/calculate-solvability', requireRole('admin', 'manager', 'super
 
     res.json({ data: { score, factors } });
   } catch (error: any) {
-    console.error('Calculate solvability error:', error);
+    console.error('Calculate solvability error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

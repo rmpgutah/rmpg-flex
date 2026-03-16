@@ -751,7 +751,7 @@ function PatrolTrackingCard() {
             <label className="text-[10px] text-rmpg-400 font-bold uppercase">Hours:</label>
             <select
               value={hours}
-              onChange={e => setHours(parseInt(e.target.value))}
+              onChange={e => setHours(parseInt(e.target.value, 10))}
               className="select-dark text-[10px] w-20"
             >
               <option value={4}>4 hrs</option>

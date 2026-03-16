@@ -45,6 +45,7 @@ const NOTIFICATION_TYPE_CONFIG: Record<NotificationType, NotificationTypeConfig>
 
 function formatTimestamp(dateStr: string): string {
   const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return 'UNKNOWN';
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMin = Math.floor(diffMs / 60000);
