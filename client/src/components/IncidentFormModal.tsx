@@ -225,7 +225,7 @@ export default function IncidentFormModal({
   const [formData, setFormData] = useState<IncidentFormData>(EMPTY_FORM);
   const { isDirty, snapshot } = useFormDirty(formData, isOpen);
   const [activeSection, setActiveSection] = useState<SectionId>('basic');
-  const { sections: sectionOptions, zones: zoneOptions, beats: beatOptions, sectionLabels, zoneLabels, beatLabels } = useDistrictOptions();
+  const { sections: sectionOptions, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
   const { identify: identifyDistrict } = useDistrictIdentify();
 
   useEffect(() => {
@@ -389,23 +389,23 @@ export default function IncidentFormModal({
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Section ID</label>
-              <select className="select-dark mt-1" value={formData.section_id} onChange={(e) => update('section_id', e.target.value)}>
+              <select className="select-dark mt-1" value={formData.section_id} onChange={(e) => { update('section_id', e.target.value); update('zone_id', ''); update('beat_id', ''); }}>
                 <option value="">-- Select --</option>
                 {sectionOptions.map((s) => <option key={s} value={s}>{s} — {sectionLabels.get(s) || s}</option>)}
               </select>
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Zone ID</label>
-              <select className="select-dark mt-1" value={formData.zone_id} onChange={(e) => update('zone_id', e.target.value)}>
+              <select className="select-dark mt-1" value={formData.zone_id} onChange={(e) => { update('zone_id', e.target.value); update('beat_id', ''); }}>
                 <option value="">-- Select --</option>
-                {zoneOptions.map((z) => <option key={z} value={z}>{z} — {zoneLabels.get(z) || z}</option>)}
+                {zonesForSection(formData.section_id).map((z) => <option key={z} value={z}>{z} — {zoneLabels.get(z) || z}</option>)}
               </select>
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Beat ID</label>
               <select className="select-dark mt-1" value={formData.beat_id} onChange={(e) => update('beat_id', e.target.value)}>
                 <option value="">-- Select --</option>
-                {beatOptions.map((b) => <option key={b} value={b}>{b} — {beatLabels.get(b) || b}</option>)}
+                {beatsForZone(formData.zone_id).map((b) => <option key={b} value={b}>{b} — {getBeatLabel(formData.zone_id, b)}</option>)}
               </select>
             </div>
           </div>

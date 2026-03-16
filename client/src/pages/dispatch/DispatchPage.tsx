@@ -96,7 +96,7 @@ export default function DispatchPage() {
   const { subscribe } = useWebSocket();
   const isMobile = useIsMobile();
   const { prefs: userPrefs } = useUserPreferences();
-  const { districts, sections, zones, beats, sectionLabels, zoneLabels, beatLabels } = useDistrictOptions();
+  const { districts, sections, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
   const [calls, setCalls] = useState<CallForService[]>([]);
   const recentlyCreatedIdsRef = useRef<Set<string | number>>(new Set()); // synchronous dedup for POST + WS race
   const [units, setUnits] = useState<Unit[]>([]);
@@ -3001,12 +3001,8 @@ export default function DispatchPage() {
                       <MapPin className="w-3 h-3" /> Location Details
                     </label>
                     {isEditing ? (() => {
-                      const filteredZones = editData.section_id
-                        ? Array.from(new Set(districts.filter(d => d.section_id === editData.section_id).map(d => d.zone_id))).sort()
-                        : zones;
-                      const filteredBeats = editData.zone_id
-                        ? Array.from(new Set(districts.filter(d => d.zone_id === editData.zone_id).map(d => d.beat_id))).sort()
-                        : beats;
+                      const filteredZones = zonesForSection(editData.section_id);
+                      const filteredBeats = beatsForZone(editData.zone_id);
                       return (
                         <div className="space-y-2 mt-1">
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -3047,7 +3043,7 @@ export default function DispatchPage() {
                                 setEditData(prev => ({ ...prev, beat_id: beatVal, dispatch_code: match?.dispatch_code || '' }));
                               }}>
                                 <option value="">— Select —</option>
-                                {filteredBeats.map(b => <option key={b} value={b}>{beatLabels.get(b) || b}</option>)}
+                                {filteredBeats.map(b => <option key={b} value={b}>{getBeatLabel(editData.zone_id, b)}</option>)}
                               </select>
                             </div>
                             <div>
@@ -3070,7 +3066,7 @@ export default function DispatchPage() {
                         )}
                         {selectedCall.section_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Sec:</span> {selectedCall.section_id} — {sectionLabels.get(selectedCall.section_id) || ''}</span>}
                         {selectedCall.zone_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Zone:</span> {selectedCall.zone_id} — {zoneLabels.get(selectedCall.zone_id) || ''}</span>}
-                        {selectedCall.beat_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Beat:</span> {beatLabels.get(selectedCall.beat_id) || selectedCall.beat_id}</span>}
+                        {selectedCall.beat_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Beat:</span> {getBeatLabel(selectedCall.zone_id, selectedCall.beat_id)}</span>}
                         {selectedCall.latitude != null && selectedCall.longitude != null && (
                           <span className="text-rmpg-400 font-mono text-[9px]">
                             GPS: {Number(selectedCall.latitude).toFixed(5)}, {Number(selectedCall.longitude).toFixed(5)}
