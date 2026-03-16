@@ -72,7 +72,8 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     const countRow = db.prepare(`SELECT COUNT(*) as total FROM field_interviews fi ${where}`).get(...params) as any;
     const rows = db.prepare(`
       SELECT fi.*, u.full_name as officer_display_name,
-        p.first_name as linked_person_first, p.last_name as linked_person_last
+        p.first_name as linked_person_first, p.last_name as linked_person_last,
+        p.flags as person_flags
       FROM field_interviews fi
       LEFT JOIN users u ON fi.officer_id = u.id
       LEFT JOIN persons p ON fi.person_id = p.id
@@ -97,7 +98,8 @@ router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
     const db = getDb();
     const row = db.prepare(`
       SELECT fi.*, u.full_name as officer_display_name,
-        p.first_name as linked_person_first, p.last_name as linked_person_last
+        p.first_name as linked_person_first, p.last_name as linked_person_last,
+        p.flags as person_flags
       FROM field_interviews fi
       LEFT JOIN users u ON fi.officer_id = u.id
       LEFT JOIN persons p ON fi.person_id = p.id

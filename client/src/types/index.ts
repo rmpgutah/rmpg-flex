@@ -1476,7 +1476,8 @@ export type WSMessageType =
   // Process Server
   | 'serve:created'
   | 'serve:updated'
-  | 'serve:attempt';
+  | 'serve:attempt'
+  | 'call:warrant_alert';
 
 export interface WSMessage {
   type: WSMessageType;
@@ -1759,6 +1760,7 @@ export interface FieldInterview {
   officer_display_name?: string;
   linked_person_first?: string;
   linked_person_last?: string;
+  person_flags?: string;
   status: 'active' | 'archived';
   created_at: string;
   archived_at?: string;

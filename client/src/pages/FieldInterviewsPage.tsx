@@ -17,6 +17,7 @@ import { useFormValidation } from '../hooks/useFormValidation';
 import { isValidPlate, isValidDate } from '../utils/validate';
 import { formatDate, formatDateTime } from '../utils/dateUtils';
 import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
+import WarrantBadge from '../components/WarrantBadge';
 
 const CONTACT_REASONS: { value: FIContactReason; label: string }[] = [
   { value: 'suspicious_activity', label: 'Suspicious Activity' },
@@ -329,8 +330,9 @@ export default function FieldInterviewsPage() {
                     </span>
                   </div>
                 </div>
-                <div className="text-xs text-white font-medium">
+                <div className="text-xs text-white font-medium flex items-center gap-1.5">
                   {fi.subject_last_name ? `${fi.subject_last_name}, ${fi.subject_first_name || ''}` : 'Unknown Subject'}
+                  {fi.person_flags && <WarrantBadge flags={fi.person_flags} size="sm" />}
                 </div>
                 <div className="flex items-center gap-1 text-[10px] text-rmpg-400 mt-0.5">
                   <MapPin className="w-3 h-3 flex-shrink-0" />
@@ -381,9 +383,23 @@ export default function FieldInterviewsPage() {
               </div>
             </div>
 
+            {/* Warrant warning banner */}
+            {selectedFi.person_flags && (() => {
+              try {
+                const flags = typeof selectedFi.person_flags === 'string' ? JSON.parse(selectedFi.person_flags || '[]') : (selectedFi.person_flags || []);
+                const hasWarrant = flags.some((f: any) => f?.type === 'ACTIVE_WARRANT' || f === 'ACTIVE_WARRANT');
+                if (!hasWarrant) return null;
+                return (
+                  <div className="bg-red-900/50 border border-red-500 rounded-sm px-3 py-2 text-red-200 text-sm font-bold mb-3">
+                    ⚠️ SUBJECT HAS ACTIVE WARRANTS — Exercise caution
+                  </div>
+                );
+              } catch { return null; }
+            })()}
+
             {/* Detail grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-xs">
-              <div><span className="text-rmpg-500 text-[10px] uppercase">Subject</span><div className="text-white font-medium">{selectedFi.subject_last_name}, {selectedFi.subject_first_name}</div></div>
+              <div><span className="text-rmpg-500 text-[10px] uppercase">Subject</span><div className="text-white font-medium flex items-center gap-1.5">{selectedFi.subject_last_name}, {selectedFi.subject_first_name}{selectedFi.person_flags && <WarrantBadge flags={selectedFi.person_flags} size="sm" />}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">DOB</span><div className="text-white">{selectedFi.subject_dob ? formatDate(selectedFi.subject_dob) : '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Gender / Race</span><div className="text-white">{[selectedFi.subject_gender, selectedFi.subject_race].filter(Boolean).join(' / ') || '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Build</span><div className="text-white">{[selectedFi.subject_height, selectedFi.subject_weight ? `${selectedFi.subject_weight} lbs` : ''].filter(Boolean).join(', ') || '—'}</div></div>

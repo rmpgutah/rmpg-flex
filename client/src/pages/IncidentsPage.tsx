@@ -55,6 +55,7 @@ import { useToast } from '../components/ToastProvider';
 import FloatingSaveBar from '../components/FloatingSaveBar';
 import { formatDate, formatDateTime } from '../utils/dateUtils';
 import { useIsMobile } from '../hooks/useIsMobile';
+import WarrantBadge from '../components/WarrantBadge';
 
 // ============================================================
 // Backend -> Frontend mapping
@@ -1443,6 +1444,7 @@ export default function IncidentsPage() {
                         {lp.role.replace(/_/g, ' ')}
                       </span>
                       <span className="text-sm text-white font-medium">{lp.last_name}, {lp.first_name}</span>
+                      <WarrantBadge flags={lp.flags || '[]'} size="sm" />
                       {lp.dob && <span className="text-[11px] text-rmpg-400">DOB: {lp.dob}</span>}
                       {flags.map((f, i) => (
                         <span key={i} className="px-1 py-0.5 bg-red-900/40 text-red-400 text-[10px] uppercase font-bold">
