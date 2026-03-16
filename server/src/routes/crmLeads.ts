@@ -518,7 +518,7 @@ router.get('/lead-activity/:leadId', requireRole('admin', 'manager', 'contract_m
   try {
     const db = getDb();
     const { leadId } = req.params;
-    const limit = Math.min(parseInt(req.query.limit as string, 10) || 100, 500);
+    const limit = Math.max(1, Math.min(parseInt(req.query.limit as string, 10) || 100, 500));
 
     const rows = db.prepare(`
       SELECT a.*, u.full_name as created_by_name
@@ -650,7 +650,7 @@ router.get('/scrape-log', requireRole('admin', 'manager', 'contract_manager'), (
   try {
     const db = getDb();
     const { source_key } = req.query;
-    const limit = Math.min(parseInt(req.query.limit as string, 10) || 100, 500);
+    const limit = Math.max(1, Math.min(parseInt(req.query.limit as string, 10) || 100, 500));
 
     let sql = 'SELECT * FROM lead_scrape_log WHERE 1=1';
     const params: any[] = [];

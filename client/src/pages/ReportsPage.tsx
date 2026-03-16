@@ -317,7 +317,7 @@ export default function ReportsPage() {
     avgResponse: responseTimesData?.overall.avgTotalResponseMinutes
       ? `${responseTimesData.overall.avgTotalResponseMinutes.toFixed(1)}m`
       : '0.0m',
-    slaMet: responseTimesData?.overall.totalCalls
+    slaMet: responseTimesData?.overall.totalCalls && Array.isArray(responseTimesData.dailyTrend)
       ? `${Math.round((responseTimesData.dailyTrend.reduce((acc, d) => acc + (d.avg_response_minutes <= 5 ? d.count : 0), 0) / responseTimesData.overall.totalCalls) * 100)}%`
       : '0%',
     activeOfficers: dashboardData?.officersOnDuty.length || 0,
@@ -562,7 +562,7 @@ export default function ReportsPage() {
           </div>
 
           {/* Call Volume Trend (Area Chart) */}
-          {responseTimesData && responseTimesData.dailyTrend.length > 1 && (
+          {responseTimesData && Array.isArray(responseTimesData.dailyTrend) && responseTimesData.dailyTrend.length > 1 && (
             <div className="bg-surface-base panel-beveled hover:border-rmpg-600 transition-all duration-150">
               <div className="px-4 pt-3 pb-1 border-b border-rmpg-700/50 flex items-center gap-2">
                 <TrendingUp className="w-3.5 h-3.5 text-brand-400" />
@@ -592,7 +592,7 @@ export default function ReportsPage() {
           )}
 
           {/* Response Time by Priority (Grouped Bar) */}
-          {responseTimesData && responseTimesData.byPriority.length > 0 && (
+          {responseTimesData && Array.isArray(responseTimesData.byPriority) && responseTimesData.byPriority.length > 0 && (
             <div className="bg-surface-base panel-beveled hover:border-rmpg-600 transition-all duration-150">
               <div className="px-4 pt-3 pb-1 border-b border-rmpg-700/50 flex items-center gap-2">
                 <Calendar className="w-3.5 h-3.5 text-purple-400" />

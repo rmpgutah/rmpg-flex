@@ -109,7 +109,12 @@ router.put('/units/:id', requireRole('admin', 'manager', 'dispatcher'), (req: Re
     }
     if (capabilities !== undefined) {
       updates.push('capabilities = ?');
-      params.push(typeof capabilities === 'string' ? capabilities : JSON.stringify(capabilities));
+      try {
+        params.push(typeof capabilities === 'string' ? capabilities : JSON.stringify(capabilities));
+      } catch {
+        res.status(400).json({ error: 'Invalid capabilities format' });
+        return;
+      }
     }
 
     if (updates.length === 0) {

@@ -245,7 +245,7 @@ router.get('/analytics', (req: Request, res: Response) => {
       month: f.month,
       total_gallons: f.total_gallons || 0,
       total_cost: f.total_cost || 0,
-      avg_mpg: mpgByMonth[f.month]
+      avg_mpg: mpgByMonth[f.month] && mpgByMonth[f.month].total_gallons > 0
         ? Math.round((mpgByMonth[f.month].total_miles / mpgByMonth[f.month].total_gallons) * 10) / 10
         : null,
     }));
@@ -710,8 +710,8 @@ router.get('/:id/maintenance', (req: Request, res: Response) => {
       return;
     }
 
-    const pageNum = parseInt(page as string, 10) || 1;
-    const perPage = parseInt(per_page as string, 10) || 25;
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 25));
     const offset = (pageNum - 1) * perPage;
 
     const countRow = db.prepare(
@@ -1153,8 +1153,8 @@ router.get('/:id/inspections', (req: Request, res: Response) => {
       params.push(type);
     }
 
-    const pageNum = parseInt(page as string, 10) || 1;
-    const perPage = parseInt(per_page as string, 10) || 25;
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 25));
     const offset = (pageNum - 1) * perPage;
 
     const countRow = db.prepare(`SELECT COUNT(*) as total FROM fleet_inspections ${whereClause}`).get(...params) as any;

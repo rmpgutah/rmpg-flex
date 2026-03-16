@@ -139,7 +139,7 @@ router.get('/export', requireRole('dispatcher', 'supervisor', 'admin', 'manager'
 });
 
 // GET /api/warrants/check/:personId - Check if person has active warrants
-router.get('/check/:personId', (req: Request, res: Response) => {
+router.get('/check/:personId', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { personId } = req.params;

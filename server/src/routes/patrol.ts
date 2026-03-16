@@ -60,6 +60,13 @@ router.post('/checkpoints', requireRole('admin', 'manager', 'supervisor'), (req:
       return;
     }
 
+    // Validate interval is a positive integer
+    const intervalNum = Number(scan_required_interval_minutes);
+    if (!Number.isFinite(intervalNum) || intervalNum <= 0) {
+      res.status(400).json({ error: 'scan_required_interval_minutes must be a positive number' });
+      return;
+    }
+
     const db = getDb();
     const qr_code = crypto.randomUUID();
 

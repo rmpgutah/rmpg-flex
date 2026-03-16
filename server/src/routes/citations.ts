@@ -153,11 +153,19 @@ router.get('/', (req: Request, res: Response) => {
     const params: any[] = [];
 
     if (status) {
+      if (!VALID_CITATION_STATUSES.includes(status as any)) {
+        res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_CITATION_STATUSES.join(', ')}` });
+        return;
+      }
       whereClause += ' AND c.status = ?';
       params.push(status);
     }
 
     if (type) {
+      if (!VALID_CITATION_TYPES.includes(type as any)) {
+        res.status(400).json({ error: `Invalid type. Must be one of: ${VALID_CITATION_TYPES.join(', ')}` });
+        return;
+      }
       whereClause += ' AND c.type = ?';
       params.push(type);
     }
@@ -266,6 +274,12 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispa
 
     if (!violation_date) {
       res.status(400).json({ error: 'violation_date is required' });
+      return;
+    }
+
+    // Validate fine_amount is non-negative if provided
+    if (fine_amount !== undefined && fine_amount !== null && (typeof fine_amount !== 'number' || fine_amount < 0)) {
+      res.status(400).json({ error: 'fine_amount must be a non-negative number' });
       return;
     }
 
@@ -411,7 +425,10 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dis
       statute_citation: v => v ?? null,
       violation_description: v => v ?? null,
       offense_level: v => v ?? null,
-      fine_amount: v => v ?? null,
+      fine_amount: v => {
+        if (v !== undefined && v !== null && (typeof v !== 'number' || v < 0)) return null;
+        return v ?? null;
+      },
       violation_date: v => v ?? null,
       violation_time: v => v ?? null,
       location: v => v ?? null,

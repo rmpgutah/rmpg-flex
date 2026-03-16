@@ -38,12 +38,22 @@ router.get('/calls', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
     const params: any[] = [];
 
     if (status) {
+      const validStatuses = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived'];
+      if (!validStatuses.includes(status as string)) {
+        res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
+        return;
+      }
       whereClause += ' AND c.status = ?';
       params.push(status);
     }
     if (priority) {
+      const validPriorities = ['P1', 'P2', 'P3', 'P4'];
+      if (!validPriorities.includes((priority as string).toUpperCase())) {
+        res.status(400).json({ error: `Invalid priority. Must be one of: ${validPriorities.join(', ')}` });
+        return;
+      }
       whereClause += ' AND c.priority = ?';
-      params.push(priority);
+      params.push((priority as string).toUpperCase());
     }
     if (startDate) {
       whereClause += ' AND c.created_at >= ?';
@@ -325,12 +335,22 @@ router.get('/calls/export', requireRole('admin', 'manager', 'supervisor'), (req:
     const params: any[] = [];
 
     if (status) {
+      const exportValidStatuses = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived'];
+      if (!exportValidStatuses.includes(status as string)) {
+        res.status(400).json({ error: `Invalid status filter` });
+        return;
+      }
       whereClause += ' AND c.status = ?';
       params.push(status);
     }
     if (priority) {
+      const exportValidPriorities = ['P1', 'P2', 'P3', 'P4'];
+      if (!exportValidPriorities.includes((priority as string).toUpperCase())) {
+        res.status(400).json({ error: `Invalid priority filter` });
+        return;
+      }
       whereClause += ' AND c.priority = ?';
-      params.push(priority);
+      params.push((priority as string).toUpperCase());
     }
     if (startDate) {
       whereClause += ' AND c.created_at >= ?';

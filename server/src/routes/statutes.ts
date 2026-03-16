@@ -40,8 +40,8 @@ router.get('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { q, category, title, offense_level, subcategory, state, limit = '50', offset = '0' } = req.query;
-    const limitNum = Math.min(parseInt(limit as string, 10) || 50, 200);
-    const offsetNum = parseInt(offset as string, 10) || 0;
+    const limitNum = Math.min(Math.max(1, parseInt(limit as string, 10) || 50), 200);
+    const offsetNum = Math.max(0, parseInt(offset as string, 10) || 0);
 
     let where = 'WHERE is_active = 1';
     const params: any[] = [];
@@ -113,7 +113,7 @@ router.get('/search', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { q, category, state, limit = '20' } = req.query;
-    const limitNum = Math.min(parseInt(limit as string, 10) || 20, 50);
+    const limitNum = Math.min(Math.max(1, parseInt(limit as string, 10) || 20), 50);
 
     if (!q || (q as string).length < 2) {
       res.json({ data: [] });
