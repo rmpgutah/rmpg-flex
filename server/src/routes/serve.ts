@@ -364,7 +364,17 @@ router.get('/:id', validateParamId, requireRole(...WRITE_ROLES, 'dispatcher'), (
       'SELECT * FROM serve_skip_traces WHERE serve_queue_id = ? ORDER BY searched_at DESC'
     ).all(req.params.id);
 
-    res.json({ ...job, attempts, skipTraces });
+    let linkedCall = null;
+    if (job.call_id) {
+      linkedCall = db.prepare(`
+        SELECT id, call_number, status, priority, assigned_unit_ids,
+               pso_requestor_name, contract_id, pso_service_windows,
+               pso_attempt_number, disposition
+        FROM calls_for_service WHERE id = ?
+      `).get(job.call_id);
+    }
+
+    res.json({ ...job, attempts, skipTraces, linkedCall });
   } catch (err: any) {
     console.error('[SERVE] Get error:', err);
     res.status(500).json({ error: 'Failed to fetch serve job' });
