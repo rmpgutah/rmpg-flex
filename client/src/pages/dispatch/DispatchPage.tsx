@@ -2421,8 +2421,6 @@ export default function DispatchPage() {
                       recordType="call"
                       recordData={{
                         ...selectedCall,
-                        // Map location_address → location for PDF field compatibility
-                        location: selectedCall.location_address || selectedCall.location || '',
                         // Enrich with unit detail table for PDF
                         assigned_units_detail: (selectedCall?.assigned_units || []).map((uid: string) => {
                           const u = units.find(unit => String(unit.id) === String(uid));
