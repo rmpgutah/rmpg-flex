@@ -62,7 +62,7 @@ export default function FuelLogModal({ isOpen, mode = 'create', form, onChange, 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} style={{ background: 'rgba(0,0,0,0.6)' }}>
-      <div className="panel-beveled w-[520px] max-h-[80vh] flex flex-col" style={{ background: '#1e1e1e' }}>
+      <div className="panel-beveled w-[520px] max-h-[80vh] flex flex-col" style={{ background: '#1a2636' }}>
         <PanelTitleBar title={mode === 'edit' ? 'EDIT FUEL ENTRY' : 'LOG FUEL ENTRY'} icon={Fuel} id={titleId}>
           <button className="toolbar-btn text-[9px]" onClick={onClose}>X</button>
         </PanelTitleBar>

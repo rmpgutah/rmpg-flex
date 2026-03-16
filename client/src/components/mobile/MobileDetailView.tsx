@@ -149,7 +149,7 @@ export default function MobileDetailView({
       <div
         className="absolute inset-0 flex flex-col"
         style={{
-          background: '#141414',
+          background: '#0d1520',
           transform: `translateX(${translateX}px)`,
           transition: isSwiping ? 'none' : 'transform 0.3s cubic-bezier(0.32,0.72,0,1)',
           willChange: 'transform',
@@ -162,15 +162,15 @@ export default function MobileDetailView({
             height: 48,
             paddingLeft: 4,
             paddingRight: 8,
-            background: 'linear-gradient(180deg, #252525 0%, #1a1a1a 100%)',
-            borderBottom: '1px solid #303030',
+            background: 'linear-gradient(180deg, #182840 0%, #141e2b 100%)',
+            borderBottom: '1px solid #1e3048',
           }}
         >
           {/* Crimson accent */}
           <div
             className="absolute top-0 left-0 right-0 h-[2px]"
             style={{
-              background: 'linear-gradient(90deg, #6e0a0a, #bc1010, #6e0a0a)',
+              background: 'linear-gradient(90deg, #0e3a6e, #1a5a9e, #0e3a6e)',
               zIndex: 1,
             }}
           />
@@ -222,7 +222,7 @@ export default function MobileDetailView({
                     className="absolute right-0 top-full mt-1 z-50 py-1 min-w-[180px]"
                     style={{
                       background: '#222',
-                      border: '1px solid #383838',
+                      border: '1px solid #2a3e58',
                       boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
                     }}
                   >
@@ -266,8 +266,8 @@ export default function MobileDetailView({
           <div
             className="flex-shrink-0"
             style={{
-              borderTop: '1px solid #303030',
-              background: '#1a1a1a',
+              borderTop: '1px solid #1e3048',
+              background: '#141e2b',
               paddingBottom: 'env(safe-area-inset-bottom)',
             }}
           >

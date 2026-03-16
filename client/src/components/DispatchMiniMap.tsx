@@ -186,7 +186,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight }: Di
   }
 
   return (
-    <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid #1a1a1a' }}>
+    <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid #141e2b' }}>
       {/* Toolbar */}
       <div style={{
         position: 'absolute', top: 4, left: 4, right: 4, zIndex: 10,
@@ -227,7 +227,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight }: Di
       {!loaded && !error && (
         <div style={{
           position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: '#0a0a0a',
+          background: '#060c14',
         }}>
           <RefreshCw style={{ width: 14, height: 14, color: '#555' }} className="animate-spin" />
         </div>

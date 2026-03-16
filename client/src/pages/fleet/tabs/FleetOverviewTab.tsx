@@ -242,7 +242,7 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
       {detail.notes && (
         <div className="panel-beveled p-3 bg-surface-base">
           <h3 className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-2">Notes</h3>
-          <div className="p-2 text-[11px] text-rmpg-300 whitespace-pre-wrap leading-relaxed" style={{ background: '#161616', border: '1px solid #282828' }}>
+          <div className="p-2 text-[11px] text-rmpg-300 whitespace-pre-wrap leading-relaxed" style={{ background: '#161616', border: '1px solid #162236' }}>
             {detail.notes}
           </div>
         </div>
@@ -270,7 +270,7 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
           </div>
         ) : (
           <div className="relative">
-            <div className="absolute left-3 top-0 bottom-0 w-px" style={{ background: 'linear-gradient(180deg, #bc1010 0%, #383838 30%, #383838 70%, transparent 100%)' }} />
+            <div className="absolute left-3 top-0 bottom-0 w-px" style={{ background: 'linear-gradient(180deg, #1a5a9e 0%, #2a3e58 30%, #2a3e58 70%, transparent 100%)' }} />
             <div className="space-y-2">
               {maintenance.map((m) => {
                 const typeColors: Record<string, string> = {

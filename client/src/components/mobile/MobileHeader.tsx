@@ -43,8 +43,8 @@ export default function MobileHeader({
         height: 48,
         paddingLeft: 8,
         paddingRight: 8,
-        background: 'linear-gradient(180deg, #252525 0%, #1a1a1a 100%)',
-        borderBottom: '1px solid #303030',
+        background: 'linear-gradient(180deg, #182840 0%, #141e2b 100%)',
+        borderBottom: '1px solid #1e3048',
         flexShrink: 0,
       }}
     >
@@ -52,7 +52,7 @@ export default function MobileHeader({
       <div
         className="absolute top-0 left-0 right-0 h-[2px]"
         style={{
-          background: 'linear-gradient(90deg, #6e0a0a, #bc1010, #6e0a0a)',
+          background: 'linear-gradient(90deg, #0e3a6e, #1a5a9e, #0e3a6e)',
           zIndex: 1,
         }}
       />
@@ -73,7 +73,7 @@ export default function MobileHeader({
         <RmpgLogo height={32} iconOnly />
 
         {/* Page title */}
-        <div className="w-px h-5 mx-1" style={{ background: '#383838' }} />
+        <div className="w-px h-5 mx-1" style={{ background: '#2a3e58' }} />
         <span
           className="text-[11px] font-mono font-bold tracking-wider text-rmpg-400 truncate"
         >
@@ -102,7 +102,7 @@ export default function MobileHeader({
             <div
               className="w-8 h-8 flex items-center justify-center text-[10px] font-bold"
               style={{
-                background: 'linear-gradient(135deg, #8a0c0c, #bc1010)',
+                background: 'linear-gradient(135deg, #144a7e, #1a5a9e)',
                 color: '#fff',
                 border: '2px solid #d93030',
               }}

@@ -24,7 +24,7 @@ export default function LocationGate({ permissionDenied, onRetry }: LocationGate
   if (permissionDenied) {
     return (
       <div style={{
-        background: 'rgba(188, 16, 16, 0.12)',
+        background: 'rgba(26, 90, 158, 0.12)',
         borderBottom: '1px solid #5a1010',
         padding: '8px 16px',
         display: 'flex',
@@ -41,7 +41,7 @@ export default function LocationGate({ permissionDenied, onRetry }: LocationGate
           onClick={onRetry}
           style={{
             padding: '3px 10px',
-            background: '#bc1010',
+            background: '#1a5a9e',
             color: '#fff',
             border: 'none',
             fontSize: 10,

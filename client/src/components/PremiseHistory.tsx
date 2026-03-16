@@ -165,8 +165,8 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
         <div
           className="flex items-center gap-2 px-2 py-1.5 text-[10px] font-bold animate-emergency-blink"
           style={{
-            background: 'rgba(188, 16, 16, 0.3)',
-            borderBottom: '1px solid #a00e0e',
+            background: 'rgba(26, 90, 158, 0.3)',
+            borderBottom: '1px solid #164d88',
             color: '#ff6b6b',
           }}
         >

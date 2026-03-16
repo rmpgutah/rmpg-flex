@@ -332,6 +332,8 @@ export default function MenuBar({
           { type: 'action', label: 'Comms', icon: MessageSquare, shortcut: 'Alt+6', action: () => navigate('/communications') },
           { type: 'action', label: 'Reports', icon: BarChart3, shortcut: 'Alt+7', action: () => navigate('/reports') },
           { type: 'action', label: 'MDT', icon: Terminal, shortcut: 'Alt+8', action: () => navigate('/mdt') },
+          { type: 'separator' },
+          { type: 'action', label: 'Command Center', icon: Monitor, action: () => navigate('/command-center') },
         ],
       },
       { type: 'separator' },
@@ -427,6 +429,9 @@ export default function MenuBar({
           { type: 'action', label: 'Crime Analysis', icon: Microscope, action: () => navigate('/crime-analysis') },
           { type: 'action', label: 'Statute Analytics', icon: Scale, action: () => navigate('/statute-analytics') },
           { type: 'action', label: 'Custom Report Builder', icon: PenTool, action: () => navigate('/reports/custom') },
+          { type: 'separator' },
+          { type: 'action', label: 'Shift Handoff Report', icon: Clipboard, action: () => navigate('/reports') },
+          { type: 'action', label: 'Shift Scorecard', icon: BarChart3, action: () => navigate('/reports') },
           { type: 'separator' },
           { type: 'action', label: 'Reports Dashboard', icon: BarChart3, action: () => navigate('/reports') },
         ],
@@ -608,10 +613,10 @@ export default function MenuBar({
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60" onClick={() => setShow10Codes(false)}>
           <div
             className="panel-beveled w-[700px] max-h-[80vh] overflow-hidden flex flex-col"
-            style={{ background: '#1a1a1a' }}
+            style={{ background: '#141e2b' }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: '#141414' }}>
+            <div className="flex items-center justify-between p-3 border-b border-rmpg-600" style={{ background: '#0d1520' }}>
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
                 <Radio className="w-4 h-4 text-brand-400" />
                 10-Codes Quick Reference
@@ -754,7 +759,7 @@ export default function MenuBar({
                 </div>
               </div>
             </div>
-            <div className="p-2 border-t border-rmpg-700 text-center" style={{ background: '#141414' }}>
+            <div className="p-2 border-t border-rmpg-700 text-center" style={{ background: '#0d1520' }}>
               <span className="text-[9px] text-rmpg-500">Press <kbd className="px-1 py-0.5 bg-rmpg-800 border border-rmpg-600 text-rmpg-300 rounded text-[8px]">ESC</kbd> to close</span>
             </div>
           </div>

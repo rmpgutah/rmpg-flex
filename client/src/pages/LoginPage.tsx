@@ -122,7 +122,7 @@ export default function LoginPage() {
         <div
           style={{
             background: 'linear-gradient(180deg, #1a0000 0%, #0d0000 100%)',
-            border: '1px solid #8a0c0c',
+            border: '1px solid #144a7e',
             borderTop: '3px solid #d93030',
           }}
           className="p-3 sm:p-4 text-center"
@@ -163,7 +163,7 @@ export default function LoginPage() {
             <img
               src="/rmpg flex.png"
               alt="RMPG Flex"
-              className="drop-shadow-[0_0_20px_rgba(188,16,16,0.3)]"
+              className="drop-shadow-[0_0_20px_rgba(26,90,158,0.3)]"
               style={{
                 height: 'clamp(90px, 22vw, 150px)',
                 width: 'clamp(90px, 22vw, 150px)',
@@ -176,19 +176,19 @@ export default function LoginPage() {
             <div
               className="h-px w-10 sm:w-16"
               style={{
-                background: 'linear-gradient(90deg, transparent, #8a0c0c)',
+                background: 'linear-gradient(90deg, transparent, #144a7e)',
               }}
             />
             <p
               className="text-[8px] sm:text-[9px] tracking-[0.15em] uppercase font-bold"
-              style={{ color: 'rgba(188, 16, 16, 0.65)' }}
+              style={{ color: 'rgba(26, 90, 158, 0.65)' }}
             >
               Secure Authentication
             </p>
             <div
               className="h-px w-10 sm:w-16"
               style={{
-                background: 'linear-gradient(90deg, #8a0c0c, transparent)',
+                background: 'linear-gradient(90deg, #144a7e, transparent)',
               }}
             />
           </div>
@@ -198,7 +198,7 @@ export default function LoginPage() {
         <div className="shadow-2xl relative overflow-hidden panel-beveled bg-surface-base">
           {/* Title bar */}
           <div className="panel-title-bar flex items-center gap-2">
-            <ShieldCheck className="w-3 h-3" style={{ color: '#bc1010' }} />
+            <ShieldCheck className="w-3 h-3" style={{ color: '#1a5a9e' }} />
             <span>
               {pending2FA
                 ? 'STEP 2 — IDENTITY VERIFICATION'
@@ -222,9 +222,9 @@ export default function LoginPage() {
               <div
                 className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400"
                 style={{
-                  background: '#383838',
+                  background: '#2a3e58',
                   border: '1px solid #484848',
-                  borderBottom: '1px solid #282828',
+                  borderBottom: '1px solid #162236',
                 }}
               >
                 _
@@ -232,9 +232,9 @@ export default function LoginPage() {
               <div
                 className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400"
                 style={{
-                  background: '#383838',
+                  background: '#2a3e58',
                   border: '1px solid #484848',
-                  borderBottom: '1px solid #282828',
+                  borderBottom: '1px solid #162236',
                 }}
               >
                 □
@@ -249,8 +249,8 @@ export default function LoginPage() {
                 <div
                   className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold"
                   style={{
-                    background: pending2FA ? '#1a3a1a' : '#8a0c0c',
-                    border: `2px solid ${pending2FA ? '#4ade80' : '#bc1010'}`,
+                    background: pending2FA ? '#1a3a1a' : '#144a7e',
+                    border: `2px solid ${pending2FA ? '#4ade80' : '#1a5a9e'}`,
                     color: pending2FA ? '#4ade80' : '#fff',
                   }}
                 >
@@ -258,7 +258,7 @@ export default function LoginPage() {
                 </div>
                 <span
                   className="text-[9px] font-bold uppercase tracking-wide"
-                  style={{ color: pending2FA ? '#4ade80' : '#bc1010' }}
+                  style={{ color: pending2FA ? '#4ade80' : '#1a5a9e' }}
                 >
                   Credentials
                 </span>
@@ -266,15 +266,15 @@ export default function LoginPage() {
               <div
                 className="w-8 h-px"
                 style={{
-                  background: pending2FA ? '#4ade80' : '#333',
+                  background: pending2FA ? '#4ade80' : '#1e3048',
                 }}
               />
               <div className="flex items-center gap-1.5">
                 <div
                   className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold"
                   style={{
-                    background: pending2FA ? '#8a0c0c' : '#1a1a1a',
-                    border: `2px solid ${pending2FA ? '#bc1010' : '#333'}`,
+                    background: pending2FA ? '#144a7e' : '#141e2b',
+                    border: `2px solid ${pending2FA ? '#1a5a9e' : '#1e3048'}`,
                     color: pending2FA ? '#fff' : '#555',
                   }}
                 >
@@ -282,7 +282,7 @@ export default function LoginPage() {
                 </div>
                 <span
                   className="text-[9px] font-bold uppercase tracking-wide"
-                  style={{ color: pending2FA ? '#bc1010' : '#555' }}
+                  style={{ color: pending2FA ? '#1a5a9e' : '#555' }}
                 >
                   Verify
                 </span>
@@ -294,8 +294,8 @@ export default function LoginPage() {
               <div
                 className="flex items-center gap-2 p-2 mb-4 animate-fade-in"
                 style={{
-                  background: 'rgba(188, 16, 16, 0.15)',
-                  border: '1px solid #8a0c0c',
+                  background: 'rgba(26, 90, 158, 0.15)',
+                  border: '1px solid #144a7e',
                 }}
               >
                 <AlertCircle
@@ -414,13 +414,13 @@ export default function LoginPage() {
                     onClick={() => { setTwoFactorMode('totp'); clearError(); }}
                     className="w-full flex items-center gap-3 p-3 transition-colors"
                     style={{
-                      background: '#1a1a1a',
+                      background: '#141e2b',
                       border: '1px solid #333',
                     }}
-                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#bc1010'; e.currentTarget.style.background = '#1e1a1a'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#333'; e.currentTarget.style.background = '#1a1a1a'; }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#1a5a9e'; e.currentTarget.style.background = '#141e2b'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#1e3048'; e.currentTarget.style.background = '#141e2b'; }}
                   >
-                    <Smartphone className="w-5 h-5 flex-shrink-0" style={{ color: '#bc1010' }} />
+                    <Smartphone className="w-5 h-5 flex-shrink-0" style={{ color: '#1a5a9e' }} />
                     <div className="text-left">
                       <p className="text-xs font-bold" style={{ color: '#e0e0e0' }}>Authenticator App</p>
                       <p className="text-[9px]" style={{ color: '#666' }}>Enter a 6-digit code from your app</p>
@@ -434,13 +434,13 @@ export default function LoginPage() {
                     onClick={() => { setTwoFactorMode('webauthn'); clearError(); handleWebAuthn(); }}
                     className="w-full flex items-center gap-3 p-3 transition-colors"
                     style={{
-                      background: '#1a1a1a',
+                      background: '#141e2b',
                       border: '1px solid #333',
                     }}
-                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#bc1010'; e.currentTarget.style.background = '#1e1a1a'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#333'; e.currentTarget.style.background = '#1a1a1a'; }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#1a5a9e'; e.currentTarget.style.background = '#141e2b'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#1e3048'; e.currentTarget.style.background = '#141e2b'; }}
                   >
-                    <KeyRound className="w-5 h-5 flex-shrink-0" style={{ color: '#bc1010' }} />
+                    <KeyRound className="w-5 h-5 flex-shrink-0" style={{ color: '#1a5a9e' }} />
                     <div className="text-left">
                       <p className="text-xs font-bold" style={{ color: '#e0e0e0' }}>Security Key</p>
                       <p className="text-[9px]" style={{ color: '#666' }}>Use your YubiKey or hardware security key</p>
@@ -516,7 +516,7 @@ export default function LoginPage() {
                     onClick={() => { setTwoFactorMode('backup'); clearError(); }}
                     className="text-[10px] uppercase tracking-wide font-bold transition-colors"
                     style={{ color: '#666' }}
-                    onMouseEnter={(e) => { e.currentTarget.style.color = '#bc1010'; }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = '#1a5a9e'; }}
                     onMouseLeave={(e) => { e.currentTarget.style.color = '#666'; }}
                   >
                     Use Backup Code
@@ -529,7 +529,7 @@ export default function LoginPage() {
             {pending2FA && effectiveMode === 'webauthn' && (
               <div className="space-y-4">
                 <div className="text-center mb-2">
-                  <KeyRound className="w-8 h-8 mx-auto mb-2" style={{ color: '#bc1010' }} />
+                  <KeyRound className="w-8 h-8 mx-auto mb-2" style={{ color: '#1a5a9e' }} />
                   <p
                     className="text-[10px] uppercase tracking-wide font-bold mb-1"
                     style={{ color: '#a0a0a0' }}
@@ -639,7 +639,7 @@ export default function LoginPage() {
                     onClick={() => { setTwoFactorMode('totp'); clearError(); }}
                     className="text-[10px] uppercase tracking-wide font-bold transition-colors"
                     style={{ color: '#666' }}
-                    onMouseEnter={(e) => { e.currentTarget.style.color = '#bc1010'; }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = '#1a5a9e'; }}
                     onMouseLeave={(e) => { e.currentTarget.style.color = '#666'; }}
                   >
                     Use Authenticator
@@ -650,7 +650,7 @@ export default function LoginPage() {
 
             <div
               className="mt-4 pt-3"
-              style={{ borderTop: '1px solid #303030' }}
+              style={{ borderTop: '1px solid #1e3048' }}
             />
           </div>
 
@@ -676,14 +676,14 @@ export default function LoginPage() {
           <div
             className="text-center py-2 px-3"
             style={{
-              background: '#0a0a0a',
+              background: '#060c14',
               border: '1px solid #333',
-              borderTop: '2px solid #8a0c0c',
+              borderTop: '2px solid #144a7e',
             }}
           >
             <p
               className="text-[9px] sm:text-[10px] font-black uppercase tracking-[0.25em]"
-              style={{ color: '#8a0c0c' }}
+              style={{ color: '#144a7e' }}
             >
               Internal Use Only
             </p>
@@ -700,13 +700,13 @@ export default function LoginPage() {
         <div className="text-center mt-3 sm:mt-4">
           <p
             className="text-[8px] sm:text-[9px] tracking-wide"
-            style={{ color: '#383838' }}
+            style={{ color: '#2a3e58' }}
           >
             RMPG Flex v{APP_VERSION} | Rocky Mountain Protective Group, LLC
           </p>
           <p
             className="text-[7px] sm:text-[8px] mt-0.5 italic"
-            style={{ color: '#303030' }}
+            style={{ color: '#1e3048' }}
           >
             &ldquo;Resolving today&rsquo;s concerns, to ensure
             tomorrow&rsquo;s solutions.&rdquo;

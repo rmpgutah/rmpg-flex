@@ -175,7 +175,7 @@ export function onOnlineRetryMaps(apiKey: string, callback: () => void): () => v
 
 /** Dark map style matching RMPG Flex theme */
 export const DARK_MAP_STYLE: google.maps.MapTypeStyle[] = [
-  { elementType: 'geometry', stylers: [{ color: '#0a0a0a' }] },
+  { elementType: 'geometry', stylers: [{ color: '#060c14' }] },
   { elementType: 'labels.text.stroke', stylers: [{ color: '#000000' }] },
   { elementType: 'labels.text.fill', stylers: [{ color: '#555555' }] },
   { featureType: 'administrative', elementType: 'geometry', stylers: [{ visibility: 'off' }] },
@@ -184,12 +184,12 @@ export const DARK_MAP_STYLE: google.maps.MapTypeStyle[] = [
   { featureType: 'administrative.land_parcel', stylers: [{ visibility: 'off' }] },
   { featureType: 'administrative.neighborhood', stylers: [{ visibility: 'off' }] },
   { featureType: 'landscape', elementType: 'geometry', stylers: [{ color: '#0e0e0e' }] },
-  { featureType: 'landscape.man_made', elementType: 'geometry', stylers: [{ color: '#111111' }] },
+  { featureType: 'landscape.man_made', elementType: 'geometry', stylers: [{ color: '#0a1018' }] },
   { featureType: 'landscape.natural', elementType: 'geometry', stylers: [{ color: '#0c0c0c' }] },
   { featureType: 'poi', stylers: [{ visibility: 'off' }] },
   { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#0d120d' }, { visibility: 'simplified' }] },
-  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#1a1a1a' }] },
-  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#222222' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#141e2b' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#162236' }] },
   { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#444444' }] },
   { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#242424' }] },
   { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#2a2a2a' }] },
@@ -204,7 +204,7 @@ export const LIGHT_MAP_STYLE: google.maps.MapTypeStyle[] = [
   { elementType: 'labels.text.stroke', stylers: [{ color: '#ffffff' }] },
   { elementType: 'labels.text.fill', stylers: [{ color: '#333333' }] },
   { featureType: 'administrative', elementType: 'geometry.stroke', stylers: [{ color: '#c0c0c0' }] },
-  { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#222222' }] },
+  { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#162236' }] },
   { featureType: 'administrative.land_parcel', stylers: [{ visibility: 'off' }] },
   { featureType: 'administrative.neighborhood', elementType: 'labels.text.fill', stylers: [{ color: '#555555' }] },
   { featureType: 'landscape', elementType: 'geometry', stylers: [{ color: '#eeeeee' }] },

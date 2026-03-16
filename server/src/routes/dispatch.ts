@@ -7,6 +7,8 @@ import { sendCsv } from '../utils/csvExport';
 import { localNow } from '../utils/timeUtils';
 import { geocodeCallIfNeeded, reverseGeocodeAddress, reverseGeocodeDetailed } from '../utils/geocode';
 import { identifyBeat } from '../utils/geofence';
+import { computeRiskScore } from '../utils/riskScoring';
+import { createNotification } from './notifications';
 
 const router = Router();
 
@@ -219,7 +221,6 @@ router.post('/calls', (req: Request, res: Response) => {
               ?, ?, ?, ?, ?, ?, ?,
               ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
               ?, ?, ?, ?, ?, ?, ?, ?, ?,
-              ?, ?,
               COALESCE(?, ?), ?, ?, ?, ?, ?, ?, ?)
     `).run(
       callNumber, incident_type, normalizedPriority, status, caller_name || null, caller_phone || null,
@@ -262,6 +263,27 @@ router.post('/calls', (req: Request, res: Response) => {
 
     // If no coordinates were provided, geocode the address asynchronously
     geocodeCallIfNeeded(call.id, location_address, latitude, longitude);
+
+    // Compute risk score and update call
+    try {
+      const riskScore = computeRiskScore(call.id);
+      db.prepare('UPDATE calls_for_service SET risk_score = ? WHERE id = ?').run(riskScore, call.id);
+      call.risk_score = riskScore;
+
+      // Auto-notify supervisors for high-risk calls (score >= 80)
+      if (riskScore >= 80) {
+        const supervisors = db.prepare(
+          "SELECT id FROM users WHERE role IN ('admin', 'supervisor') AND status = 'active'"
+        ).all() as any[];
+        for (const sup of supervisors) {
+          createNotification(
+            sup.id, 'high_risk_call', `HIGH RISK Call: ${callNumber}`,
+            `Risk score ${riskScore}/100 — ${incident_type} at ${location_address}`,
+            'call', call.id, 'critical'
+          );
+        }
+      }
+    } catch (e) { console.error('Risk scoring error:', e); }
 
     // Broadcast to dispatch channel
     broadcastDispatchUpdate({ action: 'call_created', call });
@@ -998,9 +1020,10 @@ router.post('/calls/:id/hold', (req: Request, res: Response) => {
       return;
     }
 
+    const now = localNow();
     db.prepare(`
-      UPDATE calls_for_service SET status = 'on_hold', previous_status = ? WHERE id = ?
-    `).run(call.status, call.id);
+      UPDATE calls_for_service SET status = 'on_hold', previous_status = ?, held_at = ? WHERE id = ?
+    `).run(call.status, now, call.id);
 
     // Log activity
     db.prepare(`
@@ -1035,15 +1058,24 @@ router.post('/calls/:id/resume', (req: Request, res: Response) => {
 
     const restoreStatus = call.previous_status || 'pending';
 
+    // Accumulate hold duration (minutes spent on hold this time)
+    const now = localNow();
+    let holdMinutesThisTime = 0;
+    if (call.held_at) {
+      holdMinutesThisTime = (new Date(now).getTime() - new Date(call.held_at).getTime()) / 60000;
+      if (holdMinutesThisTime < 0) holdMinutesThisTime = 0;
+    }
+    const newTotalHold = (call.total_hold_minutes || 0) + holdMinutesThisTime;
+
     db.prepare(`
-      UPDATE calls_for_service SET status = ?, previous_status = NULL WHERE id = ?
-    `).run(restoreStatus, call.id);
+      UPDATE calls_for_service SET status = ?, previous_status = NULL, held_at = NULL, total_hold_minutes = ? WHERE id = ?
+    `).run(restoreStatus, Math.round(newTotalHold * 100) / 100, call.id);
 
     // Log activity
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'call_resumed', 'call', ?, ?, ?)
-    `).run(req.user!.userId, call.id, `${call.call_number} resumed to ${restoreStatus}`, req.ip || 'unknown');
+    `).run(req.user!.userId, call.id, `${call.call_number} resumed to ${restoreStatus} (held ${Math.round(holdMinutesThisTime * 10) / 10}m)`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
     broadcastDispatchUpdate({ action: 'call_status_changed', call: updated, status: restoreStatus });
@@ -1721,6 +1753,67 @@ router.get('/heatmap', (req: Request, res: Response) => {
     res.json(points);
   } catch (error: any) {
     console.error('Heatmap error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/dispatch/heatmap/predicted - Predictive heatmap based on day-of-week + time-of-day patterns
+router.get('/heatmap/predicted', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const hoursAhead = parseInt(req.query.hours_ahead as string) || 2;
+    const now = new Date();
+    const dayOfWeek = now.getDay(); // 0=Sunday
+    const currentHour = now.getHours();
+    const endHour = currentHour + hoursAhead;
+
+    const points = db.prepare(`
+      SELECT
+        ROUND(latitude, 3) as latitude,
+        ROUND(longitude, 3) as longitude,
+        SUM(
+          CASE
+            WHEN created_at >= datetime('now', 'localtime', '-30 days') THEN 3
+            WHEN created_at >= datetime('now', 'localtime', '-90 days') THEN 2
+            ELSE 1
+          END
+        ) as predicted_weight,
+        COUNT(*) as historical_count
+      FROM calls_for_service
+      WHERE latitude IS NOT NULL
+        AND longitude IS NOT NULL
+        AND CAST(strftime('%w', created_at) AS INTEGER) = ?
+        AND CAST(strftime('%H', created_at) AS INTEGER) BETWEEN ? AND ?
+        AND created_at >= datetime('now', 'localtime', '-180 days')
+      GROUP BY ROUND(latitude, 3), ROUND(longitude, 3)
+      ORDER BY predicted_weight DESC
+      LIMIT 200
+    `).all(dayOfWeek, currentHour, endHour);
+
+    res.json({
+      day_of_week: dayOfWeek,
+      hour_range: `${currentHour}:00-${endHour}:00`,
+      points,
+    });
+  } catch (error: any) {
+    console.error('Predicted heatmap error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/dispatch/calls/:id/risk-score - Recalculate risk score for a call
+router.get('/calls/:id/risk-score', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT id FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+
+    const riskScore = computeRiskScore(call.id);
+    db.prepare('UPDATE calls_for_service SET risk_score = ? WHERE id = ?').run(riskScore, call.id);
+
+    res.json({ call_id: call.id, risk_score: riskScore });
+  } catch (error: any) {
+    console.error('Risk score error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -2735,6 +2828,204 @@ router.put('/calls/:id/mileage', (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     console.error('Mileage update error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── SMART UNIT RECOMMENDATION ENGINE ──────────────────────────
+// Ranks available units for a call based on distance, capabilities, workload, and familiarity
+
+function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 3959; // Earth radius in miles
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+router.get('/calls/:id/recommend-units', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+
+    // Get all units that could potentially respond (available, busy, or dispatched but not off-duty)
+    const units = db.prepare(`
+      SELECT u.*, usr.full_name as officer_name, usr.specializations
+      FROM units u
+      LEFT JOIN users usr ON u.officer_id = usr.id
+      WHERE u.status IN ('available', 'busy', 'dispatched')
+        AND u.latitude IS NOT NULL AND u.longitude IS NOT NULL
+    `).all() as any[];
+
+    if (units.length === 0) { res.json([]); return; }
+
+    const callLat = call.latitude;
+    const callLng = call.longitude;
+    const today = new Date().toISOString().split('T')[0];
+
+    const recommendations = units.map((unit: any) => {
+      let totalScore = 0;
+      const breakdown: Record<string, number> = {};
+
+      // 1. Distance score (0-40) — closest gets 40, scaled by max distance among candidates
+      let distanceMiles = 999;
+      if (callLat && callLng && unit.latitude && unit.longitude) {
+        distanceMiles = haversineDistance(callLat, callLng, unit.latitude, unit.longitude);
+      }
+      // Score: 40 for 0 miles, 0 for 20+ miles, linear interpolation
+      const distScore = Math.max(0, Math.round(40 * (1 - distanceMiles / 20)));
+      breakdown.distance = distScore;
+      totalScore += distScore;
+
+      // 2. Capability match (0-25) — check if unit has relevant specializations
+      let capScore = 0;
+      let specs: string[] = [];
+      try { specs = JSON.parse(unit.specializations || '[]'); } catch { specs = []; }
+      let caps: string[] = [];
+      try { caps = JSON.parse(unit.capabilities || '[]'); } catch { caps = []; }
+      const allCaps = [...specs, ...caps].map((c: string) => c.toLowerCase());
+
+      if (call.weapons_involved && allCaps.some((c: string) => ['tactical', 'swat', 'armed_response'].includes(c))) capScore += 15;
+      if (call.domestic_violence && allCaps.some((c: string) => ['dv', 'domestic_violence', 'dv_trained'].includes(c))) capScore += 15;
+      if (call.mental_health_crisis && allCaps.some((c: string) => ['cit', 'mental_health', 'crisis_intervention'].includes(c))) capScore += 15;
+      if (call.k9_requested && allCaps.some((c: string) => ['k9', 'canine'].includes(c))) capScore += 20;
+      if (call.felony_in_progress && allCaps.some((c: string) => ['tactical', 'swat', 'felony'].includes(c))) capScore += 10;
+      capScore = Math.min(25, capScore);
+      breakdown.capability = capScore;
+      totalScore += capScore;
+
+      // 3. Workload score (0-20) — fewer calls today = higher score
+      const workload = db.prepare(`
+        SELECT COUNT(*) as call_count FROM activity_log
+        WHERE user_id = ? AND action = 'status_changed' AND entity_type = 'call'
+          AND created_at >= ?
+      `).get(unit.officer_id || 0, today) as any;
+      const callCount = workload?.call_count || 0;
+      const workloadScore = Math.max(0, 20 - callCount * 3);
+      breakdown.workload = workloadScore;
+      totalScore += workloadScore;
+
+      // 4. Premise familiarity (0-15) — has this officer responded here before?
+      let familiarityScore = 0;
+      if (call.location_address && unit.officer_id) {
+        const priorCalls = db.prepare(`
+          SELECT COUNT(*) as cnt FROM calls_for_service
+          WHERE location_address = ? AND assigned_unit_ids LIKE ?
+            AND created_at >= datetime('now', 'localtime', '-365 days')
+        `).get(call.location_address, `%${unit.id}%`) as any;
+        familiarityScore = Math.min(15, (priorCalls?.cnt || 0) * 5);
+      }
+      breakdown.familiarity = familiarityScore;
+      totalScore += familiarityScore;
+
+      return {
+        unit_id: unit.id,
+        unit_name: unit.unit_name || unit.call_sign,
+        call_sign: unit.call_sign,
+        officer_name: unit.officer_name,
+        status: unit.status,
+        distance_miles: Math.round(distanceMiles * 100) / 100,
+        total_score: totalScore,
+        breakdown,
+      };
+    });
+
+    // Sort by total score descending, return top 5
+    recommendations.sort((a: any, b: any) => b.total_score - a.total_score);
+    res.json(recommendations.slice(0, 5));
+  } catch (error: any) {
+    console.error('Unit recommendation error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── ANOMALY ALERTS ──────────────────────────────────────────
+
+// GET /api/dispatch/anomaly-alerts
+router.get('/anomaly-alerts', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const hours = parseInt(req.query.hours as string) || 4;
+    const alerts = db.prepare(`
+      SELECT a.*, u.full_name as acknowledged_by_name
+      FROM anomaly_alerts a
+      LEFT JOIN users u ON a.acknowledged_by = u.id
+      WHERE a.created_at >= datetime('now', 'localtime', '-' || ? || ' hours')
+      ORDER BY a.created_at DESC
+    `).all(hours);
+    res.json(alerts);
+  } catch (error: any) {
+    console.error('Anomaly alerts error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/dispatch/anomaly-alerts/:id/acknowledge
+router.post('/anomaly-alerts/:id/acknowledge', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const alert = db.prepare('SELECT * FROM anomaly_alerts WHERE id = ?').get(req.params.id) as any;
+    if (!alert) { res.status(404).json({ error: 'Alert not found' }); return; }
+
+    db.prepare(`
+      UPDATE anomaly_alerts SET acknowledged_by = ?, acknowledged_at = ? WHERE id = ?
+    `).run(req.user!.userId, localNow(), req.params.id);
+
+    const updated = db.prepare('SELECT * FROM anomaly_alerts WHERE id = ?').get(req.params.id);
+    broadcastDispatchUpdate({ action: 'anomaly_acknowledged', alert: updated });
+    res.json(updated);
+  } catch (error: any) {
+    console.error('Anomaly acknowledge error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── BACKUP REQUEST ──────────────────────────────────────────
+
+// POST /api/dispatch/request-backup
+router.post('/request-backup', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { latitude, longitude, message } = req.body;
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user!.userId) as any;
+    const unit = db.prepare('SELECT * FROM units WHERE officer_id = ?').get(req.user!.userId) as any;
+
+    // Log activity
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'backup_requested', 'unit', ?, ?, ?)
+    `).run(req.user!.userId, unit?.id || null, `Backup requested by ${user?.full_name || 'Unknown'}: ${message || 'No message'}`, req.ip || 'unknown');
+
+    // Broadcast to dispatch channel
+    broadcastDispatchUpdate({
+      action: 'backup_requested',
+      user_id: req.user!.userId,
+      user_name: user?.full_name,
+      badge_number: user?.badge_number,
+      call_sign: unit?.call_sign,
+      current_call_id: unit?.current_call_id,
+      latitude, longitude, message,
+      requested_at: localNow(),
+    });
+
+    // Notify all dispatchers
+    const dispatchers = db.prepare(
+      "SELECT id FROM users WHERE role IN ('admin', 'supervisor', 'dispatcher') AND status = 'active'"
+    ).all() as any[];
+    for (const d of dispatchers) {
+      createNotification(
+        d.id, 'backup_request', `BACKUP: ${unit?.call_sign || user?.full_name}`,
+        message || 'Officer requesting backup',
+        'unit', unit?.id || null, 'critical'
+      );
+    }
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Backup request error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -61,8 +61,11 @@ let sslEnabled = false;
 let sslCert: string | undefined;
 let sslKey: string | undefined;
 
+// DISABLE_SSL=true skips auto-detection (e.g. running behind nginx reverse proxy)
+const disableSsl = envBool('DISABLE_SSL', false);
+
 try {
-  if (fs.existsSync(sslCertPath) && fs.existsSync(sslKeyPath)) {
+  if (!disableSsl && fs.existsSync(sslCertPath) && fs.existsSync(sslKeyPath)) {
     sslCert = fs.readFileSync(sslCertPath, 'utf-8');
     sslKey = fs.readFileSync(sslKeyPath, 'utf-8');
     sslEnabled = true;

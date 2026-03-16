@@ -115,7 +115,7 @@ export default function FleetGpsHistoryTab({ vehicleId }: Props) {
   return (
     <div className="flex flex-col h-full">
       {/* Controls bar */}
-      <div className="flex items-center gap-2 px-3 py-2 panel-inset" style={{ background: '#0a0a0a' }}>
+      <div className="flex items-center gap-2 px-3 py-2 panel-inset" style={{ background: '#060c14' }}>
         <div className="flex gap-0.5">
           {(['breadcrumbs', 'events'] as const).map(t => (
             <button
@@ -155,7 +155,7 @@ export default function FleetGpsHistoryTab({ vehicleId }: Props) {
         ) : subTab === 'breadcrumbs' ? (
           <table className="w-full text-[10px]">
             <thead>
-              <tr className="text-rmpg-400 uppercase text-left" style={{ background: '#141414' }}>
+              <tr className="text-rmpg-400 uppercase text-left" style={{ background: '#0d1520' }}>
                 <th className="px-2 py-1.5 font-bold">Time</th>
                 <th className="px-2 py-1.5 font-bold">Location</th>
                 <th className="px-2 py-1.5 font-bold">Speed</th>
@@ -195,7 +195,7 @@ export default function FleetGpsHistoryTab({ vehicleId }: Props) {
         ) : (
           <table className="w-full text-[10px]">
             <thead>
-              <tr className="text-rmpg-400 uppercase text-left" style={{ background: '#141414' }}>
+              <tr className="text-rmpg-400 uppercase text-left" style={{ background: '#0d1520' }}>
                 <th className="px-2 py-1.5 font-bold">Time</th>
                 <th className="px-2 py-1.5 font-bold">Event</th>
                 <th className="px-2 py-1.5 font-bold">Location</th>

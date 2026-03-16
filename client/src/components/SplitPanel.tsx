@@ -120,17 +120,17 @@ export default function SplitPanel({
           <div
             className="flex flex-shrink-0"
             style={{
-              background: 'linear-gradient(180deg, #303030 0%, #252525 100%)',
-              borderBottom: '1px solid #202020',
+              background: 'linear-gradient(180deg, #1e3048 0%, #182840 100%)',
+              borderBottom: '1px solid #0f1a28',
             }}
           >
             <button
               onClick={() => setMobileTab('left')}
               className="flex-1 py-2.5 text-xs font-bold uppercase tracking-wider text-center transition-colors"
               style={{
-                background: mobileTab === 'left' ? 'rgba(188, 16, 16, 0.2)' : 'transparent',
+                background: mobileTab === 'left' ? 'rgba(26, 90, 158, 0.2)' : 'transparent',
                 color: mobileTab === 'left' ? '#fff' : '#808080',
-                borderBottom: mobileTab === 'left' ? '2px solid #bc1010' : '2px solid transparent',
+                borderBottom: mobileTab === 'left' ? '2px solid #1a5a9e' : '2px solid transparent',
               }}
             >
               {leftLabel}
@@ -139,9 +139,9 @@ export default function SplitPanel({
               onClick={() => setMobileTab('right')}
               className="flex-1 py-2.5 text-xs font-bold uppercase tracking-wider text-center transition-colors"
               style={{
-                background: mobileTab === 'right' ? 'rgba(188, 16, 16, 0.2)' : 'transparent',
+                background: mobileTab === 'right' ? 'rgba(26, 90, 158, 0.2)' : 'transparent',
                 color: mobileTab === 'right' ? '#fff' : '#808080',
-                borderBottom: mobileTab === 'right' ? '2px solid #bc1010' : '2px solid transparent',
+                borderBottom: mobileTab === 'right' ? '2px solid #1a5a9e' : '2px solid transparent',
               }}
             >
               {rightLabel}
@@ -189,17 +189,17 @@ export default function SplitPanel({
           style={{
             [isHorizontal ? 'width' : 'height']: '4px',
             cursor: isHorizontal ? 'col-resize' : 'row-resize',
-            background: isDragging ? '#bc1010' : 'linear-gradient(90deg, #282828, #383838, #282828)',
+            background: isDragging ? '#1a5a9e' : 'linear-gradient(90deg, #162236, #2a3e58, #162236)',
             borderTop: '1px solid #484848',
-            borderBottom: '1px solid #202020',
+            borderBottom: '1px solid #0f1a28',
             transition: isDragging ? 'none' : 'background 0.15s ease',
           }}
           onMouseDown={handleMouseDown}
           onMouseEnter={(e) => {
-            if (!isDragging) (e.currentTarget as HTMLElement).style.background = 'linear-gradient(90deg, #383838, #484848, #383838)';
+            if (!isDragging) (e.currentTarget as HTMLElement).style.background = 'linear-gradient(90deg, #2a3e58, #484848, #2a3e58)';
           }}
           onMouseLeave={(e) => {
-            if (!isDragging) (e.currentTarget as HTMLElement).style.background = 'linear-gradient(90deg, #282828, #383838, #282828)';
+            if (!isDragging) (e.currentTarget as HTMLElement).style.background = 'linear-gradient(90deg, #162236, #2a3e58, #162236)';
           }}
         />
       )}

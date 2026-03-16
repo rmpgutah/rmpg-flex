@@ -32,7 +32,7 @@ export interface PdfBranding {
 export const DEFAULT_PDF_BRANDING: PdfBranding = {
   report_header_text: 'RMPG SECURITY SERVICES',
   report_subheader_text: 'PRIVATE SECURITY',
-  primary_color: '#bc1010',
+  primary_color: '#1a5a9e',
   accent_color: '#d4a017',
   header_bg_color: '#000000',
 };

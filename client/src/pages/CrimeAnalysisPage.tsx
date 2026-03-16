@@ -107,7 +107,7 @@ export default function CrimeAnalysisPage() {
                       className="h-full"
                       style={{
                         width: `${(offense.count / maxOffenseCount) * 100}%`,
-                        background: 'linear-gradient(90deg, #8a0c0c, #bc1010)',
+                        background: 'linear-gradient(90deg, #144a7e, #1a5a9e)',
                       }}
                     />
                   </div>
@@ -278,7 +278,7 @@ export default function CrimeAnalysisPage() {
                             className="w-full"
                             style={{
                               height: `${Math.max((month.count / maxTrend) * 100, 2)}%`,
-                              background: 'linear-gradient(180deg, #bc1010, #8a0c0c)',
+                              background: 'linear-gradient(180deg, #1a5a9e, #144a7e)',
                             }}
                             title={`${month.month}: ${month.count} incidents`}
                           />

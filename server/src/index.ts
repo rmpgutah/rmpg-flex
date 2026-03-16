@@ -20,6 +20,7 @@ import { startPatrolMonitor } from './utils/patrolMonitor';
 import { startDailyReportScheduler } from './utils/dailyReportGenerator';
 import { startTraccarPoller } from './utils/traccarPoller';
 import { startClearPathGpsPoller } from './utils/clearPathGpsPoller';
+import { startAnomalyDetector } from './utils/anomalyDetector';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -60,7 +61,6 @@ import shiftPlanRoutes from './routes/shiftPlans';
 import downloadsRoutes, { mountDownloadFileRoute } from './routes/downloads';
 import serveManagerRoutes from './routes/servemanager';
 import microbiltRoutes from './routes/microbilt';
-import searchbugRoutes from './routes/searchbug';
 import traccarRoutes from './routes/traccar';
 import clearPathGpsRoutes from './routes/clearpathgps';
 import dashcamVideoRoutes from './routes/dashcamVideos';
@@ -167,7 +167,6 @@ app.use('/api/downloads', downloadsRoutes);
 app.use('/api/updates', downloadsRoutes);
 app.use('/api/servemanager', serveManagerRoutes);
 app.use('/api/microbilt', microbiltRoutes);
-app.use('/api/searchbug', searchbugRoutes);
 app.use('/api/traccar', traccarRoutes);
 app.use('/api/clearpathgps', clearPathGpsRoutes);
 app.use('/api', dashcamVideoRoutes);
@@ -346,6 +345,9 @@ try {
 
     // Start ClearPathGPS fleet poller (if enabled — runs alongside Traccar during transition)
     startClearPathGpsPoller();
+
+    // Start anomaly detector for dispatch intelligence
+    startAnomalyDetector(60000); // Check every 60 seconds
   });
 } catch (error) {
   console.error('Failed to start server:', error);

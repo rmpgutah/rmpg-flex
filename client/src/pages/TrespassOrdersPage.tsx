@@ -233,7 +233,7 @@ export default function TrespassOrdersPage() {
       </PanelTitleBar>
 
       {/* Toolbar */}
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-rmpg-700" style={{ background: '#1a1a1a' }}>
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-rmpg-700" style={{ background: '#141e2b' }}>
         <div className="relative flex-1 max-w-xs">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
           <input type="text" placeholder="Search orders..." className="input-dark pl-7 text-xs w-full"
@@ -385,7 +385,7 @@ export default function TrespassOrdersPage() {
       {formOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setFormOpen(false)}>
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700" style={{ background: '#1a1a1a' }}>
+            <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700" style={{ background: '#141e2b' }}>
               <span className="text-xs font-bold text-white uppercase">{editingOrder ? 'Edit' : 'New'} Trespass Order</span>
               <button onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white"><X style={{ width: 14, height: 14 }} /></button>
             </div>
@@ -455,7 +455,7 @@ export default function TrespassOrdersPage() {
 
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn">Cancel</button>
-                <button type="submit" disabled={submitting} className="toolbar-btn" style={{ background: 'rgba(188,16,16,0.3)', borderColor: 'rgba(188,16,16,0.5)' }}>
+                <button type="submit" disabled={submitting} className="toolbar-btn" style={{ background: 'rgba(26,90,158,0.3)', borderColor: 'rgba(26,90,158,0.5)' }}>
                   {submitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save style={{ width: 10, height: 10 }} />}
                   {editingOrder ? 'Update' : 'Create'} Order
                 </button>

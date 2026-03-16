@@ -127,8 +127,8 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
       <div
         className="w-full max-w-sm mx-4"
         style={{
-          background: '#1a1a1a',
-          border: '1px solid #303030',
+          background: '#141e2b',
+          border: '1px solid #1e3048',
           borderTop: '3px solid #d97706',
         }}
       >
@@ -169,7 +169,7 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
                 className="w-12 h-14 text-center text-2xl font-mono font-bold text-white transition-colors focus:outline-none"
                 style={{
                   background: '#0d0d0d',
-                  border: `2px solid ${error ? '#dc2626' : digit ? '#d97706' : '#383838'}`,
+                  border: `2px solid ${error ? '#dc2626' : digit ? '#d97706' : '#2a3e58'}`,
                   caretColor: '#d97706',
                 }}
               />

@@ -63,6 +63,7 @@ import FloatingSaveBar from '../components/FloatingSaveBar';
 import CadCommandLine from '../components/CadCommandLine';
 import NcicQueryPanel from '../components/NcicQueryPanel';
 import UnitRecommendationPanel from '../components/UnitRecommendationPanel';
+import AnomalyAlertBanner from '../components/AnomalyAlertBanner';
 import type { CommandAction } from '../utils/cadCommandParser';
 import { getTimerState, isActiveStatus } from '../utils/dispatchTimers';
 import { playTone } from '../utils/dispatchTones';
@@ -1554,7 +1555,11 @@ export default function DispatchPage() {
   // DESKTOP LAYOUT — Existing 40%/60% split with panels
   // ================================================================
   return (
-    <div className="flex h-full relative">
+    <div className="flex flex-col h-full relative">
+      {/* Anomaly Alert Banner — real-time intelligence alerts */}
+      <AnomalyAlertBanner />
+
+      <div className="flex flex-1 min-h-0">
       {/* ============================================================ */}
       {/* LEFT PANEL - Call Queue (40%) */}
       {/* ============================================================ */}
@@ -1610,7 +1615,7 @@ export default function DispatchPage() {
                   minWidth: '200px',
                   maxHeight: '280px',
                   overflowY: 'auto',
-                  background: '#252525',
+                  background: '#182840',
                   border: '1px solid #484848',
                   borderRadius: 0,
                   boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
@@ -1636,7 +1641,7 @@ export default function DispatchPage() {
                       }}
                       className="w-full flex flex-col items-start px-3 py-2 text-left transition-colors"
                       style={{ fontSize: '11px', color: '#d4d4d4', background: 'transparent', border: 'none', borderRadius: 0 }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#383838'; }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#2a3e58'; }}
                       onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
                     >
                       <span className="font-bold text-white" style={{ fontSize: '11px' }}>{tpl.name || tpl.incident_type}</span>
@@ -1746,6 +1751,19 @@ export default function DispatchPage() {
                   <span className="text-sm font-bold text-green-400 font-mono">{selectedCall.call_number}</span>
                   <StatusBadge status={selectedCall.priority} type="priority" size="sm" />
                   <StatusBadge status={selectedCall.status} type="call_status" size="sm" />
+                  {selectedCall.risk_score != null && selectedCall.risk_score > 0 && (
+                    <span
+                      className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold font-mono"
+                      style={{
+                        color: selectedCall.risk_score >= 80 ? '#ef4444' : selectedCall.risk_score >= 60 ? '#f97316' : selectedCall.risk_score >= 30 ? '#eab308' : '#22c55e',
+                        background: selectedCall.risk_score >= 80 ? 'rgba(239,68,68,0.15)' : selectedCall.risk_score >= 60 ? 'rgba(249,115,22,0.15)' : 'rgba(34,197,94,0.1)',
+                        border: `1px solid ${selectedCall.risk_score >= 80 ? 'rgba(239,68,68,0.4)' : selectedCall.risk_score >= 60 ? 'rgba(249,115,22,0.4)' : 'rgba(34,197,94,0.3)'}`,
+                      }}
+                      title={`Automated Risk Assessment: ${selectedCall.risk_score}/100`}
+                    >
+                      RISK: {selectedCall.risk_score}
+                    </span>
+                  )}
                   {callWarnings.length > 0 && (
                     <span className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold font-mono text-red-400 bg-red-900/30 border border-red-700/50 animate-pulse">
                       <AlertTriangle style={{ width: 9, height: 9 }} /> {callWarnings.length} ALERT{callWarnings.length !== 1 ? 'S' : ''}
@@ -2564,6 +2582,7 @@ export default function DispatchPage() {
           </div>
         </div>
       </div>
+      </div>{/* end flex flex-1 min-h-0 wrapper */}
 
       {/* New Call Modal */}
       <NewCallModal

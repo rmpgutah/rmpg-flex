@@ -933,6 +933,7 @@ function migrateSchema(): void {
   addCol('persons', 'id_number', 'TEXT');
   addCol('persons', 'id_state', 'TEXT');
   addCol('persons', 'id_expiry', 'TEXT');
+  addCol('persons', 'source', "TEXT DEFAULT 'manual'");
 
   // ── VEHICLES — new detail fields ──────────────────────
   addCol('vehicles_records', 'body_style', 'TEXT');
@@ -1152,6 +1153,8 @@ function migrateSchema(): void {
 
   // ── calls_for_service — add previous_status column for hold/resume ──
   addCol('calls_for_service', 'previous_status', 'TEXT');
+  addCol('calls_for_service', 'held_at', 'TEXT');
+  addCol('calls_for_service', 'total_hold_minutes', 'REAL DEFAULT 0');
 
   // ── INCIDENTS — new detail fields ─────────────────────
   addCol('incidents', 'occurred_date', 'TEXT');
@@ -2469,6 +2472,37 @@ function migrateSchema(): void {
     db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_dashcam_events_device_timestamp_unique
       ON dashcam_events(cpg_device_id, event_timestamp, status_code)`);
   }
+
+  // ── Innovative features: risk scoring, shift notes, anomaly alerts ──
+  addCol('calls_for_service', 'risk_score', 'INTEGER');
+  addCol('users', 'specializations', "TEXT DEFAULT '[]'");
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS shift_notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      officer_id INTEGER NOT NULL,
+      shift_date TEXT NOT NULL,
+      content TEXT NOT NULL,
+      category TEXT DEFAULT 'general',
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (officer_id) REFERENCES users(id)
+    )`);
+  } catch { /* already exists */ }
+
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS anomaly_alerts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      alert_type TEXT NOT NULL,
+      severity TEXT NOT NULL DEFAULT 'medium',
+      title TEXT NOT NULL,
+      details TEXT,
+      zone_beat TEXT,
+      acknowledged_by INTEGER,
+      acknowledged_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (acknowledged_by) REFERENCES users(id)
+    )`);
+  } catch { /* already exists */ }
 
   console.log('Schema migration completed.');
 }

@@ -98,20 +98,20 @@ export default function TotpCodeInput({ value, onChange, onComplete, disabled, e
             fontSize: 22,
             fontWeight: 700,
             fontFamily: 'monospace',
-            background: '#141414',
-            border: `2px solid ${error ? '#d93030' : digits[i]?.trim() ? '#bc1010' : '#333'}`,
+            background: '#0d1520',
+            border: `2px solid ${error ? '#d93030' : digits[i]?.trim() ? '#1a5a9e' : '#1e3048'}`,
             borderRadius: 4,
             color: '#fff',
             outline: 'none',
-            caretColor: '#bc1010',
+            caretColor: '#1a5a9e',
             transition: 'border-color 0.15s',
           }}
           onFocus={(e) => {
-            e.target.style.borderColor = '#bc1010';
+            e.target.style.borderColor = '#1a5a9e';
             e.target.select();
           }}
           onBlur={(e) => {
-            e.target.style.borderColor = error ? '#d93030' : digits[i]?.trim() ? '#bc1010' : '#333';
+            e.target.style.borderColor = error ? '#d93030' : digits[i]?.trim() ? '#1a5a9e' : '#1e3048';
           }}
         />
       ))}

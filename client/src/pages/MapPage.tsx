@@ -506,9 +506,13 @@ export default function MapPage() {
 
   // Heat map state
   const [showHeatmap, setShowHeatmap] = useState(false);
+  const [showPredictiveHeatmap, setShowPredictiveHeatmap] = useState(false);
   const [showTrackingLines, setShowTrackingLines] = useState(true);
   const [heatmapData, setHeatmapData] = useState<any[]>([]);
+  const [predictiveData, setPredictiveData] = useState<any[]>([]);
   const [heatmapDays, setHeatmapDays] = useState(30);
+  const [predictiveHours, setPredictiveHours] = useState(2);
+  const predictiveCirclesRef = useRef<google.maps.Circle[]>([]);
 
   // Breadcrumb trail state
   const [showBreadcrumbs, setShowBreadcrumbs] = useState(true);
@@ -784,6 +788,14 @@ export default function MapPage() {
       .catch(() => setHeatmapData([]));
   }, [showHeatmap, heatmapDays]);
 
+  // Predictive heatmap data fetch
+  useEffect(() => {
+    if (!showPredictiveHeatmap) { setPredictiveData([]); return; }
+    apiFetch<any>(`/dispatch/heatmap/predicted?hours_ahead=${predictiveHours}`)
+      .then((data) => setPredictiveData(data?.points || []))
+      .catch(() => setPredictiveData([]));
+  }, [showPredictiveHeatmap, predictiveHours]);
+
   // ============================================================
   // Google Maps Initialization
   // ============================================================
@@ -851,7 +863,7 @@ export default function MapPage() {
         disableDefaultUI: true,
         zoomControl: false,
         styles: DARK_MAP_STYLE,
-        backgroundColor: '#0a0a0a',
+        backgroundColor: '#060c14',
         // 'greedy' allows single-finger pan on mobile/tablet — critical for
         // in-vehicle use where two-finger gestures are awkward while driving.
         gestureHandling: 'greedy',
@@ -1250,6 +1262,36 @@ export default function MapPage() {
     }
   }, [showHeatmap, heatmapData, mapLoaded]);
 
+  // Predictive heatmap circles (blue-purple gradient, distinct from historical red)
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapLoaded) return;
+
+    predictiveCirclesRef.current.forEach((c) => c.setMap(null));
+    predictiveCirclesRef.current = [];
+
+    if (showPredictiveHeatmap && predictiveData.length > 0) {
+      predictiveData.forEach((point: any) => {
+        if (point.latitude != null && point.longitude != null) {
+          const intensity = Math.min((point.weight ?? 1) / 15, 1);
+          const radius = 250 + (point.weight ?? 1) * 50;
+          const circle = new google.maps.Circle({
+            map,
+            center: { lat: point.latitude, lng: point.longitude },
+            radius: Math.min(radius, 900),
+            fillColor: '#7c3aed',
+            fillOpacity: 0.12 + intensity * 0.35,
+            strokeColor: '#6366f1',
+            strokeOpacity: 0.25 + intensity * 0.3,
+            strokeWeight: 1,
+            clickable: false,
+          });
+          predictiveCirclesRef.current.push(circle);
+        }
+      });
+    }
+  }, [showPredictiveHeatmap, predictiveData, mapLoaded]);
+
   // ============================================================
   // Unit-to-Call Tracking Lines
   // ============================================================
@@ -1639,7 +1681,7 @@ export default function MapPage() {
 
       {/* ── Left F-Key Status Bar (Spillman Flex) ── */}
       {!isMobile && (
-        <div className="flex flex-col panel-beveled flex-shrink-0" style={{ width: 70, background: '#1a1a1a', borderRight: '1px solid #383838' }}>
+        <div className="flex flex-col panel-beveled flex-shrink-0" style={{ width: 70, background: '#141e2b', borderRight: '1px solid #2a3e58' }}>
           <div className="panel-title-bar flex items-center justify-center" style={{ minHeight: 20 }}>
             <span className="text-[8px] font-bold text-rmpg-400 uppercase tracking-wider">STATUS</span>
           </div>
@@ -1655,12 +1697,12 @@ export default function MapPage() {
                     !selectedUnit ? 'opacity-30 cursor-default' : 'cursor-pointer hover:brightness-125'
                   }`}
                   style={{
-                    background: isActive ? btn.color + '30' : '#141414',
-                    border: isActive ? `2px solid ${btn.color}` : '1px solid #303030',
+                    background: isActive ? btn.color + '30' : '#0d1520',
+                    border: isActive ? `2px solid ${btn.color}` : '1px solid #1e3048',
                     borderTop: isActive ? `2px solid ${btn.color}` : '1px solid #3a3a3a',
                     borderLeft: isActive ? `2px solid ${btn.color}` : '1px solid #3a3a3a',
-                    borderBottom: isActive ? `2px solid ${btn.color}` : '1px solid #1a1a1a',
-                    borderRight: isActive ? `2px solid ${btn.color}` : '1px solid #1a1a1a',
+                    borderBottom: isActive ? `2px solid ${btn.color}` : '1px solid #141e2b',
+                    borderRight: isActive ? `2px solid ${btn.color}` : '1px solid #141e2b',
                   }}
                   title={`${btn.label} (${btn.fKey})`}
                 >
@@ -1672,7 +1714,7 @@ export default function MapPage() {
           </div>
           {/* Selected unit indicator */}
           {selectedUnit && (
-            <div className="panel-inset px-1 py-1.5 text-center" style={{ background: '#0a0a0a' }}>
+            <div className="panel-inset px-1 py-1.5 text-center" style={{ background: '#060c14' }}>
               <div className="text-[10px] font-black" style={{ color: UNIT_STATUS_COLORS[selectedUnit.status] }}>{selectedUnit.call_sign}</div>
               <div className="text-[7px] font-bold text-rmpg-400 uppercase">{UNIT_STATUS_LABELS[selectedUnit.status]}</div>
             </div>
@@ -1688,8 +1730,8 @@ export default function MapPage() {
             className="flex items-center px-1 gap-0 flex-shrink-0 z-[1002]"
             style={{
               height: 26,
-              background: 'linear-gradient(180deg, #2a2a2a 0%, #1e1e1e 100%)',
-              borderBottom: '1px solid #303030',
+              background: 'linear-gradient(180deg, #1e3048 0%, #1a2636 100%)',
+              borderBottom: '1px solid #1e3048',
               borderTop: '1px solid #484848',
             }}
           >
@@ -1739,7 +1781,7 @@ export default function MapPage() {
             </button>
             <div className="flex-1" />
             {/* Right side: GPS + WebSocket status */}
-            <div className="flex items-center gap-2 panel-inset px-2 py-0.5" style={{ background: '#141414' }}>
+            <div className="flex items-center gap-2 panel-inset px-2 py-0.5" style={{ background: '#0d1520' }}>
               <div className="flex items-center gap-1">
                 <div className={`led-dot ${isConnected ? 'led-green' : 'led-red'}`} style={{ width: 6, height: 6 }} />
                 <span className="text-[8px] font-bold" style={{ color: isConnected ? '#22c55e' : '#ef4444' }}>WS</span>
@@ -1754,7 +1796,7 @@ export default function MapPage() {
 
         {/* ── Spillman Flex Call Info Header ── */}
         {!isMobile && selectedUnit && callDetail && (
-          <div className="panel-beveled flex-shrink-0" style={{ background: '#1a1a1a', borderBottom: '1px solid #383838' }}>
+          <div className="panel-beveled flex-shrink-0" style={{ background: '#141e2b', borderBottom: '1px solid #2a3e58' }}>
             <div className="flex items-start gap-4 px-3 py-2">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
@@ -1802,11 +1844,11 @@ export default function MapPage() {
 
         {mapError && (
           <div className="absolute inset-0 z-[2000] flex items-center justify-center bg-black/90">
-            <div className="panel-beveled p-8 shadow-xl max-w-lg text-center" style={{ background: '#1a1a1a' }}>
+            <div className="panel-beveled p-8 shadow-xl max-w-lg text-center" style={{ background: '#141e2b' }}>
               <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-3" />
               <h3 className="text-white text-sm font-bold mb-2">Map Configuration Required</h3>
               <pre className="text-rmpg-300 text-xs leading-relaxed mb-4 whitespace-pre-wrap text-left">{mapError}</pre>
-              <div className="panel-inset p-3 text-left mb-4" style={{ background: '#0a0a0a' }}>
+              <div className="panel-inset p-3 text-left mb-4" style={{ background: '#060c14' }}>
                 <p className="text-[10px] text-rmpg-400 font-mono leading-relaxed">
                   <span className="text-amber-400 font-bold">Checklist:</span><br/>
                   1. Go to <span className="text-blue-400">console.cloud.google.com/apis/library</span><br/>
@@ -1867,7 +1909,7 @@ export default function MapPage() {
         {/* Loading Overlay */}
         {loading && !mapError && (
           <div className="absolute inset-0 z-[2000] flex items-center justify-center bg-black/90">
-            <div className="panel-beveled p-6 shadow-xl" style={{ background: '#1a1a1a' }}>
+            <div className="panel-beveled p-6 shadow-xl" style={{ background: '#141e2b' }}>
               <div className="flex items-center gap-3">
                 <div className="w-5 h-5 border-2 border-brand-400 border-t-transparent rounded-full animate-spin" />
                 <span className="text-white text-sm font-mono">Initializing tactical map...</span>
@@ -1879,7 +1921,7 @@ export default function MapPage() {
         {/* Error Banner */}
         {error && !loading && (
           <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-[1000]">
-            <div className="panel-beveled px-4 py-2 shadow-xl" style={{ background: '#3a0a0a', borderColor: '#8a0c0c' }}>
+            <div className="panel-beveled px-4 py-2 shadow-xl" style={{ background: '#0a1a30', borderColor: '#144a7e' }}>
               <span className="text-white text-sm">{error}</span>
             </div>
           </div>
@@ -1924,7 +1966,7 @@ export default function MapPage() {
                 )}
               </div>
               {showAddressResults && addressResults.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 panel-beveled shadow-2xl overflow-hidden" style={{ background: '#1a1a1a', zIndex: 50 }}>
+                <div className="absolute top-full left-0 right-0 mt-1 panel-beveled shadow-2xl overflow-hidden" style={{ background: '#141e2b', zIndex: 50 }}>
                   {addressResults.map((r) => (
                     <button
                       key={r.place_id}
@@ -1947,7 +1989,7 @@ export default function MapPage() {
                   if (map) map.setZoom((map.getZoom() || 12) + 1);
                 }}
                 className="toolbar-btn"
-                style={{ padding: '4px 6px', borderBottom: '1px solid #303030' }}
+                style={{ padding: '4px 6px', borderBottom: '1px solid #1e3048' }}
                 title="Zoom in"
               >
                 <Plus className="w-3.5 h-3.5" />
@@ -1979,7 +2021,7 @@ export default function MapPage() {
               <PanelLeftOpen className="w-4 h-4" />
             </button>
           ) : (
-          <div className="panel-beveled shadow-2xl" style={{ width: 'clamp(160px, 14vw, 200px)', background: '#1a1a1a' }}>
+          <div className="panel-beveled shadow-2xl" style={{ width: 'clamp(160px, 14vw, 200px)', background: '#141e2b' }}>
             <PanelTitleBar title="LAYERS" icon={Layers}>
               <div className={`led-dot ${isConnected ? 'led-green' : 'led-red'}`} style={{ width: 6, height: 6 }} />
               <button
@@ -2038,6 +2080,38 @@ export default function MapPage() {
                       }`}
                     >
                       {days}d
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Predictive Heatmap */}
+              <button
+                onClick={() => setShowPredictiveHeatmap(!showPredictiveHeatmap)}
+                className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors ${
+                  showPredictiveHeatmap ? 'panel-inset bg-surface-deep' : 'opacity-40 hover:opacity-70 hover:bg-rmpg-800/50'
+                }`}
+              >
+                {showPredictiveHeatmap ? <Eye className="w-3 h-3 text-violet-400" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
+                <Thermometer className="w-3 h-3 text-violet-400" />
+                <span className="text-[10px] text-rmpg-200 flex-1">Predicted</span>
+                {showPredictiveHeatmap && (
+                  <span className="text-[8px] text-violet-400 font-mono font-bold">{predictiveData.length} pts</span>
+                )}
+              </button>
+              {showPredictiveHeatmap && (
+                <div className="flex items-center gap-1 px-3 py-1">
+                  {[2, 4, 6, 8].map((hours) => (
+                    <button
+                      key={hours}
+                      onClick={() => setPredictiveHours(hours)}
+                      className={`px-1.5 py-0.5 text-[8px] font-mono font-bold transition-colors ${
+                        predictiveHours === hours
+                          ? 'panel-inset bg-surface-deep text-violet-400'
+                          : 'text-rmpg-500 hover:text-rmpg-300'
+                      }`}
+                    >
+                      {hours}h
                     </button>
                   ))}
                 </div>
@@ -2745,7 +2819,7 @@ export default function MapPage() {
 
         {/* ── Status Legend - Bottom Left (desktop only, wraps on narrow) ── */}
         {!isMobile && <div className="absolute bottom-2 left-2 z-[1000] max-w-[calc(100vw-16rem)]">
-          <div className="panel-beveled px-2 py-1.5 shadow-xl" style={{ background: '#1a1a1a' }}>
+          <div className="panel-beveled px-2 py-1.5 shadow-xl" style={{ background: '#141e2b' }}>
             <span className="text-[8px] font-bold text-rmpg-400 uppercase tracking-widest">Legend</span>
             <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
               {(Object.entries(UNIT_STATUS_COLORS) as [UnitStatus, string][])
@@ -2765,7 +2839,7 @@ export default function MapPage() {
           className="absolute top-2 z-[1000] transition-all"
           style={{ left: layersPanelOpen ? 'calc(clamp(160px, 14vw, 200px) + 24px)' : 52 }}
         >
-          <div className="panel-beveled px-3 py-1.5 shadow-xl" style={{ background: '#1a1a1a' }}>
+          <div className="panel-beveled px-3 py-1.5 shadow-xl" style={{ background: '#141e2b' }}>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-mono">
               <div className="flex items-center gap-1.5">
                 <Siren className="w-3 h-3 text-red-400 shrink-0" />
@@ -2868,7 +2942,7 @@ export default function MapPage() {
 
         {/* ── Spillman Flex Directions Panel (bottom of center) ── */}
         {!isMobile && selectedUnit && callDetail && callDetail.latitude && callDetail.longitude && selectedUnit.latitude && selectedUnit.longitude && (
-          <div className="panel-beveled flex-shrink-0" style={{ background: '#1a1a1a', borderTop: '1px solid #383838', maxHeight: 120 }}>
+          <div className="panel-beveled flex-shrink-0" style={{ background: '#141e2b', borderTop: '1px solid #2a3e58', maxHeight: 120 }}>
             <div className="px-3 py-1.5">
               <div className="flex items-center gap-2 text-[9px]">
                 <span className="text-rmpg-400">Start:</span>
@@ -2877,7 +2951,7 @@ export default function MapPage() {
                 <span className="text-rmpg-400">End:</span>
                 <span className="font-bold text-rmpg-100">{callDetail.call_number}, {formatIncidentType(callDetail.incident_type)}</span>
               </div>
-              <div className="panel-inset mt-1 px-2 py-1" style={{ background: '#0a0a0a' }}>
+              <div className="panel-inset mt-1 px-2 py-1" style={{ background: '#060c14' }}>
                 <div className="text-[9px] text-rmpg-300 font-bold">{callDetail.location_address}</div>
                 {callDetail.cross_street && (
                   <div className="text-[8px] text-rmpg-500 mt-0.5">Cross: {callDetail.cross_street}</div>
@@ -2893,7 +2967,7 @@ export default function MapPage() {
         className="flex flex-col panel-beveled transition-all"
         style={{
           width: sidebarOpen ? 'clamp(220px, 20vw, 300px)' : 36,
-          background: '#1a1a1a',
+          background: '#141e2b',
           flexShrink: 0,
         }}
       >
@@ -2911,7 +2985,7 @@ export default function MapPage() {
             {selectedUnit && callDetail && (
               <div className="flex flex-col flex-shrink-0" style={{ maxHeight: '55%' }}>
                 {/* Unit header */}
-                <div className="panel-inset px-3 py-2" style={{ background: '#0a0a0a' }}>
+                <div className="panel-inset px-3 py-2" style={{ background: '#060c14' }}>
                   <div className="flex items-center gap-2">
                     <div className="led-dot" style={{ backgroundColor: UNIT_STATUS_COLORS[selectedUnit.status], boxShadow: `0 0 8px ${UNIT_STATUS_COLORS[selectedUnit.status]}80`, width: 10, height: 10 }} />
                     <span className="text-[14px] font-black" style={{ color: UNIT_STATUS_COLORS[selectedUnit.status] }}>{selectedUnit.call_sign}</span>
@@ -2929,7 +3003,7 @@ export default function MapPage() {
 
                 {/* Complaint/description */}
                 {callDetail.description && (
-                  <div className="px-3 py-2" style={{ borderBottom: '1px solid #2a2a2a', background: '#141414' }}>
+                  <div className="px-3 py-2" style={{ borderBottom: '1px solid #1e3048', background: '#0d1520' }}>
                     <div className="text-[9px] text-rmpg-200 leading-relaxed">{callDetail.description}</div>
                   </div>
                 )}
@@ -2937,7 +3011,7 @@ export default function MapPage() {
                 {/* Notes/Comments timeline */}
                 <div className="flex-1 overflow-y-auto min-h-0" style={{ background: '#111' }}>
                   {callDetail.notes?.map(note => (
-                    <div key={note.id} className="px-3 py-1.5" style={{ borderBottom: '1px solid #1a1a1a' }}>
+                    <div key={note.id} className="px-3 py-1.5" style={{ borderBottom: '1px solid #141e2b' }}>
                       <div className="flex items-center gap-1 text-[8px] text-rmpg-500">
                         <Clock style={{ width: 8, height: 8 }} />
                         <span>{new Date(note.created_at).toLocaleTimeString()} {new Date(note.created_at).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' })}</span>
@@ -2952,7 +3026,7 @@ export default function MapPage() {
                 </div>
 
                 {/* Add Comment */}
-                <div className="flex items-center gap-1 px-2 py-1.5 panel-inset" style={{ background: '#0a0a0a' }}>
+                <div className="flex items-center gap-1 px-2 py-1.5 panel-inset" style={{ background: '#060c14' }}>
                   <input
                     type="text"
                     className="input-dark flex-1 text-[10px] py-1 px-2"
@@ -2966,12 +3040,12 @@ export default function MapPage() {
                   </button>
                 </div>
 
-                <div className="h-px" style={{ background: '#383838' }} />
+                <div className="h-px" style={{ background: '#2a3e58' }} />
               </div>
             )}
 
             {/* Compact status counters */}
-            <div className="flex items-center justify-center gap-2 px-2 py-1.5 panel-inset" style={{ background: '#0a0a0a' }}>
+            <div className="flex items-center justify-center gap-2 px-2 py-1.5 panel-inset" style={{ background: '#060c14' }}>
               {([
                 { label: 'AVL', count: unitsByStatus['available'] || 0, color: '#22c55e' },
                 { label: 'DSP', count: unitsByStatus['dispatched'] || 0, color: '#f59e0b' },
@@ -3005,7 +3079,7 @@ export default function MapPage() {
               </button>
             </div>
 
-            <div className="px-2 py-1.5" style={{ borderBottom: '1px solid #303030' }}>
+            <div className="px-2 py-1.5" style={{ borderBottom: '1px solid #1e3048' }}>
               <div className="relative">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
                 <input
@@ -3193,8 +3267,8 @@ export default function MapPage() {
                     onClick={() => toggleLayer(key)}
                     className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
                     style={{
-                      background: layers[key] ? 'rgba(34,197,94,0.08)' : '#1a1a1a',
-                      border: '1px solid #2a2a2a',
+                      background: layers[key] ? 'rgba(34,197,94,0.08)' : '#141e2b',
+                      border: '1px solid #1e3048',
                       minHeight: 44,
                     }}
                   >
@@ -3208,8 +3282,8 @@ export default function MapPage() {
                   onClick={() => setShowHeatmap(!showHeatmap)}
                   className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
                   style={{
-                    background: showHeatmap ? 'rgba(239,68,68,0.08)' : '#1a1a1a',
-                    border: '1px solid #2a2a2a',
+                    background: showHeatmap ? 'rgba(239,68,68,0.08)' : '#141e2b',
+                    border: '1px solid #1e3048',
                     minHeight: 44,
                   }}
                 >
@@ -3223,8 +3297,8 @@ export default function MapPage() {
                   onClick={() => setShowBreadcrumbs(!showBreadcrumbs)}
                   className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
                   style={{
-                    background: showBreadcrumbs ? 'rgba(34,211,238,0.08)' : '#1a1a1a',
-                    border: '1px solid #2a2a2a',
+                    background: showBreadcrumbs ? 'rgba(34,211,238,0.08)' : '#141e2b',
+                    border: '1px solid #1e3048',
                     minHeight: 44,
                   }}
                 >
@@ -3235,7 +3309,7 @@ export default function MapPage() {
 
                 {/* Breadcrumb time range selector */}
                 {showBreadcrumbs && (
-                  <div className="flex gap-1 px-3 py-2" style={{ background: '#111', border: '1px solid #2a2a2a' }}>
+                  <div className="flex gap-1 px-3 py-2" style={{ background: '#111', border: '1px solid #1e3048' }}>
                     {[2, 4, 8, 12, 24].map((h) => (
                       <button
                         key={h}
@@ -3262,8 +3336,8 @@ export default function MapPage() {
                   }}
                   className="flex items-center gap-3 w-full px-3 py-3 text-left transition-colors"
                   style={{
-                    background: '#1a1a1a',
-                    border: '1px solid #2a2a2a',
+                    background: '#141e2b',
+                    border: '1px solid #1e3048',
                     minHeight: 44,
                   }}
                 >
@@ -3347,7 +3421,7 @@ export default function MapPage() {
 
       {/* ── Spillman Flex Map Status Bar ── */}
       {!isMobile && (
-        <div className="status-bar flex-shrink-0" style={{ borderTop: '1px solid #383838' }}>
+        <div className="status-bar flex-shrink-0" style={{ borderTop: '1px solid #2a3e58' }}>
           <div className="status-bar-section">
             <span className="text-rmpg-400">Status:</span>
             {selectedUnit ? (

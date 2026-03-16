@@ -251,7 +251,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
             <button
               onClick={handleCancel}
               className="px-2 py-1 text-[9px] font-bold uppercase"
-              style={{ background: '#303030', border: '1px solid #484848', color: '#a0a0a0' }}
+              style={{ background: '#1e3048', border: '1px solid #484848', color: '#a0a0a0' }}
             >
               Cancel
             </button>
@@ -292,7 +292,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
             {/* Header */}
             <div
               className="flex items-center gap-2 px-4 py-3"
-              style={{ background: 'linear-gradient(180deg, #8a0c0c, #6e0a0a)' }}
+              style={{ background: 'linear-gradient(180deg, #144a7e, #0e3a6e)' }}
             >
               <AlertTriangle className="animate-emergency-blink" style={{ width: 20, height: 20, color: '#ffffff' }} />
               <span className="text-sm font-bold uppercase tracking-widest text-white">
@@ -307,7 +307,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
             </div>
 
             {/* Body */}
-            <div className="p-4 space-y-3" style={{ background: '#1a1a1a', borderTop: '2px solid #ff0000' }}>
+            <div className="p-4 space-y-3" style={{ background: '#141e2b', borderTop: '2px solid #ff0000' }}>
               <div className="text-center">
                 <div className="text-lg font-bold text-red-400 animate-emergency-blink">
                   {incomingAlert.user_name}
@@ -346,14 +346,14 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
               )}
 
               {incomingAlert.message && (
-                <div className="text-xs text-center text-white p-2" style={{ background: '#111', border: '1px solid #383838' }}>
+                <div className="text-xs text-center text-white p-2" style={{ background: '#111', border: '1px solid #2a3e58' }}>
                   {incomingAlert.message}
                 </div>
               )}
 
               {/* Reverse-geocoded address */}
               {incomingAlert.location_address && (
-                <div className="text-center text-[10px] font-mono text-white p-1.5" style={{ background: '#111', border: '1px solid #383838' }}>
+                <div className="text-center text-[10px] font-mono text-white p-1.5" style={{ background: '#111', border: '1px solid #2a3e58' }}>
                   <MapPin style={{ width: 9, height: 9, display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />
                   {incomingAlert.location_address}
                 </div>

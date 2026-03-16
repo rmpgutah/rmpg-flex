@@ -187,8 +187,8 @@ export const DASHCAM_VIDEO_SOURCE_COLORS: Record<string, string> = {
 
 export const CHART_TOOLTIP_STYLE = {
   contentStyle: {
-    backgroundColor: '#1a1a1a',
-    border: '1px solid #383838',
+    backgroundColor: '#141e2b',
+    border: '1px solid #2a3e58',
     color: '#e0e0e0',
     fontSize: 10,
     fontFamily: 'Consolas, monospace',

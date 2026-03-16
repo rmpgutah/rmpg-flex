@@ -100,7 +100,7 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
         styles: DARK_MAP_STYLE,
         disableDefaultUI: true,
         zoomControl: true,
-        backgroundColor: '#0a0a0a',
+        backgroundColor: '#060c14',
         gestureHandling: 'greedy',
       });
       mapInstanceRef.current = map;
@@ -515,7 +515,7 @@ const PatrolPage: React.FC = () => {
       {!isMobile && (
         <div className="panel-beveled bg-surface-base overflow-hidden">
           <div className="flex items-center gap-4 px-4 py-2.5 relative">
-            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #6e0a0a, #bc1010 30%, #bc1010 70%, #6e0a0a)' }} />
+            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3a6e, #1a5a9e 30%, #1a5a9e 70%, #0e3a6e)' }} />
             <RmpgLogo height={64} />
             <div className="flex-1">
               <h1 className="text-sm font-bold tracking-wider uppercase text-rmpg-200">Patrol Operations</h1>

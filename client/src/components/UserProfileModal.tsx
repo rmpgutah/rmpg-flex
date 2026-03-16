@@ -340,12 +340,12 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
       <div
         className="relative w-[480px] max-h-[80vh] flex flex-col"
         style={{
-          background: '#1a1a1a',
+          background: '#141e2b',
           border: '1px solid #484848',
           borderTopColor: '#585858',
           borderLeftColor: '#585858',
-          borderBottomColor: '#282828',
-          borderRightColor: '#282828',
+          borderBottomColor: '#162236',
+          borderRightColor: '#162236',
           boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
         }}
         onClick={e => e.stopPropagation()}
@@ -372,7 +372,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
             <div
               className="w-12 h-12 flex items-center justify-center text-base font-bold"
               style={{
-                background: 'linear-gradient(135deg, #8a0c0c, #bc1010)',
+                background: 'linear-gradient(135deg, #144a7e, #1a5a9e)',
                 color: '#fff',
                 border: '2px solid #d93030',
                 borderRadius: 2,
@@ -406,8 +406,8 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                 className="flex items-center gap-1.5 px-4 py-2 text-[10px] font-bold uppercase tracking-wider transition-colors"
                 style={{
                   color: activeTab === tab.id ? '#ffffff' : '#707070',
-                  borderBottom: activeTab === tab.id ? '2px solid #bc1010' : '2px solid transparent',
-                  background: activeTab === tab.id ? 'rgba(188, 16, 16, 0.08)' : 'transparent',
+                  borderBottom: activeTab === tab.id ? '2px solid #1a5a9e' : '2px solid transparent',
+                  background: activeTab === tab.id ? 'rgba(26, 90, 158, 0.08)' : 'transparent',
                 }}
               >
                 <Icon style={{ width: 11, height: 11 }} />
@@ -467,13 +467,13 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
               <div className="grid grid-cols-2 gap-3 mt-2">
                 <div>
                   <label className="field-label">Username</label>
-                  <div className="text-xs text-white px-3 py-1.5" style={{ background: '#111', border: '1px solid #282828' }}>
+                  <div className="text-xs text-white px-3 py-1.5" style={{ background: '#111', border: '1px solid #162236' }}>
                     {user.username}
                   </div>
                 </div>
                 <div>
                   <label className="field-label">Badge #</label>
-                  <div className="text-xs text-white px-3 py-1.5" style={{ background: '#111', border: '1px solid #282828' }}>
+                  <div className="text-xs text-white px-3 py-1.5" style={{ background: '#111', border: '1px solid #162236' }}>
                     {user.badge_number || '—'}
                   </div>
                 </div>
@@ -556,7 +556,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
               </div>
 
               {pwPolicy.length > 0 && (
-                <div className="text-[10px] space-y-0.5 p-2" style={{ color: '#707070', background: '#111', border: '1px solid #282828' }}>
+                <div className="text-[10px] space-y-0.5 p-2" style={{ color: '#707070', background: '#111', border: '1px solid #162236' }}>
                   <div className="font-bold text-[9px] uppercase tracking-wider mb-1" style={{ color: '#a0a0a0' }}>
                     Password Requirements
                   </div>
@@ -592,8 +592,8 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
               <div
                 className="flex items-center gap-3 p-3 mb-3"
                 style={{
-                  background: totpStatus?.enabled ? 'rgba(34, 197, 94, 0.08)' : 'rgba(188, 16, 16, 0.08)',
-                  border: `1px solid ${totpStatus?.enabled ? '#166534' : '#8a0c0c'}`,
+                  background: totpStatus?.enabled ? 'rgba(34, 197, 94, 0.08)' : 'rgba(26, 90, 158, 0.08)',
+                  border: `1px solid ${totpStatus?.enabled ? '#166534' : '#144a7e'}`,
                 }}
               >
                 {totpStatus?.enabled ? (
@@ -704,8 +704,8 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   <div
                     className="p-3"
                     style={{
-                      background: '#0d0000',
-                      border: '1px solid #8a0c0c',
+                      background: '#060c14',
+                      border: '1px solid #144a7e',
                     }}
                   >
                     <div className="flex items-center gap-1 mb-2">
@@ -719,7 +719,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                         <div
                           key={i}
                           className="text-center font-mono text-xs py-1"
-                          style={{ background: '#141414', border: '1px solid #282828', color: '#e0e0e0' }}
+                          style={{ background: '#0d1520', border: '1px solid #162236', color: '#e0e0e0' }}
                         >
                           {code}
                         </div>
@@ -785,7 +785,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
               {/* ═══════════════════════════════════════════ */}
               <div className="mt-4 pt-4 border-t border-rmpg-700">
                 <div className="flex items-center gap-2 mb-3">
-                  <KeyRound style={{ width: 16, height: 16, color: '#bc1010' }} />
+                  <KeyRound style={{ width: 16, height: 16, color: '#1a5a9e' }} />
                   <div className="text-xs font-bold uppercase tracking-wider" style={{ color: '#a0a0a0' }}>
                     Security Keys
                   </div>
@@ -808,7 +808,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                       <div
                         key={cred.id}
                         className="flex items-center justify-between p-2"
-                        style={{ background: '#141414', border: '1px solid #282828' }}
+                        style={{ background: '#0d1520', border: '1px solid #162236' }}
                       >
                         <div className="flex items-center gap-2">
                           <KeyRound style={{ width: 13, height: 13, color: '#4ade80' }} />
@@ -894,7 +894,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                     <div
                       key={session.session_id}
                       className="flex items-center justify-between p-2"
-                      style={{ background: '#141414', border: '1px solid #282828' }}
+                      style={{ background: '#0d1520', border: '1px solid #162236' }}
                     >
                       <div>
                         <div className="text-[11px] text-white font-mono">

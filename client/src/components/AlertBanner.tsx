@@ -34,10 +34,10 @@ export default function AlertBanner({ alerts, onDismiss }: AlertBannerProps) {
             className="w-full flex items-center gap-3 px-3 py-2"
             style={{
               background: isCritical
-                ? 'rgba(188, 16, 16, 0.3)'
+                ? 'rgba(26, 90, 158, 0.3)'
                 : 'rgba(180, 120, 0, 0.2)',
               border: isCritical
-                ? '1px solid #a00e0e'
+                ? '1px solid #164d88'
                 : '1px solid #a07000',
               borderRadius: 0,
             }}

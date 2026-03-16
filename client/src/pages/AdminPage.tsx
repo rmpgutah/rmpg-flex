@@ -50,7 +50,6 @@ import AdminTrainingTab from './admin/AdminTrainingTab';
 import AdminRadioTab from './admin/AdminRadioTab';
 import AdminOfflineTab from './admin/AdminOfflineTab';
 import AdminMicrobiltTab from './admin/AdminMicrobiltTab';
-import AdminSearchBugTab from './admin/AdminSearchBugTab';
 import AdminTraccarTab from './admin/AdminTraccarTab';
 import AdminClearPathGpsTab from './admin/AdminClearPathGpsTab';
 import AdminSecurityTab from './admin/AdminSecurityTab';
@@ -213,7 +212,7 @@ function mapAuditRow(row: AuditRow): AuditEntry {
 // Constants
 // ============================================================
 
-type TabId = 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'searchbug' | 'traccar' | 'clearpathgps' | 'sessions' | 'training' | 'radio' | 'offline' | 'security' | 'branding';
+type TabId = 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'traccar' | 'clearpathgps' | 'sessions' | 'training' | 'radio' | 'offline' | 'security' | 'branding';
 
 const LS_ADMIN_TAB = 'rmpg_admin_tab';
 
@@ -230,7 +229,7 @@ export default function AdminPage() {
   const [activeTab, setActiveTabState] = useState<TabId>(() => {
     try {
       const saved = localStorage.getItem(LS_ADMIN_TAB);
-      if (saved && ['users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'searchbug', 'traccar', 'clearpathgps', 'sessions', 'training', 'radio', 'offline', 'security', 'branding'].includes(saved)) return saved as TabId;
+      if (saved && ['users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'traccar', 'clearpathgps', 'sessions', 'training', 'radio', 'offline', 'security', 'branding'].includes(saved)) return saved as TabId;
     } catch { /* ignore */ }
     return 'users';
   });
@@ -616,7 +615,6 @@ export default function AdminPage() {
       tabs: [
         { id: 'servemanager', label: 'ServeManager', icon: Link2 },
         { id: 'microbilt', label: 'Microbilt', icon: DatabaseZap },
-        { id: 'searchbug', label: 'NCIC Searches', icon: Shield },
         { id: 'traccar', label: 'Traccar GPS', icon: Navigation },
         { id: 'clearpathgps', label: 'ClearPath GPS', icon: Navigation },
         { id: 'training', label: 'Training', icon: GraduationCap },
@@ -641,7 +639,7 @@ export default function AdminPage() {
       {!isMobile && (
         <div className="panel-beveled bg-surface-base overflow-hidden">
           <div className="flex items-center gap-4 px-4 py-2.5 relative">
-            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #6e0a0a, #bc1010 30%, #bc1010 70%, #6e0a0a)' }} />
+            <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3a6e, #1a5a9e 30%, #1a5a9e 70%, #0e3a6e)' }} />
             <RmpgLogo height={64} />
             <div className="flex-1">
               <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: '#d0d0d0' }}>System Administration</h1>
@@ -661,7 +659,7 @@ export default function AdminPage() {
       {isMobile && (
         <div
           className="flex overflow-x-auto flex-shrink-0 gap-1 px-2 py-1.5"
-          style={{ background: '#141414', borderBottom: '1px solid #282828' }}
+          style={{ background: '#0d1520', borderBottom: '1px solid #162236' }}
         >
           {tabGroups.flatMap(g => g.tabs).map((tab) => {
             const Icon = tab.icon;
@@ -673,8 +671,8 @@ export default function AdminPage() {
                 className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold whitespace-nowrap shrink-0 transition-colors"
                 style={{
                   color: isActive ? '#ffffff' : '#888888',
-                  background: isActive ? 'rgba(188, 16, 16, 0.15)' : 'transparent',
-                  border: isActive ? '1px solid rgba(188,16,16,0.4)' : '1px solid transparent',
+                  background: isActive ? 'rgba(26, 90, 158, 0.15)' : 'transparent',
+                  border: isActive ? '1px solid rgba(26,90,158,0.4)' : '1px solid transparent',
                 }}
               >
                 <Icon style={{ width: 12, height: 12 }} className={isActive ? 'text-brand-400' : 'text-rmpg-600'} />
@@ -693,8 +691,8 @@ export default function AdminPage() {
             className="flex-shrink-0 overflow-y-auto py-2"
             style={{
               width: 200,
-              background: '#141414',
-              borderRight: '1px solid #282828',
+              background: '#0d1520',
+              borderRight: '1px solid #162236',
             }}
           >
             {tabGroups.map((group) => (
@@ -715,8 +713,8 @@ export default function AdminPage() {
                       className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[11px] transition-colors"
                       style={{
                         color: isActive ? '#ffffff' : '#888888',
-                        background: isActive ? 'rgba(188, 16, 16, 0.12)' : 'transparent',
-                        borderLeft: isActive ? '2px solid #bc1010' : '2px solid transparent',
+                        background: isActive ? 'rgba(26, 90, 158, 0.12)' : 'transparent',
+                        borderLeft: isActive ? '2px solid #1a5a9e' : '2px solid transparent',
                       }}
                     >
                       <Icon style={{ width: 13, height: 13 }} className={isActive ? 'text-brand-400' : 'text-rmpg-600'} />
@@ -836,13 +834,6 @@ export default function AdminPage() {
           />
         )}
 
-        {activeTab === 'searchbug' && (
-          <AdminSearchBugTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
 
         {activeTab === 'traccar' && (
           <AdminTraccarTab

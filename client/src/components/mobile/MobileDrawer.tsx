@@ -251,15 +251,15 @@ export default function MobileDrawer({
         {/* Crimson accent */}
         <div
           className="absolute top-0 left-0 right-0 h-[2px]"
-          style={{ background: 'linear-gradient(90deg, #bc1010, #6e0a0a)' }}
+          style={{ background: 'linear-gradient(90deg, #1a5a9e, #0e3a6e)' }}
         />
 
         {/* ── User Header ── */}
         <div
           className="flex items-center gap-3 px-4 py-4"
           style={{
-            background: 'linear-gradient(180deg, #1e1e1e 0%, #1a1a1a 100%)',
-            borderBottom: '1px solid #303030',
+            background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)',
+            borderBottom: '1px solid #1e3048',
           }}
         >
           {/* Avatar */}
@@ -274,7 +274,7 @@ export default function MobileDrawer({
             <div
               className="w-11 h-11 flex items-center justify-center text-sm font-bold flex-shrink-0"
               style={{
-                background: 'linear-gradient(135deg, #8a0c0c, #bc1010)',
+                background: 'linear-gradient(135deg, #144a7e, #1a5a9e)',
                 color: '#fff',
                 border: '2px solid #d93030',
               }}
@@ -346,11 +346,11 @@ export default function MobileDrawer({
                       style={{
                         minHeight: 48,
                         background: isActive
-                          ? 'rgba(188, 16, 16, 0.15)'
+                          ? 'rgba(26, 90, 158, 0.15)'
                           : 'transparent',
                         color: isActive ? '#fff' : '#c8c8c8',
                         borderLeft: isActive
-                          ? '3px solid #bc1010'
+                          ? '3px solid #1a5a9e'
                           : '3px solid transparent',
                       }}
                     >
@@ -376,7 +376,7 @@ export default function MobileDrawer({
         {/* ── Status Footer ── */}
         <div
           className="border-t border-rmpg-700 px-4 py-3"
-          style={{ background: '#141414' }}
+          style={{ background: '#0d1520' }}
         >
           {/* Status indicators row */}
           <div className="flex items-center gap-3 mb-3">
@@ -403,7 +403,7 @@ export default function MobileDrawer({
             </div>
 
             {/* Divider */}
-            <div className="w-px h-4" style={{ background: '#303030' }} />
+            <div className="w-px h-4" style={{ background: '#1e3048' }} />
 
             {/* WebSocket */}
             <div className="flex items-center gap-1.5">
@@ -419,7 +419,7 @@ export default function MobileDrawer({
             </div>
 
             {/* Divider */}
-            <div className="w-px h-4" style={{ background: '#303030' }} />
+            <div className="w-px h-4" style={{ background: '#1e3048' }} />
 
             {/* Users online */}
             <div className="flex items-center gap-1.5">
@@ -441,8 +441,8 @@ export default function MobileDrawer({
             }}
             className="w-full flex items-center justify-center gap-2 py-3 transition-colors"
             style={{
-              background: 'rgba(188, 16, 16, 0.1)',
-              border: '1px solid rgba(188, 16, 16, 0.3)',
+              background: 'rgba(26, 90, 158, 0.1)',
+              border: '1px solid rgba(26, 90, 158, 0.3)',
               color: '#d93030',
             }}
           >

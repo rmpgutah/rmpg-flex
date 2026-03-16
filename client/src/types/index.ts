@@ -270,6 +270,7 @@ export interface CallForService {
   closed_at?: string;
   archived_at?: string;
   previous_status?: CallStatus;
+  risk_score?: number | null;
   created_by: string;
   updated_at: string;
 }

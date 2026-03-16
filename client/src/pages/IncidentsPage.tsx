@@ -1490,7 +1490,7 @@ export default function IncidentsPage() {
       {/* Sticky Action Bar */}
       <div
         className="flex-shrink-0 px-4 py-2.5 border-t border-rmpg-600 flex items-center gap-2"
-        style={{ background: 'linear-gradient(180deg, #1a1a1a 0%, #141414 100%)' }}
+        style={{ background: 'linear-gradient(180deg, #141e2b 0%, #0d1520 100%)' }}
       >
         {!isEditing ? (
           <>

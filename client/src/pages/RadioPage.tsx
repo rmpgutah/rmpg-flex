@@ -179,15 +179,15 @@ export default function RadioPage() {
   };
 
   return (
-    <div className="h-full flex flex-col" style={{ background: '#1a1a1a' }}>
+    <div className="h-full flex flex-col" style={{ background: '#141e2b' }}>
 
       {/* ─── HTTPS Warning Banner ────────────────────────────── */}
       {!micSupported && (
         <div
           className="flex items-center gap-3 px-4 py-3"
           style={{
-            background: 'rgba(188, 16, 16, 0.15)',
-            borderBottom: '1px solid #6e0a0a',
+            background: 'rgba(26, 90, 158, 0.15)',
+            borderBottom: '1px solid #0e3a6e',
           }}
         >
           <ShieldAlert style={{ width: 18, height: 18, color: '#ef4444', flexShrink: 0 }} />
@@ -365,7 +365,7 @@ export default function RadioPage() {
             {/* Header */}
             <div className="text-center mb-6">
               <div className="flex items-center justify-center gap-2 mb-2">
-                <Radio style={{ width: 24, height: 24, color: '#bc1010' }} />
+                <Radio style={{ width: 24, height: 24, color: '#1a5a9e' }} />
                 <span className="text-lg font-bold font-mono tracking-wider text-white">
                   RADIO
                 </span>
@@ -390,19 +390,19 @@ export default function RadioPage() {
                   disabled={!isConnected}
                   className="group flex flex-col items-center p-4 transition-all duration-150 border"
                   style={{
-                    background: 'linear-gradient(180deg, #252525 0%, #1e1e1e 100%)',
-                    border: '1px solid #383838',
+                    background: 'linear-gradient(180deg, #182840 0%, #1a2636 100%)',
+                    border: '1px solid #2a3e58',
                     opacity: isConnected ? 1 : 0.4,
                   }}
                   onMouseEnter={(e) => {
                     if (isConnected) {
-                      e.currentTarget.style.borderColor = '#bc1010';
+                      e.currentTarget.style.borderColor = '#1a5a9e';
                       e.currentTarget.style.background = 'linear-gradient(180deg, #2a2020 0%, #1e1a1a 100%)';
                     }
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = '#383838';
-                    e.currentTarget.style.background = 'linear-gradient(180deg, #252525 0%, #1e1e1e 100%)';
+                    e.currentTarget.style.borderColor = '#2a3e58';
+                    e.currentTarget.style.background = 'linear-gradient(180deg, #182840 0%, #1a2636 100%)';
                   }}
                 >
                   <span className="text-sm font-bold font-mono tracking-wider text-white">
@@ -426,8 +426,8 @@ export default function RadioPage() {
           <div
             className="flex items-center justify-between px-3 py-2"
             style={{
-              background: 'linear-gradient(180deg, #252525 0%, #1e1e1e 100%)',
-              borderBottom: '1px solid #303030',
+              background: 'linear-gradient(180deg, #182840 0%, #1a2636 100%)',
+              borderBottom: '1px solid #1e3048',
               flexShrink: 0,
             }}
           >
@@ -444,9 +444,9 @@ export default function RadioPage() {
                     className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-mono font-bold tracking-wider whitespace-nowrap transition-all border"
                     style={{
                       background: isActive
-                        ? 'rgba(188, 16, 16, 0.25)'
+                        ? 'rgba(26, 90, 158, 0.25)'
                         : 'transparent',
-                      borderColor: isActive ? '#bc1010' : 'transparent',
+                      borderColor: isActive ? '#1a5a9e' : 'transparent',
                       color: isActive ? '#fff' : '#707070',
                     }}
                   >
@@ -461,7 +461,7 @@ export default function RadioPage() {
             <button
               onClick={leaveChannel}
               className="flex items-center gap-1 px-2 py-1 text-[10px] font-mono font-bold text-rmpg-400 hover:text-red-400 transition-colors ml-2"
-              style={{ border: '1px solid #383838' }}
+              style={{ border: '1px solid #2a3e58' }}
             >
               LEAVE
             </button>
@@ -478,7 +478,7 @@ export default function RadioPage() {
                 className="w-full max-w-sm mb-6 p-4 text-center"
                 style={{
                   background: '#0a0f0a',
-                  border: '2px solid #2a2a2a',
+                  border: '2px solid #1e3048',
                   boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.5)',
                 }}
               >
@@ -559,9 +559,9 @@ export default function RadioPage() {
                   background: isInCall
                     ? 'radial-gradient(circle, #2a2a3a 0%, #1a1a2a 70%, #101018 100%)'
                     : !micSupported
-                      ? 'radial-gradient(circle, #3a3a3a 0%, #2a2a2a 70%, #1a1a1a 100%)'
+                      ? 'radial-gradient(circle, #3a3a3a 0%, #1e3048 70%, #141e2b 100%)'
                       : isTransmitting
-                        ? 'radial-gradient(circle, #d93030 0%, #8a0c0c 70%, #4a0606 100%)'
+                        ? 'radial-gradient(circle, #d93030 0%, #144a7e 70%, #4a0606 100%)'
                         : otherSpeaking
                           ? 'radial-gradient(circle, #b89030 0%, #6a5010 70%, #3a2a06 100%)'
                           : 'radial-gradient(circle, #2a4a2a 0%, #1a3a1a 70%, #0a2a0a 100%)',
@@ -682,8 +682,8 @@ export default function RadioPage() {
               <div
                 className="px-3 py-2"
                 style={{
-                  borderBottom: '1px solid #303030',
-                  background: 'linear-gradient(180deg, #1e1e1e 0%, #181818 100%)',
+                  borderBottom: '1px solid #1e3048',
+                  background: 'linear-gradient(180deg, #1a2636 0%, #181818 100%)',
                 }}
               >
                 <div className="flex items-center gap-2 mb-2">
@@ -744,8 +744,8 @@ export default function RadioPage() {
                 <div
                   className="px-3 py-2 flex items-center justify-between"
                   style={{
-                    borderBottom: '1px solid #252525',
-                    background: 'linear-gradient(180deg, #1e1e1e 0%, #181818 100%)',
+                    borderBottom: '1px solid #182840',
+                    background: 'linear-gradient(180deg, #1a2636 0%, #181818 100%)',
                   }}
                 >
                   <div className="flex items-center gap-1">
@@ -754,7 +754,7 @@ export default function RadioPage() {
                       className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-mono font-bold tracking-wider transition-colors"
                       style={{
                         color: !showHistory ? '#fff' : '#555',
-                        borderBottom: !showHistory ? '2px solid #bc1010' : '2px solid transparent',
+                        borderBottom: !showHistory ? '2px solid #1a5a9e' : '2px solid transparent',
                       }}
                     >
                       <Radio style={{ width: 10, height: 10 }} /> LIVE
@@ -863,7 +863,7 @@ export default function RadioPage() {
                               </span>
                               <span
                                 className="text-[7px] font-black uppercase px-1 py-px"
-                                style={{ background: '#bc1010', color: '#fff' }}
+                                style={{ background: '#1a5a9e', color: '#fff' }}
                               >
                                 {(entry.channel || '').toUpperCase()}
                               </span>

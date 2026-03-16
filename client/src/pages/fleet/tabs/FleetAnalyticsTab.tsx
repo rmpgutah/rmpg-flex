@@ -10,8 +10,8 @@ import type { FleetAnalytics } from '../../../types';
 
 const CHART_TOOLTIP_STYLE = {
   contentStyle: {
-    backgroundColor: '#1a1a1a',
-    border: '1px solid #383838',
+    backgroundColor: '#141e2b',
+    border: '1px solid #2a3e58',
     color: '#e0e0e0',
     fontSize: 10,
     fontFamily: 'Consolas, monospace',
@@ -94,12 +94,12 @@ export default function FleetAnalyticsTab({ analytics, loading }: Props) {
           {maintenance_cost_trend.length > 0 ? (
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={maintenance_cost_trend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#282828" />
-                <XAxis dataKey="month" tick={{ fill: '#707070', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#383838' }} />
-                <YAxis tick={{ fill: '#707070', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#383838' }}
+                <CartesianGrid strokeDasharray="3 3" stroke="#162236" />
+                <XAxis dataKey="month" tick={{ fill: '#707070', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#2a3e58' }} />
+                <YAxis tick={{ fill: '#707070', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#2a3e58' }}
                   tickFormatter={(v) => `$${v}`} />
                 <Tooltip {...CHART_TOOLTIP_STYLE} formatter={(value: any) => [`$${Number(value).toFixed(0)}`, 'Cost']} />
-                <Line type="monotone" dataKey="total_cost" stroke="#bc1010" strokeWidth={2} dot={{ r: 3, fill: '#bc1010' }} />
+                <Line type="monotone" dataKey="total_cost" stroke="#1a5a9e" strokeWidth={2} dot={{ r: 3, fill: '#1a5a9e' }} />
               </LineChart>
             </ResponsiveContainer>
           ) : (
@@ -115,9 +115,9 @@ export default function FleetAnalyticsTab({ analytics, loading }: Props) {
           {mileage_distribution.some(d => d.count > 0) ? (
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={mileage_distribution}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#282828" />
-                <XAxis dataKey="range" tick={{ fill: '#707070', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#383838' }} />
-                <YAxis tick={{ fill: '#707070', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#383838' }} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#162236" />
+                <XAxis dataKey="range" tick={{ fill: '#707070', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#2a3e58' }} />
+                <YAxis tick={{ fill: '#707070', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#2a3e58' }} />
                 <Tooltip {...CHART_TOOLTIP_STYLE} />
                 <Bar dataKey="count" fill="#4a90c4" radius={[2, 2, 0, 0]} />
               </BarChart>
@@ -145,7 +145,7 @@ export default function FleetAnalyticsTab({ analytics, loading }: Props) {
                   innerRadius={30}
                   paddingAngle={2}
                   label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                  labelLine={{ stroke: '#383838' }}
+                  labelLine={{ stroke: '#2a3e58' }}
                 >
                   {status_breakdown.map((entry, index) => (
                     <Cell key={index} fill={entry.color} />
@@ -167,9 +167,9 @@ export default function FleetAnalyticsTab({ analytics, loading }: Props) {
           {fuel_economy_trend.length > 0 ? (
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={fuel_economy_trend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#282828" />
-                <XAxis dataKey="month" tick={{ fill: '#707070', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#383838' }} />
-                <YAxis tick={{ fill: '#707070', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#383838' }}
+                <CartesianGrid strokeDasharray="3 3" stroke="#162236" />
+                <XAxis dataKey="month" tick={{ fill: '#707070', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#2a3e58' }} />
+                <YAxis tick={{ fill: '#707070', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#2a3e58' }}
                   tickFormatter={(v) => `${v} mpg`} />
                 <Tooltip {...CHART_TOOLTIP_STYLE} formatter={(value: any) => [value != null ? `${value} mpg` : 'N/A', 'Avg MPG']} />
                 <Line type="monotone" dataKey="avg_mpg" stroke="#22c55e" strokeWidth={2} dot={{ r: 3, fill: '#22c55e' }} connectNulls />

@@ -266,7 +266,7 @@ WantedBy=multi-user.target
 SVCEOF
     echo "    Service configured for HTTPS (port 443 + HTTP redirect on 80)"
   else
-    # No SSL: listen on port 80
+    # No SSL: listen on port 3001 behind nginx
     cat > /etc/systemd/system/rmpg-flex.service << 'SVCEOF'
 [Unit]
 Description=RMPG Flex CAD/RMS Server
@@ -278,7 +278,7 @@ Type=simple
 User=root
 WorkingDirectory=/opt/rmpg-flex
 Environment=NODE_ENV=production
-Environment=PORT=80
+Environment=PORT=3001
 ExecStart=/usr/bin/npx tsx server/src/index.ts
 Restart=always
 RestartSec=5
