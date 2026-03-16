@@ -257,16 +257,59 @@ router.post('/calls/:id/generate-incident', requireRole('admin', 'manager', 'sup
 
     const narrative = narrativeParts.join('\n');
 
+    // Extract Mountain Time date/time from call timestamps
+    const toMountain = (iso: string | null) => {
+      if (!iso) return { date: '', time: '' };
+      const d = new Date(iso.includes('T') ? iso : iso.replace(' ', 'T') + 'Z');
+      if (isNaN(d.getTime())) return { date: '', time: '' };
+      const mt = d.toLocaleString('en-US', { timeZone: 'America/Denver', hour12: false });
+      const [datePart, timePart] = mt.split(', ');
+      const [m, day, yr] = datePart.split('/');
+      return {
+        date: `${yr}-${m.padStart(2, '0')}-${day.padStart(2, '0')}`,
+        time: timePart?.slice(0, 5) || '',
+      };
+    };
+    const started = toMountain(call.created_at);
+    const ended = toMountain(call.cleared_at);
+
     const result = db.prepare(`
       INSERT INTO incidents (incident_number, call_id, incident_type, priority, status, location_address,
-        property_id, latitude, longitude, narrative, officer_id)
-      VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?)
+        property_id, latitude, longitude, narrative, officer_id, client_id,
+        occurred_date, occurred_time, end_date, end_time,
+        pso_service_type, pso_attempt_number, pso_requestor_name, pso_requestor_phone,
+        pso_requestor_email, pso_billing_code, pso_authorization,
+        process_service_type, process_served_to, process_served_address, process_service_result, process_attempts)
+      VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?, ?, ?)
     `).run(
       incidentNumber, call.id, call.incident_type, call.priority,
       call.location_address || call.property_address || null,
       call.property_id || null, call.latitude ?? null, call.longitude ?? null,
-      narrative, req.user!.userId
+      narrative, req.user!.userId, call.client_id || null,
+      started.date || null, started.time || null, ended.date || null, ended.time || null,
+      call.pso_service_type || null, call.pso_attempt_number || null,
+      call.pso_requestor_name || null, call.pso_requestor_phone || null,
+      call.pso_requestor_email || null, call.pso_billing_code || null,
+      call.pso_authorization || null,
+      call.process_service_type || null, call.process_served_to || null,
+      call.process_served_address || null, call.process_service_result || null,
+      call.process_attempts || null
     );
+
+    // Auto-link persons from the dispatch call to the new incident
+    const callPersons = db.prepare('SELECT person_id, role, notes FROM call_persons WHERE call_id = ?').all(call.id) as any[];
+    if (callPersons.length > 0) {
+      const insertPerson = db.prepare(
+        'INSERT OR IGNORE INTO incident_persons (incident_id, person_id, role, notes, added_by) VALUES (?, ?, ?, ?, ?)'
+      );
+      for (const cp of callPersons) {
+        insertPerson.run(result.lastInsertRowid, cp.person_id, cp.role, cp.notes, req.user!.userId);
+      }
+    }
 
     const incident = db.prepare(`
       SELECT i.*, o.full_name as officer_name, o.badge_number, c.call_number

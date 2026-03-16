@@ -2853,6 +2853,20 @@ function migrateSchema(): void {
   // on maps. WiFi/IP points have reduced accuracy vs hardware GPS.
   addCol('gps_breadcrumbs', 'source', "TEXT DEFAULT 'unknown'");
 
+  // ── PSO fields on incidents (auto-filled from dispatch call on generation) ──
+  addCol('incidents', 'pso_service_type', 'TEXT');
+  addCol('incidents', 'pso_attempt_number', 'INTEGER');
+  addCol('incidents', 'pso_requestor_name', 'TEXT');
+  addCol('incidents', 'pso_requestor_phone', 'TEXT');
+  addCol('incidents', 'pso_requestor_email', 'TEXT');
+  addCol('incidents', 'pso_billing_code', 'TEXT');
+  addCol('incidents', 'pso_authorization', 'TEXT');
+  addCol('incidents', 'process_service_type', 'TEXT');
+  addCol('incidents', 'process_served_to', 'TEXT');
+  addCol('incidents', 'process_served_address', 'TEXT');
+  addCol('incidents', 'process_service_result', 'TEXT');
+  addCol('incidents', 'process_attempts', 'INTEGER');
+
   // ── Backfill case numbers for dispatch calls that don't have one ──
   try {
     const callsWithoutCase = db.prepare(
