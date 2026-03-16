@@ -4046,6 +4046,10 @@ function migrateSchema(): void {
   addCol('call_visit_history', 'time_window', 'TEXT');  // early_morning | daytime | evening
   addCol('call_visit_history', 'is_weekend', 'INTEGER DEFAULT 0');
 
+  // ── SERVE QUEUE — dispatch integration ─────────────────
+  addCol('serve_queue', 'call_id', 'INTEGER REFERENCES calls_for_service(id)');
+  try { db.exec("CREATE INDEX IF NOT EXISTS idx_serve_queue_call ON serve_queue(call_id)"); } catch {}
+
   // ── Backfill dispatch_code from S/Z/B IDs on all calls ────────
   // Ensures dispatch_code always matches current section_id/zone_id/beat_id
   // Uses a single UPDATE...FROM to avoid N+1 queries during startup
@@ -4721,6 +4725,7 @@ function createIndexes(): void {
     CREATE TABLE IF NOT EXISTS serve_queue (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       sm_job_id INTEGER,
+      call_id INTEGER REFERENCES calls_for_service(id),
       officer_id INTEGER REFERENCES users(id),
       serve_date TEXT NOT NULL,
       recipient_name TEXT NOT NULL,
@@ -4751,6 +4756,7 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_serve_queue_officer ON serve_queue(officer_id, serve_date);
     CREATE INDEX IF NOT EXISTS idx_serve_queue_status ON serve_queue(status);
     CREATE INDEX IF NOT EXISTS idx_serve_queue_sm ON serve_queue(sm_job_id);
+    CREATE INDEX IF NOT EXISTS idx_serve_queue_call ON serve_queue(call_id);
 
     CREATE TABLE IF NOT EXISTS serve_attempts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
