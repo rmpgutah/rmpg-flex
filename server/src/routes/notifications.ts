@@ -115,7 +115,7 @@ export function createNotification(
     if (triggerEvent) {
       _sendEmailIfEnabled(db, userId, prefs, prefKey, triggerEvent, title, body);
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating notification:', error?.message || 'Unknown error');
   }
 }

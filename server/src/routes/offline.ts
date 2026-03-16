@@ -13,6 +13,18 @@ import { rateLimit } from '../middleware/rateLimiter';
 import { sanitizeObject } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
 import { generateIncidentNumber } from '../utils/caseNumbers';
+import { auditLog } from '../utils/auditLogger';
+import config from '../config';
+
+/**
+ * Generate HMAC-SHA256 signature for offline secrets in transit.
+ * Prevents tampering if TLS is somehow intercepted.
+ */
+function signSecret(secret: string, userId: number): string {
+  return crypto.createHmac('sha256', config.jwt.secret)
+    .update(`${userId}:${secret}`)
+    .digest('hex');
+}
 
 const router = Router();
 
@@ -125,6 +137,9 @@ router.post('/sync/pull', syncRateLimit, (req: Request, res: Response) => {
 
     const rows = db.prepare(sql).all(...params);
 
+    auditLog(req, 'offline_sync_pull', 'offline_sync', 0,
+      `Pulled ${rows.length} rows from ${table}${since ? ` (since ${since})` : ' (full)'}`);
+
     res.json({
       table,
       rows,
@@ -203,15 +218,17 @@ router.post('/sync/push', syncRateLimit, (req: Request, res: Response) => {
           results.push({ local_id: item.local_id, success: false, error: 'Unsupported operation' });
         }
       } catch (err: any) {
-        results.push({ local_id: item.local_id, success: false, error: err.message });
+        results.push({ local_id: item.local_id, success: false, error: 'Operation failed' });
       }
     }
 
-    res.json({
-      pushed: results.filter(r => r.success).length,
-      failed: results.filter(r => !r.success).length,
-      results,
-    });
+    const pushed = results.filter(r => r.success).length;
+    const failed = results.filter(r => !r.success).length;
+
+    auditLog(req, 'offline_sync_push', 'offline_sync', 0,
+      `Pushed ${pushed} records (${failed} failed) from offline client`);
+
+    res.json({ pushed, failed, results });
   } catch (error: any) {
     console.error('[OFFLINE] Push sync error:', error.message);
     res.status(500).json({ error: 'Failed to push sync data' });
@@ -286,6 +303,11 @@ function pushTimeEntry(db: any, body: any) {
 function pushGpsBreadcrumbs(db: any, body: any) {
   // Body is an array of GPS points
   const points = Array.isArray(body) ? body : (body.points || [body]);
+
+  // Limit GPS batch size to prevent abuse
+  if (points.length > 500) {
+    throw new Error('GPS batch exceeds maximum of 500 points');
+  }
   const stmt = db.prepare(`
     INSERT INTO gps_breadcrumbs (unit_id, officer_id, call_sign, latitude, longitude,
       accuracy, heading, speed, unit_status, recorded_at)
@@ -308,6 +330,11 @@ function pushUpdate(db: any, endpoint: string, body: any) {
   if (parts.length < 3) return;
 
   const entityId = parts[parts.length - 1];
+
+  // Validate entityId is a positive integer to prevent injection
+  if (!/^\d+$/.test(entityId)) {
+    throw new Error('Invalid entity ID');
+  }
 
   if (parts[0] === 'dispatch' && parts[1] === 'calls') {
     const sets: string[] = [];
@@ -372,25 +399,22 @@ router.get('/secrets', requireRole('admin'), (req: Request, res: Response) => {
 });
 
 // ─── GET /my-secret ──────────────────────────────────────────
-// Returns the requesting user's own offline secret
-router.get('/my-secret', (req: Request, res: Response) => {
+// Returns ONLY the requesting user's own offline secret.
+// Admin secret removed — it lives in admin-only /secrets endpoint.
+router.get('/my-secret', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare(
       'SELECT secret FROM offline_pin_secrets WHERE user_id = ?'
     ).get(req.user!.userId);
 
-    // Also get the admin secret (needed for local PIN validation)
-    const adminUser = db.prepare(
-      `SELECT id FROM users WHERE role = 'admin' ORDER BY id ASC LIMIT 1`
-    ).get() as any;
-    const adminSecret = adminUser
-      ? db.prepare('SELECT secret FROM offline_pin_secrets WHERE user_id = ?').get(adminUser.id)
-      : null;
+    auditLog(req, 'offline_secret_accessed', 'offline_secret', req.user!.userId,
+      'User accessed their own offline secret');
 
+    const secret = row ? (row as any).secret : null;
     res.json({
-      secret: row ? (row as any).secret : null,
-      admin_secret: adminSecret ? (adminSecret as any).secret : null,
+      secret,
+      signature: secret ? signSecret(secret, req.user!.userId) : null,
     });
   } catch (error: any) {
     console.error('[OFFLINE] Get my-secret error:', error.message);
@@ -427,7 +451,10 @@ router.post('/secrets/generate', requireRole('admin'), (req: Request, res: Respo
       ON CONFLICT(user_id) DO UPDATE SET secret = excluded.secret, rotated_at = ?
     `).run(userId, secret, now, now);
 
-    res.json({ userId, secret, generated_at: now });
+    auditLog(req, 'offline_secret_generated', 'offline_secret', userId,
+      `Generated/rotated offline secret for user ${userId}`);
+
+    res.json({ userId, secret, signature: signSecret(secret, userId), generated_at: now });
   } catch (error: any) {
     console.error('[OFFLINE] Generate secret error:', error.message);
     res.status(500).json({ error: 'Failed to generate offline secret' });
@@ -455,6 +482,9 @@ router.post('/secrets/generate-all', requireRole('admin'), (req: Request, res: R
       }
     });
     tx();
+
+    auditLog(req, 'offline_secrets_bulk_generated', 'offline_secret', 0,
+      `Bulk-generated offline secrets for ${users.length} users`);
 
     res.json({ generated: users.length });
   } catch (error: any) {

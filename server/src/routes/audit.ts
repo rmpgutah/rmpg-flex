@@ -105,7 +105,7 @@ router.get('/logs', (req: Request, res: Response) => {
         totalPages
       }
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching audit logs:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to fetch audit logs' });
   }
@@ -163,7 +163,7 @@ router.get('/stats', (req: Request, res: Response) => {
       topActions,
       topUsers
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching audit stats:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to fetch audit statistics' });
   }

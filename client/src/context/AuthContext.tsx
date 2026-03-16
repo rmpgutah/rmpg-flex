@@ -157,7 +157,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         const res = await fetchWithTimeout('/api/auth/refresh', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
           body: JSON.stringify({ refreshToken }),
         });
 
@@ -261,7 +261,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (refreshToken) {
             const refreshRes = await fetchWithTimeout('/api/auth/refresh', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
               body: JSON.stringify({ refreshToken }),
             });
 

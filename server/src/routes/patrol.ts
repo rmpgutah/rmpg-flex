@@ -23,7 +23,7 @@ router.get('/checkpoints', requireRole('admin', 'manager', 'supervisor', 'office
     `).all();
 
     res.json(checkpoints);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching checkpoints:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to fetch checkpoints' });
   }
@@ -44,7 +44,7 @@ router.get('/checkpoints/property/:propertyId', requireRole('admin', 'manager', 
     `).all(req.params.propertyId);
 
     res.json(checkpoints);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching property checkpoints:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to fetch property checkpoints' });
   }
@@ -100,7 +100,7 @@ router.post('/checkpoints', requireRole('admin', 'manager', 'supervisor'), (req:
     );
 
     res.status(201).json(checkpoint);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating checkpoint:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to create checkpoint' });
   }
@@ -158,7 +158,7 @@ router.put('/checkpoints/:id', requireRole('admin', 'manager', 'supervisor'), (r
     `).get(id);
 
     res.json(updated);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error updating checkpoint:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to update checkpoint' });
   }
@@ -190,7 +190,7 @@ router.delete('/checkpoints/:id', requireRole('admin', 'manager', 'supervisor'),
     );
 
     res.json({ message: 'Checkpoint deleted successfully' });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error deleting checkpoint:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to delete checkpoint' });
   }
@@ -312,7 +312,7 @@ router.post('/scan', requireRole('admin', 'manager', 'supervisor', 'officer'), (
     );
 
     res.status(201).json({ ...(scan as any), checkpoint_name: checkpoint.name, status });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error recording scan:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to record scan' });
   }
@@ -417,7 +417,7 @@ router.get('/scans', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
 
 
     res.json(scans);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching scans:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to fetch scans' });
   }
@@ -489,7 +489,7 @@ router.get('/compliance', requireRole('admin', 'manager', 'supervisor', 'officer
     });
 
     res.json(compliance);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching compliance stats:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to fetch compliance stats' });
   }

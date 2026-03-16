@@ -214,7 +214,7 @@ if (config.isProduction) {
   app.use('/api', (req, res, next) => {
     // Skip safe methods (GET, HEAD, OPTIONS) and auth routes (login needs to work without header)
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
-    if (req.path.startsWith('/auth/login') || req.path.startsWith('/auth/refresh')
+    if (req.path.startsWith('/auth/login')
         || req.path.startsWith('/webhook/')) return next();
 
     const csrfHeader = req.headers['x-requested-with'];
@@ -229,6 +229,8 @@ if (config.isProduction) {
 // ─── Per-route body size limits ──────────────────────
 // Auth endpoints should have tiny payloads — prevent abuse with oversized bodies
 app.use('/api/auth', express.json({ limit: '16kb' }));
+// Offline sync — limit to 256kb to prevent data exfiltration abuse via oversized pushes
+app.use('/api/offline', express.json({ limit: '256kb' }));
 
 // Request timeout — 30s default, skip for upload routes (large files)
 app.use((req, res, next) => {

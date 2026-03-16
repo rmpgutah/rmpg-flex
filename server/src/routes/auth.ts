@@ -45,6 +45,7 @@ import {
   isPasswordInHistory,
   addToPasswordHistory,
 } from '../utils/passwordExpiry';
+import { validateEmail, validatePhone } from '../utils/inputValidation';
 
 const router = Router();
 
@@ -859,6 +860,12 @@ router.put('/profile', authenticateToken, (req: Request, res: Response) => {
   try {
     const { email, phone, first_name, last_name } = req.body;
     const db = getDb();
+
+    // Validate input formats
+    const emailErr = validateEmail(email);
+    if (emailErr) { res.status(400).json({ error: emailErr }); return; }
+    const phoneErr = validatePhone(phone);
+    if (phoneErr) { res.status(400).json({ error: phoneErr }); return; }
 
     const user = db.prepare('SELECT id FROM users WHERE id = ?')
       .get(req.user!.userId) as any;

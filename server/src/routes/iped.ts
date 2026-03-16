@@ -219,7 +219,7 @@ router.post('/jobs', requireRole('admin', 'manager'), async (req: Request, res: 
         outputPath: outputPath || path.join(inputPath, '../iped-output'),
         profile,
         jobType,
-        createdBy: userId,
+        createdBy: userId!,
       }).catch(err => {
         console.error(`[IPED] Job ${jobId} failed:`, err?.message || err);
       });

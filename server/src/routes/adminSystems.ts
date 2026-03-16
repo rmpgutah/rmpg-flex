@@ -167,7 +167,7 @@ router.use((_req, _res, next) => {
     try {
       initTables();
       tablesInitialized = true;
-    } catch (err) {
+    } catch (err: any) {
       console.error('adminSystems initTables retry failed:', err?.message || 'Unknown error');
     }
   }

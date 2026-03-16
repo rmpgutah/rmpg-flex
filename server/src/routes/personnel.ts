@@ -11,6 +11,7 @@ import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 import { queueOverlayProcessing, type BodyCamOverlayConfig } from '../utils/videoOverlay';
+import { validateEmail, validatePhone, validateBadgeNumber, validateAll } from '../utils/inputValidation';
 
 const execFileAsync = promisify(execFile);
 
@@ -254,6 +255,17 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
       return;
     }
 
+    // Validate field formats
+    const validationError = validateAll(
+      validateEmail(email),
+      validatePhone(phone),
+      validateBadgeNumber(badge_number),
+    );
+    if (validationError) {
+      res.status(400).json({ error: validationError });
+      return;
+    }
+
     // Validate role against allowlist
     const VALID_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'];
     if (!VALID_ROLES.includes(role)) {
@@ -336,6 +348,17 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id) as any;
     if (!user) {
       res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    // Validate field formats on update
+    const updateValidationError = validateAll(
+      validateEmail(req.body.email),
+      validatePhone(req.body.phone),
+      validateBadgeNumber(req.body.badge_number),
+    );
+    if (updateValidationError) {
+      res.status(400).json({ error: updateValidationError });
       return;
     }
 

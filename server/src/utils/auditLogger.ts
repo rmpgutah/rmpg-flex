@@ -163,6 +163,20 @@ export type AuditAction =
   | 'crm_task_updated'
   | 'crm_task_deleted'
   | 'crm_activity_logged'
+  // Offline Sync
+  | 'offline_sync_pull'
+  | 'offline_sync_push'
+  | 'offline_secret_accessed'
+  | 'offline_secret_generated'
+  | 'offline_secrets_bulk_generated'
+  // User Preferences
+  | 'preferences_updated'
+  | 'preferences_reset'
+  // Microbilt / OFAC
+  | 'microbilt_credentials_updated'
+  | 'microbilt_credentials_cleared'
+  | 'microbilt_products_updated'
+  | 'ofac_search'
   // Generic CRUD (used by newer routes)
   | 'CREATE'
   | 'UPDATE'
@@ -223,7 +237,11 @@ export type AuditEntityType =
   | 'crm_proposals'
   | 'crm_proposal_templates'
   | 'lead_scrape_sources'
-  | 'forensic_case';
+  | 'forensic_case'
+  | 'offline_sync'
+  | 'offline_secret'
+  | 'user_preferences'
+  | 'ofac_screening';
 
 // Sensitive field patterns that must never appear in audit log details
 const SENSITIVE_PATTERNS = [
