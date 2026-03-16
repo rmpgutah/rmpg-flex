@@ -139,6 +139,7 @@ export function useApi<T = unknown>(options?: UseApiOptions) {
       const token = getToken();
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
         ...customHeaders,
       };
 

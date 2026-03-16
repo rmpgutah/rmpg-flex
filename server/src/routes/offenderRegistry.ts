@@ -159,7 +159,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor'), (req: Request, r
 });
 
 // ─── PUT /:id ────────────────────────────────────────────
-router.put('/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -191,7 +191,7 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request,
 });
 
 // ─── PUT /:id/clear ──────────────────────────────────────
-router.put('/:id/clear', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/:id/clear', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();

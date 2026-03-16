@@ -256,7 +256,7 @@ export async function verifyAuthentication(
         id: storedCred.credential_id,
         publicKey: new Uint8Array(Buffer.from(storedCred.public_key, 'base64url')),
         counter: storedCred.sign_count,
-        transports: JSON.parse(storedCred.transports || '[]'),
+        transports: (() => { try { return JSON.parse(storedCred.transports || '[]'); } catch { return []; } })(),
       },
     });
   } catch (err: any) {

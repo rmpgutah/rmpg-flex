@@ -19,6 +19,10 @@ router.post('/calls/archive-bulk', requireRole('admin', 'manager', 'dispatcher')
     let callsToArchive: any[] = [];
 
     if (call_ids && Array.isArray(call_ids) && call_ids.length > 0) {
+      if (call_ids.length > 500) {
+        res.status(400).json({ error: 'Cannot archive more than 500 calls at once' });
+        return;
+      }
       // Archive specific calls by ID
       const placeholders = call_ids.map(() => '?').join(',');
       callsToArchive = db.prepare(

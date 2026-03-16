@@ -47,6 +47,7 @@ router.get('/calls', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
       startDate,
       endDate,
       propertyId,
+      search,
       archived,
       page = '1',
       limit = '50',
@@ -74,6 +75,11 @@ router.get('/calls', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
     if (propertyId) {
       whereClause += ' AND c.property_id = ?';
       params.push(propertyId);
+    }
+    if (search) {
+      whereClause += " AND (c.call_number LIKE ? ESCAPE '\\' OR c.call_type LIKE ? ESCAPE '\\' OR c.location_address LIKE ? ESCAPE '\\' OR c.narrative LIKE ? ESCAPE '\\')";
+      const s = `%${escapeLike(String(search))}%`;
+      params.push(s, s, s, s);
     }
 
     // Archive filter: exclude archived calls by default, include only when requested
@@ -517,7 +523,7 @@ router.get('/calls/:id', validateParamId, requireRole('admin', 'manager', 'super
     let assignedUnits: any[] = [];
     try {
       const parsed = JSON.parse(call.assigned_unit_ids || '[]');
-      const unitIds = Array.isArray(parsed) ? parsed : [];
+      const unitIds = (Array.isArray(parsed) ? parsed : []).filter((id: any) => typeof id === 'number' && !isNaN(id));
       if (unitIds.length > 0) {
         const placeholders = unitIds.map(() => '?').join(',');
         assignedUnits = db.prepare(`
@@ -851,7 +857,7 @@ router.post('/calls/:id/redispatch', validateParamId, requireRole('admin', 'mana
     let assignedCallSigns: string[] = [];
     try {
       const parsedIds = JSON.parse(call.assigned_unit_ids || '[]');
-      const unitIds = Array.isArray(parsedIds) ? parsedIds : [];
+      const unitIds = (Array.isArray(parsedIds) ? parsedIds : []).filter((id: any) => typeof id === 'number' && !isNaN(id));
       if (unitIds.length) {
         const units = db.prepare(`SELECT call_sign FROM units WHERE id IN (${unitIds.map(() => '?').join(',')})`).all(...unitIds) as any[];
         assignedCallSigns = units.map((u: any) => u.call_sign).filter(Boolean);

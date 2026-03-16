@@ -266,9 +266,10 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
 
   // Fetch the user's assigned unit on mount
   useEffect(() => {
+    let cancelled = false;
     apiFetch<{ id: number; call_sign: string; status: string; gps_source?: string } | null>('/dispatch/gps/my-unit')
       .then((unit) => {
-        if (unit) {
+        if (unit && !cancelled) {
           unitIdRef.current = unit.id;
           setState((prev) => ({ ...prev, unitCallSign: unit.call_sign, unitId: unit.id }));
           gpsSourceRef.current = unit.gps_source || 'browser';
@@ -277,6 +278,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       .catch(() => {
         // User may not have a unit assigned — that's fine, GPS still mandatory
       });
+    return () => { cancelled = true; };
   }, []);
 
   // ─── Batch send ───────────────────────────────────────────

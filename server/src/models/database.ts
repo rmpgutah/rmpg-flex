@@ -4837,8 +4837,8 @@ function seedData(): void {
       console.log('╚══════════════════════════════════════════════════╝');
       console.log('');
     } catch {
-      // If file write fails (e.g. read-only filesystem), log password as fallback
-      console.log(`[SECURITY] Initial admin password: ${randomPassword} — change on first login`);
+      // If file write fails, log only that it failed — never log passwords
+      console.error('[SECURITY] Could not write initial credentials file. Run with write access to server/data/ to generate credentials.');
     }
   }
 

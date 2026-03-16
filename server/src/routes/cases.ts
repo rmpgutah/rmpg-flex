@@ -110,25 +110,33 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
     const { title, case_type = 'general', priority = 'normal', summary, lead_investigator_id, linked_call_id } = req.body;
     if (!title) return res.status(400).json({ error: 'Title is required' });
 
-    const case_number = generateCaseNumber(db, case_type);
-    const result = db.prepare(`
-      INSERT INTO cases (case_number, title, case_type, status, priority, lead_investigator_id,
-        summary, linked_calls, created_by, created_at, updated_at, opened_date)
-      VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(case_number, title, case_type, priority, lead_investigator_id || null, summary || null,
-      linked_call_id ? JSON.stringify([linked_call_id]) : '[]',
-      req.user!.userId, now, now, localToday());
+    // Wrap in transaction to prevent duplicate case numbers from concurrent requests
+    const createCase = db.transaction(() => {
+      const case_number = generateCaseNumber(db, case_type);
+      const result = db.prepare(`
+        INSERT INTO cases (case_number, title, case_type, status, priority, lead_investigator_id,
+          summary, linked_calls, created_by, created_at, updated_at, opened_date)
+        VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(case_number, title, case_type, priority, lead_investigator_id || null, summary || null,
+        linked_call_id ? JSON.stringify([linked_call_id]) : '[]',
+        req.user!.userId, now, now, localToday());
 
-    // Update the linked call with this case_id for bidirectional linkage
-    if (linked_call_id) {
-      db.prepare('UPDATE calls_for_service SET case_id = ?, case_number = ? WHERE id = ?')
-        .run(result.lastInsertRowid, case_number, linked_call_id);
-    }
+      // Update the linked call with this case_id for bidirectional linkage
+      if (linked_call_id) {
+        const callId = parseInt(String(linked_call_id), 10);
+        if (isNaN(callId)) throw new Error('Invalid linked_call_id');
+        db.prepare('UPDATE calls_for_service SET case_id = ?, case_number = ? WHERE id = ?')
+          .run(result.lastInsertRowid, case_number, callId);
+      }
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'create', 'case', ?, ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ case_number, title }), req.ip || 'unknown', now);
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+        VALUES (?, 'create', 'case', ?, ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ case_number, title }), req.ip || 'unknown', now);
 
-    res.status(201).json({ data: { id: result.lastInsertRowid, case_number } });
+      return { id: result.lastInsertRowid, case_number };
+    });
+
+    const caseData = createCase();
+    res.status(201).json({ data: caseData });
   } catch (error: any) {
     console.error('Create case error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });

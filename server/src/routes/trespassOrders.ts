@@ -282,6 +282,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
     db.prepare(`UPDATE trespass_orders SET ${setClauses.join(', ')} WHERE id = ?`).run(...params);
 
     const updated = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(req.params.id) as any;
+    if (!updated) { res.status(404).json({ error: 'Trespass order not found after update' }); return; }
     // Broadcast minimal payload — no subject PII over WebSocket
     broadcast('alerts', 'trespass_order_updated', {
       id: updated.id, order_number: updated.order_number, property_name: updated.property_name,

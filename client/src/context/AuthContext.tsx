@@ -85,13 +85,25 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = AU
 // Generate a device fingerprint hash for trusted device recognition
 // Cached at module level — never changes during a session
 let _cachedFingerprint: string | null = null;
+let _fingerprintPromise: Promise<string> | null = null;
 async function getDeviceFingerprint(): Promise<string> {
   if (_cachedFingerprint) return _cachedFingerprint;
+  if (_fingerprintPromise) return _fingerprintPromise;
+  _fingerprintPromise = _computeFingerprint();
+  return _fingerprintPromise;
+}
+async function _computeFingerprint(): Promise<string> {
   const raw = [
     navigator.userAgent,
     navigator.language,
+    navigator.languages?.join(',') || '',
     screen.width + 'x' + screen.height,
+    screen.colorDepth?.toString() || '',
     Intl.DateTimeFormat().resolvedOptions().timeZone,
+    navigator.hardwareConcurrency?.toString() || '',
+    (navigator as any).deviceMemory?.toString() || '',
+    navigator.maxTouchPoints?.toString() || '0',
+    new Date().getTimezoneOffset().toString(),
   ].join('|');
 
   try {
@@ -358,6 +370,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [pending2FA, setPending2FA] = useState(false);
   const [twoFactorMethods, setTwoFactorMethods] = useState<{ totp: boolean; webauthn: boolean }>({ totp: false, webauthn: false });
   const [tempToken, setTempToken] = useState<string | null>(null);
+  const tempTokenRef = useRef<string | null>(null);
+  // Keep ref in sync so callbacks always see the latest value
+  useEffect(() => { tempTokenRef.current = tempToken; }, [tempToken]);
 
   const cancel2FA = useCallback(() => {
     setPending2FA(false);
@@ -367,15 +382,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const verify2FA = useCallback(async (code: string, trustDevice?: boolean) => {
-    if (!tempToken) throw new Error('No pending 2FA session');
+    const currentToken = tempTokenRef.current || tempToken;
+    if (!currentToken) throw new Error('No pending 2FA session');
     setLoginBusy(true);
     setError(null);
 
     try {
-      const res = await fetch('/api/auth/login/verify-2fa', {
+      const res = await fetchWithTimeout('/api/auth/login/verify-2fa', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tempToken, code, deviceFingerprint: deviceFingerprintRef.current, trustDevice: !!trustDevice }),
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          Authorization: `Bearer ${currentToken}`,
+        },
+        body: JSON.stringify({ tempToken: currentToken, code, deviceFingerprint: deviceFingerprintRef.current, trustDevice: !!trustDevice }),
       });
 
       if (res.ok) {
@@ -424,9 +444,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     try {
       // 1. Get authentication options from server
-      const optionsRes = await fetch('/api/auth/webauthn/authenticate-options', {
+      const optionsRes = await fetchWithTimeout('/api/auth/webauthn/authenticate-options', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
         body: JSON.stringify({ tempToken }),
       });
 
@@ -442,9 +462,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const authResponse = await startAuthentication({ optionsJSON: options });
 
       // 3. Verify with server
-      const verifyRes = await fetch('/api/auth/webauthn/authenticate-verify', {
+      const verifyRes = await fetchWithTimeout('/api/auth/webauthn/authenticate-verify', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
         body: JSON.stringify({ challengeId, tempToken, response: authResponse, trustDevice: !!trustDeviceFlag, deviceFingerprint: deviceFingerprintRef.current }),
       });
 
@@ -501,9 +521,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     try {
       const deviceFingerprint = deviceFingerprintRef.current;
-      const res = await fetch('/api/auth/login', {
+      const res = await fetchWithTimeout('/api/auth/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
         body: JSON.stringify({ username, password, deviceFingerprint }),
       });
 
@@ -607,16 +627,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // ─── Verify Backup Code ──────────────────────────
   const verifyBackupCode = useCallback(async (code: string) => {
-    if (!tempToken) throw new Error('No pending 2FA session');
+    const currentToken = tempTokenRef.current || tempToken;
+    if (!currentToken) throw new Error('No pending 2FA session');
     setLoginBusy(true);
     setError(null);
 
     try {
-      const res = await fetch('/api/auth/login/verify-backup-code', {
+      const res = await fetchWithTimeout('/api/auth/login/verify-backup-code', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${tempToken}`,
+          'X-Requested-With': 'XMLHttpRequest',
+          Authorization: `Bearer ${currentToken}`,
         },
         body: JSON.stringify({ code, deviceFingerprint: deviceFingerprintRef.current }),
       });
@@ -661,12 +683,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setError(null);
 
     try {
-      const res = await fetch('/api/auth/2fa/setup', {
+      const currentToken = tempTokenRef.current || tempToken;
+      const res = await fetchWithTimeout('/api/auth/2fa/setup', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${tempToken}`,
+          'X-Requested-With': 'XMLHttpRequest',
+          ...(currentToken ? { Authorization: `Bearer ${currentToken}` } : {}),
         },
+        body: JSON.stringify({ tempToken: currentToken }),
       });
 
       if (!res.ok) {
@@ -689,7 +714,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoginBusy(false);
     }
-  }, [tempToken, loginBusy]);
+  }, [loginBusy]);
 
   // ─── Confirm 2FA Setup (verify first code) ───────
   const confirmSetup2FA = useCallback(async (code: string) => {
@@ -697,13 +722,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setError(null);
 
     try {
-      const res = await fetch('/api/auth/2fa/setup/verify', {
+      const currentToken = tempTokenRef.current || tempToken;
+      const res = await fetchWithTimeout('/api/auth/2fa/setup/verify', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${tempToken}`,
+          'X-Requested-With': 'XMLHttpRequest',
+          ...(currentToken ? { Authorization: `Bearer ${currentToken}` } : {}),
         },
-        body: JSON.stringify({ code, deviceFingerprint: deviceFingerprintRef.current }),
+        body: JSON.stringify({ code, tempToken: currentToken, deviceFingerprint: deviceFingerprintRef.current }),
       });
 
       if (!res.ok) {
@@ -740,7 +767,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoginBusy(false);
     }
-  }, [tempToken, scheduleRefresh]);
+  }, [scheduleRefresh]);
 
   // ─── Change Password During Login ────────────────
   const changePasswordDuringLogin = useCallback(async (newPassword: string) => {
@@ -748,7 +775,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setError(null);
 
     try {
-      const res = await fetch('/api/auth/login/change-password', {
+      const res = await fetchWithTimeout('/api/auth/login/change-password', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

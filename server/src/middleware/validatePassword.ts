@@ -19,7 +19,11 @@ export function validatePassword(password: string): PasswordValidationResult {
   }
 
   // bcrypt truncates at 72 bytes — passwords beyond this give a false sense of security.
-  // Also prevents DoS from extremely long password strings slowing bcrypt.
+  // Enforce byte-level limit to prevent silent truncation.
+  if (Buffer.byteLength(password, 'utf8') > 72) {
+    errors.push('Password must be 72 bytes or fewer (bcrypt limit)');
+  }
+  // Also prevent DoS from extremely long password strings slowing bcrypt.
   if (password.length > 128) {
     errors.push('Password must be 128 characters or fewer');
   }

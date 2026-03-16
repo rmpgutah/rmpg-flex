@@ -386,7 +386,7 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
             r.hair_color || r.HairColor || r.HAIR_COLOR || null,
             r.eye_color || r.EyeColor || r.EYE_COLOR || null,
             r.address || r.Address || r.ADDRESS || null,
-            r.bail_amount ?? r.BailAmount ?? r.BAIL_AMOUNT ?? null,
+            (() => { const v = parseFloat(r.bail_amount ?? r.BailAmount ?? r.BAIL_AMOUNT); return isNaN(v) || !isFinite(v) ? null : v; })(),
             r.hold_reason || r.HoldReason || null,
             r.notes || null,
             user?.id || null, now, now,
@@ -394,7 +394,9 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
           imported++;
         } catch (rowErr: any) {
           skipped++;
-          if (errors.length < 5) errors.push(`Row ${i + 1}: ${rowErr.message}`);
+          // Log full error server-side for debugging; return generic message to client
+          console.error(`[Arrests Import] Row ${i + 1} error:`, rowErr.message);
+          if (errors.length < 5) errors.push(`Row ${i + 1}: Import failed`);
         }
       }
     });

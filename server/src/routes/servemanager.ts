@@ -91,14 +91,21 @@ function initSmTables(): void {
   `);
 }
 
-try { initSmTables(); } catch (err) { console.error('[ServeManager] Table init failed:', err); }
+// Lazy init — tables are created on first request, after initDatabase() has run
+let smTablesReady = false;
+function ensureSmTables(): void {
+  if (smTablesReady) return;
+  initSmTables();
+  smTablesReady = true;
+}
+router.use((_req, _res, next) => { try { ensureSmTables(); } catch (err) { console.error('[ServeManager] Table init failed:', err); } next(); });
 
 // ============================================================
 // Helpers
 // ============================================================
 
 function ensureTables(): void {
-  try { initSmTables(); } catch { /* ignore */ }
+  try { ensureSmTables(); } catch { /* ignore */ }
 }
 
 function requireApiKey(_req: Request, res: Response): boolean {

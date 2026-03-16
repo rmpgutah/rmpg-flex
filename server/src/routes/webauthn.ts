@@ -114,7 +114,7 @@ router.get('/credentials', authenticateToken, (req: Request, res: Response) => {
 
 // ─── POST /api/auth/webauthn/register-options ───────
 // Generate registration options — user must be authenticated
-router.post('/register-options', authenticateToken, async (req: Request, res: Response) => {
+router.post('/register-options', authenticateToken, mfaRateLimit, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.userId;
     const db = getDb();
@@ -165,7 +165,7 @@ router.post('/register-options', authenticateToken, async (req: Request, res: Re
 
 // ─── POST /api/auth/webauthn/register-verify ────────
 // Verify registration response and store credential
-router.post('/register-verify', authenticateToken, async (req: Request, res: Response) => {
+router.post('/register-verify', authenticateToken, mfaRateLimit, async (req: Request, res: Response) => {
   try {
     const { challengeId, response: regResponse, name } = req.body as {
       challengeId: string;

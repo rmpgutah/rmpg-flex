@@ -28,8 +28,8 @@ function generateLabCaseNumber(): string {
   const prefix = `FL-${year}-`;
   return db.transaction(() => {
     const last = db.prepare(
-      `SELECT lab_case_number FROM forensic_cases WHERE lab_case_number LIKE ? ORDER BY id DESC LIMIT 1`,
-    ).get(`${prefix}%`) as { lab_case_number: string } | undefined;
+      `SELECT lab_case_number FROM forensic_cases WHERE lab_case_number LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT 1`,
+    ).get(`${escapeLike(prefix)}%`) as { lab_case_number: string } | undefined;
     const parsed = last ? parseInt(last.lab_case_number.replace(prefix, ''), 10) : 0;
     const seq = (isNaN(parsed) ? 0 : parsed) + 1;
     return `${prefix}${String(seq).padStart(4, '0')}`;
@@ -46,7 +46,7 @@ function addTimelineEntry(caseId: number, action: string, description: string, u
 
 // ─── GET /stats ──────────────────────────────────────────
 
-router.get('/stats', (_req: Request, res: Response) => {
+router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer'), (_req: Request, res: Response) => {
   try {
     const db = getDb();
     const statusCounts = db.prepare(`
@@ -80,7 +80,7 @@ router.get('/stats', (_req: Request, res: Response) => {
 
 // ─── GET / — List forensic cases ─────────────────────────
 
-router.get('/', (req: Request, res: Response) => {
+router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { status, case_type, priority, examiner, search, page = '1', limit = '50' } = req.query;
@@ -128,7 +128,7 @@ router.get('/', (req: Request, res: Response) => {
 
 // ─── GET /:id — Get single case with details ─────────────
 
-router.get('/:id', validateParamId, (req: Request, res: Response) => {
+router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.id) as any;
@@ -159,6 +159,17 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
     } = req.body;
 
     if (!title?.trim()) return res.status(400).json({ error: 'Title is required' });
+
+    // Validate numeric foreign key IDs to prevent type confusion
+    if (incident_id != null && (isNaN(Number(incident_id)) || Number(incident_id) <= 0)) {
+      return res.status(400).json({ error: 'Invalid incident_id' });
+    }
+    if (assigned_examiner_id != null && (isNaN(Number(assigned_examiner_id)) || Number(assigned_examiner_id) <= 0)) {
+      return res.status(400).json({ error: 'Invalid assigned_examiner_id' });
+    }
+    if (requesting_officer_id != null && (isNaN(Number(requesting_officer_id)) || Number(requesting_officer_id) <= 0)) {
+      return res.status(400).json({ error: 'Invalid requesting_officer_id' });
+    }
 
     const lab_case_number = generateLabCaseNumber();
     const now = localNow();
@@ -479,11 +490,14 @@ router.put('/:caseId/analyses/:analysisId', requireRole('admin', 'manager', 'sup
     );
 
     if (status && status !== existing.status) {
-      addTimelineEntry(
-        parseInt(req.params.caseId as string, 10), 'analysis_update',
-        `${existing.analysis_type} analysis → ${status}`,
-        user.userId, user.fullName || user.username,
-      );
+      const caseIdNum = parseInt(req.params.caseId as string, 10);
+      if (!isNaN(caseIdNum)) {
+        addTimelineEntry(
+          caseIdNum, 'analysis_update',
+          `${existing.analysis_type} analysis → ${status}`,
+          user.userId, user.fullName || user.username,
+        );
+      }
     }
 
     const updated = db.prepare('SELECT * FROM forensic_analyses WHERE id = ?').get(req.params.analysisId);
@@ -514,7 +528,9 @@ router.post('/:id/timeline', validateParamId, requireRole('admin', 'manager', 's
     const { action = 'note', description } = req.body;
     if (!description?.trim()) return res.status(400).json({ error: 'Description is required' });
 
-    addTimelineEntry(parseInt(req.params.id as string, 10), action, description.trim(), user.userId, user.fullName || user.username);
+    const caseIdNum = parseInt(req.params.id as string, 10);
+    if (isNaN(caseIdNum)) { res.status(400).json({ error: 'Invalid case ID' }); return; }
+    addTimelineEntry(caseIdNum, action, description.trim(), user.userId, user.fullName || user.username);
     res.status(201).json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: 'Internal server error' });
@@ -595,7 +611,8 @@ router.post('/:id/hashes/compute', validateParamId, requireRole('admin', 'manage
       filePath = path.resolve(rawFilePath);
       // Prevent path traversal — only allow files within the uploads directory
       const uploadsDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../uploads');
-      if (!filePath.startsWith(uploadsDir)) {
+      const relForensic = path.relative(uploadsDir, filePath);
+      if (relForensic.startsWith('..') || path.isAbsolute(relForensic)) {
         return res.status(403).json({ error: 'Access denied: file path must be within the uploads directory' });
       }
       if (!fileName) {
@@ -1189,7 +1206,7 @@ router.get('/:id/links/search', validateParamId, (req: Request, res: Response) =
         break;
 
       default:
-        return res.status(400).json({ error: `Unknown link type: ${type}` });
+        return res.status(400).json({ error: 'Unknown link type' });
     }
 
     // Mark already-linked items

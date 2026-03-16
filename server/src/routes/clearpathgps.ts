@@ -165,7 +165,8 @@ router.put('/enable', requireRole('admin'), (req: Request, res: Response) => {
     setConfigValue(CONFIG_KEYS.enabled, String(enabled), false);
 
     if (poll_interval_seconds != null) {
-      const interval = Math.max(15, Math.min(300, parseInt(poll_interval_seconds, 10) || 30));
+      const parsed = parseInt(poll_interval_seconds, 10);
+      const interval = Math.max(15, Math.min(300, isNaN(parsed) ? 30 : parsed));
       setConfigValue(CONFIG_KEYS.pollInterval, String(interval), false);
     }
 

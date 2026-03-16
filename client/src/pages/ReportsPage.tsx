@@ -269,6 +269,8 @@ export default function ReportsPage() {
 
   // Fetch all data
   useEffect(() => {
+    let cancelled = false;
+
     async function fetchAllData() {
       setLoading(true);
       setError(null);
@@ -295,19 +297,22 @@ export default function ReportsPage() {
           apiFetch<OfficerActivityData[]>(`/reports/officer-activity?${dateParams.toString()}`),
         ]);
 
+        if (cancelled) return;
         setDashboardData(dashboard);
         setIncidentsData(incidents);
         setResponseTimesData(responseTimes);
         setOfficerActivity(officers);
       } catch (err) {
+        if (cancelled) return;
         setError(err instanceof Error ? err.message : 'Failed to load reports data');
         console.error('Error fetching reports:', err);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
 
     fetchAllData();
+    return () => { cancelled = true; };
   }, [dateRange, customStartDate, customEndDate]);
 
   // Compute stats

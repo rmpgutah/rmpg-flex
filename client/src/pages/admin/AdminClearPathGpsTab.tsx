@@ -163,7 +163,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
     try {
       const data = await apiFetch<{ mappings: CpgMapping[] }>('/clearpathgps/mappings');
       setMappings(data.mappings || []);
-    } catch { /* ignore */ }
+    } catch (e) { console.error('Failed to fetch GPS mappings:', e); }
   }, []);
 
   // ── Fetch units ──
@@ -171,7 +171,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
     try {
       const data = await apiFetch<DispatchUnit[]>('/dispatch/units');
       setUnits(Array.isArray(data) ? data : []);
-    } catch { /* ignore */ }
+    } catch (e) { console.error('Failed to fetch units:', e); }
   }, []);
 
   // ── Fetch settings ──
@@ -179,7 +179,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
     try {
       const data = await apiFetch<{ history_backfill: boolean }>('/clearpathgps/settings');
       setHistoryBackfill(data.history_backfill);
-    } catch { /* ignore */ }
+    } catch (e) { console.error('Failed to fetch GPS settings:', e); }
   }, []);
 
   // ── Fetch dashcam events ──
@@ -189,7 +189,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
       const data = await apiFetch<{ events: DashcamEvent[]; total: number }>('/clearpathgps/dashcam-events?limit=50');
       setDashcamEvents(data.events || []);
       setDashcamTotal(data.total || 0);
-    } catch { /* ignore */ }
+    } catch (e) { console.error('Failed to fetch dashcam events:', e); }
     finally { setLoadingDashcam(false); }
   }, []);
 
@@ -200,7 +200,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
       setMediaStatus(data);
       setMediaSyncEnabled(data.media_sync_enabled);
       setMediaPollInterval(data.media_poll_interval_seconds || 300);
-    } catch { /* ignore */ }
+    } catch (e) { console.error('Failed to fetch media status:', e); }
   }, []);
 
   useEffect(() => {

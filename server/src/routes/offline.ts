@@ -120,7 +120,7 @@ router.post('/sync/pull', syncRateLimit, (req: Request, res: Response) => {
 
     const config = SYNC_TABLES[table];
     const isReference = REFERENCE_TABLES.includes(table);
-    const maxRows = reqLimit || config.limit || 1000;
+    const maxRows = Math.min(reqLimit || config.limit || 1000, 5000);
 
     let sql: string;
     let params: any[];

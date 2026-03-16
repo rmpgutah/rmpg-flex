@@ -111,9 +111,11 @@ router.get('/tasks', requireRole('admin', 'manager', 'contract_manager'), (req: 
     const params: any[] = [];
 
     if (status) {
-      const statuses = (status as string).split(',');
-      sql += ` AND t.status IN (${statuses.map(() => '?').join(',')})`;
-      params.push(...statuses);
+      const statuses = (status as string).split(',').filter(Boolean);
+      if (statuses.length > 0) {
+        sql += ` AND t.status IN (${statuses.map(() => '?').join(',')})`;
+        params.push(...statuses);
+      }
     }
     if (client_id) { sql += ' AND t.client_id = ?'; params.push(client_id); }
     if (assigned_to) { sql += ' AND t.assigned_to = ?'; params.push(assigned_to); }

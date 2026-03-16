@@ -204,6 +204,14 @@ app.post('/api/webhook/github', webhookRateLimit, express.raw({ type: 'applicati
   const pusher = (payload.pusher?.name || 'unknown').slice(0, 50).replace(/[\x00-\x1f\x7f]/g, '');
   console.log(`[Webhook] DEPLOY TRIGGERED — commit=${commitSha}, by=${pusher}`);
 
+  // Prevent concurrent deploys — reject if one is already running
+  if ((global as any).__deployInProgress) {
+    console.warn('[Webhook] Deploy rejected — another deploy is already in progress');
+    res.status(429).json({ status: 'busy', reason: 'Deploy already in progress' });
+    return;
+  }
+  (global as any).__deployInProgress = true;
+
   // Respond immediately, deploy runs async
   res.json({ status: 'deploying', commit: commitSha });
 
@@ -215,6 +223,7 @@ app.post('/api/webhook/github', webhookRateLimit, express.raw({ type: 'applicati
     timeout: 300000,
     env: { ...process.env, HOME: '/root' },
   }, (error, stdout, stderr) => {
+    (global as any).__deployInProgress = false;
     if (error) {
       console.error(`[Webhook] DEPLOY FAILED — ${error.message}`);
       if (stderr) console.error(`[Webhook] STDERR: ${stderr.slice(0, 500)}`);
@@ -237,8 +246,9 @@ if (config.isProduction) {
   app.use('/api', (req, res, next) => {
     // Skip safe methods (GET, HEAD, OPTIONS) and auth routes (login needs to work without header)
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
-    if (req.path === '/auth/login'
-        || req.path === '/auth/login/'
+    // Only exempt login/register/refresh (pre-auth routes) and webhooks — NOT change-password, verify-2fa, etc.
+    const csrfExemptPaths = ['/auth/login', '/auth/register', '/auth/refresh', '/auth/password-policy'];
+    if (csrfExemptPaths.some(p => req.path.startsWith(p))
         || req.path.startsWith('/webhook/')) return next();
 
     const csrfHeader = req.headers['x-requested-with'];

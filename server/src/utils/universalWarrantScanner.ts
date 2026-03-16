@@ -37,9 +37,19 @@ interface UnifiedHit {
   offense_level: string | null;
 }
 
-// Cooldown tracker: personId → last check ISO timestamp
-const lastCheckMap = new Map<number, string>();
+// Cooldown tracker: personId → last check timestamp (ms)
+const lastCheckMap = new Map<number, number>();
 const COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
+const MAX_CACHE_SIZE = 5000;
+
+// Periodically prune stale entries to prevent unbounded memory growth
+function pruneLastCheckMap(): void {
+  if (lastCheckMap.size <= MAX_CACHE_SIZE) return;
+  const cutoff = Date.now() - COOLDOWN_MS;
+  for (const [key, ts] of lastCheckMap) {
+    if (ts < cutoff) lastCheckMap.delete(key);
+  }
+}
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -161,10 +171,11 @@ export async function universalWarrantCheck(
   let warrantsCleared = 0;
 
   // Cooldown check
+  pruneLastCheckMap();
   if (!force) {
-    const last = lastCheckMap.get(personId);
-    if (last) {
-      const elapsed = Date.now() - new Date(last).getTime();
+    const lastTs = lastCheckMap.get(personId);
+    if (lastTs) {
+      const elapsed = Date.now() - lastTs;
       if (elapsed < COOLDOWN_MS) {
         return { personId, personName: '', hitsFound: 0, warrantsCreated: 0, warrantsCleared: 0, errors: [] };
       }
@@ -394,7 +405,7 @@ export async function universalWarrantCheck(
 
   // Only stamp cooldown if at least one source responded successfully
   if (!sourceErrors) {
-    lastCheckMap.set(personId, new Date().toISOString());
+    lastCheckMap.set(personId, Date.now());
   }
 
   return { personId, personName, hitsFound, warrantsCreated, warrantsCleared, errors };

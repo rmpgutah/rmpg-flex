@@ -1,4 +1,6 @@
 import { Router, Request, Response } from 'express';
+import fs from 'fs';
+import path from 'path';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { validateParamId } from '../middleware/sanitize';
@@ -201,6 +203,16 @@ router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Re
     if (doc.file_id) {
       const att = db.prepare('SELECT file_path FROM attachments WHERE file_id = ?').get(doc.file_id) as any;
       if (att) {
+        // Remove the actual file from disk to prevent orphaned files
+        if (att.file_path) {
+          const uploadsDir = path.resolve(process.cwd(), 'uploads');
+          const filePath = path.resolve(uploadsDir, att.file_path);
+          if (!filePath.startsWith(uploadsDir)) {
+            // Path traversal guard
+          } else {
+            try { fs.unlinkSync(filePath); } catch { /* file may already be deleted */ }
+          }
+        }
         db.prepare('DELETE FROM attachments WHERE file_id = ?').run(doc.file_id);
       }
     }

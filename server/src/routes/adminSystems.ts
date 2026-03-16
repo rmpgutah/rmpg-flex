@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { validateParamId } from '../middleware/sanitize';
+import { rateLimit } from '../middleware/rateLimiter';
 import { localNow } from '../utils/timeUtils';
 import { getConnectedClientCount } from '../utils/websocket';
 import { createNotification } from './notifications';
@@ -220,14 +221,18 @@ router.get('/training', requireRole('admin', 'manager', 'supervisor'), (req: Req
 
 // POST /health/client-error — Logs client-side React errors to server log
 router.post('/health/client-error', authenticateToken, (req: Request, res: Response) => {
-  const { message, componentStack, url, timestamp } = req.body || {};
-  const user = (req as any).user;
-  console.error(
-    `[CLIENT ERROR] user=${user?.username || '?'} url=${url || '?'} time=${timestamp || '?'}`,
-    `\n  message: ${message || 'unknown'}`,
-    componentStack ? `\n  components: ${componentStack.trim().split('\n').slice(0, 5).join(' > ')}` : '',
-  );
-  res.json({ received: true });
+  try {
+    const { message, componentStack, url, timestamp } = req.body || {};
+    const user = (req as any).user;
+    console.error(
+      `[CLIENT ERROR] user=${user?.username || '?'} url=${url || '?'} time=${timestamp || '?'}`,
+      `\n  message: ${message || 'unknown'}`,
+      componentStack ? `\n  components: ${String(componentStack).trim().split('\n').slice(0, 5).join(' > ')}` : '',
+    );
+    res.json({ received: true });
+  } catch {
+    res.json({ received: true });
+  }
 });
 
 // ============================================================
@@ -1211,7 +1216,8 @@ router.delete('/notification-rules/:id', validateParamId, requireRole('admin', '
 });
 
 // POST /notification-rules/:id/test — Send a test notification using this rule
-router.post('/notification-rules/:id/test', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+const testNotifRateLimit = rateLimit({ windowMs: 60_000, maxRequests: 5, message: 'Too many test notifications — try again in a minute' });
+router.post('/notification-rules/:id/test', validateParamId, requireRole('admin', 'manager'), testNotifRateLimit, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const rule = db.prepare('SELECT * FROM notification_rules WHERE id = ?').get(req.params.id) as any;

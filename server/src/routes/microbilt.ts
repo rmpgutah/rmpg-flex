@@ -147,6 +147,7 @@ async function getAccessToken(): Promise<string | null> {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: 'grant_type=client_credentials',
+      signal: AbortSignal.timeout(15000),
     });
 
     if (!resp.ok) {

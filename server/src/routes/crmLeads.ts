@@ -49,9 +49,11 @@ router.get('/leads', requireRole('admin', 'manager', 'contract_manager'), (req: 
       params.push(source);
     }
     if (pipeline_stage) {
-      const stages = (pipeline_stage as string).split(',').slice(0, 20);
-      sql += ` AND l.pipeline_stage IN (${stages.map(() => '?').join(',')})`;
-      params.push(...stages);
+      const stages = (pipeline_stage as string).split(',').filter(Boolean).slice(0, 20);
+      if (stages.length > 0) {
+        sql += ` AND l.pipeline_stage IN (${stages.map(() => '?').join(',')})`;
+        params.push(...stages);
+      }
     }
     if (score_min) {
       sql += ' AND l.lead_score >= ?';
@@ -483,7 +485,7 @@ router.post('/leads/bulk-action', requireRole('admin', 'manager', 'contract_mana
         break;
 
       default:
-        res.status(400).json({ error: `Unknown action: ${action}` });
+        res.status(400).json({ error: 'Unknown action. Must be one of: mark_contacted, assign, dismiss' });
         return;
     }
 
@@ -631,7 +633,7 @@ router.post('/scrape-sources/:key/poll-now', requireRole('admin', 'manager'), as
     const sourceKey = String(key);
     const scraper = getRegisteredScraper(sourceKey);
     if (!scraper) {
-      res.status(404).json({ error: `No scraper registered for source: ${sourceKey}` });
+      res.status(404).json({ error: 'No scraper registered for the specified source' });
       return;
     }
 

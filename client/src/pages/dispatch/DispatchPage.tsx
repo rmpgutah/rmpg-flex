@@ -150,6 +150,16 @@ export default function DispatchPage() {
   const [showCreateVehicleModal, setShowCreateVehicleModal] = useState(false);
   const [isCreatingRecord, setIsCreatingRecord] = useState(false);
 
+  // Clean up search timers and abort controllers on unmount
+  useEffect(() => {
+    return () => {
+      if (personSearchTimerRef.current) clearTimeout(personSearchTimerRef.current);
+      if (vehicleSearchTimerRef.current) clearTimeout(vehicleSearchTimerRef.current);
+      if (personAbortRef.current) personAbortRef.current.abort();
+      if (vehicleAbortRef.current) vehicleAbortRef.current.abort();
+    };
+  }, []);
+
   // Close person/vehicle dropdowns on outside click
   useEffect(() => {
     if (!showPersonDropdown && !showVehicleDropdown) return;

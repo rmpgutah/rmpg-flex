@@ -547,10 +547,19 @@ router.post('/refresh', refreshRateLimit, (req: Request, res: Response) => {
     const newRefreshToken = generateRefreshToken(payload);
     const newTokenHash = crypto.createHash('sha256').update(newRefreshToken).digest('hex');
 
+    const now = localNow();
     db.prepare(`
       UPDATE sessions SET refresh_token_hash = ?, last_used_at = ?
       WHERE id = ?
-    `).run(newTokenHash, localNow(), session.id);
+    `).run(newTokenHash, now, session.id);
+
+    // Audit log token refresh for security monitoring
+    try {
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+        VALUES (?, 'token_refresh', 'session', ?, ?, ?, ?)
+      `).run(user.id, session.id, `Session ${session.session_id} refreshed`, req.ip || 'unknown', now);
+    } catch { /* activity_log insert failure should not block the refresh */ }
 
     res.json({
       token: newAccessToken,
@@ -1091,10 +1100,17 @@ router.post('/verify-2fa', mfaRateLimit, (req: Request, res: Response) => {
       return;
     }
 
-    // Verify the temp token
+    // Input length validation — TOTP codes are 6-8 digits, backup codes up to 20 chars
+    if (typeof code !== 'string' || code.length > 20 || typeof tempToken !== 'string' || tempToken.length > 2048) {
+      res.status(400).json({ error: 'Invalid input' });
+      return;
+    }
+
+    // Verify the temp token — validate type claim to prevent token confusion attacks
     let decoded: JwtPayload;
     try {
       decoded = jwt.verify(tempToken, config.jwt.secret) as JwtPayload;
+      if (!decoded || typeof decoded !== 'object') throw new Error('Invalid token payload');
     } catch {
       res.status(401).json({ error: 'Verification session expired. Please log in again.' });
       return;
@@ -1240,10 +1256,8 @@ router.post('/verify-2fa', mfaRateLimit, (req: Request, res: Response) => {
     logLoginAttempt(user.username, ip, true, undefined, userAgent, deviceFingerprint);
 
     // Trust this device if requested
-    console.log(`[Auth] verify-2fa trust check: shouldTrust=${shouldTrust}, hasFingerprint=${!!deviceFingerprint}, userId=${user.id}`);
     if (shouldTrust && deviceFingerprint) {
       trustDevice(user.id, deviceFingerprint, ip, userAgent);
-      console.log(`[Auth] Device trusted for user ${user.id}`);
     }
 
     // Device fingerprint tracking (new device notification)
@@ -1445,7 +1459,7 @@ router.post('/totp/setup', authenticateToken, async (req: Request, res: Response
 
 // ─── POST /api/auth/totp/verify-setup ────────────────
 // Verify the first TOTP code to activate 2FA
-router.post('/totp/verify-setup', authenticateToken, (req: Request, res: Response) => {
+router.post('/totp/verify-setup', authenticateToken, mfaRateLimit, (req: Request, res: Response) => {
   try {
     const { code } = req.body;
     if (!code) {
@@ -1601,7 +1615,7 @@ router.post('/2fa/setup', authenticateAnyToken, async (req: Request, res: Respon
 
 // ─── POST /api/auth/2fa/setup/verify ────────────────────
 // Confirm first TOTP code to activate 2FA
-router.post('/2fa/setup/verify', authenticateAnyToken, (req: Request, res: Response) => {
+router.post('/2fa/setup/verify', authenticateAnyToken, mfaRateLimit, (req: Request, res: Response) => {
   try {
     const { code } = req.body;
     const userId = req.user!.userId;
@@ -1856,7 +1870,7 @@ router.post('/2fa/disable', authenticateToken, (req: Request, res: Response) => 
 
 // ─── POST /api/auth/login/verify-2fa ────────────────────
 // Verify TOTP code during login (uses user_totp_secrets table)
-router.post('/login/verify-2fa', authenticateTempToken, (req: Request, res: Response) => {
+router.post('/login/verify-2fa', authenticateTempToken, mfaRateLimit, (req: Request, res: Response) => {
   try {
     const { code, trustDevice: shouldTrust, deviceFingerprint } = req.body;
     const ip = req.ip || 'unknown';
@@ -1983,7 +1997,7 @@ router.post('/login/verify-2fa', authenticateTempToken, (req: Request, res: Resp
 });
 
 // ─── POST /api/auth/login/verify-backup-code ────────────
-router.post('/login/verify-backup-code', authenticateTempToken, (req: Request, res: Response) => {
+router.post('/login/verify-backup-code', authenticateTempToken, mfaRateLimit, (req: Request, res: Response) => {
   try {
     const { code, deviceFingerprint } = req.body;
     const ip = req.ip || 'unknown';

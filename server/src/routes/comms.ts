@@ -206,6 +206,10 @@ router.delete('/messages/:id', validateParamId, (req: Request, res: Response) =>
     }
 
     db.prepare('DELETE FROM messages WHERE id = ?').run(req.params.id);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'message_deleted', 'message', ?, ?, ?)`).run(
+      req.user!.userId, req.params.id, `Deleted message #${req.params.id}`, req.ip || 'unknown'
+    );
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
     console.error('Delete message error:', error?.message || 'Unknown error');
@@ -216,10 +220,10 @@ router.delete('/messages/:id', validateParamId, (req: Request, res: Response) =>
 // ─── BOLOS ────────────────────────────────────────────
 
 // GET /api/comms/bolos - List all BOLOs
-router.get('/bolos', (req: Request, res: Response) => {
+router.get('/bolos', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { status, type, archived } = req.query;
+    const { status, type, search, archived } = req.query;
 
     let whereClause = 'WHERE 1=1';
     const params: any[] = [];
@@ -231,6 +235,11 @@ router.get('/bolos', (req: Request, res: Response) => {
     if (type) {
       whereClause += ' AND b.type = ?';
       params.push(type);
+    }
+    if (search) {
+      whereClause += " AND (b.subject LIKE ? ESCAPE '\\' OR b.description LIKE ? ESCAPE '\\')";
+      const s = `%${escapeLike(String(search))}%`;
+      params.push(s, s);
     }
 
     // Archive filter
@@ -258,7 +267,7 @@ router.get('/bolos', (req: Request, res: Response) => {
 });
 
 // GET /api/comms/bolos/active - Get active BOLOs
-router.get('/bolos/active', (req: Request, res: Response) => {
+router.get('/bolos/active', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const bolos = db.prepare(`
@@ -280,7 +289,7 @@ router.get('/bolos/active', (req: Request, res: Response) => {
 });
 
 // GET /api/comms/bolos/check - Check active BOLOs for matching descriptions
-router.get('/bolos/check', (req: Request, res: Response) => {
+router.get('/bolos/check', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { address, subject, vehicle } = req.query;
@@ -347,7 +356,7 @@ router.get('/bolos/check', (req: Request, res: Response) => {
 });
 
 // GET /api/comms/bolos/:id - Get single BOLO
-router.get('/bolos/:id', validateParamId, (req: Request, res: Response) => {
+router.get('/bolos/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const bolo = db.prepare(`
@@ -721,7 +730,8 @@ router.get('/radio/audio/:id', validateParamId, (req: Request, res: Response) =>
     const filePath = path.join(uploadsDir, row.audio_file);
 
     // Security: ensure resolved path is within uploads directory
-    if (!filePath.startsWith(uploadsDir)) {
+    const relPath = path.relative(uploadsDir, filePath);
+    if (relPath.startsWith('..') || path.isAbsolute(relPath)) {
       return res.status(403).json({ error: 'Access denied' });
     }
 

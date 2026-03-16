@@ -240,6 +240,11 @@ router.put('/reorder', requireRole(...WRITE_ROLES), (req: Request, res: Response
       return;
     }
 
+    if (order.length > 500) {
+      res.status(400).json({ error: 'Cannot reorder more than 500 items at once' });
+      return;
+    }
+
     const stmt = db.prepare('UPDATE serve_queue SET sort_order = ?, updated_at = ? WHERE id = ?');
     const now = localNow();
 
@@ -520,6 +525,7 @@ router.post('/:id/skip-trace', validateParamId, requireRole(...WRITE_ROLES), asy
 
     const stResponse = await fetch(endpoint, {
       headers: { Authorization: authHeader || '' },
+      signal: AbortSignal.timeout(30000),
     });
 
     if (!stResponse.ok) {

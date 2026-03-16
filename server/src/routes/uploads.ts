@@ -9,6 +9,7 @@ import { getDb } from '../models/database';
 import { authenticateToken, requireRole, type JwtPayload } from '../middleware/auth';
 import { rateLimit } from '../middleware/rateLimiter';
 import { validateParamId } from '../middleware/sanitize';
+import { auditLog } from '../utils/auditLogger';
 import config from '../config';
 
 // Rate limiter for file uploads — prevent abuse/DoS via large uploads
@@ -39,10 +40,23 @@ if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
 
-/** Resolve file path and verify it stays within UPLOAD_DIR to prevent path traversal */
+/** Resolve file path and verify it stays within UPLOAD_DIR to prevent path traversal.
+ *  Uses fs.realpathSync on the parent dir to defeat symlink-based escapes. */
 function safeFilePath(relativePath: string): string | null {
+  // Block null bytes which can truncate paths in some OS APIs
+  if (relativePath.includes('\0')) return null;
   const resolved = path.resolve(UPLOAD_DIR, relativePath);
-  if (!resolved.startsWith(UPLOAD_DIR)) return null;
+  const rel = path.relative(UPLOAD_DIR, resolved);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) return null;
+  // For existing files, verify the real path (after symlink resolution) stays within UPLOAD_DIR
+  try {
+    const realUploadDir = fs.realpathSync(UPLOAD_DIR);
+    const parentDir = path.dirname(resolved);
+    if (fs.existsSync(parentDir)) {
+      const realParent = fs.realpathSync(parentDir);
+      if (!realParent.startsWith(realUploadDir)) return null;
+    }
+  } catch { /* parent doesn't exist yet — will be created during upload */ }
   return resolved;
 }
 
@@ -81,12 +95,29 @@ const MAGIC_BYTES: Record<string, { offset: number; bytes: number[] }[]> = {
   '.wav':  [{ offset: 0, bytes: [0x52, 0x49, 0x46, 0x46] }],
   '.mp3':  [{ offset: 0, bytes: [0xFF, 0xFB] }, { offset: 0, bytes: [0x49, 0x44, 0x33] }], // MPEG frame or ID3
   '.bmp':  [{ offset: 0, bytes: [0x42, 0x4D] }],
+  '.tiff': [{ offset: 0, bytes: [0x49, 0x49, 0x2A, 0x00] }, { offset: 0, bytes: [0x4D, 0x4D, 0x00, 0x2A] }], // Little-endian or Big-endian TIFF
+  '.tif':  [{ offset: 0, bytes: [0x49, 0x49, 0x2A, 0x00] }, { offset: 0, bytes: [0x4D, 0x4D, 0x00, 0x2A] }],
+  '.webm': [{ offset: 0, bytes: [0x1A, 0x45, 0xDF, 0xA3] }], // EBML/Matroska
+  '.mkv':  [{ offset: 0, bytes: [0x1A, 0x45, 0xDF, 0xA3] }],
+  '.mov':  [{ offset: 4, bytes: [0x66, 0x74, 0x79, 0x70] }, { offset: 4, bytes: [0x6D, 0x6F, 0x6F, 0x76] }], // ftyp or moov atom
+  '.avi':  [{ offset: 0, bytes: [0x52, 0x49, 0x46, 0x46] }], // RIFF container (same as WAV)
+  '.ogg':  [{ offset: 0, bytes: [0x4F, 0x67, 0x67, 0x53] }], // OggS
 };
 
 /** Verify that a file's actual content matches its claimed extension */
+// Extensions that are plain text — no magic bytes to verify
+const TEXT_EXTENSIONS = new Set(['.txt', '.csv']);
+
 function verifyMagicBytes(filePath: string, ext: string): boolean {
-  const signatures = MAGIC_BYTES[ext.toLowerCase()];
-  if (!signatures) return true; // No signature defined — skip check for unknown types
+  const lowerExt = ext.toLowerCase();
+  // Plain text files have no magic bytes — allow if extension is in the text set
+  if (TEXT_EXTENSIONS.has(lowerExt)) return true;
+  const signatures = MAGIC_BYTES[lowerExt];
+  if (!signatures) {
+    // Unknown extension with no known signature — reject for safety
+    console.warn(`[Uploads] Rejected file with unrecognized extension: ${ext}`);
+    return false;
+  }
   try {
     const fd = fs.openSync(filePath, 'r');
     const buf = Buffer.alloc(16);
@@ -192,8 +223,21 @@ function authenticateTokenOrQuery(req: Request, res: Response, next: NextFunctio
   }
 
   try {
-    const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
-    if (decoded.type === 'refresh') {
+    // Verify with iss/aud claims for consistency with main authenticateToken
+    const JWT_VERIFY_OPTIONS = { issuer: 'rmpg-flex', audience: 'rmpg-flex-api' };
+    let decoded: JwtPayload;
+    try {
+      decoded = jwt.verify(token, config.jwt.secret, JWT_VERIFY_OPTIONS) as JwtPayload;
+    } catch (strictErr: any) {
+      // Legacy token backward compat — enforce strict validation after 2026-04-15
+      if (strictErr.message?.includes('jwt issuer invalid') || strictErr.message?.includes('jwt audience invalid')) {
+        decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
+      } else {
+        throw strictErr;
+      }
+    }
+    // Block refresh and mfa_pending tokens — only access tokens should serve files
+    if (decoded.type === 'refresh' || decoded.type === 'mfa_pending') {
       res.status(403).json({ error: 'Invalid token type' });
       return;
     }
@@ -379,6 +423,7 @@ router.post('/', uploadRateLimit, upload.array('files', 10), (req: Request, res:
         // Delete the suspicious file immediately
         try { fs.unlinkSync(file.path); } catch { /* best effort */ }
         console.warn(`[Upload] BLOCKED — magic byte mismatch for ${file.originalname} (ext=${ext}) from user ${req.user!.userId}`);
+        auditLog(req, 'BLOCK', 'attachment', 0, `Blocked upload: ${file.originalname} — magic byte mismatch (ext=${ext})`);
         res.status(400).json({ error: `File "${file.originalname}" content does not match its file type` });
         return;
       }

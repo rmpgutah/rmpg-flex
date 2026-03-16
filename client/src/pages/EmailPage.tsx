@@ -249,10 +249,12 @@ function TemplatePicker({ onSelect, onClose }: { onSelect: (template: EmailTempl
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    let cancelled = false;
     apiFetch<EmailTemplate[]>('/email/templates')
-      .then(data => setTemplates(data || []))
-      .catch((err) => { console.warn('[EmailPage] fetch templates failed:', err); })
-      .finally(() => setLoading(false));
+      .then(data => { if (!cancelled) setTemplates(data || []); })
+      .catch((err) => { if (!cancelled) console.warn('[EmailPage] fetch templates failed:', err); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {

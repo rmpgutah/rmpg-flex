@@ -239,8 +239,9 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const send = useCallback((message: WSMessage) => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(message));
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(message));
     }
   }, []);
 

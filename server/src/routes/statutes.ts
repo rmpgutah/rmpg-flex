@@ -42,7 +42,7 @@ router.get('/', (req: Request, res: Response) => {
     const db = getDb();
     const { q, category, title, offense_level, subcategory, state, limit = '50', offset = '0' } = req.query;
     const limitNum = Math.min(parseInt(limit as string, 10) || 50, 200);
-    const offsetNum = parseInt(offset as string, 10) || 0;
+    const offsetNum = Math.max(0, Math.min(parseInt(offset as string, 10) || 0, 10000));
 
     let where = 'WHERE is_active = 1';
     const params: any[] = [];
@@ -247,7 +247,7 @@ router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Re
 // ─── ENTITY-STATUTE LINKS ──────────────────────────────────
 
 // GET /api/statutes/entity/:type/:id — Get statutes linked to an entity
-router.get('/entity/:type/:id', (req: Request, res: Response) => {
+router.get('/entity/:type/:id', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { type, id } = req.params;
@@ -304,7 +304,7 @@ router.post('/entity', requireRole('admin', 'manager', 'supervisor', 'officer'),
 });
 
 // DELETE /api/statutes/entity/:id — Remove a statute link
-router.delete('/entity/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.delete('/entity/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     db.prepare('DELETE FROM entity_statutes WHERE id = ?').run(req.params.id);

@@ -789,7 +789,7 @@ router.post('/:id/maintenance', validateParamId, requireRole('admin', 'manager',
 });
 
 // PUT /api/fleet/maintenance/:id - Update maintenance record
-router.put('/maintenance/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/maintenance/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(req.params.id) as any;
@@ -821,7 +821,7 @@ router.put('/maintenance/:id', requireRole('admin', 'manager', 'supervisor'), (r
 });
 
 // DELETE /api/fleet/maintenance/:id
-router.delete('/maintenance/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/maintenance/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(req.params.id) as any;
@@ -836,7 +836,7 @@ router.delete('/maintenance/:id', requireRole('admin', 'manager'), (req: Request
 });
 
 // POST /api/fleet/maintenance/:id/archive
-router.post('/maintenance/:id/archive', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/maintenance/:id/archive', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(req.params.id) as any;
@@ -854,7 +854,7 @@ router.post('/maintenance/:id/archive', requireRole('admin', 'manager'), (req: R
 });
 
 // POST /api/fleet/maintenance/:id/unarchive
-router.post('/maintenance/:id/unarchive', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/maintenance/:id/unarchive', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(req.params.id) as any;
@@ -1005,7 +1005,7 @@ router.post('/:id/fuel', validateParamId, requireRole('admin', 'manager', 'super
 });
 
 // PUT /api/fleet/fuel/:id - Update fuel log
-router.put('/fuel/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/fuel/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(req.params.id) as any;
@@ -1037,7 +1037,7 @@ router.put('/fuel/:id', requireRole('admin', 'manager', 'supervisor', 'officer')
 });
 
 // DELETE /api/fleet/fuel/:id
-router.delete('/fuel/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/fuel/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(req.params.id) as any;
@@ -1052,7 +1052,7 @@ router.delete('/fuel/:id', requireRole('admin', 'manager'), (req: Request, res: 
 });
 
 // POST /api/fleet/fuel/:id/archive
-router.post('/fuel/:id/archive', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/fuel/:id/archive', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(req.params.id) as any;
@@ -1070,7 +1070,7 @@ router.post('/fuel/:id/archive', requireRole('admin', 'manager'), (req: Request,
 });
 
 // POST /api/fleet/fuel/:id/unarchive
-router.post('/fuel/:id/unarchive', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/fuel/:id/unarchive', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(req.params.id) as any;
@@ -1493,7 +1493,7 @@ router.post('/import/simply-fleet', requireRole('admin', 'manager'), (req: Reque
     // Find vehicle by vehicle_number
     const vehicle = db.prepare('SELECT * FROM fleet_vehicles WHERE vehicle_number = ?').get(vehicle_number) as any;
     if (!vehicle) {
-      res.status(404).json({ error: `Vehicle ${vehicle_number} not found. Create it first.` });
+      res.status(404).json({ error: 'Vehicle not found. Create it first.' });
       return;
     }
 
@@ -1679,14 +1679,16 @@ router.post('/dashcam-videos', requireRole('admin', 'manager'), (req: Request, r
     if (!fs.existsSync(DASHCAM_DIR)) fs.mkdirSync(DASHCAM_DIR, { recursive: true });
     fs.accessSync(DASHCAM_DIR, fs.constants.W_OK);
   } catch (dirErr: any) {
-    res.status(503).json({ error: `Upload storage unavailable: ${dirErr.message}` });
+    console.error('[Fleet] Upload storage error:', dirErr.message);
+    res.status(503).json({ error: 'Upload storage unavailable' });
     return;
   }
 
   try {
     dashcamUpload.single('video')(req, res, (multerErr: any) => {
       if (multerErr) {
-        res.status(400).json({ error: multerErr.message || 'Upload failed' });
+        console.error('[Fleet] Multer upload error:', multerErr.message);
+        res.status(400).json({ error: 'Upload failed' });
         return;
       }
 
@@ -1793,13 +1795,13 @@ router.post('/dashcam-videos', requireRole('admin', 'manager'), (req: Request, r
         res.status(201).json(video);
       } catch (error: any) {
         console.error('Dashcam upload DB error:', error?.message, error?.stack);
-        res.status(500).json({ error: `Upload processing failed: ${error?.message || 'Internal server error'}` });
+        res.status(500).json({ error: 'Upload processing failed' });
       }
     });
   } catch (outerErr: any) {
     console.error('Dashcam upload error:', outerErr?.message);
     if (!res.headersSent) {
-      res.status(500).json({ error: `Upload failed: ${outerErr?.message || 'Internal server error'}` });
+      res.status(500).json({ error: 'Upload failed' });
     }
   }
 });
@@ -1821,7 +1823,7 @@ router.get('/dashcam-videos/:id/stream', (req: Request, res: Response) => {
 
     const filePath = fs.existsSync(servePath) ? servePath : path.resolve(DASHCAM_DIR, video.file_path);
 
-    if (!filePath.startsWith(DASHCAM_DIR) || !fs.existsSync(filePath)) {
+    if (path.relative(DASHCAM_DIR, filePath).startsWith('..') || !fs.existsSync(filePath)) {
       res.status(404).json({ error: 'Video file not found on disk' });
       return;
     }
@@ -1881,7 +1883,7 @@ router.get('/dashcam-videos/:id/download', (req: Request, res: Response) => {
 
     const filePath = fs.existsSync(servePath) ? servePath : path.resolve(DASHCAM_DIR, video.file_path);
 
-    if (!filePath.startsWith(DASHCAM_DIR) || !fs.existsSync(filePath)) {
+    if (path.relative(DASHCAM_DIR, filePath).startsWith('..') || !fs.existsSync(filePath)) {
       res.status(404).json({ error: 'Video file not found on disk' });
       return;
     }
@@ -1965,13 +1967,13 @@ router.delete('/dashcam-videos/:id', requireRole('admin'), (req: Request, res: R
 
     // Delete original file
     const filePath = path.resolve(DASHCAM_DIR, existing.file_path);
-    if (filePath.startsWith(DASHCAM_DIR) && fs.existsSync(filePath)) {
+    if (!path.relative(DASHCAM_DIR, filePath).startsWith('..') && fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
     }
     // Delete processed overlay file
     if (existing.processed_file_path) {
       const processedPath = path.resolve(DASHCAM_DIR, existing.processed_file_path);
-      if (processedPath.startsWith(DASHCAM_DIR) && fs.existsSync(processedPath)) {
+      if (!path.relative(DASHCAM_DIR, processedPath).startsWith('..') && fs.existsSync(processedPath)) {
         fs.unlinkSync(processedPath);
       }
     }

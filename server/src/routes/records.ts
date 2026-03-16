@@ -82,7 +82,7 @@ const PERSON_LIST_COLUMNS = `id, first_name, last_name, middle_name, alias_nickn
 router.get('/persons', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { page = '1', limit = '50', flags, archived } = req.query;
+    const { page = '1', limit = '50', flags, search, archived } = req.query;
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
@@ -94,6 +94,11 @@ router.get('/persons', requireRole('admin', 'manager', 'supervisor', 'officer', 
       whereClause += " AND flags LIKE ? ESCAPE '\\'";
       const safeFlags = String(flags).replace(/[%_\\]/g, '\\$&');
       params.push(`%"${safeFlags}"%`);
+    }
+    if (search) {
+      whereClause += " AND (first_name LIKE ? ESCAPE '\\' OR last_name LIKE ? ESCAPE '\\' OR (first_name || ' ' || last_name) LIKE ? ESCAPE '\\' OR phone LIKE ? ESCAPE '\\' OR dl_number LIKE ? ESCAPE '\\')";
+      const s = `%${escapeLike(String(search))}%`;
+      params.push(s, s, s, s, s);
     }
 
     // Archive filter
@@ -259,7 +264,7 @@ router.get('/persons/:id/history', validateParamId, requireRole('admin', 'manage
     const bolos = db.prepare(`
       SELECT * FROM bolos
       WHERE subject_description LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\'
-      ORDER BY created_at DESC
+      ORDER BY created_at DESC LIMIT 100
     `).all(`%${escapeLike(person.last_name)}%`, `%${escapeLike(person.last_name)}%`);
 
     res.json({
@@ -663,19 +668,26 @@ router.post('/persons/:id/unarchive', validateParamId, requireRole('admin', 'man
 router.get('/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { page = '1', limit = '50', archived } = req.query;
+    const { page = '1', limit = '50', search, archived } = req.query;
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
     let whereClause = 'WHERE 1=1';
+    const params: any[] = [];
+
     if (archived === 'true') {
       whereClause += ' AND v.archived_at IS NOT NULL';
     } else if (archived !== 'all') {
       whereClause += ' AND v.archived_at IS NULL';
     }
+    if (search) {
+      whereClause += " AND (v.plate_number LIKE ? ESCAPE '\\' OR v.make LIKE ? ESCAPE '\\' OR v.model LIKE ? ESCAPE '\\' OR v.vin LIKE ? ESCAPE '\\' OR v.color LIKE ? ESCAPE '\\')";
+      const s = `%${escapeLike(String(search))}%`;
+      params.push(s, s, s, s, s);
+    }
 
-    const countRow = db.prepare(`SELECT COUNT(*) as total FROM vehicles_records v ${whereClause}`).get() as any;
+    const countRow = db.prepare(`SELECT COUNT(*) as total FROM vehicles_records v ${whereClause}`).get(...params) as any;
 
     const vehicles = db.prepare(`
       SELECT v.*, p.first_name as owner_first_name, p.last_name as owner_last_name
@@ -684,7 +696,7 @@ router.get('/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer',
       ${whereClause}
       ORDER BY v.created_at DESC
       LIMIT ? OFFSET ?
-    `).all(limitNum, offset);
+    `).all(...params, limitNum, offset);
 
     res.json({
       data: vehicles,
@@ -971,7 +983,7 @@ router.post('/vehicles/:id/unarchive', validateParamId, requireRole('admin', 'ma
 router.get('/properties', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { clientId, archived } = req.query;
+    const { clientId, archived, search } = req.query;
 
     const conditions: string[] = [];
     const params: any[] = [];
@@ -979,6 +991,12 @@ router.get('/properties', requireRole('admin', 'manager', 'supervisor', 'officer
     if (clientId) {
       conditions.push('p.client_id = ?');
       params.push(clientId);
+    }
+
+    if (search) {
+      conditions.push("(p.name LIKE ? ESCAPE '\\' OR p.address LIKE ? ESCAPE '\\' OR c.name LIKE ? ESCAPE '\\')");
+      const s = `%${escapeLike(String(search))}%`;
+      params.push(s, s, s);
     }
 
     // Archive filter
@@ -1203,12 +1221,14 @@ router.get('/vehicles/:id/incidents', validateParamId, requireRole('admin', 'man
 router.get('/evidence', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { page = '1', limit = '50', archived } = req.query;
+    const { page = '1', limit = '50', per_page, archived, search, status, type } = req.query;
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
+    const limitNum = Math.min(200, Math.max(1, parseInt((per_page || limit) as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
     let whereClause = 'WHERE 1=1';
+    const params: any[] = [];
+
     // Archive filter
     if (archived === 'true') {
       whereClause += ' AND e.archived_at IS NOT NULL';
@@ -1216,7 +1236,23 @@ router.get('/evidence', requireRole('admin', 'manager', 'supervisor', 'officer',
       whereClause += ' AND e.archived_at IS NULL';
     }
 
-    const countRow = db.prepare(`SELECT COUNT(*) as total FROM evidence e ${whereClause}`).get() as any;
+    if (search) {
+      whereClause += " AND (e.description LIKE ? ESCAPE '\\' OR e.evidence_number LIKE ? ESCAPE '\\' OR e.serial_number LIKE ? ESCAPE '\\' OR e.storage_location LIKE ? ESCAPE '\\')";
+      const s = `%${escapeLike(String(search))}%`;
+      params.push(s, s, s, s);
+    }
+
+    if (status) {
+      whereClause += ' AND e.status = ?';
+      params.push(status);
+    }
+
+    if (type) {
+      whereClause += ' AND e.evidence_type = ?';
+      params.push(type);
+    }
+
+    const countRow = db.prepare(`SELECT COUNT(*) as total FROM evidence e ${whereClause}`).get(...params) as any;
 
     const evidence = db.prepare(`
       SELECT e.*, i.incident_number, u.full_name as collected_by_name
@@ -1226,7 +1262,7 @@ router.get('/evidence', requireRole('admin', 'manager', 'supervisor', 'officer',
       ${whereClause}
       ORDER BY e.created_at DESC
       LIMIT ? OFFSET ?
-    `).all(limitNum, offset);
+    `).all(...params, limitNum, offset);
 
     res.json({
       data: evidence,

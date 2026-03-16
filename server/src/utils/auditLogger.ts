@@ -205,7 +205,8 @@ export type AuditAction =
   | 'CREATE'
   | 'UPDATE'
   | 'DELETE'
-  | 'SEARCH';
+  | 'SEARCH'
+  | 'BLOCK';
 
 export type AuditEntityType =
   | 'user'

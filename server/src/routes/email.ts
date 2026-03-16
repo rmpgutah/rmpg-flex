@@ -12,6 +12,7 @@ import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
 import { escapeLike, validateParamId } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
+import config from '../config';
 import {
   CONFIG_KEYS,
   GRAPH_SCOPES,
@@ -55,7 +56,9 @@ function textToEmailHtml(text: string, signature?: string): string {
     // Only allow safe URL schemes — block javascript:, data:, vbscript: etc.
     const trimmedUrl = url.trim().toLowerCase();
     if (trimmedUrl.startsWith('http://') || trimmedUrl.startsWith('https://') || trimmedUrl.startsWith('mailto:')) {
-      return `<a href="${url}" style="color:#1a5a9e;">${linkText}</a>`;
+      // Escape URL for safe insertion into href attribute — prevents attribute injection
+      const safeUrl = url.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+      return `<a href="${safeUrl}" style="color:#1a5a9e;">${linkText}</a>`;
     }
     return `${linkText} (${url})`;
   });
@@ -82,7 +85,7 @@ router.get('/oauth/callback', async (req: Request, res: Response) => {
 
     if (error) {
       console.error('[OAuth] Microsoft returned error:', error, error_description);
-      res.redirect(`/admin?tab=email&status=error&message=${encodeURIComponent(String(error_description || error))}`);
+      res.redirect('/admin?tab=email&status=error&message=Microsoft+authorization+failed');
       return;
     }
 
@@ -101,8 +104,9 @@ router.get('/oauth/callback', async (req: Request, res: Response) => {
     // Clear state to prevent replay
     deleteConfigValue(CONFIG_KEYS.oauthState);
 
-    // Exchange code for tokens — always use https (req.protocol may report http incorrectly)
-    const redirectUri = `https://${req.get('host')}/api/email/oauth/callback`;
+    // Exchange code for tokens — use hardcoded production domain to prevent Host header injection
+    const host = config.isProduction ? 'rmpgutah.us' : (req.get('host') || 'localhost:3001');
+    const redirectUri = `https://${host}/api/email/oauth/callback`;
     await exchangeCodeForTokens(String(code), redirectUri);
 
     // Enable integration and start poller
@@ -113,7 +117,7 @@ router.get('/oauth/callback', async (req: Request, res: Response) => {
     res.redirect('/admin?tab=email&status=authorized');
   } catch (err: any) {
     console.error('[OAuth] Token exchange failed:', err.message);
-    res.redirect(`/admin?tab=email&status=error&message=${encodeURIComponent(err.message)}`);
+    res.redirect('/admin?tab=email&status=error&message=Token+exchange+failed');
   }
 });
 
@@ -853,7 +857,7 @@ router.put('/templates/:id', validateParamId, (req: Request, res: Response) => {
 });
 
 // DELETE /api/email/templates/:id — Delete template
-router.delete('/templates/:id', validateParamId, (req: Request, res: Response) => {
+router.delete('/templates/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const template = db.prepare('SELECT * FROM email_templates WHERE id = ?').get(req.params.id) as any;
@@ -1005,7 +1009,7 @@ router.get('/links/incident/:incidentId', (req: Request, res: Response) => {
 });
 
 // DELETE /api/email/link/:id — Remove a link
-router.delete('/link/:id', validateParamId, (req: Request, res: Response) => {
+router.delete('/link/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     db.prepare('DELETE FROM email_incident_links WHERE id = ?').run(req.params.id);
@@ -1124,11 +1128,14 @@ router.delete('/admin/credentials', requireRole('admin'), (req: Request, res: Re
     }
     clearCachedAuth();
 
-    // Clear cached emails
+    // Clear cached emails atomically
     const db = getDb();
-    db.prepare('DELETE FROM email_cache').run();
-    db.prepare('DELETE FROM email_attachments').run();
-    db.prepare('DELETE FROM email_folders').run();
+    const clearCache = db.transaction(() => {
+      db.prepare('DELETE FROM email_cache').run();
+      db.prepare('DELETE FROM email_attachments').run();
+      db.prepare('DELETE FROM email_folders').run();
+    });
+    clearCache();
 
     auditLog(req, 'DELETE', 'system_config', 0, 'ms_email_credentials_cleared');
     res.json({ success: true });

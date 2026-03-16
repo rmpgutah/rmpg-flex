@@ -325,12 +325,21 @@ router.post('/hash/compute', requireRole('admin', 'manager'), async (req: Reques
     }
 
     let targetPath = filePath;
+    // Validate user-supplied filePath doesn't traverse outside expected directories
+    if (filePath && (filePath.includes('..') || filePath.includes('\0'))) {
+      return res.status(400).json({ error: 'Invalid file path' });
+    }
     if (attachmentId && !filePath) {
       const db = getDb();
       const att = db.prepare('SELECT file_path FROM attachments WHERE id = ?').get(attachmentId) as any;
       if (!att) return res.status(404).json({ error: 'Attachment not found' });
       const uploadsDir = process.env.RMPG_UPLOADS_DIR || path.resolve(process.cwd(), 'uploads');
       targetPath = path.join(uploadsDir, att.file_path);
+      // Prevent path traversal — ensure resolved path stays within uploads directory
+      const resolved = path.resolve(targetPath);
+      if (!resolved.startsWith(path.resolve(uploadsDir))) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
     }
 
     if (!fs.existsSync(targetPath)) {

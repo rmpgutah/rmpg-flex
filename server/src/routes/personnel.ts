@@ -13,6 +13,7 @@ import { localNow, localToday } from '../utils/timeUtils';
 import { queueOverlayProcessing, type BodyCamOverlayConfig } from '../utils/videoOverlay';
 import { validateEmail, validatePhone, validateBadgeNumber, validateAll } from '../utils/inputValidation';
 import { validateParamId } from '../middleware/sanitize';
+import { auditLog } from '../utils/auditLogger';
 
 const execFileAsync = promisify(execFile);
 
@@ -481,6 +482,9 @@ router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Re
     });
     delTx();
 
+    auditLog(req, 'TERMINATE' as any, 'user' as any, Number(req.params.id),
+      `Terminated user: ${user.username} (${user.full_name || 'N/A'})`);
+
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
     console.error('Delete user error:', error?.message || 'Unknown error');
@@ -572,7 +576,7 @@ router.get('/bodycam-videos/:videoId/stream', (req: Request, res: Response) => {
 
     const filePath = fs.existsSync(servePath) ? servePath : path.resolve(BODYCAM_DIR, video.file_path);
 
-    if (!filePath.startsWith(BODYCAM_DIR) || !fs.existsSync(filePath)) {
+    if (path.relative(BODYCAM_DIR, filePath).startsWith('..') || !fs.existsSync(filePath)) {
       res.status(404).json({ error: 'Video file not found on disk' });
       return;
     }
@@ -650,7 +654,7 @@ router.get('/bodycam-videos/:videoId/download', (req: Request, res: Response) =>
 
     const filePath = fs.existsSync(servePath) ? servePath : path.resolve(BODYCAM_DIR, video.file_path);
 
-    if (!filePath.startsWith(BODYCAM_DIR) || !fs.existsSync(filePath)) {
+    if (path.relative(BODYCAM_DIR, filePath).startsWith('..') || !fs.existsSync(filePath)) {
       res.status(404).json({ error: 'Video file not found on disk' });
       return;
     }
@@ -2113,7 +2117,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const videos = db.prepare('SELECT * FROM bodycam_videos WHERE camera_id = ?').all(req.params.cameraId) as any[];
       for (const vid of videos) {
         const filePath = path.resolve(BODYCAM_DIR, vid.file_path);
-        if (filePath.startsWith(BODYCAM_DIR) && fs.existsSync(filePath)) {
+        if (!path.relative(BODYCAM_DIR, filePath).startsWith('..') && fs.existsSync(filePath)) {
           fs.unlinkSync(filePath);
         }
       }
@@ -2176,7 +2180,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
           if (!video) { results.errors++; continue; }
           // Delete file from disk
           const filePath = path.resolve(BODYCAM_DIR, video.file_path);
-          if (filePath.startsWith(BODYCAM_DIR) && fs.existsSync(filePath)) {
+          if (!path.relative(BODYCAM_DIR, filePath).startsWith('..') && fs.existsSync(filePath)) {
             try { fs.unlinkSync(filePath); } catch { results.errors++; }
           }
           db.prepare('DELETE FROM bodycam_videos WHERE id = ?').run(id);
@@ -2243,7 +2247,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
           const videos = db.prepare('SELECT * FROM bodycam_videos WHERE camera_id = ?').all(camId) as any[];
           for (const vid of videos) {
             const filePath = path.resolve(BODYCAM_DIR, vid.file_path);
-            if (filePath.startsWith(BODYCAM_DIR) && fs.existsSync(filePath)) {
+            if (!path.relative(BODYCAM_DIR, filePath).startsWith('..') && fs.existsSync(filePath)) {
               try { fs.unlinkSync(filePath); } catch { /* ok */ }
             }
             results.videosDeleted++;
@@ -2315,7 +2319,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
     chunkUpload.single('chunk')(req, res, (multerErr: any) => {
       if (multerErr) {
         console.error('Chunk upload multer error:', multerErr?.message);
-        res.status(400).json({ error: multerErr.message || 'Chunk upload failed' });
+        res.status(400).json({ error: 'Chunk upload failed' });
         return;
       }
 
@@ -2467,7 +2471,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.status(201).json(video);
     } catch (error: any) {
       console.error('Upload complete error:', error?.message, error?.stack);
-      res.status(500).json({ error: `Upload finalization failed: ${error?.message || 'Internal server error'}` });
+      res.status(500).json({ error: 'Upload finalization failed' });
     }
   });
 
@@ -2504,7 +2508,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       fs.accessSync(BODYCAM_DIR, fs.constants.W_OK);
     } catch (dirErr: any) {
       console.error('Bodycam upload dir not writable:', BODYCAM_DIR, dirErr);
-      res.status(503).json({ error: `Upload storage is unavailable: ${dirErr.message}` });
+      res.status(503).json({ error: 'Upload storage is unavailable' });
       return;
     }
 
@@ -2512,7 +2516,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       bodycamUpload.single('video')(req, res, (multerErr: any) => {
         if (multerErr) {
           console.error('Multer upload error:', multerErr?.message, multerErr?.code, multerErr?.stack);
-          res.status(400).json({ error: multerErr.message || 'Upload failed' });
+          res.status(400).json({ error: 'Upload failed' });
           return;
         }
 
@@ -2591,13 +2595,13 @@ export function mountScheduleRoutes(parentRouter: Router): void {
           res.status(201).json(video);
         } catch (error: any) {
           console.error('Upload bodycam video DB error:', error?.message, error?.stack);
-          res.status(500).json({ error: `Upload processing failed: ${error?.message || 'Internal server error'}` });
+          res.status(500).json({ error: 'Upload processing failed' });
         }
       });
     } catch (outerErr: any) {
       console.error('Bodycam upload outer error:', outerErr?.message, outerErr?.stack);
       if (!res.headersSent) {
-        res.status(500).json({ error: `Upload failed: ${outerErr?.message || 'Internal server error'}` });
+        res.status(500).json({ error: 'Upload failed' });
       }
     }
   });
@@ -2687,7 +2691,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       // Delete original file from disk
       const filePath = path.resolve(BODYCAM_DIR, existing.file_path);
-      if (filePath.startsWith(BODYCAM_DIR) && fs.existsSync(filePath)) {
+      if (!path.relative(BODYCAM_DIR, filePath).startsWith('..') && fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
       }
       // Delete processed overlay file if it exists
@@ -2729,7 +2733,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       const filePath = fs.existsSync(servePath) ? servePath : path.resolve(BODYCAM_DIR, video.file_path);
 
-      if (!filePath.startsWith(BODYCAM_DIR) || !fs.existsSync(filePath)) {
+      if (path.relative(BODYCAM_DIR, filePath).startsWith('..') || !fs.existsSync(filePath)) {
         res.status(404).json({ error: 'Video file not found on disk' });
         return;
       }

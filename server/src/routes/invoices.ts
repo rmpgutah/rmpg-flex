@@ -185,8 +185,11 @@ router.get('/', requireRole('admin', 'manager', 'contract_manager'), (req: Reque
       params.push(req.query.status);
     }
     if (req.query.client_id) {
-      conditions.push('i.client_id = ?');
-      params.push(req.query.client_id);
+      const clientId = parseInt(req.query.client_id as string, 10);
+      if (!isNaN(clientId)) {
+        conditions.push('i.client_id = ?');
+        params.push(clientId);
+      }
     }
     if (req.query.date_from) {
       conditions.push('i.issue_date >= ?');
@@ -711,10 +714,12 @@ router.put('/:id/line-items/:itemId', validateParamId, requireRole('admin', 'man
   try {
     const db = getDb();
     const now = localNow();
+    const itemId = parseInt(String(req.params.itemId), 10);
+    if (isNaN(itemId)) { res.status(400).json({ error: 'Invalid item ID' }); return; }
 
     const item = db.prepare(
       'SELECT * FROM invoice_line_items WHERE id = ? AND invoice_id = ?'
-    ).get(req.params.itemId, req.params.id) as any;
+    ).get(itemId, req.params.id) as any;
     if (!item) return res.status(404).json({ error: 'Line item not found' });
 
     const { description, quantity, unit_price, sort_order } = req.body;

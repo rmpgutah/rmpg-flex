@@ -7,7 +7,7 @@ import { localNow, localToday } from '../utils/timeUtils';
 import { identifyBeat } from '../utils/geofence';
 import { createNotificationForRoles } from './notifications';
 import { auditLog } from '../utils/auditLogger';
-import { validateParamId } from '../middleware/sanitize';
+import { validateParamId, escapeLike } from '../middleware/sanitize';
 import { universalWarrantCheck } from '../utils/universalWarrantScanner';
 
 const router = Router();
@@ -18,7 +18,7 @@ router.use(authenticateToken);
 router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { status, priority, officerId, startDate, endDate, archived, page = '1', limit = '50' } = req.query;
+    const { status, priority, officerId, startDate, endDate, archived, search, page = '1', limit = '50' } = req.query;
 
     let whereClause = 'WHERE 1=1';
     const params: any[] = [];
@@ -49,6 +49,12 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
       whereClause += ' AND i.archived_at IS NOT NULL';
     } else if (archived !== 'all') {
       whereClause += ' AND i.archived_at IS NULL';
+    }
+
+    if (search) {
+      whereClause += " AND (i.incident_number LIKE ? ESCAPE '\\' OR i.incident_type LIKE ? ESCAPE '\\' OR i.location_address LIKE ? ESCAPE '\\' OR i.summary LIKE ? ESCAPE '\\')";
+      const s = `%${escapeLike(String(search))}%`;
+      params.push(s, s, s, s);
     }
 
     // If user is an officer, only show their own incidents unless supervisor+

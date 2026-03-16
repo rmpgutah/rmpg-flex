@@ -91,7 +91,7 @@ router.get('/shift-plans', requireRole('admin', 'manager', 'supervisor', 'dispat
       params.push(status);
     }
 
-    sql += ' ORDER BY sp.date DESC, sp.created_at DESC';
+    sql += ' ORDER BY sp.date DESC, sp.created_at DESC LIMIT 500';
 
     const rows = db.prepare(sql).all(...params) as any[];
     const plans = rows.map(parseAssignments);

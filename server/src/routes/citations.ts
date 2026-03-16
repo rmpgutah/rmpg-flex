@@ -222,7 +222,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
 });
 
 // ─── GET /api/citations/:id ──────────────────────────────
-router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
 
@@ -390,7 +390,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispa
 });
 
 // ─── PUT /api/citations/:id ──────────────────────────────
-router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const citation = db.prepare('SELECT * FROM citations WHERE id = ?').get(req.params.id) as any;
@@ -463,7 +463,7 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dis
 
 // ─── DELETE /api/citations/:id ────────────────────────────
 // Soft-delete: sets status to 'voided'
-router.delete('/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.delete('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const citation = db.prepare('SELECT * FROM citations WHERE id = ?').get(req.params.id) as any;

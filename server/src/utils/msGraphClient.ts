@@ -173,6 +173,7 @@ export async function exchangeCodeForTokens(code: string, redirectUri: string): 
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: body.toString(),
+    signal: AbortSignal.timeout(15_000),
   });
 
   const data = await res.json();
@@ -242,6 +243,7 @@ export async function ensureValidToken(): Promise<string> {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: body.toString(),
+      signal: AbortSignal.timeout(15_000),
     });
 
     const data = await res.json();

@@ -94,8 +94,9 @@ router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
 router.post('/auto-populate', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { officer_id, shift_date } = req.body;
-    if (!officer_id || !shift_date) return res.status(400).json({ error: 'Officer ID and shift date required' });
+    const officer_id = parseInt(String(req.body.officer_id), 10);
+    const shift_date = req.body.shift_date;
+    if (!officer_id || isNaN(officer_id) || !shift_date) return res.status(400).json({ error: 'Officer ID and shift date required' });
 
     // Get officer info
     const officer = db.prepare('SELECT full_name FROM users WHERE id = ?').get(officer_id) as any;

@@ -56,9 +56,11 @@ router.get('/proposals', requireRole('admin', 'manager', 'contract_manager'), (r
     const params: any[] = [];
 
     if (stage) {
-      const stages = (stage as string).split(',');
-      sql += ` AND p.stage IN (${stages.map(() => '?').join(',')})`;
-      params.push(...stages);
+      const stages = (stage as string).split(',').filter(Boolean);
+      if (stages.length > 0) {
+        sql += ` AND p.stage IN (${stages.map(() => '?').join(',')})`;
+        params.push(...stages);
+      }
     }
     if (lead_id) {
       sql += ' AND p.lead_id = ?';
@@ -145,8 +147,10 @@ router.post('/proposals', requireRole('admin', 'manager', 'contract_manager'), (
       let finalScope = scope_of_work || null;
       let finalTerms = terms || null;
       let finalMonthly: number | null = monthly_value != null ? Number(monthly_value) : null;
+      if (finalMonthly != null && (isNaN(finalMonthly) || !isFinite(finalMonthly))) finalMonthly = null;
       let finalBilling = billing_frequency || 'monthly';
       let finalContractMonths: number | null = contract_length_months != null ? Number(contract_length_months) : null;
+      if (finalContractMonths != null && (isNaN(finalContractMonths) || !isFinite(finalContractMonths))) finalContractMonths = null;
 
       if (template_type && !scope_of_work && !terms) {
         const template = db.prepare(
@@ -164,6 +168,7 @@ router.post('/proposals', requireRole('admin', 'manager', 'contract_manager'), (
 
       // Calculate total_value if not provided — guard against null multiplication
       let finalTotal: number | null = total_value != null ? Number(total_value) : null;
+      if (finalTotal != null && (isNaN(finalTotal) || !isFinite(finalTotal))) finalTotal = null;
       if (finalTotal == null && finalMonthly != null && finalContractMonths != null) {
         finalTotal = finalMonthly * finalContractMonths;
       }

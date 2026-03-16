@@ -50,9 +50,9 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
     try {
       decoded = jwt.verify(token, config.jwt.secret, JWT_VERIFY_OPTIONS) as JwtPayload;
     } catch (strictErr: any) {
-      // If the error is specifically about issuer/audience mismatch on a legacy token
-      // (missing iss/aud claims), fall back to basic verification for backward compat
+      // Legacy token backward compat — log for deprecation tracking (enforce after 2026-04-15)
       if (strictErr.message?.includes('jwt issuer invalid') || strictErr.message?.includes('jwt audience invalid')) {
+        console.warn('[AUTH] Legacy token without iss/aud accepted — enforce strict validation after 2026-04-15');
         decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
       } else {
         throw strictErr;
@@ -243,9 +243,12 @@ export function authenticateTempToken(req: Request, res: Response, next: NextFun
 // Accepts EITHER a full access token OR an mfa_pending temp token (NOT refresh tokens)
 export function authenticateAnyToken(req: Request, res: Response, next: NextFunction): void {
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.substring(7) : null;
+  // Accept token from Authorization header OR from request body (fallback for 2FA setup flow)
+  const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.substring(7)
+    : (req.body?.tempToken as string) || null;
 
   if (!token) {
+    console.warn('[AUTH] authenticateAnyToken: no token found in header or body for', req.method, req.path);
     res.status(401).json({ error: 'Authentication required' });
     return;
   }
@@ -256,6 +259,7 @@ export function authenticateAnyToken(req: Request, res: Response, next: NextFunc
       decoded = jwt.verify(token, config.jwt.secret, JWT_VERIFY_OPTIONS) as JwtPayload;
     } catch (strictErr: any) {
       if (strictErr.message?.includes('jwt issuer invalid') || strictErr.message?.includes('jwt audience invalid')) {
+        console.warn('[AUTH] Legacy token without iss/aud in authenticateAnyToken — enforce after 2026-04-15');
         decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
       } else {
         throw strictErr;

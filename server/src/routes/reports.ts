@@ -892,7 +892,7 @@ router.post('/custom', requireRole('admin', 'manager'), (req: Request, res: Resp
 
 // ─── GET /crime-analysis ─────────────────────────────────
 // Crime analysis / ILP dashboard data
-router.get('/crime-analysis', (req: Request, res: Response) => {
+router.get('/crime-analysis', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { days = '90' } = req.query;
