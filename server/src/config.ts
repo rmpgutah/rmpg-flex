@@ -122,7 +122,7 @@ export const config = {
     maxLoginAttempts: envInt('MAX_LOGIN_ATTEMPTS', 5),
     lockoutDurationMinutes: envInt('LOCKOUT_DURATION_MINUTES', 15),
     rateLimitWindowMs: envInt('RATE_LIMIT_WINDOW_MS', 1 * 60 * 1000),
-    rateLimitMaxRequests: envInt('RATE_LIMIT_MAX_REQUESTS', 1000),
+    rateLimitMaxRequests: envInt('RATE_LIMIT_MAX_REQUESTS', 300),
   },
 
   // Password Policy
@@ -167,7 +167,7 @@ export const config = {
   session: {
     maxPerUser: envInt('SESSION_MAX_PER_USER', 5),
     enforceIpBinding: envBool('SESSION_ENFORCE_IP_BINDING', true),
-    ipChangeAction: (process.env.SESSION_IP_CHANGE_ACTION || 'warn') as 'invalidate' | 'reauth' | 'warn',
+    ipChangeAction: (process.env.SESSION_IP_CHANGE_ACTION || 'invalidate') as 'invalidate' | 'reauth' | 'warn',
   },
 
   // CORS — localhost origins only in development; production is restricted to real domains

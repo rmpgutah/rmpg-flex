@@ -451,7 +451,7 @@ export default function ArrestRecordsPage() {
   // ── Derived ─────────────────────────────────────────────
 
   const totalPages = Math.ceil(recordsTotal / 30);
-  const maxPopulation = stats?.per_county ? Math.max(...stats.per_county.map(c => c.active_count), 1) : 1;
+  const maxPopulation = stats?.per_county?.length ? Math.max(...stats.per_county.map(c => c.active_count), 1) : 1;
   const isManualRecord = (rec: ArrestRecord) => rec.entry_source === 'manual';
 
   // ── Render: Left Panel (List) ───────────────────────────

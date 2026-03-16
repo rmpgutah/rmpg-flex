@@ -416,7 +416,8 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
         errors: errors.length > 0 ? errors : undefined,
         message: `Imported ${imported} of ${records.length} records`,
       });
-    } catch {
+    } catch (e: any) {
+      console.warn('[Arrests] Cross-link after import failed:', e?.message);
       res.json({ success: true, imported, skipped, total: records.length, errors: errors.length > 0 ? errors : undefined });
     }
   } catch (err: any) {
@@ -510,7 +511,7 @@ router.post('/test', requireRole('admin', 'manager'), async (_req: Request, res:
   try {
     const apiKey = getDecryptedValue(CONFIG_KEYS.apiKey);
     if (!apiKey) {
-      return res.json({ success: false, error: 'No RapidAPI key configured.' });
+      return res.status(400).json({ success: false, error: 'No RapidAPI key configured.' });
     }
     const url = `https://jailbase-jailbase.p.rapidapi.com/sources?state=UT`;
     const controller = new AbortController();
@@ -521,16 +522,16 @@ router.post('/test', requireRole('admin', 'manager'), async (_req: Request, res:
       signal: controller.signal,
     });
     clearTimeout(timeout);
-    if (apiRes.status === 403) return res.json({ success: false, status: 403, error: 'API key invalid or subscription inactive.' });
-    if (apiRes.status === 429) return res.json({ success: false, status: 429, error: 'Rate limited. Wait and retry.' });
-    if (apiRes.status === 404) return res.json({ success: false, status: 404, error: 'JailBase API offline — all endpoints returning 404. The service appears deprecated. Cached records remain searchable.' });
-    if (!apiRes.ok) return res.json({ success: false, status: apiRes.status, error: `API returned ${apiRes.status}` });
+    if (apiRes.status === 403) return res.status(502).json({ success: false, status: 403, error: 'API key invalid or subscription inactive.' });
+    if (apiRes.status === 429) return res.status(502).json({ success: false, status: 429, error: 'Rate limited. Wait and retry.' });
+    if (apiRes.status === 404) return res.status(502).json({ success: false, status: 404, error: 'JailBase API offline — all endpoints returning 404. The service appears deprecated. Cached records remain searchable.' });
+    if (!apiRes.ok) return res.status(502).json({ success: false, status: apiRes.status, error: `API returned ${apiRes.status}` });
     const body = await apiRes.json();
     res.json({ success: true, status: 200, message: `API key valid. ${body.records?.length || 0} source(s).` });
   } catch (err: any) {
-    if (err.name === 'AbortError') return res.json({ success: false, error: 'Timed out after 10s' });
+    if (err.name === 'AbortError') return res.status(504).json({ success: false, error: 'Timed out after 10s' });
     console.error('[arrests] API test error:', err.message);
-    res.json({ success: false, error: 'Connection failed' });
+    res.status(502).json({ success: false, error: 'Connection failed' });
   }
 });
 

@@ -66,6 +66,7 @@ function priorityWeight(p: ServeJob['priority']): number {
 
 function clusterStops(stops: StopItem[]): StopItem[][] {
   if (stops.length <= 25) return [stops];
+  if (stops.length === 0) return [];
 
   const lats = stops.map(s => s.job.recipient_lat!);
   const lngs = stops.map(s => s.job.recipient_lng!);

@@ -212,8 +212,8 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
     <div className="relative w-full flex-1" style={{ minHeight: 400 }}>
       <div ref={mapRef} className="absolute inset-0" />
       <div className="absolute top-2 left-2 text-[9px] font-mono text-rmpg-400 bg-black/60 px-2 py-1 border border-rmpg-700">
-        {checkpoints.filter(c => c.latitude && c.longitude).length} checkpoints •{' '}
-        {scans.filter(s => s.latitude && s.longitude).length} scan points
+        {checkpoints.filter(c => c.latitude != null && c.longitude != null).length} checkpoints •{' '}
+        {scans.filter(s => s.latitude != null && s.longitude != null).length} scan points
       </div>
     </div>
   );
@@ -260,11 +260,13 @@ const PatrolPage: React.FC = () => {
 
   useEffect(() => {
     if (activeTab === 'compliance') {
+      loadCompliance();
       const interval = setInterval(() => {
         loadCompliance();
       }, 60000);
       return () => clearInterval(interval);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
   const loadProperties = async () => {

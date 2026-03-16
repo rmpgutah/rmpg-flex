@@ -29,7 +29,7 @@ import {
   encryptSecret as legacyEncryptSecret,
   decryptSecret as legacyDecryptSecret,
 } from '../utils/totp';
-import { createNotification } from './notifications';
+import { createNotification, createNotificationForRoles } from './notifications';
 import { sendNotificationEmail } from '../utils/emailSender';
 import {
   isDeviceTrusted,
@@ -113,23 +113,30 @@ function createSession(
   const fpHash = deviceFingerprint ? hashDeviceFingerprint(deviceFingerprint) : null;
   const deviceName = parseDeviceName(userAgent);
 
-  // Enforce max sessions per user
-  const activeSessions = db.prepare(`
-    SELECT id FROM sessions WHERE user_id = ? AND is_active = 1
-    ORDER BY last_used_at ASC
-  `).all(userId) as { id: number }[];
+  // Hash user-agent for session binding — prevents token theft across different browsers
+  const uaHash = crypto.createHash('sha256').update(userAgent).digest('hex').slice(0, 16);
 
-  if (activeSessions.length >= config.session.maxPerUser) {
-    const toRemove = activeSessions.length - config.session.maxPerUser + 1;
-    const oldestIds = activeSessions.slice(0, toRemove).map(s => s.id);
-    db.prepare(`UPDATE sessions SET is_active = 0 WHERE id IN (${oldestIds.map(() => '?').join(',')})`)
-      .run(...oldestIds);
-  }
+  // Use transaction to prevent race condition: two concurrent logins could both
+  // read session count, each decide to evict, then both insert — exceeding max
+  const insertSession = db.transaction(() => {
+    const activeSessions = db.prepare(`
+      SELECT id FROM sessions WHERE user_id = ? AND is_active = 1
+      ORDER BY last_used_at ASC
+    `).all(userId) as { id: number }[];
 
-  db.prepare(`
-    INSERT INTO sessions (session_id, user_id, refresh_token_hash, ip_address, user_agent, expires_at, device_fingerprint, device_name)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(sessionId, userId, tokenHash, ip, userAgent, expiresAt, fpHash, deviceName);
+    if (activeSessions.length >= config.session.maxPerUser) {
+      const toRemove = activeSessions.length - config.session.maxPerUser + 1;
+      const oldestIds = activeSessions.slice(0, toRemove).map(s => s.id);
+      db.prepare(`UPDATE sessions SET is_active = 0 WHERE id IN (${oldestIds.map(() => '?').join(',')})`)
+        .run(...oldestIds);
+    }
+
+    db.prepare(`
+      INSERT INTO sessions (session_id, user_id, refresh_token_hash, ip_address, user_agent, expires_at, device_fingerprint, device_name, ua_hash)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(sessionId, userId, tokenHash, ip, userAgent, expiresAt, fpHash, deviceName, uaHash);
+  });
+  insertSession();
 
   return sessionId;
 }
@@ -187,6 +194,16 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
       return;
     }
 
+    // Input length validation — prevent oversized payloads from reaching bcrypt/DB
+    if (typeof username !== 'string' || username.length > 64) {
+      res.status(400).json({ error: 'Invalid username' });
+      return;
+    }
+    if (typeof password !== 'string' || password.length > 256) {
+      res.status(400).json({ error: 'Invalid password' });
+      return;
+    }
+
     // Check lockout
     const lockout = isLockedOut(username);
     if (lockout.locked) {
@@ -233,6 +250,20 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
         `).get(username, lockoutWindow) as { count: number }).count;
 
       const newLockout = isLockedOut(username);
+
+      // Notify admins when an account gets locked — potential brute-force indicator
+      if (newLockout.locked) {
+        try {
+          createNotificationForRoles(
+            ['admin', 'manager'],
+            'security',
+            `Account Locked: ${username}`,
+            `Account "${username}" was locked after ${config.security.maxLoginAttempts} failed login attempts from IP ${ip}. Lockout expires in ${newLockout.minutesRemaining} minute(s).`,
+            'user', null, 'high', 'account_lockout'
+          );
+        } catch { /* notification failure should not block login response */ }
+      }
+
       res.status(401).json({
         error: 'Invalid username or password',
         ...(attemptsRemaining <= 2 && attemptsRemaining > 0 && {
@@ -866,11 +897,11 @@ router.put('/profile', authenticateToken, (req: Request, res: Response) => {
     try {
       broadcast('personnel', 'data_changed', {
         action: 'put', module: 'auth', entity: 'profile',
-        id: user.id, timestamp: new Date().toISOString(),
+        id: user.id, timestamp: localNow(),
       });
       broadcast('admin', 'data_changed', {
         action: 'put', module: 'auth', entity: 'profile',
-        id: user.id, timestamp: new Date().toISOString(),
+        id: user.id, timestamp: localNow(),
       });
     } catch { /* never break the response */ }
 
@@ -918,7 +949,7 @@ router.put('/profile-image', authenticateToken, (req: Request, res: Response) =>
     try {
       broadcast('personnel', 'data_changed', {
         action: 'put', module: 'auth', entity: 'profile_image',
-        id: req.user!.userId, timestamp: new Date().toISOString(),
+        id: req.user!.userId, timestamp: localNow(),
       });
     } catch { /* never break the response */ }
 
@@ -2120,6 +2151,9 @@ router.post('/login/change-password', authenticateTempToken, (req: Request, res:
       ip,
       parseDeviceName(userAgent)
     );
+
+    // Invalidate all existing sessions before issuing new ones
+    db.prepare('UPDATE sessions SET is_active = 0 WHERE user_id = ?').run(userId);
 
     // Issue final tokens
     const refreshToken = generateRefreshToken({ userId: user.id, username: user.username, role: user.role, fullName: user.full_name });

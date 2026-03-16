@@ -9,7 +9,7 @@ import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { auditLog } from '../utils/auditLogger';
 import { broadcast } from '../utils/websocket';
-import { localNow } from '../utils/timeUtils';
+import { localNow, localToday } from '../utils/timeUtils';
 import config from '../config';
 import crypto from 'crypto';
 
@@ -26,7 +26,7 @@ const WRITE_ROLES = ['admin', 'manager', 'supervisor', 'officer'];
 router.get('/stats/summary', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localToday();
 
     const counts = db.prepare(`
       SELECT
@@ -173,7 +173,7 @@ router.post('/sync-from-sm', requireRole('admin', 'manager', 'supervisor'), (req
     `);
 
     const imported: any[] = [];
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localToday();
 
     const txn = db.transaction(() => {
       for (const sm of unimported) {
@@ -256,7 +256,7 @@ router.get('/', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Request, res: R
     const db = getDb();
     const parsedOid = req.query.officer_id ? Number(req.query.officer_id) : null;
     const officerId = (parsedOid != null && !isNaN(parsedOid)) ? parsedOid : req.user!.userId;
-    const date = req.query.date as string || new Date().toISOString().slice(0, 10);
+    const date = req.query.date as string || localToday();
     const status = req.query.status as string | undefined;
 
     let sql = 'SELECT * FROM serve_queue WHERE officer_id = ? AND serve_date = ?';
@@ -308,7 +308,7 @@ router.post('/', requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, 999, ?, ?)
     `).run(
       id, sm_job_id ?? null, officer_id ?? req.user!.userId,
-      serve_date ?? new Date().toISOString().slice(0, 10),
+      serve_date ?? localToday(),
       recipient_name ?? '', recipient_address ?? '', recipient_city ?? '',
       recipient_state ?? '', recipient_zip ?? '', recipient_lat ?? null, recipient_lng ?? null,
       document_type ?? '', case_number ?? '', court_name ?? '', jurisdiction ?? '',

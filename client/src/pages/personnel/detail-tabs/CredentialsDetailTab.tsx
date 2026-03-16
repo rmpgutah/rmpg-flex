@@ -83,7 +83,7 @@ export default function CredentialsDetailTab({
         <div className="space-y-3">
           {credentials.map((cred) => {
             const days = calcDaysUntilExpiry(cred.expiry_date);
-            const statusLabel = cred.status.replace(/_/g, ' ').toUpperCase();
+            const statusLabel = (cred.status || '').replace(/_/g, ' ').toUpperCase();
 
             return (
               <div

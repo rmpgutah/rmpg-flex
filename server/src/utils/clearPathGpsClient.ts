@@ -30,7 +30,9 @@ function encrypt(plaintext: string): string {
 
 function decrypt(stored: string): string {
   const key = deriveKey();
-  const [ivHex, authTagHex, ciphertext] = stored.split(':');
+  const parts = stored.split(':');
+  if (parts.length !== 3) throw new Error('Invalid encrypted format');
+  const [ivHex, authTagHex, ciphertext] = parts;
   const iv = Buffer.from(ivHex, 'hex');
   const authTag = Buffer.from(authTagHex, 'hex');
   const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);

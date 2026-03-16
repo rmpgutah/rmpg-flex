@@ -104,13 +104,13 @@ export default function TrainingDocsPage() {
 
   const handleDownload = (doc: any) => {
     if (doc.content_type === 'link' && doc.external_url) {
-      window.open(doc.external_url, '_blank', 'noopener');
+      window.open(doc.external_url, '_blank', 'noopener,noreferrer');
       return;
     }
     if (doc.file_id) {
       // Use JWT token fallback for download (signatures are not available from this endpoint)
       const token = localStorage.getItem('rmpg_token') || '';
-      window.open(`/api/uploads/${doc.file_id}/download?token=${encodeURIComponent(token)}`, '_blank');
+      window.open(`/api/uploads/${doc.file_id}/download?token=${encodeURIComponent(token)}`, '_blank', 'noopener,noreferrer');
     }
   };
 

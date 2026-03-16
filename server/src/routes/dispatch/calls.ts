@@ -1,9 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../../models/database';
 import { requireRole } from '../../middleware/auth';
-import { generateCallNumber } from '../../utils/caseNumbers';
+import { generateCallNumber, generateCaseNumber } from '../../utils/caseNumbers';
 import { sendCsv } from '../../utils/csvExport';
-import { localNow } from '../../utils/timeUtils';
+import { localNow, localToday } from '../../utils/timeUtils';
 import { geocodeCallIfNeeded } from '../../utils/geocode';
 import { identifyBeat } from '../../utils/geofence';
 import { broadcastDispatchUpdate } from '../../utils/websocket';
@@ -177,8 +177,29 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       return;
     }
 
-    // Generate call number: CFS-YYYY-NNNNN
+    // Generate call number: YY-CFS#####
     const callNumber = generateCallNumber(db);
+
+    // Auto-generate case number for every dispatch call
+    const INCIDENT_TO_CASE_TYPE: Record<string, string> = {
+      theft: 'theft', burglary: 'burglary', robbery: 'criminal', assault: 'assault', battery: 'assault',
+      vandalism: 'criminal', criminal_mischief: 'criminal', drug_activity: 'narcotics', weapons_offense: 'criminal',
+      fraud_forgery: 'fraud', kidnapping: 'criminal', arson: 'criminal', sexual_assault: 'criminal',
+      stalking: 'criminal', identity_theft: 'fraud', criminal_trespass: 'criminal', shoplifting: 'theft',
+      auto_theft: 'theft', criminal_threat: 'criminal', prostitution: 'criminal',
+      trespass: 'disorder', disturbance: 'disorder', noise_complaint: 'disorder', loitering: 'disorder',
+      panhandling: 'disorder', domestic_dispute: 'domestic', prowler: 'disorder', harassment: 'disorder',
+      traffic_accident: 'accident', hit_and_run: 'accident', dui_dwi: 'traffic', parking_violation: 'traffic',
+      traffic_hazard: 'traffic', abandoned_vehicle: 'traffic', reckless_driving: 'traffic', traffic_stop: 'traffic',
+      medical_emergency: 'medical', overdose: 'medical', mental_health_crisis: 'medical',
+      fire: 'fire', fire_alarm: 'fire', hazmat: 'fire',
+      death_investigation: 'death', missing_person: 'missing_person', juvenile_runaway: 'juvenile',
+      alarm_response: 'security', access_control: 'security', patrol_check: 'security', lock_unlock: 'security',
+      property_damage: 'property', lost_found: 'property',
+      daily_activity: 'admin', special_event: 'admin', training_exercise: 'admin',
+    };
+    const caseType = INCIDENT_TO_CASE_TYPE[incident_type] || 'general';
+    const caseNumber = generateCaseNumber(db, caseType);
 
     // Determine status — allow historical entries to set any valid status
     const validStatuses = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived'];
@@ -201,7 +222,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     let autoZoneName: string | null = null;
     let autoBeatName: string | null = null;
     let autoBeatDescriptor: string | null = null;
-    if (latitude && longitude) {
+    if (latitude != null && longitude != null) {
       try {
         const beat = identifyBeat(Number(latitude), Number(longitude));
         if (beat) {
@@ -234,7 +255,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     // Transaction: insert call + activity log atomically
     const createCallTx = db.transaction(() => {
       const result = db.prepare(`
-        INSERT INTO calls_for_service (call_number, incident_type, priority, status, caller_name, caller_phone,
+        INSERT INTO calls_for_service (call_number, case_number, incident_type, priority, status, caller_name, caller_phone,
           caller_relationship, caller_address, location_address, property_id, latitude, longitude, description, notes, source, dispatcher_id,
           cross_street, location_building, location_floor, location_room, zone_beat,
           section_id, zone_id, beat_id, dispatch_code,
@@ -254,13 +275,13 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
           process_service_type, process_served_to, process_served_address,
           contract_id, client_id,
           created_at, dispatched_at, enroute_at, onscene_at, cleared_at, closed_at, archived_at, disposition)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
-        callNumber, incident_type, normalizedPriority, status, caller_name || null, caller_phone || null,
+        callNumber, caseNumber, incident_type, normalizedPriority, status, caller_name || null, caller_phone || null,
         caller_relationship || null, caller_address || null, location_address, property_id || null,
         latitude ?? null, longitude ?? null, description || null, notes || null,
         source || 'phone', req.user!.userId,
@@ -290,12 +311,31 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
 
       const call = (db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(result.lastInsertRowid) as any) || { id: result.lastInsertRowid };
 
+      // Create a corresponding case record for bidirectional linkage
+      const caseNow = customCreatedAt || localNow();
+      const caseResult = db.prepare(`
+        INSERT INTO cases (case_number, title, case_type, status, priority, summary, linked_calls, created_by, created_at, updated_at, opened_date)
+        VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        caseNumber,
+        `${(incident_type || '').replace(/_/g, ' ').toUpperCase()} — ${location_address || 'Unknown location'}`,
+        caseType,
+        normalizedPriority === 'P1' ? 'critical' : normalizedPriority === 'P2' ? 'high' : 'normal',
+        description || null,
+        JSON.stringify([call.id]),
+        req.user!.userId, caseNow, caseNow, localToday(),
+      );
+
+      // Back-link case_id to the call
+      db.prepare('UPDATE calls_for_service SET case_id = ? WHERE id = ?').run(caseResult.lastInsertRowid, call.id);
+      call.case_id = caseResult.lastInsertRowid;
+
       // Log activity
       const isHistorical = !!customCreatedAt;
       db.prepare(`
         INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
         VALUES (?, 'call_created', 'call', ?, ?, ?)
-      `).run(req.user!.userId, call.id, `${isHistorical ? 'Historical entry: ' : 'Created '}${callNumber}: ${incident_type}`, req.ip || 'unknown');
+      `).run(req.user!.userId, call.id, `${isHistorical ? 'Historical entry: ' : 'Created '}${callNumber} (Case ${caseNumber}): ${incident_type}`, req.ip || 'unknown');
 
       return call;
     });
@@ -672,7 +712,7 @@ router.put('/calls/:id', requireRole('admin', 'manager', 'supervisor', 'dispatch
     addField('process_service_type', process_service_type);
     addField('process_served_to', process_served_to);
     addField('process_served_address', process_served_address);
-    addField('process_attempts', process_attempts !== undefined ? Number(process_attempts) : undefined);
+    addField('process_attempts', process_attempts !== undefined ? (isNaN(Number(process_attempts)) ? null : Number(process_attempts)) : undefined);
     addField('process_served_at', process_served_at);
     addField('process_service_result', process_service_result);
     addField('client_id', resolvedUpdateClientId);
@@ -696,7 +736,7 @@ router.put('/calls/:id', requireRole('admin', 'manager', 'supervisor', 'dispatch
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
 
     // If location changed but no coordinates provided, geocode asynchronously
-    if (location_address && !latitude && !longitude) {
+    if (location_address && latitude == null && longitude == null) {
       geocodeCallIfNeeded(updated.id, location_address, updated.latitude, updated.longitude);
     }
 

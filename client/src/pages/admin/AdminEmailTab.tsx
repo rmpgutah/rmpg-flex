@@ -116,8 +116,8 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
       const data = await apiFetch<{ url: string }>('/email/admin/oauth/authorize');
       // Validate redirect URL is a legitimate OAuth provider
       const url = new URL(data.url);
-      const allowedHosts = ['login.microsoftonline.com', 'accounts.google.com', 'login.live.com'];
-      if (!allowedHosts.some(h => url.hostname === h || url.hostname.endsWith('.' + h))) {
+      const allowedHosts = new Set(['login.microsoftonline.com', 'accounts.google.com', 'login.live.com']);
+      if (!allowedHosts.has(url.hostname)) {
         throw new Error('Unexpected OAuth redirect domain');
       }
       window.location.href = data.url;

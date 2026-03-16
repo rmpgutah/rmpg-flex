@@ -45,8 +45,8 @@ const VIDEO_MIME_TYPES = new Set([
 
 const bodycamStorage = multer.diskStorage({
   destination: (_req, _file, cb) => {
-    const now = new Date();
-    const subDir = path.join(BODYCAM_DIR, `${now.getFullYear()}`, String(now.getMonth() + 1).padStart(2, '0'));
+    const today = localToday();
+    const subDir = path.join(BODYCAM_DIR, today.slice(0, 4), today.slice(5, 7));
     if (!fs.existsSync(subDir)) fs.mkdirSync(subDir, { recursive: true });
     cb(null, subDir);
   },
@@ -111,19 +111,19 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     const params: any[] = [];
 
     if (role) {
-      whereClause += ' AND role = ?';
+      whereClause += ' AND u.role = ?';
       params.push(role);
     }
     if (status) {
-      whereClause += ' AND status = ?';
+      whereClause += ' AND u.status = ?';
       params.push(status);
     }
 
     // Archive filter
     if (archived === 'true') {
-      whereClause += ' AND archived_at IS NOT NULL';
+      whereClause += ' AND u.archived_at IS NOT NULL';
     } else if (archived !== 'all') {
-      whereClause += ' AND archived_at IS NULL';
+      whereClause += ' AND u.archived_at IS NULL';
     }
 
     const users = db.prepare(`
@@ -139,7 +139,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
         un.call_sign as unit_call_sign
       FROM users u
       LEFT JOIN units un ON un.officer_id = u.id
-      ${whereClause.replace(/\bstatus\b/g, 'u.status').replace(/\brole\b/g, 'u.role').replace(/\barchived_at\b/g, 'u.archived_at')}
+      ${whereClause}
       ORDER BY u.full_name
     `).all(...params);
 
@@ -869,7 +869,9 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       if (breakEntry.break_start) {
         const breakStart = new Date(breakEntry.break_start.replace(' ', 'T'));
         const breakEnd = new Date(now.replace(' ', 'T'));
-        breakMins += Math.round(((breakEnd.getTime() - breakStart.getTime()) / 60000) * 100) / 100;
+        if (!isNaN(breakStart.getTime()) && !isNaN(breakEnd.getTime())) {
+          breakMins += Math.round(((breakEnd.getTime() - breakStart.getTime()) / 60000) * 100) / 100;
+        }
       }
 
       db.prepare(`UPDATE time_entries SET status = 'active', break_start = NULL, break_minutes = ? WHERE id = ?`).run(breakMins, breakEntry.id);
@@ -2255,6 +2257,11 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
         // Move chunk file into session directory
         const idx = parseInt(String(chunkIndex), 10);
+        if (isNaN(idx) || idx < 0) {
+          if (req.file.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+          res.status(400).json({ error: 'Invalid chunkIndex' });
+          return;
+        }
         const chunkDest = path.join(sessionDir, `chunk_${String(idx).padStart(6, '0')}`);
         fs.renameSync(req.file.path, chunkDest);
 

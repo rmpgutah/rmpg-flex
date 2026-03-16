@@ -157,7 +157,7 @@ export async function searchUtahWarrantsLive(
           first_name: person.name.first || '',
           middle_name: person.name.middle || null,
           last_name: person.name.last || '',
-          age: person.age ? parseInt(String(person.age), 10) || null : null,
+          age: person.age != null ? (parseInt(String(person.age), 10) ?? null) : null,
           city: person.homeAddress?.city || null,
           utah_warrant_id: w.id,
           issue_date: w.issueDate || null,
@@ -517,6 +517,7 @@ const SCAN_STARTUP_DELAY_MS = 90_000;
 
 let scanInterval: ReturnType<typeof setInterval> | null = null;
 let startupTimer: ReturnType<typeof setTimeout> | null = null;
+let cleanupIntervalHandle: ReturnType<typeof setInterval> | null = null;
 
 export function scheduleUtahWarrantSync(): void {
   console.log('[Utah Warrants] Live search mode active — queries warrants.utah.gov on demand');
@@ -528,9 +529,9 @@ export function scheduleUtahWarrantSync(): void {
     await runWarrantWatchScan();
 
     // Then schedule hourly recurring scans
-    scanInterval = setInterval(async () => {
+    scanInterval = setInterval(() => {
       console.log('[Warrant Watch] Starting hourly warrant scan...');
-      await runWarrantWatchScan();
+      runWarrantWatchScan().catch(err => console.error('[Warrant Watch] Scan error:', err.message || err));
     }, SCAN_INTERVAL_MS);
 
     if (scanInterval.unref) scanInterval.unref();
@@ -539,7 +540,7 @@ export function scheduleUtahWarrantSync(): void {
   if (startupTimer.unref) startupTimer.unref();
 
   // Clean up stale cache entries older than 7 days every 6 hours
-  const cleanupInterval = setInterval(() => {
+  cleanupIntervalHandle = setInterval(() => {
     try {
       const db = getDb();
       const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -547,10 +548,10 @@ export function scheduleUtahWarrantSync(): void {
       if (deleted.changes > 0) {
         console.log(`[Utah Warrants] Cache cleanup: removed ${deleted.changes} stale entries`);
       }
-    } catch { /* ignore cleanup errors */ }
+    } catch (e: any) { console.warn('[Utah Warrants] Cleanup error:', e?.message); }
   }, 6 * 60 * 60 * 1000);
 
-  if (cleanupInterval.unref) cleanupInterval.unref();
+  if (cleanupIntervalHandle.unref) cleanupIntervalHandle.unref();
 }
 
 export function stopUtahWarrantSync(): void {
@@ -561,5 +562,9 @@ export function stopUtahWarrantSync(): void {
   if (scanInterval) {
     clearInterval(scanInterval);
     scanInterval = null;
+  }
+  if (cleanupIntervalHandle) {
+    clearInterval(cleanupIntervalHandle);
+    cleanupIntervalHandle = null;
   }
 }

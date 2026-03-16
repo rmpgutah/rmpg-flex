@@ -198,7 +198,7 @@ const EMPTY_FORM: CitationForm = {
 // formatDate imported from ../utils/dateUtils
 
 function formatCurrency(n: number | null | undefined): string {
-  if (n == null) return '--';
+  if (n == null || !Number.isFinite(Number(n))) return '--';
   return `$${Number(n).toFixed(2)}`;
 }
 

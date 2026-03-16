@@ -135,7 +135,7 @@ router.get('/stats', (req: Request, res: Response) => {
       GROUP BY action
       ORDER BY count DESC
       LIMIT 10
-    `).all(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
+    `).all((() => { const d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T00:00:00`; })());
 
     // Top users (last 30 days)
     const topUsers = db.prepare(`
@@ -150,7 +150,7 @@ router.get('/stats', (req: Request, res: Response) => {
       GROUP BY u.full_name, u.badge_number
       ORDER BY count DESC
       LIMIT 10
-    `).all(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
+    `).all((() => { const d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T00:00:00`; })());
 
     res.json({
       totalEntries,

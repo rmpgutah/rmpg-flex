@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { broadcast } from '../utils/websocket';
-import { localNow } from '../utils/timeUtils';
+import { localNow, localToday } from '../utils/timeUtils';
 import { createNotificationForRoles } from './notifications';
 import { resolveDistrict } from '../utils/districtResolver';
 
@@ -12,7 +12,7 @@ router.use(authenticateToken);
 /** Generate next FI number: FI-YYYY-NNNN */
 /** Generate FI number — wrapped in transaction to prevent race conditions */
 function generateFiNumber(db: ReturnType<typeof getDb>): string {
-  const year = new Date().getFullYear();
+  const year = parseInt(localToday().slice(0, 4), 10);
   const prefix = `FI-${year}-`;
   return db.transaction(() => {
     const row = db.prepare(
@@ -118,7 +118,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
 
     // Auto-fill Section/Zone/Beat from coordinates
     let { section_id, zone_id, beat_id, zone_beat } = req.body;
-    if (latitude && longitude && !section_id && !zone_id && !beat_id) {
+    if (latitude != null && longitude != null && !section_id && !zone_id && !beat_id) {
       const district = resolveDistrict(Number(latitude), Number(longitude));
       if (district) {
         section_id = district.section_id;
@@ -200,7 +200,7 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (re
     ];
 
     // Auto-fill S/Z/B when coordinates are updated
-    if (req.body.latitude && req.body.longitude && !req.body.section_id) {
+    if (req.body.latitude != null && req.body.longitude != null && !req.body.section_id) {
       const district = resolveDistrict(Number(req.body.latitude), Number(req.body.longitude));
       if (district) {
         req.body.section_id = district.section_id;

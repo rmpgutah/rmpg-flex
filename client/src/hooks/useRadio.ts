@@ -364,7 +364,8 @@ export function useRadio() {
           }
           const reader = new FileReader();
           reader.onload = () => {
-            const base64 = (reader.result as string).split(',')[1];
+            const rdParts = (reader.result as string).split(',');
+            const base64 = rdParts.length > 1 ? rdParts[1] : rdParts[0];
             if (chunkCount <= 2) {
               console.log('[Radio TX] Sending chunk #' + chunkCount + ', base64 length:', base64?.length || 0);
             }

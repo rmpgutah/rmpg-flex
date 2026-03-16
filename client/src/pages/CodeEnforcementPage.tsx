@@ -308,7 +308,7 @@ export default function CodeEnforcementPage() {
                 <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-500">
                   <MapPin style={{ width: 9, height: 9 }} />
                   <span className="truncate">{v.location}</span>
-                  {v.fine_amount && <span className="text-amber-400">${Number(v.fine_amount).toFixed(0)}</span>}
+                  {v.fine_amount && !isNaN(Number(v.fine_amount)) && <span className="text-amber-400">${Number(v.fine_amount).toFixed(0)}</span>}
                   {((v as any).section_id || (v as any).zone_id || (v as any).beat_id) && (
                     <span className="font-mono text-rmpg-400">{[(v as any).section_id, (v as any).zone_id, (v as any).beat_id].filter(Boolean).join('/')}</span>
                   )}
@@ -378,7 +378,7 @@ export default function CodeEnforcementPage() {
                   ['Description', selectedViolation.description],
                   ['Code Section', selectedViolation.code_section || '—'],
                   ['Severity', selectedViolation.severity],
-                  ['Fine Amount', selectedViolation.fine_amount ? `$${Number(selectedViolation.fine_amount).toFixed(2)}` : '—'],
+                  ['Fine Amount', selectedViolation.fine_amount && !isNaN(Number(selectedViolation.fine_amount)) ? `$${Number(selectedViolation.fine_amount).toFixed(2)}` : '—'],
                   ['Compliance Deadline', selectedViolation.compliance_deadline ? new Date(selectedViolation.compliance_deadline).toLocaleDateString() : '—'],
                   ['S/Z/B', [(selectedViolation as any).section_id, (selectedViolation as any).zone_id, (selectedViolation as any).beat_id].filter(Boolean).join('/') || '—'],
                   ['Created', selectedViolation.created_at ? new Date(selectedViolation.created_at).toLocaleString() : '—'],
@@ -422,8 +422,8 @@ export default function CodeEnforcementPage() {
                   ['Tow From', selectedTow.tow_from],
                   ['Tow To', selectedTow.tow_to || '—'],
                   ['Tow Company', selectedTow.tow_company || '—'],
-                  ['Tow Fee', selectedTow.tow_fee ? `$${Number(selectedTow.tow_fee).toFixed(2)}` : '—'],
-                  ['Storage Fee', selectedTow.storage_fee_daily ? `$${Number(selectedTow.storage_fee_daily).toFixed(2)}` : '—'],
+                  ['Tow Fee', selectedTow.tow_fee && !isNaN(Number(selectedTow.tow_fee)) ? `$${Number(selectedTow.tow_fee).toFixed(2)}` : '—'],
+                  ['Storage Fee', selectedTow.storage_fee_daily && !isNaN(Number(selectedTow.storage_fee_daily)) ? `$${Number(selectedTow.storage_fee_daily).toFixed(2)}` : '—'],
                 ].map(([label, value]) => (
                   <div key={label as string}>
                     <div className="text-[9px] font-mono text-rmpg-500 uppercase">{label}</div>

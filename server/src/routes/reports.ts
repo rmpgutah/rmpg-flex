@@ -4,6 +4,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { reverseGeocodeDetailed } from '../utils/geocode';
 import { identifyBeat } from '../utils/geofence';
 import { listDailyReports, getReportPath, generateAndSaveDailyReport } from '../utils/dailyReportGenerator';
+import { localToday } from '../utils/timeUtils';
 
 const router = Router();
 
@@ -585,7 +586,7 @@ router.get('/shift-activity/:officerId', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { officerId } = req.params;
-    const date = (req.query.date as string) || new Date().toISOString().slice(0, 10);
+    const date = (req.query.date as string) || localToday();
 
     // Authorization: officers can only view their own shift data
     const privilegedRoles = ['admin', 'manager', 'supervisor'];

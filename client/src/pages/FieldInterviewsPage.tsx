@@ -322,10 +322,10 @@ export default function FieldInterviewsPage() {
                   <span className="text-[11px] font-bold font-mono text-brand-400">{fi.fi_number}</span>
                   <div className="flex items-center gap-1">
                     <span className={`text-[8px] font-bold px-1.5 py-0 border ${REASON_COLORS[fi.contact_reason] || REASON_COLORS.other}`}>
-                      {fi.contact_reason.replace(/_/g, ' ').toUpperCase()}
+                      {(fi.contact_reason || '').replace(/_/g, ' ').toUpperCase()}
                     </span>
                     <span className={`text-[8px] font-bold px-1.5 py-0 border ${STATUS_COLORS[fi.status]}`}>
-                      {fi.status.toUpperCase()}
+                      {(fi.status || '').toUpperCase()}
                     </span>
                   </div>
                 </div>

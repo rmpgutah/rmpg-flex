@@ -32,10 +32,11 @@ function formatTime(dateStr: string): string {
 }
 
 function calcHours(entry: TimeEntry): string {
-  if (entry.total_hours != null) return entry.total_hours.toFixed(2);
+  if (entry.total_hours != null && Number.isFinite(Number(entry.total_hours))) return Number(entry.total_hours).toFixed(2);
   if (!entry.clock_in) return '-';
   const start = new Date(entry.clock_in).getTime();
   const end = entry.clock_out ? new Date(entry.clock_out).getTime() : Date.now();
+  if (isNaN(start) || isNaN(end)) return '-';
   const hrs = (end - start) / (1000 * 60 * 60);
   return hrs.toFixed(2);
 }
@@ -187,7 +188,7 @@ export default function TimeLogDetailTab({
                       {entry.break_minutes > 0 && (
                         <span className="text-[9px] text-amber-400 font-mono">
                           <Coffee className="w-2.5 h-2.5 inline mr-0.5" />
-                          {entry.break_minutes.toFixed(0)}min break
+                          {(Number(entry.break_minutes) || 0).toFixed(0)}min break
                         </span>
                       )}
                       {entry.status === 'edited' && (

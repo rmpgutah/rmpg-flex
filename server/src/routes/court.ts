@@ -15,7 +15,7 @@ router.use(authenticateToken);
 
 function nextEventNumber(): string {
   const db = getDb();
-  const yr = new Date().getFullYear();
+  const yr = parseInt(localToday().slice(0, 4), 10);
   const prefix = `CT-${yr}-`;
   const last = db.prepare(
     "SELECT event_number FROM court_events WHERE event_number LIKE ? ORDER BY id DESC LIMIT 1"
@@ -134,21 +134,26 @@ router.post('/events', requireRole('admin', 'manager', 'supervisor', 'officer'),
       officers_required, notes } = req.body;
     if (!event_type || !event_date) return res.status(400).json({ error: 'Event type and date required' });
 
-    const event_number = nextEventNumber();
-    const result = db.prepare(`
-      INSERT INTO court_events (event_number, event_type, status, event_date, event_time,
-        court_name, courtroom, judge_name, court_case_number,
-        citation_id, incident_id, case_id, defendant_person_id, defendant_name,
-        prosecutor, defense_attorney, officers_required, notes,
-        created_by, created_at, updated_at)
-      VALUES (?, ?, 'scheduled', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(event_number, event_type, event_date, event_time || null,
-      court_name || null, courtroom || null, judge_name || null, court_case_number || null,
-      citation_id || null, incident_id || null, case_id || null,
-      defendant_person_id || null, defendant_name || null,
-      prosecutor || null, defense_attorney || null,
-      JSON.stringify(officers_required || []), notes || null,
-      req.user!.userId, now, now);
+    // Wrap sequence generation + INSERT in a transaction to prevent duplicate event numbers
+    const createEvent = db.transaction(() => {
+      const event_number = nextEventNumber();
+      const result = db.prepare(`
+        INSERT INTO court_events (event_number, event_type, status, event_date, event_time,
+          court_name, courtroom, judge_name, court_case_number,
+          citation_id, incident_id, case_id, defendant_person_id, defendant_name,
+          prosecutor, defense_attorney, officers_required, notes,
+          created_by, created_at, updated_at)
+        VALUES (?, ?, 'scheduled', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(event_number, event_type, event_date, event_time || null,
+        court_name || null, courtroom || null, judge_name || null, court_case_number || null,
+        citation_id || null, incident_id || null, case_id || null,
+        defendant_person_id || null, defendant_name || null,
+        prosecutor || null, defense_attorney || null,
+        JSON.stringify(officers_required || []), notes || null,
+        req.user!.userId, now, now);
+      return { result, event_number };
+    });
+    const { result, event_number } = createEvent();
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, 'create', 'court_event', ?, ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ event_number }), req.ip || 'unknown', now);
@@ -164,6 +169,9 @@ router.post('/events', requireRole('admin', 'manager', 'supervisor', 'officer'),
 router.put('/events/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const existing = db.prepare('SELECT id FROM court_events WHERE id = ?').get(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Court event not found' });
+
     const now = localNow();
     const fields = ['event_type', 'status', 'event_date', 'event_time', 'court_name', 'courtroom',
       'judge_name', 'court_case_number', 'citation_id', 'incident_id', 'case_id',

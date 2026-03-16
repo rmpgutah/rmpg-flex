@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { broadcast } from '../utils/websocket';
-import { localNow } from '../utils/timeUtils';
+import { localNow, localToday } from '../utils/timeUtils';
 import { createNotificationForRoles } from './notifications';
 import { resolveDistrict } from '../utils/districtResolver';
 
@@ -11,7 +11,7 @@ router.use(authenticateToken);
 
 /** Generate next order number: TO-YYYY-NNNN — wrapped in transaction to prevent race conditions */
 function generateOrderNumber(db: ReturnType<typeof getDb>): string {
-  const year = new Date().getFullYear();
+  const year = parseInt(localToday().slice(0, 4), 10);
   const prefix = `TO-${year}-`;
   return db.transaction(() => {
     const row = db.prepare(
@@ -173,7 +173,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
       } else if (property_id) {
         // Try to get S/Z/B from property's lat/lng
         const prop = db.prepare('SELECT latitude, longitude FROM properties WHERE id = ?').get(property_id) as any;
-        if (prop?.latitude && prop?.longitude) {
+        if (prop?.latitude != null && prop?.longitude != null) {
           const district = resolveDistrict(Number(prop.latitude), Number(prop.longitude));
           if (district) {
             section_id = district.section_id; zone_id = district.zone_id;

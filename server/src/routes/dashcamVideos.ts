@@ -294,9 +294,10 @@ router.delete('/:id', authenticateToken, requireRole('admin'), (req: Request, re
       return;
     }
 
-    // Delete file from disk
-    const filePath = path.resolve(DASHCAM_DIR, video.file_path);
-    if (filePath.startsWith(DASHCAM_DIR) && fs.existsSync(filePath)) {
+    // Delete file from disk — normalize and verify containment with path.sep to prevent traversal
+    const normalizedPath = path.normalize(video.file_path).replace(/^(\.\.(\/|\\|$))+/, '');
+    const filePath = path.resolve(DASHCAM_DIR, normalizedPath);
+    if (filePath.startsWith(path.resolve(DASHCAM_DIR) + path.sep) && fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
     }
 
@@ -316,8 +317,8 @@ router.delete('/:id', authenticateToken, requireRole('admin'), (req: Request, re
 // GET /api/fleet/dashcam-videos/:id/stream — Stream with Range
 // ============================================================
 router.get('/:id/stream', (req: Request, res: Response, next) => {
-  // Accept token from query string for <video> elements
-  if (!req.headers['authorization'] && req.query.token) {
+  // Accept token from query string for <video> elements (can't set Authorization header)
+  if (!req.headers['authorization'] && typeof req.query.token === 'string' && req.query.token.length < 2048) {
     req.headers['authorization'] = `Bearer ${req.query.token}`;
   }
   next();

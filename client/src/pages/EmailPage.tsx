@@ -689,6 +689,7 @@ function printEmail(message: EmailMessage, bodyHtml?: string) {
     // This is the same HTML we already render from the email server in a sandboxed iframe
     const iframe = doc.createElement('iframe');
     iframe.style.cssText = 'width:100%;border:none;min-height:200px;';
+    iframe.sandbox.value = '';
     iframe.srcdoc = `<html><head><style>body{font-family:Segoe UI,Arial,sans-serif;font-size:12pt;color:#1a1a1a;margin:0;line-height:1.6;}a{color:#1a5a9e;}img{max-width:100%;height:auto;}table{border-collapse:collapse;max-width:100%;}td,th{padding:4px 8px;}blockquote{border-left:3px solid #ccc;margin:8px 0;padding:4px 12px;color:#666;}</style></head><body>${bodyHtml}</body></html>`;
     bodyDiv.appendChild(iframe);
   } else {
@@ -956,7 +957,8 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
       if (file.size > 25 * 1024 * 1024) { setError(`${file.name} exceeds 25MB limit`); return; }
       const reader = new FileReader();
       reader.onload = () => {
-        const base64 = (reader.result as string).split(',')[1];
+        const parts = (reader.result as string).split(',');
+        const base64 = parts.length > 1 ? parts[1] : parts[0];
         setFileAttachments(prev => [...prev, { name: file.name, contentType: file.type || 'application/octet-stream', contentBytes: base64, size: file.size }]);
       };
       reader.readAsDataURL(file);
@@ -976,7 +978,8 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
       if (file.size > 25 * 1024 * 1024) { setError('Image exceeds 25MB limit'); return; }
       const reader = new FileReader();
       reader.onload = () => {
-        const base64 = (reader.result as string).split(',')[1];
+        const imgParts = (reader.result as string).split(',');
+        const base64 = imgParts.length > 1 ? imgParts[1] : imgParts[0];
         setFileAttachments(prev => [...prev, { name: file.name, contentType: file.type, contentBytes: base64, size: file.size }]);
         // Insert image placeholder in body
         const ta = textareaRef.current;
@@ -2172,7 +2175,7 @@ export default function EmailPage() {
                     td, th { padding: 4px 8px; } blockquote { border-left: 3px solid #1e3048; margin: 8px 0; padding: 4px 12px; color: #8899aa; }
                     pre { background: #141e2b; padding: 8px; border-radius: 2px; overflow-x: auto; } hr { border: none; border-top: 1px solid #1e3048; margin: 16px 0; }
                   </style></head><body>${fullMessage.bodyHtml}</body></html>`}
-                  sandbox="allow-same-origin" className="w-full border-0" style={{ minHeight: 200 }} title="Email body" />
+                  sandbox="" className="w-full border-0" style={{ minHeight: 200 }} title="Email body" />
               ) : (
                 <div className="p-4 text-xs text-rmpg-400 whitespace-pre-wrap font-mono">{fullMessage.bodyPreview}</div>
               )}

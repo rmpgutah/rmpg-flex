@@ -37,9 +37,10 @@ router.get('/dashboard', requireRole('admin', 'manager', 'contract_manager'), (_
     ).get() as any)?.c || 0;
 
     // Contracts expiring in next 90 days
-    const futureDate = new Date();
+    const today = localNow().slice(0, 10);
+    const futureDate = new Date(today + 'T12:00:00');
     futureDate.setDate(futureDate.getDate() + 90);
-    const future90 = futureDate.toISOString().slice(0, 10);
+    const future90 = `${futureDate.getFullYear()}-${String(futureDate.getMonth() + 1).padStart(2, '0')}-${String(futureDate.getDate()).padStart(2, '0')}`;
     const expiringContracts = (db.prepare(
       "SELECT COUNT(*) as c FROM clients WHERE status = 'active' AND contract_end IS NOT NULL AND contract_end <= ? AND contract_end >= date('now')"
     ).get(future90) as any)?.c || 0;

@@ -379,7 +379,7 @@ export default function Layout() {
         const url = token
           ? `${item.externalUrl}?token=${encodeURIComponent(token)}`
           : item.externalUrl;
-        window.open(url, '_blank', 'noopener');
+        window.open(url, '_blank', 'noopener,noreferrer');
         return;
       }
 
@@ -985,7 +985,7 @@ export default function Layout() {
                       const url = token
                         ? `${item.externalUrl}?token=${encodeURIComponent(token)}`
                         : item.externalUrl!;
-                      window.open(url, '_blank', 'noopener');
+                      window.open(url, '_blank', 'noopener,noreferrer');
                     }}
                     onMouseEnter={() => { if (openDropdown) setOpenDropdown(null); }}
                     className="toolbar-btn"
@@ -1016,7 +1016,7 @@ export default function Layout() {
                       } else {
                         setOpenDropdown(null);
                         if (item.newWindow) {
-                          window.open(item.path, '_blank');
+                          window.open(item.path, '_blank', 'noopener,noreferrer');
                         } else {
                           navigate(item.path);
                         }
@@ -1132,7 +1132,7 @@ export default function Layout() {
                             onClick={() => {
                               setOpenDropdown(null);
                               if (child.newWindow || item.newWindow) {
-                                window.open(child.path, '_blank');
+                                window.open(child.path, '_blank', 'noopener,noreferrer');
                               } else {
                                 navigate(child.path);
                               }

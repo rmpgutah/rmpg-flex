@@ -345,6 +345,7 @@ export async function apiFetch<T>(
   const token = localStorage.getItem('rmpg_token');
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    'X-Requested-With': 'XMLHttpRequest',
     ...(options?.headers as Record<string, string>),
   };
 
@@ -394,7 +395,7 @@ export async function apiUploadFiles(
   if (entityType) formData.append('entity_type', entityType);
   if (entityId) formData.append('entity_id', String(entityId));
 
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { 'X-Requested-With': 'XMLHttpRequest' };
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }

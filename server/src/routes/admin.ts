@@ -1124,6 +1124,10 @@ router.put('/users/:id/role', requireRole('admin'), (req: Request, res: Response
     db.prepare('UPDATE users SET role = ?, updated_at = ? WHERE id = ?')
       .run(role, localNow(), userId);
 
+    // Invalidate all sessions — forces re-login so the new role takes effect in fresh JWTs
+    // Without this, the user's existing JWTs still carry the old role until they expire
+    db.prepare('UPDATE sessions SET is_active = 0 WHERE user_id = ?').run(userId);
+
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'role_changed', 'user', ?, ?, ?)

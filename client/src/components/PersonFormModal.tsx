@@ -296,7 +296,7 @@ export default function PersonFormModal({
     let finalForm = { ...form };
 
     // Compose height string from feet/inches dropdowns
-    if (finalForm.height_feet) {
+    if (finalForm.height_feet != null && finalForm.height_feet !== '') {
       const ft = finalForm.height_feet;
       const inch = finalForm.height_inches || '0';
       finalForm.height = `${ft}'${inch.padStart(2, '0')}"`;

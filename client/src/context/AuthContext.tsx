@@ -66,7 +66,9 @@ const AUTH_FETCH_TIMEOUT_MS = 8000;
 
 function parseJwtExpiry(token: string): number | null {
   try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
+    const parts = token.split('.');
+    if (parts.length < 3) return null;
+    const payload = JSON.parse(atob(parts[1]));
     return payload.exp ? payload.exp * 1000 : null;
   } catch {
     return null;

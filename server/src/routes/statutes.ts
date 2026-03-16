@@ -215,6 +215,10 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
       return;
     }
 
+    // Check existence first
+    const existing = db.prepare('SELECT id FROM utah_statutes WHERE id = ?').get(req.params.id);
+    if (!existing) { res.status(404).json({ error: 'Statute not found' }); return; }
+
     params.push(req.params.id);
     db.prepare(`UPDATE utah_statutes SET ${fields.join(', ')} WHERE id = ?`).run(...params);
 

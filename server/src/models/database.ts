@@ -1700,6 +1700,7 @@ function migrateSchema(): void {
   addCol('login_attempts', 'device_fingerprint', 'TEXT');
   addCol('sessions', 'device_fingerprint', 'TEXT');
   addCol('sessions', 'device_name', 'TEXT');
+  addCol('sessions', 'ua_hash', 'TEXT');  // User-agent hash for session binding
 
   // ── USERS — Digital Signature (PNG base64 data URL) ──
   addCol('users', 'digital_signature', 'TEXT');            // base64 data:image/png;base64,... stored per officer

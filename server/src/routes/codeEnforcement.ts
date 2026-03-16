@@ -14,6 +14,7 @@ import { resolveDistrict } from '../utils/districtResolver';
 
 const router = Router();
 router.use(authenticateToken);
+router.use(requireRole('admin', 'manager', 'supervisor', 'officer'));
 
 // Whitelist of valid table/column pairs to prevent SQL injection via interpolation
 const SEQUENCE_TARGETS: Record<string, string> = {
@@ -27,7 +28,7 @@ function nextNumber(table: string, prefix: string, col: string): string {
   const sql = SEQUENCE_TARGETS[key];
   if (!sql) throw new Error(`nextNumber: invalid table/column pair "${key}"`);
 
-  const yr = new Date().getFullYear();
+  const yr = parseInt(localToday().slice(0, 4), 10);
   const pfx = `${prefix}-${yr}-`;
   const last = db.prepare(sql).get(`${pfx}%`) as any;
   const parsed = last ? parseInt(last[col].replace(pfx, ''), 10) : 0;
@@ -110,7 +111,7 @@ router.post('/violations', requireRole('admin', 'manager', 'supervisor', 'office
 
     // Auto-fill Section/Zone/Beat from coordinates
     let { section_id, zone_id, beat_id, zone_beat } = req.body;
-    if (latitude && longitude && !section_id && !zone_id && !beat_id) {
+    if (latitude != null && longitude != null && !section_id && !zone_id && !beat_id) {
       const district = resolveDistrict(Number(latitude), Number(longitude));
       if (district) {
         section_id = district.section_id;
@@ -121,21 +122,26 @@ router.post('/violations', requireRole('admin', 'manager', 'supervisor', 'office
     }
 
     const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
-    const violation_number = nextNumber('code_violations', 'CV', 'violation_number');
 
-    const result = db.prepare(`
-      INSERT INTO code_violations (violation_number, violation_type, status, location, property_id,
-        person_id, violator_name, violator_contact, description, code_section, severity,
-        compliance_deadline, fine_amount, reporting_officer_id, reporting_officer_name,
-        section_id, zone_id, beat_id, zone_beat,
-        created_at, updated_at)
-      VALUES (?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(violation_number, violation_type, location, property_id || null,
-      person_id || null, violator_name || null, violator_contact || null,
-      description, code_section || null, severity || 'minor',
-      compliance_deadline || null, fine_amount ?? 0, req.user!.userId, user?.full_name || '',
-      section_id || null, zone_id || null, beat_id || null, zone_beat || null,
-      now, now);
+    // Wrap sequence generation + INSERT in a transaction to prevent duplicate violation numbers
+    const createViolation = db.transaction(() => {
+      const violation_number = nextNumber('code_violations', 'CV', 'violation_number');
+      const result = db.prepare(`
+        INSERT INTO code_violations (violation_number, violation_type, status, location, property_id,
+          person_id, violator_name, violator_contact, description, code_section, severity,
+          compliance_deadline, fine_amount, reporting_officer_id, reporting_officer_name,
+          section_id, zone_id, beat_id, zone_beat,
+          created_at, updated_at)
+        VALUES (?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(violation_number, violation_type, location, property_id || null,
+        person_id || null, violator_name || null, violator_contact || null,
+        description, code_section || null, severity || 'minor',
+        compliance_deadline || null, fine_amount ?? 0, req.user!.userId, user?.full_name || '',
+        section_id || null, zone_id || null, beat_id || null, zone_beat || null,
+        now, now);
+      return { result, violation_number };
+    });
+    const { result, violation_number } = createViolation();
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, 'create', 'code_violation', ?, ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ violation_number }), req.ip || 'unknown', now);
@@ -150,6 +156,9 @@ router.post('/violations', requireRole('admin', 'manager', 'supervisor', 'office
 router.put('/violations/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const existing = db.prepare('SELECT id FROM code_violations WHERE id = ?').get(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Violation not found' });
+
     const now = localNow();
     const fields = ['violation_type', 'location', 'description', 'code_section', 'severity',
       'property_id', 'person_id', 'violator_name', 'violator_contact', 'compliance_deadline',
@@ -168,6 +177,9 @@ router.put('/violations/:id', requireRole('admin', 'manager', 'supervisor', 'off
 router.put('/violations/:id/status', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const existing = db.prepare('SELECT id FROM code_violations WHERE id = ?').get(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Violation not found' });
+
     const now = localNow();
     const { status, resolution_notes } = req.body;
     const valid = ['open', 'notice_sent', 'reinspection', 'resolved', 'referred', 'voided'];
@@ -233,22 +245,27 @@ router.post('/tows', requireRole('admin', 'manager', 'supervisor', 'officer'), (
     if (!tow_from || !tow_reason) return res.status(400).json({ error: 'Location and reason required' });
 
     const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
-    const tow_number = nextNumber('vehicle_tows', 'TOW', 'tow_number');
 
-    const result = db.prepare(`
-      INSERT INTO vehicle_tows (tow_number, status, vehicle_plate, vehicle_state, vehicle_vin,
-        vehicle_year, vehicle_make, vehicle_model, vehicle_color, vehicle_id,
-        tow_from, tow_to, tow_reason, authorization, tow_company, tow_driver, tow_company_phone,
-        call_id, citation_id, incident_id, tow_fee, storage_fee_daily,
-        officer_id, officer_name, notes, ordered_at, created_at, updated_at)
-      VALUES (?, 'ordered', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(tow_number, vehicle_plate || null, vehicle_state || null, vehicle_vin || null,
-      vehicle_year ?? null, vehicle_make || null, vehicle_model || null, vehicle_color || null, vehicle_id || null,
-      tow_from, tow_to || null, tow_reason, authorization || null,
-      tow_company || null, tow_driver || null, tow_company_phone || null,
-      call_id || null, citation_id || null, incident_id || null,
-      tow_fee ?? 0, storage_fee_daily ?? 0,
-      req.user!.userId, user?.full_name || '', notes || null, now, now, now);
+    // Wrap sequence generation + INSERT in a transaction to prevent duplicate tow numbers
+    const createTow = db.transaction(() => {
+      const tow_number = nextNumber('vehicle_tows', 'TOW', 'tow_number');
+      const result = db.prepare(`
+        INSERT INTO vehicle_tows (tow_number, status, vehicle_plate, vehicle_state, vehicle_vin,
+          vehicle_year, vehicle_make, vehicle_model, vehicle_color, vehicle_id,
+          tow_from, tow_to, tow_reason, authorization, tow_company, tow_driver, tow_company_phone,
+          call_id, citation_id, incident_id, tow_fee, storage_fee_daily,
+          officer_id, officer_name, notes, ordered_at, created_at, updated_at)
+        VALUES (?, 'ordered', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(tow_number, vehicle_plate || null, vehicle_state || null, vehicle_vin || null,
+        vehicle_year ?? null, vehicle_make || null, vehicle_model || null, vehicle_color || null, vehicle_id || null,
+        tow_from, tow_to || null, tow_reason, authorization || null,
+        tow_company || null, tow_driver || null, tow_company_phone || null,
+        call_id || null, citation_id || null, incident_id || null,
+        tow_fee ?? 0, storage_fee_daily ?? 0,
+        req.user!.userId, user?.full_name || '', notes || null, now, now, now);
+      return { result, tow_number };
+    });
+    const { result, tow_number } = createTow();
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, 'create', 'vehicle_tow', ?, ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ tow_number }), req.ip || 'unknown', now);
@@ -263,6 +280,8 @@ router.post('/tows', requireRole('admin', 'manager', 'supervisor', 'officer'), (
 router.put('/tows/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const existing = db.prepare('SELECT id FROM vehicle_tows WHERE id = ?').get(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Tow not found' });
     const now = localNow();
     const fields = ['tow_from', 'tow_to', 'tow_reason', 'authorization', 'tow_company',
       'tow_driver', 'tow_company_phone', 'vehicle_plate', 'vehicle_state', 'vehicle_vin',
@@ -282,6 +301,8 @@ router.put('/tows/:id', requireRole('admin', 'manager', 'supervisor', 'officer')
 router.put('/tows/:id/status', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const existing = db.prepare('SELECT id FROM vehicle_tows WHERE id = ?').get(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Tow not found' });
     const now = localNow();
     const { status } = req.body;
     const valid = ['ordered', 'dispatched', 'in_progress', 'completed', 'released', 'cancelled'];

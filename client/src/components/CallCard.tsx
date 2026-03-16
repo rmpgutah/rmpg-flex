@@ -227,10 +227,15 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
       </div>
 
       {/* Location */}
-      <div className="flex items-center gap-1.5 text-xs text-rmpg-300 mb-2">
+      <div className="flex items-center gap-1.5 text-xs text-rmpg-300 mb-1">
         <MapPin className="w-3 h-3 flex-shrink-0" />
         <span className="truncate">{call.location}</span>
       </div>
+      {call.latitude != null && call.longitude != null && (
+        <div className="text-[9px] font-mono text-rmpg-400 ml-[18px] mb-2">
+          {Number(call.latitude).toFixed(5)}, {Number(call.longitude).toFixed(5)}
+        </div>
+      )}
 
       {/* Footer Row — status timer + units */}
       <div className="flex items-center justify-between text-xs text-rmpg-400">

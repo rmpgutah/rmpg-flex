@@ -824,6 +824,9 @@ router.put('/templates/:id', (req: Request, res: Response) => {
     const { name, category, subject, body } = req.body;
     const now = localNow();
 
+    const existing = db.prepare('SELECT id FROM email_templates WHERE id = ?').get(req.params.id);
+    if (!existing) { res.status(404).json({ error: 'Template not found' }); return; }
+
     db.prepare(`
       UPDATE email_templates SET name = ?, category = ?, subject = ?, body = ?, updated_at = ?
       WHERE id = ?

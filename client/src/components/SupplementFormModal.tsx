@@ -47,12 +47,16 @@ export default function SupplementFormModal({
       setForm(EMPTY_FORM);
       snapshot(EMPTY_FORM);
     }
-  }, [isOpen]);
+  }, [isOpen, snapshot]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await onSubmit(form);
-    setForm(EMPTY_FORM);
+    try {
+      await onSubmit(form);
+      setForm(EMPTY_FORM);
+    } catch {
+      // Keep form data on failure so user can retry
+    }
   };
 
   return (

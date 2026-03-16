@@ -466,7 +466,7 @@ export default function EvidencePropertyPage() {
                         ['Serial Number', selected.serial_number || '—'],
                         ['Make / Model', [selected.make || selected.brand, selected.model].filter(Boolean).join(' ') || '—'],
                         ['Quantity', selected.quantity || '1'],
-                        ['Estimated Value', selected.estimated_value ? `$${Number(selected.estimated_value).toFixed(2)}` : '—'],
+                        ['Estimated Value', selected.estimated_value && !isNaN(Number(selected.estimated_value)) ? `$${Number(selected.estimated_value).toFixed(2)}` : '—'],
                       ].map(([label, value]) => (
                         <div key={label as string}>
                           <div className="text-[9px] font-mono text-rmpg-500 uppercase">{label}</div>

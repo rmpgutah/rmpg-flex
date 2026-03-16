@@ -47,8 +47,8 @@ export default function StatuteAnalyticsPage() {
   useEffect(() => { fetchData(); }, [fetchData]);
   useLiveSync('incidents', fetchData);
 
-  const maxCount = Math.max(...topStatutes.map(s => s.count), 1);
-  const trendMax = Math.max(...trend.map(t => t.count), 1);
+  const maxCount = topStatutes.length > 0 ? Math.max(1, ...topStatutes.map(s => s.count ?? 0)) : 1;
+  const trendMax = trend.length > 0 ? Math.max(1, ...trend.map(t => t.count ?? 0)) : 1;
   const totalCitations = topStatutes.reduce((s, e) => s + e.count, 0);
 
   const levelColors: Record<string, string> = {

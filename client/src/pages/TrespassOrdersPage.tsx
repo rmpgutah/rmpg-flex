@@ -301,10 +301,10 @@ export default function TrespassOrdersPage() {
                   <span className="text-[11px] font-bold font-mono text-brand-400">{order.order_number}</span>
                   <div className="flex items-center gap-1">
                     <span className={`text-[8px] font-bold px-1.5 py-0 border ${TYPE_COLORS[order.order_type] || TYPE_COLORS.trespass_warning}`}>
-                      {order.order_type.replace(/_/g, ' ').toUpperCase()}
+                      {(order.order_type || '').replace(/_/g, ' ').toUpperCase()}
                     </span>
                     <span className={`text-[8px] font-bold px-1.5 py-0 border ${STATUS_COLORS[order.status]}`}>
-                      {order.status.toUpperCase()}
+                      {(order.status || '').toUpperCase()}
                     </span>
                   </div>
                 </div>

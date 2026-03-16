@@ -81,7 +81,7 @@ export default function CustomReportBuilder() {
 
   const handleSourceSelect = (src: string) => {
     setSource(src);
-    setSelectedCols(SOURCES[src].columns.slice(0, 6)); // default first 6
+    setSelectedCols((SOURCES[src]?.columns || []).slice(0, 6)); // default first 6
     setFilters([]);
     setSortBy('');
     setStep('columns');
@@ -94,6 +94,7 @@ export default function CustomReportBuilder() {
   };
 
   const addFilter = () => {
+    if (availableCols.length === 0) return;
     setFilters(prev => [...prev, { column: availableCols[0], operator: 'contains', value: '' }]);
   };
 

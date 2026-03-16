@@ -123,7 +123,7 @@ export async function reverseGeocodeDetailed(lat: number, lng: number): Promise<
  * After successful geocoding, broadcasts the updated call so the map updates in real-time.
  */
 export function geocodeCallIfNeeded(callId: number, address: string, lat: any, lng: any): void {
-  if (lat || lng || !address.trim()) return;
+  if ((lat != null && lng != null) || !address.trim()) return;
 
   geocodeAddress(address).then((result) => {
     if (!result) return;
@@ -141,5 +141,7 @@ export function geocodeCallIfNeeded(callId: number, address: string, lat: any, l
     } catch (err) {
       console.error('[geocode] Failed to update call coordinates:', err);
     }
+  }).catch(err => {
+    console.warn(`[geocode] Failed to geocode call ${callId}:`, err?.message || err);
   });
 }

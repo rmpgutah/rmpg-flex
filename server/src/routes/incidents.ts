@@ -3,7 +3,7 @@ import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { generateIncidentNumber } from '../utils/caseNumbers';
 import { sendCsv } from '../utils/csvExport';
-import { localNow } from '../utils/timeUtils';
+import { localNow, localToday } from '../utils/timeUtils';
 import { identifyBeat } from '../utils/geofence';
 import { createNotificationForRoles } from './notifications';
 
@@ -320,7 +320,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
     let autoSectionId = section_id || null;
     let autoZoneId = zone_id || null;
     let autoBeatId = beat_id || null;
-    if (latitude && longitude) {
+    if (latitude != null && longitude != null) {
       try {
         const beat = identifyBeat(Number(latitude), Number(longitude));
         if (beat) {
@@ -1014,7 +1014,7 @@ router.post('/:id/evidence', requireRole('admin', 'manager', 'supervisor', 'offi
     }
 
     // Generate evidence number
-    const currentYear = new Date().getFullYear();
+    const currentYear = parseInt(localToday().slice(0, 4), 10);
     const lastEvidence = db.prepare(
       `SELECT evidence_number FROM evidence WHERE evidence_number LIKE ? ORDER BY id DESC LIMIT 1`
     ).get(`EV-${currentYear}-%`) as any;
@@ -1112,10 +1112,10 @@ router.post('/:id/supplements', requireRole('admin', 'manager', 'supervisor', 'o
     }
 
     // Generate report number: SUP-YYYY-NNNNN
-    const currentYear = new Date().getFullYear();
+    const currentYearSup = parseInt(localToday().slice(0, 4), 10);
     const lastSup = db.prepare(
       `SELECT report_number FROM supplemental_reports WHERE report_number LIKE ? ORDER BY id DESC LIMIT 1`
-    ).get(`SUP-${currentYear}-%`) as any;
+    ).get(`SUP-${currentYearSup}-%`) as any;
 
     let nextNum = 1;
     if (lastSup) {
@@ -1123,7 +1123,7 @@ router.post('/:id/supplements', requireRole('admin', 'manager', 'supervisor', 'o
       const parsed = parts.length >= 3 ? parseInt(parts[2], 10) : NaN;
       if (!isNaN(parsed)) nextNum = parsed + 1;
     }
-    const reportNumber = `SUP-${currentYear}-${String(nextNum).padStart(5, '0')}`;
+    const reportNumber = `SUP-${currentYearSup}-${String(nextNum).padStart(5, '0')}`;
 
     const result = db.prepare(`
       INSERT INTO supplemental_reports (report_number, incident_id, author_id, report_type, subject, narrative, status)
@@ -1178,7 +1178,7 @@ router.put('/:incidentId/supplements/:supId', requireRole('admin', 'manager', 's
         fields.push('approved_by = ?');
         values.push(req.user!.userId);
         fields.push('approved_at = ?');
-        values.push(new Date().toISOString());
+        values.push(localNow());
       }
     }
 

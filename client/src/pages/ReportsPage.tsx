@@ -230,7 +230,7 @@ function exportToCSV(
     sections.push('Officer Name,Badge Number,Calls Responded,Incidents Written,Total Hours');
     officerActivity.forEach(officer => {
       sections.push(
-        `${officer.full_name},${officer.badge_number},${officer.calls_responded},${officer.incidents_written},${officer.total_hours.toFixed(1)}`
+        `${officer.full_name},${officer.badge_number},${officer.calls_responded},${officer.incidents_written},${(Number(officer.total_hours) || 0).toFixed(1)}`
       );
     });
   }
@@ -314,13 +314,13 @@ export default function ReportsPage() {
   const stats = {
     totalCalls: incidentsData?.total || 0,
     incidentsFiled: incidentsData?.total || 0,
-    avgResponse: responseTimesData?.overall.avgTotalResponseMinutes
+    avgResponse: responseTimesData?.overall?.avgTotalResponseMinutes
       ? `${responseTimesData.overall.avgTotalResponseMinutes.toFixed(1)}m`
       : '0.0m',
-    slaMet: responseTimesData?.overall.totalCalls
-      ? `${Math.round((responseTimesData.dailyTrend.reduce((acc, d) => acc + (d.avg_response_minutes <= 5 ? d.count : 0), 0) / responseTimesData.overall.totalCalls) * 100)}%`
+    slaMet: responseTimesData?.overall?.totalCalls
+      ? `${Math.round(((responseTimesData.dailyTrend || []).reduce((acc, d) => acc + (d.avg_response_minutes <= 5 ? d.count : 0), 0) / responseTimesData.overall.totalCalls) * 100)}%`
       : '0%',
-    activeOfficers: dashboardData?.officersOnDuty.length || 0,
+    activeOfficers: dashboardData?.officersOnDuty?.length || 0,
   };
 
   // Prepare chart data
@@ -338,12 +338,12 @@ export default function ReportsPage() {
 
   const responseTimeChartData = (Array.isArray(responseTimesData?.dailyTrend) ? responseTimesData.dailyTrend : []).map(item => ({
     date: formatDateLabel(item.date),
-    avgMinutes: parseFloat(item.avg_response_minutes.toFixed(1)),
+    avgMinutes: parseFloat((Number(item.avg_response_minutes) || 0).toFixed(1)),
     targetMinutes: 5,
   }));
 
   const officerChartData = officerActivity.map(officer => ({
-    name: officer.full_name.split(' ').slice(-1)[0], // Last name only
+    name: (officer.full_name || '').split(' ').slice(-1)[0] || '?', // Last name only
     calls: officer.calls_responded,
     incidents: officer.incidents_written,
   }));
@@ -562,7 +562,7 @@ export default function ReportsPage() {
           </div>
 
           {/* Call Volume Trend (Area Chart) */}
-          {responseTimesData && responseTimesData.dailyTrend.length > 1 && (
+          {responseTimesData?.dailyTrend && responseTimesData.dailyTrend.length > 1 && (
             <div className="bg-surface-base panel-beveled hover:border-rmpg-600 transition-all duration-150">
               <div className="px-4 pt-3 pb-1 border-b border-rmpg-700/50 flex items-center gap-2">
                 <TrendingUp className="w-3.5 h-3.5 text-brand-400" />
@@ -592,7 +592,7 @@ export default function ReportsPage() {
           )}
 
           {/* Response Time by Priority (Grouped Bar) */}
-          {responseTimesData && responseTimesData.byPriority.length > 0 && (
+          {responseTimesData?.byPriority && responseTimesData.byPriority.length > 0 && (
             <div className="bg-surface-base panel-beveled hover:border-rmpg-600 transition-all duration-150">
               <div className="px-4 pt-3 pb-1 border-b border-rmpg-700/50 flex items-center gap-2">
                 <Calendar className="w-3.5 h-3.5 text-purple-400" />
@@ -602,7 +602,7 @@ export default function ReportsPage() {
               <ResponsiveContainer width="100%" height={240}>
                 <BarChart data={responseTimesData.byPriority.map(item => ({
                   priority: item.priority,
-                  avgMinutes: parseFloat(item.avg_response_minutes.toFixed(1)),
+                  avgMinutes: parseFloat((Number(item.avg_response_minutes) || 0).toFixed(1)),
                   count: item.count,
                   fill: PRIORITY_COLORS[item.priority] || '#6b7280',
                 }))}>

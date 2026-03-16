@@ -194,7 +194,7 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
                   </td>
                   <td className="text-right">
                     <span className="text-xs font-mono font-bold text-rmpg-200">
-                      {te.total_hours != null ? te.total_hours.toFixed(1) : (
+                      {te.total_hours != null ? Number(te.total_hours).toFixed(1) : (
                         (te.status === 'clocked_in' || te.status === 'on_break') ? getElapsedHours(te.clock_in) : '-'
                       )}
                     </span>

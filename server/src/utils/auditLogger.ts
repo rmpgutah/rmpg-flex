@@ -225,6 +225,25 @@ export type AuditEntityType =
   | 'lead_scrape_sources'
   | 'forensic_case';
 
+// Sensitive field patterns that must never appear in audit log details
+const SENSITIVE_PATTERNS = [
+  /password[_\s]*(?:hash)?["']?\s*[:=]\s*["']?[^\s,}"']+/gi,
+  /secret["']?\s*[:=]\s*["']?[^\s,}"']+/gi,
+  /token["']?\s*[:=]\s*["']?[^\s,}"']+/gi,
+  /totp[_\s]*(?:secret|key)["']?\s*[:=]\s*["']?[^\s,}"']+/gi,
+  /api[_\s]*key["']?\s*[:=]\s*["']?[^\s,}"']+/gi,
+  /Bearer\s+[A-Za-z0-9._-]+/g,
+  /\b[A-Za-z0-9+/=]{40,}\b/g, // Long base64-ish strings (potential secrets)
+];
+
+function maskSensitiveData(text: string): string {
+  let masked = text;
+  for (const pattern of SENSITIVE_PATTERNS) {
+    masked = masked.replace(pattern, '[REDACTED]');
+  }
+  return masked;
+}
+
 /**
  * Log an action to the activity_log table.
  *
@@ -245,11 +264,19 @@ export function auditLog(
     const db = getDb();
     const userId = req.user?.userId ?? null;
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
+    const requestId = req.headers['x-request-id'] || '';
+
+    // Truncate details, strip control characters, and mask sensitive data
+    const safeDetails = maskSensitiveData(
+      details.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '').substring(0, 1000)
+    );
+    // Append request ID for correlation if available
+    const detailsWithId = requestId ? `${safeDetails} [req:${requestId}]` : safeDetails;
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(userId, action, entityType, String(entityId), details, ip, localNow());
+    `).run(userId, action, entityType, String(entityId), detailsWithId, ip, localNow());
   } catch (err) {
     // Never let audit logging break the actual operation
     console.error('[AUDIT] Failed to log:', action, entityType, entityId, err);

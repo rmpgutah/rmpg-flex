@@ -123,9 +123,11 @@ function selectFemaleVoice(): SpeechSynthesisVoice | null {
     }
   }
 
-  // Ultimate fallback
-  cachedVoice = voices[0];
-  console.log(`[VoiceAlerts] Fallback voice: "${voices[0].name}" (${voices[0].lang})`);
+  // Ultimate fallback — guard against empty voices array
+  if (voices.length > 0) {
+    cachedVoice = voices[0];
+    console.log(`[VoiceAlerts] Fallback voice: "${voices[0].name}" (${voices[0].lang})`);
+  }
   return cachedVoice;
 }
 
@@ -231,7 +233,7 @@ async function processQueue(): Promise<void> {
 function enqueuePhrases(phrases: VoicePhrase[]): void {
   if (phrases.length === 0) return;
   phraseQueue.push(...phrases);
-  processQueue();
+  processQueue().catch(() => { isSpeaking = false; });
 }
 
 /** Clear all pending phrases and cancel current speech. */

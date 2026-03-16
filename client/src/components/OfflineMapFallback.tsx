@@ -474,7 +474,7 @@ export default function OfflineMapFallback({
         );
         callMarkersRef.current.set(call.id, marker);
       } else {
-        callMarkersRef.current.get(call.id)!.setLatLng(latlng);
+        callMarkersRef.current.get(call.id)?.setLatLng(latlng);
       }
     }
   }, [activeCalls, isReady]);

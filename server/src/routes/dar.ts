@@ -17,7 +17,7 @@ router.use(authenticateToken);
 /** Generate next DAR number — wrapped in transaction to prevent race conditions */
 function nextDarNumber(): string {
   const db = getDb();
-  const yr = new Date().getFullYear();
+  const yr = parseInt(localToday().slice(0, 4), 10);
   const prefix = `DAR-${yr}-`;
   return db.transaction(() => {
     const last = db.prepare(
@@ -311,7 +311,7 @@ router.put('/:id/approve', requireRole('admin', 'manager', 'supervisor'), (req: 
 
     db.prepare(`UPDATE daily_activity_reports SET status = 'approved', reviewed_by = ?,
       reviewed_by_name = ?, reviewed_at = ?, review_notes = ?, updated_at = ? WHERE id = ?`)
-      .run(req.user!.userId, user?.full_name || '', now, req.body.review_notes || null, now, req.params.id);
+      .run(req.user!.userId, user?.full_name || '', now, req.body.review_notes ?? null, now, req.params.id);
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, 'approve', 'dar', ?, '{}', ?, ?)`).run(req.user!.userId, req.params.id, req.ip || 'unknown', now);

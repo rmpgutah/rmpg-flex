@@ -42,13 +42,30 @@ export function parseTimestamp(dateStr: string | null | undefined): Date {
   if (!dateStr) return new Date();
 
   // Already has timezone info (T with + or -, or Z suffix) — parse directly
-  if (dateStr.includes('T') && (dateStr.includes('+') || dateStr.includes('Z') || dateStr.lastIndexOf('-') > 10)) {
+  if (dateStr.includes('T') && (dateStr.includes('Z') || /[+-]\d{2}:?\d{2}$/.test(dateStr))) {
     return new Date(dateStr);
   }
 
-  // Legacy format: "YYYY-MM-DD HH:MM:SS" — assume Mountain Time (UTC-7 MST / UTC-6 MDT)
-  // We use -07:00 (MST) as the safe default; the error is at most 1 hour during DST
+  // Legacy format: "YYYY-MM-DD HH:MM:SS" — assume Mountain Time
+  // Determine the correct UTC offset for the given date (handles MST/MDT transitions)
   if (dateStr.includes(' ') && !dateStr.includes('T')) {
+    const naive = new Date(dateStr.replace(' ', 'T'));
+    // Use Intl to determine the Mountain Time offset for this specific date
+    try {
+      const fmt = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Denver', timeZoneName: 'shortOffset' });
+      const parts = fmt.formatToParts(naive);
+      const tzPart = parts.find(p => p.type === 'timeZoneName');
+      // tzPart.value is like "GMT-7" or "GMT-6"
+      if (tzPart?.value) {
+        const match = tzPart.value.match(/GMT([+-]\d+)/);
+        if (match) {
+          const offset = parseInt(match[1], 10);
+          const sign = offset <= 0 ? '-' : '+';
+          const absH = String(Math.abs(offset)).padStart(2, '0');
+          return new Date(dateStr.replace(' ', 'T') + `${sign}${absH}:00`);
+        }
+      }
+    } catch { /* fallback below */ }
     return new Date(dateStr.replace(' ', 'T') + '-07:00');
   }
 

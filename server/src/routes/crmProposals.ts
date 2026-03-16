@@ -10,14 +10,14 @@ import { Router, Request, Response } from 'express';
 import { authenticateToken as authenticate, requireRole } from '../middleware/auth';
 import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
-import { localNow } from '../utils/timeUtils';
+import { localNow, localToday } from '../utils/timeUtils';
 
 const router = Router();
 router.use(authenticate);
 
 // ── Helper: Generate proposal number (called inside a transaction) ──
 function generateProposalNumber(db: ReturnType<typeof getDb>): string {
-  const year = new Date().getFullYear();
+  const year = parseInt(localToday().slice(0, 4), 10);
   const prefix = `PROP-${year}-`;
 
   const row = db.prepare(

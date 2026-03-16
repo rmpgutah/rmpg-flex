@@ -1,7 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
+import crypto from 'crypto';
 import config from '../config';
 
 export function securityHeaders(req: Request, res: Response, next: NextFunction): void {
+  // Attach a unique request ID for audit correlation
+  const requestId = crypto.randomUUID();
+  req.headers['x-request-id'] = requestId;
+  res.set('X-Request-ID', requestId);
+
   // Prevent MIME-type sniffing
   res.set('X-Content-Type-Options', 'nosniff');
 
@@ -11,11 +17,30 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
   // XSS protection (legacy browsers)
   res.set('X-XSS-Protection', '1; mode=block');
 
-  // Referrer policy
-  res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  // Referrer policy — 'no-referrer' prevents tokens in URLs from leaking via Referer header
+  res.set('Referrer-Policy', 'no-referrer');
 
-  // Permissions policy (restrict browser features)
-  res.set('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=(self), payment=()');
+  // Permissions policy — restrict browser features to minimum required
+  // camera/microphone: needed for body cam and radio; geolocation: needed for patrol GPS
+  // All others explicitly denied to reduce attack surface
+  res.set('Permissions-Policy', [
+    'camera=(self)', 'microphone=(self)', 'geolocation=(self)',
+    'payment=()', 'usb=()', 'bluetooth=()', 'serial=()',
+    'hid=()', 'magnetometer=()', 'gyroscope=()',
+    'accelerometer=()', 'ambient-light-sensor=()',
+  ].join(', '));
+
+  // Cross-Origin isolation headers — prevent cross-origin attacks
+  res.set('Cross-Origin-Opener-Policy', 'same-origin');
+  res.set('Cross-Origin-Resource-Policy', 'same-origin');
+  res.set('X-Permitted-Cross-Domain-Policies', 'none');
+
+  // Prevent caching of API responses containing sensitive law enforcement data
+  // Static assets are cached separately with their own Cache-Control in index.ts
+  if (req.path.startsWith('/api')) {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.set('Pragma', 'no-cache');
+  }
 
   // Strict Transport Security — ONLY when SSL is actually enabled
   // Sending HSTS without HTTPS causes browsers to refuse plain HTTP connections

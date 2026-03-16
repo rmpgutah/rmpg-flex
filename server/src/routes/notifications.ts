@@ -34,8 +34,11 @@ function isInQuietHours(quietStart: string | null, quietEnd: string | null): boo
   const now = new Date();
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
-  const [sh, sm] = quietStart.split(':').map(Number);
-  const [eh, em] = quietEnd.split(':').map(Number);
+  const sp = quietStart.split(':').map(Number);
+  const ep = quietEnd.split(':').map(Number);
+  const sh = sp[0], sm = sp[1];
+  const eh = ep[0], em = ep[1];
+  if (isNaN(sh) || isNaN(sm) || isNaN(eh) || isNaN(em)) return false;
   const start = sh * 60 + sm;
   const end = eh * 60 + em;
 

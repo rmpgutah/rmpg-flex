@@ -7,6 +7,7 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { broadcast } from '../utils/websocket';
+import { localNow } from '../utils/timeUtils';
 
 // Map API path prefixes → WebSocket channel names
 // Every module gets its own channel so clients subscribe selectively
@@ -84,7 +85,7 @@ export function liveBroadcast(req: Request, res: Response, next: NextFunction): 
               path: req.path,
               id: pathParts[1] || (body?.id) || null,
               user: req.user ? { id: req.user.userId, username: req.user.username } : null,
-              timestamp: new Date().toISOString(),
+              timestamp: localNow(),
             });
           } catch (err) {
             // Never let broadcast errors break the API response

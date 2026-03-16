@@ -251,7 +251,7 @@ router.post('/test', requireRole('admin'), async (req: Request, res: Response) =
   try {
     const apiKey = getApiKey();
     if (!apiKey) {
-      return res.json({ success: false, error: 'API key not configured' });
+      return res.status(400).json({ success: false, error: 'API key not configured' });
     }
 
     // Quick test: search by name with a known test query
@@ -273,13 +273,14 @@ router.post('/test', requireRole('admin'), async (req: Request, res: Response) =
       });
     } else {
       const text = await testRes.text().catch(() => '');
-      res.json({
+      res.status(502).json({
         success: false,
         error: `API returned ${testRes.status}: ${text.slice(0, 200)}`,
       });
     }
   } catch (err: any) {
-    res.json({ success: false, error: err.message });
+    console.error('[SkipTracer] Connection test error:', err?.message || err);
+    res.status(502).json({ success: false, error: 'Failed to connect to skip tracer API' });
   }
 });
 

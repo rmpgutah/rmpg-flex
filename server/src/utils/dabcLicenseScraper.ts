@@ -135,8 +135,8 @@ function parseLicenseResults(html: string): DabcLicense[] {
             status: item.status || 'Active',
           });
         }
-      } catch {
-        // JSON parse failed, ignore
+      } catch (e: any) {
+        console.warn('[DABC] JSON parse failed:', e?.message);
       }
     }
   }
@@ -225,7 +225,8 @@ export async function scrapeDabcLicenses(): Promise<ScrapeResult> {
   let lastError: string | undefined;
 
   const config = getSourceConfig(SOURCE_KEY);
-  const extraConfig = config?.extra_config ? JSON.parse(config.extra_config) : {};
+  let extraConfig: any = {};
+  try { if (config?.extra_config) extraConfig = JSON.parse(config.extra_config); } catch { /* malformed config — use defaults */ }
   const searchCity = extraConfig.city || 'Salt Lake City';
 
   try {
@@ -276,8 +277,8 @@ export async function scrapeDabcLicenses(): Promise<ScrapeResult> {
                 status: item.status || 'Active',
               });
             }
-          } catch {
-            // Parse failed
+          } catch (e: any) {
+            console.warn('[DABC] Parse failed:', e?.message);
           }
         } else {
           licenses = parseLicenseResults(body);

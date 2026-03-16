@@ -131,7 +131,7 @@ router.get('/export', requireRole('dispatcher', 'supervisor', 'admin', 'manager'
 
     const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${v}"`).join(','))].join('\n');
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename="warrants_export_${new Date().toISOString().slice(0,10)}.csv"`);
+    res.setHeader('Content-Disposition', `attachment; filename="warrants_export_${localNow().slice(0,10)}.csv"`);
     res.send(csv);
   } catch (error: any) {
     console.error('Export warrants error:', error?.message || 'Unknown error');
@@ -471,7 +471,7 @@ router.post('/', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), (r
     const warrantId = result.lastInsertRowid;
 
     // Auto-generate warrant_number: WRN-YYYY-NNNNN
-    const currentYear = new Date().getFullYear();
+    const currentYear = parseInt(localNow().slice(0, 4), 10);
     const warrantNumber = `WRN-${currentYear}-${String(warrantId).padStart(5, '0')}`;
 
     db.prepare('UPDATE warrants SET warrant_number = ? WHERE id = ?').run(warrantNumber, warrantId);

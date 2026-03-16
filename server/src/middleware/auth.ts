@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt, { type SignOptions } from 'jsonwebtoken';
+import crypto from 'crypto';
 import config from '../config';
 import { getDb } from '../models/database';
 
@@ -40,13 +41,25 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
       return;
     }
 
-    // IP-based session validation
+    // IP and user-agent session validation
     if (config.session.enforceIpBinding && decoded.sessionId) {
       try {
         const db = getDb();
         const session = db.prepare(
-          'SELECT ip_address FROM sessions WHERE session_id = ? AND is_active = 1'
-        ).get(decoded.sessionId) as { ip_address: string } | undefined;
+          'SELECT ip_address, ua_hash FROM sessions WHERE session_id = ? AND is_active = 1'
+        ).get(decoded.sessionId) as { ip_address: string; ua_hash?: string } | undefined;
+
+        // User-agent binding — detect token theft across different browsers
+        if (session?.ua_hash) {
+          const currentUaHash = crypto.createHash('sha256')
+            .update(req.headers['user-agent'] || '').digest('hex').slice(0, 16);
+          if (currentUaHash !== session.ua_hash) {
+            db.prepare('UPDATE sessions SET is_active = 0 WHERE session_id = ?')
+              .run(decoded.sessionId);
+            res.status(401).json({ error: 'Session invalidated: device mismatch', code: 'UA_CHANGED' });
+            return;
+          }
+        }
 
         if (session && session.ip_address !== req.ip) {
           const action = config.session.ipChangeAction;

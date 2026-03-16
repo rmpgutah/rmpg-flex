@@ -860,7 +860,8 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     { const yL = addFieldPair(doc, 'Caller Name', data.caller_name || '', lx, y, hfw);
       const yR = addFieldPair(doc, 'Phone', data.caller_phone || '', rx, y, hfw);
       y = Math.max(yL, yR); }
-    { const yL = addFieldPair(doc, 'Relationship', data.caller_relationship || '', lx, y, hfw);
+    { const rel = data.caller_relationship || '';
+      const yL = addFieldPair(doc, 'Relationship', rel.charAt(0).toUpperCase() + rel.slice(1), lx, y, hfw);
       const yR = addFieldPair(doc, 'Caller Address', data.caller_address || '', rx, y, hfw);
       y = Math.max(yL, yR); }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
@@ -870,6 +871,9 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   y = checkPageBreak(doc, y, 35, prio);
   { const sec = openAutoSection(doc, 'Incident Location', y); y = sec.contentY;
     y = addFieldPair(doc, 'Address', data.location || '', lx, y, ffw);
+    { const yL = addFieldPair(doc, 'Latitude', data.latitude != null ? String(data.latitude) : '', lx, y, hfw);
+      const yR = addFieldPair(doc, 'Longitude', data.longitude != null ? String(data.longitude) : '', rx, y, hfw);
+      y = Math.max(yL, yR); }
     { const yL = addFieldPair(doc, 'Cross Street', data.cross_street || '', lx, y, hfw);
       const yR = addFieldPair(doc, 'Property', data.property_name || '', rx, y, hfw);
       y = Math.max(yL, yR); }
@@ -881,8 +885,6 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       { label: 'Section ID', value: data.section_id || '' },
       { label: 'Zone ID', value: data.zone_id || '' },
       { label: 'Beat ID', value: data.beat_id || '' },
-      { label: 'Latitude', value: data.latitude != null ? String(data.latitude) : '' },
-      { label: 'Longitude', value: data.longitude != null ? String(data.longitude) : '' },
     ], y);
     // Mileage + Vehicle ID
     if (data.starting_mileage || data.ending_mileage || data.responding_vehicle_id) {
@@ -1189,28 +1191,10 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Resolution
-  y = checkPageBreak(doc, y, 20, prio);
-  { const sec = openAutoSection(doc, 'Action Taken / Resolution', y); y = sec.contentY;
-    { const yL = addFieldPair(doc, 'Responding Officer', data.responding_officer || '', lx, y, hfw);
-      const yR = addFieldPair(doc, 'Disposition', data.disposition || '', rx, y, hfw);
-      y = Math.max(yL, yR); }
-    if (data.action_taken) {
-      y += SPACING.LG;
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-      doc.setTextColor(...COLOR.TEXT_SECONDARY);
-      doc.text('ACTION TAKEN', lx, y);
-      y += 3.5;
-      doc.setFont('helvetica', 'normal');
-      y = addWrappedText(doc, data.action_taken, lx, y, ffw);
-      y += SPACING.MD;
-    }
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
-
-  // Assigned Units Table (matches GIR Persons Involved style)
-  y = checkPageBreak(doc, y, 25, prio);
+  // Assigned Units Table with Resolution details
+  const actionTakenHeight = data.action_taken ? Math.min(40, 12 + (data.action_taken.length / 80) * 4) : 0;
+  const unitCount = data.assigned_units_detail?.length || data.assigned_units?.length || 0;
+  y = checkPageBreak(doc, y, 20 + actionTakenHeight + (unitCount * 6), prio);
   const unitsStartY = y;
 
   y = drawFormGrid(doc, [

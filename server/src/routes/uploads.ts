@@ -53,6 +53,43 @@ const ALLOWED_TYPES = new Set([
   'audio/mpeg', 'audio/wav', 'audio/ogg',
 ]);
 
+// Magic bytes for file type verification — prevents MIME spoofing
+// Maps file extensions to their expected magic byte signatures
+const MAGIC_BYTES: Record<string, { offset: number; bytes: number[] }[]> = {
+  '.jpg':  [{ offset: 0, bytes: [0xFF, 0xD8, 0xFF] }],
+  '.jpeg': [{ offset: 0, bytes: [0xFF, 0xD8, 0xFF] }],
+  '.png':  [{ offset: 0, bytes: [0x89, 0x50, 0x4E, 0x47] }],
+  '.gif':  [{ offset: 0, bytes: [0x47, 0x49, 0x46, 0x38] }],
+  '.pdf':  [{ offset: 0, bytes: [0x25, 0x50, 0x44, 0x46] }],
+  '.webp': [{ offset: 8, bytes: [0x57, 0x45, 0x42, 0x50] }],
+  '.mp4':  [{ offset: 4, bytes: [0x66, 0x74, 0x79, 0x70] }],
+  '.zip':  [{ offset: 0, bytes: [0x50, 0x4B, 0x03, 0x04] }],
+  '.docx': [{ offset: 0, bytes: [0x50, 0x4B, 0x03, 0x04] }], // OOXML is a ZIP
+  '.xlsx': [{ offset: 0, bytes: [0x50, 0x4B, 0x03, 0x04] }],
+  '.doc':  [{ offset: 0, bytes: [0xD0, 0xCF, 0x11, 0xE0] }], // OLE2
+  '.xls':  [{ offset: 0, bytes: [0xD0, 0xCF, 0x11, 0xE0] }],
+  '.wav':  [{ offset: 0, bytes: [0x52, 0x49, 0x46, 0x46] }],
+  '.mp3':  [{ offset: 0, bytes: [0xFF, 0xFB] }, { offset: 0, bytes: [0x49, 0x44, 0x33] }], // MPEG frame or ID3
+  '.bmp':  [{ offset: 0, bytes: [0x42, 0x4D] }],
+};
+
+/** Verify that a file's actual content matches its claimed extension */
+function verifyMagicBytes(filePath: string, ext: string): boolean {
+  const signatures = MAGIC_BYTES[ext.toLowerCase()];
+  if (!signatures) return true; // No signature defined — skip check for unknown types
+  try {
+    const fd = fs.openSync(filePath, 'r');
+    const buf = Buffer.alloc(16);
+    fs.readSync(fd, buf, 0, 16, 0);
+    fs.closeSync(fd);
+    return signatures.some(sig =>
+      sig.bytes.every((b, i) => buf[sig.offset + i] === b)
+    );
+  } catch {
+    return false; // Can't read file — fail closed
+  }
+}
+
 const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
 
 // Configure multer storage
@@ -326,6 +363,16 @@ router.post('/', upload.array('files', 10), (req: Request, res: Response) => {
     const results: any[] = [];
 
     for (const file of files) {
+      // Verify magic bytes match claimed file type — prevents MIME spoofing attacks
+      const ext = path.extname(file.originalname).toLowerCase();
+      if (!verifyMagicBytes(file.path, ext)) {
+        // Delete the suspicious file immediately
+        try { fs.unlinkSync(file.path); } catch { /* best effort */ }
+        console.warn(`[Upload] BLOCKED — magic byte mismatch for ${file.originalname} (ext=${ext}) from user ${req.user!.userId}`);
+        res.status(400).json({ error: `File "${file.originalname}" content does not match its file type` });
+        return;
+      }
+
       // Store path relative to uploads dir
       const relativePath = path.relative(UPLOAD_DIR, file.path);
 

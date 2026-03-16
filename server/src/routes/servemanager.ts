@@ -241,7 +241,7 @@ router.post('/test-connection', requireRole('admin', 'manager'), async (req: Req
     const result = await testConnection();
     res.json(result);
   } catch (error: any) {
-    res.json({ success: false, error: 'Connection test failed' });
+    res.status(502).json({ success: false, error: 'Connection test failed' });
   }
 });
 

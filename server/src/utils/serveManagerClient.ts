@@ -28,7 +28,9 @@ export function encryptApiKey(plaintext: string): string {
 
 export function decryptApiKey(stored: string): string {
   const key = deriveKey();
-  const [ivHex, authTagHex, ciphertext] = stored.split(':');
+  const parts = stored.split(':');
+  if (parts.length !== 3) throw new Error('Invalid encrypted format');
+  const [ivHex, authTagHex, ciphertext] = parts;
   const iv = Buffer.from(ivHex, 'hex');
   const authTag = Buffer.from(authTagHex, 'hex');
   const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
@@ -49,7 +51,7 @@ export function getApiKey(): string | null {
     if (row?.config_value) {
       return decryptApiKey(row.config_value);
     }
-  } catch { /* DB key not set or decrypt failed */ }
+  } catch (e: any) { console.warn('[ServeManager] API key decrypt failed:', e?.message); }
 
   return config.serveManagerApiKey || null;
 }
@@ -97,6 +99,7 @@ export async function smFetch<T = any>(
 
   const { method = 'GET', body, params } = options;
 
+  if (endpoint.includes('..')) throw new ServeManagerError('Invalid endpoint path', 400);
   let url = `${SM_BASE_URL}${endpoint.startsWith('/') ? endpoint : '/' + endpoint}`;
   if (params && Object.keys(params).length > 0) {
     const sp = new URLSearchParams();

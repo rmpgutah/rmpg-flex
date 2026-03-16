@@ -152,16 +152,26 @@ router.post('/jobs', requireRole('admin', 'manager'), async (req: Request, res: 
     const db = getDb();
     const now = localNow();
     const { evidenceId, jobType, inputPath, outputPath, profile } = req.body;
-    const userId = (req as any).user?.id;
+    const userId = req.user?.userId;
+
+    // Validate profile to prevent shell injection in IPED command
+    if (profile && !/^[a-zA-Z0-9_-]+$/.test(profile)) {
+      return res.status(400).json({ error: 'Invalid profile name — only alphanumeric, dashes, underscores allowed' });
+    }
 
     if (!inputPath) return res.status(400).json({ error: 'inputPath is required' });
     if (!['hash', 'process', 'triage', 'csam_scan'].includes(jobType)) {
       return res.status(400).json({ error: 'Invalid jobType (hash/process/triage/csam_scan)' });
     }
 
+    // Validate input path — block shell metacharacters and traversal
+    if (/[;|&`$(){}]/.test(inputPath)) {
+      return res.status(400).json({ error: 'Input path contains invalid characters' });
+    }
+
     // Validate path exists
     if (!fs.existsSync(inputPath)) {
-      return res.status(400).json({ error: `Input path does not exist: ${inputPath}` });
+      return res.status(400).json({ error: 'Input path does not exist' });
     }
 
     const result = db.prepare(`
@@ -459,7 +469,8 @@ router.get('/cases', async (_req: Request, res: Response) => {
     const data = await proxyIpedApi('/cases');
     res.json(data);
   } catch (err: any) {
-    res.status(502).json({ error: `IPED API: ${err.message}` });
+    console.error('[IPED] List cases error:', err?.message || err);
+    res.status(502).json({ error: 'IPED API unavailable' });
   }
 });
 
@@ -470,7 +481,8 @@ router.get('/cases/:caseId/search', async (req: Request, res: Response) => {
     const data = await proxyIpedApi(`/cases/${req.params.caseId}/search?q=${encodeURIComponent(query)}`);
     res.json(data);
   } catch (err: any) {
-    res.status(502).json({ error: `IPED API: ${err.message}` });
+    console.error('[IPED] Search error:', err?.message || err);
+    res.status(502).json({ error: 'IPED API unavailable' });
   }
 });
 
@@ -480,7 +492,8 @@ router.get('/cases/:caseId/file/:fileId', async (req: Request, res: Response) =>
     const data = await proxyIpedApi(`/cases/${req.params.caseId}/file/${req.params.fileId}`);
     res.json(data);
   } catch (err: any) {
-    res.status(502).json({ error: `IPED API: ${err.message}` });
+    console.error('[IPED] File metadata error:', err?.message || err);
+    res.status(502).json({ error: 'IPED API unavailable' });
   }
 });
 
@@ -490,7 +503,8 @@ router.get('/cases/:caseId/file/:fileId/thumb', async (req: Request, res: Respon
     const data = await proxyIpedApi(`/cases/${req.params.caseId}/file/${req.params.fileId}/thumb`);
     res.json(data);
   } catch (err: any) {
-    res.status(502).json({ error: `IPED API: ${err.message}` });
+    console.error('[IPED] File thumbnail error:', err?.message || err);
+    res.status(502).json({ error: 'IPED API unavailable' });
   }
 });
 

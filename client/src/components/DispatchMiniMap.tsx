@@ -118,7 +118,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   useEffect(() => {
     if (!loaded || !mapContainerRef.current) return;
 
-    const center = call?.latitude && call?.longitude
+    const center = call?.latitude != null && call?.longitude != null
       ? { lat: call.latitude, lng: call.longitude }
       : DEFAULT_CENTER;
 
@@ -186,14 +186,14 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     };
 
     // Call marker (red pin)
-    if (call?.latitude && call?.longitude && mapRef.current) {
+    if (call?.latitude != null && call?.longitude != null && mapRef.current) {
       const m = createOverlay(mapRef.current, { lat: call.latitude, lng: call.longitude }, buildCallMarker(call.call_number || 'CALL'), 100);
       markersRef.current.push(m);
     }
 
     // Assigned unit markers (blue dots)
     const assignedUnits = units.filter(u =>
-      call?.assigned_units?.includes(u.call_sign) && u.latitude && u.longitude
+      call?.assigned_units?.includes(u.call_sign) && u.latitude != null && u.longitude != null
     );
 
     for (const unit of assignedUnits) {
@@ -210,13 +210,13 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
 
   // Auto-route: show driving route when exactly 1 assigned unit has GPS
   useEffect(() => {
-    if (!loaded || !mapRef.current || !call?.latitude || !call?.longitude) {
+    if (!loaded || !mapRef.current || call?.latitude == null || call?.longitude == null) {
       if (hasActiveRouteRef.current) clearRoute();
       return;
     }
 
     const assignedWithGps = units.filter(u =>
-      call.assigned_units?.includes(u.call_sign) && u.latitude && u.longitude
+      call.assigned_units?.includes(u.call_sign) && u.latitude != null && u.longitude != null
     );
 
     if (assignedWithGps.length === 1) {

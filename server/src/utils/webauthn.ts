@@ -18,6 +18,7 @@ import {
 } from '@simplewebauthn/server';
 import { getDb } from '../models/database';
 import config from '../config';
+import { localNow } from './timeUtils';
 
 // ── Relying Party config ──────────────────────────────────
 const RP_NAME = 'RMPG Flex';
@@ -76,11 +77,20 @@ function getCredentialById(credentialId: string): (WebAuthnCredential & { userna
 const pendingChallenges = new Map<string, { userId: number; expires: number }>();
 
 function storePendingChallenge(challenge: string, userId: number): void {
-  // Clean expired entries
+  // Clean expired entries (collect keys first to avoid delete-during-iteration)
   const now = Date.now();
+  const expired: string[] = [];
   for (const [key, val] of pendingChallenges) {
-    if (val.expires < now) pendingChallenges.delete(key);
+    if (val.expires < now) expired.push(key);
   }
+  for (const key of expired) pendingChallenges.delete(key);
+
+  // Cap pending challenges to prevent unbounded memory growth
+  if (pendingChallenges.size >= 1000) {
+    const oldest = [...pendingChallenges.entries()].sort((a, b) => a[1].expires - b[1].expires);
+    for (let i = 0; i < 100 && i < oldest.length; i++) pendingChallenges.delete(oldest[i][0]);
+  }
+
   // Store with 5-minute expiry
   pendingChallenges.set(challenge, { userId, expires: now + 5 * 60 * 1000 });
 }
@@ -156,7 +166,7 @@ export async function completeRegistration(
 
   // Store credential in database
   const db = getDb();
-  const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
+  const now = localNow();
 
   db.prepare(`
     INSERT INTO webauthn_credentials (user_id, credential_id, public_key, sign_count, device_name, transports, device_type, backed_up, created_at)

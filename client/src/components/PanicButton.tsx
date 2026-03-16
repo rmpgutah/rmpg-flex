@@ -385,7 +385,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
               )}
 
               {/* Raw GPS coordinates */}
-              {(incomingAlert.latitude && incomingAlert.longitude) && (
+              {(incomingAlert.latitude != null && incomingAlert.longitude != null) && (
                 <div className="flex items-center justify-center gap-1 text-[10px] font-mono" style={{ color: '#5a6e80' }}>
                   <MapPin style={{ width: 10, height: 10 }} />
                   {incomingAlert.latitude.toFixed(5)}, {incomingAlert.longitude.toFixed(5)}

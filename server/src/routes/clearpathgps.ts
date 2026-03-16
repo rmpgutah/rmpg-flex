@@ -133,7 +133,7 @@ router.post('/test-connection', requireRole('admin', 'manager'), async (_req: Re
     const result = await testConnection();
     res.json(result);
   } catch (error: any) {
-    res.json({ success: false, deviceCount: 0, error: 'Connection test failed' });
+    res.status(502).json({ success: false, deviceCount: 0, error: 'Connection test failed' });
   }
 });
 
@@ -145,7 +145,7 @@ router.post('/discover-accounts', requireRole('admin'), async (_req: Request, re
     const accounts = await discoverAccounts();
     res.json({ accounts });
   } catch (error: any) {
-    res.json({ accounts: [], error: 'Account discovery failed' });
+    res.status(502).json({ accounts: [], error: 'Account discovery failed' });
   }
 });
 

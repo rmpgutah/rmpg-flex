@@ -84,8 +84,8 @@ function parseArcGisResponse(data: any): PermitRecord[] {
       contractorName: attrs.CONTRACTOR || attrs.contractor_name || attrs.CONTRACTOR_NAME || '',
       issueDate: normalizeDate(attrs.ISSUE_DATE || attrs.issue_date || attrs.IssuedDate || ''),
       ownerName: attrs.OWNER || attrs.owner_name || attrs.OWNER_NAME || '',
-      latitude: geom.y || geom.lat || undefined,
-      longitude: geom.x || geom.lng || geom.lon || undefined,
+      latitude: geom.y ?? geom.lat ?? undefined,
+      longitude: geom.x ?? geom.lng ?? geom.lon ?? undefined,
     });
   }
 
@@ -120,8 +120,8 @@ function parseSocrataResponse(data: any[]): PermitRecord[] {
       contractorName: row.contractor || row.contractor_name || '',
       issueDate: normalizeDate(row.issue_date || row.issued_date || ''),
       ownerName: row.owner || row.owner_name || '',
-      latitude: parseFloat(row.latitude || '0') || undefined,
-      longitude: parseFloat(row.longitude || '0') || undefined,
+      latitude: row.latitude != null ? parseFloat(row.latitude) : undefined,
+      longitude: row.longitude != null ? parseFloat(row.longitude) : undefined,
     });
   }
 
@@ -177,7 +177,8 @@ export async function scrapeConstructionPermits(): Promise<ScrapeResult> {
   let lastError: string | undefined;
 
   const config = getSourceConfig(SOURCE_KEY);
-  const extraConfig = config?.extra_config ? JSON.parse(config.extra_config) : {};
+  let extraConfig: any = {};
+  try { if (config?.extra_config) extraConfig = JSON.parse(config.extra_config); } catch { /* malformed config — use defaults */ }
   const daysBack = extraConfig.days_back || 60;
 
   // Date filter: permits issued in the last N days

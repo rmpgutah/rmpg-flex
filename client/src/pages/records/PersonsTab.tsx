@@ -422,7 +422,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
           >
             <div className="flex items-center gap-3">
               <div className="flex-shrink-0 w-9 h-9 rounded-full bg-rmpg-700 border border-rmpg-600 flex items-center justify-center text-xs font-bold text-rmpg-300">
-                {person.first_name[0]}{person.last_name[0]}
+                {(person.first_name || '')[0]}{(person.last_name || '')[0]}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
@@ -629,7 +629,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
               {selectedPerson.id_image_url ? (
                 <div className="flex-shrink-0">
                   <div className="w-24 h-32 border border-rmpg-500 bg-rmpg-900 overflow-hidden cursor-pointer group relative"
-                    onClick={() => window.open(selectedPerson.id_image_url!, '_blank')}
+                    onClick={() => window.open(selectedPerson.id_image_url!, '_blank', 'noopener,noreferrer')}
                     title="Click to enlarge"
                   >
                     <img src={selectedPerson.id_image_url} alt="ID" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />

@@ -197,16 +197,17 @@ export default function ServePage() {
   const handleNavigate = useCallback((jobId: number) => {
     const job = jobs.find(j => j.id === jobId);
     if (!job) return;
-    if (job.recipient_lat && job.recipient_lng) {
+    if (job.recipient_lat != null && job.recipient_lng != null) {
       window.open(
         `https://www.google.com/maps/dir/?api=1&destination=${job.recipient_lat},${job.recipient_lng}`,
         '_blank',
+        'noopener,noreferrer',
       );
     } else if (job.recipient_address) {
       const addr = encodeURIComponent(
         `${job.recipient_address} ${job.recipient_city || ''} ${job.recipient_state || ''} ${job.recipient_zip || ''}`,
       );
-      window.open(`https://www.google.com/maps/dir/?api=1&destination=${addr}`, '_blank');
+      window.open(`https://www.google.com/maps/dir/?api=1&destination=${addr}`, '_blank', 'noopener,noreferrer');
     }
   }, [jobs]);
 
@@ -414,7 +415,7 @@ export default function ServePage() {
     let hasMarkers = false;
 
     jobs.forEach(job => {
-      if (!job.recipient_lat || !job.recipient_lng) return;
+      if (job.recipient_lat == null || job.recipient_lng == null) return;
       hasMarkers = true;
       const pos = { lat: job.recipient_lat, lng: job.recipient_lng };
       bounds.extend(pos);
@@ -705,13 +706,13 @@ export default function ServePage() {
                 <div className="text-[10px] text-rmpg-400 uppercase font-semibold mb-1">Route Efficiency</div>
                 <div className="text-lg font-bold text-white font-mono">
                   {routeData && stats?.planned_mileage && stats.planned_mileage > 0
-                    ? `${Math.round((stats.planned_mileage / routeData.totalDistance) * 100)}%`
+                    ? `${Math.round((stats.planned_mileage / (routeData.totalDistance || 1)) * 100)}%`
                     : '--'
                   }
                 </div>
                 {routeData && (
                   <div className="text-[10px] text-rmpg-400 mt-1">
-                    Est. drive time: {Math.floor(routeData.totalDuration / 60)}h {Math.round(routeData.totalDuration % 60)}m
+                    Est. drive time: {Math.floor((routeData.totalDuration || 0) / 60)}h {Math.round((routeData.totalDuration || 0) % 60)}m
                   </div>
                 )}
               </div>

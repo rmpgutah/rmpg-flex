@@ -222,7 +222,7 @@ router.post('/sync/push', syncRateLimit, (req: Request, res: Response) => {
 
 function pushCallForService(db: any, body: any, userId: number) {
   // Generate a proper call number
-  const year = new Date().getFullYear();
+  const year = parseInt(new Date().toISOString().slice(0, 4), 10); // UTC is acceptable for offline push CFS numbers
   const last = db.prepare(
     `SELECT call_number FROM calls_for_service WHERE call_number LIKE ? ORDER BY id DESC LIMIT 1`
   ).get(`CFS-${year}-%`);

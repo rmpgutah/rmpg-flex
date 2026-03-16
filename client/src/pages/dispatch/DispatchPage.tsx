@@ -2403,6 +2403,11 @@ export default function DispatchPage() {
                     <AlertTriangle className="w-4 h-4 text-red-500 animate-emergency-blink" />
                   )}
                   <span className="text-sm font-bold text-green-400 font-mono">{selectedCall.call_number}</span>
+                  {selectedCall.case_number && (
+                    <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1.5 py-0.5">
+                      CASE {selectedCall.case_number}
+                    </span>
+                  )}
                   <StatusBadge status={selectedCall.priority} type="priority" size="sm" />
                   <StatusBadge status={selectedCall.status} type="call_status" size="sm" />
                   {callWarnings.length > 0 && (
@@ -2416,6 +2421,8 @@ export default function DispatchPage() {
                       recordType="call"
                       recordData={{
                         ...selectedCall,
+                        // Map location_address → location for PDF field compatibility
+                        location: selectedCall.location_address || selectedCall.location || '',
                         // Enrich with unit detail table for PDF
                         assigned_units_detail: (selectedCall?.assigned_units || []).map((uid: string) => {
                           const u = units.find(unit => String(unit.id) === String(uid));
@@ -2631,7 +2638,7 @@ export default function DispatchPage() {
                   const counts: Record<string, number> = {
                     persons: callPersons.length + callVehicles.length,
                     timeline: activityEntries.length,
-                    notes: (selectedCall.notes || []).length,
+                    notes: (selectedCall?.notes || []).length,
                   };
                   const count = counts[tab];
                   return (
@@ -2973,7 +2980,7 @@ export default function DispatchPage() {
                         {selectedCall.ending_mileage && <span className="text-rmpg-200"><span className="text-rmpg-400">End:</span> {Number(selectedCall.ending_mileage).toLocaleString()} mi</span>}
                         {selectedCall.starting_mileage && selectedCall.ending_mileage && (
                           <span className="text-blue-400 font-semibold">
-                            Total: {(Number(selectedCall.ending_mileage) - Number(selectedCall.starting_mileage)).toFixed(1)} mi
+                            Total: {((Number(selectedCall.ending_mileage) || 0) - (Number(selectedCall.starting_mileage) || 0)).toFixed(1)} mi
                           </span>
                         )}
                       </div>
@@ -3058,7 +3065,7 @@ export default function DispatchPage() {
                         {selectedCall.section_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Sec:</span> {selectedCall.section_id} — {sectionLabels.get(selectedCall.section_id) || ''}</span>}
                         {selectedCall.zone_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Zone:</span> {selectedCall.zone_id} — {zoneLabels.get(selectedCall.zone_id) || ''}</span>}
                         {selectedCall.beat_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Beat:</span> {beatLabels.get(selectedCall.beat_id) || selectedCall.beat_id}</span>}
-                        {selectedCall.latitude && selectedCall.longitude && (
+                        {selectedCall.latitude != null && selectedCall.longitude != null && (
                           <span className="text-rmpg-400 font-mono text-[9px]">
                             GPS: {Number(selectedCall.latitude).toFixed(5)}, {Number(selectedCall.longitude).toFixed(5)}
                           </span>
@@ -3873,7 +3880,7 @@ export default function DispatchPage() {
 
           {/* Dispatch Map Panel (right side, always visible) */}
           <div className="w-[35%] border-l border-rmpg-600 flex flex-col bg-surface-deep overflow-hidden flex-shrink-0">
-            {selectedCall?.latitude && selectedCall?.longitude ? (
+            {selectedCall?.latitude != null && selectedCall?.longitude != null ? (
               <DispatchMiniMap
                 call={selectedCall}
                 units={units}

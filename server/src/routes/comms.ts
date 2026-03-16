@@ -150,7 +150,7 @@ router.get('/messages', (req: Request, res: Response) => {
 
     res.json({
       data: messages,
-      unreadCount: unreadCount.count,
+      unreadCount: unreadCount?.count ?? 0,
     });
   } catch (error: any) {
     console.error('Get messages error:', error?.message || 'Unknown error');
@@ -392,25 +392,29 @@ router.post('/bolos', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       return;
     }
 
-    // Generate BOLO number
-    const lastBolo = db.prepare(`SELECT bolo_number FROM bolos ORDER BY id DESC LIMIT 1`).get() as any;
-    let nextNum = 1;
-    if (lastBolo) {
-      const parts = lastBolo.bolo_number.split('-');
-      const parsed = parts.length >= 2 ? parseInt(parts[1], 10) : NaN;
-      if (!isNaN(parsed)) nextNum = parsed + 1;
-    }
-    const boloNumber = `BOLO-${String(nextNum).padStart(3, '0')}`;
+    // Wrap sequence generation + INSERT in a transaction to prevent duplicate BOLO numbers
+    const createBolo = db.transaction(() => {
+      const lastBolo = db.prepare(`SELECT bolo_number FROM bolos ORDER BY id DESC LIMIT 1`).get() as any;
+      let nextNum = 1;
+      if (lastBolo) {
+        const parts = lastBolo.bolo_number.split('-');
+        const parsed = parts.length >= 2 ? parseInt(parts[1], 10) : NaN;
+        if (!isNaN(parsed)) nextNum = parsed + 1;
+      }
+      const boloNumber = `BOLO-${String(nextNum).padStart(3, '0')}`;
 
-    const result = db.prepare(`
-      INSERT INTO bolos (bolo_number, type, title, description, subject_description, vehicle_description,
-        photo_url, priority, issued_by, expires_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      boloNumber, type, title, description || null, subject_description || null,
-      vehicle_description || null, photo_url || null, priority || 'P3',
-      req.user!.userId, expires_at || null,
-    );
+      const result = db.prepare(`
+        INSERT INTO bolos (bolo_number, type, title, description, subject_description, vehicle_description,
+          photo_url, priority, issued_by, expires_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        boloNumber, type, title, description || null, subject_description || null,
+        vehicle_description || null, photo_url || null, priority || 'P3',
+        req.user!.userId, expires_at || null,
+      );
+      return { result, boloNumber };
+    });
+    const { result, boloNumber } = createBolo();
 
     const bolo = db.prepare(`
       SELECT b.*, u.full_name as issued_by_name
@@ -462,7 +466,7 @@ router.put('/bolos/:id', requireRole('admin', 'manager', 'supervisor', 'dispatch
     const bBodyKeys = Object.keys(req.body);
 
     const bFieldMap: Record<string, (v: any) => any> = {
-      title: v => v ?? null, description: v => v ?? null,
+      type: v => v ?? null, title: v => v ?? null, description: v => v ?? null,
       subject_description: v => v ?? null, vehicle_description: v => v ?? null,
       photo_url: v => v ?? null, status: v => v ?? null,
       priority: v => v ?? null, expires_at: v => v ?? null,

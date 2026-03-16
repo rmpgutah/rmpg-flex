@@ -10,6 +10,12 @@ const LONG_TEXT_FIELDS = new Set([
 ]);
 const MAX_LONG_TEXT_LENGTH = 100_000;
 
+// Maximum nesting depth for JSON objects — prevents stack overflow from deeply nested payloads
+const MAX_JSON_DEPTH = 10;
+
+// Maximum length for individual query parameter values
+const MAX_QUERY_PARAM_LENGTH = 1_000;
+
 // Sanitize strings to prevent XSS — only strip dangerous tag characters.
 // Do NOT encode quotes or apostrophes: they are normal data characters
 // (e.g. 6'2", O'Brien, "North" entrance) and encoding them corrupts stored data.
@@ -21,29 +27,44 @@ function sanitizeStr(str: string, fieldName?: string): string {
     .replace(/>/g, '&gt;');
 }
 
-// Recursively sanitize an object's string values
-function sanitizeValue(value: unknown, fieldName?: string): unknown {
+// Recursively sanitize an object's string values (with depth limit to prevent stack overflow)
+function sanitizeValue(value: unknown, fieldName?: string, depth: number = 0): unknown {
+  if (depth > MAX_JSON_DEPTH) return undefined; // Drop excessively nested values
   if (typeof value === 'string') {
     // Trim whitespace, enforce max length, and strip dangerous HTML tag characters
     return sanitizeStr(value.trim(), fieldName);
   }
   if (Array.isArray(value)) {
-    return value.map(v => sanitizeValue(v, fieldName));
+    return value.slice(0, 1000).map(v => sanitizeValue(v, fieldName, depth + 1));
   }
   if (value !== null && typeof value === 'object') {
-    return sanitizeObject(value as Record<string, unknown>);
+    return sanitizeObject(value as Record<string, unknown>, depth + 1);
   }
   return value;
 }
 
-function sanitizeObject(obj: Record<string, unknown>): Record<string, unknown> {
+function sanitizeObject(obj: Record<string, unknown>, depth: number = 0): Record<string, unknown> {
+  if (depth > MAX_JSON_DEPTH) return {}; // Refuse to recurse beyond depth limit
   const sanitized: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(obj)) {
-    // Don't sanitize password fields (they get hashed) or config_value (JSON blob)
-    if (key === 'password' || key === 'currentPassword' || key === 'newPassword' || key === 'config_value') {
+    // Reject prototype pollution attempts — __proto__, constructor, prototype are never valid field names
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+      continue;
+    }
+    // Don't sanitize password fields (they get hashed)
+    if (key === 'password' || key === 'currentPassword' || key === 'newPassword') {
       sanitized[key] = value;
+    } else if (key === 'config_value') {
+      // config_value is a JSON blob — sanitize string values inside it
+      if (typeof value === 'string') {
+        sanitized[key] = sanitizeStr(value, key);
+      } else if (value !== null && typeof value === 'object') {
+        sanitized[key] = sanitizeObject(value as Record<string, unknown>, depth + 1);
+      } else {
+        sanitized[key] = value;
+      }
     } else {
-      sanitized[key] = sanitizeValue(value, key);
+      sanitized[key] = sanitizeValue(value, key, depth);
     }
   }
   return sanitized;
@@ -77,11 +98,12 @@ export function sanitizeInput(req: Request, _res: Response, next: NextFunction):
     req.body = sanitizeObject(req.body);
   }
 
-  // Sanitize query params
+  // Sanitize query params — enforce length limits and strip dangerous characters
   if (req.query) {
     for (const [key, value] of Object.entries(req.query)) {
       if (typeof value === 'string') {
-        (req.query as Record<string, string>)[key] = sanitizeStr(value.trim(), key);
+        const trimmed = value.trim().slice(0, MAX_QUERY_PARAM_LENGTH);
+        (req.query as Record<string, string>)[key] = sanitizeStr(trimmed, key);
       }
     }
   }

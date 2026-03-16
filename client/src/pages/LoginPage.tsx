@@ -149,16 +149,13 @@ export default function LoginPage() {
   }, [loginStep]);
 
   // Auto-submit TOTP when 6 digits entered
-  const handleVerify2FA = () => {
-    const trimmed = totpCode.replace(/\s/g, '');
-    if (trimmed.length === 6) handleTotpSubmit(trimmed);
-  };
-
   useEffect(() => {
-    if (totpCode.length === 6 && loginStep === 'verify_2fa' && !loginBusy) {
-      handleVerify2FA();
+    const trimmed = totpCode.replace(/\s/g, '');
+    if (trimmed.length === 6 && loginStep === 'verify_2fa' && !loginBusy) {
+      handleTotpSubmit(trimmed);
     }
-  }, [totpCode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [totpCode, loginStep, loginBusy]);
 
   // ── Handlers ──────────────────────────────────────
   const handleCredentialsSubmit = async (e: React.FormEvent) => {
@@ -620,7 +617,7 @@ export default function LoginPage() {
 
             {/* ══════ Backup Code (from pending2FA flow) ══════ */}
             {pending2FA && effectiveMode === 'backup' && (
-              <form onSubmit={(e) => { e.preventDefault(); if (backupCode.trim()) handleTotpSubmit(backupCode.trim()); }} className="space-y-3">
+              <form onSubmit={handleBackupSubmit} className="space-y-3">
                 <div className="text-center mb-2">
                   <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#a0a0a0' }}>Recovery Code</p>
                   <p className="text-[9px]" style={{ color: '#5a6e80' }}>Enter one of your single-use backup codes</p>

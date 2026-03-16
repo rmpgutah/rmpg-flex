@@ -244,16 +244,23 @@ router.get('/health/detailed', requireRole('admin', 'manager'), (req: Request, r
 
     // Table row counts
     const tableCounts: Record<string, number> = {};
-    const tables = [
-      'users', 'calls_for_service', 'incidents', 'persons',
-      'vehicles_records', 'warrants', 'citations', 'activity_log',
-    ];
-    for (const table of tables) {
+    // Hardcoded table names — never from user input — prevents SQL injection
+    const SAFE_TABLE_NAMES: Record<string, string> = {
+      'users': 'users',
+      'calls_for_service': 'calls_for_service',
+      'incidents': 'incidents',
+      'persons': 'persons',
+      'vehicles_records': 'vehicles_records',
+      'warrants': 'warrants',
+      'citations': 'citations',
+      'activity_log': 'activity_log',
+    };
+    for (const [key, safeName] of Object.entries(SAFE_TABLE_NAMES)) {
       try {
-        const row = db.prepare(`SELECT COUNT(*) as count FROM ${table}`).get() as any;
-        tableCounts[table] = row?.count ?? 0;
+        const row = db.prepare(`SELECT COUNT(*) as count FROM "${safeName}"`).get() as any;
+        tableCounts[key] = row?.count ?? 0;
       } catch {
-        tableCounts[table] = 0;
+        tableCounts[key] = 0;
       }
     }
 
@@ -355,7 +362,7 @@ router.get('/health/detailed', requireRole('admin', 'manager'), (req: Request, r
         if (idleMatch) cpuUsagePercent = Math.round((100 - parseFloat(idleMatch[1])) * 10) / 10;
       } else {
         // macOS fallback — approximate from load average vs core count
-        cpuUsagePercent = Math.round((loadAvg[0] / cpus.length) * 100 * 10) / 10;
+        cpuUsagePercent = cpus.length > 0 ? Math.round((loadAvg[0] / cpus.length) * 100 * 10) / 10 : null;
       }
     } catch { /* CPU usage unavailable */ }
 
@@ -739,7 +746,7 @@ router.post('/retention/run', requireRole('admin'), (req: Request, res: Response
           // Try to archive records — table must have an archived_at column
           try {
             const archiveResult = db.prepare(`
-              UPDATE ${safeTable}
+              UPDATE "${safeTable}"
               SET archived_at = ?
               WHERE archived_at IS NULL
                 AND created_at < date('now', '-' || ? || ' days')
@@ -759,7 +766,7 @@ router.post('/retention/run', requireRole('admin'), (req: Request, res: Response
 
         if (policy.auto_delete) {
           const deleteResult = db.prepare(`
-            DELETE FROM ${safeTable}
+            DELETE FROM "${safeTable}"
             WHERE created_at < date('now', '-' || ? || ' days')
           `).run(policy.retention_days);
           totalAffected += deleteResult.changes;
@@ -826,7 +833,7 @@ router.get('/retention/preview', requireRole('admin', 'manager'), (req: Request,
         if (policy.auto_archive) {
           try {
             const row = db.prepare(`
-              SELECT COUNT(*) as count FROM ${safeTable}
+              SELECT COUNT(*) as count FROM "${safeTable}"
               WHERE archived_at IS NULL
                 AND created_at < date('now', '-' || ? || ' days')
             `).get(policy.retention_days) as any;
@@ -838,7 +845,7 @@ router.get('/retention/preview', requireRole('admin', 'manager'), (req: Request,
 
         if (policy.auto_delete) {
           const row = db.prepare(`
-            SELECT COUNT(*) as count FROM ${safeTable}
+            SELECT COUNT(*) as count FROM "${safeTable}"
             WHERE created_at < date('now', '-' || ? || ' days')
           `).get(policy.retention_days) as any;
           deleteCount = row.count;

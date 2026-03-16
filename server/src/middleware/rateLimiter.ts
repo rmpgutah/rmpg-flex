@@ -10,6 +10,68 @@ interface RateLimitEntry {
 const store = new Map<string, RateLimitEntry>();
 const MAX_STORE_SIZE = 10_000; // Prevent unbounded memory growth from IP flooding
 
+// ─── IP Blocklist ─────────────────────────────────────────
+// Temporarily blocks IPs that repeatedly hit rate limits.
+// After VIOLATION_THRESHOLD violations in VIOLATION_WINDOW, the IP is blocked for an
+// exponentially increasing duration starting at BASE_BLOCK_DURATION.
+interface BlockEntry {
+  blockedUntil: number;
+  violations: number;
+  lastViolation: number;
+}
+const ipBlocklist: Map<string, BlockEntry> = new Map();
+const VIOLATION_THRESHOLD = 5;            // violations before first block
+const VIOLATION_WINDOW_MS = 10 * 60 * 1000; // 10 minute sliding window
+const BASE_BLOCK_DURATION_MS = 5 * 60 * 1000; // 5 minute initial block
+const MAX_BLOCK_DURATION_MS = 60 * 60 * 1000; // 1 hour max block
+
+function recordViolation(ip: string): void {
+  if (!ip || ip === 'unknown') return;
+  const now = Date.now();
+  let entry = ipBlocklist.get(ip);
+  if (!entry) {
+    entry = { blockedUntil: 0, violations: 0, lastViolation: now };
+    ipBlocklist.set(ip, entry);
+  }
+  // Reset violations if outside the sliding window
+  if (now - entry.lastViolation > VIOLATION_WINDOW_MS) {
+    entry.violations = 0;
+  }
+  entry.violations++;
+  entry.lastViolation = now;
+
+  if (entry.violations >= VIOLATION_THRESHOLD) {
+    // Exponential backoff: 5m → 10m → 20m → 40m → 60m (capped)
+    const multiplier = Math.pow(2, Math.floor(entry.violations / VIOLATION_THRESHOLD) - 1);
+    const blockDuration = Math.min(BASE_BLOCK_DURATION_MS * multiplier, MAX_BLOCK_DURATION_MS);
+    entry.blockedUntil = now + blockDuration;
+    console.warn(`[RateLimit] IP ${ip} blocked for ${Math.ceil(blockDuration / 60000)}m after ${entry.violations} violations`);
+  }
+}
+
+function isIpBlocked(ip: string): { blocked: boolean; retryAfter: number } {
+  if (!ip || ip === 'unknown') return { blocked: false, retryAfter: 0 };
+  const entry = ipBlocklist.get(ip);
+  if (!entry) return { blocked: false, retryAfter: 0 };
+  const now = Date.now();
+  if (now < entry.blockedUntil) {
+    return { blocked: true, retryAfter: Math.ceil((entry.blockedUntil - now) / 1000) };
+  }
+  return { blocked: false, retryAfter: 0 };
+}
+
+// Export for admin dashboard / security monitoring
+export function getBlockedIps(): Array<{ ip: string; blockedUntil: string; violations: number }> {
+  const now = Date.now();
+  const result: Array<{ ip: string; blockedUntil: string; violations: number }> = [];
+  for (const [ip, entry] of ipBlocklist) {
+    if (now < entry.blockedUntil) {
+      result.push({ ip, blockedUntil: new Date(entry.blockedUntil).toISOString(), violations: entry.violations });
+    }
+  }
+  return result;
+}
+
 // Clean up expired entries every 5 minutes
 // .unref() so this timer doesn't prevent graceful Node.js shutdown
 setInterval(() => {
@@ -17,6 +79,12 @@ setInterval(() => {
   for (const [key, entry] of store) {
     if (now > entry.resetAt) {
       store.delete(key);
+    }
+  }
+  // Clean expired blocklist entries
+  for (const [ip, entry] of ipBlocklist) {
+    if (now > entry.blockedUntil && now - entry.lastViolation > VIOLATION_WINDOW_MS) {
+      ipBlocklist.delete(ip);
     }
   }
 }, 5 * 60 * 1000).unref();
@@ -38,6 +106,15 @@ export function rateLimit(options: RateLimitOptions = {}) {
     // Skip rate limiting in development
     if (!config.isProduction) {
       next();
+      return;
+    }
+
+    // Check IP blocklist first — reject immediately if blocked
+    const clientIp = req.ip || 'unknown';
+    const blockStatus = isIpBlocked(clientIp);
+    if (blockStatus.blocked) {
+      res.set('Retry-After', String(blockStatus.retryAfter));
+      res.status(429).json({ error: 'IP temporarily blocked due to repeated violations' });
       return;
     }
 
@@ -74,6 +151,8 @@ export function rateLimit(options: RateLimitOptions = {}) {
     res.set('X-RateLimit-Reset', String(Math.ceil(entry.resetAt / 1000)));
 
     if (entry.count > maxRequests) {
+      // Record violation for exponential backoff / IP blocking
+      recordViolation(clientIp);
       const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
       res.set('Retry-After', String(retryAfter));
       res.status(429).json({ error: message });
@@ -85,19 +164,21 @@ export function rateLimit(options: RateLimitOptions = {}) {
 }
 
 // Stricter rate limiter for auth endpoints (login)
+// Uses compound key (IP + username) to prevent distributed brute-force AND per-user targeting
 export const authRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   maxRequests: 10,           // 10 attempts per window
-  keyGenerator: (req) => `auth:${req.ip || 'unknown'}`,
+  keyGenerator: (req) => `auth:${req.ip || 'unknown'}:${req.body?.username || ''}`,
   message: 'Too many authentication attempts. Please try again in 15 minutes.',
 });
 
 // Rate limiter for 2FA verification — prevent brute-forcing TOTP codes
+// TOTP has 1M possible codes; 3 attempts per 15min = ~288/day = 3,472 days to exhaust
 export const mfaRateLimit = rateLimit({
-  windowMs: 5 * 60 * 1000, // 5 minutes
-  maxRequests: 8,           // 8 attempts per window
-  keyGenerator: (req) => `mfa:${req.ip || 'unknown'}`,
-  message: 'Too many verification attempts. Please wait before trying again.',
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  maxRequests: 3,            // 3 attempts per window (TOTP codes rotate every 30s)
+  keyGenerator: (req) => `mfa:${req.ip || 'unknown'}:${req.body?.username || req.user?.userId || ''}`,
+  message: 'Too many verification attempts. Please wait 15 minutes before trying again.',
 });
 
 // Rate limiter for token refresh — prevent token grinding
@@ -122,6 +203,14 @@ export const webhookRateLimit = rateLimit({
   maxRequests: 5,           // max 5 webhook calls per 5 min
   keyGenerator: (req) => `webhook:${req.ip || 'unknown'}`,
   message: 'Too many webhook requests. Please try again later.',
+});
+
+// Rate limiter for public endpoints (downloads/health) — stricter to prevent enumeration
+export const publicEndpointRateLimit = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  maxRequests: 30,          // 30 requests per 5 min
+  keyGenerator: (req) => `pub:${req.ip || 'unknown'}`,
+  message: 'Too many requests. Please try again later.',
 });
 
 // General API rate limiter

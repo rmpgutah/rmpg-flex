@@ -660,7 +660,7 @@ export default function ServeAttemptModal({
                       <span className="text-rmpg-100 capitalize">{failedReason.replace('_', ' ')}</span>
                     </div>
                   )}
-                  {gps.latitude && (
+                  {gps.latitude != null && (
                     <div className="flex justify-between">
                       <span className="text-rmpg-400">GPS</span>
                       <span className="text-rmpg-100 font-mono text-xs">

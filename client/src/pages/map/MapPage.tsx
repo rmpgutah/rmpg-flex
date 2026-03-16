@@ -704,7 +704,7 @@ export default function MapPage() {
               const assignedCall = unit.current_call_id
                 ? calls.find(c => String(c.id) === String(unit.current_call_id))
                 : null;
-              const routeBtnHtml = (assignedCall && assignedCall.latitude && assignedCall.longitude && unit.latitude && unit.longitude)
+              const routeBtnHtml = (assignedCall && assignedCall.latitude != null && assignedCall.longitude != null && unit.latitude != null && unit.longitude != null)
                 ? `<button data-route-unit="${escapeHtml(unit.call_sign)}" data-route-call="${escapeHtml(assignedCall.call_number)}"
                      data-route-ulat="${unit.latitude}" data-route-ulng="${unit.longitude}"
                      data-route-clat="${assignedCall.latitude}" data-route-clng="${assignedCall.longitude}"
@@ -2560,11 +2560,11 @@ export default function MapPage() {
                       </div>
 
                       {/* Current assignments list */}
-                      {shiftPlanning.activePlan.assignments.length > 0 && (
+                      {shiftPlanning.activePlan?.assignments?.length > 0 && (
                         <div className="border-t border-rmpg-700 pt-1 mt-1">
                           <div className="flex items-center justify-between px-2 mb-1">
                             <span className="text-[8px] text-rmpg-500 uppercase tracking-wider font-bold">
-                              Assignments ({shiftPlanning.activePlan.assignments.length})
+                              Assignments ({shiftPlanning.activePlan?.assignments.length})
                             </span>
                             <div className="flex items-center gap-1">
                               <button
@@ -2584,7 +2584,7 @@ export default function MapPage() {
                             </div>
                           </div>
                           <div className="space-y-0.5 max-h-[120px] overflow-y-auto">
-                            {shiftPlanning.activePlan.assignments.map((assignment) => (
+                            {shiftPlanning.activePlan?.assignments.map((assignment) => (
                               <div
                                 key={assignment.id}
                                 className="flex items-center gap-1.5 px-2 py-0.5 hover:bg-rmpg-800/50"
@@ -2641,7 +2641,7 @@ export default function MapPage() {
                         >
                           <Copy className="w-2 h-2" /> Duplicate
                         </button>
-                        {shiftPlanning.activePlan.assignments.length > 0 && (
+                        {shiftPlanning.activePlan?.assignments.length > 0 && (
                           <button
                             onClick={() => shiftPlanning.removeAllAssignments()}
                             className="toolbar-btn-danger flex items-center gap-1 px-1.5 py-0.5 text-[8px] transition-colors"
@@ -3411,7 +3411,7 @@ export default function MapPage() {
                 <button
                   onClick={() => {
                     const map = mapInstanceRef.current;
-                    if (map && gps.latitude && gps.longitude) {
+                    if (map && gps.latitude != null && gps.longitude != null) {
                       map.panTo({ lat: gps.latitude, lng: gps.longitude });
                       map.setZoom(16);
                     }

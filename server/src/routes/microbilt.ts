@@ -247,7 +247,7 @@ router.post('/test-connection', requireRole('admin', 'manager'), async (_req: Re
   try {
     const token = await getAccessToken();
     if (!token) {
-      res.json({ success: false, error: 'No credentials configured or token request failed' });
+      res.status(400).json({ success: false, error: 'No credentials configured or token request failed' });
       return;
     }
 
@@ -257,7 +257,7 @@ router.post('/test-connection', requireRole('admin', 'manager'), async (_req: Re
       token_preview: `${token.substring(0, 8)}...`,
     });
   } catch (error: any) {
-    res.json({
+    res.status(502).json({
       success: false,
       error: 'Connection test failed',
     });

@@ -209,11 +209,11 @@ router.post('/panic', requireRole('admin', 'manager', 'supervisor', 'officer', '
 
     // ── Reverse-geocode officer GPS → address (with fallback) ──
     // Must happen BEFORE the transaction since it's async
-    let locationAddress = latitude && longitude
+    let locationAddress = latitude != null && longitude != null && Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude))
       ? `GPS: ${Number(latitude).toFixed(5)}, ${Number(longitude).toFixed(5)}`
       : 'Unknown location';
 
-    if (latitude && longitude) {
+    if (latitude != null && longitude != null) {
       try {
         const addr = await reverseGeocodeAddress(Number(latitude), Number(longitude));
         if (addr) locationAddress = addr;

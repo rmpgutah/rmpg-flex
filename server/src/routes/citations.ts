@@ -279,19 +279,6 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispa
       return;
     }
 
-    // Auto-generate citation number: CIT-YYYY-NNNN
-    const year = new Date().getFullYear();
-    const lastCit = db.prepare(
-      "SELECT citation_number FROM citations WHERE citation_number LIKE ? ORDER BY id DESC LIMIT 1"
-    ).get(`CIT-${year}-%`) as any;
-    let seq = 1;
-    if (lastCit) {
-      const parts = lastCit.citation_number.split('-');
-      const parsed = parts.length >= 3 ? parseInt(parts[2], 10) : NaN;
-      if (!isNaN(parsed)) seq = parsed + 1;
-    }
-    const citation_number = `CIT-${year}-${String(seq).padStart(4, '0')}`;
-
     const now = localNow();
 
     // Auto-fill Section/Zone/Beat from linked call or incident
@@ -316,42 +303,60 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispa
       }
     }
 
-    const result = db.prepare(`
-      INSERT INTO citations (
+    // Wrap sequence generation + INSERT in a transaction to prevent duplicate citation numbers
+    const createCitation = db.transaction(() => {
+      const year = new Date().getFullYear();
+      const lastCit = db.prepare(
+        "SELECT citation_number FROM citations WHERE citation_number LIKE ? ORDER BY id DESC LIMIT 1"
+      ).get(`CIT-${year}-%`) as any;
+      let seq = 1;
+      if (lastCit) {
+        const parts = lastCit.citation_number.split('-');
+        const parsed = parts.length >= 3 ? parseInt(parts[2], 10) : NaN;
+        if (!isNaN(parsed)) seq = parsed + 1;
+      }
+      const citation_number = `CIT-${year}-${String(seq).padStart(4, '0')}`;
+
+      const result = db.prepare(`
+        INSERT INTO citations (
+          citation_number, type, status,
+          person_id, person_name, person_dob, person_dl, person_address,
+          vehicle_description, vehicle_plate, vehicle_state,
+          statute_id, statute_citation, violation_description, offense_level, fine_amount,
+          violation_date, violation_time, location,
+          incident_id, call_id,
+          issuing_officer_id, issuing_officer_name, badge_number,
+          court_date, court_name, court_address,
+          notes, section_id, zone_id, beat_id, zone_beat,
+          created_at, updated_at
+        ) VALUES (
+          ?, ?, ?,
+          ?, ?, ?, ?, ?,
+          ?, ?, ?,
+          ?, ?, ?, ?, ?,
+          ?, ?, ?,
+          ?, ?,
+          ?, ?, ?,
+          ?, ?, ?,
+          ?, ?, ?, ?, ?,
+          ?, ?
+        )
+      `).run(
         citation_number, type, status,
-        person_id, person_name, person_dob, person_dl, person_address,
-        vehicle_description, vehicle_plate, vehicle_state,
-        statute_id, statute_citation, violation_description, offense_level, fine_amount,
-        violation_date, violation_time, location,
-        incident_id, call_id,
-        issuing_officer_id, issuing_officer_name, badge_number,
-        court_date, court_name, court_address,
-        notes, section_id, zone_id, beat_id, zone_beat,
-        created_at, updated_at
-      ) VALUES (
-        ?, ?, ?,
-        ?, ?, ?, ?, ?,
-        ?, ?, ?,
-        ?, ?, ?, ?, ?,
-        ?, ?, ?,
-        ?, ?,
-        ?, ?, ?,
-        ?, ?, ?,
-        ?, ?, ?, ?, ?,
-        ?, ?
-      )
-    `).run(
-      citation_number, type, status,
-      person_id || null, person_name || null, person_dob || null, person_dl || null, person_address || null,
-      vehicle_description || null, vehicle_plate || null, vehicle_state || null,
-      statute_id || null, statute_citation || null, violation_description || null, offense_level || null, fine_amount ?? null,
-      violation_date, violation_time || null, location || null,
-      incident_id || null, call_id || null,
-      issuing_officer_id || null, issuing_officer_name || null, badge_number || null,
-      court_date || null, court_name || null, court_address || null,
-      notes || null, section_id || null, zone_id || null, beat_id || null, zone_beat || null,
-      now, now
-    );
+        person_id ?? null, person_name ?? null, person_dob ?? null, person_dl ?? null, person_address ?? null,
+        vehicle_description ?? null, vehicle_plate ?? null, vehicle_state ?? null,
+        statute_id ?? null, statute_citation ?? null, violation_description ?? null, offense_level ?? null, fine_amount ?? null,
+        violation_date, violation_time ?? null, location ?? null,
+        incident_id ?? null, call_id ?? null,
+        issuing_officer_id ?? null, issuing_officer_name ?? null, badge_number ?? null,
+        court_date ?? null, court_name ?? null, court_address ?? null,
+        notes ?? null, section_id ?? null, zone_id ?? null, beat_id ?? null, zone_beat ?? null,
+        now, now
+      );
+      return { result, citation_number };
+    });
+
+    const { result, citation_number } = createCitation();
 
     // Activity log
     db.prepare(`
@@ -399,7 +404,7 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dis
     const fieldMap: Record<string, (v: any) => any> = {
       type: v => v ?? null,
       status: v => v ?? null,
-      person_id: v => v || null,
+      person_id: v => v ?? null,
       person_name: v => v ?? null,
       person_dob: v => v ?? null,
       person_dl: v => v ?? null,
@@ -407,7 +412,7 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dis
       vehicle_description: v => v ?? null,
       vehicle_plate: v => v ?? null,
       vehicle_state: v => v ?? null,
-      statute_id: v => v || null,
+      statute_id: v => v ?? null,
       statute_citation: v => v ?? null,
       violation_description: v => v ?? null,
       offense_level: v => v ?? null,
@@ -415,9 +420,9 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dis
       violation_date: v => v ?? null,
       violation_time: v => v ?? null,
       location: v => v ?? null,
-      incident_id: v => v || null,
-      call_id: v => v || null,
-      issuing_officer_id: v => v || null,
+      incident_id: v => v ?? null,
+      call_id: v => v ?? null,
+      issuing_officer_id: v => v ?? null,
       issuing_officer_name: v => v ?? null,
       badge_number: v => v ?? null,
       court_date: v => v ?? null,

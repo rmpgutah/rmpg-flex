@@ -1,8 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
 import { parseDeviceName, createSecurityNotification } from '../utils/deviceFingerprint';
 import { isPasswordExpired, isPasswordExpiringSoon } from '../utils/passwordExpiry';
+import { getBlockedIps } from '../middleware/rateLimiter';
 import { localNow } from '../utils/timeUtils';
 
 const router = Router();
@@ -178,10 +179,11 @@ router.put('/notifications/:id/read', authenticateToken, (req: Request, res: Res
     const db = getDb();
     const notifId = parseInt(req.params.id as string, 10);
     if (isNaN(notifId)) { res.status(400).json({ error: 'Invalid notification ID' }); return; }
-    db.prepare(
+    const result = db.prepare(
       'UPDATE security_notifications SET is_read = 1 WHERE id = ? AND user_id = ?'
     ).run(notifId, req.user!.userId);
 
+    if (result.changes === 0) { res.status(404).json({ error: 'Notification not found' }); return; }
     res.json({ message: 'Marked as read' });
   } catch (error: any) {
     console.error('Mark notification read error:', error?.message || 'Unknown error');
@@ -201,6 +203,41 @@ router.put('/notifications/read-all', authenticateToken, (req: Request, res: Res
     res.json({ message: 'All marked as read' });
   } catch (error: any) {
     console.error('Mark all read error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── GET /api/auth/security/blocked-ips ──────────────
+// Admin-only endpoint to view currently blocked IPs from rate limiter
+router.get('/blocked-ips', authenticateToken, requireRole('admin'), (_req: Request, res: Response) => {
+  try {
+    const blocked = getBlockedIps();
+    res.json({ blocked, count: blocked.length });
+  } catch (error: any) {
+    console.error('Get blocked IPs error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── GET /api/auth/security/recent-threats ──────────────
+// Admin-only endpoint showing recent login failures grouped by IP
+router.get('/recent-threats', authenticateToken, requireRole('admin'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const threats = db.prepare(`
+      SELECT ip_address, COUNT(*) as attempts,
+        GROUP_CONCAT(DISTINCT username) as targeted_accounts,
+        MAX(created_at) as last_attempt
+      FROM login_attempts
+      WHERE success = 0 AND created_at > datetime('now', 'localtime', '-24 hours')
+      GROUP BY ip_address
+      HAVING attempts >= 3
+      ORDER BY attempts DESC
+      LIMIT 50
+    `).all();
+    res.json(threats);
+  } catch (error: any) {
+    console.error('Recent threats error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

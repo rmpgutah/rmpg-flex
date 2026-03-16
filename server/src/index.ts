@@ -34,6 +34,7 @@ import { startServeManagerPoller, stopServeManagerPoller } from './utils/serveMa
 import { startPsoMonitor, stopPsoMonitor } from './utils/psoMonitor';
 import { startCallAgingMonitor, stopCallAgingMonitor } from './utils/callAgingMonitor';
 import { getDb } from './models/database';
+import { localNow } from './utils/timeUtils';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -104,6 +105,9 @@ import { scheduleLeadScrapers, stopLeadScrapers } from './utils/leadScraperBase'
 
 const app = express();
 
+// Suppress Express version fingerprinting — defense-in-depth (also removed per-request in securityHeaders)
+app.disable('x-powered-by');
+
 // Trust first proxy (nginx) so req.ip reflects the real client IP
 // Critical for rate limiting, session binding, and audit logging
 if (config.isProduction) {
@@ -158,7 +162,13 @@ app.post('/api/webhook/github', webhookRateLimit, express.raw({ type: 'applicati
   }
 
   const event = req.headers['x-github-event'] as string;
-  const payload = JSON.parse(body.toString());
+  let payload: any;
+  try {
+    payload = JSON.parse(body.toString());
+  } catch {
+    res.status(400).json({ error: 'Invalid JSON payload' });
+    return;
+  }
 
   // Only deploy on push to main
   if (event !== 'push' || payload.ref !== 'refs/heads/main') {
@@ -196,6 +206,30 @@ app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 app.use(sanitizeInput);
 
+// ─── CSRF Protection ─────────────────────────────────
+// Require a custom header on all state-changing requests to prevent CSRF.
+// Browsers block cross-origin requests from setting custom headers without preflight,
+// so the presence of this header proves the request originated from our SPA.
+if (config.isProduction) {
+  app.use('/api', (req, res, next) => {
+    // Skip safe methods (GET, HEAD, OPTIONS) and auth routes (login needs to work without header)
+    if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+    if (req.path.startsWith('/auth/login') || req.path.startsWith('/auth/refresh')
+        || req.path.startsWith('/webhook/')) return next();
+
+    const csrfHeader = req.headers['x-requested-with'];
+    if (csrfHeader !== 'XMLHttpRequest' && csrfHeader !== 'RMPG-Flex') {
+      res.status(403).json({ error: 'Missing CSRF header' });
+      return;
+    }
+    next();
+  });
+}
+
+// ─── Per-route body size limits ──────────────────────
+// Auth endpoints should have tiny payloads — prevent abuse with oversized bodies
+app.use('/api/auth', express.json({ limit: '16kb' }));
+
 // Request timeout — 30s default, skip for upload routes (large files)
 app.use((req, res, next) => {
   if (req.path.startsWith('/api/uploads') || req.path.startsWith('/api/downloads')) return next();
@@ -224,32 +258,27 @@ app.get('/api/health', (_req, res) => {
   const overall = dbStatus === 'ok' ? 'ok' : 'degraded';
   const statusCode = overall === 'ok' ? 200 : 503;
 
+  // Public health check — expose only operational status, no version/env/internals
   res.status(statusCode).json({
     status: overall,
+    timestamp: localNow(),
+    database: { status: dbStatus },
+  });
+});
+
+// ─── Detailed Health (Auth Required) ─────────────────
+app.get('/api/health/detailed', authenticateToken, requireRole('admin', 'manager'), (_req, res) => {
+  let dbStatus: 'ok' | 'error' = 'ok';
+  try { const db = getDb(); db.prepare('SELECT 1').get(); } catch { dbStatus = 'error'; }
+  res.json({
+    status: dbStatus === 'ok' ? 'ok' : 'degraded',
     name: 'RMPG Flex CAD/RMS Server',
     version: SERVER_VERSION,
     environment: config.nodeEnv,
-    timestamp: new Date().toISOString(),
+    timestamp: localNow(),
     uptime: Math.floor(process.uptime()),
-    database: { status: dbStatus, ...(dbError && { error: dbError }) },
+    database: { status: dbStatus },
     connections: { websocket: getConnectedClientCount() },
-    features: {
-      rateLimiting: true,
-      securityHeaders: true,
-      inputSanitization: true,
-      tokenRefresh: true,
-      sessionManagement: true,
-      accountLockout: true,
-      passwordPolicy: true,
-      fileUpload: true,
-      warrants: true,
-      fleetManagement: true,
-      notifications: true,
-      csvExport: true,
-      sslEncryption: config.ssl.enabled,
-      wsAuthentication: true,
-      liveSync: true,
-    },
   });
 });
 
@@ -281,7 +310,7 @@ app.post('/api/dispatch/calls/:id/redispatch', authenticateToken, (req, res) => 
     if (!['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(call.status)) {
       res.status(400).json({ error: 'Call must be completed to re-dispatch' }); return;
     }
-    const now = new Date().toISOString().replace('T', ' ').split('.')[0];
+    const now = localNow();
     const currentAttempt = call.pso_attempt_number || 1;
     const newAttempt = currentAttempt + 1;
     const ordinal = (n: number) => { const s = ['th','st','nd','rd']; const v = n % 100; if (v >= 11 && v <= 13) return n + 'th'; return n + (s[n % 10] || s[0]); };
@@ -425,7 +454,7 @@ app.get('*', (req, res) => {
   } else {
     res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.sendFile(path.join(clientDistPath, 'index.html'), (err) => {
-      if (err) {
+      if (err && !res.headersSent) {
         res.status(404).json({ error: 'Not found' });
       }
     });
@@ -455,8 +484,20 @@ try {
     const sslOptions: https.ServerOptions = {
       cert: config.ssl.cert,
       key: config.ssl.key,
-      // Strong TLS configuration
+      // Strong TLS configuration — disable weak protocols and ciphers
       minVersion: 'TLSv1.2' as any,
+      ciphers: [
+        'TLS_AES_256_GCM_SHA384',
+        'TLS_CHACHA20_POLY1305_SHA256',
+        'TLS_AES_128_GCM_SHA256',
+        'ECDHE-ECDSA-AES256-GCM-SHA384',
+        'ECDHE-RSA-AES256-GCM-SHA384',
+        'ECDHE-ECDSA-CHACHA20-POLY1305',
+        'ECDHE-RSA-CHACHA20-POLY1305',
+        'ECDHE-ECDSA-AES128-GCM-SHA256',
+        'ECDHE-RSA-AES128-GCM-SHA256',
+      ].join(':'),
+      honorCipherOrder: true,
     };
 
     primaryServer = https.createServer(sslOptions, app);
@@ -622,7 +663,7 @@ try {
         if (unchecked.length > 0) {
           console.log(`[OFAC Backfill] Screening ${unchecked.length} person record(s) that were never checked...`);
           let matches = 0;
-          const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+          const now = localNow();
           for (const p of unchecked) {
             try {
               const hits = searchOfacLocal(`${p.last_name}, ${p.first_name}`, { type: 'person' as const, firstName: p.first_name, lastName: p.last_name, limit: 3 });

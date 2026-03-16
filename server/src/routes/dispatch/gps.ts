@@ -77,31 +77,32 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
     // needs a unit entry to store their position and broadcast updates.
     let unit = db.prepare('SELECT id, call_sign, status FROM units WHERE officer_id = ?').get(req.user!.userId) as any;
     if (!unit) {
-      // Look up user info for a sensible call_sign
-      const userInfo = db.prepare('SELECT badge_number, username, full_name FROM users WHERE id = ?').get(req.user!.userId) as any;
-      const callSign = userInfo?.badge_number || userInfo?.username || `P-${req.user!.userId}`;
+      // Wrap check-then-insert in a transaction to prevent TOCTOU race
+      const ensureUnit = db.transaction((userId: number) => {
+        // Re-check inside transaction
+        const existing = db.prepare('SELECT id, call_sign, status FROM units WHERE officer_id = ?').get(userId) as any;
+        if (existing) return existing;
 
-      // Use INSERT OR IGNORE to prevent race conditions when multiple GPS
-      // requests arrive simultaneously for a new user — only the first succeeds
-      const existing = db.prepare('SELECT id FROM units WHERE call_sign = ?').get(callSign) as any;
-      const finalCallSign = existing ? `${callSign}-${req.user!.userId}` : callSign;
+        const userInfo = db.prepare('SELECT badge_number, username, full_name FROM users WHERE id = ?').get(userId) as any;
+        const callSign = userInfo?.badge_number || userInfo?.username || `P-${userId}`;
 
-      try {
-        db.prepare(`
-          INSERT INTO units (call_sign, officer_id, status)
-          VALUES (?, ?, 'available')
-        `).run(finalCallSign, req.user!.userId);
-      } catch (insertErr: any) {
-        // If a concurrent request already created the unit, just fetch it
-        if (!insertErr.message?.includes('UNIQUE constraint')) throw insertErr;
-      }
+        const csConflict = db.prepare('SELECT id FROM units WHERE call_sign = ?').get(callSign) as any;
+        const finalCallSign = csConflict ? `${callSign}-${userId}` : callSign;
 
-      unit = db.prepare('SELECT id, call_sign, status FROM units WHERE officer_id = ?').get(req.user!.userId) as any;
+        try {
+          db.prepare(`INSERT INTO units (call_sign, officer_id, status) VALUES (?, ?, 'available')`).run(finalCallSign, userId);
+        } catch (insertErr: any) {
+          if (!insertErr.message?.includes('UNIQUE constraint')) throw insertErr;
+        }
+        return db.prepare('SELECT id, call_sign, status FROM units WHERE officer_id = ?').get(userId) as any;
+      });
+
+      unit = ensureUnit(req.user!.userId);
       if (!unit) {
         res.status(500).json({ error: 'Failed to create or find unit' });
         return;
       }
-      console.log(`[GPS] Auto-created unit "${finalCallSign}" for user ${req.user!.userId} (${userInfo?.full_name || 'unknown'})`);
+      console.log(`[GPS] Auto-created unit "${unit.call_sign}" for user ${req.user!.userId}`);
 
       // Audit log: auto-created unit
       db.prepare(`
@@ -110,7 +111,7 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
       `).run(
         req.user!.userId,
         unit.id,
-        `Auto-created unit "${finalCallSign}" via GPS tracking for ${userInfo?.full_name || 'unknown'}`,
+        `Auto-created unit "${unit.call_sign}" via GPS tracking`,
         req.ip || 'unknown',
       );
     }

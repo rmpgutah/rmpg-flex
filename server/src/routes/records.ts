@@ -830,7 +830,7 @@ router.post('/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer'
       damage_description || null, distinguishing_features || null,
       trim || null, engine_type || null, fuel_type || null, transmission || null, drive_type || null,
       tow_status || null, tow_company || null, tow_date || null, plate_type || null,
-      commercial_vehicle ? 1 : 0, hazmat ? 1 : 0, odometer || null,
+      commercial_vehicle ? 1 : 0, hazmat ? 1 : 0, odometer ?? null,
       owner_address || null, owner_phone || null, lien_holder || null,
       stolen_status || null, stolen_date || null, recovery_date || null,
       JSON.stringify(flags || []), notes || null,
@@ -1290,6 +1290,7 @@ router.put('/evidence/:id', requireRole('admin', 'manager', 'supervisor', 'offic
 
     const eFieldMap: Record<string, (v: any) => any> = {
       description: v => v ?? null, evidence_type: v => v ?? null,
+      incident_id: v => v ?? null,
       storage_location: v => v ?? null, collected_date: v => v ?? null,
       category: v => v ?? null, packaging_type: v => v ?? null,
       serial_number: v => v ?? null, brand: v => v ?? null, model: v => v ?? null,
@@ -1705,7 +1706,7 @@ router.post('/evidence', requireRole('admin', 'manager', 'supervisor', 'officer'
     }
 
     // Generate evidence number
-    const currentYear = new Date().getFullYear();
+    const currentYear = parseInt(localToday().slice(0, 4), 10);
     const lastEvidence = db.prepare(
       `SELECT evidence_number FROM evidence WHERE evidence_number LIKE ? ORDER BY id DESC LIMIT 1`
     ).get(`EV-${currentYear}-%`) as any;

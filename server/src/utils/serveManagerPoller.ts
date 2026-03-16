@@ -39,7 +39,7 @@ function getSmConfig(key: string): string | null {
       "SELECT config_value FROM system_config WHERE config_key = ? AND category = 'integrations' AND is_active = 1 LIMIT 1"
     ).get(key) as { config_value: string } | undefined;
     return row?.config_value || null;
-  } catch { return null; }
+  } catch (e: any) { console.warn('[ServeManagerPoller] Config read failed:', e?.message); return null; }
 }
 
 function setSmConfig(key: string, value: string): void {
@@ -97,7 +97,7 @@ function guessProcessType(documents: any[]): string {
 
 function mapSmJobToCallData(job: SmJobRow) {
   let addresses: any[] = [];
-  try { addresses = JSON.parse(job.addresses_json || '[]'); } catch { /* malformed — use empty */ }
+  try { addresses = JSON.parse(job.addresses_json || '[]'); } catch (e: any) { console.warn('[ServeManagerPoller] Malformed addresses_json:', e?.message); }
   if (!Array.isArray(addresses)) addresses = [];
   const primary = addresses.find((a: any) => a.primary) || addresses[0];
 
@@ -106,11 +106,11 @@ function mapSmJobToCallData(job: SmJobRow) {
         .filter(Boolean).join(', ')
     : 'Address pending — see ServeManager';
 
-  const latitude = primary?.lat || primary?.latitude || null;
-  const longitude = primary?.lng || primary?.longitude || null;
+  const latitude = primary?.lat ?? primary?.latitude ?? null;
+  const longitude = primary?.lng ?? primary?.longitude ?? null;
 
   let documents: any[] = [];
-  try { documents = JSON.parse(job.documents_json || '[]'); } catch { /* malformed — use empty */ }
+  try { documents = JSON.parse(job.documents_json || '[]'); } catch (e: any) { console.warn('[ServeManagerPoller] Malformed documents_json:', e?.message); }
   if (!Array.isArray(documents)) documents = [];
   const docNames = documents.map((d: any) => d.title).filter(Boolean).join(', ');
 
@@ -245,10 +245,11 @@ async function pollOnce(): Promise<{ synced: number; callsCreated: number }> {
         })();
 
         // Post-transaction: geocode, broadcast, notify
+        if (!callId) continue;
         const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(callId);
 
         if (!callData.latitude) {
-          geocodeCallIfNeeded(callId as number, callData.location_address, null, null);
+          geocodeCallIfNeeded(callId, callData.location_address, null, null);
         }
 
         broadcastDispatchUpdate({ action: 'call_created', call });

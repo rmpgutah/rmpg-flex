@@ -82,28 +82,34 @@ const EMERGENCY_OVERRIDE_DURATION_MS = 30_000; // 30 seconds
 /** Per-client message rate limiting */
 const clientMessageRates: Map<string, { count: number; resetAt: number }> = new Map();
 const WS_RATE_LIMIT_WINDOW_MS = 1000; // 1 second window
-const WS_RATE_LIMIT_MAX = 30;         // max messages per second
+const WS_RATE_LIMIT_MAX = 15;         // max messages per second
 
 // Periodic cleanup of stale rate-limit entries and orphaned radio state (every 5 min)
 setInterval(() => {
   const now = Date.now();
-  // Clean expired rate-limit entries for disconnected clients
+  // Collect keys to delete first, then delete — avoids delete-during-iteration
+  const rateKeysToDelete: string[] = [];
   for (const [id, rate] of clientMessageRates) {
-    if (now > rate.resetAt && !clients.has(id)) clientMessageRates.delete(id);
+    if (now > rate.resetAt && !clients.has(id)) rateKeysToDelete.push(id);
   }
-  // Clean stale loggedTransmissions for clients that are no longer connected
+  for (const k of rateKeysToDelete) clientMessageRates.delete(k);
+
+  const logKeysToDelete: string[] = [];
   for (const key of loggedTransmissions) {
     const clientId = key.split(':')[1];
-    if (clientId && !clients.has(clientId)) loggedTransmissions.delete(key);
+    if (clientId && !clients.has(clientId)) logKeysToDelete.push(key);
   }
-  // Clean orphaned audio buffers for disconnected clients
+  for (const k of logKeysToDelete) loggedTransmissions.delete(k);
+
+  const audioKeysToDelete: string[] = [];
   for (const key of audioBuffers.keys()) {
     const clientId = key.split(':')[1];
-    if (clientId && !clients.has(clientId)) {
-      audioBuffers.delete(key);
-      const timer = audioBufferTimers.get(key);
-      if (timer) { clearTimeout(timer); audioBufferTimers.delete(key); }
-    }
+    if (clientId && !clients.has(clientId)) audioKeysToDelete.push(key);
+  }
+  for (const key of audioKeysToDelete) {
+    audioBuffers.delete(key);
+    const timer = audioBufferTimers.get(key);
+    if (timer) { clearTimeout(timer); audioBufferTimers.delete(key); }
   }
 }, 5 * 60 * 1000);
 
@@ -133,11 +139,36 @@ const ALLOWED_ORIGINS = new Set([
   ]),
 ]);
 
+// Per-IP connection limit — prevents resource exhaustion from a single source
+const MAX_WS_CONNECTIONS_PER_IP = 10;
+const ipConnectionCounts: Map<string, number> = new Map();
+
+// Periodic token re-validation interval (check every 2 minutes)
+const TOKEN_REVALIDATION_INTERVAL_MS = 2 * 60 * 1000;
+
 export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
   wss = new WebSocketServer({
     server,
     maxPayload: 1 * 1024 * 1024, // 1 MB — prevents oversized frame DoS
   });
+
+  // Periodic session re-validation — disconnects clients whose session was revoked
+  const revalidationTimer = setInterval(() => {
+    for (const [clientId, client] of clients) {
+      if (!client.authenticated || !client.userId) continue;
+      try {
+        const db = database.getDb();
+        // Check if user account is still active
+        const user = db.prepare('SELECT is_active FROM users WHERE id = ?').get(client.userId) as { is_active: number } | undefined;
+        if (!user || !user.is_active) {
+          safeSend(client.ws, JSON.stringify({ type: 'error', code: 'SESSION_REVOKED', message: 'Account deactivated' }));
+          client.ws.close(4002, 'Account deactivated');
+          clients.delete(clientId);
+        }
+      } catch { /* DB unavailable — leave connection intact until next check */ }
+    }
+  }, TOKEN_REVALIDATION_INTERVAL_MS);
+  revalidationTimer.unref();
 
   wss.on('connection', (ws: WebSocket, req) => {
     // ── Origin validation ──────────────────────────────────────
@@ -149,6 +180,17 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
       ws.close(4003, 'Origin not allowed');
       return;
     }
+
+    // ── Per-IP connection limit ────────────────────────────────
+    const clientIp = req.socket.remoteAddress || 'unknown';
+    const currentCount = ipConnectionCounts.get(clientIp) || 0;
+    if (currentCount >= MAX_WS_CONNECTIONS_PER_IP) {
+      console.warn(`[WS] Rejected connection from ${clientIp} — exceeds ${MAX_WS_CONNECTIONS_PER_IP} connections`);
+      ws.close(4009, 'Too many connections');
+      return;
+    }
+    ipConnectionCounts.set(clientIp, currentCount + 1);
+
     const clientId = generateClientId();
     const client: WSClient = {
       ws,
@@ -214,6 +256,10 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
 
     ws.on('close', () => {
       clearTimeout(authTimer);
+      // Decrement per-IP connection counter
+      const count = ipConnectionCounts.get(clientIp) || 1;
+      if (count <= 1) ipConnectionCounts.delete(clientIp);
+      else ipConnectionCounts.set(clientIp, count - 1);
       // Clean up private call and radio state before removing client
       try { handlePrivateCallDisconnect(clientId); } catch (e) { console.error('[WS] Error in private call disconnect:', e); }
       try { handleRadioDisconnect(clientId); } catch (e) { console.error('[WS] Error in radio disconnect:', e); }
@@ -225,6 +271,10 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
 
     ws.on('error', () => {
       clearTimeout(authTimer);
+      // Decrement per-IP connection counter
+      const count = ipConnectionCounts.get(clientIp) || 1;
+      if (count <= 1) ipConnectionCounts.delete(clientIp);
+      else ipConnectionCounts.set(clientIp, count - 1);
       try { handlePrivateCallDisconnect(clientId); } catch (e) { console.error('[WS] Error in private call disconnect:', e); }
       try { handleRadioDisconnect(clientId); } catch (e) { console.error('[WS] Error in radio disconnect:', e); }
       clients.delete(clientId);

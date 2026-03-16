@@ -17,18 +17,20 @@ router.use(authenticateToken);
 // ─── Helper: Generate next invoice number ─────────────────
 function generateInvoiceNumber(): string {
   const db = getDb();
-  const year = new Date().getFullYear();
+  const year = parseInt(localToday().slice(0, 4), 10);
   const prefix = `INV-${year}-`;
-  const last = db.prepare(
-    "SELECT invoice_number FROM invoices WHERE invoice_number LIKE ? ORDER BY id DESC LIMIT 1"
-  ).get(`${prefix}%`) as any;
-  let seq = 1;
-  if (last) {
-    const parts = last.invoice_number.split('-');
-    const parsed = parts.length >= 3 ? parseInt(parts[2], 10) : NaN;
-    seq = isNaN(parsed) ? 1 : parsed + 1;
-  }
-  return `${prefix}${String(seq).padStart(4, '0')}`;
+  return db.transaction(() => {
+    const last = db.prepare(
+      "SELECT invoice_number FROM invoices WHERE invoice_number LIKE ? ORDER BY id DESC LIMIT 1"
+    ).get(`${prefix}%`) as any;
+    let seq = 1;
+    if (last) {
+      const parts = last.invoice_number.split('-');
+      const parsed = parts.length >= 3 ? parseInt(parts[2], 10) : NaN;
+      seq = isNaN(parsed) ? 1 : parsed + 1;
+    }
+    return `${prefix}${String(seq).padStart(4, '0')}`;
+  })();
 }
 
 // ─── Helper: Parse payment terms to days ──────────────────
@@ -367,7 +369,7 @@ router.post('/:id/generate', requireRole('admin', 'manager', 'contract_manager')
 
         const rate = client.rate_per_hour || 0;
         for (const h of hours) {
-          const hrs = h.total_hours || 0;
+          const hrs = Number.isFinite(Number(h.total_hours)) ? Number(h.total_hours) : 0;
           const amt = Math.round(hrs * rate * 100) / 100;
           const desc = `Service hours — ${h.officer_name || 'Officer'} at ${h.property_name || 'Property'} (${String(h.clock_in).substring(0, 10)}) — ${hrs.toFixed(2)} hrs`;
           insertItem.run(invoice.id, 'service_hours', desc, hrs, rate, amt, 'time_entry', h.id, sortOrder++, now);

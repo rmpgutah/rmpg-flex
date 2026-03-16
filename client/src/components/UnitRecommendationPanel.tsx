@@ -124,7 +124,7 @@ export default function UnitRecommendationPanel({
                 <div className="flex flex-col items-end flex-shrink-0 mr-2">
                   <div className="flex items-center gap-1 text-[10px] text-rmpg-300">
                     <MapPin style={{ width: 8, height: 8 }} />
-                    <span className="font-mono">{item.distance.toFixed(1)} mi</span>
+                    <span className="font-mono">{(Number(item.distance) || 0).toFixed(1)} mi</span>
                   </div>
                   <div className="flex items-center gap-1 text-[9px] text-rmpg-500">
                     <Clock style={{ width: 7, height: 7 }} />

@@ -3,6 +3,7 @@
 // ============================================================
 
 import Database from 'better-sqlite3';
+import { localToday } from './timeUtils';
 
 // ── Type Code Mapping (mirrors client/src/utils/caseNumbers.ts) ──
 
@@ -66,7 +67,7 @@ export function getCaseTypeCode(caseType: string): string {
 // Format: YY-######-XX  (2-digit year + 6-digit sequence + 2-letter type code)
 
 export function generateCaseNumber(db: Database.Database, caseType: string = 'general'): string {
-  const yy = String(new Date().getFullYear()).slice(-2);
+  const yy = localToday().slice(2, 4);
   const typeCode = getCaseTypeCode(caseType);
   // Sequence is global per year (not per type)
   const prefix = `${yy}-`;
@@ -90,8 +91,7 @@ export function generateCaseNumber(db: Database.Database, caseType: string = 'ge
 // Sequence is global per year (not per type)
 
 export function generateIncidentNumber(db: Database.Database, incidentType: string): string {
-  const now = new Date();
-  const yy = String(now.getFullYear()).slice(-2);
+  const yy = localToday().slice(2, 4);
   const code = getTypeCode(incidentType);
   const prefix = `RKY${yy}-`;
 
@@ -114,7 +114,7 @@ export function generateIncidentNumber(db: Database.Database, incidentType: stri
 // Format: 26-CFS#####  (2-digit year + CFS prefix)
 
 export function generateCallNumber(db: Database.Database): string {
-  const yy = String(new Date().getFullYear()).slice(-2);
+  const yy = localToday().slice(2, 4);
   const prefix = `${yy}-CFS`;
   const lastCall = db.prepare(
     `SELECT call_number FROM calls_for_service WHERE call_number LIKE ? ORDER BY id DESC LIMIT 1`,

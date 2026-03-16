@@ -582,7 +582,7 @@ export default function DashboardPage() {
               <button className={`toolbar-btn justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/map')}>
                 <MapPin style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Map
               </button>
-              <button className={`toolbar-btn justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => window.open('/warrants', '_blank')}>
+              <button className={`toolbar-btn justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => window.open('/warrants', '_blank', 'noopener,noreferrer')}>
                 <Gavel style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Warrants
               </button>
             </div>
@@ -776,7 +776,7 @@ export default function DashboardPage() {
             {/* Active Warrant Alerts */}
             <div
               className={`flex items-center gap-3 p-2.5 panel-beveled cursor-pointer hover:bg-amber-900/10 transition-colors bg-surface-sunken border-l-[3px] ${activeWarrants > 0 ? 'border-l-amber-500' : 'border-l-rmpg-600'}`}
-              onClick={() => window.open('/warrants', '_blank')}
+              onClick={() => window.open('/warrants', '_blank', 'noopener,noreferrer')}
             >
               <Gavel className={`w-4 h-4 ${activeWarrants > 0 ? 'text-amber-400' : 'text-rmpg-500'}`} />
               <div className="flex-1">
@@ -900,7 +900,7 @@ export default function DashboardPage() {
           return b.action_count - a.action_count;
         });
         const chartRows = sorted.map(o => ({
-          name: o.full_name?.split(' ').filter(Boolean).map(w => w[0]?.toUpperCase() + w.slice(1).toLowerCase()).join(' ') || 'Unknown',
+          name: o.full_name?.split(' ').filter(Boolean).map(w => w[0] ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w).join(' ') || 'Unknown',
           badge: o.badge_number || '',
           actions: o.action_count,
           role: o.role,

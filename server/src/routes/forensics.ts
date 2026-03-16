@@ -9,7 +9,7 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
-import { localNow } from '../utils/timeUtils';
+import { localNow, localToday } from '../utils/timeUtils';
 import { auditLog } from '../utils/auditLogger';
 import { computeFileHashes, computeContentFingerprint } from '../utils/ipedManager';
 import path from 'path';
@@ -23,7 +23,7 @@ router.use(authenticateToken);
 /** Generate lab case number — wrapped in transaction to prevent race conditions */
 function generateLabCaseNumber(): string {
   const db = getDb();
-  const year = new Date().getFullYear();
+  const year = parseInt(localToday().slice(0, 4), 10);
   const prefix = `FL-${year}-`;
   return db.transaction(() => {
     const last = db.prepare(

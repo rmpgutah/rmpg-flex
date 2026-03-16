@@ -63,9 +63,9 @@ export default function CrimeAnalysisPage() {
     );
   }
 
-  const maxOffenseCount = Math.max(...(data.topOffenses || []).map((o: any) => o.count), 1);
-  const maxHotspotCount = Math.max(...(data.hotspots || []).map((h: any) => h.count), 1);
-  const maxTodCount = Math.max(...(data.timeOfDay || []).map((t: any) => t.count), 1);
+  const maxOffenseCount = Math.max(1, ...(data.topOffenses || []).map((o: any) => o.count ?? 0));
+  const maxHotspotCount = Math.max(1, ...(data.hotspots || []).map((h: any) => h.count ?? 0));
+  const maxTodCount = Math.max(1, ...(data.timeOfDay || []).map((t: any) => t.count ?? 0));
 
   return (
     <div className="h-full flex flex-col">
@@ -120,8 +120,8 @@ export default function CrimeAnalysisPage() {
         <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-4'} gap-3 mb-4`}>
           {[
             { label: 'Total Incidents', value: data.topOffenses?.reduce((a: number, b: any) => a + b.count, 0) || 0, color: 'text-white' },
-            { label: 'Clearance Rate', value: `${data.clearanceRate?.rate || 0}%`, color: 'text-green-400' },
-            { label: 'Avg Response', value: `${data.responseMetrics?.[0]?.avg_minutes || '—'} min`, color: 'text-amber-400' },
+            { label: 'Clearance Rate', value: `${data.clearanceRate?.rate ?? 0}%`, color: 'text-green-400' },
+            { label: 'Avg Response', value: `${data.responseMetrics?.[0]?.avg_minutes ?? '—'} min`, color: 'text-amber-400' },
             { label: 'Repeat Offenders', value: data.repeatOffenders?.length || 0, color: 'text-red-400' },
           ].map(card => (
             <div key={card.label} className="panel-beveled p-3 text-center">
@@ -233,7 +233,7 @@ export default function CrimeAnalysisPage() {
             <div className="p-3 space-y-2">
               {(data.dayOfWeek || []).map((day: any, idx: number) => {
                 const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-                const maxDow = Math.max(...(data.dayOfWeek || []).map((d: any) => d.count), 1);
+                const maxDow = Math.max(1, ...(data.dayOfWeek || []).map((d: any) => d.count));
                 return (
                   <div key={idx} className="flex items-center gap-2">
                     <span className="text-[10px] text-rmpg-300 w-8">{dayNames[day.day_of_week] || day.day_of_week}</span>
@@ -310,7 +310,7 @@ export default function CrimeAnalysisPage() {
                 <div>
                   <div className="flex items-end gap-1 h-28">
                     {(data.trendData || []).map((month: any, idx: number) => {
-                      const maxTrend = Math.max(...(data.trendData || []).map((m: any) => m.count), 1);
+                      const maxTrend = Math.max(1, ...(data.trendData || []).map((m: any) => m.count));
                       return (
                         <div key={idx} className="flex-1 flex flex-col items-center">
                           <div
