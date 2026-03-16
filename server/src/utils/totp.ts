@@ -42,7 +42,11 @@ export function decryptSecret(encrypted: string): string {
     decipher.update(Buffer.from(ciphertextHex, 'hex')),
     decipher.final(),
   ]);
-  return decrypted.toString('utf8');
+  const secret = decrypted.toString('utf8');
+  if (!/^[A-Z2-7]+=*$/.test(secret)) {
+    throw new Error('Decrypted TOTP secret is not valid base32');
+  }
+  return secret;
 }
 
 // ----------------------------------------------------------

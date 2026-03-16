@@ -187,7 +187,9 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
     }
 
     // ── Per-IP connection limit ────────────────────────────────
-    const clientIp = req.socket.remoteAddress || 'unknown';
+    const forwarded = req.headers['x-forwarded-for'];
+    const clientIp = (typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : null)
+      || req.socket.remoteAddress || 'unknown';
     const currentCount = ipConnectionCounts.get(clientIp) || 0;
     if (currentCount >= MAX_WS_CONNECTIONS_PER_IP) {
       console.warn(`[WS] Rejected connection from ${clientIp} — exceeds ${MAX_WS_CONNECTIONS_PER_IP} connections`);
