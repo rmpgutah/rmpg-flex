@@ -185,7 +185,7 @@ router.get('/entity/:type/:id', authenticateToken, (req: Request, res: Response)
 
     res.json(enriched);
   } catch (error: any) {
-    console.error('List attachments error:', error);
+    console.error('List attachments error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -206,7 +206,7 @@ router.get('/sign/:fileId', authenticateToken, (req: Request, res: Response) => 
     const { sig, exp } = signFileAccess(req.params.fileId as string);
     res.json({ sig, exp, file_id: req.params.fileId });
   } catch (error: any) {
-    console.error('Sign file error:', error);
+    console.error('Sign file error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -241,7 +241,7 @@ router.get('/:fileId', authenticateTokenOrQuery, (req: Request, res: Response) =
 
     res.sendFile(filePath);
   } catch (error: any) {
-    console.error('Download error:', error);
+    console.error('Download error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Download failed' });
   }
 });
@@ -268,7 +268,7 @@ router.get('/:fileId/download', authenticateTokenOrQuery, (req: Request, res: Re
     res.set('Content-Disposition', safeContentDisposition('attachment', attachment.original_name));
     res.sendFile(filePath);
   } catch (error: any) {
-    console.error('Download error:', error);
+    console.error('Download error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Download failed' });
   }
 });
@@ -304,7 +304,7 @@ router.get('/:fileId/thumbnail', authenticateTokenOrQuery, (req: Request, res: R
 
     res.sendFile(filePath);
   } catch (error: any) {
-    console.error('Thumbnail error:', error);
+    console.error('Thumbnail error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Thumbnail failed' });
   }
 });
@@ -364,9 +364,9 @@ router.post('/', upload.array('files', 10), (req: Request, res: Response) => {
 
     res.status(201).json(results);
   } catch (error: any) {
-    console.error('Upload error:', error);
+    console.error('Upload error:', error?.message || 'Unknown error');
     if (error.message?.includes('not allowed')) {
-      res.status(400).json({ error: error.message });
+      res.status(400).json({ error: 'File type not allowed' });
     } else {
       res.status(500).json({ error: 'Upload failed' });
     }
@@ -408,7 +408,7 @@ router.put('/:fileId/link', requireRole('admin', 'manager', 'supervisor'), (req:
 
     res.json(attachment);
   } catch (error: any) {
-    console.error('Link attachment error:', error);
+    console.error('Link attachment error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -454,7 +454,7 @@ router.delete('/:fileId', (req: Request, res: Response) => {
 
     res.json({ message: 'File deleted' });
   } catch (error: any) {
-    console.error('Delete attachment error:', error);
+    console.error('Delete attachment error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

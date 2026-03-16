@@ -191,7 +191,7 @@ router.post('/sync-from-sm', requireRole('admin', 'manager', 'supervisor'), (req
             lat = a.Latitude ?? a.lat ?? null;
             lng = a.Longitude ?? a.lng ?? null;
           }
-        } catch {}
+        } catch (e) { console.warn('[serve] Failed to parse address for serve job:', e); }
 
         insertStmt.run(
           id, sm.id, sm.employee_process_server_id || null, today,

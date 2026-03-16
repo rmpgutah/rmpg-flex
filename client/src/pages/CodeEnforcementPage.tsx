@@ -138,7 +138,7 @@ export default function CodeEnforcementPage() {
   }, [tPage, tSearch, tFilterStatus]);
 
   const fetchStats = useCallback(async () => {
-    try { const res = await apiFetch<{ data: any }>('/code-enforcement/stats'); setStats(res.data); } catch {}
+    try { const res = await apiFetch<{ data: any }>('/code-enforcement/stats'); setStats(res.data); } catch (e) { console.warn('[CodeEnforcement] fetch stats failed:', e); }
   }, []);
 
   useEffect(() => { fetchViolations(); }, [fetchViolations]);

@@ -145,7 +145,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
 
     res.json(users);
   } catch (error: any) {
-    console.error('Get personnel error:', error);
+    console.error('Get personnel error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -202,7 +202,7 @@ router.get('/:id', (req: Request, res: Response, next) => {
       activeTimeEntry,
     });
   } catch (error: any) {
-    console.error('Get user error:', error);
+    console.error('Get user error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -296,7 +296,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
 
     res.status(201).json(user);
   } catch (error: any) {
-    console.error('Create user error:', error);
+    console.error('Create user error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -391,7 +391,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
 
     res.json(updated);
   } catch (error: any) {
-    console.error('Update user error:', error);
+    console.error('Update user error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -430,7 +430,7 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
 
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
-    console.error('Delete user error:', error);
+    console.error('Delete user error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -459,7 +459,7 @@ router.post('/:id/archive', requireRole('admin', 'manager'), (req: Request, res:
     `).get(user.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Archive user error:', error);
+    console.error('Archive user error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -484,7 +484,7 @@ router.post('/:id/unarchive', requireRole('admin', 'manager'), (req: Request, re
     `).get(user.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Unarchive user error:', error);
+    console.error('Unarchive user error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -554,7 +554,7 @@ router.get('/bodycam-videos/:videoId/stream', (req: Request, res: Response) => {
       stream.pipe(res);
     }
   } catch (error: any) {
-    console.error('Stream bodycam video error:', error);
+    console.error('Stream bodycam video error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -589,7 +589,7 @@ router.get('/bodycam-videos/:videoId/download', (req: Request, res: Response) =>
     });
     fs.createReadStream(filePath).pipe(res);
   } catch (error: any) {
-    console.error('Download bodycam video error:', error);
+    console.error('Download bodycam video error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -649,7 +649,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(schedules);
     } catch (error: any) {
-      console.error('Get schedules error:', error);
+      console.error('Get schedules error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -680,7 +680,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.status(201).json(schedule);
     } catch (error: any) {
-      console.error('Create schedule error:', error);
+      console.error('Create schedule error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -733,7 +733,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       `).get(result.lastInsertRowid);
       res.status(201).json(entry);
     } catch (error: any) {
-      console.error('Clock in error:', error);
+      console.error('Clock in error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -798,7 +798,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       `).get(activeEntry.id);
       res.json(entry);
     } catch (error: any) {
-      console.error('Clock out error:', error);
+      console.error('Clock out error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -838,7 +838,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       `).get(activeEntry.id);
       res.json(entry);
     } catch (error: any) {
-      console.error('Start break error:', error);
+      console.error('Start break error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -885,7 +885,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       `).get(breakEntry.id);
       res.json(entry);
     } catch (error: any) {
-      console.error('End break error:', error);
+      console.error('End break error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -904,7 +904,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(credentials);
     } catch (error: any) {
-      console.error('Get credentials error:', error);
+      console.error('Get credentials error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -943,7 +943,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(entries);
     } catch (error: any) {
-      console.error('Get time entries error:', error);
+      console.error('Get time entries error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -998,7 +998,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(updated);
     } catch (error: any) {
-      console.error('Edit time entry error:', error);
+      console.error('Edit time entry error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1022,7 +1022,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json({ success: true, id: req.params.id });
     } catch (error: any) {
-      console.error('Delete time entry error:', error);
+      console.error('Delete time entry error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1040,7 +1040,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(credentials);
     } catch (error: any) {
-      console.error('Get all credentials error:', error);
+      console.error('Get all credentials error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1064,7 +1064,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const credential = db.prepare('SELECT * FROM credentials WHERE id = ?').get(result.lastInsertRowid);
       res.status(201).json(credential);
     } catch (error: any) {
-      console.error('Create credential error:', error);
+      console.error('Create credential error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1104,7 +1104,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(credential);
     } catch (error: any) {
-      console.error('Update credential error:', error);
+      console.error('Update credential error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1128,7 +1128,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json({ message: 'Credential deleted' });
     } catch (error: any) {
-      console.error('Delete credential error:', error);
+      console.error('Delete credential error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1145,7 +1145,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const updated = db.prepare('SELECT * FROM credentials WHERE id = ?').get(cred.id);
       res.json(updated);
     } catch (error: any) {
-      console.error('Archive credential error:', error);
+      console.error('Archive credential error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1161,7 +1161,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const updated = db.prepare('SELECT * FROM credentials WHERE id = ?').get(cred.id);
       res.json(updated);
     } catch (error: any) {
-      console.error('Unarchive credential error:', error);
+      console.error('Unarchive credential error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1183,7 +1183,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(activity);
     } catch (error: any) {
-      console.error('Get user activity error:', error);
+      console.error('Get user activity error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1201,7 +1201,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       db.prepare('DELETE FROM schedules WHERE id = ?').run(req.params.id);
       res.json({ message: 'Schedule deleted' });
     } catch (error: any) {
-      console.error('Delete schedule error:', error);
+      console.error('Delete schedule error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1242,7 +1242,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(schedule);
     } catch (error: any) {
-      console.error('Update schedule error:', error);
+      console.error('Update schedule error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1259,7 +1259,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const updated = db.prepare('SELECT * FROM schedules WHERE id = ?').get(schedule.id);
       res.json(updated);
     } catch (error: any) {
-      console.error('Archive schedule error:', error);
+      console.error('Archive schedule error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1275,7 +1275,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const updated = db.prepare('SELECT * FROM schedules WHERE id = ?').get(schedule.id);
       res.json(updated);
     } catch (error: any) {
-      console.error('Unarchive schedule error:', error);
+      console.error('Unarchive schedule error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1294,7 +1294,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       `).all();
       res.json(records);
     } catch (error: any) {
-      console.error('Get training records error:', error);
+      console.error('Get training records error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1310,7 +1310,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         is_mandatory: !!r.is_mandatory,
       })));
     } catch (error: any) {
-      console.error('Get training requirements error:', error);
+      console.error('Get training requirements error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1344,7 +1344,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         is_mandatory: !!requirement.is_mandatory,
       });
     } catch (error: any) {
-      console.error('Create training requirement error:', error);
+      console.error('Create training requirement error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1381,7 +1381,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         is_mandatory: !!updated.is_mandatory,
       });
     } catch (error: any) {
-      console.error('Update training requirement error:', error);
+      console.error('Update training requirement error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1396,7 +1396,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       db.prepare('DELETE FROM training_requirements WHERE id = ?').run(req.params.id);
       res.json({ message: 'Requirement deleted' });
     } catch (error: any) {
-      console.error('Delete training requirement error:', error);
+      console.error('Delete training requirement error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1414,7 +1414,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       `).all(req.params.officerId);
       res.json(records);
     } catch (error: any) {
-      console.error('Get officer training error:', error);
+      console.error('Get officer training error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1448,7 +1448,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.status(201).json(record);
     } catch (error: any) {
-      console.error('Create training record error:', error);
+      console.error('Create training record error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1490,7 +1490,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(record);
     } catch (error: any) {
-      console.error('Update training record error:', error);
+      console.error('Update training record error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1508,7 +1508,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       db.prepare('DELETE FROM training_records WHERE id = ?').run(req.params.id);
       res.json({ message: 'Training record deleted' });
     } catch (error: any) {
-      console.error('Delete training record error:', error);
+      console.error('Delete training record error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1525,7 +1525,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const updated = db.prepare('SELECT * FROM training_records WHERE id = ?').get(record.id);
       res.json(updated);
     } catch (error: any) {
-      console.error('Archive training record error:', error);
+      console.error('Archive training record error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1541,7 +1541,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const updated = db.prepare('SELECT * FROM training_records WHERE id = ?').get(record.id);
       res.json(updated);
     } catch (error: any) {
-      console.error('Unarchive training record error:', error);
+      console.error('Unarchive training record error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1574,7 +1574,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(deployments);
     } catch (error: any) {
-      console.error('Get deployments error:', error);
+      console.error('Get deployments error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1594,7 +1594,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       `).all(req.params.officerId);
       res.json(deployments);
     } catch (error: any) {
-      console.error('Get officer deployments error:', error);
+      console.error('Get officer deployments error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1629,7 +1629,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.status(201).json(deployment);
     } catch (error: any) {
-      console.error('Create deployment error:', error);
+      console.error('Create deployment error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1673,7 +1673,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(deployment);
     } catch (error: any) {
-      console.error('Update deployment error:', error);
+      console.error('Update deployment error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1691,7 +1691,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       db.prepare('DELETE FROM deployments WHERE id = ?').run(req.params.id);
       res.json({ message: 'Deployment deleted' });
     } catch (error: any) {
-      console.error('Delete deployment error:', error);
+      console.error('Delete deployment error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1713,7 +1713,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       `).get(dep.id);
       res.json(updated);
     } catch (error: any) {
-      console.error('Archive deployment error:', error);
+      console.error('Archive deployment error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1734,7 +1734,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       `).get(dep.id);
       res.json(updated);
     } catch (error: any) {
-      console.error('Unarchive deployment error:', error);
+      console.error('Unarchive deployment error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1769,7 +1769,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(equipment);
     } catch (error: any) {
-      console.error('Get equipment error:', error);
+      console.error('Get equipment error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1784,7 +1784,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(equipment);
     } catch (error: any) {
-      console.error('Get officer equipment error:', error);
+      console.error('Get officer equipment error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1820,7 +1820,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.status(201).json(equipment);
     } catch (error: any) {
-      console.error('Create equipment error:', error);
+      console.error('Create equipment error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1862,7 +1862,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(equipment);
     } catch (error: any) {
-      console.error('Update equipment error:', error);
+      console.error('Update equipment error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1886,7 +1886,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json({ message: 'Equipment record deleted' });
     } catch (error: any) {
-      console.error('Delete equipment error:', error);
+      console.error('Delete equipment error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1912,7 +1912,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(cameras);
     } catch (error: any) {
-      console.error('Get body cameras error:', error);
+      console.error('Get body cameras error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1926,7 +1926,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       `).all(req.params.id);
       res.json(cameras);
     } catch (error: any) {
-      console.error('Get officer body cameras error:', error);
+      console.error('Get officer body cameras error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -1969,7 +1969,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         res.status(409).json({ error: 'A camera with that serial number already exists' });
         return;
       }
-      console.error('Create body camera error:', error);
+      console.error('Create body camera error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -2011,7 +2011,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(camera);
     } catch (error: any) {
-      console.error('Update body camera error:', error);
+      console.error('Update body camera error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -2039,7 +2039,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json({ message: 'Body camera and associated videos deleted' });
     } catch (error: any) {
-      console.error('Delete body camera error:', error);
+      console.error('Delete body camera error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -2069,7 +2069,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(videos);
     } catch (error: any) {
-      console.error('Get bodycam videos error:', error);
+      console.error('Get bodycam videos error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -2103,7 +2103,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       deleteTransaction();
       res.json(results);
     } catch (error: any) {
-      console.error('Bulk delete bodycam videos error:', error);
+      console.error('Bulk delete bodycam videos error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -2135,7 +2135,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json({ updated: Math.min(videoIds.length, 100) });
     } catch (error: any) {
-      console.error('Bulk update bodycam videos error:', error);
+      console.error('Bulk update bodycam videos error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -2173,7 +2173,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       deleteTransaction();
       res.json(results);
     } catch (error: any) {
-      console.error('Bulk delete body cameras error:', error);
+      console.error('Bulk delete body cameras error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -2191,7 +2191,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       `).all(req.params.id);
       res.json(videos);
     } catch (error: any) {
-      console.error('Get officer bodycam videos error:', error);
+      console.error('Get officer bodycam videos error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -2219,7 +2219,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       console.log(`[Bodycam] Chunked upload initialized: ${uploadId}, file=${fileName}, size=${fileSize}, chunks=${totalChunks}`);
       res.json({ uploadId, chunkSize: CHUNK_SIZE });
     } catch (error: any) {
-      console.error('Upload init error:', error);
+      console.error('Upload init error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Failed to initialize upload' });
     }
   });
@@ -2265,7 +2265,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
         res.json({ success: true, chunkIndex: idx, received: meta.receivedChunks, total: meta.totalChunks });
       } catch (error: any) {
-        console.error('Chunk upload error:', error);
+        console.error('Chunk upload error:', error?.message || 'Unknown error');
         if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
         res.status(500).json({ error: 'Failed to process chunk' });
       }
@@ -2552,7 +2552,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(video);
     } catch (error: any) {
-      console.error('Update bodycam video error:', error);
+      console.error('Update bodycam video error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -2582,7 +2582,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       }
       res.json({ total: videos.length, duration_updated: updated, size_fixed: sizeFixed });
     } catch (error: any) {
-      console.error('Reprobe bodycam videos error:', error);
+      console.error('Reprobe bodycam videos error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -2613,7 +2613,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       db.prepare('DELETE FROM bodycam_videos WHERE id = ?').run(req.params.videoId);
       res.json({ message: 'Video deleted' });
     } catch (error: any) {
-      console.error('Delete bodycam video error:', error);
+      console.error('Delete bodycam video error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -2685,7 +2685,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         stream.pipe(res);
       }
     } catch (error: any) {
-      console.error('Stream bodycam video error:', error);
+      console.error('Stream bodycam video error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -2727,7 +2727,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       queueOverlayProcessing(video.id, 'bodycam', inputPath, config);
       res.json({ message: 'Overlay reprocessing queued', videoId: video.id });
     } catch (error: any) {
-      console.error('Reprocess overlay error:', error);
+      console.error('Reprocess overlay error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -2749,7 +2749,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(summary);
     } catch (error: any) {
-      console.error('Overlay status error:', error);
+      console.error('Overlay status error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -2779,7 +2779,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       res.json(gaps);
     } catch (error: any) {
-      console.error('Get coverage gaps error:', error);
+      console.error('Get coverage gaps error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -2920,7 +2920,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         },
       });
     } catch (error: any) {
-      console.error('Get personnel analytics error:', error);
+      console.error('Get personnel analytics error:', error?.message || 'Unknown error');
       res.status(500).json({ error: 'Internal server error' });
     }
   });

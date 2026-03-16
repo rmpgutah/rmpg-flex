@@ -186,7 +186,7 @@ router.get('/status', requireRole('admin', 'manager'), (_req: Request, res: Resp
       token_cached: !!cachedToken && Date.now() < (cachedToken?.expiresAt || 0),
     });
   } catch (error: any) {
-    console.error('Microbilt status error:', error);
+    console.error('Microbilt status error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -219,7 +219,7 @@ router.put('/credentials', requireRole('admin'), (req: Request, res: Response) =
 
     res.json({ message: 'Credentials saved' });
   } catch (error: any) {
-    console.error('Microbilt save credentials error:', error);
+    console.error('Microbilt save credentials error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -237,7 +237,7 @@ router.delete('/credentials', requireRole('admin'), (req: Request, res: Response
 
     res.json({ message: 'Credentials cleared' });
   } catch (error: any) {
-    console.error('Microbilt clear credentials error:', error);
+    console.error('Microbilt clear credentials error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -259,7 +259,7 @@ router.post('/test-connection', requireRole('admin', 'manager'), async (_req: Re
   } catch (error: any) {
     res.json({
       success: false,
-      error: error.message || 'Connection test failed',
+      error: 'Connection test failed',
     });
   }
 });
@@ -282,7 +282,7 @@ router.put('/products', requireRole('admin'), (req: Request, res: Response) => {
 
     res.json({ message: 'Products updated', products });
   } catch (error: any) {
-    console.error('Microbilt update products error:', error);
+    console.error('Microbilt update products error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -357,7 +357,7 @@ router.post('/ofac/search', (req: Request, res: Response) => {
       resultCount: subjects.length,
     });
   } catch (error: any) {
-    console.error('OFAC search error:', error);
+    console.error('OFAC search error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -72,7 +72,7 @@ router.get('/stats', (_req: Request, res: Response) => {
       overdue: overdue?.count || 0,
     });
   } catch (error: any) {
-    console.error('Forensic stats error:', error);
+    console.error('Forensic stats error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -120,7 +120,7 @@ router.get('/', (req: Request, res: Response) => {
       limit: limitNum,
     });
   } catch (error: any) {
-    console.error('List forensic cases error:', error);
+    console.error('List forensic cases error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -139,7 +139,7 @@ router.get('/:id', (req: Request, res: Response) => {
 
     res.json({ ...row, exhibits, analyses, timeline });
   } catch (error: any) {
-    console.error('Get forensic case error:', error);
+    console.error('Get forensic case error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -191,7 +191,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
     if (!created) { res.status(500).json({ error: 'Failed to retrieve created forensic case' }); return; }
     res.status(201).json(created);
   } catch (error: any) {
-    console.error('Create forensic case error:', error);
+    console.error('Create forensic case error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -292,7 +292,7 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (re
     const updated = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Update forensic case error:', error);
+    console.error('Update forensic case error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -309,7 +309,7 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
       `Forensic case ${(existing as any).lab_case_number} deleted`);
     res.json({ success: true });
   } catch (error: any) {
-    console.error('Delete forensic case error:', error);
+    console.error('Delete forensic case error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -357,7 +357,7 @@ router.post('/:id/exhibits', requireRole('admin', 'manager', 'supervisor', 'offi
     if (!created) { res.status(500).json({ error: 'Failed to retrieve created exhibit' }); return; }
     res.status(201).json(created);
   } catch (error: any) {
-    console.error('Create exhibit error:', error);
+    console.error('Create exhibit error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -435,7 +435,7 @@ router.post('/:id/analyses', requireRole('admin', 'manager', 'supervisor', 'offi
     if (!created) { res.status(500).json({ error: 'Failed to retrieve created analysis' }); return; }
     res.status(201).json(created);
   } catch (error: any) {
-    console.error('Create analysis error:', error);
+    console.error('Create analysis error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -545,7 +545,7 @@ router.get('/:id/hashes', (req: Request, res: Response) => {
 
     res.json({ hashes, total, flagged, matched });
   } catch (error: any) {
-    console.error('List forensic hashes error:', error);
+    console.error('List forensic hashes error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -668,7 +668,7 @@ router.post('/:id/hashes/compute', requireRole('admin', 'manager', 'supervisor',
     if (!record) { res.status(500).json({ error: 'Failed to retrieve hash record' }); return; }
     res.status(201).json(record);
   } catch (error: any) {
-    console.error('Compute hash error:', error);
+    console.error('Compute hash error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Hash computation failed' });
   }
 });
@@ -719,7 +719,7 @@ router.post('/:id/hashes/manual', requireRole('admin', 'manager', 'supervisor', 
     if (!record) { res.status(500).json({ error: 'Failed to retrieve hash record' }); return; }
     res.status(201).json(record);
   } catch (error: any) {
-    console.error('Manual hash add error:', error);
+    console.error('Manual hash add error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -780,7 +780,7 @@ router.put('/:id/hashes/:hashId', requireRole('admin', 'manager', 'supervisor', 
     const updated = db.prepare('SELECT * FROM digital_evidence_hashes WHERE id = ?').get(req.params.hashId);
     res.json(updated);
   } catch (error: any) {
-    console.error('Update hash error:', error);
+    console.error('Update hash error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -806,7 +806,7 @@ router.delete('/:id/hashes/:hashId', requireRole('admin', 'manager'), (req: Requ
 
     res.json({ success: true });
   } catch (error: any) {
-    console.error('Delete hash error:', error);
+    console.error('Delete hash error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -838,7 +838,7 @@ router.post('/:id/hashes/verify', requireRole('admin', 'manager', 'supervisor', 
       matches,
     });
   } catch (error: any) {
-    console.error('Verify hash error:', error);
+    console.error('Verify hash error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -953,7 +953,7 @@ router.get('/:id/links', (req: Request, res: Response) => {
       by_relevance: byRelevance,
     });
   } catch (error: any) {
-    console.error('Get links error:', error);
+    console.error('Get links error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -994,7 +994,7 @@ router.post('/:id/links', requireRole('admin', 'manager', 'supervisor', 'officer
     if (error.message?.includes('UNIQUE constraint')) {
       return res.status(409).json({ error: 'This item is already linked to this case' });
     }
-    console.error('Create link error:', error);
+    console.error('Create link error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1034,7 +1034,7 @@ router.put('/:id/links/:linkId', requireRole('admin', 'manager', 'supervisor', '
     if (!updated) { res.status(404).json({ error: 'Link not found after update' }); return; }
     res.json({ ...updated, resolved: resolveLinkedRecord(updated.linked_type, updated.linked_id) });
   } catch (error: any) {
-    console.error('Update link error:', error);
+    console.error('Update link error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1059,7 +1059,7 @@ router.delete('/:id/links/:linkId', requireRole('admin', 'manager'), (req: Reque
 
     res.json({ success: true });
   } catch (error: any) {
-    console.error('Delete link error:', error);
+    console.error('Delete link error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1199,7 +1199,7 @@ router.get('/:id/links/search', (req: Request, res: Response) => {
 
     res.json({ results: markedResults, total: markedResults.length });
   } catch (error: any) {
-    console.error('Search linkable records error:', error);
+    console.error('Search linkable records error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1258,7 +1258,7 @@ router.get('/:id/links/summary', (req: Request, res: Response) => {
       grouped,
     });
   } catch (error: any) {
-    console.error('Link summary error:', error);
+    console.error('Link summary error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

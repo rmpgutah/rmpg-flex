@@ -299,6 +299,7 @@ export interface CallForService {
   pso_billing_code?: string;
   pso_authorization?: string;
   pso_attempt_number?: number;
+  pso_service_windows?: PsoServiceWindows;
   // Process Service fields
   process_service_type?: string;
   process_served_to?: string;
@@ -333,6 +334,13 @@ export interface CallForService {
   visit_history?: VisitHistory[];
 }
 
+export interface PsoServiceWindows {
+  early_morning: boolean;  // 6AM-9AM
+  daytime: boolean;        // 9AM-6PM
+  evening: boolean;        // 6PM-9PM
+  weekend: boolean;        // Any attempt on Sat/Sun
+}
+
 export interface VisitHistory {
   id: number;
   call_id: string;
@@ -351,6 +359,8 @@ export interface VisitHistory {
   note?: string;
   created_by?: string;
   created_at: string;
+  time_window?: 'early_morning' | 'daytime' | 'evening';
+  is_weekend?: number; // 0 or 1
 }
 
 // --- Units ---

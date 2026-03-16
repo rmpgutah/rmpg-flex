@@ -9,6 +9,7 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { rateLimit } from '../middleware/rateLimiter';
 import { sanitizeObject } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
 import { generateIncidentNumber } from '../utils/caseNumbers';
@@ -72,9 +73,17 @@ const REFERENCE_TABLES = ['users', 'clients', 'properties'];
 const PII_TABLES = new Set(['persons', 'vehicles_records']);
 const SYNC_ALLOWED_ROLES = new Set(['admin', 'manager', 'supervisor', 'officer', 'dispatcher']);
 
+// Stricter rate limit for sync endpoints — 30 requests per minute per user
+const syncRateLimit = rateLimit({
+  windowMs: 60_000,
+  maxRequests: 30,
+  keyGenerator: (req: Request) => `sync:${req.user?.userId || req.ip}`,
+  message: 'Sync rate limit exceeded — try again shortly',
+});
+
 // ─── POST /sync/pull ─────────────────────────────────────────
 // Returns rows from a table, optionally filtered by updated_at > since
-router.post('/sync/pull', (req: Request, res: Response) => {
+router.post('/sync/pull', syncRateLimit, (req: Request, res: Response) => {
   try {
     const { table, since, limit: reqLimit } = req.body;
     const db = getDb();
@@ -87,7 +96,7 @@ router.post('/sync/pull', (req: Request, res: Response) => {
     }
 
     if (!table || !SYNC_TABLES[table]) {
-      res.status(400).json({ error: `Invalid table: ${table}. Allowed: ${Object.keys(SYNC_TABLES).join(', ')}` });
+      res.status(400).json({ error: 'Invalid or unrecognized table name' });
       return;
     }
 
@@ -132,7 +141,7 @@ router.post('/sync/pull', (req: Request, res: Response) => {
 // ─── POST /sync/push ─────────────────────────────────────────
 // Accepts a batch of locally-created records, inserts them, returns
 // the mapping of local_id → server-assigned id
-router.post('/sync/push', (req: Request, res: Response) => {
+router.post('/sync/push', syncRateLimit, (req: Request, res: Response) => {
   try {
     const { items } = req.body; // Array of { method, endpoint, body, local_id, table_name }
     const db = getDb();
@@ -146,6 +155,11 @@ router.post('/sync/push', (req: Request, res: Response) => {
 
     if (!Array.isArray(items) || items.length === 0) {
       res.status(400).json({ error: 'No items to push' });
+      return;
+    }
+
+    if (items.length > 100) {
+      res.status(400).json({ error: 'Batch size exceeds maximum of 100 items' });
       return;
     }
 

@@ -40,7 +40,7 @@ router.get('/', (req: Request, res: Response) => {
     const docs = db.prepare(sql).all(...params);
     res.json(docs);
   } catch (error: any) {
-    console.error('List company documents error:', error);
+    console.error('List company documents error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -66,7 +66,7 @@ router.get('/:id', (req: Request, res: Response) => {
     }
     res.json(doc);
   } catch (error: any) {
-    console.error('Get company document error:', error);
+    console.error('Get company document error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -117,7 +117,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
 
     res.status(201).json(doc || { id: result.lastInsertRowid });
   } catch (error: any) {
-    console.error('Create company document error:', error);
+    console.error('Create company document error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -178,7 +178,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
 
     res.json(doc);
   } catch (error: any) {
-    console.error('Update company document error:', error);
+    console.error('Update company document error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -207,7 +207,7 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
     db.prepare('DELETE FROM company_documents WHERE id = ?').run(id);
     res.json({ message: 'Document deleted' });
   } catch (error: any) {
-    console.error('Delete company document error:', error);
+    console.error('Delete company document error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

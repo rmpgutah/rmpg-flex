@@ -374,12 +374,12 @@ const PatrolPage: React.FC = () => {
   const handleSaveCheckpoint = async () => {
     try {
       const payload = {
-        property_id: parseInt(formData.property_id),
+        property_id: parseInt(formData.property_id, 10),
         name: formData.name,
         description: formData.description || null,
         latitude: formData.latitude ? parseFloat(formData.latitude) : null,
         longitude: formData.longitude ? parseFloat(formData.longitude) : null,
-        scan_required_interval_minutes: parseInt(formData.scan_required_interval_minutes),
+        scan_required_interval_minutes: parseInt(formData.scan_required_interval_minutes, 10),
         is_active: formData.is_active
       };
 

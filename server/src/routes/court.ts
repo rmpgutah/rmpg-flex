@@ -57,7 +57,7 @@ router.get('/events', (req: Request, res: Response) => {
     `).all(...params, limitNum, offset);
     res.json({ data: rows, pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) } });
   } catch (error: any) {
-    console.error('Get court events error:', error);
+    console.error('Get court events error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -155,7 +155,7 @@ router.post('/events', requireRole('admin', 'manager', 'supervisor', 'officer'),
 
     res.status(201).json({ data: { id: result.lastInsertRowid, event_number } });
   } catch (error: any) {
-    console.error('Create court event error:', error);
+    console.error('Create court event error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

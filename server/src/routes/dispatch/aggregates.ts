@@ -91,7 +91,7 @@ router.get('/heatmap', requireRole('admin', 'manager', 'supervisor', 'officer', 
 
     res.json(points);
   } catch (error: any) {
-    console.error('Heatmap error:', error);
+    console.error('Heatmap error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -132,7 +132,7 @@ router.get('/queue', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
 
     res.json(calls);
   } catch (error: any) {
-    console.error('Get queue error:', error);
+    console.error('Get queue error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -185,7 +185,7 @@ router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
       unitsByStatus,
     });
   } catch (error: any) {
-    console.error('Get stats error:', error);
+    console.error('Get stats error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -322,7 +322,7 @@ router.post('/panic', requireRole('admin', 'manager', 'supervisor', 'officer', '
       call_id: call.id,
     });
   } catch (error: any) {
-    console.error('Panic alert error:', error);
+    console.error('Panic alert error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -396,7 +396,7 @@ router.get('/premise-history', requireRole('admin', 'manager', 'supervisor', 'of
       propertyHazard,
     });
   } catch (error: any) {
-    console.error('Premise history error:', error);
+    console.error('Premise history error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -505,7 +505,7 @@ router.get('/safety-screen', requireRole('admin', 'manager', 'supervisor', 'offi
       hasWarnings,
     });
   } catch (error: any) {
-    console.error('Safety screen error:', error);
+    console.error('Safety screen error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -514,10 +514,10 @@ router.get('/safety-screen', requireRole('admin', 'manager', 'supervisor', 'offi
 router.get('/districts', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const districts = db.prepare('SELECT * FROM dispatch_districts ORDER BY section_id, zone_id, beat_id').all();
+    const districts = db.prepare('SELECT * FROM dispatch_districts ORDER BY section_id, zone_id, beat_id LIMIT 5000').all();
     res.json(districts);
   } catch (error: any) {
-    console.error('Districts list error:', error);
+    console.error('Districts list error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -552,7 +552,7 @@ router.get('/districts/lookup', requireRole('admin', 'manager', 'supervisor', 'o
 
     res.json({ found: true, district });
   } catch (error: any) {
-    console.error('District lookup error:', error);
+    console.error('District lookup error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -600,7 +600,7 @@ router.get('/districts/identify', requireRole('admin', 'manager', 'supervisor', 
       });
     }
   } catch (error: any) {
-    console.error('District identify error:', error);
+    console.error('District identify error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

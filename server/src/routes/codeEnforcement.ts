@@ -54,7 +54,7 @@ router.get('/stats', (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('Get code enforcement stats error:', error);
+    console.error('Get code enforcement stats error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -85,7 +85,7 @@ router.get('/violations', (req: Request, res: Response) => {
     const rows = db.prepare(`SELECT * FROM code_violations ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(...params, limitNum, offset);
     res.json({ data: rows, pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) } });
   } catch (error: any) {
-    console.error('Get code violations error:', error);
+    console.error('Get code violations error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -142,7 +142,7 @@ router.post('/violations', requireRole('admin', 'manager', 'supervisor', 'office
 
     res.status(201).json({ data: { id: result.lastInsertRowid, violation_number } });
   } catch (error: any) {
-    console.error('Create violation error:', error);
+    console.error('Create violation error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -255,7 +255,7 @@ router.post('/tows', requireRole('admin', 'manager', 'supervisor', 'officer'), (
 
     res.status(201).json({ data: { id: result.lastInsertRowid, tow_number } });
   } catch (error: any) {
-    console.error('Create tow error:', error);
+    console.error('Create tow error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

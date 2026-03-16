@@ -43,7 +43,7 @@ router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
       },
     });
   } catch (error: any) {
-    console.error('Get offender stats error:', error);
+    console.error('Get offender stats error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -91,7 +91,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
 
     res.json({ data: rows, pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) } });
   } catch (error: any) {
-    console.error('Get offender alerts error:', error);
+    console.error('Get offender alerts error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -152,7 +152,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor'), (req: Request, r
 
     res.status(201).json({ data: { id: result.lastInsertRowid } });
   } catch (error: any) {
-    console.error('Create offender alert error:', error);
+    console.error('Create offender alert error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

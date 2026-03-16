@@ -222,7 +222,7 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
       }
     })();
   } catch (error: any) {
-    console.error('GPS update error:', error);
+    console.error('GPS update error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -238,7 +238,7 @@ router.get('/gps/my-unit', requireRole('admin', 'manager', 'supervisor', 'office
 
     res.json(unit || null);
   } catch (error: any) {
-    console.error('Get my unit error:', error);
+    console.error('Get my unit error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -303,7 +303,7 @@ router.get('/gps/trail/:unitId', requireRole('admin', 'manager', 'supervisor', '
 
     res.json(filtered);
   } catch (error: any) {
-    console.error('GPS trail error:', error);
+    console.error('GPS trail error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -406,7 +406,7 @@ router.get('/gps/trails', requireRole('admin', 'manager', 'supervisor', 'officer
 
     res.json(Object.values(trails));
   } catch (error: any) {
-    console.error('GPS trails error:', error);
+    console.error('GPS trails error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -423,7 +423,7 @@ router.delete('/gps/breadcrumbs/cleanup', requireRole('admin'), (req: Request, r
     ).run(days);
     res.json({ deleted: result.changes });
   } catch (error: any) {
-    console.error('Breadcrumb cleanup error:', error);
+    console.error('Breadcrumb cleanup error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

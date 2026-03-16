@@ -76,7 +76,7 @@ const PERSON_LIST_COLUMNS = `id, first_name, last_name, middle_name, alias_nickn
 // ─── PERSONS ──────────────────────────────────────────
 
 // GET /api/records/persons - List persons
-router.get('/persons', (req: Request, res: Response) => {
+router.get('/persons', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { page = '1', limit = '50', flags, archived } = req.query;
@@ -118,13 +118,13 @@ router.get('/persons', (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('Get persons error:', error);
+    console.error('Get persons error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // GET /api/records/persons/search - Search persons
-router.get('/persons/search', (req: Request, res: Response) => {
+router.get('/persons/search', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { q } = req.query;
@@ -146,13 +146,13 @@ router.get('/persons/search', (req: Request, res: Response) => {
 
     res.json(persons);
   } catch (error: any) {
-    console.error('Search persons error:', error);
+    console.error('Search persons error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // GET /api/records/persons/export - Export persons as CSV
-router.get('/persons/export', (req: Request, res: Response) => {
+router.get('/persons/export', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { flags } = req.query;
@@ -185,13 +185,13 @@ router.get('/persons/export', (req: Request, res: Response) => {
       { key: 'created_at', header: 'Created At' },
     ], rows);
   } catch (error: any) {
-    console.error('Export persons error:', error);
+    console.error('Export persons error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // GET /api/records/persons/:id - Get person details
-router.get('/persons/:id', (req: Request, res: Response) => {
+router.get('/persons/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     let person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id) as any;
@@ -225,13 +225,13 @@ router.get('/persons/:id', (req: Request, res: Response) => {
 
     res.json({ ...person, vehicles, linked_clients });
   } catch (error: any) {
-    console.error('Get person error:', error);
+    console.error('Get person error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // GET /api/records/persons/:id/history - Get person's incident history
-router.get('/persons/:id/history', (req: Request, res: Response) => {
+router.get('/persons/:id/history', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id) as any;
@@ -264,13 +264,13 @@ router.get('/persons/:id/history', (req: Request, res: Response) => {
       bolos,
     });
   } catch (error: any) {
-    console.error('Get person history error:', error);
+    console.error('Get person history error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // GET /api/records/persons/:id/system-history - Aggregated system history
-router.get('/persons/:id/system-history', (req: Request, res: Response) => {
+router.get('/persons/:id/system-history', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id) as any;
@@ -378,7 +378,7 @@ router.get('/persons/:id/system-history', (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('Get person system-history error:', error);
+    console.error('Get person system-history error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -456,7 +456,7 @@ router.post('/persons', requireRole('admin', 'manager', 'supervisor', 'officer',
     if (!person) { res.status(500).json({ error: 'Failed to retrieve created person' }); return; }
     res.status(201).json(person);
   } catch (error: any) {
-    console.error('Create person error:', error);
+    console.error('Create person error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -541,19 +541,21 @@ router.put('/persons/:id', requireRole('admin', 'manager', 'supervisor', 'office
       fields.push("updated_at = ?");
       values.push(localNow());
       values.push(req.params.id);
-      db.prepare(`UPDATE persons SET ${fields.join(', ')} WHERE id = ?`).run(...values);
-    }
 
-    // Activity log
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'person_updated', 'person', ?, ?, ?)
-    `).run(req.user!.userId, req.params.id, `Updated person record: ${person.first_name} ${person.last_name}`, req.ip || 'unknown');
+      const updateTx = db.transaction(() => {
+        db.prepare(`UPDATE persons SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+        db.prepare(`
+          INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+          VALUES (?, 'person_updated', 'person', ?, ?, ?)
+        `).run(req.user!.userId, req.params.id, `Updated person record: ${person.first_name} ${person.last_name}`, req.ip || 'unknown');
+      });
+      updateTx();
+    }
 
     const updated = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Update person error:', error);
+    console.error('Update person error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -581,7 +583,7 @@ router.delete('/persons/:id', requireRole('admin', 'manager'), (req: Request, re
 
     res.json({ message: 'Person deleted' });
   } catch (error: any) {
-    console.error('Delete person error:', error);
+    console.error('Delete person error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -606,7 +608,7 @@ router.post('/persons/screen-all-ofac', requireRole('admin', 'manager', 'supervi
 
     res.json({ screened, matches, message: `Screened ${screened} person(s), found ${matches} OFAC match(es)` });
   } catch (error: any) {
-    console.error('Bulk OFAC screening error:', error);
+    console.error('Bulk OFAC screening error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Bulk OFAC screening failed' });
   }
 });
@@ -624,7 +626,7 @@ router.post('/persons/:id/screen-ofac', requireRole('admin', 'manager', 'supervi
     const updated = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('OFAC re-screen error:', error);
+    console.error('OFAC re-screen error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'OFAC re-screen failed' });
   }
 });
@@ -637,11 +639,14 @@ router.post('/persons/:id/archive', requireRole('admin', 'manager', 'supervisor'
     if (!person) { res.status(404).json({ error: 'Person not found' }); return; }
     if (person.archived_at) { res.status(400).json({ error: 'Person is already archived' }); return; }
     const now = localNow();
-    db.prepare('UPDATE persons SET archived_at = ? WHERE id = ?').run(now, person.id);
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'person_archived', 'person', ?, ?, ?)`).run(req.user!.userId, person.id, `Archived person: ${person.first_name} ${person.last_name}`, req.ip || 'unknown');
+    const archiveTx = db.transaction(() => {
+      db.prepare('UPDATE persons SET archived_at = ? WHERE id = ?').run(now, person.id);
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'person_archived', 'person', ?, ?, ?)`).run(req.user!.userId, person.id, `Archived person: ${person.first_name} ${person.last_name}`, req.ip || 'unknown');
+    });
+    archiveTx();
     res.json(db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(person.id));
-  } catch (error: any) { console.error('Archive person error:', error); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { console.error('Archive person error:', error?.message || 'Unknown error'); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/records/persons/:id/unarchive
@@ -651,17 +656,20 @@ router.post('/persons/:id/unarchive', requireRole('admin', 'manager', 'superviso
     const person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id) as any;
     if (!person) { res.status(404).json({ error: 'Person not found' }); return; }
     if (!person.archived_at) { res.status(400).json({ error: 'Person is not archived' }); return; }
-    db.prepare('UPDATE persons SET archived_at = NULL WHERE id = ?').run(person.id);
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'person_unarchived', 'person', ?, ?, ?)`).run(req.user!.userId, person.id, `Restored person: ${person.first_name} ${person.last_name}`, req.ip || 'unknown');
+    const unarchiveTx = db.transaction(() => {
+      db.prepare('UPDATE persons SET archived_at = NULL WHERE id = ?').run(person.id);
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'person_unarchived', 'person', ?, ?, ?)`).run(req.user!.userId, person.id, `Restored person: ${person.first_name} ${person.last_name}`, req.ip || 'unknown');
+    });
+    unarchiveTx();
     res.json(db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(person.id));
-  } catch (error: any) { console.error('Unarchive person error:', error); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { console.error('Unarchive person error:', error?.message || 'Unknown error'); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─── VEHICLES ─────────────────────────────────────────
 
 // GET /api/records/vehicles - List vehicles
-router.get('/vehicles', (req: Request, res: Response) => {
+router.get('/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { page = '1', limit = '50', archived } = req.query;
@@ -697,13 +705,13 @@ router.get('/vehicles', (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('Get vehicles error:', error);
+    console.error('Get vehicles error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // GET /api/records/vehicles/search - Search vehicles
-router.get('/vehicles/search', (req: Request, res: Response) => {
+router.get('/vehicles/search', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { q } = req.query;
@@ -727,13 +735,13 @@ router.get('/vehicles/search', (req: Request, res: Response) => {
 
     res.json(vehicles);
   } catch (error: any) {
-    console.error('Search vehicles error:', error);
+    console.error('Search vehicles error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // GET /api/records/vehicles/export - Export vehicles as CSV
-router.get('/vehicles/export', (req: Request, res: Response) => {
+router.get('/vehicles/export', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
 
@@ -757,13 +765,13 @@ router.get('/vehicles/export', (req: Request, res: Response) => {
       { key: 'created_at', header: 'Created At' },
     ], rows);
   } catch (error: any) {
-    console.error('Export vehicles error:', error);
+    console.error('Export vehicles error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // GET /api/records/vehicles/:id - Get vehicle
-router.get('/vehicles/:id', (req: Request, res: Response) => {
+router.get('/vehicles/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const vehicle = db.prepare(`
@@ -780,7 +788,7 @@ router.get('/vehicles/:id', (req: Request, res: Response) => {
 
     res.json(vehicle);
   } catch (error: any) {
-    console.error('Get vehicle error:', error);
+    console.error('Get vehicle error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -838,7 +846,7 @@ router.post('/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer'
 
     res.status(201).json(vehicle);
   } catch (error: any) {
-    console.error('Create vehicle error:', error);
+    console.error('Create vehicle error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -917,7 +925,7 @@ router.put('/vehicles/:id', requireRole('admin', 'manager', 'supervisor', 'offic
     const updated = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Update vehicle error:', error);
+    console.error('Update vehicle error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -943,7 +951,7 @@ router.delete('/vehicles/:id', requireRole('admin', 'manager'), (req: Request, r
     deleteTx();
     res.json({ message: 'Vehicle deleted' });
   } catch (error: any) {
-    console.error('Delete vehicle error:', error);
+    console.error('Delete vehicle error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -956,11 +964,14 @@ router.post('/vehicles/:id/archive', requireRole('admin', 'manager', 'supervisor
     if (!v) { res.status(404).json({ error: 'Vehicle not found' }); return; }
     if (v.archived_at) { res.status(400).json({ error: 'Vehicle is already archived' }); return; }
     const now = localNow();
-    db.prepare('UPDATE vehicles_records SET archived_at = ? WHERE id = ?').run(now, v.id);
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'vehicle_archived', 'vehicle', ?, ?, ?)`).run(req.user!.userId, v.id, `Archived vehicle: ${v.plate_number || v.vin || v.id}`, req.ip || 'unknown');
+    const vArchiveTx = db.transaction(() => {
+      db.prepare('UPDATE vehicles_records SET archived_at = ? WHERE id = ?').run(now, v.id);
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'vehicle_archived', 'vehicle', ?, ?, ?)`).run(req.user!.userId, v.id, `Archived vehicle: ${v.plate_number || v.vin || v.id}`, req.ip || 'unknown');
+    });
+    vArchiveTx();
     res.json(db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(v.id));
-  } catch (error: any) { console.error('Archive vehicle error:', error); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { console.error('Archive vehicle error:', error?.message || 'Unknown error'); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/records/vehicles/:id/unarchive
@@ -970,17 +981,20 @@ router.post('/vehicles/:id/unarchive', requireRole('admin', 'manager', 'supervis
     const v = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
     if (!v) { res.status(404).json({ error: 'Vehicle not found' }); return; }
     if (!v.archived_at) { res.status(400).json({ error: 'Vehicle is not archived' }); return; }
-    db.prepare('UPDATE vehicles_records SET archived_at = NULL WHERE id = ?').run(v.id);
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'vehicle_unarchived', 'vehicle', ?, ?, ?)`).run(req.user!.userId, v.id, `Restored vehicle: ${v.plate_number || v.vin || v.id}`, req.ip || 'unknown');
+    const vUnarchiveTx = db.transaction(() => {
+      db.prepare('UPDATE vehicles_records SET archived_at = NULL WHERE id = ?').run(v.id);
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        Values (?, 'vehicle_unarchived', 'vehicle', ?, ?, ?)`).run(req.user!.userId, v.id, `Restored vehicle: ${v.plate_number || v.vin || v.id}`, req.ip || 'unknown');
+    });
+    vUnarchiveTx();
     res.json(db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(v.id));
-  } catch (error: any) { console.error('Unarchive vehicle error:', error); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { console.error('Unarchive vehicle error:', error?.message || 'Unknown error'); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─── PROPERTIES ───────────────────────────────────────
 
 // GET /api/records/properties - List properties
-router.get('/properties', (req: Request, res: Response) => {
+router.get('/properties', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { clientId, archived } = req.query;
@@ -1012,13 +1026,13 @@ router.get('/properties', (req: Request, res: Response) => {
 
     res.json(properties);
   } catch (error: any) {
-    console.error('Get properties error:', error);
+    console.error('Get properties error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // GET /api/records/properties/:id - Get property details
-router.get('/properties/:id', (req: Request, res: Response) => {
+router.get('/properties/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const property = db.prepare(`
@@ -1102,7 +1116,7 @@ router.get('/properties/:id', (req: Request, res: Response) => {
       linkedPersons,
     });
   } catch (error: any) {
-    console.error('Get property error:', error);
+    console.error('Get property error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1152,7 +1166,7 @@ router.post('/properties', requireRole('admin', 'manager', 'supervisor', 'office
     `).get(result.lastInsertRowid);
     res.status(201).json(property);
   } catch (error: any) {
-    console.error('Create property error:', error);
+    console.error('Create property error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1160,7 +1174,7 @@ router.post('/properties', requireRole('admin', 'manager', 'supervisor', 'office
 // ─── INCIDENT CROSS-REFERENCES ───────────────────────
 
 // GET /api/records/persons/:id/incidents - All incidents linked to a person
-router.get('/persons/:id/incidents', (req: Request, res: Response) => {
+router.get('/persons/:id/incidents', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id) as any;
@@ -1182,13 +1196,13 @@ router.get('/persons/:id/incidents', (req: Request, res: Response) => {
 
     res.json(incidents);
   } catch (error: any) {
-    console.error('Get person incidents error:', error);
+    console.error('Get person incidents error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // GET /api/records/vehicles/:id/incidents - All incidents linked to a vehicle
-router.get('/vehicles/:id/incidents', (req: Request, res: Response) => {
+router.get('/vehicles/:id/incidents', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
@@ -1210,13 +1224,13 @@ router.get('/vehicles/:id/incidents', (req: Request, res: Response) => {
 
     res.json(incidents);
   } catch (error: any) {
-    console.error('Get vehicle incidents error:', error);
+    console.error('Get vehicle incidents error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // GET /api/records/evidence - List all evidence with incident info
-router.get('/evidence', (req: Request, res: Response) => {
+router.get('/evidence', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { page = '1', limit = '50', archived } = req.query;
@@ -1254,7 +1268,7 @@ router.get('/evidence', (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('Get evidence error:', error);
+    console.error('Get evidence error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1315,7 +1329,7 @@ router.put('/evidence/:id', requireRole('admin', 'manager', 'supervisor', 'offic
     `).get(req.params.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Update evidence error:', error);
+    console.error('Update evidence error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1340,7 +1354,7 @@ router.delete('/evidence/:id', requireRole('admin', 'manager'), (req: Request, r
     delEvTx();
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
-    console.error('Delete evidence error:', error);
+    console.error('Delete evidence error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1354,16 +1368,18 @@ router.post('/evidence/:id/archive', requireRole('admin', 'manager', 'supervisor
     if (evidence.archived_at) { res.status(400).json({ error: 'Evidence is already archived' }); return; }
 
     const now = localNow();
-    db.prepare('UPDATE evidence SET archived_at = ? WHERE id = ?').run(now, evidence.id);
-
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'evidence_archived', 'evidence', ?, ?, ?)`).run(
-      req.user!.userId, evidence.id, `Archived evidence: ${evidence.description || 'ID ' + evidence.id}`, req.ip || 'unknown');
+    const eArchiveTx = db.transaction(() => {
+      db.prepare('UPDATE evidence SET archived_at = ? WHERE id = ?').run(now, evidence.id);
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'evidence_archived', 'evidence', ?, ?, ?)`).run(
+        req.user!.userId, evidence.id, `Archived evidence: ${evidence.description || 'ID ' + evidence.id}`, req.ip || 'unknown');
+    });
+    eArchiveTx();
 
     const updated = db.prepare('SELECT * FROM evidence WHERE id = ?').get(evidence.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Archive evidence error:', error);
+    console.error('Archive evidence error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1376,16 +1392,18 @@ router.post('/evidence/:id/unarchive', requireRole('admin', 'manager', 'supervis
     if (!evidence) { res.status(404).json({ error: 'Evidence not found' }); return; }
     if (!evidence.archived_at) { res.status(400).json({ error: 'Evidence is not archived' }); return; }
 
-    db.prepare('UPDATE evidence SET archived_at = NULL WHERE id = ?').run(evidence.id);
-
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'evidence_unarchived', 'evidence', ?, ?, ?)`).run(
-      req.user!.userId, evidence.id, `Unarchived evidence: ${evidence.description || 'ID ' + evidence.id}`, req.ip || 'unknown');
+    const eUnarchiveTx = db.transaction(() => {
+      db.prepare('UPDATE evidence SET archived_at = NULL WHERE id = ?').run(evidence.id);
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'evidence_unarchived', 'evidence', ?, ?, ?)`).run(
+        req.user!.userId, evidence.id, `Unarchived evidence: ${evidence.description || 'ID ' + evidence.id}`, req.ip || 'unknown');
+    });
+    eUnarchiveTx();
 
     const updated = db.prepare('SELECT * FROM evidence WHERE id = ?').get(evidence.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Unarchive evidence error:', error);
+    console.error('Unarchive evidence error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1437,13 +1455,13 @@ router.post('/evidence/:id/custody', requireRole('admin', 'manager', 'supervisor
     const updated = db.prepare('SELECT * FROM evidence WHERE id = ?').get(evidence.id);
     res.status(201).json(updated);
   } catch (error: any) {
-    console.error('Add custody entry error:', error);
+    console.error('Add custody entry error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // GET /api/records/evidence/stats — Property room aggregate stats
-router.get('/evidence/stats', (req: Request, res: Response) => {
+router.get('/evidence/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const statusCounts = db.prepare(`
@@ -1471,13 +1489,13 @@ router.get('/evidence/stats', (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('Evidence stats error:', error);
+    console.error('Evidence stats error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // GET /api/records/evidence/locations — Distinct storage locations from system_config
-router.get('/evidence/locations', (req: Request, res: Response) => {
+router.get('/evidence/locations', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const locations = db.prepare(`
@@ -1533,7 +1551,7 @@ router.post('/evidence/:id/chain-action', requireRole('admin', 'manager', 'super
 
     res.json({ data: { id: evidence.id, status: newStatus, chain_of_custody: chain } });
   } catch (error: any) {
-    console.error('Evidence chain-action error:', error);
+    console.error('Evidence chain-action error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1593,7 +1611,7 @@ router.put('/properties/:id', requireRole('admin', 'manager', 'supervisor', 'off
     `).get(req.params.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Update property error:', error);
+    console.error('Update property error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1627,7 +1645,7 @@ router.delete('/properties/:id', requireRole('admin', 'manager'), (req: Request,
     delTx();
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
-    console.error('Delete property error:', error);
+    console.error('Delete property error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1640,11 +1658,14 @@ router.post('/properties/:id/archive', requireRole('admin', 'manager', 'supervis
     if (!prop) { res.status(404).json({ error: 'Property not found' }); return; }
     if (prop.archived_at) { res.status(400).json({ error: 'Property is already archived' }); return; }
     const now = localNow();
-    db.prepare('UPDATE properties SET archived_at = ? WHERE id = ?').run(now, prop.id);
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'property_archived', 'property', ?, ?, ?)`).run(req.user!.userId, prop.id, `Archived property: ${prop.name}`, req.ip || 'unknown');
+    const pArchiveTx = db.transaction(() => {
+      db.prepare('UPDATE properties SET archived_at = ? WHERE id = ?').run(now, prop.id);
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'property_archived', 'property', ?, ?, ?)`).run(req.user!.userId, prop.id, `Archived property: ${prop.name}`, req.ip || 'unknown');
+    });
+    pArchiveTx();
     res.json(db.prepare('SELECT * FROM properties WHERE id = ?').get(prop.id));
-  } catch (error: any) { console.error('Archive property error:', error); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { console.error('Archive property error:', error?.message || 'Unknown error'); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/records/properties/:id/unarchive
@@ -1654,11 +1675,14 @@ router.post('/properties/:id/unarchive', requireRole('admin', 'manager', 'superv
     const prop = db.prepare('SELECT * FROM properties WHERE id = ?').get(req.params.id) as any;
     if (!prop) { res.status(404).json({ error: 'Property not found' }); return; }
     if (!prop.archived_at) { res.status(400).json({ error: 'Property is not archived' }); return; }
-    db.prepare('UPDATE properties SET archived_at = NULL WHERE id = ?').run(prop.id);
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'property_unarchived', 'property', ?, ?, ?)`).run(req.user!.userId, prop.id, `Restored property: ${prop.name}`, req.ip || 'unknown');
+    const pUnarchiveTx = db.transaction(() => {
+      db.prepare('UPDATE properties SET archived_at = NULL WHERE id = ?').run(prop.id);
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'property_unarchived', 'property', ?, ?, ?)`).run(req.user!.userId, prop.id, `Restored property: ${prop.name}`, req.ip || 'unknown');
+    });
+    pUnarchiveTx();
     res.json(db.prepare('SELECT * FROM properties WHERE id = ?').get(prop.id));
-  } catch (error: any) { console.error('Unarchive property error:', error); res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { console.error('Unarchive property error:', error?.message || 'Unknown error'); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─── STANDALONE EVIDENCE CREATION ────────────────────
@@ -1728,7 +1752,7 @@ router.post('/evidence', requireRole('admin', 'manager', 'supervisor', 'officer'
     `).get(result.lastInsertRowid);
     res.status(201).json(created);
   } catch (error: any) {
-    console.error('Create evidence error:', error);
+    console.error('Create evidence error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1772,7 +1796,7 @@ function getRecordLabel(db: any, type: string, id: number): string {
 }
 
 // GET /api/records/links - Get all links for an entity (both directions)
-router.get('/links', (req: Request, res: Response) => {
+router.get('/links', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { type, id } = req.query;
@@ -1806,7 +1830,7 @@ router.get('/links', (req: Request, res: Response) => {
 
     res.json(enriched);
   } catch (error: any) {
-    console.error('Get record links error:', error);
+    console.error('Get record links error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1853,7 +1877,7 @@ router.post('/links', requireRole('admin', 'manager', 'supervisor', 'officer', '
       res.status(409).json({ error: 'This link already exists' });
       return;
     }
-    console.error('Create record link error:', error);
+    console.error('Create record link error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1877,7 +1901,7 @@ router.delete('/links/:id', requireRole('admin', 'manager'), (req: Request, res:
 
     res.json({ success: true });
   } catch (error: any) {
-    console.error('Delete record link error:', error);
+    console.error('Delete record link error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1885,7 +1909,7 @@ router.delete('/links/:id', requireRole('admin', 'manager'), (req: Request, res:
 // ─── CLIENTS LIST (for property form) ────────────────
 
 // GET /api/records/clients - Lightweight clients list for dropdowns
-router.get('/clients', (req: Request, res: Response) => {
+router.get('/clients', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const clients = db.prepare(`
@@ -1893,7 +1917,7 @@ router.get('/clients', (req: Request, res: Response) => {
     `).all();
     res.json(clients);
   } catch (error: any) {
-    console.error('Get clients list error:', error);
+    console.error('Get clients list error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1901,7 +1925,7 @@ router.get('/clients', (req: Request, res: Response) => {
 // ─── RECORD SEARCH (for linking modal) ──────────────
 
 // GET /api/records/search - Search across record types
-router.get('/search', (req: Request, res: Response) => {
+router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { q, type } = req.query;
@@ -1968,7 +1992,7 @@ router.get('/search', (req: Request, res: Response) => {
 
     res.json(results);
   } catch (error: any) {
-    console.error('Record search error:', error);
+    console.error('Record search error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1978,7 +2002,7 @@ router.get('/search', (req: Request, res: Response) => {
 // ═══════════════════════════════════════════════════
 
 // GET /api/records/persons/:id/criminal-history
-router.get('/persons/:id/criminal-history', (req: Request, res: Response) => {
+router.get('/persons/:id/criminal-history', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const rows = db.prepare(`
@@ -1990,7 +2014,7 @@ router.get('/persons/:id/criminal-history', (req: Request, res: Response) => {
     `).all(req.params.id);
     res.json(rows);
   } catch (error: any) {
-    console.error('Get criminal history error:', error);
+    console.error('Get criminal history error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -2029,7 +2053,7 @@ router.post('/persons/:id/criminal-history', requireRole('admin', 'manager', 'su
     const newRecord = db.prepare('SELECT * FROM criminal_history WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json(newRecord);
   } catch (error: any) {
-    console.error('Create criminal history error:', error);
+    console.error('Create criminal history error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -2071,7 +2095,7 @@ router.put('/criminal-history/:id', requireRole('admin', 'manager', 'supervisor'
     const updated = db.prepare('SELECT * FROM criminal_history WHERE id = ?').get(req.params.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Update criminal history error:', error);
+    console.error('Update criminal history error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -2083,7 +2107,7 @@ router.delete('/criminal-history/:id', requireRole('admin', 'manager'), (req: Re
     db.prepare('DELETE FROM criminal_history WHERE id = ?').run(req.params.id);
     res.json({ success: true });
   } catch (error: any) {
-    console.error('Delete criminal history error:', error);
+    console.error('Delete criminal history error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -2093,7 +2117,7 @@ router.delete('/criminal-history/:id', requireRole('admin', 'manager'), (req: Re
 // ═══════════════════════════════════════════════════
 
 // GET /api/records/persons/:id/clients - Get all clients linked to a person
-router.get('/persons/:id/clients', (req: Request, res: Response) => {
+router.get('/persons/:id/clients', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const rows = db.prepare(`
@@ -2108,13 +2132,13 @@ router.get('/persons/:id/clients', (req: Request, res: Response) => {
     `).all(req.params.id);
     res.json(rows);
   } catch (error: any) {
-    console.error('Get person clients error:', error);
+    console.error('Get person clients error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // GET /api/records/clients/:id/persons - Get all persons linked to a client
-router.get('/clients/:id/persons', (req: Request, res: Response) => {
+router.get('/clients/:id/persons', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const rows = db.prepare(`
@@ -2129,7 +2153,7 @@ router.get('/clients/:id/persons', (req: Request, res: Response) => {
     `).all(req.params.id);
     res.json(rows);
   } catch (error: any) {
-    console.error('Get client persons error:', error);
+    console.error('Get client persons error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -2186,7 +2210,7 @@ router.post('/client-persons', requireRole('admin', 'manager', 'supervisor', 'of
     if (error.code === 'SQLITE_CONSTRAINT_UNIQUE' || (error.message && error.message.includes('UNIQUE'))) {
       return res.status(409).json({ error: 'This person is already linked to this client' });
     }
-    console.error('Link client-person error:', error);
+    console.error('Link client-person error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -2225,7 +2249,7 @@ router.put('/client-persons/:id', requireRole('admin', 'manager', 'supervisor', 
     const updated = db.prepare('SELECT * FROM client_persons WHERE id = ?').get(req.params.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Update client-person link error:', error);
+    console.error('Update client-person link error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -2257,14 +2281,14 @@ router.delete('/client-persons/:id', requireRole('admin', 'manager'), (req: Requ
 
     res.json({ message: 'Link removed' });
   } catch (error: any) {
-    console.error('Delete client-person link error:', error);
+    console.error('Delete client-person link error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // GET /api/records/persons/:id/invoice-summary - Get billable summary for a person
 // Shows all clients they're linked to, incidents for those clients, and invoice history
-router.get('/persons/:id/invoice-summary', (req: Request, res: Response) => {
+router.get('/persons/:id/invoice-summary', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const person = db.prepare('SELECT id, first_name, last_name FROM persons WHERE id = ?').get(req.params.id) as any;
@@ -2316,7 +2340,7 @@ router.get('/persons/:id/invoice-summary', (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('Person invoice summary error:', error);
+    console.error('Person invoice summary error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -2567,7 +2591,7 @@ router.get('/ncic-query', requireRole('admin', 'manager', 'supervisor', 'officer
         res.status(400).json({ error: 'Invalid type. Use: person, vehicle, warrant, phone, address' });
     }
   } catch (error: any) {
-    console.error('NCIC query error:', error);
+    console.error('NCIC query error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

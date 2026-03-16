@@ -850,7 +850,7 @@ export default function WarrantsPage() {
       const body: Record<string, unknown> = {
         type: formData.type,
         charge_description: formData.charge_description.trim(),
-        subject_person_id: formData.subject_person_id ? parseInt(formData.subject_person_id) : null,
+        subject_person_id: formData.subject_person_id ? parseInt(formData.subject_person_id, 10) : null,
         issuing_court: formData.issuing_court.trim() || null,
         issuing_judge: formData.issuing_judge.trim() || null,
         bail_amount: formData.bail_amount ? parseFloat(formData.bail_amount) : null,

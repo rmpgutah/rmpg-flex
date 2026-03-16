@@ -30,7 +30,7 @@ router.get('/states', (req: Request, res: Response) => {
 
     res.json({ data: states });
   } catch (error: any) {
-    console.error('List states error:', error);
+    console.error('List states error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -103,7 +103,7 @@ router.get('/', (req: Request, res: Response) => {
       subcategories: subcategories.map(s => s.subcategory),
     });
   } catch (error: any) {
-    console.error('List statutes error:', error);
+    console.error('List statutes error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -146,7 +146,7 @@ router.get('/search', (req: Request, res: Response) => {
 
     res.json({ data: statutes });
   } catch (error: any) {
-    console.error('Search statutes error:', error);
+    console.error('Search statutes error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -162,7 +162,7 @@ router.get('/:id', (req: Request, res: Response) => {
     }
     res.json(statute);
   } catch (error: any) {
-    console.error('Get statute error:', error);
+    console.error('Get statute error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -187,7 +187,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
     if (!statute) { res.status(500).json({ error: 'Failed to retrieve created statute' }); return; }
     res.status(201).json(statute);
   } catch (error: any) {
-    console.error('Create statute error:', error);
+    console.error('Create statute error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -221,7 +221,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
     const statute = db.prepare('SELECT * FROM utah_statutes WHERE id = ?').get(req.params.id);
     res.json(statute);
   } catch (error: any) {
-    console.error('Update statute error:', error);
+    console.error('Update statute error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -233,7 +233,7 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
     db.prepare('UPDATE utah_statutes SET is_active = 0 WHERE id = ?').run(req.params.id);
     res.json({ success: true });
   } catch (error: any) {
-    console.error('Delete statute error:', error);
+    console.error('Delete statute error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -256,7 +256,7 @@ router.get('/entity/:type/:id', (req: Request, res: Response) => {
 
     res.json({ data: links });
   } catch (error: any) {
-    console.error('Get entity statutes error:', error);
+    console.error('Get entity statutes error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -292,7 +292,7 @@ router.post('/entity', requireRole('admin', 'manager', 'supervisor', 'officer'),
 
     res.status(201).json(link);
   } catch (error: any) {
-    console.error('Link statute error:', error);
+    console.error('Link statute error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -304,7 +304,7 @@ router.delete('/entity/:id', requireRole('admin', 'manager', 'supervisor', 'offi
     db.prepare('DELETE FROM entity_statutes WHERE id = ?').run(req.params.id);
     res.json({ success: true });
   } catch (error: any) {
-    console.error('Unlink statute error:', error);
+    console.error('Unlink statute error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

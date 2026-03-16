@@ -174,7 +174,7 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
         safeSend(ws, JSON.stringify({
           type: 'error',
           code: 'AUTH_TIMEOUT',
-          message: 'Authentication required within 3 seconds',
+          message: 'Authentication timeout',
         }));
         ws.close(4001, 'Authentication timeout');
         clients.delete(clientId);
@@ -273,11 +273,11 @@ function authenticateClient(client: WSClient, token: string): boolean {
   try {
     const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
 
-    // Reject refresh tokens
-    if (decoded.type === 'refresh') {
+    // Only accept access tokens — reject refresh and mfa_pending tokens
+    if (decoded.type !== 'access') {
       safeSend(client.ws, JSON.stringify({
         type: 'auth_error',
-        message: 'Invalid token type — use access token',
+        message: 'Invalid token type',
       }));
       return false;
     }

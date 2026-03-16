@@ -987,7 +987,7 @@ function RecordFormModal({
             <FormField label="Registry ID" value={form.registry_id} onChange={v => set('registry_id', v)} placeholder="UT-SO-XXXXXXXX" />
             <div>
               <label className="block text-[10px] text-rmpg-500 mb-0.5 uppercase">Tier</label>
-              <select value={form.tier} onChange={e => set('tier', parseInt(e.target.value))}
+              <select value={form.tier} onChange={e => set('tier', parseInt(e.target.value, 10))}
                 className="w-full text-xs bg-[#0d1520] border border-rmpg-700 rounded-sm text-white px-2 py-1.5 focus:border-brand-500 focus:outline-none">
                 <option value={1}>Tier 1 — Low</option>
                 <option value={2}>Tier 2 — Moderate</option>

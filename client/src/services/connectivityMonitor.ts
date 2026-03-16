@@ -23,6 +23,7 @@ class BrowserConnectivityMonitor {
   private requestTimeout: number;
 
   isOnline: boolean = false;
+  private stopped: boolean = false;
   private consecutiveState: number = 0;
   private pendingState: boolean = false;
   private timer: ReturnType<typeof setTimeout> | null = null; // changed to setTimeout for adaptive polling
@@ -96,6 +97,7 @@ class BrowserConnectivityMonitor {
   }
 
   stop(): void {
+    this.stopped = true;
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = null;
@@ -130,6 +132,7 @@ class BrowserConnectivityMonitor {
   }
 
   private rapidCheck(count: number): void {
+    if (this.stopped) return; // monitor was stopped
     if (count >= this.stableCount) return; // enough checks done
     if (this.isOnline) return; // already transitioned
 

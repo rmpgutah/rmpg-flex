@@ -44,7 +44,7 @@ router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
       },
     });
   } catch (error: any) {
-    console.error('SOR stats error:', error);
+    console.error('SOR stats error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -91,7 +91,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
       pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) },
     });
   } catch (error: any) {
-    console.error('SOR list error:', error);
+    console.error('SOR list error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -173,7 +173,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor'), (req: Request, r
 
     res.status(201).json({ data: { id: result.lastInsertRowid } });
   } catch (error: any) {
-    console.error('SOR create error:', error);
+    console.error('SOR create error:', error?.message || 'Unknown error');
     if (error.message?.includes('UNIQUE constraint')) {
       return res.status(409).json({ error: 'Registry ID already exists' });
     }
@@ -218,7 +218,7 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request,
 
     res.json({ data: { id: parseInt(req.params.id as string, 10) } });
   } catch (error: any) {
-    console.error('SOR update error:', error);
+    console.error('SOR update error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -262,7 +262,7 @@ router.put('/:id/verify', requireRole('admin', 'manager', 'supervisor', 'officer
 
     res.json({ data: { id: parseInt(req.params.id as string, 10), last_verification: now, next_verification_due: nextDueStr } });
   } catch (error: any) {
-    console.error('SOR verify error:', error);
+    console.error('SOR verify error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -326,7 +326,7 @@ router.post('/import', requireRole('admin'), (req: Request, res: Response) => {
 
     res.json({ data: { imported, skipped, total: records.length } });
   } catch (error: any) {
-    console.error('SOR import error:', error);
+    console.error('SOR import error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

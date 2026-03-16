@@ -23,7 +23,7 @@ router.get('/clients', (req: Request, res: Response) => {
 
     res.json(clients);
   } catch (error: any) {
-    console.error('Get clients error:', error);
+    console.error('Get clients error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -42,7 +42,7 @@ router.get('/clients/:id', (req: Request, res: Response) => {
 
     res.json({ ...client, properties });
   } catch (error: any) {
-    console.error('Get client error:', error);
+    console.error('Get client error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -98,7 +98,7 @@ router.post('/clients', (req: Request, res: Response) => {
 
     res.status(201).json(client);
   } catch (error: any) {
-    console.error('Create client error:', error);
+    console.error('Create client error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -169,7 +169,7 @@ router.put('/clients/:id', (req: Request, res: Response) => {
     const updated = db.prepare('SELECT * FROM clients WHERE id = ?').get(req.params.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Update client error:', error);
+    console.error('Update client error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -201,7 +201,7 @@ router.delete('/clients/:id', (req: Request, res: Response) => {
 
     res.json({ message: 'Client deleted' });
   } catch (error: any) {
-    console.error('Delete client error:', error);
+    console.error('Delete client error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -224,7 +224,7 @@ router.post('/clients/:id/archive', (req: Request, res: Response) => {
     const updated = db.prepare('SELECT * FROM clients WHERE id = ?').get(client.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Archive client error:', error);
+    console.error('Archive client error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -246,7 +246,7 @@ router.post('/clients/:id/unarchive', (req: Request, res: Response) => {
     const updated = db.prepare('SELECT * FROM clients WHERE id = ?').get(client.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Unarchive client error:', error);
+    console.error('Unarchive client error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -267,7 +267,7 @@ router.get('/call-templates', (req: Request, res: Response) => {
     `).all();
     res.json(templates);
   } catch (error: any) {
-    console.error('Get call templates error:', error);
+    console.error('Get call templates error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -304,7 +304,7 @@ router.post('/call-templates', (req: Request, res: Response) => {
 
     res.status(201).json(template);
   } catch (error: any) {
-    console.error('Create call template error:', error);
+    console.error('Create call template error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -338,7 +338,7 @@ router.put('/call-templates/:id', (req: Request, res: Response) => {
     const updated = db.prepare('SELECT * FROM call_templates WHERE id = ?').get(req.params.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Update call template error:', error);
+    console.error('Update call template error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -362,7 +362,7 @@ router.delete('/call-templates/:id', (req: Request, res: Response) => {
 
     res.json({ message: 'Call template removed' });
   } catch (error: any) {
-    console.error('Delete call template error:', error);
+    console.error('Delete call template error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -421,7 +421,7 @@ router.put('/system-settings', (req: Request, res: Response) => {
 
     res.json(all);
   } catch (error: any) {
-    console.error('Update system settings error:', error);
+    console.error('Update system settings error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -444,7 +444,7 @@ router.get('/clients/:id/incidents', (req: Request, res: Response) => {
     `).all(clientId, clientId);
     res.json(incidents);
   } catch (error: any) {
-    console.error('Client incidents error:', error);
+    console.error('Client incidents error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -466,7 +466,7 @@ router.get('/clients/:id/calls', (req: Request, res: Response) => {
     `).all(clientId, clientId);
     res.json(calls);
   } catch (error: any) {
-    console.error('Client calls error:', error);
+    console.error('Client calls error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -527,7 +527,7 @@ router.get('/clients/:id/billing', (req: Request, res: Response) => {
       overdue_count: invoiceSummary?.overdue_count || 0,
     });
   } catch (error: any) {
-    console.error('Client billing error:', error);
+    console.error('Client billing error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -548,7 +548,7 @@ router.get('/sessions', requireRole('admin', 'manager'), (req: Request, res: Res
     `).all();
     res.json(sessions);
   } catch (error: any) {
-    console.error('Admin get sessions error:', error);
+    console.error('Admin get sessions error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -559,7 +559,7 @@ router.delete('/sessions/:id', requireRole('admin', 'manager'), (req: Request, r
     db.prepare('UPDATE sessions SET is_active = 0 WHERE id = ?').run(req.params.id);
     res.json({ message: 'Session revoked' });
   } catch (error: any) {
-    console.error('Admin revoke session error:', error);
+    console.error('Admin revoke session error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -590,7 +590,7 @@ router.get('/radio-channels', (req: Request, res: Response) => {
 
     res.json(channels);
   } catch (error: any) {
-    console.error('Admin get radio channels error:', error);
+    console.error('Admin get radio channels error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -634,7 +634,7 @@ router.post('/radio-channels', (req: Request, res: Response) => {
 
     res.status(201).json({ id, label, freq: freq || '0.000', sort_order: sortOrder, is_active: true });
   } catch (error: any) {
-    console.error('Admin create radio channel error:', error);
+    console.error('Admin create radio channel error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -685,7 +685,7 @@ router.put('/radio-channels/:key', (req: Request, res: Response) => {
 
     res.json({ id: key, label: meta.label, freq: meta.freq, is_active: is_active !== undefined ? !!is_active : true, sort_order });
   } catch (error: any) {
-    console.error('Admin update radio channel error:', error);
+    console.error('Admin update radio channel error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -712,7 +712,7 @@ router.delete('/radio-channels/:key', (req: Request, res: Response) => {
 
     res.json({ message: 'Radio channel deleted' });
   } catch (error: any) {
-    console.error('Admin delete radio channel error:', error);
+    console.error('Admin delete radio channel error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -752,7 +752,7 @@ router.post('/radio-channels/seed', (req: Request, res: Response) => {
 
     res.json({ message: 'Seeded default radio channels', seeded: true, count: defaults.length });
   } catch (error: any) {
-    console.error('Admin seed radio channels error:', error);
+    console.error('Admin seed radio channels error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -809,7 +809,7 @@ router.get('/account-stats', (req: Request, res: Response) => {
       neverLoggedIn,
     });
   } catch (error: any) {
-    console.error('Admin account stats error:', error);
+    console.error('Admin account stats error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -867,7 +867,7 @@ router.post('/users/:id/reset-2fa', requireRole('admin'), (req: Request, res: Re
 
     res.json({ message: `2FA reset for ${user.full_name}. They will be prompted to set up 2FA on next login.` });
   } catch (error: any) {
-    console.error('Reset 2FA error:', error);
+    console.error('Reset 2FA error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -906,7 +906,7 @@ router.post('/users/:id/force-password-change', requireRole('admin'), (req: Requ
 
     res.json({ message: `${user.full_name} will be required to change password on next login.` });
   } catch (error: any) {
-    console.error('Force password change error:', error);
+    console.error('Force password change error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -949,7 +949,7 @@ router.get('/security/overview', requireRole('admin'), (_req: Request, res: Resp
       failedLoginsLast24h: recentFailures?.count ?? 0,
     });
   } catch (error: any) {
-    console.error('Security overview error:', error);
+    console.error('Security overview error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1007,7 +1007,7 @@ router.post('/users/:id/reset-2fa', requireRole('admin'), (req: Request, res: Re
 
     res.json({ message: `2FA reset for ${user.full_name}. They will be prompted to set up 2FA on next login.` });
   } catch (error: any) {
-    console.error('Reset 2FA error:', error);
+    console.error('Reset 2FA error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1047,7 +1047,7 @@ router.post('/users/:id/force-password-change', requireRole('admin'), (req: Requ
 
     res.json({ message: `${user.full_name} will be required to change password on next login.` });
   } catch (error: any) {
-    console.error('Force password change error:', error);
+    console.error('Force password change error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1086,7 +1086,7 @@ router.post('/users/:id/revoke-sessions', requireRole('admin'), (req: Request, r
 
     res.json({ message: `Revoked ${result.changes} session(s) for ${user.full_name}.`, count: result.changes });
   } catch (error: any) {
-    console.error('Admin revoke sessions error:', error);
+    console.error('Admin revoke sessions error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1104,7 +1104,7 @@ router.put('/users/:id/role', requireRole('admin'), (req: Request, res: Response
 
     const validRoles = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'];
     if (!role || !validRoles.includes(role)) {
-      res.status(400).json({ error: `Invalid role. Must be one of: ${validRoles.join(', ')}` });
+      res.status(400).json({ error: 'Invalid role' });
       return;
     }
 
@@ -1146,7 +1146,7 @@ router.put('/users/:id/role', requireRole('admin'), (req: Request, res: Response
 
     res.json({ message: `${user.full_name}'s role changed from ${oldRole} to ${role}.`, oldRole, newRole: role });
   } catch (error: any) {
-    console.error('Change role error:', error);
+    console.error('Change role error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1164,7 +1164,7 @@ router.put('/users/:id/status', requireRole('admin', 'manager'), (req: Request, 
 
     const validStatuses = ['active', 'inactive', 'terminated'];
     if (!status || !validStatuses.includes(status)) {
-      res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
+      res.status(400).json({ error: 'Invalid status value' });
       return;
     }
 
@@ -1196,7 +1196,7 @@ router.put('/users/:id/status', requireRole('admin', 'manager'), (req: Request, 
 
     res.json({ message: `${user.full_name}'s status changed from ${oldStatus} to ${status}.`, oldStatus, newStatus: status });
   } catch (error: any) {
-    console.error('Change status error:', error);
+    console.error('Change status error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

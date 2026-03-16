@@ -284,7 +284,7 @@ app.post('/api/dispatch/calls/:id/redispatch', authenticateToken, (req, res) => 
     const now = new Date().toISOString().replace('T', ' ').split('.')[0];
     const currentAttempt = call.pso_attempt_number || 1;
     const newAttempt = currentAttempt + 1;
-    const ordinal = (n: number) => { const s = ['th','st','nd','rd']; const v = n % 100; return n + (s[(v-20)%10]||s[v]||s[0]); };
+    const ordinal = (n: number) => { const s = ['th','st','nd','rd']; const v = n % 100; if (v >= 11 && v <= 13) return n + 'th'; return n + (s[n % 10] || s[0]); };
 
     // Snapshot visit history
     let assignedCallSigns: string[] = [];
@@ -294,7 +294,7 @@ app.post('/api/dispatch/calls/:id/redispatch', authenticateToken, (req, res) => 
         const units = db.prepare(`SELECT call_sign FROM units WHERE id IN (${unitIds.map(()=>'?').join(',')})`).all(...unitIds) as any[];
         assignedCallSigns = units.map((u:any) => u.call_sign).filter(Boolean);
       }
-    } catch {}
+    } catch (e) { console.warn('[dispatch] Failed to snapshot assigned call signs:', e); }
 
     db.prepare(`INSERT INTO call_visit_history (call_id, visit_number, status, dispatched_at, enroute_at, onscene_at, cleared_at, closed_at, assigned_units, responding_vehicle_id, starting_mileage, ending_mileage, disposition, note, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
       .run(req.params.id, currentAttempt, call.status, call.dispatched_at, call.enroute_at, call.onscene_at, call.cleared_at, call.closed_at, JSON.stringify(assignedCallSigns), call.responding_vehicle_id||null, call.starting_mileage??null, call.ending_mileage??null, call.disposition||null, null, req.user?.fullName||'Dispatch', now);
@@ -315,7 +315,7 @@ app.post('/api/dispatch/calls/:id/redispatch', authenticateToken, (req, res) => 
     const visitHistory = db.prepare('SELECT * FROM call_visit_history WHERE call_id = ? ORDER BY visit_number ASC').all(req.params.id);
     res.json({ ...updated, visit_history: visitHistory });
   } catch (error: any) {
-    console.error('[REDISPATCH-TOPLEVEL] Error:', error);
+    console.error('[REDISPATCH-TOPLEVEL] Error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -437,7 +437,7 @@ app.get('*', (req, res) => {
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error('Unhandled Express error:', err?.message || err, err?.stack || '');
   if (!res.headersSent) {
-    res.status(500).json({ error: err?.message || 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

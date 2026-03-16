@@ -148,7 +148,7 @@ router.get('/stats', (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('Invoice stats error:', error);
+    console.error('Invoice stats error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -217,7 +217,7 @@ router.get('/', (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('Invoice list error:', error);
+    console.error('Invoice list error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -253,7 +253,7 @@ router.get('/:id', (req: Request, res: Response) => {
 
     res.json({ data: { ...invoice, line_items, payments } });
   } catch (error: any) {
-    console.error('Invoice detail error:', error);
+    console.error('Invoice detail error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -305,7 +305,7 @@ router.post('/', requireRole('admin', 'manager', 'contract_manager'), (req: Requ
     if (!invoice) { res.status(500).json({ error: 'Failed to retrieve created invoice' }); return; }
     res.status(201).json({ data: invoice });
   } catch (error: any) {
-    console.error('Invoice create error:', error);
+    console.error('Invoice create error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -525,7 +525,7 @@ router.post('/:id/generate', requireRole('admin', 'manager', 'contract_manager')
 
     res.json({ data: { ...updated, line_items }, generated: count });
   } catch (error: any) {
-    console.error('Invoice generate error:', error);
+    console.error('Invoice generate error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -583,7 +583,7 @@ router.put('/:id', requireRole('admin', 'manager', 'contract_manager'), (req: Re
     `).get(req.params.id);
     res.json({ data: updated });
   } catch (error: any) {
-    console.error('Invoice update error:', error);
+    console.error('Invoice update error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -644,7 +644,7 @@ router.put('/:id/status', requireRole('admin', 'manager'), (req: Request, res: R
     const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id);
     res.json({ data: updated });
   } catch (error: any) {
-    console.error('Invoice status error:', error);
+    console.error('Invoice status error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -682,7 +682,7 @@ router.post('/:id/line-items', requireRole('admin', 'manager', 'contract_manager
     const item = db.prepare('SELECT * FROM invoice_line_items WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json({ data: item || { id: result.lastInsertRowid } });
   } catch (error: any) {
-    console.error('Add line item error:', error);
+    console.error('Add line item error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -720,7 +720,7 @@ router.put('/:id/line-items/:itemId', requireRole('admin', 'manager', 'contract_
     const updated = db.prepare('SELECT * FROM invoice_line_items WHERE id = ?').get(req.params.itemId);
     res.json({ data: updated });
   } catch (error: any) {
-    console.error('Update line item error:', error);
+    console.error('Update line item error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -738,7 +738,7 @@ router.delete('/:id/line-items/:itemId', requireRole('admin', 'manager'), (req: 
     recalculateInvoiceTotals(req.params.id);
     res.json({ success: true });
   } catch (error: any) {
-    console.error('Delete line item error:', error);
+    console.error('Delete line item error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -788,7 +788,7 @@ router.post('/:id/payments', requireRole('admin', 'manager'), (req: Request, res
     `).get(result.lastInsertRowid);
     res.status(201).json({ data: payment || { id: result.lastInsertRowid } });
   } catch (error: any) {
-    console.error('Record payment error:', error);
+    console.error('Record payment error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -825,7 +825,7 @@ router.delete('/:id/payments/:paymentId', requireRole('admin', 'manager'), (req:
 
     res.json({ success: true });
   } catch (error: any) {
-    console.error('Delete payment error:', error);
+    console.error('Delete payment error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -863,7 +863,7 @@ router.get('/:id/pdf-data', (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('Invoice PDF data error:', error);
+    console.error('Invoice PDF data error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -945,7 +945,7 @@ router.get('/:id/person-chain', (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('Invoice person-chain error:', error);
+    console.error('Invoice person-chain error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

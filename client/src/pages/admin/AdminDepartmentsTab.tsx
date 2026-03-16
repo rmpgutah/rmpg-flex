@@ -88,8 +88,8 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
         name: form.name.trim(),
         code: form.code.trim() || null,
         description: form.description.trim() || null,
-        parent_id: form.parent_id ? parseInt(form.parent_id) : null,
-        manager_id: form.manager_id ? parseInt(form.manager_id) : null,
+        parent_id: form.parent_id ? parseInt(form.parent_id, 10) : null,
+        manager_id: form.manager_id ? parseInt(form.manager_id, 10) : null,
         is_active: form.is_active,
       };
       if (editing) {

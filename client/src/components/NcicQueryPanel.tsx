@@ -61,7 +61,7 @@ interface QueryEntry {
   hasHit: boolean;
 }
 
-let queryIdCounter = 0;
+// queryIdCounter moved to useRef inside component to avoid shared state across instances
 
 /** Render NCIC response text with per-line semantic coloring and inline field-label highlighting */
 function renderColorizedResponse(text: string): React.ReactNode {
@@ -104,6 +104,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const queryIdCounterRef = useRef(0);
 
   // Auto-focus input when panel opens
   useEffect(() => {
@@ -140,7 +141,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
     if (queryText.length > 200) {
       const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
       setEntries(prev => [...prev, {
-        id: ++queryIdCounter, timestamp: ts, command,
+        id: ++queryIdCounterRef.current, timestamp: ts, command,
         response: 'ERROR: QUERY TOO LONG — MAXIMUM 200 CHARACTERS', hasHit: false,
       }]);
       playTone('error');
@@ -707,7 +708,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
       }
 
       setEntries(prev => [...prev, {
-        id: ++queryIdCounter,
+        id: ++queryIdCounterRef.current,
         timestamp,
         command,
         response,
@@ -715,7 +716,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
       }]);
     } catch (err: any) {
       setEntries(prev => [...prev, {
-        id: ++queryIdCounter,
+        id: ++queryIdCounterRef.current,
         timestamp,
         command,
         response: `ERROR: ${err.message || 'Query failed'}`,

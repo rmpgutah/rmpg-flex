@@ -68,7 +68,7 @@ router.post('/calls/archive-bulk', requireRole('admin', 'manager', 'dispatcher')
 
     res.json({ archived_count: callsToArchive.length, message: `${callsToArchive.length} call(s) archived` });
   } catch (error: any) {
-    console.error('Bulk archive error:', error);
+    console.error('Bulk archive error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -117,7 +117,7 @@ router.post('/calls/:id/archive', requireRole('admin', 'manager', 'dispatcher'),
     broadcastDispatchUpdate({ action: 'call_archived', call: updated });
     res.json(updated);
   } catch (error: any) {
-    console.error('Archive call error:', error);
+    console.error('Archive call error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -150,7 +150,7 @@ router.post('/calls/:id/unarchive', requireRole('admin', 'manager', 'dispatcher'
     broadcastDispatchUpdate({ action: 'call_unarchived', call: updated });
     res.json(updated);
   } catch (error: any) {
-    console.error('Unarchive call error:', error);
+    console.error('Unarchive call error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -194,7 +194,7 @@ router.delete('/calls/:id', requireRole('admin', 'manager'), (req: Request, res:
     broadcastDispatchUpdate({ action: 'call_deleted', call_id: call.id });
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
-    console.error('Delete call error:', error);
+    console.error('Delete call error:', error?.message || 'Unknown error');
     const msg = error?.code === 'SQLITE_CONSTRAINT_FOREIGNKEY'
       ? 'Cannot delete: this call has linked records. Unlink them first.'
       : 'Failed to delete call';
@@ -288,7 +288,7 @@ router.post('/calls/:id/generate-incident', requireRole('admin', 'manager', 'sup
 
     res.status(201).json(incident);
   } catch (error: any) {
-    console.error('Generate incident error:', error);
+    console.error('Generate incident error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -321,7 +321,7 @@ router.put('/calls/:id/timeline/:entryId', requireRole('admin', 'manager', 'supe
     const updated = db.prepare('SELECT al.*, u.full_name as user_name FROM activity_log al LEFT JOIN users u ON al.user_id = u.id WHERE al.id = ?').get(entry.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Update timeline entry error:', error);
+    console.error('Update timeline entry error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -340,7 +340,7 @@ router.delete('/calls/:id/timeline/:entryId', requireRole('admin', 'manager', 's
     db.prepare('DELETE FROM activity_log WHERE id = ?').run(entry.id);
     res.json({ success: true });
   } catch (error: any) {
-    console.error('Delete timeline entry error:', error);
+    console.error('Delete timeline entry error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -371,7 +371,7 @@ router.post('/calls/:id/timeline', requireRole('admin', 'manager', 'dispatcher',
     if (!entry) { res.status(500).json({ error: 'Failed to retrieve created entry' }); return; }
     res.status(201).json(entry);
   } catch (error: any) {
-    console.error('Add timeline entry error:', error);
+    console.error('Add timeline entry error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -495,7 +495,7 @@ router.get('/calls/:id/warnings', requireRole('admin', 'manager', 'supervisor', 
 
     res.json(warnings);
   } catch (error: any) {
-    console.error('Get warnings error:', error);
+    console.error('Get warnings error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -549,7 +549,7 @@ router.put('/calls/:id/mileage', requireRole('admin', 'manager', 'dispatcher', '
 
     res.json(updated);
   } catch (error: any) {
-    console.error('Mileage update error:', error);
+    console.error('Mileage update error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

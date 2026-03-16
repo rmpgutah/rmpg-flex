@@ -113,7 +113,7 @@ export function createNotification(
       _sendEmailIfEnabled(db, userId, prefs, prefKey, triggerEvent, title, body);
     }
   } catch (error) {
-    console.error('Error creating notification:', error);
+    console.error('Error creating notification:', error?.message || 'Unknown error');
   }
 }
 
@@ -284,7 +284,7 @@ router.get('/', (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error('Get notifications error:', error);
+    console.error('Get notifications error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -302,7 +302,7 @@ router.get('/unread-count', (req: Request, res: Response) => {
 
     res.json({ count: row?.count || 0 });
   } catch (error: any) {
-    console.error('Get unread count error:', error);
+    console.error('Get unread count error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -332,7 +332,7 @@ router.put('/:id/read', (req: Request, res: Response) => {
 
     res.json({ message: 'Marked as read' });
   } catch (error: any) {
-    console.error('Mark notification read error:', error);
+    console.error('Mark notification read error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -349,7 +349,7 @@ router.post('/mark-all-read', (req: Request, res: Response) => {
 
     res.json({ message: 'All notifications marked as read', count: result.changes });
   } catch (error: any) {
-    console.error('Mark all read error:', error);
+    console.error('Mark all read error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -372,7 +372,7 @@ router.delete('/:id', (req: Request, res: Response) => {
 
     res.json({ message: 'Notification deleted' });
   } catch (error: any) {
-    console.error('Delete notification error:', error);
+    console.error('Delete notification error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

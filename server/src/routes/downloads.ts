@@ -159,7 +159,7 @@ router.get('/info', async (_req: Request, res: Response) => {
     const info = await getInstallerInfoAsync();
     res.json(info);
   } catch (error: any) {
-    console.error('Downloads info error:', error);
+    console.error('Downloads info error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to read download info' });
   }
 });
@@ -197,7 +197,7 @@ router.get('/check', async (req: Request, res: Response) => {
       downloadBytes: installer.bytes,
     });
   } catch (error: any) {
-    console.error('Update check error:', error);
+    console.error('Update check error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to check for updates' });
   }
 });
@@ -253,7 +253,7 @@ export function mountDownloadFileRoute(app: any) {
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.send(yaml);
     } catch (error: any) {
-      console.error('latest.yml generation error:', error);
+      console.error('latest.yml generation error:', error?.message || 'Unknown error');
       res.status(500).send('Failed to generate update manifest');
     }
   });
@@ -286,7 +286,7 @@ export function mountDownloadFileRoute(app: any) {
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.send(yaml);
     } catch (error: any) {
-      console.error('latest-mac.yml generation error:', error);
+      console.error('latest-mac.yml generation error:', error?.message || 'Unknown error');
       res.status(500).send('Failed to generate update manifest');
     }
   });

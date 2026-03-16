@@ -105,7 +105,7 @@ router.get('/logs', (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('Error fetching audit logs:', error);
+    console.error('Error fetching audit logs:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to fetch audit logs' });
   }
 });
@@ -159,7 +159,7 @@ router.get('/stats', (req: Request, res: Response) => {
       topUsers
     });
   } catch (error) {
-    console.error('Error fetching audit stats:', error);
+    console.error('Error fetching audit stats:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to fetch audit statistics' });
   }
 });
@@ -228,7 +228,7 @@ router.get('/export', (req: Request, res: Response) => {
       { key: 'created_at', header: 'Created At' },
     ], rows);
   } catch (error: any) {
-    console.error('Export audit log error:', error);
+    console.error('Export audit log error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

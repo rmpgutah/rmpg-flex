@@ -100,7 +100,7 @@ router.post('/messages', requireRole('admin', 'manager', 'dispatcher', 'supervis
 
     res.status(201).json(message);
   } catch (error: any) {
-    console.error('Send message error:', error);
+    console.error('Send message error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -153,7 +153,7 @@ router.get('/messages', (req: Request, res: Response) => {
       unreadCount: unreadCount.count,
     });
   } catch (error: any) {
-    console.error('Get messages error:', error);
+    console.error('Get messages error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -170,7 +170,7 @@ router.put('/messages/:id/read', (req: Request, res: Response) => {
 
     res.json({ message: 'Marked as read' });
   } catch (error: any) {
-    console.error('Mark read error:', error);
+    console.error('Mark read error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -187,7 +187,7 @@ router.post('/messages/mark-all-read', (req: Request, res: Response) => {
 
     res.json({ message: 'All messages marked as read', count: result.changes });
   } catch (error: any) {
-    console.error('Mark all read error:', error);
+    console.error('Mark all read error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -208,7 +208,7 @@ router.delete('/messages/:id', (req: Request, res: Response) => {
     db.prepare('DELETE FROM messages WHERE id = ?').run(req.params.id);
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
-    console.error('Delete message error:', error);
+    console.error('Delete message error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -252,7 +252,7 @@ router.get('/bolos', (req: Request, res: Response) => {
 
     res.json(bolos);
   } catch (error: any) {
-    console.error('Get BOLOs error:', error);
+    console.error('Get BOLOs error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -274,7 +274,7 @@ router.get('/bolos/active', (req: Request, res: Response) => {
 
     res.json(bolos);
   } catch (error: any) {
-    console.error('Get active BOLOs error:', error);
+    console.error('Get active BOLOs error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -341,7 +341,7 @@ router.get('/bolos/check', (req: Request, res: Response) => {
 
     res.json({ matches, count: matches.length });
   } catch (error: any) {
-    console.error('BOLO check error:', error);
+    console.error('BOLO check error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -364,7 +364,7 @@ router.get('/bolos/:id', (req: Request, res: Response) => {
 
     res.json(bolo);
   } catch (error: any) {
-    console.error('Get BOLO error:', error);
+    console.error('Get BOLO error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -436,7 +436,7 @@ router.post('/bolos', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
 
     res.status(201).json(bolo);
   } catch (error: any) {
-    console.error('Create BOLO error:', error);
+    console.error('Create BOLO error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -494,7 +494,7 @@ router.put('/bolos/:id', requireRole('admin', 'manager', 'supervisor', 'dispatch
 
     res.json(updated);
   } catch (error: any) {
-    console.error('Update BOLO error:', error);
+    console.error('Update BOLO error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -518,7 +518,7 @@ router.delete('/bolos/:id', requireRole('admin', 'manager', 'supervisor'), (req:
 
     res.json({ message: 'BOLO cancelled' });
   } catch (error: any) {
-    console.error('Cancel BOLO error:', error);
+    console.error('Cancel BOLO error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -541,7 +541,7 @@ router.post('/bolos/:id/archive', requireRole('admin', 'manager', 'supervisor', 
     const updated = db.prepare('SELECT b.*, u.full_name as issued_by_name FROM bolos b LEFT JOIN users u ON b.issued_by = u.id WHERE b.id = ?').get(bolo.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Archive BOLO error:', error);
+    console.error('Archive BOLO error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -563,7 +563,7 @@ router.post('/bolos/:id/unarchive', requireRole('admin', 'manager', 'supervisor'
     const updated = db.prepare('SELECT b.*, u.full_name as issued_by_name FROM bolos b LEFT JOIN users u ON b.issued_by = u.id WHERE b.id = ?').get(bolo.id);
     res.json(updated);
   } catch (error: any) {
-    console.error('Unarchive BOLO error:', error);
+    console.error('Unarchive BOLO error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -607,7 +607,7 @@ router.get('/activity-feed', (req: Request, res: Response) => {
       offset: offsetNum,
     });
   } catch (error: any) {
-    console.error('Get activity feed error:', error);
+    console.error('Get activity feed error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -659,7 +659,7 @@ router.get('/radio/transcripts', (req: Request, res: Response) => {
 
     res.json({ data: transcripts, total: countRow?.total ?? 0, limit: limitNum, offset: offsetNum });
   } catch (error: any) {
-    console.error('Get radio transcripts error:', error);
+    console.error('Get radio transcripts error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -696,7 +696,7 @@ router.get('/radio-channels', (req: Request, res: Response) => {
       ]);
     }
   } catch (error: any) {
-    console.error('Get radio channels error:', error);
+    console.error('Get radio channels error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -739,7 +739,7 @@ router.get('/radio/audio/:id', (req: Request, res: Response) => {
     });
     stream.pipe(res);
   } catch (error: any) {
-    console.error('Get radio audio error:', error);
+    console.error('Get radio audio error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

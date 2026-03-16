@@ -62,7 +62,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: 
 
     res.json({ data: rows, pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) } });
   } catch (error: any) {
-    console.error('Get DARs error:', error);
+    console.error('Get DARs error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -209,7 +209,7 @@ router.post('/auto-populate', requireRole('admin', 'manager', 'supervisor', 'off
       },
     });
   } catch (error: any) {
-    console.error('Auto-populate DAR error:', error);
+    console.error('Auto-populate DAR error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -249,7 +249,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
 
     res.status(201).json({ data: { id: result.lastInsertRowid, dar_number } });
   } catch (error: any) {
-    console.error('Create DAR error:', error);
+    console.error('Create DAR error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
