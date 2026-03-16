@@ -253,6 +253,7 @@ export interface CallForService {
   // Case linkage
   case_id?: number;
   case_number?: string;
+  incident_number?: string;
   // Contract ID (PSO Client Request)
   contract_id?: string;
   // Subject/threat info

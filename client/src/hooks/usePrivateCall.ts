@@ -137,7 +137,7 @@ export function usePrivateCall() {
         if (event.data.size > 0 && isInCallRef.current && !isMutedRef.current) {
           const reader = new FileReader();
           reader.onload = () => {
-            const base64 = (reader.result as string).split(',')[1];
+            const base64 = (reader.result as string).split(',')[1] || '';
             send({
               type: 'private_call_audio',
               data: { audio: base64, mimeType },

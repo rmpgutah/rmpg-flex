@@ -432,7 +432,7 @@ router.get('/safety-screen', requireRole('admin', 'manager', 'supervisor', 'offi
         `%${parts[1]}%`, `%${parts[0]}%`,
         `%${searchName}%`
       );
-    } else {
+    } else if (parts.length === 1) {
       personRows = db.prepare(`
         SELECT * FROM persons
         WHERE first_name LIKE ? OR last_name LIKE ?
@@ -470,7 +470,7 @@ router.get('/safety-screen', requireRole('admin', 'manager', 'supervisor', 'offi
         `%${parts[0]}%`, `%${parts[1]}%`,
         `%${parts[1]}%`, `%${parts[0]}%`
       );
-    } else {
+    } else if (parts.length === 1) {
       directWarrantHits = db.prepare(`
         SELECT w.*, p.first_name AS subject_first_name, p.last_name AS subject_last_name
         FROM warrants w

@@ -19,6 +19,7 @@ import type {
 import { isoBase64URL } from '@simplewebauthn/server/helpers';
 import { getDb } from '../models/database';
 import { authenticateToken, generateAccessToken, generateRefreshToken, generateTempToken, JwtPayload } from '../middleware/auth';
+import { mfaRateLimit } from '../middleware/rateLimiter';
 import { createSecurityNotification, trustDevice, hashDeviceFingerprint, parseDeviceName } from '../utils/deviceFingerprint';
 import { isPasswordExpired } from '../middleware/validatePassword';
 import config from '../config';
@@ -313,7 +314,7 @@ router.delete('/credentials/:id', authenticateToken, (req: Request, res: Respons
 // ─── POST /api/auth/webauthn/authenticate-options ───
 // Generate authentication options — called during 2FA step
 // Accepts a tempToken (2FA-pending JWT) OR requires authenticated session
-router.post('/authenticate-options', async (req: Request, res: Response) => {
+router.post('/authenticate-options', mfaRateLimit, async (req: Request, res: Response) => {
   try {
     const { tempToken } = req.body;
 
@@ -375,7 +376,7 @@ router.post('/authenticate-options', async (req: Request, res: Response) => {
 
 // ─── POST /api/auth/webauthn/authenticate-verify ────
 // Verify authentication response — completes 2FA via security key
-router.post('/authenticate-verify', async (req: Request, res: Response) => {
+router.post('/authenticate-verify', mfaRateLimit, async (req: Request, res: Response) => {
   try {
     const { challengeId, tempToken, response: authResponse, trustDevice: shouldTrust, deviceFingerprint } = req.body as {
       challengeId: string;

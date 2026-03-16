@@ -38,10 +38,8 @@ import {
   LAYOUT, SPACING, FONT, COLOR, BORDER,
   getContentWidth, getHalfWidth, getFullFieldWidth,
   getLeftX, getRightColumnX, getHalfFieldWidth, getQuarterWidth,
-  getGridStartX, getGridContentWidth,
 } from './pdfTokens';
 import {
-  drawFormSection, drawFormGrid, drawSideTab,
   drawCheckboxGrid, drawNibrsHeader,
   type CheckboxItem,
 } from './pdfFormHelpers';
@@ -107,6 +105,7 @@ export interface CallPdfData {
   // Case linkage
   case_id?: number;
   case_number?: string;
+  incident_number?: string;
   // Contract ID (for PSO Client Request incidents)
   contract_id?: string;
   latitude?: number;
@@ -765,8 +764,6 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
   const hfw = getHalfFieldWidth(doc);
   const ffw = getFullFieldWidth(doc);
   const prio = callPriorityLabel(data.priority);
-  const gridX = getGridStartX();
-  const gridW = getGridContentWidth(doc);
 
   setActiveCaseNumber(data.case_number || data.call_number);
   let y = drawNibrsHeader(doc, {
@@ -839,6 +836,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       { label: 'Dispatch Code', value: data.dispatch_code || '' },
       { label: 'Disposition', value: data.disposition || '' },
       { label: 'Case Number', value: data.case_number || '' },
+      { label: 'Incident Number', value: data.incident_number || '' },
     ], y);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -1194,61 +1192,44 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Assigned Units Table with Resolution details
-  const actionTakenHeight = data.action_taken ? Math.min(40, 12 + (data.action_taken.length / 80) * 4) : 0;
-  const unitCount = data.assigned_units_detail?.length || data.assigned_units?.length || 0;
-  y = checkPageBreak(doc, y, 20 + actionTakenHeight + (unitCount * 6), prio);
-  const unitsStartY = y;
-
-  y = drawFormGrid(doc, [
-    { cells: [
-      { label: 'RESPONDING OFFICER', value: data.responding_officer || '', ratio: 2 },
-      { label: 'DISPOSITION', value: data.disposition || '', ratio: 1 },
-    ]},
-  ], gridX, y, gridW);
-
-  if (data.action_taken) {
-    y = drawFormGrid(doc, [
-      { cells: [
-        { label: 'ACTION TAKEN', value: data.action_taken, ratio: 1 },
-      ], height: 12 },
-    ], gridX, y, gridW);
+  // Resolution Details
+  y = checkPageBreak(doc, y, 20, prio);
+  { const sec = openAutoSection(doc, 'Resolution Details', y); y = sec.contentY;
+    { const yL = addFieldPair(doc, 'Responding Officer', data.responding_officer || '', lx, y, hfw);
+      const yR = addFieldPair(doc, 'Disposition', data.disposition || '', rx, y, hfw);
+      y = Math.max(yL, yR); }
+    if (data.action_taken) {
+      y = addFieldPair(doc, 'Action Taken', data.action_taken, lx, y, ffw);
+    }
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Assigned units table
+  // Assigned Units
   const unitDetail = data.assigned_units_detail;
-  if (unitDetail && unitDetail.length > 0) {
-    const colPositions = [gridX, gridX + 25, gridX + 70, gridX + 110];
-    const tableHeaders = [
-      { label: 'CALL SIGN', x: colPositions[0] },
-      { label: 'OFFICER', x: colPositions[1] },
-      { label: 'BADGE #', x: colPositions[2] },
-      { label: 'STATUS', x: colPositions[3] },
-    ];
-    const tableRows = unitDetail.map(u => [
-      u.call_sign || '',
-      u.officer_name || '',
-      u.badge_number || '',
-      (u.status || '').toUpperCase(),
-    ]);
-    y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
-  } else if (data.assigned_units && data.assigned_units.length > 0) {
-    y = drawFormGrid(doc, [
-      { cells: [
-        { label: 'ASSIGNED UNITS', value: data.assigned_units.join(', '), ratio: 1 },
-      ]},
-    ], gridX, y, gridW);
-  } else {
-    doc.setFontSize(FONT.SIZE_TABLE_BODY);
-    doc.setTextColor(...COLOR.TEXT_TERTIARY);
-    doc.setFont('courier', 'normal');
-    doc.text('No units assigned', gridX + 2, y + 3);
-    doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    y += SPACING.XL;
+  const unitCount = unitDetail?.length || data.assigned_units?.length || 0;
+  if (unitCount > 0) {
+    y = checkPageBreak(doc, y, 10 + (unitCount * 6), prio);
+    const sec = openAutoSection(doc, 'Assigned Units', y); y = sec.contentY;
+    if (unitDetail && unitDetail.length > 0) {
+      const colPositions = [lx, lx + 25, lx + 70, lx + 110];
+      const tableHeaders = [
+        { label: 'CALL SIGN', x: colPositions[0] },
+        { label: 'OFFICER', x: colPositions[1] },
+        { label: 'BADGE #', x: colPositions[2] },
+        { label: 'STATUS', x: colPositions[3] },
+      ];
+      const tableRows = unitDetail.map(u => [
+        u.call_sign || '',
+        u.officer_name || '',
+        u.badge_number || '',
+        (u.status || '').toUpperCase(),
+      ]);
+      y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
+    } else if (data.assigned_units && data.assigned_units.length > 0) {
+      y = addFieldPair(doc, 'Assigned Units', data.assigned_units.join(', '), lx, y, ffw);
+    }
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
-
-  drawSideTab(doc, 'UNITS', unitsStartY, y - unitsStartY);
-  y += SPACING.SECTION_GAP;
 
   // ═══════════════════════════════════════════════════════════
   // FREE-FORM — GPS, Notes, Narrative, Attachments, Signatures

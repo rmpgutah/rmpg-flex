@@ -99,6 +99,23 @@ export function isTotpCodeUsed(userId: number, code: string): boolean {
   return (Date.now() - ts) < REPLAY_WINDOW_MS;
 }
 
+/**
+ * Atomically check AND mark a TOTP code as used — prevents race conditions
+ * where two concurrent requests could both pass isTotpCodeUsed() before either
+ * calls markTotpCodeUsed(). Returns true if code was already used (reject).
+ */
+export function checkAndMarkTotpCode(userId: number, code: string): boolean {
+  const key = `${userId}:${code}`;
+  const ts = usedCodes.get(key);
+  const now = Date.now();
+  if (ts && (now - ts) < REPLAY_WINDOW_MS) {
+    return true; // Already used — reject
+  }
+  // Mark immediately before returning — atomic in single-threaded Node.js
+  usedCodes.set(key, now);
+  return false; // Not used — proceed
+}
+
 /** Mark a TOTP code as used for this user. */
 export function markTotpCodeUsed(userId: number, code: string): void {
   // Enforce size cap — evict oldest entries if at limit

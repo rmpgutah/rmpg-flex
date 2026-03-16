@@ -22,7 +22,7 @@ function generateFiNumber(db: ReturnType<typeof getDb>): string {
     let seq = 1;
     if (row) {
       const parts = row.fi_number.split('-');
-      const parsed = parseInt(parts[2], 10);
+      const parsed = parts.length >= 3 ? parseInt(parts[2], 10) : 0;
       seq = (isNaN(parsed) ? 0 : parsed) + 1;
     }
     return `${prefix}${String(seq).padStart(4, '0')}`;

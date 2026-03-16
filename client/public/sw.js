@@ -234,8 +234,12 @@ self.addEventListener('sync', (event) => {
   }
 });
 
-// Listen for messages from the client
+// Listen for messages from the client — verify source is a controlled WindowClient
 self.addEventListener('message', (event) => {
+  // Only accept messages from controlled clients (same-origin guarantee)
+  if (!event.source || (event.source.type !== undefined && event.source.type !== 'window')) {
+    return;
+  }
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }

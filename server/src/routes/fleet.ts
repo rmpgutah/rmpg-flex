@@ -166,7 +166,7 @@ router.get('/analytics', requireRole('admin', 'manager', 'supervisor'), (req: Re
       case '30d': dateCutoff = new Date(now.getTime() - 30 * 86400000).toISOString(); break;
       case '90d': dateCutoff = new Date(now.getTime() - 90 * 86400000).toISOString(); break;
       case '1y': dateCutoff = new Date(now.getTime() - 365 * 86400000).toISOString(); break;
-      case 'all': dateCutoff = '2000-01-01'; break;
+      case 'all': dateCutoff = '2000-01-01T00:00:00.000Z'; break;
       default: dateCutoff = new Date(now.getTime() - 90 * 86400000).toISOString();
     }
 
@@ -1908,10 +1908,14 @@ router.get('/dashcam-videos/:id/stream', (req: Request, res: Response) => {
         'Content-Length': chunkSize,
         'Content-Type': mimeType,
       });
-      fs.createReadStream(filePath, { start, end }).pipe(res);
+      const rangeStream = fs.createReadStream(filePath, { start, end });
+      rangeStream.on('error', (err) => { console.error('Stream error:', err); if (!res.headersSent) res.status(500).end(); else res.destroy(); });
+      rangeStream.pipe(res);
     } else {
       res.writeHead(200, { 'Content-Length': fileSize, 'Content-Type': mimeType });
-      fs.createReadStream(filePath).pipe(res);
+      const fullStream = fs.createReadStream(filePath);
+      fullStream.on('error', (err) => { console.error('Stream error:', err); if (!res.headersSent) res.status(500).end(); else res.destroy(); });
+      fullStream.pipe(res);
     }
   } catch (error: any) {
     console.error('Stream dashcam video error:', error?.message || 'Unknown error');
@@ -1947,7 +1951,9 @@ router.get('/dashcam-videos/:id/download', (req: Request, res: Response) => {
       'Content-Length': stat.size,
       'Content-Disposition': `attachment; filename="MVR_${safeTitle}.mp4"`,
     });
-    fs.createReadStream(filePath).pipe(res);
+    const dlStream = fs.createReadStream(filePath);
+    dlStream.on('error', (err) => { console.error('Download stream error:', err); if (!res.headersSent) res.status(500).end(); else res.destroy(); });
+    dlStream.pipe(res);
   } catch (error: any) {
     console.error('Download dashcam video error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });

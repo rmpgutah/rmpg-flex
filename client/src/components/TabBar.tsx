@@ -32,6 +32,8 @@ export default function TabBar({
         return (
           <button
             key={tab.id}
+            role="tab"
+            aria-selected={activeTab === tab.id}
             onClick={() => onTabChange(tab.id)}
             className={`tab-bar-item ${activeTab === tab.id ? 'active' : ''}`}
           >

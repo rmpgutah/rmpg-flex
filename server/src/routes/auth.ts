@@ -1066,7 +1066,7 @@ router.post('/verify-2fa', mfaRateLimit, (req: Request, res: Response) => {
 
     const db = getDb();
     const user = db.prepare(
-      'SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, avatar_url, profile_image, status, must_change_password, totp_secret_enc, totp_backup_codes FROM users WHERE id = ?'
+      'SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, avatar_url, profile_image, status, must_change_password FROM users WHERE id = ?'
     ).get(decoded.userId) as any;
 
     if (!user) {
@@ -1120,33 +1120,42 @@ router.post('/verify-2fa', mfaRateLimit, (req: Request, res: Response) => {
           }
         }
       }
-    } else if (user.totp_secret_enc) {
-      // Legacy system: secret stored as iv:tag:ciphertext in users table
-      let secret: string;
-      try {
-        secret = legacyDecryptSecret(user.totp_secret_enc);
-      } catch (decryptErr: any) {
-        console.error('2FA decryption failed (legacy system):', decryptErr.message);
-        res.status(401).json({ error: '2FA secret could not be decrypted. Please re-enroll 2FA.' });
-        return;
-      }
-      codeValid = verifyTotpCode(secret, code);
-
-      // If TOTP fails, try legacy backup codes
-      if (!codeValid && user.totp_backup_codes) {
-        try {
-          const hashedCodes: string[] = JSON.parse(user.totp_backup_codes);
-          if (Array.isArray(hashedCodes)) {
-            const result = verifyBackupCode(code, hashedCodes);
-            if (result.valid) {
-              codeValid = true;
-              db.prepare('UPDATE users SET totp_backup_codes = ? WHERE id = ?')
-                .run(JSON.stringify(result.remainingCodes), user.id);
-            }
-          }
-        } catch { /* corrupted backup codes — skip legacy fallback */ }
-      }
     } else {
+      // Legacy system: secret stored as iv:tag:ciphertext in users table
+      // Query sensitive fields separately — never include in the user object returned to client
+      const legacySecrets = db.prepare(
+        'SELECT totp_secret_enc, totp_backup_codes FROM users WHERE id = ?'
+      ).get(decoded.userId) as { totp_secret_enc: string | null; totp_backup_codes: string | null } | undefined;
+
+      if (legacySecrets?.totp_secret_enc) {
+        let secret: string;
+        try {
+          secret = legacyDecryptSecret(legacySecrets.totp_secret_enc);
+        } catch (decryptErr: any) {
+          console.error('2FA decryption failed (legacy system):', decryptErr.message);
+          res.status(401).json({ error: '2FA secret could not be decrypted. Please re-enroll 2FA.' });
+          return;
+        }
+        codeValid = verifyTotpCode(secret, code);
+
+        // If TOTP fails, try legacy backup codes
+        if (!codeValid && legacySecrets.totp_backup_codes) {
+          try {
+            const hashedCodes: string[] = JSON.parse(legacySecrets.totp_backup_codes);
+            if (Array.isArray(hashedCodes)) {
+              const result = verifyBackupCode(code, hashedCodes);
+              if (result.valid) {
+                codeValid = true;
+                db.prepare('UPDATE users SET totp_backup_codes = ? WHERE id = ?')
+                  .run(JSON.stringify(result.remainingCodes), user.id);
+              }
+            }
+          } catch { /* corrupted backup codes — skip legacy fallback */ }
+        }
+      }
+    }
+
+    if (!totpRecord && !db.prepare('SELECT totp_secret_enc FROM users WHERE id = ? AND totp_secret_enc IS NOT NULL').get(decoded.userId)) {
       // Neither system has a secret — 2FA is marked enabled but no secret exists
       res.status(401).json({ error: '2FA is not properly configured. Contact an administrator.' });
       return;
@@ -1157,12 +1166,11 @@ router.post('/verify-2fa', mfaRateLimit, (req: Request, res: Response) => {
       return;
     }
 
-    // Replay protection — reject if this TOTP code was already used
-    if (isTotpCodeUsed(decoded.userId, code)) {
+    // Atomic replay protection — check AND mark in one step to prevent race conditions
+    if (checkAndMarkTotpCode(decoded.userId, code)) {
       res.status(401).json({ error: 'This code has already been used. Please wait for the next code.' });
       return;
     }
-    markTotpCodeUsed(decoded.userId, code);
 
     // 2FA verified — log login attempt and handle device trust
     logLoginAttempt(user.username, ip, true, undefined, userAgent, deviceFingerprint);
@@ -1475,6 +1483,7 @@ import {
   verifyTotpToken,
   isTotpCodeUsed,
   markTotpCodeUsed,
+  checkAndMarkTotpCode,
   generateBackupCodes as generateBackupCodesV2,
   hashBackupCode,
   verifyBackupCode as verifyBackupCodeHash,
@@ -1566,12 +1575,11 @@ router.post('/2fa/setup/verify', authenticateAnyToken, (req: Request, res: Respo
       return;
     }
 
-    // Replay protection — reject if this TOTP code was already used
-    if (isTotpCodeUsed(userId, code)) {
+    // Atomic replay protection — check AND mark in one step to prevent race conditions
+    if (checkAndMarkTotpCode(userId, code)) {
       res.status(401).json({ error: 'This code has already been used. Please wait for the next code.' });
       return;
     }
-    markTotpCodeUsed(userId, code);
 
     // Mark as verified
     db.prepare('UPDATE user_totp_secrets SET is_verified = 1, updated_at = ? WHERE id = ?')
@@ -1822,12 +1830,11 @@ router.post('/login/verify-2fa', authenticateTempToken, (req: Request, res: Resp
       return;
     }
 
-    // Replay protection — reject if this TOTP code was already used
-    if (isTotpCodeUsed(userId, code)) {
+    // Atomic replay protection — check AND mark in one step to prevent race conditions
+    if (checkAndMarkTotpCode(userId, code)) {
       res.status(401).json({ error: 'This code has already been used. Please wait for the next code.' });
       return;
     }
-    markTotpCodeUsed(userId, code);
 
     // Success — log and issue tokens
     logLoginAttempt(req.user!.username, ip, true, undefined, userAgent, deviceFingerprint);
@@ -2099,7 +2106,9 @@ router.post('/login/change-password', authenticateTempToken, (req: Request, res:
     }
 
     const db = getDb();
-    const user = db.prepare('SELECT id, username, full_name, email, role, badge_number, phone, avatar_url, profile_image, password_hash, first_name, last_name, status, must_change_password FROM users WHERE id = ?')
+    // Query password_hash separately — never include sensitive fields in the user object
+    const userPwHash = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(userId) as { password_hash: string } | undefined;
+    const user = db.prepare('SELECT id, username, full_name, email, role, badge_number, phone, avatar_url, profile_image, first_name, last_name, status, must_change_password FROM users WHERE id = ?')
       .get(userId) as any;
 
     if (!user) {
@@ -2113,7 +2122,7 @@ router.post('/login/change-password', authenticateTempToken, (req: Request, res:
     }
 
     // Prevent reusing current password
-    if (bcryptjs.compareSync(newPassword, user.password_hash)) {
+    if (userPwHash && bcryptjs.compareSync(newPassword, userPwHash.password_hash)) {
       res.status(400).json({ error: 'New password must be different from current password' });
       return;
     }
@@ -2127,7 +2136,7 @@ router.post('/login/change-password', authenticateTempToken, (req: Request, res:
     } catch { /* ignore if table missing */ }
 
     // Save old password to history
-    try { addToPasswordHistory(userId, user.password_hash); } catch { /* ignore */ }
+    try { if (userPwHash) addToPasswordHistory(userId, userPwHash.password_hash); } catch { /* ignore */ }
 
     // Update password
     const newHash = bcryptjs.hashSync(newPassword, 10);

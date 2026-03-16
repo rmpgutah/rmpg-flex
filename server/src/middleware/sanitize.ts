@@ -93,6 +93,21 @@ export function requireInt(value: unknown, fieldName: string): number | null {
   return n;
 }
 
+/** Express middleware that validates req.params.id is a positive integer.
+ *  Use on routes like `router.get('/:id', validateParamId, handler)` to reject
+ *  non-numeric IDs before they reach DB queries or business logic. */
+export function validateParamId(req: Request, res: Response, next: NextFunction): void {
+  const id = String(req.params.id ?? '');
+  if (id) {
+    const n = parseInt(id, 10);
+    if (isNaN(n) || n < 1 || String(n) !== id) {
+      res.status(400).json({ error: 'Invalid ID parameter' });
+      return;
+    }
+  }
+  next();
+}
+
 export function sanitizeInput(req: Request, _res: Response, next: NextFunction): void {
   if (req.body && typeof req.body === 'object') {
     req.body = sanitizeObject(req.body);

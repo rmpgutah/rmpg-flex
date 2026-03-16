@@ -8,7 +8,7 @@
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { validateEnum, requireInt } from '../middleware/sanitize';
+import { validateEnum, requireInt, validateParamId } from '../middleware/sanitize';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 import { createNotificationForRoles } from './notifications';
@@ -21,6 +21,16 @@ const VALID_CITATION_TYPES = ['traffic', 'criminal', 'parking', 'warning'] as co
 const VALID_CITATION_STATUSES = ['issued', 'paid', 'contested', 'dismissed', 'warrant_issued', 'voided'] as const;
 const VALID_OFFENSE_LEVELS = ['infraction', 'misdemeanor', 'felony'] as const;
 router.use(authenticateToken);
+// Validate :id params as positive integers
+router.param('id', (req: Request, res: Response, next: Function) => {
+  const raw = String(req.params.id);
+  const n = parseInt(raw, 10);
+  if (isNaN(n) || n < 1 || String(n) !== raw) {
+    res.status(400).json({ error: 'Invalid ID parameter' });
+    return;
+  }
+  next();
+});
 
 // ─── GET /api/citations/stats ─────────────────────────────
 // Dashboard statistics: counts by status/type, fines totals

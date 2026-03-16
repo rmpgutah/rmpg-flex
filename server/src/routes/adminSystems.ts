@@ -40,6 +40,16 @@ const RETENTION_TABLE_MAP: Record<string, string> = {
 
 // All routes require authentication
 router.use(authenticateToken);
+// Validate :id params as positive integers
+router.param('id', (req: Request, res: Response, next: Function) => {
+  const raw = String(req.params.id);
+  const n = parseInt(raw, 10);
+  if (isNaN(n) || n < 1 || String(n) !== raw) {
+    res.status(400).json({ error: 'Invalid ID parameter' });
+    return;
+  }
+  next();
+});
 
 // ============================================================
 // Initialize tables for this module

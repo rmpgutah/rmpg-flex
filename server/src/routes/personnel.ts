@@ -159,6 +159,13 @@ router.get('/:id', (req: Request, res: Response, next) => {
       return next('route');
     }
 
+    // Validate ID parameter
+    const id = parseInt(String(req.params.id), 10);
+    if (isNaN(id)) {
+      res.status(400).json({ error: 'Invalid user ID' });
+      return;
+    }
+
     const db = getDb();
     const user = db.prepare(`
       SELECT id, username, full_name, first_name, last_name, middle_name, email, role, badge_number, phone, status, avatar_url,
@@ -167,11 +174,32 @@ router.get('/:id', (req: Request, res: Response, next) => {
         emergency_contact_name, emergency_contact_phone, emergency_contact_relationship,
         created_at, updated_at
       FROM users WHERE id = ?
-    `).get(req.params.id) as any;
+    `).get(id) as any;
 
     if (!user) {
       res.status(404).json({ error: 'User not found' });
       return;
+    }
+
+    // Redact PII fields for non-privileged users viewing other users' profiles
+    const callerRole = req.user?.role;
+    const isSelf = req.user?.userId === user.id;
+    const isPrivileged = ['admin', 'manager', 'supervisor'].includes(callerRole || '');
+    if (!isSelf && !isPrivileged) {
+      // Strip sensitive PII — non-privileged users only see operational info
+      delete user.address;
+      delete user.city;
+      delete user.state;
+      delete user.zip;
+      delete user.date_of_birth;
+      delete user.dl_number;
+      delete user.dl_state;
+      delete user.dl_expiry;
+      delete user.blood_type;
+      delete user.allergies;
+      delete user.emergency_contact_name;
+      delete user.emergency_contact_phone;
+      delete user.emergency_contact_relationship;
     }
 
     // Get associated unit
@@ -587,7 +615,9 @@ router.get('/bodycam-videos/:videoId/download', (req: Request, res: Response) =>
       'Content-Length': stat.size,
       'Content-Disposition': `attachment; filename="BWC_${safeTitle}.mp4"`,
     });
-    fs.createReadStream(filePath).pipe(res);
+    const dlStream = fs.createReadStream(filePath);
+    dlStream.on('error', (err) => { console.error('Bodycam stream error:', err); if (!res.headersSent) res.status(500).end(); else res.destroy(); });
+    dlStream.pipe(res);
   } catch (error: any) {
     console.error('Download bodycam video error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -879,7 +909,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       db.prepare(`
         INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
         VALUES (?, 'break_end', 'time_entry', ?, ?, ?)
-      `).run(req.user!.userId, breakEntry.id, `Ended break. Break: ${breakMins.toFixed(0)}min`, req.ip || 'unknown');
+      `).run(req.user!.userId, breakEntry.id, `Ended break. Break: ${(isNaN(breakMins) ? 0 : breakMins).toFixed(0)}min`, req.ip || 'unknown');
 
       const entry = db.prepare(`
         SELECT t.*, u.full_name as officer_name, u.badge_number

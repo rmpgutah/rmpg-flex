@@ -117,7 +117,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
   useEffect(() => {
     if (initialQuery && isOpen) {
       const cmdMap: Record<string, string> = { person: 'QH', vehicle: 'QV', warrant: 'QW', dl: 'QD', ofac: 'QO' };
-      const cmd = `${cmdMap[initialQuery.type]} ${initialQuery.query}`;
+      const cmd = `${cmdMap[initialQuery.type] || 'QH'} ${initialQuery.query}`;
       runQuery(cmd);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

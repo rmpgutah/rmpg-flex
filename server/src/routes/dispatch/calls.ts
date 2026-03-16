@@ -90,7 +90,8 @@ router.get('/calls', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
 
     const calls = db.prepare(`
       SELECT c.*, p.name as property_name, u.full_name as dispatcher_name,
-        cl.name as client_name
+        cl.name as client_name,
+        (SELECT i.incident_number FROM incidents i WHERE i.call_id = c.id ORDER BY i.id DESC LIMIT 1) as incident_number
       FROM calls_for_service c
       LEFT JOIN properties p ON c.property_id = p.id
       LEFT JOIN users u ON c.dispatcher_id = u.id
@@ -166,6 +167,24 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
 
     if (!incident_type || !priority || !location_address) {
       res.status(400).json({ error: 'incident_type, priority, and location_address are required' });
+      return;
+    }
+
+    // Validate numeric fields to prevent type coercion issues
+    if (latitude != null && (isNaN(Number(latitude)) || Math.abs(Number(latitude)) > 90)) {
+      res.status(400).json({ error: 'Invalid latitude value' });
+      return;
+    }
+    if (longitude != null && (isNaN(Number(longitude)) || Math.abs(Number(longitude)) > 180)) {
+      res.status(400).json({ error: 'Invalid longitude value' });
+      return;
+    }
+    if (req.body.num_subjects != null && (isNaN(Number(req.body.num_subjects)) || Number(req.body.num_subjects) < 0)) {
+      res.status(400).json({ error: 'Invalid num_subjects value' });
+      return;
+    }
+    if (req.body.num_victims != null && (isNaN(Number(req.body.num_victims)) || Number(req.body.num_victims) < 0)) {
+      res.status(400).json({ error: 'Invalid num_victims value' });
       return;
     }
 
@@ -513,8 +532,12 @@ router.get('/calls/:id', requireRole('admin', 'manager', 'supervisor', 'officer'
       visit_history = db.prepare('SELECT * FROM call_visit_history WHERE call_id = ? ORDER BY visit_number ASC').all(call.id) as any[];
     }
 
+    // Surface the first linked incident number on the call object for display
+    const firstIncidentNumber = (incidents as any[]).length > 0 ? (incidents as any[])[0].incident_number : null;
+
     res.json({
       ...call,
+      incident_number: call.incident_number || firstIncidentNumber,
       assigned_units: assignedUnits,
       related_incidents: incidents,
       activity,

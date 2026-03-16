@@ -117,7 +117,7 @@ function mapDashboardStats(raw: DashboardApiResponse): DashboardStats {
 
   // Build calls_by_hour, converting string hour to number
   const callsByHour = (raw.callsByHour ?? []).map((entry) => ({
-    hour: typeof entry.hour === 'string' ? parseInt(entry.hour, 10) : entry.hour,
+    hour: typeof entry.hour === 'string' ? (parseInt(entry.hour, 10) || 0) : (entry.hour ?? 0),
     count: entry.count,
   }));
 

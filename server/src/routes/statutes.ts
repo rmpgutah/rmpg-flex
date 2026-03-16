@@ -52,8 +52,9 @@ router.get('/', (req: Request, res: Response) => {
     }
 
     if (q) {
+      const searchStr = String(q).slice(0, 200); // Prevent excessively long search terms
       where += ' AND (citation LIKE ? OR short_title LIKE ? OR description LIKE ? OR definition LIKE ?)';
-      const searchTerm = `%${q}%`;
+      const searchTerm = `%${searchStr}%`;
       params.push(searchTerm, searchTerm, searchTerm, searchTerm);
     }
 

@@ -224,6 +224,11 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
             {call.case_number}
           </span>
         )}
+        {call.incident_number && (
+          <span className="text-[9px] font-mono text-green-400 bg-green-900/20 border border-green-700/30 px-1">
+            {call.incident_number}
+          </span>
+        )}
       </div>
 
       {/* Location */}

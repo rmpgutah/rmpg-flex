@@ -461,7 +461,7 @@ router.put('/:fileId/link', requireRole('admin', 'manager', 'supervisor'), (req:
 });
 
 // ─── DELETE /api/uploads/:fileId ─── Delete a file ───
-router.delete('/:fileId', (req: Request, res: Response) => {
+router.delete('/:fileId', authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const attachment = db.prepare('SELECT * FROM attachments WHERE file_id = ?').get(req.params.fileId) as any;

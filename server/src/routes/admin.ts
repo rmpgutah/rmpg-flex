@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { validateParamId } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
 import { createSecurityNotification, parseDeviceName } from '../utils/deviceFingerprint';
 import { sendNotificationEmail } from '../utils/emailSender';
@@ -9,6 +10,16 @@ const router = Router();
 
 router.use(authenticateToken);
 router.use(requireRole('admin', 'manager'));
+// Validate all :id parameters as positive integers to prevent malformed input
+router.param('id', (req: Request, res: Response, next: Function) => {
+  const raw = String(req.params.id);
+  const n = parseInt(raw, 10);
+  if (isNaN(n) || n < 1 || String(n) !== raw) {
+    res.status(400).json({ error: 'Invalid ID parameter' });
+    return;
+  }
+  next();
+});
 
 // GET /api/admin/clients - List all clients
 router.get('/clients', (req: Request, res: Response) => {

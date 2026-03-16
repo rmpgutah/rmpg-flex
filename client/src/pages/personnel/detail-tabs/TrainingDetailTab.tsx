@@ -21,7 +21,7 @@ interface Props {
 export default function TrainingDetailTab({ training, loading, onAddTraining, officerId }: Props) {
   const completed = training.filter((t) => t.status === 'completed').length;
   const inProgress = training.filter((t) => t.status === 'in_progress').length;
-  const totalHours = useMemo(() => training.reduce((sum, t) => sum + t.hours, 0), [training]);
+  const totalHours = useMemo(() => training.reduce((sum, t) => sum + (t.hours || 0), 0), [training]);
 
   const formatDate = (d?: string) => {
     if (!d) return '-';

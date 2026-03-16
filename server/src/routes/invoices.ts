@@ -43,6 +43,7 @@ function parsePaymentTermsDays(terms?: string): number {
 // ─── Helper: Add days to a date string ────────────────────
 function addDays(dateStr: string, days: number): string {
   const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
   d.setDate(d.getDate() + days);
   return d.toISOString().split('T')[0];
 }
@@ -79,7 +80,7 @@ function recalculateInvoiceTotals(invoiceId: number | string | string[]): void {
     const payResult = db.prepare(
       'SELECT COALESCE(SUM(amount), 0) as paid FROM payments WHERE invoice_id = ?'
     ).get(invoiceId) as any;
-    const amountPaid = payResult.paid;
+    const amountPaid = payResult?.paid ?? 0;
     const balanceDue = Math.max(0, total - amountPaid);
 
     db.prepare(`
@@ -101,7 +102,7 @@ function recalculateInvoiceTotals(invoiceId: number | string | string[]): void {
       db.prepare(`
         UPDATE clients SET total_invoiced = ?, total_paid = ?, outstanding_balance = ?, updated_at = ?
         WHERE id = ?
-      `).run(agg.total_invoiced, agg.total_paid, agg.outstanding, now, inv.client_id);
+      `).run(agg?.total_invoiced ?? 0, agg?.total_paid ?? 0, agg?.outstanding ?? 0, now, inv.client_id);
     }
   });
 
@@ -271,6 +272,9 @@ router.post('/', requireRole('admin', 'manager', 'contract_manager'), (req: Requ
 
     if (!client_id || !period_start || !period_end) {
       return res.status(400).json({ error: 'client_id, period_start, and period_end are required' });
+    }
+    if (isNaN(new Date(period_start).getTime()) || isNaN(new Date(period_end).getTime())) {
+      return res.status(400).json({ error: 'period_start and period_end must be valid dates' });
     }
 
     // Get client for billing snapshot
@@ -757,7 +761,7 @@ router.post('/:id/payments', requireRole('admin', 'manager'), (req: Request, res
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
 
     const { amount, payment_date, payment_method, reference_number, notes } = req.body;
-    if (!amount || !payment_date) {
+    if (amount == null || amount === '' || !payment_date) {
       return res.status(400).json({ error: 'amount and payment_date are required' });
     }
 

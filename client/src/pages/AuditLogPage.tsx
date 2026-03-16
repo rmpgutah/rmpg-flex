@@ -171,6 +171,7 @@ const AuditLogPage: React.FC = () => {
 
   // Get action color — stable callback, no dependencies
   const getActionColor = useCallback((action: string): string => {
+    if (!action) return 'text-rmpg-300';
     const actionLower = action.toLowerCase();
 
     // Green: creates, login success, clock in

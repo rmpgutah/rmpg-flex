@@ -158,11 +158,16 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
       if (!client.authenticated || !client.userId) continue;
       try {
         const db = database.getDb();
-        // Check if user account is still active
-        const user = db.prepare('SELECT is_active FROM users WHERE id = ?').get(client.userId) as { is_active: number } | undefined;
-        if (!user || !user.is_active) {
+        // Check if user account is still active and role hasn't changed
+        const user = db.prepare('SELECT status, role FROM users WHERE id = ?').get(client.userId) as { status: string; role: string } | undefined;
+        if (!user || user.status !== 'active') {
           safeSend(client.ws, JSON.stringify({ type: 'error', code: 'SESSION_REVOKED', message: 'Account deactivated' }));
           client.ws.close(4002, 'Account deactivated');
+          clients.delete(clientId);
+        } else if (client.role && user.role !== client.role) {
+          // Role changed — force reconnection so client picks up new permissions
+          safeSend(client.ws, JSON.stringify({ type: 'error', code: 'ROLE_CHANGED', message: 'Your role has been updated. Please refresh.' }));
+          client.ws.close(4003, 'Role changed');
           clients.delete(clientId);
         }
       } catch { /* DB unavailable — leave connection intact until next check */ }
@@ -203,10 +208,13 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
     clients.set(clientId, client);
 
     // Try to authenticate from URL query parameter (token in ?token=...)
+    // NOTE: URL tokens are less secure than header-based auth (visible in logs/history)
+    // Kept for backward compatibility — clients should migrate to message-based auth
     const url = req.url || '';
     const tokenMatch = url.match(/[?&]token=([^&]+)/);
     if (tokenMatch) {
       const token = decodeURIComponent(tokenMatch[1]);
+      console.warn(`[WS] Client authenticating via URL token (deprecated) from ${clientIp}`);
       authenticateClient(client, token);
     }
 

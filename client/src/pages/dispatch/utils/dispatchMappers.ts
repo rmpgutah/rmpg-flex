@@ -25,7 +25,8 @@ export function mapDbCall(row: any): CallForService {
   let assignedUnits: string[] = [];
   if (row.assigned_unit_ids) {
     try {
-      assignedUnits = JSON.parse(row.assigned_unit_ids).map(String);
+      const parsed = JSON.parse(row.assigned_unit_ids);
+      assignedUnits = Array.isArray(parsed) ? parsed.map(String) : [];
     } catch { /* ignore */ }
   }
 

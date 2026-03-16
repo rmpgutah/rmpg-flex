@@ -293,7 +293,7 @@ export default function MdtPage() {
       if (data.calls.length > 0) {
         lines.push('───── CALLS FOR SERVICE ────────────────────────────────');
         data.calls.forEach((c: any) => {
-          lines.push(`  ${c.call_number}  ${c.incident_type?.toUpperCase()}  ${c.priority}  ${c.status}`);
+          lines.push(`  ${c.call_number}  ${(c.incident_type || 'UNKNOWN').toUpperCase()}  ${c.priority || ''}  ${c.status || ''}`);
           lines.push(`    Location: ${c.location_address || 'N/A'}`);
           lines.push(`    Time: ${new Date(c.created_at).toLocaleTimeString()}`);
           lines.push('');

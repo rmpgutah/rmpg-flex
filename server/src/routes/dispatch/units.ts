@@ -31,7 +31,7 @@ router.post('/units', requireRole('admin', 'manager', 'dispatcher'), (req: Reque
   try {
     const db = getDb();
     const { call_sign, officer_id, status } = req.body;
-    if (!call_sign) {
+    if (!call_sign || !String(call_sign).trim()) {
       res.status(400).json({ error: 'call_sign is required' });
       return;
     }
@@ -128,7 +128,7 @@ router.put('/units/:id', requireRole('admin', 'manager', 'dispatcher'), (req: Re
       VALUES (?, 'unit_updated', 'unit', ?, ?, ?)`).run(
       req.user!.userId, req.params.id, `Updated unit: ${(updated as any)?.call_sign || req.params.id}`, req.ip || 'unknown');
 
-    broadcastUnitUpdate({ action: 'unit_updated', unit: updated });
+    if (updated) broadcastUnitUpdate({ action: 'unit_updated', unit: updated });
     res.json(updated);
   } catch (error: any) {
     console.error('Update unit error:', error?.message || 'Unknown error');

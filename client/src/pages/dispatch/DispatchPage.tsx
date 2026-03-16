@@ -2411,6 +2411,11 @@ export default function DispatchPage() {
                       CASE {selectedCall.case_number}
                     </span>
                   )}
+                  {selectedCall.incident_number && (
+                    <span className="text-[10px] font-bold font-mono text-green-300 bg-green-900/30 border border-green-700/40 px-1.5 py-0.5">
+                      INC {selectedCall.incident_number}
+                    </span>
+                  )}
                   <StatusBadge status={selectedCall.priority} type="priority" size="sm" />
                   <StatusBadge status={selectedCall.status} type="call_status" size="sm" />
                   {callWarnings.length > 0 && (

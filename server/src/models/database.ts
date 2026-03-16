@@ -2853,6 +2853,46 @@ function migrateSchema(): void {
   // on maps. WiFi/IP points have reduced accuracy vs hardware GPS.
   addCol('gps_breadcrumbs', 'source', "TEXT DEFAULT 'unknown'");
 
+  // ── Backfill case numbers for dispatch calls that don't have one ──
+  try {
+    const callsWithoutCase = db.prepare(
+      "SELECT id, incident_type FROM calls_for_service WHERE case_number IS NULL OR case_number = ''"
+    ).all() as { id: number; incident_type: string }[];
+
+    if (callsWithoutCase.length > 0) {
+      const INCIDENT_TO_CASE_TYPE: Record<string, string> = {
+        theft: 'theft', burglary: 'burglary', robbery: 'criminal', assault: 'assault', battery: 'assault',
+        vandalism: 'criminal', criminal_mischief: 'criminal', drug_activity: 'narcotics', weapons_offense: 'criminal',
+        fraud_forgery: 'fraud', kidnapping: 'criminal', arson: 'criminal', sexual_assault: 'criminal',
+        stalking: 'criminal', identity_theft: 'fraud', criminal_trespass: 'criminal', shoplifting: 'theft',
+        auto_theft: 'theft', criminal_threat: 'criminal', prostitution: 'criminal',
+        trespass: 'disorder', disturbance: 'disorder', noise_complaint: 'disorder', loitering: 'disorder',
+        panhandling: 'disorder', domestic_dispute: 'domestic', prowler: 'disorder', harassment: 'disorder',
+        traffic_accident: 'accident', hit_and_run: 'accident', dui_dwi: 'traffic', parking_violation: 'traffic',
+        traffic_hazard: 'traffic', abandoned_vehicle: 'traffic', reckless_driving: 'traffic', traffic_stop: 'traffic',
+        medical_emergency: 'medical', overdose: 'medical', mental_health_crisis: 'medical',
+        fire: 'fire', fire_alarm: 'fire', hazmat: 'fire',
+        death_investigation: 'death', missing_person: 'missing_person', juvenile_runaway: 'juvenile',
+        alarm_response: 'security', access_control: 'security', patrol_check: 'security', lock_unlock: 'security',
+        property_damage: 'property', lost_found: 'property',
+        daily_activity: 'admin', special_event: 'admin', training_exercise: 'admin',
+      };
+
+      const { generateCaseNumber } = require('../utils/caseNumbers');
+      const backfillTx = db.transaction(() => {
+        for (const call of callsWithoutCase) {
+          const caseType = INCIDENT_TO_CASE_TYPE[call.incident_type] || 'general';
+          const caseNum = generateCaseNumber(db, caseType);
+          db.prepare('UPDATE calls_for_service SET case_number = ? WHERE id = ?').run(caseNum, call.id);
+        }
+      });
+      backfillTx();
+      console.log(`  Backfilled case numbers for ${callsWithoutCase.length} dispatch calls`);
+    }
+  } catch (err) {
+    console.warn('[migrate] Case number backfill error:', (err as Error).message);
+  }
+
   // ── Async backfill: geocode past breadcrumbs missing road/cross-street data ──
   // Runs in the background after startup so it doesn't block the server.
   // Samples distinct locations (rounded to ~100m grid) to minimize API calls.

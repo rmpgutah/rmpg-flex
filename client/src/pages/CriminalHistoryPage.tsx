@@ -121,7 +121,7 @@ export default function CriminalHistoryPage() {
         });
       });
 
-      entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      entries.sort((a, b) => (new Date(b.date || 0).getTime() || 0) - (new Date(a.date || 0).getTime() || 0));
       setHistory(entries);
     } catch (err) {
       console.error('History fetch error:', err);

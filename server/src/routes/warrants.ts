@@ -45,8 +45,9 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
       params.push(type);
     }
     if (subject_name) {
+      const nameStr = String(subject_name).slice(0, 200); // Prevent excessively long search terms
       whereClause += " AND (p.first_name || ' ' || p.last_name) LIKE ?";
-      params.push(`%${subject_name}%`);
+      params.push(`%${nameStr}%`);
     }
 
     // Archive filter
@@ -425,11 +426,11 @@ router.post('/', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), (r
       statute_citation,
     } = req.body;
 
-    if (!type) {
+    if (!type || !String(type).trim()) {
       res.status(400).json({ error: 'type is required' });
       return;
     }
-    if (!charge_description) {
+    if (!charge_description || !String(charge_description).trim()) {
       res.status(400).json({ error: 'charge_description is required' });
       return;
     }
