@@ -365,8 +365,8 @@ router.post('/', upload.array('files', 10), (req: Request, res: Response) => {
     res.status(201).json(results);
   } catch (error: any) {
     console.error('Upload error:', error);
-    if (error.message?.includes('not allowed')) {
-      res.status(400).json({ error: error.message });
+    if (error.message?.includes('not allowed') || error.message?.includes('too large')) {
+      res.status(400).json({ error: 'File type not allowed or file too large' });
     } else {
       res.status(500).json({ error: 'Upload failed' });
     }

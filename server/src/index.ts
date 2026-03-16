@@ -435,9 +435,12 @@ app.get('*', (req, res) => {
 // ─── Global Error Handler ────────────────────────────
 // Catches unhandled middleware errors (multer, body-parser, etc.)
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  // Log full details server-side for debugging, but NEVER send to client
   console.error('Unhandled Express error:', err?.message || err, err?.stack || '');
   if (!res.headersSent) {
-    res.status(500).json({ error: err?.message || 'Internal server error' });
+    // Always return generic message — never leak internal error details to clients
+    const status = typeof err?.status === 'number' ? err.status : 500;
+    res.status(status).json({ error: 'Internal server error' });
   }
 });
 

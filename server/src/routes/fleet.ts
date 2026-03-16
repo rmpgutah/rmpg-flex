@@ -1851,13 +1851,13 @@ router.post('/dashcam-videos', requireRole('admin', 'manager'), (req: Request, r
         res.status(201).json(video);
       } catch (error: any) {
         console.error('Dashcam upload DB error:', error?.message, error?.stack);
-        res.status(500).json({ error: `Upload processing failed: ${error?.message || 'Internal server error'}` });
+        res.status(500).json({ error: 'Upload processing failed' });
       }
     });
   } catch (outerErr: any) {
     console.error('Dashcam upload error:', outerErr?.message);
     if (!res.headersSent) {
-      res.status(500).json({ error: `Upload failed: ${outerErr?.message || 'Internal server error'}` });
+      res.status(500).json({ error: 'Upload failed' });
     }
   }
 });

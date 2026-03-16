@@ -802,7 +802,7 @@ router.post('/change-password', passwordRateLimit, authenticateToken, (req: Requ
 
     res.json({ message: 'Password changed successfully. Please log in again.' });
   } catch (error: any) {
-    console.error('Change password error:', error);
+    console.error('Change password error:', error?.message || error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -2147,7 +2147,7 @@ router.post('/login/change-password', authenticateTempToken, (req: Request, res:
       },
     });
   } catch (error: any) {
-    console.error('Login password change error:', error);
+    console.error('Login password change error:', error?.message || error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

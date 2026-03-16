@@ -2379,7 +2379,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.status(201).json(video);
     } catch (error: any) {
       console.error('Upload complete error:', error?.message, error?.stack);
-      res.status(500).json({ error: `Upload finalization failed: ${error?.message || 'Internal server error'}` });
+      res.status(500).json({ error: 'Upload finalization failed' });
     }
   });
 
@@ -2503,13 +2503,13 @@ export function mountScheduleRoutes(parentRouter: Router): void {
           res.status(201).json(video);
         } catch (error: any) {
           console.error('Upload bodycam video DB error:', error?.message, error?.stack);
-          res.status(500).json({ error: `Upload processing failed: ${error?.message || 'Internal server error'}` });
+          res.status(500).json({ error: 'Upload processing failed' });
         }
       });
     } catch (outerErr: any) {
       console.error('Bodycam upload outer error:', outerErr?.message, outerErr?.stack);
       if (!res.headersSent) {
-        res.status(500).json({ error: `Upload failed: ${outerErr?.message || 'Internal server error'}` });
+        res.status(500).json({ error: 'Upload failed' });
       }
     }
   });
