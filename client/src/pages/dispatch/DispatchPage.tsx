@@ -2052,7 +2052,7 @@ export default function DispatchPage() {
                     </div>
 
                     {/* Serve Queue Integration */}
-                    {selectedCall.process_served_to && (
+                    {(
                       <div className="mt-2 pt-2 border-t border-rmpg-600">
                         {serveLink ? (
                           <div className="space-y-1">
@@ -2626,8 +2626,8 @@ export default function DispatchPage() {
                         <RotateCcw style={{ width: 10, height: 10 }} /> Return Visit
                       </button>
                     )}
-                    {/* Send to Serve Queue — PSO calls with process_served_to */}
-                    {selectedCall.incident_type === 'pso_client_request' && selectedCall.process_served_to && !serveLink && (
+                    {/* Send to Serve Queue — PSO calls */}
+                    {selectedCall.incident_type === 'pso_client_request' && !serveLink && (
                       <button
                         className="toolbar-btn"
                         style={{ background: '#7c3aed20', borderColor: '#7c3aed50', color: '#a78bfa' }}
