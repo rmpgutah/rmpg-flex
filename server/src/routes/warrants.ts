@@ -16,6 +16,7 @@ import {
 import { createNotificationForRoles } from './notifications';
 import { escapeLike, validateParamId } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
+import { universalWarrantCheck } from '../utils/universalWarrantScanner';
 
 const router = Router();
 
@@ -150,6 +151,19 @@ router.get('/export', requireRole('dispatcher', 'supervisor', 'admin', 'manager'
   } catch (error: any) {
     console.error('Export warrants error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/warrants/check/:personId — manual universal warrant check
+router.post('/check/:personId', requireRole('admin', 'manager', 'supervisor', 'officer'), async (req: Request, res: Response) => {
+  try {
+    const personId = parseInt(req.params.personId, 10);
+    if (isNaN(personId) || personId <= 0) { res.status(400).json({ error: 'Invalid person ID' }); return; }
+    const result = await universalWarrantCheck(personId, true);
+    res.json(result);
+  } catch (err: any) {
+    console.error('[Warrant Check] Manual check error:', err.message);
+    res.status(500).json({ error: 'Warrant check failed' });
   }
 });
 
@@ -366,6 +380,184 @@ router.post('/watch/scan', requireRole('admin', 'manager', 'supervisor'), async 
   } catch (error: any) {
     console.error('Trigger warrant watch scan error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── DASHBOARD & UNIFIED LIST ENDPOINTS ──────────────────────────────────────
+// NOTE: These must be declared BEFORE /:id to avoid being caught by the param route
+
+// GET /api/warrants/dashboard/stats — Aggregate counts for warrant dashboard
+router.get('/dashboard/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const activeWarrants = (db.prepare('SELECT COUNT(*) as cnt FROM warrants WHERE status = ?').get('active') as any).cnt;
+
+    const hitsToday = (db.prepare(`
+      SELECT COUNT(*) as cnt FROM warrant_watch_log
+      WHERE event = 'warrant_found' AND created_at >= datetime('now', 'localtime', '-24 hours')
+    `).get() as any).cnt;
+
+    const personsFlagged = (db.prepare(`
+      SELECT COUNT(*) as cnt FROM persons
+      WHERE flags LIKE '%ACTIVE_WARRANT%' AND archived_at IS NULL
+    `).get() as any).cnt;
+
+    const totalSources = (db.prepare('SELECT COUNT(*) as cnt FROM warrant_scraper_config WHERE enabled = 1').get() as any).cnt;
+    const healthySources = (db.prepare('SELECT COUNT(*) as cnt FROM warrant_scraper_config WHERE enabled = 1 AND consecutive_errors < 5').get() as any).cnt;
+
+    res.json({ activeWarrants, hitsToday, personsFlagged, sourcesOnline: healthySources, sourcesTotal: totalSources });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to load stats' });
+  }
+});
+
+// GET /api/warrants/dashboard/feed — Time-filtered alert feed
+router.get('/dashboard/feed', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const range = req.query.range as string || '24h';
+    const event = req.query.event as string || 'all';
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+    const offset = parseInt(req.query.offset as string) || 0;
+
+    const rangeMap: Record<string, string> = {
+      '1h': '-1 hours', '8h': '-8 hours', '24h': '-24 hours', '7d': '-7 days',
+    };
+    const timeFilter = rangeMap[range] || '-24 hours';
+
+    let sql = `
+      SELECT wl.*, p.photo_url, p.dob
+      FROM warrant_watch_log wl
+      LEFT JOIN persons p ON wl.person_id = p.id
+      WHERE wl.created_at >= datetime('now', 'localtime', ?)
+    `;
+    const params: any[] = [timeFilter];
+
+    if (event !== 'all') {
+      sql += ' AND wl.event = ?';
+      params.push(event === 'found' ? 'warrant_found' : 'warrant_cleared');
+    }
+
+    sql += ' ORDER BY wl.created_at DESC LIMIT ? OFFSET ?';
+    params.push(limit, offset);
+
+    const feed = db.prepare(sql).all(...params);
+    res.json(feed);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to load feed' });
+  }
+});
+
+// GET /api/warrants/dashboard/priority — Top active warrants by severity
+router.get('/dashboard/priority', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const limit = Math.min(parseInt(req.query.limit as string) || 10, 50);
+
+    const warrants = db.prepare(`
+      SELECT w.*, p.first_name as subject_first_name, p.last_name as subject_last_name,
+        p.photo_url as subject_photo_url, p.dob as subject_dob
+      FROM warrants w
+      LEFT JOIN persons p ON w.subject_person_id = p.id
+      WHERE w.status = 'active'
+      ORDER BY
+        CASE w.offense_level WHEN 'felony' THEN 1 WHEN 'misdemeanor' THEN 2 WHEN 'infraction' THEN 3 ELSE 4 END,
+        w.created_at DESC
+      LIMIT ?
+    `).all(limit);
+
+    res.json(warrants);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to load priority warrants' });
+  }
+});
+
+// GET /api/warrants/unified — Filterable warrant list with pagination
+router.get('/unified', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const status = req.query.status as string || 'all';
+    const source = req.query.source as string || 'all';
+    const type = req.query.type as string || 'all';
+    const severity = req.query.severity as string || 'all';
+    const q = (req.query.q as string || '').trim();
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+    const offset = parseInt(req.query.offset as string) || 0;
+
+    let whereClauses = ['w.archived_at IS NULL'];
+    const params: any[] = [];
+
+    if (status !== 'all') { whereClauses.push('w.status = ?'); params.push(status); }
+    if (source !== 'all') { whereClauses.push('w.source = ?'); params.push(source); }
+    if (type !== 'all') { whereClauses.push('w.type = ?'); params.push(type); }
+    if (severity !== 'all') { whereClauses.push('w.offense_level = ?'); params.push(severity); }
+    if (q) {
+      whereClauses.push(`(w.warrant_number LIKE ? ESCAPE '\\' OR w.charge_description LIKE ? ESCAPE '\\' OR p.first_name LIKE ? ESCAPE '\\' OR p.last_name LIKE ? ESCAPE '\\')`);
+      const like = `%${escapeLike(q)}%`;
+      params.push(like, like, like, like);
+    }
+
+    const whereStr = whereClauses.join(' AND ');
+
+    const warrants = db.prepare(`
+      SELECT w.*, p.first_name as subject_first_name, p.last_name as subject_last_name,
+        p.photo_url as subject_photo_url, p.dob as subject_dob
+      FROM warrants w
+      LEFT JOIN persons p ON w.subject_person_id = p.id
+      WHERE ${whereStr}
+      ORDER BY
+        CASE w.status WHEN 'active' THEN 1 ELSE 2 END,
+        CASE w.offense_level WHEN 'felony' THEN 1 WHEN 'misdemeanor' THEN 2 ELSE 3 END,
+        w.created_at DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, limit, offset);
+
+    // Count query for pagination
+    const countParams = [...params]; // Same params without limit/offset
+    const total = (db.prepare(`
+      SELECT COUNT(*) as cnt FROM warrants w
+      LEFT JOIN persons p ON w.subject_person_id = p.id
+      WHERE ${whereStr}
+    `).get(...countParams) as any).cnt;
+
+    res.json({ warrants, total });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to load warrants' });
+  }
+});
+
+// GET /api/warrants/person/:personId/profile — Full warrant profile for a person
+router.get('/person/:personId/profile', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const personId = parseInt(req.params.personId, 10);
+    if (isNaN(personId) || personId <= 0) { res.status(400).json({ error: 'Invalid person ID' }); return; }
+
+    const person = db.prepare(`
+      SELECT id, first_name, last_name, middle_name, dob, gender, race,
+        photo_url, flags, address, phone
+      FROM persons WHERE id = ?
+    `).get(personId);
+
+    if (!person) { res.status(404).json({ error: 'Person not found' }); return; }
+
+    const warrants = db.prepare(`
+      SELECT * FROM warrants WHERE subject_person_id = ? ORDER BY
+        CASE status WHEN 'active' THEN 1 ELSE 2 END, created_at DESC
+    `).all(personId);
+
+    const scanHistory = db.prepare(`
+      SELECT * FROM warrant_watch_log WHERE person_id = ?
+      ORDER BY created_at DESC LIMIT 50
+    `).all(personId);
+
+    const lastChecked = (db.prepare(`
+      SELECT MAX(created_at) as last_check FROM warrant_watch_log WHERE person_id = ?
+    `).get(personId) as any)?.last_check;
+
+    res.json({ person, warrants, scanHistory, lastChecked });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to load person profile' });
   }
 });
 
@@ -896,7 +1088,7 @@ router.get('/court-records/search', requireRole('admin', 'manager', 'supervisor'
       return;
     }
 
-    const states = req.query.states ? String(req.query.states).split(',') : undefined;
+    const states = req.query.states ? String(req.query.states).split(',').filter(Boolean) : undefined;
     const result = await searchCourtRecords(firstName, lastName, { states });
     res.json(result);
   } catch (error: any) {
