@@ -14,6 +14,7 @@ import {
   getCourtRecordStats,
 } from '../utils/courtRecordsScraper';
 import { createNotificationForRoles } from './notifications';
+import { escapeLike } from '../middleware/sanitize';
 
 const router = Router();
 
@@ -46,8 +47,8 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     }
     if (subject_name) {
       const nameStr = String(subject_name).slice(0, 200); // Prevent excessively long search terms
-      whereClause += " AND (p.first_name || ' ' || p.last_name) LIKE ?";
-      params.push(`%${nameStr}%`);
+      whereClause += " AND (p.first_name || ' ' || p.last_name) LIKE ? ESCAPE '\\'";
+      params.push(`%${escapeLike(nameStr)}%`);
     }
 
     // Archive filter

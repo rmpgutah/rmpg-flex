@@ -10,6 +10,7 @@ import { authenticateToken as authenticate, requireRole } from '../middleware/au
 import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
 import { localNow } from '../utils/timeUtils';
+import { escapeLike } from '../middleware/sanitize';
 
 const router = Router();
 router.use(authenticate);
@@ -280,8 +281,8 @@ router.get('/contacts', requireRole('admin', 'manager', 'contract_manager'), (re
     const params: any[] = [];
 
     if (search) {
-      sql += " AND (p.first_name || ' ' || p.last_name LIKE ? OR p.phone LIKE ? OR p.email LIKE ?)";
-      const q = `%${search}%`;
+      sql += " AND (p.first_name || ' ' || p.last_name LIKE ? ESCAPE '\\' OR p.phone LIKE ? ESCAPE '\\' OR p.email LIKE ? ESCAPE '\\')";
+      const q = `%${escapeLike(String(search))}%`;
       params.push(q, q, q);
     }
     if (relationship) { sql += ' AND cp.relationship = ?'; params.push(relationship); }

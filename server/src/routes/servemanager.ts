@@ -13,6 +13,7 @@ import {
   testConnection, getApiKey, encryptApiKey,
   ServeManagerError,
 } from '../utils/serveManagerClient';
+import { escapeLike } from '../middleware/sanitize';
 
 const router = Router();
 router.use(authenticateToken);
@@ -343,8 +344,8 @@ router.get('/jobs', requireRole('admin', 'manager', 'supervisor', 'officer'), as
     const pArr: any[] = [];
 
     if (q) {
-      const like = `%${q}%`;
-      conditions.push('(sm_job_number LIKE ? OR recipient_name LIKE ? OR client_company_name LIKE ? OR client_job_number LIKE ?)');
+      const like = `%${escapeLike(String(q))}%`;
+      conditions.push("(sm_job_number LIKE ? ESCAPE '\\' OR recipient_name LIKE ? ESCAPE '\\' OR client_company_name LIKE ? ESCAPE '\\' OR client_job_number LIKE ? ESCAPE '\\')");
       pArr.push(like, like, like, like);
     }
     if (status) { conditions.push('job_status = ?'); pArr.push(status); }

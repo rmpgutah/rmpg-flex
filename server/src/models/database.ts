@@ -4751,7 +4751,7 @@ function seedData(): void {
   const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number };
   if (userCount.count === 0) {
     const randomPassword = crypto.randomBytes(16).toString('hex');
-    const hash = (pw: string) => bcryptjs.hashSync(pw, 10);
+    const hash = (pw: string) => bcryptjs.hashSync(pw, 12);
     db.prepare(`
       INSERT INTO users (username, password_hash, full_name, email, role, badge_number, phone, status, must_change_password, password_changed_at, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 1, ?, ?, ?)

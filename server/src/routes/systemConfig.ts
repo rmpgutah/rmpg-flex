@@ -142,9 +142,9 @@ router.delete('/config/:id', requireRole('admin', 'manager'), (req: Request, res
     db.prepare('UPDATE system_config SET is_active = 0, updated_at = ? WHERE id = ?').run(now, item.id);
 
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'config_deleted', 'system_config', ?, ?, ?)
-    `).run(req.user!.userId, item.id, `Removed config: ${item.config_key} = ${item.config_value}`, req.ip || 'unknown');
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'config_deleted', 'system_config', ?, ?, ?, ?)
+    `).run(req.user!.userId, item.id, `Removed config: ${item.config_key} = ${item.config_value}`, req.ip || 'unknown', now);
 
     res.json({ message: 'Config item removed' });
   } catch (error: any) {

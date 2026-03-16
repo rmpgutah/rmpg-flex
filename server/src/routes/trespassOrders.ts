@@ -5,6 +5,7 @@ import { broadcast } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
 import { createNotificationForRoles } from './notifications';
 import { resolveDistrict } from '../utils/districtResolver';
+import { escapeLike } from '../middleware/sanitize';
 
 const router = Router();
 router.use(authenticateToken);
@@ -15,8 +16,8 @@ function generateOrderNumber(db: ReturnType<typeof getDb>): string {
   const prefix = `TO-${year}-`;
   return db.transaction(() => {
     const row = db.prepare(
-      `SELECT order_number FROM trespass_orders WHERE order_number LIKE ? ORDER BY id DESC LIMIT 1`
-    ).get(`${prefix}%`) as { order_number: string } | undefined;
+      `SELECT order_number FROM trespass_orders WHERE order_number LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT 1`
+    ).get(`${escapeLike(prefix)}%`) as { order_number: string } | undefined;
 
     let seq = 1;
     if (row) {
@@ -40,8 +41,8 @@ router.get('/', (req: Request, res: Response) => {
     if (status) { where += ' AND t.status = ?'; params.push(status); }
     if (property_id) { where += ' AND t.property_id = ?'; params.push(property_id); }
     if (search) {
-      where += ` AND ((t.subject_first_name || ' ' || t.subject_last_name) LIKE ? OR t.order_number LIKE ? OR t.location LIKE ? OR t.property_name LIKE ?)`;
-      const s = `%${search}%`;
+      where += ` AND ((t.subject_first_name || ' ' || t.subject_last_name) LIKE ? ESCAPE '\\' OR t.order_number LIKE ? ESCAPE '\\' OR t.location LIKE ? ESCAPE '\\' OR t.property_name LIKE ? ESCAPE '\\')`;
+      const s = `%${escapeLike(String(search))}%`;
       params.push(s, s, s, s);
     }
     if (archived === 'true') {
@@ -91,8 +92,8 @@ router.get('/check', (req: Request, res: Response) => {
       where += ' AND t.property_id = ?';
       params.push(property_id);
     } else if (address) {
-      where += ' AND t.location LIKE ?';
-      params.push(`%${address}%`);
+      where += " AND t.location LIKE ? ESCAPE '\\'";
+      params.push(`%${escapeLike(String(address))}%`);
     } else {
       return res.json({ orders: [], count: 0 });
     }

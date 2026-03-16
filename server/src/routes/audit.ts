@@ -3,6 +3,7 @@ import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { sendCsv } from '../utils/csvExport';
 import { localNow } from '../utils/timeUtils';
+import { escapeLike } from '../middleware/sanitize';
 
 const router = Router();
 
@@ -59,8 +60,8 @@ router.get('/logs', (req: Request, res: Response) => {
     }
 
     if (search) {
-      conditions.push('al.details LIKE ?');
-      params.push(`%${search}%`);
+      conditions.push("al.details LIKE ? ESCAPE '\\'");
+      params.push(`%${escapeLike(search as string)}%`);
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -127,6 +128,10 @@ router.get('/stats', (req: Request, res: Response) => {
     `).get() as any;
     const entriesToday = todayRow?.total || 0;
 
+    // Compute 30-day cutoff once for reuse
+    const d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T00:00:00`;
+
     // Top actions (last 30 days)
     const topActions = db.prepare(`
       SELECT action, COUNT(*) as count
@@ -135,7 +140,7 @@ router.get('/stats', (req: Request, res: Response) => {
       GROUP BY action
       ORDER BY count DESC
       LIMIT 10
-    `).all((() => { const d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T00:00:00`; })());
+    `).all(thirtyDaysAgo);
 
     // Top users (last 30 days)
     const topUsers = db.prepare(`
@@ -150,7 +155,7 @@ router.get('/stats', (req: Request, res: Response) => {
       GROUP BY u.full_name, u.badge_number
       ORDER BY count DESC
       LIMIT 10
-    `).all((() => { const d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T00:00:00`; })());
+    `).all(thirtyDaysAgo);
 
     res.json({
       totalEntries,
@@ -202,8 +207,8 @@ router.get('/export', (req: Request, res: Response) => {
       params.push(endDate);
     }
     if (search) {
-      conditions.push('al.details LIKE ?');
-      params.push(`%${search}%`);
+      conditions.push("al.details LIKE ? ESCAPE '\\'");
+      params.push(`%${escapeLike(search as string)}%`);
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';

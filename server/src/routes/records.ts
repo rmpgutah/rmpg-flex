@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { sendCsv } from '../utils/csvExport';
+import { escapeLike } from '../middleware/sanitize';
 import { localNow, localToday } from '../utils/timeUtils';
 import { searchUtahWarrants } from '../utils/utahWarrantScraper';
 import { searchOfacLocal } from '../utils/ofacScraper';
@@ -134,12 +135,12 @@ router.get('/persons/search', requireRole('admin', 'manager', 'supervisor', 'off
       return;
     }
 
-    const searchTerm = `%${q}%`;
+    const searchTerm = `%${escapeLike(q as string)}%`;
 
     const persons = db.prepare(`
       SELECT ${PERSON_LIST_COLUMNS} FROM persons
-      WHERE first_name LIKE ? OR last_name LIKE ? OR phone LIKE ? OR email LIKE ?
-        OR address LIKE ? OR (first_name || ' ' || last_name) LIKE ?
+      WHERE first_name LIKE ? ESCAPE '\\' OR last_name LIKE ? ESCAPE '\\' OR phone LIKE ? ESCAPE '\\'
+        OR email LIKE ? ESCAPE '\\' OR address LIKE ? ESCAPE '\\' OR (first_name || ' ' || last_name) LIKE ? ESCAPE '\\'
       ORDER BY last_name, first_name
       LIMIT 50
     `).all(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
@@ -204,8 +205,8 @@ router.get('/persons/:id', requireRole('admin', 'manager', 'supervisor', 'office
     // Auto-screen against OFAC if this person was never checked
     if (!person.watchlist_checked_at && person.first_name && person.last_name) {
       screenPersonOfac(person.id, person.first_name, person.last_name);
-      // Re-fetch to include updated watchlist_match
-      person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id) as any;
+      // Re-fetch to include updated watchlist_match (use safe column list — excludes ssn_full)
+      person = db.prepare(`SELECT ${PERSON_COLUMNS}, watchlist_match, watchlist_checked_at FROM persons WHERE id = ?`).get(req.params.id) as any;
     }
 
     // Get owned vehicles
@@ -246,17 +247,17 @@ router.get('/persons/:id/history', requireRole('admin', 'manager', 'supervisor',
       SELECT al.*, u.full_name as user_name
       FROM activity_log al
       LEFT JOIN users u ON al.user_id = u.id
-      WHERE al.details LIKE ? OR al.details LIKE ? OR al.details LIKE ?
+      WHERE al.details LIKE ? ESCAPE '\\' OR al.details LIKE ? ESCAPE '\\' OR al.details LIKE ? ESCAPE '\\'
       ORDER BY al.created_at DESC
       LIMIT 50
-    `).all(`%${person.first_name}%`, `%${person.last_name}%`, `%${fullName}%`);
+    `).all(`%${escapeLike(person.first_name)}%`, `%${escapeLike(person.last_name)}%`, `%${escapeLike(fullName)}%`);
 
     // Get BOLOs that mention this person
     const bolos = db.prepare(`
       SELECT * FROM bolos
-      WHERE subject_description LIKE ? OR description LIKE ?
+      WHERE subject_description LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\'
       ORDER BY created_at DESC
-    `).all(`%${person.last_name}%`, `%${person.last_name}%`);
+    `).all(`%${escapeLike(person.last_name)}%`, `%${escapeLike(person.last_name)}%`);
 
     res.json({
       person,
@@ -451,8 +452,8 @@ router.post('/persons', requireRole('admin', 'manager', 'supervisor', 'officer',
     // Auto-screen against OFAC sanctions BEFORE returning response
     screenPersonOfac(Number(result.lastInsertRowid), first_name, last_name);
 
-    // SELECT after screening so watchlist_match is included in response
-    const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(result.lastInsertRowid);
+    // SELECT after screening so watchlist_match is included in response (safe column list excludes ssn_full)
+    const person = db.prepare(`SELECT ${PERSON_COLUMNS}, watchlist_match, watchlist_checked_at FROM persons WHERE id = ?`).get(result.lastInsertRowid);
     if (!person) { res.status(500).json({ error: 'Failed to retrieve created person' }); return; }
     res.status(201).json(person);
   } catch (error: any) {
@@ -617,13 +618,13 @@ router.post('/persons/screen-all-ofac', requireRole('admin', 'manager', 'supervi
 router.post('/persons/:id/screen-ofac', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id) as any;
+    const person = db.prepare(`SELECT ${PERSON_COLUMNS}, watchlist_match, watchlist_checked_at FROM persons WHERE id = ?`).get(req.params.id) as any;
     if (!person) { res.status(404).json({ error: 'Person not found' }); return; }
 
     // Force re-screen regardless of previous check
     screenPersonOfac(person.id, person.first_name, person.last_name);
 
-    const updated = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id);
+    const updated = db.prepare(`SELECT ${PERSON_COLUMNS}, watchlist_match, watchlist_checked_at FROM persons WHERE id = ?`).get(req.params.id);
     res.json(updated);
   } catch (error: any) {
     console.error('OFAC re-screen error:', error?.message || 'Unknown error');
@@ -721,14 +722,14 @@ router.get('/vehicles/search', requireRole('admin', 'manager', 'supervisor', 'of
       return;
     }
 
-    const searchTerm = `%${q}%`;
+    const searchTerm = `%${escapeLike(q as string)}%`;
 
     const vehicles = db.prepare(`
       SELECT v.*, p.first_name as owner_first_name, p.last_name as owner_last_name
       FROM vehicles_records v
       LEFT JOIN persons p ON v.owner_person_id = p.id
-      WHERE v.plate_number LIKE ? OR v.vin LIKE ? OR v.make LIKE ? OR v.model LIKE ?
-        OR v.color LIKE ? OR v.notes LIKE ?
+      WHERE v.plate_number LIKE ? ESCAPE '\\' OR v.vin LIKE ? ESCAPE '\\' OR v.make LIKE ? ESCAPE '\\'
+        OR v.model LIKE ? ESCAPE '\\' OR v.color LIKE ? ESCAPE '\\' OR v.notes LIKE ? ESCAPE '\\'
       ORDER BY v.created_at DESC
       LIMIT 50
     `).all(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
@@ -1708,8 +1709,8 @@ router.post('/evidence', requireRole('admin', 'manager', 'supervisor', 'officer'
     // Generate evidence number
     const currentYear = parseInt(localToday().slice(0, 4), 10);
     const lastEvidence = db.prepare(
-      `SELECT evidence_number FROM evidence WHERE evidence_number LIKE ? ORDER BY id DESC LIMIT 1`
-    ).get(`EV-${currentYear}-%`) as any;
+      `SELECT evidence_number FROM evidence WHERE evidence_number LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT 1`
+    ).get(`EV-${escapeLike(String(currentYear))}-%`) as any;
 
     let nextNum = 1;
     if (lastEvidence) {
@@ -1936,14 +1937,14 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', '
       return;
     }
 
-    const term = `%${String(q).trim()}%`;
+    const term = `%${escapeLike(String(q).trim())}%`;
     const results: any[] = [];
 
     if (!type || type === 'person') {
       const persons = db.prepare(`
         SELECT id, first_name, last_name, 'person' as record_type
         FROM persons
-        WHERE first_name LIKE ? OR last_name LIKE ? OR (first_name || ' ' || last_name) LIKE ?
+        WHERE first_name LIKE ? ESCAPE '\\' OR last_name LIKE ? ESCAPE '\\' OR (first_name || ' ' || last_name) LIKE ? ESCAPE '\\'
         LIMIT 10
       `).all(term, term, term) as any[];
       results.push(...persons.map(p => ({
@@ -1956,7 +1957,7 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', '
       const vehicles = db.prepare(`
         SELECT id, make, model, plate_number, color, 'vehicle' as record_type
         FROM vehicles_records
-        WHERE make LIKE ? OR model LIKE ? OR plate_number LIKE ? OR vin LIKE ?
+        WHERE make LIKE ? ESCAPE '\\' OR model LIKE ? ESCAPE '\\' OR plate_number LIKE ? ESCAPE '\\' OR vin LIKE ? ESCAPE '\\'
         LIMIT 10
       `).all(term, term, term, term) as any[];
       results.push(...vehicles.map(v => ({
@@ -1969,7 +1970,7 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', '
       const properties = db.prepare(`
         SELECT id, name, address, 'property' as record_type
         FROM properties
-        WHERE name LIKE ? OR address LIKE ?
+        WHERE name LIKE ? ESCAPE '\\' OR address LIKE ? ESCAPE '\\'
         LIMIT 10
       `).all(term, term) as any[];
       results.push(...properties.map(p => ({
@@ -1982,7 +1983,7 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', '
       const evidence = db.prepare(`
         SELECT id, evidence_number, description, 'evidence' as record_type
         FROM evidence
-        WHERE evidence_number LIKE ? OR description LIKE ? OR serial_number LIKE ?
+        WHERE evidence_number LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\' OR serial_number LIKE ? ESCAPE '\\'
         LIMIT 10
       `).all(term, term, term) as any[];
       results.push(...evidence.map(e => ({
@@ -2359,16 +2360,16 @@ router.get('/ncic-query', requireRole('admin', 'manager', 'supervisor', 'officer
       return;
     }
 
-    const searchTerm = `%${q}%`;
+    const searchTerm = `%${escapeLike(q as string)}%`;
 
     switch (type) {
       case 'person': {
         // Search persons by name
         const persons = db.prepare(`
           SELECT ${PERSON_LIST_COLUMNS} FROM persons
-          WHERE first_name LIKE ? OR last_name LIKE ?
-            OR (first_name || ' ' || last_name) LIKE ?
-            OR (last_name || ', ' || first_name) LIKE ?
+          WHERE first_name LIKE ? ESCAPE '\\' OR last_name LIKE ? ESCAPE '\\'
+            OR (first_name || ' ' || last_name) LIKE ? ESCAPE '\\'
+            OR (last_name || ', ' || first_name) LIKE ? ESCAPE '\\'
           ORDER BY last_name, first_name
           LIMIT 5
         `).all(searchTerm, searchTerm, searchTerm, searchTerm) as any[];
@@ -2406,8 +2407,8 @@ router.get('/ncic-query', requireRole('admin', 'manager', 'supervisor', 'officer
           SELECT v.*, p.first_name as owner_first_name, p.last_name as owner_last_name
           FROM vehicles_records v
           LEFT JOIN persons p ON v.owner_person_id = p.id
-          WHERE v.plate_number LIKE ? OR v.vin LIKE ?
-            OR v.make LIKE ? OR v.model LIKE ?
+          WHERE v.plate_number LIKE ? ESCAPE '\\' OR v.vin LIKE ? ESCAPE '\\'
+            OR v.make LIKE ? ESCAPE '\\' OR v.model LIKE ? ESCAPE '\\'
           ORDER BY v.created_at DESC
           LIMIT 5
         `).all(searchTerm, searchTerm, searchTerm, searchTerm);
@@ -2419,16 +2420,16 @@ router.get('/ncic-query', requireRole('admin', 'manager', 'supervisor', 'officer
       case 'phone': {
         // Search persons by phone number — normalise both sides to digits-only
         const rawDigits = (q as string).replace(/\D/g, '');
-        const phoneTerm = `%${rawDigits.length >= 4 ? rawDigits : q}%`;
+        const phoneTerm = `%${escapeLike(rawDigits.length >= 4 ? rawDigits : q as string)}%`;
 
         // Strip common formatting chars from stored phone values for comparison
         const stripSql = (col: string) =>
           `REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(${col},''), '-', ''), '(', ''), ')', ''), ' ', '')`;
 
         const persons = db.prepare(`
-          SELECT * FROM persons
-          WHERE ${stripSql('phone')} LIKE ?
-            OR ${stripSql('phone_secondary')} LIKE ?
+          SELECT ${PERSON_COLUMNS} FROM persons
+          WHERE ${stripSql('phone')} LIKE ? ESCAPE '\\'
+            OR ${stripSql('phone_secondary')} LIKE ? ESCAPE '\\'
           ORDER BY last_name, first_name
           LIMIT 5
         `).all(phoneTerm, phoneTerm) as any[];
@@ -2462,10 +2463,10 @@ router.get('/ncic-query', requireRole('admin', 'manager', 'supervisor', 'officer
           FROM warrants w
           LEFT JOIN persons p ON w.subject_person_id = p.id
           WHERE w.status = 'active'
-            AND (w.warrant_number LIKE ?
-              OR p.first_name LIKE ? OR p.last_name LIKE ?
-              OR (p.first_name || ' ' || p.last_name) LIKE ?
-              OR w.charge_description LIKE ?)
+            AND (w.warrant_number LIKE ? ESCAPE '\\'
+              OR p.first_name LIKE ? ESCAPE '\\' OR p.last_name LIKE ? ESCAPE '\\'
+              OR (p.first_name || ' ' || p.last_name) LIKE ? ESCAPE '\\'
+              OR w.charge_description LIKE ? ESCAPE '\\')
           ORDER BY w.created_at DESC
           LIMIT 10
         `).all(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
@@ -2485,10 +2486,10 @@ router.get('/ncic-query', requireRole('admin', 'manager', 'supervisor', 'officer
       case 'phone': {
         // Search persons by phone number
         const phoneTerm = (q as string).replace(/[^\d]/g, ''); // strip non-digits
-        const phoneSearch = `%${phoneTerm}%`;
+        const phoneSearch = `%${escapeLike(phoneTerm)}%`;
         const persons = db.prepare(`
           SELECT ${PERSON_LIST_COLUMNS} FROM persons
-          WHERE REPLACE(REPLACE(REPLACE(REPLACE(phone, '-', ''), '(', ''), ')', ''), ' ', '') LIKE ?
+          WHERE REPLACE(REPLACE(REPLACE(REPLACE(phone, '-', ''), '(', ''), ')', ''), ' ', '') LIKE ? ESCAPE '\\'
           ORDER BY last_name, first_name
           LIMIT 5
         `).all(phoneSearch) as any[];
@@ -2522,7 +2523,7 @@ router.get('/ncic-query', requireRole('admin', 'manager', 'supervisor', 'officer
         // Persons at this address
         const addrPersons = db.prepare(`
           SELECT ${PERSON_LIST_COLUMNS} FROM persons
-          WHERE address LIKE ? OR (address || ' ' || COALESCE(city,'') || ' ' || COALESCE(state,'') || ' ' || COALESCE(zip,'')) LIKE ?
+          WHERE address LIKE ? ESCAPE '\\' OR (address || ' ' || COALESCE(city,'') || ' ' || COALESCE(state,'') || ' ' || COALESCE(zip,'')) LIKE ? ESCAPE '\\'
           ORDER BY last_name, first_name
           LIMIT 10
         `).all(addrSearch, addrSearch) as any[];
@@ -2546,7 +2547,7 @@ router.get('/ncic-query', requireRole('admin', 'manager', 'supervisor', 'officer
             SELECT call_number, incident_type, priority, disposition, created_at,
               weapons_involved, domestic_violence
             FROM calls_for_service
-            WHERE location_address LIKE ?
+            WHERE location_address LIKE ? ESCAPE '\\'
             ORDER BY created_at DESC
             LIMIT 5
           `).all(addrSearch);
@@ -2558,7 +2559,7 @@ router.get('/ncic-query', requireRole('admin', 'manager', 'supervisor', 'officer
           properties = db.prepare(`
             SELECT name, address, gate_code, alarm_code, post_orders, hazard_notes
             FROM properties
-            WHERE address LIKE ? OR name LIKE ?
+            WHERE address LIKE ? ESCAPE '\\' OR name LIKE ? ESCAPE '\\'
             LIMIT 5
           `).all(addrSearch, addrSearch);
         } catch { /* properties table may not exist */ }
@@ -2571,7 +2572,7 @@ router.get('/ncic-query', requireRole('admin', 'manager', 'supervisor', 'officer
               (subject_first_name || ' ' || subject_last_name) as subject_name,
               expiration_date
             FROM trespass_orders
-            WHERE location LIKE ? AND status = 'active'
+            WHERE location LIKE ? ESCAPE '\\' AND status = 'active'
             ORDER BY created_at DESC
             LIMIT 10
           `).all(addrSearch);

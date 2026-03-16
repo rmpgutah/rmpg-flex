@@ -8,7 +8,7 @@
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { validateEnum, requireInt, validateParamId } from '../middleware/sanitize';
+import { validateEnum, requireInt, validateParamId, escapeLike } from '../middleware/sanitize';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 import { createNotificationForRoles } from './notifications';
@@ -105,11 +105,11 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', '
       return;
     }
 
-    const searchTerm = `%${q}%`;
+    const searchTerm = `%${escapeLike(q as string)}%`;
 
     const citations = db.prepare(`
       SELECT * FROM citations
-      WHERE citation_number LIKE ? OR person_name LIKE ? OR statute_citation LIKE ? OR violation_description LIKE ?
+      WHERE citation_number LIKE ? ESCAPE '\\' OR person_name LIKE ? ESCAPE '\\' OR statute_citation LIKE ? ESCAPE '\\' OR violation_description LIKE ? ESCAPE '\\'
       ORDER BY created_at DESC
       LIMIT 25
     `).all(searchTerm, searchTerm, searchTerm, searchTerm);
@@ -173,8 +173,8 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     }
 
     if (q) {
-      const searchTerm = `%${q}%`;
-      whereClause += ' AND (c.citation_number LIKE ? OR c.person_name LIKE ? OR c.violation_description LIKE ?)';
+      const searchTerm = `%${escapeLike(q as string)}%`;
+      whereClause += " AND (c.citation_number LIKE ? ESCAPE '\\' OR c.person_name LIKE ? ESCAPE '\\' OR c.violation_description LIKE ? ESCAPE '\\')";
       params.push(searchTerm, searchTerm, searchTerm);
     }
 
@@ -317,7 +317,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispa
     const createCitation = db.transaction(() => {
       const year = new Date().getFullYear();
       const lastCit = db.prepare(
-        "SELECT citation_number FROM citations WHERE citation_number LIKE ? ORDER BY id DESC LIMIT 1"
+        "SELECT citation_number FROM citations WHERE citation_number LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT 1"
       ).get(`CIT-${year}-%`) as any;
       let seq = 1;
       if (lastCit) {
@@ -370,13 +370,14 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispa
 
     // Activity log
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'citation_created', 'citation', ?, ?, ?)
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'citation_created', 'citation', ?, ?, ?, ?)
     `).run(
       req.user!.userId,
       result.lastInsertRowid,
       `Created citation ${citation_number}${person_name ? ` for ${person_name}` : ''}`,
-      req.ip || 'unknown'
+      req.ip || 'unknown',
+      localNow()
     );
 
     const created = db.prepare('SELECT * FROM citations WHERE id = ?').get(result.lastInsertRowid);

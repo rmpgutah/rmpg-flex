@@ -9,6 +9,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
+import { escapeLike } from '../middleware/sanitize';
 
 const router = Router();
 router.use(authenticateToken);
@@ -18,8 +19,8 @@ function nextEventNumber(): string {
   const yr = parseInt(localToday().slice(0, 4), 10);
   const prefix = `CT-${yr}-`;
   const last = db.prepare(
-    "SELECT event_number FROM court_events WHERE event_number LIKE ? ORDER BY id DESC LIMIT 1"
-  ).get(`${prefix}%`) as { event_number: string } | undefined;
+    "SELECT event_number FROM court_events WHERE event_number LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT 1"
+  ).get(`${escapeLike(prefix)}%`) as { event_number: string } | undefined;
   const parsed = last ? parseInt(last.event_number.replace(prefix, ''), 10) : 0;
   const seq = (isNaN(parsed) ? 0 : parsed) + 1;
   return `${prefix}${String(seq).padStart(4, '0')}`;
@@ -40,10 +41,10 @@ router.get('/events', (req: Request, res: Response) => {
     if (event_type) { where += ' AND e.event_type = ?'; params.push(event_type); }
     if (date_from) { where += ' AND e.event_date >= ?'; params.push(date_from); }
     if (date_to) { where += ' AND e.event_date <= ?'; params.push(date_to); }
-    if (officer_id) { where += " AND e.officers_required LIKE ?"; params.push(`%${officer_id}%`); }
+    if (officer_id) { where += " AND e.officers_required LIKE ? ESCAPE '\\'"; params.push(`%${escapeLike(String(officer_id))}%`); }
     if (search) {
-      where += ' AND (e.event_number LIKE ? OR e.defendant_name LIKE ? OR e.court_case_number LIKE ? OR e.court_name LIKE ?)';
-      const s = `%${search}%`; params.push(s, s, s, s);
+      where += " AND (e.event_number LIKE ? ESCAPE '\\' OR e.defendant_name LIKE ? ESCAPE '\\' OR e.court_case_number LIKE ? ESCAPE '\\' OR e.court_name LIKE ? ESCAPE '\\')";
+      const s = `%${escapeLike(String(search))}%`; params.push(s, s, s, s);
     }
 
     const total = (db.prepare(`SELECT COUNT(*) as count FROM court_events e ${where}`).get(...params) as any)?.count || 0;
@@ -71,10 +72,10 @@ router.get('/events/upcoming', requireRole('admin', 'manager', 'supervisor', 'of
     const rows = db.prepare(`
       SELECT * FROM court_events
       WHERE event_date >= ? AND status = 'scheduled'
-      AND (officers_required LIKE ? OR created_by = ?)
+      AND (officers_required LIKE ? ESCAPE '\\' OR created_by = ?)
       ORDER BY event_date ASC, event_time ASC
       LIMIT 30
-    `).all(today, `%${userId}%`, userId);
+    `).all(today, `%${escapeLike(String(userId))}%`, userId);
     res.json({ data: rows });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });

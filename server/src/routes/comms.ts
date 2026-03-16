@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
-import { validateEnum } from '../middleware/sanitize';
+import { validateEnum, escapeLike } from '../middleware/sanitize';
 import { broadcastNewMessage, broadcastAlert, sendToUser } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
 import path from 'path';
@@ -304,22 +304,22 @@ router.get('/bolos/check', (req: Request, res: Response) => {
     if (subject && typeof subject === 'string' && subject.length >= 3) {
       const keywords = extractKeywords(subject);
       for (const kw of keywords.slice(0, 5)) {
-        matchClauses.push('(UPPER(b.subject_description) LIKE ? OR UPPER(b.description) LIKE ?)');
-        params.push(`%${kw}%`, `%${kw}%`);
+        matchClauses.push("(UPPER(b.subject_description) LIKE ? ESCAPE '\\' OR UPPER(b.description) LIKE ? ESCAPE '\\')");
+        params.push(`%${escapeLike(kw)}%`, `%${escapeLike(kw)}%`);
       }
     }
 
     if (vehicle && typeof vehicle === 'string' && vehicle.length >= 3) {
       const keywords = extractKeywords(vehicle);
       for (const kw of keywords.slice(0, 5)) {
-        matchClauses.push('(UPPER(b.vehicle_description) LIKE ? OR UPPER(b.description) LIKE ?)');
-        params.push(`%${kw}%`, `%${kw}%`);
+        matchClauses.push("(UPPER(b.vehicle_description) LIKE ? ESCAPE '\\' OR UPPER(b.description) LIKE ? ESCAPE '\\')");
+        params.push(`%${escapeLike(kw)}%`, `%${escapeLike(kw)}%`);
       }
     }
 
     if (address && typeof address === 'string' && address.length >= 3) {
-      matchClauses.push('UPPER(b.description) LIKE ?');
-      params.push(`%${(address as string).toUpperCase()}%`);
+      matchClauses.push("UPPER(b.description) LIKE ? ESCAPE '\\'");
+      params.push(`%${escapeLike((address as string).toUpperCase())}%`);
     }
 
     if (matchClauses.length === 0) {
@@ -636,8 +636,8 @@ router.get('/radio/transcripts', (req: Request, res: Response) => {
       params.push(user_id);
     }
     if (search) {
-      whereClause += ' AND rt.transcript LIKE ?';
-      params.push(`%${search}%`);
+      whereClause += " AND rt.transcript LIKE ? ESCAPE '\\'";
+      params.push(`%${escapeLike(search as string)}%`);
     }
     if (from) {
       whereClause += ' AND rt.transmitted_at >= ?';

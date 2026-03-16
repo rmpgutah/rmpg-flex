@@ -199,7 +199,7 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
       res.status(400).json({ error: 'Invalid username' });
       return;
     }
-    if (typeof password !== 'string' || password.length > 256) {
+    if (typeof password !== 'string' || password.length > 128) {
       res.status(400).json({ error: 'Invalid password' });
       return;
     }
@@ -751,6 +751,13 @@ router.post('/change-password', passwordRateLimit, authenticateToken, (req: Requ
       return;
     }
 
+    // Prevent bcrypt DoS — reject oversized passwords before they reach compareSync
+    if (typeof currentPassword !== 'string' || currentPassword.length > 128 ||
+        typeof newPassword !== 'string' || newPassword.length > 128) {
+      res.status(400).json({ error: 'Invalid password length' });
+      return;
+    }
+
     const validation = validatePassword(newPassword);
     if (!validation.valid) {
       res.status(400).json({
@@ -796,7 +803,7 @@ router.post('/change-password', passwordRateLimit, authenticateToken, (req: Requ
     // Save to history
     addToPasswordHistory(user.id, user.password_hash);
 
-    const newHash = bcryptjs.hashSync(newPassword, 10);
+    const newHash = bcryptjs.hashSync(newPassword, 12);
     const now = localNow();
 
     // Update password history: prepend old hash, keep last N
@@ -2138,8 +2145,8 @@ router.post('/login/change-password', authenticateTempToken, (req: Request, res:
     // Save old password to history
     try { if (userPwHash) addToPasswordHistory(userId, userPwHash.password_hash); } catch { /* ignore */ }
 
-    // Update password
-    const newHash = bcryptjs.hashSync(newPassword, 10);
+    // Update password (cost factor 12 — consistent across all password operations)
+    const newHash = bcryptjs.hashSync(newPassword, 12);
     db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0, force_password_change = 0, password_changed_at = ?, updated_at = ? WHERE id = ?')
       .run(newHash, localNow(), localNow(), userId);
 

@@ -117,7 +117,7 @@ export function generateBackupCodes(count: number = 10): {
     const raw = crypto.randomBytes(4).toString('hex').toUpperCase();
     const formatted = `${raw.slice(0, 4)}-${raw.slice(4)}`;
     plain.push(formatted);
-    hashed.push(bcryptjs.hashSync(formatted.replace('-', ''), 8)); // Hash without dash
+    hashed.push(bcryptjs.hashSync(formatted.replace('-', ''), 12)); // Hash without dash
   }
 
   return { plain, hashed };

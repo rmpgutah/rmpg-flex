@@ -146,9 +146,9 @@ router.put('/checkpoints/:id', requireRole('admin', 'manager', 'supervisor'), (r
 
     // Activity log
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'checkpoint_updated', 'patrol_checkpoint', ?, ?, ?)
-    `).run(req.user!.userId, id, `Updated checkpoint: ${existing.name}`, req.ip || 'unknown');
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'checkpoint_updated', 'patrol_checkpoint', ?, ?, ?, ?)
+    `).run(req.user!.userId, id, `Updated checkpoint: ${existing.name}`, req.ip || 'unknown', localNow());
 
     const updated = db.prepare(`
       SELECT pc.*, p.name as property_name

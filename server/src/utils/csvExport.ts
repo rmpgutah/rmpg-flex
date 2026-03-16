@@ -50,7 +50,8 @@ export function sendCsv(
   }
 
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  const safeFilename = filename.replace(/["\r\n\0]/g, '_');
+  res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"`);
 
   const headerRow = columns.map((col) => escapeCsvValue(col.header)).join(',');
 

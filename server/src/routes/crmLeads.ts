@@ -12,6 +12,7 @@ import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
 import { localNow } from '../utils/timeUtils';
 import { calculateLeadScore, runScraper, getRegisteredScraper } from '../utils/leadScraperBase';
+import { escapeLike } from '../middleware/sanitize';
 
 // Import scrapers so they register themselves
 import '../utils/utahBizScraper';
@@ -65,8 +66,8 @@ router.get('/leads', requireRole('admin', 'manager', 'contract_manager'), (req: 
       }
     }
     if (search) {
-      sql += " AND (l.business_name LIKE ? OR l.contact_name LIKE ? OR l.address LIKE ? OR l.city LIKE ?)";
-      const q = `%${search}%`;
+      sql += " AND (l.business_name LIKE ? ESCAPE '\\' OR l.contact_name LIKE ? ESCAPE '\\' OR l.address LIKE ? ESCAPE '\\' OR l.city LIKE ? ESCAPE '\\')";
+      const q = `%${escapeLike(String(search))}%`;
       params.push(q, q, q, q);
     }
     if (date_from) {
@@ -78,8 +79,8 @@ router.get('/leads', requireRole('admin', 'manager', 'contract_manager'), (req: 
       params.push(date_to + ' 23:59:59');
     }
     if (service_interest) {
-      sql += ' AND l.service_interest LIKE ?';
-      params.push(`%${service_interest}%`);
+      sql += " AND l.service_interest LIKE ? ESCAPE '\\'";
+      params.push(`%${escapeLike(String(service_interest))}%`);
     }
 
     sql += ' ORDER BY l.lead_score DESC, l.created_at DESC LIMIT 500';

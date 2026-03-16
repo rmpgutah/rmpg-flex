@@ -93,6 +93,18 @@ export function requireInt(value: unknown, fieldName: string): number | null {
   return n;
 }
 
+/** Escape SQL LIKE wildcard characters (%, _, \) so user input is treated literally.
+ *  Use with `LIKE ? ESCAPE '\'` in your SQL queries. */
+export function escapeLike(str: string): string {
+  return String(str).replace(/[%_\\]/g, '\\$&');
+}
+
+/** Quote a SQL identifier (table/column name) by wrapping in double quotes
+ *  and escaping any embedded double quotes. Prevents SQL injection via identifiers. */
+export function quoteIdent(name: string): string {
+  return `"${String(name).replace(/"/g, '""')}"`;
+}
+
 /** Express middleware that validates req.params.id is a positive integer.
  *  Use on routes like `router.get('/:id', validateParamId, handler)` to reject
  *  non-numeric IDs before they reach DB queries or business logic. */

@@ -9,6 +9,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
+import { escapeLike } from '../middleware/sanitize';
 
 const router = Router();
 router.use(authenticateToken);
@@ -65,8 +66,8 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     if (alert_type) { where += ' AND oa.alert_type = ?'; params.push(alert_type); }
     if (severity) { where += ' AND oa.severity = ?'; params.push(severity); }
     if (search) {
-      where += ' AND (p.first_name LIKE ? OR p.last_name LIKE ? OR oa.description LIKE ?)';
-      const s = `%${search}%`; params.push(s, s, s);
+      where += " AND (p.first_name LIKE ? ESCAPE '\\' OR p.last_name LIKE ? ESCAPE '\\' OR oa.description LIKE ? ESCAPE '\\')";
+      const s = `%${escapeLike(String(search))}%`; params.push(s, s, s);
     }
 
     const total = (db.prepare(`

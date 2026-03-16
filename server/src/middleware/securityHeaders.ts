@@ -33,7 +33,12 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
   // Cross-Origin isolation headers — prevent cross-origin attacks
   res.set('Cross-Origin-Opener-Policy', 'same-origin');
   res.set('Cross-Origin-Resource-Policy', 'same-origin');
+  res.set('Cross-Origin-Embedder-Policy', 'credentialless');
   res.set('X-Permitted-Cross-Domain-Policies', 'none');
+
+  // Prevent DNS prefetching — stops browsers from resolving domains in page content
+  // before they're needed, reducing information leakage about what data officers are viewing
+  res.set('X-DNS-Prefetch-Control', 'off');
 
   // Prevent caching of API responses containing sensitive law enforcement data
   // Static assets are cached separately with their own Cache-Control in index.ts
@@ -71,6 +76,9 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
     "child-src 'self' blob:",
     "manifest-src 'self'",
     "frame-ancestors 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "form-action 'self'",
   ].join('; '));
 
   // Remove powered-by header
