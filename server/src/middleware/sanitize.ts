@@ -120,6 +120,24 @@ export function validateParamId(req: Request, res: Response, next: NextFunction)
   next();
 }
 
+/** Express middleware factory that validates one or more named route params are positive integers.
+ *  Usage: `router.get('/:personId', validateNumericParams('personId'), handler)` */
+export function validateNumericParams(...paramNames: string[]) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    for (const name of paramNames) {
+      const val = String(req.params[name] ?? '');
+      if (val) {
+        const n = parseInt(val, 10);
+        if (isNaN(n) || n < 1 || String(n) !== val) {
+          res.status(400).json({ error: `Invalid ${name} parameter` });
+          return;
+        }
+      }
+    }
+    next();
+  };
+}
+
 /** Safely parse pagination parameters from query string.
  *  Returns clamped, validated { page, limit, offset } values.
  *  - page: positive integer (default 1)
