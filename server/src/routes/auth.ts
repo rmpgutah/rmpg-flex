@@ -230,7 +230,8 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
     const db = getDb();
     const user = db.prepare(`
       SELECT id, username, password_hash, first_name, last_name, full_name, email, role,
-             badge_number, phone, status, avatar_url, profile_image, must_change_password
+             badge_number, phone, status, avatar_url, profile_image, must_change_password,
+             force_password_change, password_expires_at, password_changed_at
       FROM users WHERE username = ?
     `).get(username) as any;
 
@@ -1273,9 +1274,8 @@ router.post('/verify-2fa', mfaRateLimit, (req: Request, res: Response) => {
     }
 
     // ── Check if password change is required before issuing final tokens ──
-    const needsPasswordChange = user.must_change_password === 1 || isPasswordExpired(
-      (db.prepare('SELECT password_changed_at FROM users WHERE id = ?').get(user.id) as any)?.password_changed_at
-    );
+    const pwUser = db.prepare('SELECT password_changed_at FROM users WHERE id = ?').get(user.id) as any;
+    const needsPasswordChange = user.must_change_password === 1 || isPasswordExpired(pwUser?.password_changed_at);
 
     const payload: Omit<JwtPayload, 'type'> = {
       userId: user.id,
@@ -1701,7 +1701,7 @@ router.post('/2fa/setup/verify', authenticateAnyToken, mfaRateLimit, (req: Reque
         FROM users WHERE id = ?
       `).get(userId) as any;
 
-      const needsPasswordChange = user.force_password_change === 1 || isPasswordExpired(user?.password_changed_at);
+      const needsPasswordChange = user.force_password_change === 1 || isPasswordExpired(user.password_changed_at);
       if (needsPasswordChange) {
         const tempToken = generateTempToken(
           { userId: user.id, username: user.username, role: user.role, fullName: user.full_name },
@@ -1946,7 +1946,7 @@ router.post('/login/verify-2fa', authenticateTempToken, mfaRateLimit, (req: Requ
       return;
     }
 
-    const needsPasswordChange = user.force_password_change === 1 || isPasswordExpired(user?.password_changed_at);
+    const needsPasswordChange = user.force_password_change === 1 || isPasswordExpired(user.password_changed_at);
     if (needsPasswordChange) {
       const tempToken = generateTempToken(
         { userId: user.id, username: user.username, role: user.role, fullName: user.full_name },
@@ -2098,7 +2098,7 @@ router.post('/login/verify-backup-code', authenticateTempToken, mfaRateLimit, (r
       return;
     }
 
-    const needsPasswordChange = user.force_password_change === 1 || isPasswordExpired(user?.password_changed_at);
+    const needsPasswordChange = user.force_password_change === 1 || isPasswordExpired(user.password_changed_at);
     if (needsPasswordChange) {
       const tempToken = generateTempToken(
         { userId: user.id, username: user.username, role: user.role, fullName: user.full_name },
