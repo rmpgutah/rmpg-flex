@@ -91,7 +91,26 @@ async function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// Track if our IP is blocked by CloudFront WAF
+let _ipBlocked = false;
+let _ipBlockedUntil = 0;
+const IP_BLOCK_COOLDOWN_MS = 30 * 60 * 1000; // Wait 30 min before retrying after IP block
+
+/** Check if we're currently IP-blocked */
+export function isUtahApiBlocked(): boolean {
+  if (!_ipBlocked) return false;
+  if (Date.now() > _ipBlockedUntil) {
+    _ipBlocked = false;
+    console.log('[Utah Warrants] IP block cooldown expired — will retry on next request');
+    return false;
+  }
+  return true;
+}
+
 async function fetchJson<T>(url: string, options: RequestInit, retries = MAX_RETRIES): Promise<T | null> {
+  // Skip if IP is currently blocked
+  if (isUtahApiBlocked()) return null;
+
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const controller = new AbortController();
@@ -124,6 +143,17 @@ async function fetchJson<T>(url: string, options: RequestInit, retries = MAX_RET
       }
 
       if (res.status === 403) {
+        // Check if this is a CloudFront WAF block (IP banned) vs simple rate limit
+        const bodyText = await res.text().catch(() => '');
+        const isCloudFrontBlock = bodyText.includes('cloudfront') || bodyText.includes('CloudFront');
+
+        if (isCloudFrontBlock) {
+          console.error(`[Utah Warrants] CloudFront WAF blocked our IP — entering ${IP_BLOCK_COOLDOWN_MS / 60000} min cooldown`);
+          _ipBlocked = true;
+          _ipBlockedUntil = Date.now() + IP_BLOCK_COOLDOWN_MS;
+          return null; // Don't retry — we're IP blocked
+        }
+
         onRateLimit();
         const backoff = getAdaptiveScanDelay();
         if (attempt < retries) {
@@ -589,8 +619,8 @@ async function _runWarrantWatchScanImpl(): Promise<{
 // Runs warrant watch scan every hour for maximum officer safety.
 // Also cleans up stale cache entries every 6 hours.
 
-/** Hourly scan interval — 60 minutes */
-const SCAN_INTERVAL_MS = 60 * 60 * 1000;
+/** Scan interval — every 4 hours (reduced from 1h to respect Utah API limits) */
+const SCAN_INTERVAL_MS = 4 * 60 * 60 * 1000;
 
 /** Startup delay before first scan — 90 seconds (let other services start first) */
 const SCAN_STARTUP_DELAY_MS = 90_000;

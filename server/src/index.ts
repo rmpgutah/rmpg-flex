@@ -635,12 +635,37 @@ try {
         const result = db.prepare(`
           DELETE FROM sessions
           WHERE is_active = 0
+             OR expires_at < datetime('now', 'localtime')
              OR last_used_at < datetime('now', 'localtime', '-30 days')
         `).run();
         if (result.changes > 0) {
           console.log(`[Session Cleanup] Removed ${result.changes} expired sessions`);
         }
       } catch (e) { console.error('[Session Cleanup] Failed:', e); }
+
+      // Purge old login attempts — keep only 30 days for security forensics
+      try {
+        const loginDb = getDb();
+        const loginResult = loginDb.prepare(`
+          DELETE FROM login_attempts
+          WHERE created_at < datetime('now', 'localtime', '-30 days')
+        `).run();
+        if (loginResult.changes > 0) {
+          console.log(`[Login Cleanup] Purged ${loginResult.changes} old login attempts`);
+        }
+      } catch (e) { console.error('[Login Cleanup] Failed:', e); }
+
+      // Purge old activity log entries — keep 90 days for compliance audits
+      try {
+        const auditDb = getDb();
+        const auditResult = auditDb.prepare(`
+          DELETE FROM activity_log
+          WHERE created_at < datetime('now', 'localtime', '-90 days')
+        `).run();
+        if (auditResult.changes > 0) {
+          console.log(`[Audit Cleanup] Archived ${auditResult.changes} old activity log entries`);
+        }
+      } catch (e) { console.error('[Audit Cleanup] Failed:', e); }
     }, 60 * 60 * 1000).unref();
 
     // Start patrol monitor for missed scan alerts
@@ -686,7 +711,7 @@ try {
         try { await runUniversalWarrantScan(); } catch (err: any) {
           console.error('[Universal Warrant Scan] Scheduled error:', err.message);
         }
-      }, 60 * 60 * 1000); // hourly
+      }, 4 * 60 * 60 * 1000); // every 4 hours (reduced from 1h to respect Utah API limits)
     }, 2 * 60 * 1000); // 2-minute startup delay
 
     // Start multi-state warrant scraper (county sheriff warrant pages + arrest record extraction)

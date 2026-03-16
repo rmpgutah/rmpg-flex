@@ -3,7 +3,7 @@ import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { broadcast } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
-import { searchUtahWarrants, searchUtahWarrantsCache, getUtahWarrantSyncStatus, runWarrantWatchScan } from '../utils/utahWarrantScraper';
+import { searchUtahWarrants, searchUtahWarrantsCache, getUtahWarrantSyncStatus, runWarrantWatchScan, isUtahApiBlocked } from '../utils/utahWarrantScraper';
 import {
   searchScrapedWarrants, getActiveScrapedWarrants, getWarrantScraperStatus,
   getWarrantScraperStats, manualScrapeSource, resetWarrantSourceErrors,
@@ -14,7 +14,7 @@ import {
   getCourtRecordStats,
 } from '../utils/courtRecordsScraper';
 import { createNotificationForRoles } from './notifications';
-import { escapeLike, validateParamId } from '../middleware/sanitize';
+import { escapeLike, validateParamId, validateNumericParams } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
 import { universalWarrantCheck } from '../utils/universalWarrantScanner';
 
@@ -155,7 +155,7 @@ router.get('/export', requireRole('dispatcher', 'supervisor', 'admin', 'manager'
 });
 
 // POST /api/warrants/check/:personId — manual universal warrant check
-router.post('/check/:personId', requireRole('admin', 'manager', 'supervisor', 'officer'), async (req: Request, res: Response) => {
+router.post('/check/:personId', validateNumericParams('personId'), requireRole('admin', 'manager', 'supervisor', 'officer'), async (req: Request, res: Response) => {
   try {
     const personId = parseInt(String(req.params.personId), 10);
     if (isNaN(personId) || personId <= 0) { res.status(400).json({ error: 'Invalid person ID' }); return; }
@@ -168,7 +168,7 @@ router.post('/check/:personId', requireRole('admin', 'manager', 'supervisor', 'o
 });
 
 // GET /api/warrants/check/:personId - Check if person has active warrants
-router.get('/check/:personId', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/check/:personId', validateNumericParams('personId'), requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { personId } = req.params;
@@ -249,12 +249,13 @@ router.get('/utah/sync-status', (req: Request, res: Response) => {
     const status = getUtahWarrantSyncStatus();
     res.json({
       lastSync: status.lastSync,
-      status: status.status,
+      status: isUtahApiBlocked() ? 'ip_blocked' : status.status,
       personsFound: 0,
       warrantsFound: status.warrantCount,
       durationMs: 0,
-      lastError: status.lastError,
+      lastError: isUtahApiBlocked() ? 'CloudFront WAF blocked — cooldown active' : status.lastError,
       currentCount: status.warrantCount,
+      ipBlocked: isUtahApiBlocked(),
     });
   } catch {
     res.json({ lastSync: null, status: 'ready', currentCount: 0 });
@@ -417,8 +418,8 @@ router.get('/dashboard/feed', requireRole('admin', 'manager', 'supervisor', 'off
     const db = getDb();
     const range = req.query.range as string || '24h';
     const event = req.query.event as string || 'all';
-    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
-    const offset = Math.max(0, Math.min(parseInt(req.query.offset as string) || 0, 10000));
+    const limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 200);
+    const offset = Math.max(0, Math.min(parseInt(req.query.offset as string, 10) || 0, 10000));
 
     const rangeMap: Record<string, string> = {
       '1h': '-1 hours', '8h': '-8 hours', '24h': '-24 hours', '7d': '-7 days',
@@ -452,7 +453,7 @@ router.get('/dashboard/feed', requireRole('admin', 'manager', 'supervisor', 'off
 router.get('/dashboard/priority', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const limit = Math.min(parseInt(req.query.limit as string) || 10, 50);
+    const limit = Math.min(parseInt(req.query.limit as string, 10) || 10, 50);
 
     const warrants = db.prepare(`
       SELECT w.*, p.first_name as subject_first_name, p.last_name as subject_last_name,
@@ -481,8 +482,8 @@ router.get('/unified', requireRole('admin', 'manager', 'supervisor', 'officer', 
     const type = req.query.type as string || 'all';
     const severity = req.query.severity as string || 'all';
     const q = (req.query.q as string || '').trim();
-    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
-    const offset = Math.max(0, Math.min(parseInt(req.query.offset as string) || 0, 10000));
+    const limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 200);
+    const offset = Math.max(0, Math.min(parseInt(req.query.offset as string, 10) || 0, 10000));
 
     let whereClauses = ['w.archived_at IS NULL'];
     const params: any[] = [];
