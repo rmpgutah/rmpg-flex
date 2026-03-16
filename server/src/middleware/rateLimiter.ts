@@ -20,7 +20,7 @@ interface BlockEntry {
   lastViolation: number;
 }
 const ipBlocklist: Map<string, BlockEntry> = new Map();
-const VIOLATION_THRESHOLD = 5;            // violations before first block
+const VIOLATION_THRESHOLD = 10;           // violations before first block
 const VIOLATION_WINDOW_MS = 10 * 60 * 1000; // 10 minute sliding window
 const BASE_BLOCK_DURATION_MS = 5 * 60 * 1000; // 5 minute initial block
 const MAX_BLOCK_DURATION_MS = 60 * 60 * 1000; // 1 hour max block
@@ -58,6 +58,25 @@ function isIpBlocked(ip: string): { blocked: boolean; retryAfter: number } {
     return { blocked: true, retryAfter: Math.ceil((entry.blockedUntil - now) / 1000) };
   }
   return { blocked: false, retryAfter: 0 };
+}
+
+// Admin: unblock a specific IP or all IPs
+export function unblockIp(ip?: string): number {
+  if (ip) {
+    const had = ipBlocklist.has(ip);
+    ipBlocklist.delete(ip);
+    // Also clear rate limit entries for this IP
+    for (const [key] of store) {
+      if (key === ip || key.endsWith(`:${ip}`) || key.includes(`:${ip}:`)) {
+        store.delete(key);
+      }
+    }
+    return had ? 1 : 0;
+  }
+  // Unblock all
+  const count = ipBlocklist.size;
+  ipBlocklist.clear();
+  return count;
 }
 
 // Export for admin dashboard / security monitoring
