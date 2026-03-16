@@ -510,10 +510,21 @@ router.post('/refresh', refreshRateLimit, (req: Request, res: Response) => {
     // Enforce idle session timeout — invalidate sessions unused for extended periods
     if (session.last_used_at) {
       const idleMs = Date.now() - new Date(session.last_used_at).getTime();
-      const maxIdleMs = (config.session?.idleTimeoutMinutes || 480) * 60 * 1000; // default 8 hours
+      const maxIdleMs = (config.session?.idleTimeoutMinutes || 60) * 60 * 1000; // default 1 hour
       if (idleMs > maxIdleMs) {
         db.prepare('UPDATE sessions SET is_active = 0 WHERE id = ?').run(session.id);
         res.status(401).json({ error: 'Session expired due to inactivity', code: 'SESSION_IDLE_TIMEOUT' });
+        return;
+      }
+    }
+
+    // Enforce absolute session duration — force re-login after maxSessionHours
+    if (session.created_at) {
+      const sessionAgeMs = Date.now() - new Date(session.created_at).getTime();
+      const maxSessionMs = config.jwt.maxSessionHours * 60 * 60 * 1000;
+      if (sessionAgeMs > maxSessionMs) {
+        db.prepare('UPDATE sessions SET is_active = 0 WHERE id = ?').run(session.id);
+        res.status(401).json({ error: 'Session expired — maximum duration reached', code: 'SESSION_MAX_DURATION' });
         return;
       }
     }
@@ -746,7 +757,7 @@ router.get('/session-timeout', authenticateToken, (_req: Request, res: Response)
   try {
     const db = getDb();
     // Check system_config for security_config JSON or session_timeout_minutes
-    let timeoutMinutes = 480; // default: 8 hours
+    let timeoutMinutes = 60; // default: 1 hour inactivity
 
     const row = db.prepare(
       "SELECT config_value FROM system_config WHERE config_key = 'security_config' AND category = 'settings'"
@@ -770,10 +781,10 @@ router.get('/session-timeout', authenticateToken, (_req: Request, res: Response)
       timeoutMinutes = parseInt(standalone.config_value, 10) || timeoutMinutes;
     }
 
-    res.json({ timeoutMinutes });
+    res.json({ timeoutMinutes, maxSessionHours: config.jwt.maxSessionHours });
   } catch (error: any) {
     console.error('Get session timeout error:', error?.message || 'Unknown error');
-    res.json({ timeoutMinutes: 480 }); // safe fallback
+    res.json({ timeoutMinutes: 60, maxSessionHours: config.jwt.maxSessionHours }); // safe fallback
   }
 });
 

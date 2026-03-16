@@ -124,11 +124,18 @@ export default function LoginPage() {
 
   // Idle logout message
   const [showIdleMessage, setShowIdleMessage] = useState(false);
+  const [showSessionExpired, setShowSessionExpired] = useState(false);
   useEffect(() => {
     if (sessionStorage.getItem('rmpg_idle_logout') === '1') {
       setShowIdleMessage(true);
       sessionStorage.removeItem('rmpg_idle_logout');
       const t = setTimeout(() => setShowIdleMessage(false), 15000);
+      return () => clearTimeout(t);
+    }
+    if (sessionStorage.getItem('rmpg_session_expired') === '1') {
+      setShowSessionExpired(true);
+      sessionStorage.removeItem('rmpg_session_expired');
+      const t = setTimeout(() => setShowSessionExpired(false), 15000);
       return () => clearTimeout(t);
     }
   }, []);
@@ -395,6 +402,16 @@ export default function LoginPage() {
                 <div>
                   <p className="text-[10px] text-amber-300 font-semibold">Session Expired</p>
                   <p className="text-[9px] text-amber-400/80">You were automatically logged out due to inactivity.</p>
+                </div>
+              </div>
+            )}
+            {/* Max session duration message */}
+            {showSessionExpired && (
+              <div className="mb-3 p-2.5 bg-blue-900/25 border border-blue-700/50 flex items-start gap-2">
+                <Lock className="w-3.5 h-3.5 text-blue-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-[10px] text-blue-300 font-semibold">Session Duration Limit</p>
+                  <p className="text-[9px] text-blue-400/80">Your session reached the maximum duration. Please sign in again.</p>
                 </div>
               </div>
             )}

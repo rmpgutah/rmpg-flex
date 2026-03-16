@@ -860,7 +860,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Tracks user activity (mouse, keyboard, touch) and auto-logs out
   // after the configured inactivity period.
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const idleTimeoutMsRef = useRef(480 * 60 * 1000); // default 8 hours, updated from server
+  const idleTimeoutMsRef = useRef(60 * 60 * 1000); // default 1 hour inactivity, updated from server
+  const sessionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const maxSessionMsRef = useRef(8 * 60 * 60 * 1000); // default 8 hours absolute max
 
   // Fetch session timeout config from server once authenticated
   useEffect(() => {
@@ -873,6 +875,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (data?.timeoutMinutes) {
           idleTimeoutMsRef.current = data.timeoutMinutes * 60 * 1000;
           resetIdleTimer(); // restart with updated timeout
+        }
+        if (data?.maxSessionHours) {
+          maxSessionMsRef.current = data.maxSessionHours * 60 * 60 * 1000;
         }
       })
       .catch(() => { /* use default */ });
@@ -920,6 +925,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [user, resetIdleTimer]);
 
+  // ─── Absolute session duration timer ─────────────────
+  // Forces logout after maxSessionHours regardless of activity.
+  // Server also enforces this on refresh, but this gives a clean client UX.
+  useEffect(() => {
+    if (!user) {
+      if (sessionTimerRef.current) clearTimeout(sessionTimerRef.current);
+      return;
+    }
+
+    sessionTimerRef.current = setTimeout(() => {
+      console.warn('[Auth] Max session duration reached — auto-logout');
+      sessionStorage.setItem('rmpg_session_expired', '1');
+      logout();
+    }, maxSessionMsRef.current);
+
+    return () => {
+      if (sessionTimerRef.current) clearTimeout(sessionTimerRef.current);
+    };
+  }, [user, logout]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -928,6 +953,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       if (idleTimerRef.current) {
         clearTimeout(idleTimerRef.current);
+      }
+      if (sessionTimerRef.current) {
+        clearTimeout(sessionTimerRef.current);
       }
     };
   }, []);
