@@ -7,6 +7,7 @@ import { createNotificationForRoles } from './notifications';
 import { resolveDistrict } from '../utils/districtResolver';
 import { escapeLike, validateParamId } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
+import { universalWarrantCheck } from '../utils/universalWarrantScanner';
 
 const router = Router();
 router.use(authenticateToken);
@@ -189,6 +190,13 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
     );
 
     auditLog(req, 'CREATE', 'field_interview', created.id, `Created field interview ${created.fi_number}`);
+
+    // Async warrant check if subject person is linked
+    if (person_id) {
+      universalWarrantCheck(Number(person_id)).catch(err =>
+        console.error('[Warrant Check] Async check failed:', err.message)
+      );
+    }
 
     res.status(201).json(created);
   } catch (err: any) {

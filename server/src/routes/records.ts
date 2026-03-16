@@ -7,6 +7,7 @@ import { localNow, localToday } from '../utils/timeUtils';
 import { searchUtahWarrants } from '../utils/utahWarrantScraper';
 import { searchOfacLocal } from '../utils/ofacScraper';
 import { auditLog } from '../utils/auditLogger';
+import { universalWarrantCheck } from '../utils/universalWarrantScanner';
 
 const router = Router();
 
@@ -450,6 +451,11 @@ router.post('/persons', requireRole('admin', 'manager', 'supervisor', 'officer',
 
     // Auto-screen against OFAC sanctions BEFORE returning response
     screenPersonOfac(Number(result.lastInsertRowid), first_name, last_name);
+
+    // Async warrant check — fire-and-forget
+    universalWarrantCheck(Number(result.lastInsertRowid)).catch(err =>
+      console.error('[Warrant Check] Async check failed:', err.message)
+    );
 
     // SELECT after screening so watchlist_match is included in response (safe column list excludes ssn_full)
     const person = db.prepare(`SELECT ${PERSON_COLUMNS}, watchlist_match, watchlist_checked_at FROM persons WHERE id = ?`).get(result.lastInsertRowid);

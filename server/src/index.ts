@@ -26,6 +26,7 @@ import { startClearPathGpsMediaPoller, stopClearPathGpsMediaPoller } from './uti
 import { startEmailPoller, stopEmailPoller } from './utils/emailPoller';
 import { scheduleOfacSync, searchOfacLocal, stopOfacSync } from './utils/ofacScraper';
 import { scheduleUtahWarrantSync, stopUtahWarrantSync } from './utils/utahWarrantScraper';
+import { runUniversalWarrantScan } from './utils/universalWarrantScanner';
 import { scheduleWarrantScraper, stopWarrantScraper } from './utils/multiStateWarrantScraper';
 import { scheduleCourtRecordsScan, stopCourtRecordsScan } from './utils/courtRecordsScraper';
 import { scheduleArrestSync, stopArrestSync } from './utils/arrestScraper';
@@ -663,7 +664,20 @@ try {
     scheduleOfacSync();
 
     // Start Utah state warrant scraper (syncs daily at midnight from warrants.utah.gov)
-    scheduleUtahWarrantSync();
+    // scheduleUtahWarrantSync(); // Replaced by universal warrant scanner below
+
+    // Universal warrant scanner — replaces Utah-only warrant watch
+    let universalScanInterval: ReturnType<typeof setInterval> | null = null;
+    setTimeout(async () => {
+      try { await runUniversalWarrantScan(); } catch (err: any) {
+        console.error('[Universal Warrant Scan] Initial scan error:', err.message);
+      }
+      universalScanInterval = setInterval(async () => {
+        try { await runUniversalWarrantScan(); } catch (err: any) {
+          console.error('[Universal Warrant Scan] Scheduled error:', err.message);
+        }
+      }, 60 * 60 * 1000); // hourly
+    }, 2 * 60 * 1000); // 2-minute startup delay
 
     // Start multi-state warrant scraper (county sheriff warrant pages + arrest record extraction)
     scheduleWarrantScraper();

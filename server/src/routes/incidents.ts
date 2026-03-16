@@ -8,6 +8,7 @@ import { identifyBeat } from '../utils/geofence';
 import { createNotificationForRoles } from './notifications';
 import { auditLog } from '../utils/auditLogger';
 import { validateParamId } from '../middleware/sanitize';
+import { universalWarrantCheck } from '../utils/universalWarrantScanner';
 
 const router = Router();
 
@@ -787,6 +788,11 @@ router.post('/:id/persons', validateParamId, requireRole('admin', 'manager', 'su
     if (!linked) { res.status(500).json({ error: 'Failed to retrieve linked person' }); return; }
 
     auditLog(req, 'incident_updated', 'incident', incident.id, `Added person to incident #${incident.incident_number}`);
+
+    // Async warrant check for linked person
+    universalWarrantCheck(Number(person_id)).catch(err =>
+      console.error('[Warrant Check] Async check failed:', err.message)
+    );
 
     res.status(201).json(linked);
   } catch (error: any) {

@@ -6,6 +6,7 @@ import { broadcastDispatchUpdate, broadcastUnitUpdate } from '../../utils/websoc
 import { localNow } from '../../utils/timeUtils';
 import { generateIncidentNumber } from '../../utils/caseNumbers';
 import { createNotification, createNotificationForRoles } from '../notifications';
+import { universalWarrantCheck } from '../../utils/universalWarrantScanner';
 
 const router = Router();
 
@@ -774,7 +775,15 @@ router.post('/calls/:id/promote-to-incident', validateParamId, requireRole('admi
       call.injuries_reported ?? 0
     );
 
-    const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(result.lastInsertRowid) || { id: result.lastInsertRowid };
+    const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(result.lastInsertRowid);
+    if (!incident) { res.status(500).json({ error: 'Failed to retrieve created incident' }); return; }
+
+    // Audit log the incident creation
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'incident_created', 'incident', ?, ?, ?)
+    `).run(req.user!.userId, result.lastInsertRowid, `Promoted call ${call.call_number} to incident ${incidentNumber}`, req.ip || 'unknown');
+
     res.status(201).json(incident);
   } catch (error: any) {
     console.error('Promote to incident error:', error?.message || 'Unknown error');
@@ -890,6 +899,11 @@ router.post('/calls/:id/persons', validateParamId, requireRole('admin', 'manager
     `).run(req.user!.userId, call.id,
       `Linked ${person.first_name} ${person.last_name} as ${role} to call ${call.call_number}`,
       req.ip || 'unknown');
+
+    // Async warrant check for linked person
+    universalWarrantCheck(Number(person_id)).catch(err =>
+      console.error('[Warrant Check] Async check failed:', err.message)
+    );
 
     broadcastDispatchUpdate({ action: 'call_person_linked', call_id: call.id, person: linked });
     res.status(201).json(linked);

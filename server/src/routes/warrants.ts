@@ -157,7 +157,7 @@ router.get('/export', requireRole('dispatcher', 'supervisor', 'admin', 'manager'
 // POST /api/warrants/check/:personId — manual universal warrant check
 router.post('/check/:personId', requireRole('admin', 'manager', 'supervisor', 'officer'), async (req: Request, res: Response) => {
   try {
-    const personId = parseInt(req.params.personId, 10);
+    const personId = parseInt(String(req.params.personId), 10);
     if (isNaN(personId) || personId <= 0) { res.status(400).json({ error: 'Invalid person ID' }); return; }
     const result = await universalWarrantCheck(personId, true);
     res.json(result);
@@ -390,20 +390,20 @@ router.post('/watch/scan', requireRole('admin', 'manager', 'supervisor'), async 
 router.get('/dashboard/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const activeWarrants = (db.prepare('SELECT COUNT(*) as cnt FROM warrants WHERE status = ?').get('active') as any).cnt;
+    const activeWarrants = (db.prepare('SELECT COUNT(*) as cnt FROM warrants WHERE status = ?').get('active') as any)?.cnt ?? 0;
 
     const hitsToday = (db.prepare(`
       SELECT COUNT(*) as cnt FROM warrant_watch_log
       WHERE event = 'warrant_found' AND created_at >= datetime('now', 'localtime', '-24 hours')
-    `).get() as any).cnt;
+    `).get() as any)?.cnt ?? 0;
 
     const personsFlagged = (db.prepare(`
       SELECT COUNT(*) as cnt FROM persons
       WHERE flags LIKE '%ACTIVE_WARRANT%' AND archived_at IS NULL
-    `).get() as any).cnt;
+    `).get() as any)?.cnt ?? 0;
 
-    const totalSources = (db.prepare('SELECT COUNT(*) as cnt FROM warrant_scraper_config WHERE enabled = 1').get() as any).cnt;
-    const healthySources = (db.prepare('SELECT COUNT(*) as cnt FROM warrant_scraper_config WHERE enabled = 1 AND consecutive_errors < 5').get() as any).cnt;
+    const totalSources = (db.prepare('SELECT COUNT(*) as cnt FROM warrant_scraper_config WHERE enabled = 1').get() as any)?.cnt ?? 0;
+    const healthySources = (db.prepare('SELECT COUNT(*) as cnt FROM warrant_scraper_config WHERE enabled = 1 AND consecutive_errors < 5').get() as any)?.cnt ?? 0;
 
     res.json({ activeWarrants, hitsToday, personsFlagged, sourcesOnline: healthySources, sourcesTotal: totalSources });
   } catch (err: any) {
