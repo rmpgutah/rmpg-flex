@@ -4,7 +4,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { validateParamId } from '../middleware/sanitize';
 import { parseDeviceName, createSecurityNotification } from '../utils/deviceFingerprint';
 import { isPasswordExpired, isPasswordExpiringSoon } from '../utils/passwordExpiry';
-import { getBlockedIps } from '../middleware/rateLimiter';
+import { getBlockedIps, unblockIp } from '../middleware/rateLimiter';
 import { localNow } from '../utils/timeUtils';
 
 const router = Router();
@@ -216,6 +216,21 @@ router.get('/blocked-ips', authenticateToken, requireRole('admin'), (_req: Reque
     res.json({ blocked, count: blocked.length });
   } catch (error: any) {
     console.error('Get blocked IPs error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── POST /api/auth/security/unblock-ip ──────────────
+// Admin-only endpoint to unblock a specific IP or all IPs
+router.post('/unblock-ip', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const { ip } = req.body || {};
+    const count = unblockIp(ip || undefined);
+    const msg = ip ? `Unblocked IP ${ip}` : `Unblocked all ${count} IPs`;
+    console.log(`[Security] ${msg} — by ${req.user!.username}`);
+    res.json({ success: true, message: msg, unblocked: count });
+  } catch (error: any) {
+    console.error('Unblock IP error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
