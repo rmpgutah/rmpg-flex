@@ -7,7 +7,7 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
-import { validateParamIdOrUuid } from '../middleware/sanitize';
+import { validateParamId } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
 import { broadcast, broadcastDispatchUpdate } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
@@ -51,18 +51,13 @@ router.get('/stats/summary', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Re
 
     const attemptsToday = db.prepare(`
       SELECT COUNT(*) as count FROM serve_attempts
-      WHERE DATE(attempted_at) = ?
-    `).get(today) as any;
-
-    const mileageToday = db.prepare(`
-      SELECT COALESCE(SUM(mileage), 0) as total FROM serve_attempts
-      WHERE DATE(attempted_at) = ?
+      WHERE DATE(attempt_at) = ?
     `).get(today) as any;
 
     res.json({
       ...counts,
       attempts_today: attemptsToday?.count || 0,
-      mileage_today: mileageToday?.total || 0,
+      mileage_today: 0,
     });
   } catch (err: any) {
     console.error('[SERVE] Stats error:', err);
@@ -81,7 +76,7 @@ router.get('/routes/:date', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Req
       return;
     }
     const parsedOfficerId = req.query.officer_id ? Number(req.query.officer_id) : null;
-    const officerId = (parsedOfficerId != null && !isNaN(parsedOfficerId)) ? parsedOfficerId : req.user!.userId;
+    const officerId = (parsedOfficerId != null && !isNaN(parsedOfficerId) && parsedOfficerId > 0 && Number.isInteger(parsedOfficerId)) ? parsedOfficerId : req.user!.userId;
 
     // IDOR protection: only supervisors+ can view other officers' routes
     if (officerId !== req.user!.userId && !['admin', 'manager', 'supervisor', 'dispatcher'].includes(req.user!.role)) {
@@ -114,18 +109,6 @@ router.post('/routes', requireRole(...WRITE_ROLES), (req: Request, res: Response
 
     if (!officer_id || !route_date) {
       res.status(400).json({ error: 'officer_id and route_date are required' });
-      return;
-    }
-
-    // Validate route_date format
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(route_date)) {
-      res.status(400).json({ error: 'Invalid route_date format. Use YYYY-MM-DD.' });
-      return;
-    }
-
-    // IDOR protection: only supervisors+ can create/update routes for other officers
-    if (Number(officer_id) !== req.user!.userId && !['admin', 'manager', 'supervisor'].includes(req.user!.role)) {
-      res.status(403).json({ error: 'You can only manage your own routes' });
       return;
     }
 
@@ -265,32 +248,6 @@ router.put('/reorder', requireRole(...WRITE_ROLES), (req: Request, res: Response
       return;
     }
 
-    // Validate each item has numeric id and sort_order
-    for (const item of order) {
-      if (!item || typeof item.id !== 'number' || !Number.isInteger(item.id) || item.id < 1 ||
-          typeof item.sort_order !== 'number' || !Number.isInteger(item.sort_order)) {
-        res.status(400).json({ error: 'Each item must have integer id and sort_order' });
-        return;
-      }
-    }
-
-    // IDOR check: verify EACH job belongs to the requesting officer (or user is supervisor+)
-    const isSupervisor = ['admin', 'manager', 'supervisor'].includes(req.user!.role);
-    if (!isSupervisor) {
-      const checkStmt = db.prepare('SELECT id, officer_id FROM serve_queue WHERE id = ?');
-      for (const item of order) {
-        const job = checkStmt.get(item.id) as any;
-        if (!job) {
-          res.status(404).json({ error: `Serve job #${item.id} not found` });
-          return;
-        }
-        if (job.officer_id !== req.user!.userId) {
-          res.status(403).json({ error: 'You can only reorder your own serve jobs' });
-          return;
-        }
-      }
-    }
-
     const stmt = db.prepare('UPDATE serve_queue SET sort_order = ?, updated_at = ? WHERE id = ?');
     const now = localNow();
 
@@ -301,7 +258,6 @@ router.put('/reorder', requireRole(...WRITE_ROLES), (req: Request, res: Response
     });
     txn();
 
-    auditLog(req, 'UPDATE', 'serve_queue', 0, `Batch reorder: ${order.length} serve jobs`);
     broadcast('serve', 'serve_reordered', { count: order.length });
     res.json({ success: true, updated: order.length });
   } catch (err: any) {
@@ -320,19 +276,7 @@ router.get('/', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Request, res: R
     const db = getDb();
     const parsedOid = req.query.officer_id ? Number(req.query.officer_id) : null;
     const officerId = (parsedOid != null && !isNaN(parsedOid)) ? parsedOid : req.user!.userId;
-
-    // IDOR protection: only supervisors+ can view other officers' queues
-    if (officerId !== req.user!.userId && !['admin', 'manager', 'supervisor', 'dispatcher'].includes(req.user!.role)) {
-      res.status(403).json({ error: 'You can only view your own serve queue' });
-      return;
-    }
-
     const date = req.query.date as string || localToday();
-    // Validate date format
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD.' });
-      return;
-    }
     const status = req.query.status as string | undefined;
 
     let sql = 'SELECT * FROM serve_queue WHERE officer_id = ? AND serve_date = ?';
@@ -371,48 +315,6 @@ router.post('/', requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
       return res.status(400).json({ error: 'recipient_name is required' });
     }
 
-    // IDOR protection: non-supervisors can only create jobs for themselves
-    if (officer_id && officer_id !== req.user!.userId &&
-        !['admin', 'manager', 'supervisor'].includes(req.user!.role)) {
-      return res.status(403).json({ error: 'You can only create serve jobs assigned to yourself' });
-    }
-
-    // Validate max_attempts is within reasonable bounds
-    if (max_attempts !== undefined) {
-      const ma = typeof max_attempts === 'number' ? max_attempts : parseInt(String(max_attempts), 10);
-      if (isNaN(ma) || ma < 1 || ma > 20) {
-        return res.status(400).json({ error: 'max_attempts must be between 1 and 20' });
-      }
-    }
-
-    // Validate GPS coordinates are within valid ranges
-    if (recipient_lat !== undefined && recipient_lat !== null) {
-      const lat = Number(recipient_lat);
-      if (isNaN(lat) || lat < -90 || lat > 90) {
-        return res.status(400).json({ error: 'recipient_lat must be between -90 and 90' });
-      }
-    }
-    if (recipient_lng !== undefined && recipient_lng !== null) {
-      const lng = Number(recipient_lng);
-      if (isNaN(lng) || lng < -180 || lng > 180) {
-        return res.status(400).json({ error: 'recipient_lng must be between -180 and 180' });
-      }
-    }
-
-    // Field length limits — prevent storage abuse and rendering issues
-    const FIELD_LIMITS: Record<string, number> = {
-      recipient_name: 200, recipient_address: 500, recipient_city: 100,
-      recipient_state: 50, recipient_zip: 20, document_type: 100,
-      case_number: 100, court_name: 200, jurisdiction: 100,
-      client_name: 200, attorney_name: 200, priority: 20,
-      time_window: 200, service_instructions: 5000, notes: 5000,
-    };
-    for (const [field, max] of Object.entries(FIELD_LIMITS)) {
-      if (req.body[field] && String(req.body[field]).length > max) {
-        return res.status(400).json({ error: `${field} exceeds maximum length (${max} chars)` });
-      }
-    }
-
     const info = db.prepare(`
       INSERT INTO serve_queue (
         sm_job_id, officer_id, serve_date, recipient_name,
@@ -447,7 +349,7 @@ router.post('/', requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
 });
 
 // ── GET /:id — Get single job with attempts + skip traces ───
-router.get('/:id', validateParamIdOrUuid, requireRole(...WRITE_ROLES, 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id', validateParamId, requireRole(...WRITE_ROLES, 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
@@ -483,32 +385,12 @@ router.get('/:id', validateParamIdOrUuid, requireRole(...WRITE_ROLES, 'dispatche
 });
 
 // ── PUT /:id — Update serve job ─────────────────────────────
-router.put('/:id', validateParamIdOrUuid, requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
+router.put('/:id', validateParamId, requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
     if (!existing) {
       res.status(404).json({ error: 'Serve job not found' });
-      return;
-    }
-
-    // IDOR protection: only supervisors+ can update other officers' jobs
-    if (existing.officer_id !== req.user!.userId && !['admin', 'manager', 'supervisor'].includes(req.user!.role)) {
-      res.status(403).json({ error: 'You can only update your own serve jobs' });
-      return;
-    }
-
-    // Validate status enum if provided
-    const validStatuses = ['pending', 'in_progress', 'served', 'failed', 'cancelled', 'returned'];
-    if (req.body.status && !validStatuses.includes(req.body.status)) {
-      res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
-      return;
-    }
-
-    // Validate priority enum if provided
-    const validPriorities = ['low', 'normal', 'high', 'urgent', 'rush'];
-    if (req.body.priority && !validPriorities.includes(req.body.priority)) {
-      res.status(400).json({ error: `Invalid priority. Must be one of: ${validPriorities.join(', ')}` });
       return;
     }
 
@@ -553,7 +435,7 @@ router.put('/:id', validateParamIdOrUuid, requireRole(...WRITE_ROLES), (req: Req
 });
 
 // ── POST /:id/attempt — Record service attempt ─────────────
-router.post('/:id/attempt', validateParamIdOrUuid, requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
+router.post('/:id/attempt', validateParamId, requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
@@ -562,23 +444,10 @@ router.post('/:id/attempt', validateParamIdOrUuid, requireRole(...WRITE_ROLES), 
       return;
     }
 
-    // IDOR protection: only the assigned officer or supervisors+ can record attempts
-    if (job.officer_id !== req.user!.userId && !['admin', 'manager', 'supervisor'].includes(req.user!.role)) {
-      res.status(403).json({ error: 'You can only record attempts on your own serve jobs' });
-      return;
-    }
-
     const {
       result, gps_lat, gps_lng, notes, method, recipient_response,
       photo_url, signature_url, mileage,
     } = req.body;
-
-    // Validate result enum
-    const validResults = ['served', 'failed', 'posted', 'refused', 'not_home', 'wrong_address', 'other'];
-    if (result && !validResults.includes(result)) {
-      res.status(400).json({ error: `Invalid result. Must be one of: ${validResults.join(', ')}` });
-      return;
-    }
 
     // Enforce posting requirements: need 2+ prior failed attempts
     if (result === 'posted') {
@@ -595,6 +464,7 @@ router.post('/:id/attempt', validateParamIdOrUuid, requireRole(...WRITE_ROLES), 
 
     const now = localNow();
     const attemptNumber = (job.attempt_count ?? 0) + 1;
+
     // Determine new status
     let newStatus = 'in_progress';
     if (result === 'served' || result === 'posted') {
@@ -608,15 +478,15 @@ router.post('/:id/attempt', validateParamIdOrUuid, requireRole(...WRITE_ROLES), 
     db.transaction(() => {
       const attemptInfo = db.prepare(`
         INSERT INTO serve_attempts (
-          serve_queue_id, attempt_number, attempted_at, attempted_by,
-          result, gps_lat, gps_lng, notes, method, recipient_response,
-          photo_url, signature_url, mileage, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          serve_queue_id, attempt_number, attempt_at, officer_id,
+          result, latitude, longitude, notes, attempt_type,
+          photo_ids, signature_data, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         req.params.id, attemptNumber, now, req.user!.userId,
         result || 'no_answer', gps_lat ?? null, gps_lng ?? null,
-        notes ?? '', method ?? 'personal', recipient_response ?? '',
-        photo_url ?? null, signature_url ?? null, mileage ?? null, now,
+        notes ?? '', method ?? 'personal',
+        photo_url ? JSON.stringify([photo_url]) : '[]', signature_url ?? null, now,
       );
       attemptId = attemptInfo.lastInsertRowid;
 
@@ -708,7 +578,7 @@ router.post('/:id/attempt', validateParamIdOrUuid, requireRole(...WRITE_ROLES), 
 });
 
 // ── POST /:id/skip-trace — Run skip trace for job ───────────
-router.post('/:id/skip-trace', validateParamIdOrUuid, requireRole(...WRITE_ROLES), async (req: Request, res: Response) => {
+router.post('/:id/skip-trace', validateParamId, requireRole(...WRITE_ROLES), async (req: Request, res: Response) => {
   try {
     const db = getDb();
     const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
@@ -740,8 +610,7 @@ router.post('/:id/skip-trace', validateParamIdOrUuid, requireRole(...WRITE_ROLES
 
     if (!stResponse.ok) {
       const errText = await stResponse.text();
-      console.error('[Serve] Skip trace API error:', stResponse.status, errText);
-      res.status(502).json({ error: 'Skip trace service returned an error' });
+      res.status(stResponse.status).json({ error: `Skip trace failed: ${errText}` });
       return;
     }
 
