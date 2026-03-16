@@ -56,10 +56,11 @@ async function fetchWithRetry(
     : 0;
   if (bodySize > 1_000_000) retries = 0; // 1MB threshold
 
-  // Mutation deduplication — return existing in-flight promise for same URL+method
+  // Mutation deduplication — return existing in-flight promise for same URL+method+body
   const method = init.method || 'GET';
+  const bodyStr = typeof init.body === 'string' ? init.body : '';
   if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method.toUpperCase())) {
-    const dedupKey = `${method}:${url}`;
+    const dedupKey = `${method}:${url}:${bodyStr}`;
     const existing = inflightMutations.get(dedupKey);
     if (existing && Date.now() - existing.ts < DEDUP_WINDOW_MS) {
       return existing.promise;
@@ -68,7 +69,7 @@ async function fetchWithRetry(
 
   // Track in-flight mutations for deduplication
   const isMutation = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(method.toUpperCase());
-  const dedupKey = isMutation ? `${method}:${url}` : '';
+  const dedupKey = isMutation ? `${method}:${url}:${bodyStr}` : '';
 
   const doFetch = async (): Promise<Response> => {
     let lastError: Error | null = null;

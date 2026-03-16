@@ -469,6 +469,17 @@ router.put('/bolos/:id', validateParamId, requireRole('admin', 'manager', 'super
       photo_url, status, priority, expires_at,
     } = req.body;
 
+    // Validate enum fields if provided
+    const VALID_BOLO_STATUSES = ['active', 'cancelled', 'resolved', 'expired'] as const;
+    try {
+      if (req.body.type) validateEnum(req.body.type, VALID_BOLO_TYPES, 'type');
+      if (priority) validateEnum(priority, VALID_BOLO_PRIORITIES, 'priority');
+      if (status) validateEnum(status, VALID_BOLO_STATUSES, 'status');
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+
     // Build dynamic SET clause — only update fields explicitly provided
     const bFields: string[] = [];
     const bValues: any[] = [];
@@ -584,7 +595,7 @@ router.post('/bolos/:id/unarchive', validateParamId, requireRole('admin', 'manag
 // ─── ACTIVITY FEED ────────────────────────────────────
 
 // GET /api/comms/activity-feed - Get recent activity (supports pagination)
-router.get('/activity-feed', (req: Request, res: Response) => {
+router.get('/activity-feed', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { limit = '50', offset = '0', entityType } = req.query;

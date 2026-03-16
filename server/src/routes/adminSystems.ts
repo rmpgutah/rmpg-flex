@@ -644,6 +644,12 @@ router.put('/announcements/:id', validateParamId, requireRole('admin', 'manager'
 
     db.prepare(`UPDATE system_announcements SET ${setClauses.join(', ')} WHERE id = ?`).run(...values);
 
+    // Audit log for announcement update (consistent with POST/DELETE routes)
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'announcement_updated', 'system', ?, ?, ?)
+    `).run(req.user!.userId, req.params.id, `Updated announcement #${req.params.id}`, req.ip || 'unknown');
+
     const updated = db.prepare('SELECT * FROM system_announcements WHERE id = ?').get(req.params.id);
     res.json(updated);
   } catch (error: any) {
@@ -700,6 +706,16 @@ router.put('/retention/:id', validateParamId, requireRole('admin', 'manager'), (
     if (!existing) {
       res.status(404).json({ error: 'Retention policy not found' });
       return;
+    }
+
+    // Validate retention_days if provided — must be a positive integer
+    if (req.body.retention_days !== undefined) {
+      const days = Number(req.body.retention_days);
+      if (!Number.isInteger(days) || days < 1) {
+        res.status(400).json({ error: 'retention_days must be a positive integer (minimum 1)' });
+        return;
+      }
+      req.body.retention_days = days;
     }
 
     const fields = ['retention_days', 'auto_archive', 'auto_delete', 'is_active'];

@@ -141,6 +141,28 @@ router.put('/checkpoints/:id', validateParamId, requireRole('admin', 'manager', 
       return;
     }
 
+    // Validate scan_required_interval_minutes if provided
+    if (req.body.scan_required_interval_minutes !== undefined && req.body.scan_required_interval_minutes !== null) {
+      const interval = Number(req.body.scan_required_interval_minutes);
+      if (!Number.isInteger(interval) || interval < 1) {
+        res.status(400).json({ error: 'scan_required_interval_minutes must be a positive integer (minimum 1)' });
+        return;
+      }
+      req.body.scan_required_interval_minutes = interval;
+    }
+
+    // Validate property_id exists if provided
+    if (req.body.property_id !== undefined && req.body.property_id !== null) {
+      const propId = parseInt(String(req.body.property_id), 10);
+      if (isNaN(propId) || propId < 1) {
+        res.status(400).json({ error: 'Invalid property_id' }); return;
+      }
+      const prop = db.prepare('SELECT id FROM properties WHERE id = ?').get(propId);
+      if (!prop) {
+        res.status(400).json({ error: 'Property not found' }); return;
+      }
+    }
+
     // Build dynamic SET clause — only update fields explicitly provided
     const cpFields: string[] = [];
     const cpValues: any[] = [];

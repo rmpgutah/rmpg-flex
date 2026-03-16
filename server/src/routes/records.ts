@@ -801,6 +801,12 @@ router.get('/vehicles/:id', validateParamId, requireRole('admin', 'manager', 'su
 // POST /api/records/vehicles - Create vehicle
 router.post('/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
+    // Require at least one identifying field for a vehicle record
+    if (!req.body.plate_number && !req.body.vin && !req.body.make) {
+      res.status(400).json({ error: 'At least one of plate_number, VIN, or make is required' });
+      return;
+    }
+
     const db = getDb();
     const {
       plate_number, state, make, model, year, color, secondary_color,
@@ -2063,6 +2069,11 @@ router.put('/criminal-history/:id', validateParamId, requireRole('admin', 'manag
 router.delete('/criminal-history/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const existing = db.prepare('SELECT id FROM criminal_history WHERE id = ?').get(req.params.id);
+    if (!existing) {
+      res.status(404).json({ error: 'Criminal history record not found' });
+      return;
+    }
     db.prepare('DELETE FROM criminal_history WHERE id = ?').run(req.params.id);
     auditLog(req, 'criminal_history_deleted', 'criminal_history', String(req.params.id), `Deleted criminal history record #${req.params.id}`);
     res.json({ success: true });
