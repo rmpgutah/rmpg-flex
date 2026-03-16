@@ -418,7 +418,7 @@ router.get('/dashboard/feed', requireRole('admin', 'manager', 'supervisor', 'off
     const range = req.query.range as string || '24h';
     const event = req.query.event as string || 'all';
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
-    const offset = parseInt(req.query.offset as string) || 0;
+    const offset = Math.max(0, Math.min(parseInt(req.query.offset as string) || 0, 10000));
 
     const rangeMap: Record<string, string> = {
       '1h': '-1 hours', '8h': '-8 hours', '24h': '-24 hours', '7d': '-7 days',
@@ -482,7 +482,7 @@ router.get('/unified', requireRole('admin', 'manager', 'supervisor', 'officer', 
     const severity = req.query.severity as string || 'all';
     const q = (req.query.q as string || '').trim();
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
-    const offset = parseInt(req.query.offset as string) || 0;
+    const offset = Math.max(0, Math.min(parseInt(req.query.offset as string) || 0, 10000));
 
     let whereClauses = ['w.archived_at IS NULL'];
     const params: any[] = [];
@@ -530,7 +530,7 @@ router.get('/unified', requireRole('admin', 'manager', 'supervisor', 'officer', 
 router.get('/person/:personId/profile', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const personId = parseInt(req.params.personId, 10);
+    const personId = parseInt(String(req.params.personId), 10);
     if (isNaN(personId) || personId <= 0) { res.status(400).json({ error: 'Invalid person ID' }); return; }
 
     const person = db.prepare(`
