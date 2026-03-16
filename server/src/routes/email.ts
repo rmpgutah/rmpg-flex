@@ -241,8 +241,8 @@ router.get('/folders/:id/children', async (req: Request, res: Response) => {
   }
 });
 
-// POST /api/email/folders — Create a new folder
-router.post('/folders', async (req: Request, res: Response) => {
+// POST /api/email/folders — Create a new folder (admin/manager only)
+router.post('/folders', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
     const { displayName, parentFolderId } = req.body;
@@ -262,8 +262,8 @@ router.post('/folders', async (req: Request, res: Response) => {
   }
 });
 
-// PATCH /api/email/folders/:id — Rename a folder
-router.patch('/folders/:id', async (req: Request, res: Response) => {
+// PATCH /api/email/folders/:id — Rename a folder (admin/manager only)
+router.patch('/folders/:id', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
     const { displayName } = req.body;
@@ -279,8 +279,8 @@ router.patch('/folders/:id', async (req: Request, res: Response) => {
   }
 });
 
-// DELETE /api/email/folders/:id — Delete a folder
-router.delete('/folders/:id', async (req: Request, res: Response) => {
+// DELETE /api/email/folders/:id — Delete a folder (admin/manager only)
+router.delete('/folders/:id', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
     const client = await getGraphClient();
@@ -324,9 +324,17 @@ router.get('/messages', async (req: Request, res: Response) => {
           .skip((pageNum - 1) * perPage);
 
         if (search) {
-          // Sanitize search term — escape double quotes to prevent KQL injection
-          const safeSearch = String(search).replace(/"/g, '\\"').slice(0, 200);
-          query = query.search(`"${safeSearch}"`);
+          // Sanitize search term — escape KQL special characters to prevent injection
+          // KQL operators: AND, OR, NOT, parentheses, colons, brackets, quotes
+          const safeSearch = String(search)
+            .replace(/["\\]/g, ' ')         // Remove quotes and backslashes
+            .replace(/[()[\]{}:!~?&|]/g, ' ') // Remove KQL operator chars
+            .replace(/\s+/g, ' ')            // Collapse whitespace
+            .trim()
+            .slice(0, 200);
+          if (safeSearch) {
+            query = query.search(`"${safeSearch}"`);
+          }
         }
 
         const result = await query.get();
