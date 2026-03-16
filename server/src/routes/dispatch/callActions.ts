@@ -1,12 +1,14 @@
+import crypto from 'crypto';
 import { Router, Request, Response } from 'express';
 import { getDb } from '../../models/database';
 import { requireRole } from '../../middleware/auth';
 import { validateParamId } from '../../middleware/sanitize';
 import { broadcast, broadcastDispatchUpdate, broadcastUnitUpdate } from '../../utils/websocket';
-import { localNow } from '../../utils/timeUtils';
+import { localNow, localToday } from '../../utils/timeUtils';
 import { generateIncidentNumber } from '../../utils/caseNumbers';
 import { createNotification, createNotificationForRoles } from '../notifications';
 import { universalWarrantCheck } from '../../utils/universalWarrantScanner';
+import { auditLog } from '../../utils/auditLogger';
 
 const router = Router();
 
@@ -1135,6 +1137,128 @@ router.delete('/calls/:id/vehicles/:linkId', validateParamId, requireRole('admin
   } catch (error: any) {
     console.error('Unlink call vehicle error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /calls/:id/send-to-serve — Create serve queue entry from PSO dispatch call
+router.post('/calls/:id/send-to-serve', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) {
+      res.status(404).json({ error: 'Call not found' });
+      return;
+    }
+
+    if (call.incident_type !== 'pso_client_request') {
+      res.status(400).json({ error: 'Only PSO client request calls can be sent to the serve queue' });
+      return;
+    }
+
+    if (!call.process_served_to) {
+      res.status(400).json({ error: 'Call must have a process service recipient (process_served_to) before sending to serve queue' });
+      return;
+    }
+
+    // Block duplicate — check if already linked
+    const existing = db.prepare('SELECT id FROM serve_queue WHERE call_id = ?').get(call.id) as any;
+    if (existing) {
+      res.status(409).json({ error: 'This call already has a linked serve queue entry', serve_queue_id: existing.id });
+      return;
+    }
+
+    const now = localNow();
+    const id = crypto.randomUUID();
+
+    // Parse address into components if possible (simple comma split)
+    const addrParts = (call.process_served_address || '').split(',').map((s: string) => s.trim());
+    const recipientAddress = addrParts[0] || call.process_served_address || call.location_address || '';
+    const recipientCity = addrParts[1] || '';
+    const recipientState = addrParts[2] || 'UT';
+    const recipientZip = addrParts[3] || '';
+
+    // Try to get assigned officer
+    let officerId: number | null = null;
+    try {
+      const unitIds = JSON.parse(call.assigned_unit_ids || '[]');
+      if (Array.isArray(unitIds) && unitIds.length > 0) {
+        const unit = db.prepare('SELECT officer_id FROM units WHERE id = ?').get(unitIds[0]) as any;
+        if (unit?.officer_id) officerId = unit.officer_id;
+      }
+    } catch {}
+
+    // Map document type
+    const docTypeMap: Record<string, string> = {
+      subpoena: 'subpoena', summons: 'summons', complaint: 'complaint',
+      eviction: 'eviction', restraining_order: 'restraining_order',
+      writ: 'writ', order: 'order', notice: 'notice', petition: 'petition',
+    };
+    const documentType = docTypeMap[call.process_service_type] || call.process_service_type || 'civil';
+
+    db.prepare(`
+      INSERT INTO serve_queue (
+        id, call_id, officer_id, serve_date, recipient_name,
+        recipient_address, recipient_city, recipient_state, recipient_zip,
+        recipient_lat, recipient_lng, document_type, case_number,
+        client_name, priority, max_attempts, service_instructions, notes,
+        status, attempt_count, sort_order, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, 999, ?, ?)
+    `).run(
+      id, call.id, officerId,
+      localToday(),
+      call.process_served_to,
+      recipientAddress, recipientCity, recipientState, recipientZip,
+      call.latitude || null, call.longitude || null,
+      documentType, call.case_number || '',
+      call.pso_requestor_name || '', call.priority || 'normal',
+      3, '', `From dispatch ${call.call_number}`,
+      now, now,
+    );
+
+    const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(id);
+
+    auditLog(req, 'CREATE', 'serve_queue', String(id), `Sent dispatch call ${call.call_number} to serve queue for ${call.process_served_to}`);
+    broadcast('serve', 'serve_created', job);
+
+    // Also update the call's activity log
+    try {
+      const activities = JSON.parse(call.activity_log || '[]');
+      activities.push({
+        action: 'sent_to_serve_queue',
+        timestamp: now,
+        user_id: req.user!.userId,
+        details: `Sent to serve queue (ID: ${id})`,
+      });
+      db.prepare('UPDATE calls_for_service SET activity_log = ? WHERE id = ?').run(JSON.stringify(activities), call.id);
+    } catch {}
+
+    broadcastDispatchUpdate({ action: 'call_updated', call: db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id) });
+
+    res.status(201).json(job);
+  } catch (err: any) {
+    console.error('[DISPATCH] Send to serve error:', err);
+    res.status(500).json({ error: 'Failed to send to serve queue' });
+  }
+});
+
+// GET /calls/:id/serve-link — Get linked serve queue entry for a call
+router.get('/calls/:id/serve-link', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const job = db.prepare('SELECT * FROM serve_queue WHERE call_id = ?').get(req.params.id) as any;
+    if (!job) {
+      res.json(null);
+      return;
+    }
+
+    const attempts = db.prepare(
+      'SELECT * FROM serve_attempts WHERE serve_queue_id = ? ORDER BY attempt_number ASC'
+    ).all(job.id);
+
+    res.json({ ...job, attempts });
+  } catch (err: any) {
+    console.error('[DISPATCH] Serve link error:', err);
+    res.status(500).json({ error: 'Failed to fetch serve link' });
   }
 });
 
