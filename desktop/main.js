@@ -173,7 +173,6 @@ function startServer() {
   return new Promise((resolve, reject) => {
     const serverDir = getServerDir();
     const serverEntry = path.join(serverDir, 'src', 'index.ts');
-    const isWin = process.platform === 'win32';
 
     // Use writable user-data directory (avoids EPERM on C:\Program Files)
     const dataDir = getUserDataDir();
@@ -188,14 +187,19 @@ function startServer() {
       console.log('[SERVER] Created uploads directory:', uploadsDir);
     }
 
-    // Resolve tsx binary — works in both dev and production
-    const tsxBin = path.join(serverDir, 'node_modules', '.bin', isWin ? 'tsx.cmd' : 'tsx');
+    // ── Resolve tsx CLI module directly ────────────────────────
+    // We use Electron's own Node.js runtime via ELECTRON_RUN_AS_NODE=1
+    // instead of the tsx wrapper scripts. This avoids two platform bugs:
+    //   - Windows: tsx.cmd is missing when cross-compiled from macOS
+    //   - macOS:   #!/usr/bin/env node shebang fails from Finder (no PATH)
+    const tsxCli = path.join(serverDir, 'node_modules', 'tsx', 'dist', 'cli.mjs');
 
     console.log('[SERVER] Starting from:', serverDir);
     console.log('[SERVER] Entry:', serverEntry);
-    console.log('[SERVER] tsx bin:', tsxBin);
-    console.log('[SERVER] tsx exists:', fs.existsSync(tsxBin));
+    console.log('[SERVER] tsx CLI module:', tsxCli);
+    console.log('[SERVER] tsx exists:', fs.existsSync(tsxCli));
     console.log('[SERVER] Entry exists:', fs.existsSync(serverEntry));
+    console.log('[SERVER] Electron exe:', process.execPath);
     console.log('[SERVER] Platform:', process.platform, process.arch);
     console.log('[SERVER] Data dir:', dataDir);
     console.log('[SERVER] Uploads dir:', uploadsDir);
@@ -203,11 +207,11 @@ function startServer() {
     // Collect stderr for error reporting
     let stderrOutput = '';
 
-    // On Windows, spawn with shell: true concatenates args unquoted, so paths
-    // containing spaces (e.g. "C:\Program Files\RMPG Flex\...") break.
-    // Fix: quote the paths explicitly when using shell mode on Windows.
+    // Use Electron's embedded Node.js to run tsx directly.
+    // ELECTRON_RUN_AS_NODE=1 makes the Electron binary behave as plain Node.
     const serverEnv = {
       ...process.env,
+      ELECTRON_RUN_AS_NODE: '1',
       NODE_ENV: DEV_MODE ? 'development' : 'production',
       PORT: String(SERVER_PORT),
       HOST: '0.0.0.0',
@@ -216,24 +220,13 @@ function startServer() {
       RMPG_UPLOADS_DIR: uploadsDir,
     };
 
-    if (isWin) {
-      // Windows: run cmd.exe /c "tsx.cmd" "serverEntry" with windowsVerbatimArguments
-      // This ensures paths with spaces are preserved correctly
-      serverProcess = spawn('cmd.exe', ['/c', `"${tsxBin}" "${serverEntry}"`], {
-        cwd: serverDir,
-        env: serverEnv,
-        stdio: ['ignore', 'pipe', 'pipe'],
-        shell: false,
-        windowsVerbatimArguments: true,
-      });
-    } else {
-      // macOS / Linux: no quoting issues, spawn directly
-      serverProcess = spawn(tsxBin, [serverEntry], {
-        cwd: serverDir,
-        env: serverEnv,
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
-    }
+    // Spawn: electron-as-node runs tsx/dist/cli.mjs which then loads the server
+    // Works identically on Windows, macOS, and Linux — no .cmd wrappers needed
+    serverProcess = spawn(process.execPath, [tsxCli, serverEntry], {
+      cwd: serverDir,
+      env: serverEnv,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
 
     let resolved = false;
 
@@ -261,7 +254,7 @@ function startServer() {
       console.error('[SERVER] Failed to spawn:', err);
       if (!resolved) {
         resolved = true;
-        reject(new Error(`Failed to start server process: ${err.message}\n\ntsx binary: ${tsxBin}\nServer dir: ${serverDir}`));
+        reject(new Error(`Failed to start server process: ${err.message}\n\ntsx CLI: ${tsxCli}\nServer dir: ${serverDir}`));
       }
     });
 
