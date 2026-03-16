@@ -177,7 +177,7 @@ export default function EvidencePropertyPage() {
       const updated = await apiFetch<{ data: any }>(`/records/evidence/${selected.id}`);
       setSelected(updated.data);
     } catch (err: any) {
-      addToast(err.message || 'Failed to record action', 'error');
+      addToast(err?.message || 'Failed to record action', 'error');
     } finally { setChainSubmitting(false); }
   };
 
@@ -206,7 +206,7 @@ export default function EvidencePropertyPage() {
       fetchItems({ silent: true });
       fetchStats();
     } catch (err: any) {
-      addToast(err.message || 'Failed to create evidence', 'error');
+      addToast(err?.message || 'Failed to create evidence', 'error');
     } finally { setNewEvidenceSubmitting(false); }
   };
 

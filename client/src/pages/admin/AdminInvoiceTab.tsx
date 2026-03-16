@@ -745,7 +745,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                 }
               } catch (e: any) {
                 console.error('Invoice print error:', e);
-                setError(e.message || 'Print failed');
+                setError(e?.message || 'Print failed');
               }
             }}
             className="toolbar-btn text-rmpg-300"

@@ -85,7 +85,7 @@ export default function ForcePasswordChangeModal() {
         logout();
       }, 2000);
     } catch (err: any) {
-      setError(err.message || 'Failed to change password');
+      setError(err?.message || 'Failed to change password');
     } finally {
       setSaving(false);
     }

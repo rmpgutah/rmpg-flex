@@ -105,7 +105,7 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
           }
         }
       } catch (err: any) {
-        setError(err.message || 'Failed to load premise history');
+        setError(err?.message || 'Failed to load premise history');
       } finally {
         setLoading(false);
       }

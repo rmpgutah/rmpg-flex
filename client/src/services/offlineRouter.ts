@@ -94,8 +94,8 @@ export async function handle(
 
     return { status: 503, error: 'Endpoint not available offline' };
   } catch (err: any) {
-    console.error(`[OFFLINE-ROUTER] Error handling ${method} ${path}:`, err.message);
-    return { status: 500, error: err.message };
+    console.error(`[OFFLINE-ROUTER] Error handling ${method} ${path}:`, err?.message || err);
+    return { status: 500, error: err?.message || 'Internal error' };
   }
 }
 

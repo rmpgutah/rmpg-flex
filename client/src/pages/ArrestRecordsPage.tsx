@@ -184,7 +184,7 @@ function exportCsv(records: ArrestRecord[]) {
   ]);
 
   const csv = [headers, ...rows]
-    .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""').replace(/[\r\n]+/g, ' ')}"`).join(','))
     .join('\n');
 
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });

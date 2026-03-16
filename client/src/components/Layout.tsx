@@ -311,7 +311,7 @@ export default function Layout() {
       // Fire-and-forget — don't await so the modal closes immediately
       refreshUser();
     } catch (err: any) {
-      setSetupError(err.message || 'Failed to save. Try again.');
+      setSetupError(err?.message || 'Failed to save. Try again.');
     } finally {
       setSetupSaving(false);
     }

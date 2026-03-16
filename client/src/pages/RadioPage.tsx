@@ -243,7 +243,7 @@ export default function RadioPage() {
     if (historyEntries.length === 0) return;
     const header = 'Timestamp,Channel,User,Duration(s),Transcript,Has Audio\n';
     const rows = historyEntries.map(e =>
-      `"${e.transmitted_at}","${e.channel}","${e.full_name || e.username || ''}","${e.duration_seconds || ''}","${(e.transcript || '').replace(/"/g, '""')}","${e.audio_file ? 'Yes' : 'No'}"`
+      `"${e.transmitted_at}","${e.channel}","${e.full_name || e.username || ''}","${e.duration_seconds || ''}","${(e.transcript || '').replace(/"/g, '""').replace(/[\r\n]+/g, ' ')}","${e.audio_file ? 'Yes' : 'No'}"`
     ).join('\n');
     const blob = new Blob([header + rows], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);

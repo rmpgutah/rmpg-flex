@@ -120,7 +120,7 @@ export default function FieldInterviewsPage() {
       setTotalPages(res.pagination?.totalPages || 1);
       setTotalCount(res.pagination?.total || 0);
     } catch (err: any) {
-      setError(err.message);
+      setError(err?.message || 'Operation failed');
     } finally {
       setLoading(false);
     }
@@ -209,7 +209,7 @@ export default function FieldInterviewsPage() {
       setEditingFi(null);
       await fetchFis();
     } catch (err: any) {
-      setError(err.message);
+      setError(err?.message || 'Operation failed');
     } finally {
       setSubmitting(false);
     }
@@ -221,7 +221,7 @@ export default function FieldInterviewsPage() {
       addToast('Field interview archived', 'success');
       await fetchFis();
       if (selectedFi?.id === fi.id) setSelectedFi(null);
-    } catch (err: any) { setError(err.message); }
+    } catch (err: any) { setError(err?.message || 'Operation failed'); }
   };
 
   const handleUnarchive = async (fi: FieldInterview) => {
@@ -229,7 +229,7 @@ export default function FieldInterviewsPage() {
       await apiFetch(`/field-interviews/${fi.id}/unarchive`, { method: 'POST' });
       addToast('Field interview restored', 'success');
       await fetchFis();
-    } catch (err: any) { setError(err.message); }
+    } catch (err: any) { setError(err?.message || 'Operation failed'); }
   };
 
   const update = (field: string, value: any) => setFormData(prev => ({ ...prev, [field]: value }));

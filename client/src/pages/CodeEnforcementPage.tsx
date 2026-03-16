@@ -160,7 +160,7 @@ export default function CodeEnforcementPage() {
       setVFormOpen(false);
       setVFormData({ ...EMPTY_VIOLATION });
       fetchViolations({ silent: true }); fetchStats();
-    } catch (err: any) { addToast(err.message, 'error'); }
+    } catch (err: any) { addToast(err?.message || 'Operation failed', 'error'); }
     finally { setSubmitting(false); }
   };
 
@@ -179,7 +179,7 @@ export default function CodeEnforcementPage() {
       setTFormOpen(false);
       setTFormData({ ...EMPTY_TOW });
       fetchTows({ silent: true }); fetchStats();
-    } catch (err: any) { addToast(err.message, 'error'); }
+    } catch (err: any) { addToast(err?.message || 'Operation failed', 'error'); }
     finally { setSubmitting(false); }
   };
 
@@ -192,7 +192,7 @@ export default function CodeEnforcementPage() {
         const updated = await apiFetch<{ data: CodeViolation }>(`/code-enforcement/violations/${id}`);
         setSelectedViolation(updated.data);
       }
-    } catch (err: any) { addToast(err.message, 'error'); }
+    } catch (err: any) { addToast(err?.message || 'Operation failed', 'error'); }
   };
 
   const handleTowStatus = async (id: number, status: string) => {
@@ -204,7 +204,7 @@ export default function CodeEnforcementPage() {
         const updated = await apiFetch<{ data: VehicleTow }>(`/code-enforcement/tows/${id}`);
         setSelectedTow(updated.data);
       }
-    } catch (err: any) { addToast(err.message, 'error'); }
+    } catch (err: any) { addToast(err?.message || 'Operation failed', 'error'); }
   };
 
   return (

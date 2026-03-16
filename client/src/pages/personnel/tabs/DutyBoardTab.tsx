@@ -54,6 +54,7 @@ export default function DutyBoardTab({ officers, timeEntries, credentials, onOff
 
   function getElapsedHours(clockIn: string): string {
     const diff = Date.now() - new Date(clockIn).getTime();
+    if (isNaN(diff) || diff < 0) return '0h 0m';
     const hrs = Math.floor(diff / 3600000);
     const mins = Math.floor((diff % 3600000) / 60000);
     return `${hrs}h ${mins}m`;

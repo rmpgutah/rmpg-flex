@@ -1270,7 +1270,7 @@ router.post('/notification-rules/:id/test', requireRole('admin', 'manager'), (re
             `[TEST] ${rule.name}`,
             `Test notification for rule: ${rule.name} (trigger: ${rule.trigger_event})`,
           ).then(() => { emailSentCount++; })
-           .catch(err => console.error(`[AdminSystems] Test email failed for user ${userId}:`, err.message));
+           .catch(err => console.error(`[AdminSystems] Test email failed for user ${userId}:`, err?.message || err));
         }
       } catch { /* skip failed sends */ }
     }

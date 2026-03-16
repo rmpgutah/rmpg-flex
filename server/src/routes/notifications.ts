@@ -172,7 +172,7 @@ function _sendEmailIfEnabled(
 
       if (isTarget) {
         sendNotificationEmail(userId, title, body || '').catch(err => {
-          console.error(`[Notifications] Email delivery failed for user ${userId}:`, err.message);
+          console.error(`[Notifications] Email delivery failed for user ${userId}:`, err?.message || err);
         });
       }
     }
@@ -211,7 +211,7 @@ export function createNotificationForRoles(
       createNotification(user.id, type, title, body, entityType, entityId, priority, triggerEvent);
     }
   } catch (err: any) {
-    console.error('[Notifications] createNotificationForRoles failed:', err.message);
+    console.error('[Notifications] createNotificationForRoles failed:', err?.message || err);
   }
 }
 

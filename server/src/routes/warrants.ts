@@ -348,7 +348,7 @@ router.post('/watch/scan', requireRole('admin', 'manager', 'supervisor'), async 
 
     // Run scan asynchronously (don't await in the response)
     runWarrantWatchScan().catch(err => {
-      console.error('[Warrant Watch] Manual scan failed:', err.message);
+      console.error('[Warrant Watch] Manual scan failed:', err?.message || err);
     });
   } catch (error: any) {
     console.error('Trigger warrant watch scan error:', error?.message || 'Unknown error');
@@ -874,7 +874,7 @@ router.post('/scraped/scrape/:sourceKey', requireRole('admin', 'manager'), async
 
     // Run scrape in background
     manualScrapeSource(sourceKey).catch(err => {
-      console.error(`[Warrant Scraper] Manual scrape failed for ${sourceKey}:`, err.message);
+      console.error(`[Warrant Scraper] Manual scrape failed for ${sourceKey}:`, err?.message || err);
     });
   } catch (error: any) {
     console.error('Manual warrant scrape error:', error?.message || 'Unknown error');

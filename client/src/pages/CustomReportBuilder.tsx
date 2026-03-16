@@ -134,7 +134,7 @@ export default function CustomReportBuilder() {
   const exportCsv = () => {
     if (results.length === 0) return;
     const headers = resultColumns.join(',');
-    const rows = results.map(r => resultColumns.map(c => `"${String(r[c] ?? '').replace(/"/g, '""')}"`).join(','));
+    const rows = results.map(r => resultColumns.map(c => `"${String(r[c] ?? '').replace(/"/g, '""').replace(/[\r\n]+/g, ' ')}"`).join(','));
     const csv = [headers, ...rows].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);

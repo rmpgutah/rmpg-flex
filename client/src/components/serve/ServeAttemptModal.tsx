@@ -111,7 +111,7 @@ export default function ServeAttemptModal({
         });
       },
       (err) => {
-        setGps(prev => ({ ...prev, loading: false, error: err.message }));
+        setGps(prev => ({ ...prev, loading: false, error: err?.message || 'GPS error' }));
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
     );

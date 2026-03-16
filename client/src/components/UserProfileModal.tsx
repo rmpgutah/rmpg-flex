@@ -359,7 +359,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
       await refreshUser();
       setProfileMsg({ type: 'success', text: 'Profile updated successfully.' });
     } catch (err: any) {
-      setProfileMsg({ type: 'error', text: err.message || 'Failed to update profile' });
+      setProfileMsg({ type: 'error', text: err?.message || 'Failed to update profile' });
     } finally {
       setProfileSaving(false);
     }
@@ -380,7 +380,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
       setPwMsg({ type: 'success', text: result.message || 'Password changed. You will be logged out.' });
       setTimeout(() => logout(), 2500);
     } catch (err: any) {
-      setPwMsg({ type: 'error', text: err.message || 'Failed to change password' });
+      setPwMsg({ type: 'error', text: err?.message || 'Failed to change password' });
     } finally {
       setPwSaving(false);
     }
@@ -403,7 +403,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
       setBackupCodes(data.backupCodes || []);
       setSetupStep('qr');
     } catch (err: any) {
-      setSecurityMsg({ type: 'error', text: err.message || 'Failed to start 2FA setup' });
+      setSecurityMsg({ type: 'error', text: err?.message || 'Failed to start 2FA setup' });
     } finally {
       setSecurityBusy(false);
     }
@@ -421,7 +421,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
       setTotpStatus(prev => prev ? { ...prev, enabled: true } : { enabled: true, required: false });
       setSecurityMsg({ type: 'success', text: 'Two-factor authentication enabled successfully.' });
     } catch (err: any) {
-      setSecurityMsg({ type: 'error', text: err.message || 'Invalid verification code' });
+      setSecurityMsg({ type: 'error', text: err?.message || 'Invalid verification code' });
       setSetupCode('');
     } finally {
       setSecurityBusy(false);
@@ -442,7 +442,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
       setDisablePassword('');
       setSecurityMsg({ type: 'success', text: 'Two-factor authentication has been disabled.' });
     } catch (err: any) {
-      setSecurityMsg({ type: 'error', text: err.message || 'Failed to disable 2FA' });
+      setSecurityMsg({ type: 'error', text: err?.message || 'Failed to disable 2FA' });
     } finally {
       setSecurityBusy(false);
     }
@@ -470,7 +470,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
       setRegenCodes(data.backupCodes);
       setRegenPassword('');
     } catch (err: any) {
-      setRegenError(err.message || 'Failed to regenerate codes');
+      setRegenError(err?.message || 'Failed to regenerate codes');
     }
     setRegenLoading(false);
   };

@@ -36,7 +36,7 @@ export default function Force2FASetupModal() {
       setBackupCodes(data.backupCodes || []);
       setStep('qr');
     } catch (err: any) {
-      setError(err.message || 'Failed to start 2FA setup');
+      setError(err?.message || 'Failed to start 2FA setup');
     } finally {
       setBusy(false);
     }
@@ -52,7 +52,7 @@ export default function Force2FASetupModal() {
       });
       setStep('backups');
     } catch (err: any) {
-      setError(err.message || 'Invalid verification code');
+      setError(err?.message || 'Invalid verification code');
       setSetupCode('');
     } finally {
       setBusy(false);

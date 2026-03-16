@@ -130,7 +130,7 @@ export default function CourtTrackerPage() {
       setFormOpen(false);
       setFormData({ ...EMPTY_FORM });
       fetchEvents({ silent: true }); fetchUpcoming();
-    } catch (err: any) { addToast(err.message, 'error'); }
+    } catch (err: any) { addToast(err?.message || 'Operation failed', 'error'); }
     finally { setSubmitting(false); }
   };
 
@@ -147,7 +147,7 @@ export default function CourtTrackerPage() {
       const updated = await apiFetch<{ data: CourtEvent }>(`/court/events/${selected.id}`);
       setSelected(updated.data);
       fetchEvents({ silent: true }); fetchUpcoming();
-    } catch (err: any) { addToast(err.message, 'error'); }
+    } catch (err: any) { addToast(err?.message || 'Operation failed', 'error'); }
     finally { setOutcomeSubmitting(false); }
   };
 
@@ -155,6 +155,7 @@ export default function CourtTrackerPage() {
 
   const daysUntil = (dateStr: string) => {
     const d = Math.ceil((new Date(dateStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    if (isNaN(d)) return '-';
     if (d < 0) return 'PAST';
     if (d === 0) return 'TODAY';
     if (d === 1) return 'TOMORROW';
