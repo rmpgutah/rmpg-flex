@@ -257,6 +257,8 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   const firstPositionSentRef = useRef(false);
   // Track unitId via ref so sendBatch (empty deps) can read the latest value
   const unitIdRef = useRef<number | null>(null);
+  // Mounted guard — prevent setState on unmounted component from async callbacks
+  const mountedRef = useRef(true);
   /** Heartbeat restart counter — prevents infinite restart loops */
   const heartbeatRestartCountRef = useRef(0);
   const MAX_HEARTBEAT_RESTARTS = 5;
@@ -316,7 +318,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         if (needsUnitFetch) {
           apiFetch<{ id: number; call_sign: string; status: string } | null>('/dispatch/gps/my-unit')
             .then((unit) => {
-              if (unit) {
+              if (unit && mountedRef.current) {
                 unitIdRef.current = unit.id;
                 setState((p) => ({ ...p, unitCallSign: unit.call_sign, unitId: unit.id }));
               }
@@ -723,6 +725,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   useEffect(() => {
     startTracking();
     return () => {
+      mountedRef.current = false;
       // Flush remaining points and clean up all timers/watchers
       cleanupTracking(true);
     };

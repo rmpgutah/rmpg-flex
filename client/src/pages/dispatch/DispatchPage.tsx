@@ -387,17 +387,15 @@ export default function DispatchPage() {
         starting_mileage: ed.starting_mileage ? Number(ed.starting_mileage) : null,
         ending_mileage: ed.ending_mileage ? Number(ed.ending_mileage) : null,
       };
-      try {
-        fetch(`/api/dispatch/calls/${selectedCallRef.current.id}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify(body),
-          keepalive: true,
-        });
-      } catch { /* best-effort */ }
+      fetch(`/api/dispatch/calls/${selectedCallRef.current.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(body),
+        keepalive: true,
+      }).catch(() => { /* best-effort cleanup save */ });
     };
   }, []);
 

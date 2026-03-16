@@ -77,7 +77,7 @@ function recalculateInvoiceTotals(invoiceId: number | string | string[]): void {
     const payResult = db.prepare(
       'SELECT COALESCE(SUM(amount), 0) as paid FROM payments WHERE invoice_id = ?'
     ).get(invoiceId) as any;
-    const amountPaid = payResult.paid;
+    const amountPaid = payResult?.paid ?? 0;
     const balanceDue = Math.max(0, total - amountPaid);
 
     db.prepare(`
