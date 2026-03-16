@@ -87,14 +87,12 @@ function highestSeverity(levels: string[]): string {
 }
 
 /**
- * Generate next warrant number in EXT-YYYY-NNNNN format.
+ * Generate warrant number from a rowid in EXT-YYYY-NNNNN format.
+ * Called AFTER insert using lastInsertRowid to avoid race conditions.
  */
-function nextExtWarrantNumber(): string {
-  const db = getDb();
+function extWarrantNumber(rowId: number | bigint): string {
   const year = new Date().getFullYear();
-  const row = db.prepare(`SELECT MAX(id) as max_id FROM warrants`).get() as { max_id: number | null } | undefined;
-  const nextId = ((row?.max_id) ?? 0) + 1;
-  return `EXT-${year}-${String(nextId).padStart(5, '0')}`;
+  return `EXT-${year}-${String(rowId).padStart(5, '0')}`;
 }
 
 /**
@@ -191,9 +189,6 @@ export async function universalWarrantCheck(
   if (!person.first_name?.trim() || !person.last_name?.trim()) {
     return { personId, personName, hitsFound: 0, warrantsCreated: 0, warrantsCleared: 0, errors: ['Missing name'] };
   }
-
-  // Update cooldown
-  lastCheckMap.set(personId, new Date().toISOString());
 
   // ── Collect unified hits from all sources ──────────────────
   const allHits = new Map<string, UnifiedHit>();
@@ -315,9 +310,8 @@ export async function universalWarrantCheck(
     ).get(extId) as { id: number } | undefined;
 
     if (!existing) {
-      const warrantNum = nextExtWarrantNumber();
-      insertStmt.run(
-        warrantNum,
+      const info = insertStmt.run(
+        '__PENDING__',
         hit.warrant_type,
         personId,
         hit.charge_description,
@@ -331,6 +325,9 @@ export async function universalWarrantCheck(
         now,
         now
       );
+      // Derive warrant number from the actual row ID (race-safe)
+      const warrantNum = extWarrantNumber(info.lastInsertRowid);
+      db.prepare('UPDATE warrants SET warrant_number = ? WHERE id = ?').run(warrantNum, info.lastInsertRowid);
       warrantsCreated++;
 
       broadcast('alerts', 'warrant', {
@@ -394,6 +391,11 @@ export async function universalWarrantCheck(
 
   // ── Update person flags ────────────────────────────────────
   updatePersonWarrantFlag(personId);
+
+  // Only stamp cooldown if at least one source responded successfully
+  if (!sourceErrors) {
+    lastCheckMap.set(personId, new Date().toISOString());
+  }
 
   return { personId, personName, hitsFound, warrantsCreated, warrantsCleared, errors };
 }
