@@ -191,6 +191,23 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
     const lockout = isLockedOut(username);
     if (lockout.locked) {
       logLoginAttempt(username, ip, false, 'account_locked', userAgent, deviceFingerprint);
+
+      // Alert admins and the user about the lockout
+      try {
+        const db2 = getDb();
+        const lockedUser = db2.prepare('SELECT id FROM users WHERE username = ?').get(username) as any;
+        if (lockedUser) {
+          createSecurityNotification(
+            lockedUser.id,
+            'account_locked',
+            'Account locked due to failed login attempts',
+            `Your account was temporarily locked after repeated failed login attempts from IP ${ip}.`,
+            ip,
+            parseDeviceName(userAgent)
+          );
+        }
+      } catch { /* notification failure should not block response */ }
+
       res.status(423).json({
         error: `Account temporarily locked. Try again in ${lockout.minutesRemaining} minute(s).`,
         code: 'ACCOUNT_LOCKED',

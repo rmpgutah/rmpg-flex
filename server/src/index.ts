@@ -192,6 +192,12 @@ app.post('/api/webhook/github', webhookRateLimit, express.raw({ type: 'applicati
   child.unref();
 });
 
+// Attach unique request ID for log correlation
+app.use((req, _res, next) => {
+  (req as any).requestId = crypto.randomUUID();
+  next();
+});
+
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 app.use(sanitizeInput);
@@ -207,6 +213,21 @@ app.use((req, res, next) => {
 
 // Apply rate limiting to API routes
 app.use('/api', apiRateLimit);
+
+// ─── CSP Violation Report Endpoint ───────────────────
+app.post('/api/csp-report', express.json({ type: 'application/csp-report' }), (req, res) => {
+  const report = req.body?.['csp-report'];
+  if (report) {
+    console.warn('[CSP VIOLATION]', JSON.stringify({
+      blockedUri: report['blocked-uri'],
+      violatedDirective: report['violated-directive'],
+      documentUri: report['document-uri'],
+      sourceFile: report['source-file'],
+      lineNumber: report['line-number'],
+    }));
+  }
+  res.status(204).end();
+});
 
 // ─── Health Check ─────────────────────────────────────
 app.get('/api/health', (_req, res) => {
@@ -224,32 +245,11 @@ app.get('/api/health', (_req, res) => {
   const overall = dbStatus === 'ok' ? 'ok' : 'degraded';
   const statusCode = overall === 'ok' ? 200 : 503;
 
+  // Only expose minimal info publicly — version, features, and internals are sensitive
   res.status(statusCode).json({
     status: overall,
-    name: 'RMPG Flex CAD/RMS Server',
-    version: SERVER_VERSION,
-    environment: config.nodeEnv,
     timestamp: new Date().toISOString(),
-    uptime: Math.floor(process.uptime()),
-    database: { status: dbStatus, ...(dbError && { error: dbError }) },
-    connections: { websocket: getConnectedClientCount() },
-    features: {
-      rateLimiting: true,
-      securityHeaders: true,
-      inputSanitization: true,
-      tokenRefresh: true,
-      sessionManagement: true,
-      accountLockout: true,
-      passwordPolicy: true,
-      fileUpload: true,
-      warrants: true,
-      fleetManagement: true,
-      notifications: true,
-      csvExport: true,
-      sslEncryption: config.ssl.enabled,
-      wsAuthentication: true,
-      liveSync: true,
-    },
+    database: { status: dbStatus },
   });
 });
 

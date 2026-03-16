@@ -358,25 +358,33 @@ router.get('/secrets', requireRole('admin'), (req: Request, res: Response) => {
 });
 
 // ─── GET /my-secret ──────────────────────────────────────────
-// Returns the requesting user's own offline secret
+// Returns the requesting user's own offline secret and admin verification key
 router.get('/my-secret', (req: Request, res: Response) => {
   try {
+    const crypto = require('crypto');
     const db = getDb();
     const row = db.prepare(
       'SELECT secret FROM offline_pin_secrets WHERE user_id = ?'
     ).get(req.user!.userId);
 
-    // Also get the admin secret (needed for local PIN validation)
+    // Derive a verification key from the admin secret instead of exposing raw secret
+    // This allows offline PIN validation without leaking the admin's raw secret
     const adminUser = db.prepare(
       `SELECT id FROM users WHERE role = 'admin' ORDER BY id ASC LIMIT 1`
     ).get() as any;
-    const adminSecret = adminUser
-      ? db.prepare('SELECT secret FROM offline_pin_secrets WHERE user_id = ?').get(adminUser.id)
-      : null;
+    let adminVerifyKey: string | null = null;
+    if (adminUser) {
+      const adminRow = db.prepare('SELECT secret FROM offline_pin_secrets WHERE user_id = ?').get(adminUser.id) as any;
+      if (adminRow?.secret) {
+        adminVerifyKey = crypto.createHmac('sha256', adminRow.secret)
+          .update('offline-pin-verify')
+          .digest('hex');
+      }
+    }
 
     res.json({
       secret: row ? (row as any).secret : null,
-      admin_secret: adminSecret ? (adminSecret as any).secret : null,
+      admin_secret: adminVerifyKey,
     });
   } catch (error: any) {
     console.error('[OFFLINE] Get my-secret error:', error.message);

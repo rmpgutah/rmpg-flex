@@ -133,7 +133,8 @@ router.post('/test-connection', requireRole('admin', 'manager'), async (_req: Re
     const result = await testConnection();
     res.json(result);
   } catch (error: any) {
-    res.json({ success: false, deviceCount: 0, error: error.message || 'Connection test failed' });
+    console.error('ClearPathGPS connection test error:', error.message);
+    res.json({ success: false, deviceCount: 0, error: 'Connection test failed' });
   }
 });
 
@@ -145,7 +146,8 @@ router.post('/discover-accounts', requireRole('admin'), async (_req: Request, re
     const accounts = await discoverAccounts();
     res.json({ accounts });
   } catch (error: any) {
-    res.json({ accounts: [], error: error.message || 'Account discovery failed' });
+    console.error('ClearPathGPS account discovery error:', error.message);
+    res.json({ accounts: [], error: 'Account discovery failed' });
   }
 });
 
@@ -203,7 +205,7 @@ router.get('/devices', requireRole('admin', 'manager'), async (_req: Request, re
     res.json({ devices });
   } catch (error: any) {
     console.error('ClearPathGPS fetch devices error:', error);
-    res.status(500).json({ error: error.message || 'Failed to fetch devices' });
+    res.status(500).json({ error: 'Failed to fetch devices' });
   }
 });
 
@@ -377,7 +379,7 @@ router.get('/history/:deviceId', requireRole('admin', 'manager'), async (req: Re
     res.json({ events, count: events.length });
   } catch (error: any) {
     console.error('ClearPathGPS fetch history error:', error);
-    res.status(500).json({ error: error.message || 'Failed to fetch device history' });
+    res.status(500).json({ error: 'Failed to fetch device history' });
   }
 });
 
@@ -611,7 +613,7 @@ router.post('/media-sync-now', requireRole('admin'), async (req: Request, res: R
     });
   } catch (error: any) {
     console.error('ClearPathGPS media sync-now error:', error);
-    res.status(500).json({ error: error.message || 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

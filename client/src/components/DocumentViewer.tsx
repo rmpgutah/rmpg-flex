@@ -78,11 +78,15 @@ export default function DocumentViewer({
     } else {
       const printWindow = window.open('', '_blank');
       if (printWindow) {
-        printWindow.document.write(
-          `<html><body style="margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;background:#000;"><img src="${src}" style="max-width:100%;max-height:100vh;" /></body></html>`
-        );
-        printWindow.document.close();
-        printWindow.onload = () => printWindow.print();
+        const doc = printWindow.document;
+        doc.open();
+        doc.write('<html><body style="margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;background:#000;"></body></html>');
+        doc.close();
+        const img = doc.createElement('img');
+        img.style.cssText = 'max-width:100%;max-height:100vh;';
+        img.src = src; // Safe: src set via DOM property, not string interpolation
+        img.onload = () => printWindow.print();
+        doc.body.appendChild(img);
       }
     }
   }, [src, detectedType]);

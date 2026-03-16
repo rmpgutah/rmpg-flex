@@ -126,8 +126,12 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
       whereClause += ' AND archived_at IS NULL';
     }
 
-    const users = db.prepare(`
-      SELECT u.id, u.username, u.full_name, u.first_name, u.last_name, u.middle_name, u.email, u.role,
+    // Supervisory roles see full PII; officers/dispatchers see limited fields
+    const requesterRole = req.user!.role;
+    const isSupervisory = ['admin', 'manager', 'supervisor'].includes(requesterRole);
+
+    const columns = isSupervisory
+      ? `u.id, u.username, u.full_name, u.first_name, u.last_name, u.middle_name, u.email, u.role,
         u.badge_number, u.phone, u.status, u.avatar_url, u.rank, u.department, u.address, u.city, u.state, u.zip,
         u.date_of_birth, u.hire_date, u.termination_date, u.shift_preference,
         u.dl_number, u.dl_state, u.dl_expiry, u.blood_type, u.allergies, u.uniform_size,
@@ -135,7 +139,13 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
         u.employee_id, u.certifications, u.notes, u.profile_image,
         u.login_count, u.last_login_at,
         u.totp_enabled, u.totp_setup_required, u.password_expires_at, u.force_password_change, u.password_changed_at,
-        u.created_at, u.updated_at,
+        u.created_at, u.updated_at`
+      : `u.id, u.username, u.full_name, u.first_name, u.last_name, u.email, u.role,
+        u.badge_number, u.phone, u.status, u.avatar_url, u.rank, u.department,
+        u.shift_preference, u.created_at, u.updated_at`;
+
+    const users = db.prepare(`
+      SELECT ${columns},
         un.call_sign as unit_call_sign
       FROM users u
       LEFT JOIN units un ON un.officer_id = u.id
@@ -151,7 +161,8 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
 });
 
 // GET /api/personnel/:id - Get user details
-router.get('/:id', (req: Request, res: Response, next) => {
+// Officers can view their own profile; supervisory+ roles can view anyone
+router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response, next) => {
   try {
     // Check for route conflicts with sub-paths handled by mountScheduleRoutes
     const subPaths = ['schedules', 'time', 'credentials', 'training', 'training-requirements', 'deployments', 'coverage-gaps', 'analytics', 'activity', 'equipment', 'body-cameras', 'bodycam-videos'];
@@ -159,15 +170,34 @@ router.get('/:id', (req: Request, res: Response, next) => {
       return next('route');
     }
 
+    const requesterId = req.user!.userId;
+    const requesterRole = req.user!.role;
+    const targetId = parseInt(req.params.id, 10);
+
+    // Non-supervisory roles can only view their own profile
+    const supervisoryRoles = ['admin', 'manager', 'supervisor'];
+    if (!supervisoryRoles.includes(requesterRole) && requesterId !== targetId) {
+      res.status(403).json({ error: 'You can only view your own profile' });
+      return;
+    }
+
     const db = getDb();
-    const user = db.prepare(`
-      SELECT id, username, full_name, first_name, last_name, middle_name, email, role, badge_number, phone, status, avatar_url,
+
+    // Supervisory roles see full PII; officers/dispatchers see limited fields for their own profile
+    const isSupervisory = supervisoryRoles.includes(requesterRole);
+    const columns = isSupervisory
+      ? `id, username, full_name, first_name, last_name, middle_name, email, role, badge_number, phone, status, avatar_url,
         rank, department, address, city, state, zip, date_of_birth, hire_date, termination_date,
         shift_preference, dl_number, dl_state, dl_expiry, blood_type, allergies, uniform_size,
         emergency_contact_name, emergency_contact_phone, emergency_contact_relationship,
-        created_at, updated_at
+        created_at, updated_at`
+      : `id, username, full_name, first_name, last_name, middle_name, email, role, badge_number, phone, status, avatar_url,
+        rank, department, shift_preference, created_at, updated_at`;
+
+    const user = db.prepare(`
+      SELECT ${columns}
       FROM users WHERE id = ?
-    `).get(req.params.id) as any;
+    `).get(targetId) as any;
 
     if (!user) {
       res.status(404).json({ error: 'User not found' });

@@ -11,8 +11,8 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
   // XSS protection (legacy browsers)
   res.set('X-XSS-Protection', '1; mode=block');
 
-  // Referrer policy
-  res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  // Referrer policy — stricter for API routes to prevent leaking internal paths
+  res.set('Referrer-Policy', req.path.startsWith('/api') ? 'no-referrer' : 'strict-origin-when-cross-origin');
 
   // Permissions policy (restrict browser features)
   res.set('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=(self), payment=()');
@@ -46,10 +46,12 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
     "child-src 'self' blob:",
     "manifest-src 'self'",
     "frame-ancestors 'self'",
+    "report-uri /api/csp-report",
   ].join('; '));
 
-  // Remove powered-by header
+  // Remove headers that disclose server technology
   res.removeHeader('X-Powered-By');
+  res.removeHeader('Server');
 
   next();
 }

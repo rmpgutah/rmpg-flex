@@ -124,6 +124,14 @@ export const webhookRateLimit = rateLimit({
   message: 'Too many webhook requests. Please try again later.',
 });
 
+// Rate limiter for file uploads — prevent storage exhaustion
+export const uploadRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  maxRequests: 30,           // 30 uploads per 15 min per user
+  keyGenerator: (req) => `upload:${req.ip || 'unknown'}`,
+  message: 'Too many file uploads. Please try again later.',
+});
+
 // General API rate limiter
 export const apiRateLimit = rateLimit({
   windowMs: config.security.rateLimitWindowMs,

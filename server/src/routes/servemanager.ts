@@ -241,7 +241,8 @@ router.post('/test-connection', requireRole('admin', 'manager'), async (req: Req
     const result = await testConnection();
     res.json(result);
   } catch (error: any) {
-    res.json({ success: false, error: error.message });
+    console.error('ServeManager connection test error:', error.message);
+    res.json({ success: false, error: 'Connection test failed' });
   }
 });
 
@@ -360,7 +361,8 @@ router.get('/jobs', async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     if (error instanceof ServeManagerError) {
-      res.status(error.status).json({ error: error.message, details: error.responseBody });
+      console.error('ServeManager API error:', error.message, error.responseBody);
+      res.status(error.status).json({ error: 'ServeManager request failed' });
       return;
     }
     console.error('SM jobs list error:', error);
@@ -393,7 +395,7 @@ router.get('/jobs/:id', async (req: Request, res: Response) => {
 
     res.json({ data: { ...(job as any), attempts } });
   } catch (error: any) {
-    if (error instanceof ServeManagerError) { res.status(error.status).json({ error: error.message }); return; }
+    if (error instanceof ServeManagerError) { console.error('ServeManager API error:', error.message); res.status(error.status).json({ error: 'ServeManager request failed' }); return; }
     console.error('SM job detail error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -415,7 +417,7 @@ router.post('/jobs', requireRole('admin', 'manager'), async (req: Request, res: 
 
     res.status(201).json({ data: result.data });
   } catch (error: any) {
-    if (error instanceof ServeManagerError) { res.status(error.status).json({ error: error.message, details: error.responseBody }); return; }
+    if (error instanceof ServeManagerError) { console.error('ServeManager API error:', error.message, error.responseBody); res.status(error.status).json({ error: 'ServeManager request failed' }); return; }
     console.error('SM create job error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -437,7 +439,7 @@ router.put('/jobs/:id', requireRole('admin', 'manager'), async (req: Request, re
 
     res.json({ data: result.data });
   } catch (error: any) {
-    if (error instanceof ServeManagerError) { res.status(error.status).json({ error: error.message, details: error.responseBody }); return; }
+    if (error instanceof ServeManagerError) { console.error('ServeManager API error:', error.message, error.responseBody); res.status(error.status).json({ error: 'ServeManager request failed' }); return; }
     console.error('SM update job error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -468,7 +470,7 @@ router.post('/jobs/:id/cancel', requireRole('admin', 'manager'), async (req: Req
 
     res.json({ success: true, data: result.data });
   } catch (error: any) {
-    if (error instanceof ServeManagerError) { res.status(error.status).json({ error: error.message, details: error.responseBody }); return; }
+    if (error instanceof ServeManagerError) { console.error('ServeManager API error:', error.message, error.responseBody); res.status(error.status).json({ error: 'ServeManager request failed' }); return; }
     console.error('SM cancel job error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -500,7 +502,7 @@ router.get('/jobs/:jobId/attempts', async (req: Request, res: Response) => {
     const rows = db.prepare('SELECT * FROM sm_attempts WHERE job_id = ? ORDER BY sm_created_at DESC').all(req.params.jobId);
     res.json({ data: rows });
   } catch (error: any) {
-    if (error instanceof ServeManagerError) { res.status(error.status).json({ error: error.message }); return; }
+    if (error instanceof ServeManagerError) { console.error('ServeManager API error:', error.message); res.status(error.status).json({ error: 'ServeManager request failed' }); return; }
     console.error('SM attempts error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -522,7 +524,7 @@ router.post('/attempts', requireRole('admin', 'manager'), async (req: Request, r
 
     res.status(201).json({ data: result.data });
   } catch (error: any) {
-    if (error instanceof ServeManagerError) { res.status(error.status).json({ error: error.message, details: error.responseBody }); return; }
+    if (error instanceof ServeManagerError) { console.error('ServeManager API error:', error.message, error.responseBody); res.status(error.status).json({ error: 'ServeManager request failed' }); return; }
     console.error('SM create attempt error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -539,7 +541,7 @@ router.post('/jobs/:jobId/notes', requireRole('admin', 'manager'), async (req: R
     const result = await smPost(`/jobs/${req.params.jobId}/notes`, { type: 'note', ...req.body });
     res.status(201).json({ data: result.data });
   } catch (error: any) {
-    if (error instanceof ServeManagerError) { res.status(error.status).json({ error: error.message }); return; }
+    if (error instanceof ServeManagerError) { console.error('ServeManager API error:', error.message); res.status(error.status).json({ error: 'ServeManager request failed' }); return; }
     console.error('SM create note error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -559,7 +561,7 @@ router.get('/companies', async (req: Request, res: Response) => {
     const result = await smGet('/companies', params);
     res.json(result);
   } catch (error: any) {
-    if (error instanceof ServeManagerError) { res.status(error.status).json({ error: error.message }); return; }
+    if (error instanceof ServeManagerError) { console.error('ServeManager API error:', error.message); res.status(error.status).json({ error: 'ServeManager request failed' }); return; }
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -571,7 +573,7 @@ router.get('/courts', async (req: Request, res: Response) => {
     const result = await smGet('/courts');
     res.json(result);
   } catch (error: any) {
-    if (error instanceof ServeManagerError) { res.status(error.status).json({ error: error.message }); return; }
+    if (error instanceof ServeManagerError) { console.error('ServeManager API error:', error.message); res.status(error.status).json({ error: 'ServeManager request failed' }); return; }
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -583,7 +585,7 @@ router.get('/employees', async (req: Request, res: Response) => {
     const result = await smGet('/employees');
     res.json(result);
   } catch (error: any) {
-    if (error instanceof ServeManagerError) { res.status(error.status).json({ error: error.message }); return; }
+    if (error instanceof ServeManagerError) { console.error('ServeManager API error:', error.message); res.status(error.status).json({ error: 'ServeManager request failed' }); return; }
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -598,7 +600,7 @@ router.get('/court-cases', async (req: Request, res: Response) => {
     const result = await smGet('/court_cases', params);
     res.json(result);
   } catch (error: any) {
-    if (error instanceof ServeManagerError) { res.status(error.status).json({ error: error.message }); return; }
+    if (error instanceof ServeManagerError) { console.error('ServeManager API error:', error.message); res.status(error.status).json({ error: 'ServeManager request failed' }); return; }
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -680,7 +682,7 @@ router.post('/sync', requireRole('admin', 'manager'), async (req: Request, res: 
       throw syncErr;
     }
   } catch (error: any) {
-    if (error instanceof ServeManagerError) { res.status(error.status).json({ error: error.message }); return; }
+    if (error instanceof ServeManagerError) { console.error('ServeManager API error:', error.message); res.status(error.status).json({ error: 'ServeManager request failed' }); return; }
     console.error('SM sync error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
