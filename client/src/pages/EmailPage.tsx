@@ -1501,7 +1501,7 @@ export default function EmailPage() {
       if (searchInput !== search) { setSearch(searchInput); setPage(1); fetchMessages(1, selectedFolder, searchInput); }
     }, 500);
     return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
-  }, [searchInput]); // eslint-disable-line
+  }, [searchInput, search, selectedFolder, fetchMessages]);
 
   // Keyboard shortcuts
   useEffect(() => {

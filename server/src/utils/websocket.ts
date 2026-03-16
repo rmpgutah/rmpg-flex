@@ -250,6 +250,12 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
         return;
       }
 
+      // Reject oversized messages before parsing
+      if (data.length > 65536) {
+        safeSend(ws, JSON.stringify({ type: 'error', code: 'MESSAGE_TOO_LARGE', message: 'Message exceeds 64KB limit' }));
+        return;
+      }
+
       try {
         const message = JSON.parse(data.toString());
         try {

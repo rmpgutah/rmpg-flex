@@ -65,23 +65,23 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
     if (!isOpen) resetForm();
   }, [isOpen, resetForm]);
 
-  const handleSearch = useCallback(async () => {
-    if (searchQuery.length < 2) return;
+  const handleSearch = useCallback(async (query: string) => {
+    if (query.length < 2) return;
     setIsSearching(true);
     setError('');
     try {
-      const results = await apiFetch<PersonResult[]>(`/records/persons/search?q=${encodeURIComponent(searchQuery)}`);
+      const results = await apiFetch<PersonResult[]>(`/records/persons/search?q=${encodeURIComponent(query)}`);
       setSearchResults(results);
     } catch {
       setError('Failed to search persons');
     } finally {
       setIsSearching(false);
     }
-  }, [searchQuery]);
+  }, []);
 
   useEffect(() => {
     const timeout = setTimeout(() => {
-      if (searchQuery.length >= 2) handleSearch();
+      if (searchQuery.length >= 2) handleSearch(searchQuery);
       else setSearchResults([]);
     }, 300);
     return () => clearTimeout(timeout);

@@ -261,6 +261,7 @@ router.post('/panic', requireRole('admin', 'manager', 'supervisor', 'officer', '
 
       const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?')
         .get(callResult.lastInsertRowid) as any;
+      if (!call) throw new Error('Failed to retrieve auto-created panic call');
 
       // Auto-assign officer's unit to the call
       const unit = db.prepare('SELECT id, call_sign FROM units WHERE officer_id = ?')
