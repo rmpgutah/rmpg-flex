@@ -16,6 +16,7 @@
 
 import { getDb } from '../models/database';
 import { localNow } from './timeUtils';
+import { escapeLike } from '../middleware/sanitize';
 
 // ── API endpoints ────────────────────────────────────────────
 const BASE_URL = 'https://warrants.utah.gov/api/v1';
@@ -24,9 +25,33 @@ const WARRANTS_URL = (personId: string) => `${BASE_URL}/persons/${personId}/warr
 
 // ── Config ───────────────────────────────────────────────────
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-const REQUEST_TIMEOUT_MS = 10_000;          // 10 second timeout per request
-const MAX_RETRIES = 2;
-const RETRY_DELAY_MS = 2000;
+const REQUEST_TIMEOUT_MS = 15_000;          // 15 second timeout per request
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 3000;
+
+// Adaptive rate-limit tracker — increases delay when 403s are detected
+let _consecutiveRateLimits = 0;
+let _lastRateLimitAt = 0;
+
+/** Get current scan delay based on rate-limit history */
+export function getAdaptiveScanDelay(): number {
+  const base = 5000; // 5 second base delay (was 3s — too aggressive)
+  if (_consecutiveRateLimits === 0) return base;
+  // Exponential backoff: 5s → 10s → 20s → 40s, capped at 60s
+  return Math.min(base * Math.pow(2, _consecutiveRateLimits), 60_000);
+}
+
+function onRateLimit(): void {
+  _consecutiveRateLimits = Math.min(_consecutiveRateLimits + 1, 5);
+  _lastRateLimitAt = Date.now();
+}
+
+function onSuccess(): void {
+  // Decay rate-limit counter after sustained success
+  if (_consecutiveRateLimits > 0 && Date.now() - _lastRateLimitAt > 30_000) {
+    _consecutiveRateLimits = Math.max(0, _consecutiveRateLimits - 1);
+  }
+}
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -94,13 +119,18 @@ async function fetchJson<T>(url: string, options: RequestInit, retries = MAX_RET
       clearTimeout(timeout);
 
       if (res.ok || res.status === 201) {
+        onSuccess();
         return await res.json() as T;
       }
 
-      if (res.status === 403 && attempt < retries) {
-        console.warn(`[Utah Warrants] 403 rate-limited — retrying in ${RETRY_DELAY_MS / 1000}s`);
-        await sleep(RETRY_DELAY_MS * (attempt + 1));
-        continue;
+      if (res.status === 403) {
+        onRateLimit();
+        const backoff = getAdaptiveScanDelay();
+        if (attempt < retries) {
+          console.warn(`[Utah Warrants] 403 rate-limited — backing off ${(backoff / 1000).toFixed(0)}s (attempt ${attempt + 1}/${retries})`);
+          await sleep(backoff);
+          continue;
+        }
       }
 
       console.warn(`[Utah Warrants] HTTP ${res.status} from ${url}`);
@@ -166,7 +196,7 @@ export async function searchUtahWarrantsLive(
           first_name: person.name.first || '',
           middle_name: person.name.middle || null,
           last_name: person.name.last || '',
-          age: person.age != null ? (parseInt(String(person.age), 10) ?? null) : null,
+          age: person.age != null ? (parseInt(String(person.age), 10) || null) : null,
           city: person.homeAddress?.city || null,
           utah_warrant_id: w.id,
           issue_date: w.issueDate || null,
@@ -248,28 +278,31 @@ export function searchUtahWarrantsCache(
     let rows: UtahWarrantResult[];
 
     if (parts.length >= 2) {
+      const p0 = escapeLike(parts[0]);
+      const p1 = escapeLike(parts[1]);
       rows = db.prepare(`
         SELECT utah_person_id, first_name, middle_name, last_name, age, city,
                utah_warrant_id, issue_date, court_name, case_id, charges, fetched_at
         FROM utah_warrants
-        WHERE (first_name LIKE ? AND last_name LIKE ?)
-           OR (first_name LIKE ? AND last_name LIKE ?)
+        WHERE (first_name LIKE ? ESCAPE '\\' AND last_name LIKE ? ESCAPE '\\')
+           OR (first_name LIKE ? ESCAPE '\\' AND last_name LIKE ? ESCAPE '\\')
         ORDER BY last_name, first_name
         LIMIT ?
       `).all(
-        `%${parts[0]}%`, `%${parts[1]}%`,
-        `%${parts[1]}%`, `%${parts[0]}%`,
+        `%${p0}%`, `%${p1}%`,
+        `%${p1}%`, `%${p0}%`,
         limit
       ) as UtahWarrantResult[];
     } else {
+      const p0 = escapeLike(parts[0]);
       rows = db.prepare(`
         SELECT utah_person_id, first_name, middle_name, last_name, age, city,
                utah_warrant_id, issue_date, court_name, case_id, charges, fetched_at
         FROM utah_warrants
-        WHERE first_name LIKE ? OR last_name LIKE ?
+        WHERE first_name LIKE ? ESCAPE '\\' OR last_name LIKE ? ESCAPE '\\'
         ORDER BY last_name, first_name
         LIMIT ?
-      `).all(`%${parts[0]}%`, `%${parts[0]}%`, limit) as UtahWarrantResult[];
+      `).all(`%${p0}%`, `%${p0}%`, limit) as UtahWarrantResult[];
     }
 
     return rows;
@@ -338,8 +371,8 @@ export function getUtahWarrantSyncStatus(): {
 // warrants API, logs NEW hits and CLEARED warrants.
 // ══════════════════════════════════════════════════════════════
 
-/** Delay between person searches to avoid rate-limiting (3 seconds) */
-const SCAN_DELAY_MS = 3000;
+/** Base delay between person searches (adaptive backoff applies on top) */
+const SCAN_DELAY_MS = 5000;
 
 /** Generate a unique run ID for each scan */
 function generateRunId(): string {
@@ -518,9 +551,10 @@ async function _runWarrantWatchScanImpl(): Promise<{
           }
         }
 
-        // Throttle to avoid rate-limiting
+        // Adaptive throttle — slows down when 403s are detected
         if (personsChecked < persons.length) {
-          await sleep(SCAN_DELAY_MS);
+          const delay = Math.max(SCAN_DELAY_MS, getAdaptiveScanDelay());
+          await sleep(delay);
         }
       } catch (err: any) {
         errors++;

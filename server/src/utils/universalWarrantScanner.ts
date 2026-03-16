@@ -3,7 +3,7 @@
 // auto-create local warrant records, and flag persons.
 
 import { getDb } from '../models/database';
-import { searchUtahWarrantsLive } from './utahWarrantScraper';
+import { searchUtahWarrantsLive, getAdaptiveScanDelay } from './utahWarrantScraper';
 import { broadcast } from './websocket';
 import { localNow } from './timeUtils';
 
@@ -417,8 +417,29 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+let _universalScanInProgress = false;
+
 export async function runUniversalWarrantScan(): Promise<ScanSummary> {
+  if (_universalScanInProgress) {
+    console.warn('[WarrantScanner] Scan already in progress, skipping');
+    return { personsChecked: 0, hitsFound: 0, warrantsCreated: 0, warrantsCleared: 0, errors: ['Scan already in progress'] };
+  }
+  _universalScanInProgress = true;
+
+  try {
   const db = getDb();
+
+  // Clean up any stuck "running" warrant watch runs from previous crashes
+  try {
+    const stuck = db.prepare(
+      `UPDATE warrant_watch_runs SET status = 'failed', error_message = 'Server restarted during scan', completed_at = datetime('now')
+       WHERE status = 'running'`
+    ).run();
+    if (stuck.changes > 0) {
+      console.log(`[WarrantScanner] Cleaned up ${stuck.changes} stuck scan runs`);
+    }
+  } catch {}
+
   console.log('[WarrantScanner] Starting universal warrant scan...');
 
   const persons = db.prepare(
@@ -453,8 +474,9 @@ export async function runUniversalWarrantScan(): Promise<ScanSummary> {
       summary.errors.push(`Person ${p.id}: ${msg}`);
     }
 
-    // Rate limit: 3 second delay between persons
-    await sleep(3000);
+    // Adaptive rate limit — slows down when Utah API returns 403s
+    const delay = Math.max(5000, getAdaptiveScanDelay());
+    await sleep(delay);
   }
 
   console.log(
@@ -464,4 +486,7 @@ export async function runUniversalWarrantScan(): Promise<ScanSummary> {
   );
 
   return summary;
+  } finally {
+    _universalScanInProgress = false;
+  }
 }
