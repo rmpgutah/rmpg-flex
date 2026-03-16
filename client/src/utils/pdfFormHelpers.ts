@@ -387,15 +387,24 @@ export function drawFormSection(
     y: number;
     /** Additional content to draw after grid rows (callback receives y, returns new y) */
     afterGrid?: (y: number) => number;
+    /** If true, render tab label as a horizontal banner above the grid instead of a vertical sidebar */
+    topBanner?: boolean;
   },
 ): number {
   const pageH = doc.internal.pageSize.getHeight();
   const bottomMargin = LAYOUT.PAGE_MARGIN + LAYOUT.FOOTER_HEIGHT + 2;
-  const gridX = getGridStartX();
-  const gridW = getGridContentWidth(doc);
+  const pageW = doc.internal.pageSize.getWidth();
 
-  // Calculate total section height
-  let totalH = 0;
+  // topBanner mode uses full page width (no sidebar indent)
+  const useBanner = !!config.topBanner;
+  const gridX = useBanner ? LAYOUT.PAGE_MARGIN : getGridStartX();
+  const gridW = useBanner
+    ? pageW - 2 * LAYOUT.PAGE_MARGIN
+    : getGridContentWidth(doc);
+
+  // Calculate total section height (include banner if applicable)
+  const bannerH = useBanner ? 5 : 0;
+  let totalH = bannerH;
   for (const row of config.rows) {
     totalH += row.height || SPACING.FORM_CELL_H;
   }
@@ -409,6 +418,19 @@ export function drawFormSection(
 
   const sectionStartY = curY;
 
+  if (useBanner) {
+    // ── Draw horizontal banner ──
+    doc.setFillColor(...(config.sideTab.color || COLOR.BG_SIDEBAR_TAB));
+    doc.setDrawColor(...COLOR.BORDER_FORM_GRID);
+    doc.setLineWidth(BORDER.FORM_CELL);
+    doc.rect(gridX, curY, gridW, bannerH, 'FD');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL + 1);
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.text(config.sideTab.label.toUpperCase(), gridX + 2, curY + 3.4);
+    curY += bannerH;
+  }
+
   // Draw grid rows
   curY = drawFormGrid(doc, config.rows, gridX, curY, gridW);
 
@@ -417,15 +439,17 @@ export function drawFormSection(
     curY = config.afterGrid(curY);
   }
 
-  // Draw sidebar tab spanning the full section height
-  const sectionH = curY - sectionStartY;
-  drawSideTab(
-    doc,
-    config.sideTab.label,
-    sectionStartY,
-    sectionH,
-    config.sideTab.color,
-  );
+  if (!useBanner) {
+    // Draw sidebar tab spanning the full section height (legacy mode)
+    const sectionH = curY - sectionStartY;
+    drawSideTab(
+      doc,
+      config.sideTab.label,
+      sectionStartY,
+      sectionH,
+      config.sideTab.color,
+    );
+  }
 
   return curY + SPACING.SECTION_GAP;
 }

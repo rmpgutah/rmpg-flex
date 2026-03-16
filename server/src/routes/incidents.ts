@@ -6,6 +6,7 @@ import { sendCsv } from '../utils/csvExport';
 import { localNow, localToday } from '../utils/timeUtils';
 import { identifyBeat } from '../utils/geofence';
 import { createNotificationForRoles } from './notifications';
+import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 
@@ -63,13 +64,15 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     const incidents = db.prepare(`
       SELECT i.*, o.full_name as officer_name, o.badge_number,
         s.full_name as supervisor_name, p.name as property_name,
-        c.call_number, cl.name as client_name
+        c.call_number, cl.name as client_name,
+        COALESCE(dd.dispatch_code, CASE WHEN i.section_id IS NOT NULL AND i.zone_id IS NOT NULL AND i.beat_id IS NOT NULL THEN i.section_id || '-' || i.zone_id || '/' || i.beat_id ELSE NULL END) as dispatch_code
       FROM incidents i
       LEFT JOIN users o ON i.officer_id = o.id
       LEFT JOIN users s ON i.supervisor_id = s.id
       LEFT JOIN properties p ON i.property_id = p.id
       LEFT JOIN calls_for_service c ON i.call_id = c.id
       LEFT JOIN clients cl ON COALESCE(i.client_id, p.client_id) = cl.id
+      LEFT JOIN dispatch_districts dd ON dd.section_id = i.section_id AND dd.zone_id = i.zone_id AND dd.beat_id = i.beat_id
       ${whereClause}
       ORDER BY i.created_at DESC
       LIMIT ? OFFSET ?
@@ -212,7 +215,7 @@ router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dis
         COALESCE(i.process_served_address, c.process_served_address) as process_served_address,
         COALESCE(i.process_attempts, c.process_attempts) as process_attempts,
         COALESCE(i.process_service_result, c.process_service_result) as process_service_result,
-        c.process_served_at,
+        COALESCE(i.process_served_at, c.process_served_at) as process_served_at,
         -- Operational flags: prefer incident's own, fall back to call
         COALESCE(i.injuries_reported, c.injuries_reported) as injuries_reported,
         COALESCE(i.mental_health_crisis, c.mental_health_crisis) as mental_health_crisis,
@@ -232,13 +235,15 @@ router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dis
         COALESCE(i.k9_requested, c.k9_requested) as k9_requested,
         COALESCE(i.ems_requested, c.ems_requested) as ems_requested,
         COALESCE(i.fire_requested, c.fire_requested) as fire_requested,
-        cl.name as client_name
+        cl.name as client_name,
+        COALESCE(dd.dispatch_code, CASE WHEN i.section_id IS NOT NULL AND i.zone_id IS NOT NULL AND i.beat_id IS NOT NULL THEN i.section_id || '-' || i.zone_id || '/' || i.beat_id ELSE NULL END) as dispatch_code
       FROM incidents i
       LEFT JOIN users o ON i.officer_id = o.id
       LEFT JOIN users s ON i.supervisor_id = s.id
       LEFT JOIN properties p ON i.property_id = p.id
       LEFT JOIN calls_for_service c ON i.call_id = c.id
       LEFT JOIN clients cl ON COALESCE(i.client_id, p.client_id) = cl.id
+      LEFT JOIN dispatch_districts dd ON dd.section_id = i.section_id AND dd.zone_id = i.zone_id AND dd.beat_id = i.beat_id
       WHERE i.id = ?
     `).get(req.params.id) as any;
 
@@ -408,16 +413,13 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
         force_type || null, force_justification || null, subject_injuries || null, officer_injuries || null, de_escalation_attempts || null,
       );
 
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'incident_created', 'incident', ?, ?, ?)
-      `).run(req.user!.userId, result.lastInsertRowid, `Created ${incidentNumber}`, req.ip || 'unknown');
-
       return db.prepare('SELECT * FROM incidents WHERE id = ?').get(result.lastInsertRowid);
     });
 
     const incident = createTx();
     if (!incident) { res.status(500).json({ error: 'Failed to retrieve created incident' }); return; }
+
+    auditLog(req, 'incident_created', 'incident', (incident as any).id, `Created incident #${incidentNumber}`);
 
     // Notify supervisors of new incident report
     createNotificationForRoles(
@@ -514,6 +516,7 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (re
       process_served_to: v => v ?? null,
       process_served_address: v => v ?? null,
       process_service_result: v => v ?? null,
+      process_served_at: v => v ?? null,
       process_attempts: v => v != null ? Number(v) : null,
       contract_id: v => v ?? null,
       // Operational flags
@@ -551,11 +554,7 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (re
       db.prepare(`UPDATE incidents SET ${iFields.join(', ')} WHERE id = ?`).run(...iValues);
     }
 
-    // Activity log
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'incident_updated', 'incident', ?, ?, ?)
-    `).run(req.user!.userId, req.params.id, `Updated incident ${incident.incident_number}`, req.ip || 'unknown');
+    auditLog(req, 'incident_updated', 'incident', String(req.params.id), `Updated incident #${incident.incident_number}`);
 
     const updated = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id);
     res.json(updated);
@@ -591,12 +590,10 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
       db.prepare('DELETE FROM incident_vehicles WHERE incident_id = ?').run(incident.id);
       db.prepare('DELETE FROM evidence WHERE incident_id = ?').run(incident.id);
       db.prepare('DELETE FROM incidents WHERE id = ?').run(incident.id);
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'incident_deleted', 'incident', ?, ?, ?)
-      `).run(req.user!.userId, incident.id, `Deleted incident ${incident.incident_number}`, req.ip || 'unknown');
     });
     deleteIncTx();
+
+    auditLog(req, 'incident_deleted', 'incident', incident.id, `Deleted incident #${incident.incident_number}`);
 
     res.json({ message: 'Incident deleted' });
   } catch (error: any) {
@@ -616,12 +613,8 @@ router.post('/:id/archive', requireRole('admin', 'manager', 'supervisor'), (req:
       res.status(400).json({ error: 'Can only archive approved or closed incidents' }); return;
     }
     const now = localNow();
-    const archiveTx = db.transaction(() => {
-      db.prepare('UPDATE incidents SET archived_at = ? WHERE id = ?').run(now, incident.id);
-      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'incident_archived', 'incident', ?, ?, ?)`).run(req.user!.userId, incident.id, `Archived ${incident.incident_number}`, req.ip || 'unknown');
-    });
-    archiveTx();
+    db.prepare('UPDATE incidents SET archived_at = ? WHERE id = ?').run(now, incident.id);
+    auditLog(req, 'incident_status_changed', 'incident', incident.id, `Changed status to archived for incident #${incident.incident_number}`);
     const updated = db.prepare('SELECT * FROM incidents WHERE id = ?').get(incident.id);
     res.json(updated);
   } catch (error: any) {
@@ -637,12 +630,8 @@ router.post('/:id/unarchive', requireRole('admin', 'manager', 'supervisor'), (re
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id) as any;
     if (!incident) { res.status(404).json({ error: 'Incident not found' }); return; }
     if (!incident.archived_at) { res.status(400).json({ error: 'Incident is not archived' }); return; }
-    const unarchiveTx = db.transaction(() => {
-      db.prepare('UPDATE incidents SET archived_at = NULL WHERE id = ?').run(incident.id);
-      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'incident_unarchived', 'incident', ?, ?, ?)`).run(req.user!.userId, incident.id, `Restored ${incident.incident_number} from archive`, req.ip || 'unknown');
-    });
-    unarchiveTx();
+    db.prepare('UPDATE incidents SET archived_at = NULL WHERE id = ?').run(incident.id);
+    auditLog(req, 'incident_status_changed', 'incident', incident.id, `Changed status to unarchived for incident #${incident.incident_number}`);
     const updated = db.prepare('SELECT * FROM incidents WHERE id = ?').get(incident.id);
     res.json(updated);
   } catch (error: any) {
@@ -671,17 +660,11 @@ router.put('/:id/submit', requireRole('admin', 'manager', 'supervisor', 'officer
       return;
     }
 
-    const submitTx = db.transaction(() => {
-      db.prepare(`
-        UPDATE incidents SET status = 'submitted', updated_at = ? WHERE id = ?
-      `).run(localNow(), incident.id);
+    db.prepare(`
+      UPDATE incidents SET status = 'submitted', updated_at = ? WHERE id = ?
+    `).run(localNow(), incident.id);
 
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'incident_submitted', 'incident', ?, ?, ?)
-      `).run(req.user!.userId, incident.id, `Submitted ${incident.incident_number} for review`, req.ip || 'unknown');
-    });
-    submitTx();
+    auditLog(req, 'incident_status_changed', 'incident', incident.id, `Changed status to submitted for incident #${incident.incident_number}`);
 
     const updated = db.prepare('SELECT * FROM incidents WHERE id = ?').get(incident.id);
     res.json(updated);
@@ -708,18 +691,12 @@ router.put('/:id/approve', requireRole('admin', 'manager', 'supervisor'), (req: 
 
     const now = localNow();
 
-    const approveTx = db.transaction(() => {
-      db.prepare(`
-        UPDATE incidents SET status = 'approved', supervisor_id = ?, approved_at = ?, updated_at = ?
-        WHERE id = ?
-      `).run(req.user!.userId, now, localNow(), incident.id);
+    db.prepare(`
+      UPDATE incidents SET status = 'approved', supervisor_id = ?, approved_at = ?, updated_at = ?
+      WHERE id = ?
+    `).run(req.user!.userId, now, localNow(), incident.id);
 
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'incident_approved', 'incident', ?, ?, ?)
-      `).run(req.user!.userId, incident.id, `Approved ${incident.incident_number}`, req.ip || 'unknown');
-    });
-    approveTx();
+    auditLog(req, 'incident_status_changed', 'incident', incident.id, `Changed status to approved for incident #${incident.incident_number}`);
 
     const updated = db.prepare('SELECT * FROM incidents WHERE id = ?').get(incident.id);
     res.json(updated);
@@ -746,18 +723,12 @@ router.put('/:id/return', requireRole('admin', 'manager', 'supervisor'), (req: R
 
     const { comments } = req.body;
 
-    const returnTx = db.transaction(() => {
-      db.prepare(`
-        UPDATE incidents SET status = 'returned', supervisor_id = ?, updated_at = ?
-        WHERE id = ?
-      `).run(req.user!.userId, localNow(), incident.id);
+    db.prepare(`
+      UPDATE incidents SET status = 'returned', supervisor_id = ?, updated_at = ?
+      WHERE id = ?
+    `).run(req.user!.userId, localNow(), incident.id);
 
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'incident_returned', 'incident', ?, ?, ?)
-      `).run(req.user!.userId, incident.id, `Returned ${incident.incident_number}: ${comments || 'No comments'}`, req.ip || 'unknown');
-    });
-    returnTx();
+    auditLog(req, 'incident_status_changed', 'incident', incident.id, `Changed status to returned for incident #${incident.incident_number}`);
 
     const updated = db.prepare('SELECT * FROM incidents WHERE id = ?').get(incident.id);
     res.json(updated);
@@ -813,14 +784,7 @@ router.post('/:id/persons', requireRole('admin', 'manager', 'supervisor', 'offic
     `).get(result.lastInsertRowid);
     if (!linked) { res.status(500).json({ error: 'Failed to retrieve linked person' }); return; }
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'person_linked', 'incident', ?, ?, ?)
-    `).run(
-      req.user!.userId, incident.id,
-      `Linked ${person.first_name} ${person.last_name} as ${role} to ${incident.incident_number}`,
-      req.ip || 'unknown'
-    );
+    auditLog(req, 'incident_updated', 'incident', incident.id, `Added person to incident #${incident.incident_number}`);
 
     res.status(201).json(linked);
   } catch (error: any) {
@@ -864,6 +828,8 @@ router.put('/:id/persons/:personId', requireRole('admin', 'manager', 'supervisor
       WHERE ip.id = ?
     `).get(link.id);
 
+    auditLog(req, 'incident_updated', 'incident', String(req.params.id), `Updated person link on incident #${req.params.id}`);
+
     res.json(updated);
   } catch (error: any) {
     console.error('Update person link error:', error?.message || 'Unknown error');
@@ -887,14 +853,7 @@ router.delete('/:id/persons/:personId', requireRole('admin', 'manager', 'supervi
 
     db.prepare('DELETE FROM incident_persons WHERE id = ?').run(link.id);
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'person_unlinked', 'incident', ?, ?, ?)
-    `).run(
-      req.user!.userId, req.params.id,
-      `Unlinked ${person?.first_name || ''} ${person?.last_name || ''} from ${incident?.incident_number || req.params.id}`,
-      req.ip || 'unknown'
-    );
+    auditLog(req, 'incident_updated', 'incident', String(req.params.id), `Removed person from incident #${incident?.incident_number || req.params.id}`);
 
     res.json({ message: 'Person unlinked from incident' });
   } catch (error: any) {
@@ -950,14 +909,7 @@ router.post('/:id/vehicles', requireRole('admin', 'manager', 'supervisor', 'offi
     `).get(result.lastInsertRowid);
     if (!linked) { res.status(500).json({ error: 'Failed to retrieve linked vehicle' }); return; }
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'vehicle_linked', 'incident', ?, ?, ?)
-    `).run(
-      req.user!.userId, incident.id,
-      `Linked vehicle ${vehicle.plate_number || 'No plate'} ${vehicle.make || ''} ${vehicle.model || ''} as ${role} to ${incident.incident_number}`,
-      req.ip || 'unknown'
-    );
+    auditLog(req, 'incident_updated', 'incident', incident.id, `Added vehicle to incident #${incident.incident_number}`);
 
     res.status(201).json(linked);
   } catch (error: any) {
@@ -1003,6 +955,8 @@ router.put('/:id/vehicles/:vehicleId', requireRole('admin', 'manager', 'supervis
       WHERE iv.id = ?
     `).get(link.id);
 
+    auditLog(req, 'incident_updated', 'incident', String(req.params.id), `Updated vehicle link on incident #${req.params.id}`);
+
     res.json(updated);
   } catch (error: any) {
     console.error('Update vehicle link error:', error?.message || 'Unknown error');
@@ -1026,14 +980,7 @@ router.delete('/:id/vehicles/:vehicleId', requireRole('admin', 'manager', 'super
 
     db.prepare('DELETE FROM incident_vehicles WHERE id = ?').run(link.id);
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'vehicle_unlinked', 'incident', ?, ?, ?)
-    `).run(
-      req.user!.userId, req.params.id,
-      `Unlinked vehicle ${vehicle?.plate_number || ''} from ${incident?.incident_number || req.params.id}`,
-      req.ip || 'unknown'
-    );
+    auditLog(req, 'incident_updated', 'incident', String(req.params.id), `Removed vehicle from incident #${incident?.incident_number || req.params.id}`);
 
     res.json({ message: 'Vehicle unlinked from incident' });
   } catch (error: any) {
@@ -1101,14 +1048,7 @@ router.post('/:id/evidence', requireRole('admin', 'manager', 'supervisor', 'offi
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(result.lastInsertRowid);
     if (!evidence) { res.status(500).json({ error: 'Failed to retrieve created evidence' }); return; }
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'evidence_created', 'incident', ?, ?, ?)
-    `).run(
-      req.user!.userId, incident.id,
-      `Added evidence ${evidenceNumber} to ${incident.incident_number}: ${description}`,
-      req.ip || 'unknown'
-    );
+    auditLog(req, 'incident_updated', 'incident', incident.id, `Added evidence to incident #${incident.incident_number}`);
 
     res.status(201).json(evidence);
   } catch (error: any) {
@@ -1191,14 +1131,7 @@ router.post('/:id/supplements', requireRole('admin', 'manager', 'supervisor', 'o
     `).get(result.lastInsertRowid);
     if (!supplement) { res.status(500).json({ error: 'Failed to retrieve created supplement' }); return; }
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'supplement_created', 'incident', ?, ?, ?)
-    `).run(
-      req.user!.userId, incident.id,
-      `Created ${report_type} supplement ${reportNumber} for ${incident.incident_number}: ${subject}`,
-      req.ip || 'unknown'
-    );
+    auditLog(req, 'supplement_added', 'incident', incident.id, `Added supplement to incident #${incident.incident_number}`);
 
     res.status(201).json(supplement);
   } catch (error: any) {
@@ -1254,6 +1187,8 @@ router.put('/:incidentId/supplements/:supId', requireRole('admin', 'manager', 's
       WHERE sr.id = ?
     `).get(req.params.supId);
 
+    auditLog(req, 'incident_updated', 'incident', String(req.params.incidentId), `Updated supplement on incident #${req.params.incidentId}`);
+
     res.json(updated);
   } catch (error: any) {
     console.error('Update supplement error:', error?.message || 'Unknown error');
@@ -1277,6 +1212,9 @@ router.delete('/:incidentId/supplements/:supId', requireRole('admin', 'manager')
     }
 
     db.prepare('DELETE FROM supplemental_reports WHERE id = ?').run(req.params.supId);
+
+    auditLog(req, 'incident_updated', 'incident', String(req.params.incidentId), `Deleted supplement from incident #${req.params.incidentId}`);
+
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete supplement error:', error?.message || 'Unknown error');

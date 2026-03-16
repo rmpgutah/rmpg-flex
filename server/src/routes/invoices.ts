@@ -9,10 +9,22 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { escapeLike } from '../middleware/sanitize';
 import { localNow, localToday } from '../utils/timeUtils';
 
 const router = Router();
 router.use(authenticateToken);
+
+// Validate :id params as positive integers
+router.param('id', (req: Request, res: Response, next) => {
+  const raw = String(req.params.id);
+  const n = parseInt(raw, 10);
+  if (isNaN(n) || n < 1 || String(n) !== raw) {
+    res.status(400).json({ error: 'Invalid ID parameter' });
+    return;
+  }
+  next();
+});
 
 // ─── Helper: Generate next invoice number ─────────────────
 function generateInvoiceNumber(): string {
@@ -110,7 +122,7 @@ function recalculateInvoiceTotals(invoiceId: number | string | string[]): void {
 }
 
 // ─── GET /api/invoices/stats ──────────────────────────────
-router.get('/stats', (req: Request, res: Response) => {
+router.get('/stats', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { client_id } = req.query;
@@ -158,7 +170,7 @@ router.get('/stats', (req: Request, res: Response) => {
 
 // ─── GET /api/invoices ────────────────────────────────────
 // List invoices with pagination and filters
-router.get('/', (req: Request, res: Response) => {
+router.get('/', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
@@ -185,8 +197,8 @@ router.get('/', (req: Request, res: Response) => {
       params.push(req.query.date_to);
     }
     if (req.query.q) {
-      const q = `%${req.query.q}%`;
-      conditions.push('(i.invoice_number LIKE ? OR c.name LIKE ? OR i.notes LIKE ?)');
+      const q = `%${escapeLike(String(req.query.q))}%`;
+      conditions.push("(i.invoice_number LIKE ? ESCAPE '\\' OR c.name LIKE ? ESCAPE '\\' OR i.notes LIKE ? ESCAPE '\\')");
       params.push(q, q, q);
     }
 
@@ -227,7 +239,7 @@ router.get('/', (req: Request, res: Response) => {
 
 // ─── GET /api/invoices/:id ────────────────────────────────
 // Full invoice detail with line items and payments
-router.get('/:id', (req: Request, res: Response) => {
+router.get('/:id', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const invoice = db.prepare(`
@@ -838,7 +850,7 @@ router.delete('/:id/payments/:paymentId', requireRole('admin', 'manager'), (req:
 
 // ─── GET /api/invoices/:id/pdf-data ───────────────────────
 // Return all data needed for client-side PDF generation
-router.get('/:id/pdf-data', (req: Request, res: Response) => {
+router.get('/:id/pdf-data', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const invoice = db.prepare(`
@@ -877,7 +889,7 @@ router.get('/:id/pdf-data', (req: Request, res: Response) => {
 // ─── GET /api/invoices/:id/person-chain ─────────────────
 // Get Person ↔ Client ↔ Incident traceability data for this invoice
 // Shows all persons linked to the client, and their involvement in invoiced incidents
-router.get('/:id/person-chain', (req: Request, res: Response) => {
+router.get('/:id/person-chain', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;

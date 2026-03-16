@@ -62,6 +62,10 @@ import { useIsMobile } from '../hooks/useIsMobile';
 
 function mapDbIncident(row: any): Incident & Record<string, any> {
   return {
+    // Spread all DB columns first so flags, PSO fields, contract_id,
+    // section/zone/beat, etc. flow through without explicit listing
+    ...row,
+    // Override fields that need type coercion or renaming
     id: String(row.id),
     incident_number: row.incident_number ?? '',
     call_id: row.call_id ?? undefined,
@@ -86,7 +90,7 @@ function mapDbIncident(row: any): Incident & Record<string, any> {
     approved_at: row.approved_at ?? undefined,
     created_at: row.created_at ?? new Date().toISOString(),
     updated_at: row.updated_at ?? new Date().toISOString(),
-    // New extended fields
+    // Extended fields with defaults
     occurred_date: row.occurred_date ?? '',
     occurred_time: row.occurred_time ?? '',
     end_date: row.end_date ?? '',
@@ -98,9 +102,28 @@ function mapDbIncident(row: any): Incident & Record<string, any> {
     damage_estimate: row.damage_estimate ?? '',
     damage_description: row.damage_description ?? '',
     weapons_involved: row.weapons_involved ?? '',
+    // Boolean coercion for flag fields (SQLite stores as 0/1)
     alcohol_involved: row.alcohol_involved === 1 || row.alcohol_involved === true,
     drugs_involved: row.drugs_involved === 1 || row.drugs_involved === true,
     domestic_violence: row.domestic_violence === 1 || row.domestic_violence === true,
+    injuries_reported: row.injuries_reported === 1 || row.injuries_reported === true,
+    mental_health_crisis: row.mental_health_crisis === 1 || row.mental_health_crisis === true,
+    juvenile_involved: row.juvenile_involved === 1 || row.juvenile_involved === true,
+    felony_in_progress: row.felony_in_progress === 1 || row.felony_in_progress === true,
+    officer_safety_caution: row.officer_safety_caution === 1 || row.officer_safety_caution === true,
+    k9_requested: row.k9_requested === 1 || row.k9_requested === true,
+    ems_requested: row.ems_requested === 1 || row.ems_requested === true,
+    fire_requested: row.fire_requested === 1 || row.fire_requested === true,
+    hazmat: row.hazmat === 1 || row.hazmat === true,
+    gang_related: row.gang_related === 1 || row.gang_related === true,
+    evidence_collected: row.evidence_collected === 1 || row.evidence_collected === true,
+    body_camera_active: row.body_camera_active === 1 || row.body_camera_active === true,
+    photos_taken: row.photos_taken === 1 || row.photos_taken === true,
+    trespass_issued: row.trespass_issued === 1 || row.trespass_issued === true,
+    vehicle_pursuit: row.vehicle_pursuit === 1 || row.vehicle_pursuit === true,
+    foot_pursuit: row.foot_pursuit === 1 || row.foot_pursuit === true,
+    le_notified: row.le_notified === 1 || row.le_notified === true,
+    supervisor_notified: row.supervisor_notified === 1 || row.supervisor_notified === true,
     disposition: row.disposition ?? '',
     zone_beat: row.zone_beat ?? '',
     responding_le_agency: row.responding_le_agency ?? '',
@@ -904,6 +927,8 @@ export default function IncidentsPage() {
       beat_id: inc?.beat_id,
       disposition: inc?.disposition,
       zone_beat: inc?.zone_beat,
+      dispatch_code: inc?.dispatch_code,
+      source: inc?.source,
       // Dates / times
       occurred_date: inc?.occurred_date,
       occurred_time: inc?.occurred_time,
@@ -1002,6 +1027,24 @@ export default function IncidentsPage() {
         storage_location: e.storage_location,
       })),
       attachment_images: attachmentImages.length > 0 ? attachmentImages : undefined,
+      // Geo coordinates
+      latitude: inc?.latitude,
+      longitude: inc?.longitude,
+      // Linked call details
+      call_created_at: inc?.call_created_at,
+      call_type: inc?.call_type,
+      caller_name: inc?.caller_name,
+      caller_phone: inc?.caller_phone,
+      // Supplement reports (attached to this incident)
+      supplements: detailSupplements.map((sup: any) => ({
+        report_number: sup.report_number || '',
+        report_type: sup.report_type || sup.type || '',
+        subject: sup.subject || '',
+        narrative: sup.narrative || '',
+        author_name: sup.author_name || '',
+        status: sup.status || '',
+        created_at: sup.created_at || '',
+      })),
     } as any;
 
     // Fetch officer's digital signature for PDF embedding
@@ -1010,9 +1053,29 @@ export default function IncidentsPage() {
       if (sigRes?.signature) pdfData._officerSignature = sigRes.signature;
     } catch { /* proceed without signature */ }
 
-    // Fetch GPS breadcrumb trail (via linked call_id)
+    // Fetch call notes from dispatch (for pre-narrative details)
     const callId = (selectedIncident as any)?.call_id;
     if (callId) {
+      try {
+        const callDetail = await apiFetch<any>(`/dispatch/calls/${callId}`);
+        if (callDetail) {
+          if (callDetail.caller_name) pdfData.caller_name = callDetail.caller_name;
+          if (callDetail.caller_phone) pdfData.caller_phone = callDetail.caller_phone;
+          // Build call notes from dispatch notes
+          if (callDetail.notes?.length > 0) {
+            pdfData.call_notes = callDetail.notes.map((n: any) =>
+              `[${n.timestamp ? new Date(n.timestamp).toLocaleString() : ''}] ${n.author || 'System'}: ${n.text || ''}`
+            ).join('\n');
+          }
+          // Inherit lat/lng from call if incident doesn't have them
+          if (pdfData.latitude == null && callDetail.latitude != null) {
+            pdfData.latitude = callDetail.latitude;
+            pdfData.longitude = callDetail.longitude;
+          }
+        }
+      } catch { /* call detail optional */ }
+
+      // Fetch GPS breadcrumb trail (via linked call_id)
       try {
         const trail = await apiFetch<{
           points: any[];

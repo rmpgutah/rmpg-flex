@@ -16,6 +16,17 @@ import crypto from 'crypto';
 const router = Router();
 router.use(authenticateToken);
 
+// Validate :id params as positive integers
+router.param('id', (req: Request, res: Response, next) => {
+  const raw = String(req.params.id);
+  const n = parseInt(raw, 10);
+  if (isNaN(n) || n < 1 || String(n) !== raw) {
+    res.status(400).json({ error: 'Invalid ID parameter' });
+    return;
+  }
+  next();
+});
+
 const WRITE_ROLES = ['admin', 'manager', 'supervisor', 'officer'];
 
 // ============================================================

@@ -95,6 +95,7 @@ export interface IncidentFormData {
   process_served_to: string;
   process_served_address: string;
   process_service_result: string;
+  process_served_at: string;
   process_attempts: string;
   // Operational flags
   injuries_reported: boolean;
@@ -230,6 +231,7 @@ const EMPTY_FORM: IncidentFormData = {
   process_served_to: '',
   process_served_address: '',
   process_service_result: '',
+  process_served_at: '',
   process_attempts: '',
   // Operational flags
   injuries_reported: false,
@@ -342,6 +344,7 @@ export default function IncidentFormModal({
           process_served_to: inc.process_served_to || '',
           process_served_address: inc.process_served_address || '',
           process_service_result: inc.process_service_result || '',
+          process_served_at: inc.process_served_at || '',
           process_attempts: inc.process_attempts != null ? String(inc.process_attempts) : '',
           // Operational flags
           injuries_reported: !!inc.injuries_reported,
@@ -930,7 +933,7 @@ export default function IncidentFormModal({
           {/* Service Details */}
           <div className="border border-rmpg-600 p-3 space-y-3">
             <span className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">Service Details</span>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Served To</label>
                 <input type="text" className="input-dark mt-1" placeholder="Name of person served" value={formData.process_served_to} onChange={(e) => update('process_served_to', e.target.value)} />
@@ -938,6 +941,10 @@ export default function IncidentFormModal({
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Served Address</label>
                 <input type="text" className="input-dark mt-1" placeholder="Address where served" value={formData.process_served_address} onChange={(e) => update('process_served_address', e.target.value)} />
+              </div>
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Served At</label>
+                <input type="datetime-local" className="input-dark mt-1" value={formData.process_served_at} onChange={(e) => update('process_served_at', e.target.value)} />
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

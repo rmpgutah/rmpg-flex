@@ -49,6 +49,12 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
           'SELECT ip_address, ua_hash FROM sessions WHERE session_id = ? AND is_active = 1'
         ).get(decoded.sessionId) as { ip_address: string; ua_hash?: string } | undefined;
 
+        // Reject if session was revoked, expired, or deleted
+        if (!session) {
+          res.status(401).json({ error: 'Session not found or revoked', code: 'SESSION_INVALID' });
+          return;
+        }
+
         // User-agent binding — detect token theft across different browsers
         if (session?.ua_hash) {
           const currentUaHash = crypto.createHash('sha256')
@@ -74,11 +80,17 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
           }
           // 'warn' mode: log but allow through
         }
+
+        // Update session last_used_at for idle timeout detection
+        if (session) {
+          db.prepare('UPDATE sessions SET last_used_at = ? WHERE session_id = ?')
+            .run(new Date().toISOString(), decoded.sessionId);
+        }
       } catch {
-      // DB unavailable — deny request rather than silently bypassing IP binding
-      res.status(503).json({ error: 'Service temporarily unavailable' });
-      return;
-    }
+        // DB unavailable — deny request rather than silently bypassing IP binding
+        res.status(503).json({ error: 'Service temporarily unavailable' });
+        return;
+      }
     }
 
     req.user = decoded;

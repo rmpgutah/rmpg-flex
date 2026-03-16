@@ -271,6 +271,22 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       } catch { /* geofence not configured, skip */ }
     }
 
+    // If S/Z/B are set but dispatch_code wasn't resolved (no GPS), look up district table
+    if (autoSectionId && autoZoneId && autoBeatId && !autoDispatchCode) {
+      const districtMatch = db.prepare(
+        'SELECT * FROM dispatch_districts WHERE section_id = ? AND zone_id = ? AND beat_id = ?'
+      ).get(autoSectionId, autoZoneId, autoBeatId) as any;
+      if (districtMatch) {
+        autoDispatchCode = districtMatch.dispatch_code;
+        if (!autoSectionName) autoSectionName = districtMatch.section_name;
+        if (!autoZoneName) autoZoneName = districtMatch.zone_name;
+        if (!autoBeatName) autoBeatName = districtMatch.beat_name;
+        if (!autoBeatDescriptor) autoBeatDescriptor = districtMatch.beat_descriptor;
+      } else {
+        autoDispatchCode = `${autoSectionId}-${autoZoneId}/${autoBeatId}`;
+      }
+    }
+
     // Transaction: insert call + activity log atomically
     const createCallTx = db.transaction(() => {
       const result = db.prepare(`
@@ -688,6 +704,27 @@ router.put('/calls/:id', requireRole('admin', 'manager', 'supervisor', 'dispatch
     addField('section_id', autoSectionId);
     addField('zone_id', autoZoneId);
     addField('beat_id', autoBeatId);
+
+    // Auto-resolve dispatch_code + district names from S/Z/B IDs
+    const finalSectionId = autoSectionId !== undefined ? autoSectionId : call.section_id;
+    const finalZoneId = autoZoneId !== undefined ? autoZoneId : call.zone_id;
+    const finalBeatId = autoBeatId !== undefined ? autoBeatId : call.beat_id;
+    if (finalSectionId && finalZoneId && finalBeatId) {
+      const districtMatch = db.prepare(
+        'SELECT * FROM dispatch_districts WHERE section_id = ? AND zone_id = ? AND beat_id = ?'
+      ).get(finalSectionId, finalZoneId, finalBeatId) as any;
+      if (districtMatch) {
+        addField('dispatch_code', districtMatch.dispatch_code);
+        addField('section_name', districtMatch.section_name);
+        addField('zone_name', districtMatch.zone_name);
+        addField('beat_name', districtMatch.beat_name);
+        addField('beat_descriptor', districtMatch.beat_descriptor);
+      } else {
+        // Build dispatch_code from IDs even without a district record
+        addField('dispatch_code', `${finalSectionId}-${finalZoneId}/${finalBeatId}`);
+      }
+    }
+
     addField('responding_officer', responding_officer);
     addField('secondary_type', secondary_type);
     addField('contact_method', contact_method);

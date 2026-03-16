@@ -28,6 +28,9 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
     'payment=()', 'usb=()', 'bluetooth=()', 'serial=()',
     'hid=()', 'magnetometer=()', 'gyroscope=()',
     'accelerometer=()', 'ambient-light-sensor=()',
+    'autoplay=()', 'display-capture=()', 'document-domain=()',
+    'encrypted-media=(self)', 'fullscreen=(self)',
+    'idle-detection=()', 'screen-wake-lock=()',
   ].join(', '));
 
   // Cross-Origin isolation headers — prevent cross-origin attacks
@@ -80,6 +83,9 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
     "object-src 'none'",
     "form-action 'self'",
   ].join('; '));
+
+  // Prevent IE from opening downloads directly in the browser context
+  res.set('X-Download-Options', 'noopen');
 
   // Remove powered-by header
   res.removeHeader('X-Powered-By');

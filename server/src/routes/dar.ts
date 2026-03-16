@@ -9,10 +9,22 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { escapeLike } from '../middleware/sanitize';
 import { localNow, localToday } from '../utils/timeUtils';
 
 const router = Router();
 router.use(authenticateToken);
+
+// Validate :id params as positive integers
+router.param('id', (req: Request, res: Response, next) => {
+  const raw = String(req.params.id);
+  const n = parseInt(raw, 10);
+  if (isNaN(n) || n < 1 || String(n) !== raw) {
+    res.status(400).json({ error: 'Invalid ID parameter' });
+    return;
+  }
+  next();
+});
 
 /** Generate next DAR number — wrapped in transaction to prevent race conditions */
 function nextDarNumber(): string {
@@ -46,8 +58,8 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: 
     if (date_from) { where += ' AND d.shift_date >= ?'; params.push(date_from); }
     if (date_to) { where += ' AND d.shift_date <= ?'; params.push(date_to); }
     if (search) {
-      where += ' AND (d.dar_number LIKE ? OR d.officer_name LIKE ? OR d.property_name LIKE ? OR d.activities_narrative LIKE ?)';
-      const s = `%${search}%`; params.push(s, s, s, s);
+      where += " AND (d.dar_number LIKE ? ESCAPE '\\' OR d.officer_name LIKE ? ESCAPE '\\' OR d.property_name LIKE ? ESCAPE '\\' OR d.activities_narrative LIKE ? ESCAPE '\\')";
+      const s = `%${escapeLike(String(search))}%`; params.push(s, s, s, s);
     }
 
     const total = (db.prepare(`SELECT COUNT(*) as count FROM daily_activity_reports d ${where}`).get(...params) as any)?.count || 0;
@@ -92,9 +104,9 @@ router.post('/auto-populate', requireRole('admin', 'manager', 'supervisor', 'off
     const calls = db.prepare(`
       SELECT id, call_number, incident_type, created_at, disposition, status
       FROM calls_for_service
-      WHERE DATE(created_at) = ? AND (assigned_unit_ids LIKE ? OR dispatcher_id = ?)
+      WHERE DATE(created_at) = ? AND (assigned_unit_ids LIKE ? ESCAPE '\\' OR dispatcher_id = ?)
       ORDER BY created_at
-    `).all(shift_date, `%${officer_id}%`, officer_id) as any[];
+    `).all(shift_date, `%${escapeLike(String(officer_id))}%`, officer_id) as any[];
 
     // Get incidents created
     const incidents = db.prepare(`

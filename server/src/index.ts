@@ -177,8 +177,8 @@ app.post('/api/webhook/github', webhookRateLimit, express.raw({ type: 'applicati
     return;
   }
 
-  const commitSha = (payload.after || '').slice(0, 8);
-  const pusher = payload.pusher?.name || 'unknown';
+  const commitSha = (payload.after || '').slice(0, 8).replace(/[^a-f0-9]/gi, '');
+  const pusher = (payload.pusher?.name || 'unknown').slice(0, 50).replace(/[\x00-\x1f\x7f]/g, '');
   console.log(`[Webhook] DEPLOY TRIGGERED — commit=${commitSha}, by=${pusher}`);
 
   // Respond immediately, deploy runs async
@@ -214,7 +214,8 @@ if (config.isProduction) {
   app.use('/api', (req, res, next) => {
     // Skip safe methods (GET, HEAD, OPTIONS) and auth routes (login needs to work without header)
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
-    if (req.path.startsWith('/auth/login')
+    if (req.path === '/auth/login'
+        || req.path === '/auth/login/'
         || req.path.startsWith('/webhook/')) return next();
 
     const csrfHeader = req.headers['x-requested-with'];

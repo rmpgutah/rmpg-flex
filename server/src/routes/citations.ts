@@ -13,6 +13,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 import { createNotificationForRoles } from './notifications';
 import { resolveDistrict } from '../utils/districtResolver';
+import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 
@@ -368,17 +369,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispa
 
     const { result, citation_number } = createCitation();
 
-    // Activity log
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'citation_created', 'citation', ?, ?, ?, ?)
-    `).run(
-      req.user!.userId,
-      result.lastInsertRowid,
-      `Created citation ${citation_number}${person_name ? ` for ${person_name}` : ''}`,
-      req.ip || 'unknown',
-      localNow()
-    );
+    auditLog(req, 'citation_created', 'citation', Number(result.lastInsertRowid), `Created citation ${citation_number}${person_name ? ` for ${person_name}` : ''}`);
 
     const created = db.prepare('SELECT * FROM citations WHERE id = ?').get(result.lastInsertRowid);
     if (!created) { res.status(500).json({ error: 'Failed to retrieve created citation' }); return; }
@@ -460,16 +451,7 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dis
       db.prepare(`UPDATE citations SET ${fields.join(', ')} WHERE id = ?`).run(...values);
     }
 
-    // Activity log
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'citation_updated', 'citation', ?, ?, ?)
-    `).run(
-      req.user!.userId,
-      req.params.id,
-      `Updated citation ${citation.citation_number}`,
-      req.ip || 'unknown'
-    );
+    auditLog(req, 'citation_updated', 'citation', Number(req.params.id), `Updated citation ${citation.citation_number}`);
 
     const updated = db.prepare('SELECT * FROM citations WHERE id = ?').get(req.params.id);
     res.json({ data: updated });
@@ -494,15 +476,7 @@ router.delete('/:id', requireRole('admin', 'manager', 'supervisor'), (req: Reque
       UPDATE citations SET status = 'voided', updated_at = ? WHERE id = ?
     `).run(localNow(), req.params.id);
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'citation_voided', 'citation', ?, ?, ?)
-    `).run(
-      req.user!.userId,
-      req.params.id,
-      `Voided citation ${citation.citation_number}`,
-      req.ip || 'unknown'
-    );
+    auditLog(req, 'citation_voided', 'citation', Number(req.params.id), `Voided citation ${citation.citation_number}`);
 
     res.json({ message: 'Citation voided', data: { id: citation.id, status: 'voided' } });
   } catch (error: any) {

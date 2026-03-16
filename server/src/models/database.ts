@@ -40,6 +40,11 @@ export function initDatabase(): Database.Database {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
 
+  // Security pragmas — prevent recovery of deleted PII and schema manipulation
+  db.pragma('secure_delete = ON');        // Overwrite deleted data with zeros (CJIS compliance)
+  db.pragma('trusted_schema = OFF');      // Reject untrusted schema extensions (SQL injection defense)
+  db.pragma('cell_size_check = ON');      // Detect corrupt/oversized cells before they cause issues
+
   // Performance pragmas — session-level, reset on reconnection
   db.pragma('busy_timeout = 5000');       // Wait 5s on lock instead of instant SQLITE_BUSY
   db.pragma('mmap_size = 268435456');     // 256MB memory-mapped I/O for faster reads
@@ -3057,6 +3062,14 @@ function migrateSchema(): void {
   addCol('calls_for_service', 'contract_id', 'TEXT');
   addCol('incidents', 'contract_id', 'TEXT');
 
+  // ── Process Service served-at timestamp on incidents ──
+  addCol('incidents', 'process_served_at', 'TEXT');
+
+  // ── Original 3 flags that were only on calls — ensure they exist on incidents too ──
+  addCol('incidents', 'injuries_reported', 'INTEGER DEFAULT 0');
+  addCol('incidents', 'le_notified', 'INTEGER DEFAULT 0');
+  addCol('incidents', 'supervisor_notified', 'INTEGER DEFAULT 0');
+
   // ── Additional operational flags for calls and incidents ──
   const flagTables = ['calls_for_service', 'incidents'] as const;
   for (const tbl of flagTables) {
@@ -4016,6 +4029,43 @@ function migrateSchema(): void {
   addCol('calls_for_service', 'pso_service_windows', 'TEXT'); // JSON: { early_morning: bool, daytime: bool, evening: bool, weekend: bool }
   addCol('call_visit_history', 'time_window', 'TEXT');  // early_morning | daytime | evening
   addCol('call_visit_history', 'is_weekend', 'INTEGER DEFAULT 0');
+
+  // ── Backfill dispatch_code from S/Z/B IDs on all calls ────────
+  // Ensures dispatch_code always matches current section_id/zone_id/beat_id
+  // Uses a single UPDATE...FROM to avoid N+1 queries during startup
+  try {
+    // Backfill calls that have a matching dispatch_districts row
+    const result1 = db.prepare(`
+      UPDATE calls_for_service SET
+        dispatch_code = dd.dispatch_code,
+        section_name = dd.section_name,
+        zone_name = dd.zone_name,
+        beat_name = dd.beat_name,
+        beat_descriptor = dd.beat_descriptor
+      FROM dispatch_districts dd
+      WHERE calls_for_service.section_id = dd.section_id
+        AND calls_for_service.zone_id = dd.zone_id
+        AND calls_for_service.beat_id = dd.beat_id
+        AND (calls_for_service.dispatch_code IS NULL OR calls_for_service.dispatch_code != dd.dispatch_code)
+    `).run();
+    // Backfill calls with no matching district — use fallback S-Z/B format
+    const result2 = db.prepare(`
+      UPDATE calls_for_service SET
+        dispatch_code = section_id || '-' || zone_id || '/' || beat_id
+      WHERE section_id IS NOT NULL AND zone_id IS NOT NULL AND beat_id IS NOT NULL
+        AND dispatch_code IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM dispatch_districts dd
+          WHERE dd.section_id = calls_for_service.section_id
+            AND dd.zone_id = calls_for_service.zone_id
+            AND dd.beat_id = calls_for_service.beat_id
+        )
+    `).run();
+    const backfilled = result1.changes + result2.changes;
+    if (backfilled > 0) console.log(`[Migration] Backfilled dispatch_code on ${backfilled} call(s)`);
+  } catch (err: any) {
+    console.warn('[Migration] dispatch_code backfill warning:', err?.message);
+  }
 
   console.log('Schema migration completed.');
 }

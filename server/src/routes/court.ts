@@ -10,9 +10,21 @@ import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 import { escapeLike } from '../middleware/sanitize';
+import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 router.use(authenticateToken);
+
+// Validate :id params as positive integers
+router.param('id', (req: Request, res: Response, next) => {
+  const raw = String(req.params.id);
+  const n = parseInt(raw, 10);
+  if (isNaN(n) || n < 1 || String(n) !== raw) {
+    res.status(400).json({ error: 'Invalid ID parameter' });
+    return;
+  }
+  next();
+});
 
 function nextEventNumber(): string {
   const db = getDb();
@@ -27,7 +39,7 @@ function nextEventNumber(): string {
 }
 
 // ─── GET /events ─────────────────────────────────────────
-router.get('/events', (req: Request, res: Response) => {
+router.get('/events', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { status, event_type, date_from, date_to, officer_id, search, page = '1', limit = '50' } = req.query;
@@ -81,7 +93,7 @@ router.get('/events/upcoming', requireRole('admin', 'manager', 'supervisor', 'of
 });
 
 // ─── GET /calendar ───────────────────────────────────────
-router.get('/calendar', (req: Request, res: Response) => {
+router.get('/calendar', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { month, year } = req.query;
@@ -111,7 +123,7 @@ router.get('/calendar', (req: Request, res: Response) => {
 });
 
 // ─── GET /events/:id ─────────────────────────────────────
-router.get('/events/:id', (req: Request, res: Response) => {
+router.get('/events/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare(`
@@ -156,9 +168,7 @@ router.post('/events', requireRole('admin', 'manager', 'supervisor', 'officer'),
     });
     const { result, event_number } = createEvent();
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'create', 'court_event', ?, ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ event_number }), req.ip || 'unknown', now);
-
+    auditLog(req, 'CREATE', 'court_event', Number(result.lastInsertRowid), 'Created court event');
     res.status(201).json({ data: { id: result.lastInsertRowid, event_number } });
   } catch (error: any) {
     console.error('Create court event error:', error?.message || 'Unknown error');
@@ -188,6 +198,7 @@ router.put('/events/:id', requireRole('admin', 'manager', 'supervisor', 'officer
     }
     params.push(req.params.id);
     db.prepare(`UPDATE court_events SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+    auditLog(req, 'UPDATE', 'court_event', String(req.params.id), `Updated court event #${req.params.id}`);
     res.json({ data: { id: parseInt(req.params.id as string, 10) } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -205,9 +216,7 @@ router.put('/events/:id/outcome', requireRole('admin', 'manager', 'supervisor'),
         status = 'completed', updated_at = ? WHERE id = ?
     `).run(outcome, sentence || null, fine_amount ?? null, notes || null, now, req.params.id);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'outcome', 'court_event', ?, ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ outcome }), req.ip || 'unknown', now);
-
+    auditLog(req, 'UPDATE', 'court_event', String(req.params.id), `Recorded court event outcome #${req.params.id}`);
     res.json({ data: { id: parseInt(req.params.id as string, 10), outcome } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });

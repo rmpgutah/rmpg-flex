@@ -279,7 +279,7 @@ router.post('/calls/:id/generate-incident', requireRole('admin', 'manager', 'sup
         occurred_date, occurred_time, end_date, end_time,
         pso_service_type, pso_attempt_number, pso_requestor_name, pso_requestor_phone,
         pso_requestor_email, pso_billing_code, pso_authorization,
-        process_service_type, process_served_to, process_served_address, process_service_result, process_attempts,
+        process_service_type, process_served_to, process_served_address, process_service_result, process_served_at, process_attempts,
         alcohol_involved, drugs_involved, domestic_violence, weapons_involved,
         injuries_reported, mental_health_crisis, juvenile_involved, felony_in_progress,
         officer_safety_caution, k9_requested, ems_requested, fire_requested,
@@ -293,7 +293,7 @@ router.post('/calls/:id/generate-incident', requireRole('admin', 'manager', 'sup
         ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?, ?, ?,
-        ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
         ?, ?, ?, ?)
@@ -309,7 +309,7 @@ router.post('/calls/:id/generate-incident', requireRole('admin', 'manager', 'sup
       call.pso_authorization || null,
       call.process_service_type || null, call.process_served_to || null,
       call.process_served_address || null, call.process_service_result || null,
-      call.process_attempts || null,
+      call.process_served_at || null, call.process_attempts || null,
       // Flags from dispatch call
       call.alcohol_involved ? 1 : 0, call.drugs_involved ? 1 : 0,
       call.domestic_violence ? 1 : 0, call.weapons_involved || null,

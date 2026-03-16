@@ -5,9 +5,22 @@ import { broadcast } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
 import { createNotificationForRoles } from './notifications';
 import { resolveDistrict } from '../utils/districtResolver';
+import { escapeLike } from '../middleware/sanitize';
+import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 router.use(authenticateToken);
+
+// Validate :id params as positive integers
+router.param('id', (req: Request, res: Response, next) => {
+  const raw = String(req.params.id);
+  const n = parseInt(raw, 10);
+  if (isNaN(n) || n < 1 || String(n) !== raw) {
+    res.status(400).json({ error: 'Invalid ID parameter' });
+    return;
+  }
+  next();
+});
 
 /** Generate next FI number: FI-YYYY-NNNN */
 /** Generate FI number — wrapped in transaction to prevent race conditions */
@@ -30,7 +43,7 @@ function generateFiNumber(db: ReturnType<typeof getDb>): string {
 }
 
 // GET / — List field interviews
-router.get('/', (req: Request, res: Response) => {
+router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { status, officer_id, search, archived, page = '1', per_page = '50' } = req.query;
@@ -41,8 +54,8 @@ router.get('/', (req: Request, res: Response) => {
     if (status) { where += ' AND fi.status = ?'; params.push(status); }
     if (officer_id) { where += ' AND fi.officer_id = ?'; params.push(officer_id); }
     if (search) {
-      where += ` AND ((fi.subject_first_name || ' ' || fi.subject_last_name) LIKE ? OR fi.fi_number LIKE ? OR fi.location LIKE ? OR fi.narrative LIKE ?)`;
-      const s = `%${search}%`;
+      where += ` AND ((fi.subject_first_name || ' ' || fi.subject_last_name) LIKE ? ESCAPE '\\' OR fi.fi_number LIKE ? ESCAPE '\\' OR fi.location LIKE ? ESCAPE '\\' OR fi.narrative LIKE ? ESCAPE '\\')`;
+      const s = `%${escapeLike(String(search))}%`;
       params.push(s, s, s, s);
     }
     if (archived === 'true') {
@@ -78,7 +91,7 @@ router.get('/', (req: Request, res: Response) => {
 });
 
 // GET /:id — Single FI detail
-router.get('/:id', (req: Request, res: Response) => {
+router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare(`
@@ -175,6 +188,8 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
       'field_interview', created.id, 'normal', 'fi.created', req.user!.userId,
     );
 
+    auditLog(req, 'CREATE', 'field_interview', created.id, `Created field interview ${created.fi_number}`);
+
     res.status(201).json(created);
   } catch (err: any) {
     res.status(500).json({ error: 'Internal server error' });
@@ -232,6 +247,8 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (re
       location: updated.location,
       status: updated.status,
     });
+    auditLog(req, 'UPDATE', 'field_interview', Number(req.params.id), `Updated field interview #${req.params.id}`);
+
     res.json(updated);
   } catch (err: any) {
     res.status(500).json({ error: 'Internal server error' });
@@ -245,6 +262,8 @@ router.post('/:id/archive', requireRole('admin', 'manager', 'supervisor'), (req:
     const existing = db.prepare('SELECT id FROM field_interviews WHERE id = ?').get(req.params.id);
     if (!existing) { res.status(404).json({ error: 'Field interview not found' }); return; }
     db.prepare(`UPDATE field_interviews SET status = 'archived', archived_at = ? WHERE id = ?`).run(localNow(), req.params.id);
+    auditLog(req, 'UPDATE', 'field_interview', Number(req.params.id), `Archived field interview #${req.params.id}`);
+
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: 'Internal server error' });
@@ -258,6 +277,8 @@ router.post('/:id/unarchive', requireRole('admin', 'manager', 'supervisor'), (re
     const existing = db.prepare('SELECT id FROM field_interviews WHERE id = ?').get(req.params.id);
     if (!existing) { res.status(404).json({ error: 'Field interview not found' }); return; }
     db.prepare(`UPDATE field_interviews SET status = 'active', archived_at = NULL WHERE id = ?`).run(req.params.id);
+    auditLog(req, 'UPDATE', 'field_interview', Number(req.params.id), `Unarchived field interview #${req.params.id}`);
+
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: 'Internal server error' });
@@ -271,6 +292,8 @@ router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Respo
     const existing = db.prepare('SELECT id FROM field_interviews WHERE id = ?').get(req.params.id);
     if (!existing) { res.status(404).json({ error: 'Field interview not found' }); return; }
     db.prepare(`UPDATE field_interviews SET status = 'archived', archived_at = ? WHERE id = ?`).run(localNow(), req.params.id);
+    auditLog(req, 'DELETE', 'field_interview', Number(req.params.id), `Deleted field interview #${req.params.id}`);
+
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: 'Internal server error' });

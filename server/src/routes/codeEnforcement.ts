@@ -11,6 +11,7 @@ import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 import { resolveDistrict } from '../utils/districtResolver';
+import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 router.use(authenticateToken);
@@ -143,9 +144,7 @@ router.post('/violations', requireRole('admin', 'manager', 'supervisor', 'office
     });
     const { result, violation_number } = createViolation();
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'create', 'code_violation', ?, ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ violation_number }), req.ip || 'unknown', now);
-
+    auditLog(req, 'CREATE', 'code_violation', Number(result.lastInsertRowid), 'Created code enforcement violation');
     res.status(201).json({ data: { id: result.lastInsertRowid, violation_number } });
   } catch (error: any) {
     console.error('Create violation error:', error?.message || 'Unknown error');
@@ -170,6 +169,7 @@ router.put('/violations/:id', requireRole('admin', 'manager', 'supervisor', 'off
     }
     params.push(req.params.id);
     db.prepare(`UPDATE code_violations SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+    auditLog(req, 'UPDATE', 'code_violation', String(req.params.id), `Updated code enforcement violation #${req.params.id}`);
     res.json({ data: { id: parseInt(req.params.id as string, 10) } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -192,9 +192,7 @@ router.put('/violations/:id/status', requireRole('admin', 'manager', 'supervisor
     updateParams.push(req.params.id);
     db.prepare(`UPDATE code_violations SET ${setClauses.join(', ')} WHERE id = ?`).run(...updateParams);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'status_change', 'code_violation', ?, ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ status }), req.ip || 'unknown', now);
-
+    auditLog(req, 'UPDATE', 'code_violation', String(req.params.id), `Changed violation #${req.params.id} status`);
     res.json({ data: { id: parseInt(req.params.id as string, 10), status } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -267,9 +265,7 @@ router.post('/tows', requireRole('admin', 'manager', 'supervisor', 'officer'), (
     });
     const { result, tow_number } = createTow();
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'create', 'vehicle_tow', ?, ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ tow_number }), req.ip || 'unknown', now);
-
+    auditLog(req, 'CREATE', 'vehicle_tow', Number(result.lastInsertRowid), 'Created tow record');
     res.status(201).json({ data: { id: result.lastInsertRowid, tow_number } });
   } catch (error: any) {
     console.error('Create tow error:', error?.message || 'Unknown error');
@@ -294,6 +290,7 @@ router.put('/tows/:id', requireRole('admin', 'manager', 'supervisor', 'officer')
     }
     params.push(req.params.id);
     db.prepare(`UPDATE vehicle_tows SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+    auditLog(req, 'UPDATE', 'vehicle_tow', String(req.params.id), `Updated tow record #${req.params.id}`);
     res.json({ data: { id: parseInt(req.params.id as string, 10) } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -316,9 +313,7 @@ router.put('/tows/:id/status', requireRole('admin', 'manager', 'supervisor'), (r
     const setClauses = Object.keys(updates).map(k => `${k} = ?`).join(', ');
     db.prepare(`UPDATE vehicle_tows SET ${setClauses} WHERE id = ?`).run(...Object.values(updates), req.params.id);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'status_change', 'vehicle_tow', ?, ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ status }), req.ip || 'unknown', now);
-
+    auditLog(req, 'UPDATE', 'vehicle_tow', String(req.params.id), `Changed tow #${req.params.id} status`);
     res.json({ data: { id: parseInt(req.params.id as string, 10), status } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });

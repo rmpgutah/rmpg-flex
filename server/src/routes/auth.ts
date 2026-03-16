@@ -1176,6 +1176,29 @@ router.post('/verify-2fa', mfaRateLimit, (req: Request, res: Response) => {
     }
 
     if (!codeValid) {
+      // Check lockout BEFORE logging the new attempt — prevents off-by-one
+      // and avoids logging attempts for already-locked users
+      const lockout = isLockedOut(user.username);
+      if (lockout.locked) {
+        res.status(423).json({
+          error: `Too many failed verification attempts. Try again in ${lockout.minutesRemaining} minute(s).`,
+          code: 'MFA_LOCKED',
+          retryAfter: lockout.minutesRemaining * 60,
+        });
+        return;
+      }
+      // Track failed 2FA attempts — lock after threshold failures in window
+      logLoginAttempt(user.username, ip, false, '2fa_invalid_code', userAgent, deviceFingerprint);
+      // Re-check after logging — if this attempt just triggered the threshold, lock now
+      const lockoutAfter = isLockedOut(user.username);
+      if (lockoutAfter.locked) {
+        res.status(423).json({
+          error: `Too many failed verification attempts. Try again in ${lockoutAfter.minutesRemaining} minute(s).`,
+          code: 'MFA_LOCKED',
+          retryAfter: lockoutAfter.minutesRemaining * 60,
+        });
+        return;
+      }
       res.status(401).json({ error: 'Invalid verification code' });
       return;
     }

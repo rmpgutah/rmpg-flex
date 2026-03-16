@@ -6,6 +6,7 @@ import { escapeLike } from '../middleware/sanitize';
 import { localNow, localToday } from '../utils/timeUtils';
 import { searchUtahWarrants } from '../utils/utahWarrantScraper';
 import { searchOfacLocal } from '../utils/ofacScraper';
+import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 
@@ -444,10 +445,7 @@ router.post('/persons', requireRole('admin', 'manager', 'supervisor', 'officer',
       photo_url || null, JSON.stringify(flags || []), notes || null,
     );
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'person_created', 'person', ?, ?, ?)
-    `).run(req.user!.userId, result.lastInsertRowid, `Created person record: ${first_name} ${last_name}`, req.ip || 'unknown');
+    auditLog(req, 'person_created', 'person', Number(result.lastInsertRowid), `Created person record: ${first_name} ${last_name}`);
 
     // Auto-screen against OFAC sanctions BEFORE returning response
     screenPersonOfac(Number(result.lastInsertRowid), first_name, last_name);
@@ -543,15 +541,10 @@ router.put('/persons/:id', requireRole('admin', 'manager', 'supervisor', 'office
       values.push(localNow());
       values.push(req.params.id);
 
-      const updateTx = db.transaction(() => {
         db.prepare(`UPDATE persons SET ${fields.join(', ')} WHERE id = ?`).run(...values);
-        db.prepare(`
-          INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-          VALUES (?, 'person_updated', 'person', ?, ?, ?)
-        `).run(req.user!.userId, req.params.id, `Updated person record: ${person.first_name} ${person.last_name}`, req.ip || 'unknown');
-      });
-      updateTx();
     }
+
+    auditLog(req, 'person_updated', 'person', String(req.params.id), `Updated person record #${req.params.id}`);
 
     const updated = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id);
     res.json(updated);
@@ -575,12 +568,10 @@ router.delete('/persons/:id', requireRole('admin', 'manager'), (req: Request, re
       db.prepare('DELETE FROM incident_persons WHERE person_id = ?').run(person.id);
       db.prepare('UPDATE vehicles_records SET owner_person_id = NULL WHERE owner_person_id = ?').run(person.id);
       db.prepare('DELETE FROM persons WHERE id = ?').run(person.id);
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'person_deleted', 'person', ?, ?, ?)
-      `).run(req.user!.userId, person.id, `Deleted person: ${person.first_name} ${person.last_name}`, req.ip || 'unknown');
     });
     deleteTx();
+
+    auditLog(req, 'person_deleted', 'person', person.id, `Deleted person record #${person.id}`);
 
     res.json({ message: 'Person deleted' });
   } catch (error: any) {
@@ -640,12 +631,8 @@ router.post('/persons/:id/archive', requireRole('admin', 'manager', 'supervisor'
     if (!person) { res.status(404).json({ error: 'Person not found' }); return; }
     if (person.archived_at) { res.status(400).json({ error: 'Person is already archived' }); return; }
     const now = localNow();
-    const archiveTx = db.transaction(() => {
-      db.prepare('UPDATE persons SET archived_at = ? WHERE id = ?').run(now, person.id);
-      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'person_archived', 'person', ?, ?, ?)`).run(req.user!.userId, person.id, `Archived person: ${person.first_name} ${person.last_name}`, req.ip || 'unknown');
-    });
-    archiveTx();
+    db.prepare('UPDATE persons SET archived_at = ? WHERE id = ?').run(now, person.id);
+    auditLog(req, 'person_archived', 'person', person.id, `Archived person record #${person.id}`);
     res.json(db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(person.id));
   } catch (error: any) { console.error('Archive person error:', error?.message || 'Unknown error'); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -657,12 +644,8 @@ router.post('/persons/:id/unarchive', requireRole('admin', 'manager', 'superviso
     const person = db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(req.params.id) as any;
     if (!person) { res.status(404).json({ error: 'Person not found' }); return; }
     if (!person.archived_at) { res.status(400).json({ error: 'Person is not archived' }); return; }
-    const unarchiveTx = db.transaction(() => {
-      db.prepare('UPDATE persons SET archived_at = NULL WHERE id = ?').run(person.id);
-      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'person_unarchived', 'person', ?, ?, ?)`).run(req.user!.userId, person.id, `Restored person: ${person.first_name} ${person.last_name}`, req.ip || 'unknown');
-    });
-    unarchiveTx();
+    db.prepare('UPDATE persons SET archived_at = NULL WHERE id = ?').run(person.id);
+    auditLog(req, 'person_unarchived', 'person', person.id, `Restored person record #${person.id}`);
     res.json(db.prepare(`SELECT ${PERSON_COLUMNS} FROM persons WHERE id = ?`).get(person.id));
   } catch (error: any) { console.error('Unarchive person error:', error?.message || 'Unknown error'); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -840,10 +823,7 @@ router.post('/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer'
     const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(result.lastInsertRowid);
     if (!vehicle) { res.status(500).json({ error: 'Failed to retrieve created vehicle' }); return; }
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'vehicle_created', 'vehicle', ?, ?, ?)
-    `).run(req.user!.userId, result.lastInsertRowid, `Created vehicle: ${plate_number || 'No plate'} ${make || ''} ${model || ''}`, req.ip || 'unknown');
+    auditLog(req, 'vehicle_created', 'vehicle', Number(result.lastInsertRowid), `Created vehicle record: ${plate_number || 'No plate'}`);
 
     res.status(201).json(vehicle);
   } catch (error: any) {
@@ -917,11 +897,7 @@ router.put('/vehicles/:id', requireRole('admin', 'manager', 'supervisor', 'offic
       db.prepare(`UPDATE vehicles_records SET ${fields.join(', ')} WHERE id = ?`).run(...values);
     }
 
-    // Activity log
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'vehicle_updated', 'vehicle', ?, ?, ?)
-    `).run(req.user!.userId, req.params.id, `Updated vehicle: ${vehicle.plate_number || 'No plate'} ${vehicle.make || ''} ${vehicle.model || ''}`, req.ip || 'unknown');
+    auditLog(req, 'vehicle_updated', 'vehicle', String(req.params.id), `Updated vehicle record #${req.params.id}`);
 
     const updated = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id);
     res.json(updated);
@@ -944,12 +920,9 @@ router.delete('/vehicles/:id', requireRole('admin', 'manager'), (req: Request, r
     const deleteTx = db.transaction(() => {
       db.prepare('DELETE FROM incident_vehicles WHERE vehicle_id = ?').run(vehicle.id);
       db.prepare('DELETE FROM vehicles_records WHERE id = ?').run(vehicle.id);
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'vehicle_deleted', 'vehicle', ?, ?, ?)
-      `).run(req.user!.userId, vehicle.id, `Deleted vehicle: ${vehicle.plate_number || 'No plate'} ${vehicle.make || ''} ${vehicle.model || ''}`, req.ip || 'unknown');
     });
     deleteTx();
+    auditLog(req, 'vehicle_deleted', 'vehicle', vehicle.id, `Deleted vehicle record #${vehicle.id}`);
     res.json({ message: 'Vehicle deleted' });
   } catch (error: any) {
     console.error('Delete vehicle error:', error?.message || 'Unknown error');
@@ -965,12 +938,8 @@ router.post('/vehicles/:id/archive', requireRole('admin', 'manager', 'supervisor
     if (!v) { res.status(404).json({ error: 'Vehicle not found' }); return; }
     if (v.archived_at) { res.status(400).json({ error: 'Vehicle is already archived' }); return; }
     const now = localNow();
-    const vArchiveTx = db.transaction(() => {
-      db.prepare('UPDATE vehicles_records SET archived_at = ? WHERE id = ?').run(now, v.id);
-      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'vehicle_archived', 'vehicle', ?, ?, ?)`).run(req.user!.userId, v.id, `Archived vehicle: ${v.plate_number || v.vin || v.id}`, req.ip || 'unknown');
-    });
-    vArchiveTx();
+    db.prepare('UPDATE vehicles_records SET archived_at = ? WHERE id = ?').run(now, v.id);
+    auditLog(req, 'vehicle_archived', 'vehicle', v.id, `Archived vehicle record #${v.id}`);
     res.json(db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(v.id));
   } catch (error: any) { console.error('Archive vehicle error:', error?.message || 'Unknown error'); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -982,12 +951,8 @@ router.post('/vehicles/:id/unarchive', requireRole('admin', 'manager', 'supervis
     const v = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
     if (!v) { res.status(404).json({ error: 'Vehicle not found' }); return; }
     if (!v.archived_at) { res.status(400).json({ error: 'Vehicle is not archived' }); return; }
-    const vUnarchiveTx = db.transaction(() => {
-      db.prepare('UPDATE vehicles_records SET archived_at = NULL WHERE id = ?').run(v.id);
-      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        Values (?, 'vehicle_unarchived', 'vehicle', ?, ?, ?)`).run(req.user!.userId, v.id, `Restored vehicle: ${v.plate_number || v.vin || v.id}`, req.ip || 'unknown');
-    });
-    vUnarchiveTx();
+    db.prepare('UPDATE vehicles_records SET archived_at = NULL WHERE id = ?').run(v.id);
+    auditLog(req, 'vehicle_unarchived', 'vehicle', v.id, `Restored vehicle record #${v.id}`);
     res.json(db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(v.id));
   } catch (error: any) { console.error('Unarchive vehicle error:', error?.message || 'Unknown error'); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -1153,11 +1118,7 @@ router.post('/properties', requireRole('admin', 'manager', 'supervisor', 'office
       access_instructions || null, is_active !== undefined ? (is_active ? 1 : 0) : 1,
     );
 
-    // Activity log
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'property_created', 'property', ?, ?, ?)
-    `).run(req.user!.userId, result.lastInsertRowid, `Created property: ${name}`, req.ip || 'unknown');
+    auditLog(req, 'property_created', 'property', Number(result.lastInsertRowid), `Created property: ${name}`);
 
     const property = db.prepare(`
       SELECT p.*, c.name as client_name
@@ -1316,11 +1277,7 @@ router.put('/evidence/:id', requireRole('admin', 'manager', 'supervisor', 'offic
       db.prepare(`UPDATE evidence SET ${eFields.join(', ')} WHERE id = ?`).run(...eValues);
     }
 
-    // Activity log
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'evidence_updated', 'evidence', ?, ?, ?)
-    `).run(req.user!.userId, req.params.id, `Updated evidence: ${evidence.description || 'ID ' + evidence.id}`, req.ip || 'unknown');
+    auditLog(req, 'evidence_updated', 'evidence', String(req.params.id), `Updated evidence #${req.params.id}`);
 
     const updated = db.prepare(`
       SELECT e.*, i.incident_number, u.full_name as collected_by_name
@@ -1346,14 +1303,8 @@ router.delete('/evidence/:id', requireRole('admin', 'manager'), (req: Request, r
       return;
     }
 
-    const delEvTx = db.transaction(() => {
-      db.prepare('DELETE FROM evidence WHERE id = ?').run(req.params.id);
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'evidence_deleted', 'evidence', ?, ?, ?)
-      `).run(req.user!.userId, evidence.id, `Deleted evidence: ${evidence.description || 'ID ' + evidence.id}`, req.ip || 'unknown');
-    });
-    delEvTx();
+    db.prepare('DELETE FROM evidence WHERE id = ?').run(req.params.id);
+    auditLog(req, 'evidence_deleted', 'evidence', evidence.id, `Deleted evidence #${evidence.id}`);
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
     console.error('Delete evidence error:', error?.message || 'Unknown error');
@@ -1370,13 +1321,8 @@ router.post('/evidence/:id/archive', requireRole('admin', 'manager', 'supervisor
     if (evidence.archived_at) { res.status(400).json({ error: 'Evidence is already archived' }); return; }
 
     const now = localNow();
-    const eArchiveTx = db.transaction(() => {
-      db.prepare('UPDATE evidence SET archived_at = ? WHERE id = ?').run(now, evidence.id);
-      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'evidence_archived', 'evidence', ?, ?, ?)`).run(
-        req.user!.userId, evidence.id, `Archived evidence: ${evidence.description || 'ID ' + evidence.id}`, req.ip || 'unknown');
-    });
-    eArchiveTx();
+    db.prepare('UPDATE evidence SET archived_at = ? WHERE id = ?').run(now, evidence.id);
+    auditLog(req, 'evidence_archived', 'evidence', evidence.id, `Archived evidence #${evidence.id}`);
 
     const updated = db.prepare('SELECT * FROM evidence WHERE id = ?').get(evidence.id);
     res.json(updated);
@@ -1394,13 +1340,8 @@ router.post('/evidence/:id/unarchive', requireRole('admin', 'manager', 'supervis
     if (!evidence) { res.status(404).json({ error: 'Evidence not found' }); return; }
     if (!evidence.archived_at) { res.status(400).json({ error: 'Evidence is not archived' }); return; }
 
-    const eUnarchiveTx = db.transaction(() => {
-      db.prepare('UPDATE evidence SET archived_at = NULL WHERE id = ?').run(evidence.id);
-      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'evidence_unarchived', 'evidence', ?, ?, ?)`).run(
-        req.user!.userId, evidence.id, `Unarchived evidence: ${evidence.description || 'ID ' + evidence.id}`, req.ip || 'unknown');
-    });
-    eUnarchiveTx();
+    db.prepare('UPDATE evidence SET archived_at = NULL WHERE id = ?').run(evidence.id);
+    auditLog(req, 'evidence_unarchived', 'evidence', evidence.id, `Unarchived evidence #${evidence.id}`);
 
     const updated = db.prepare('SELECT * FROM evidence WHERE id = ?').get(evidence.id);
     res.json(updated);
@@ -1445,14 +1386,7 @@ router.post('/evidence/:id/custody', requireRole('admin', 'manager', 'supervisor
       JSON.stringify(chain), evidence.id
     );
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'custody_entry', 'evidence', ?, ?, ?)
-    `).run(
-      req.user!.userId, evidence.id,
-      `Chain of custody: ${action} - ${to_person}`,
-      req.ip || 'unknown'
-    );
+    auditLog(req, 'custody_entry', 'evidence', evidence.id, `Chain of custody entry for evidence #${evidence.id}: ${action} - ${to_person}`);
 
     const updated = db.prepare('SELECT * FROM evidence WHERE id = ?').get(evidence.id);
     res.status(201).json(updated);
@@ -1547,9 +1481,7 @@ router.post('/evidence/:id/chain-action', requireRole('admin', 'manager', 'super
     db.prepare(`UPDATE evidence SET chain_of_custody = ?, status = ?, storage_location = ?, updated_at = ? WHERE id = ?`)
       .run(JSON.stringify(chain), newStatus, storageLocation, localNow(), evidence.id);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, ?, 'evidence', ?, ?, ?, ?)`).run(
-      req.user!.userId, `evidence_${action}`, evidence.id, JSON.stringify({ action, to_location }), req.ip || 'unknown', localNow());
+    auditLog(req, `evidence_${action}` as any, 'evidence', evidence.id, `Evidence #${evidence.id} chain action: ${action}${to_location ? ` to ${to_location}` : ''}`);
 
     res.json({ data: { id: evidence.id, status: newStatus, chain_of_custody: chain } });
   } catch (error: any) {
@@ -1599,11 +1531,7 @@ router.put('/properties/:id', requireRole('admin', 'manager', 'supervisor', 'off
       db.prepare(`UPDATE properties SET ${pFields.join(', ')} WHERE id = ?`).run(...pValues);
     }
 
-    // Activity log
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'property_updated', 'property', ?, ?, ?)
-    `).run(req.user!.userId, req.params.id, `Updated property: ${property.name}`, req.ip || 'unknown');
+    auditLog(req, 'property_updated', 'property', String(req.params.id), `Updated property #${req.params.id}: ${property.name}`);
 
     const updated = db.prepare(`
       SELECT p.*, c.name as client_name
@@ -1639,12 +1567,9 @@ router.delete('/properties/:id', requireRole('admin', 'manager'), (req: Request,
       // Remove attachments referencing this property
       db.prepare("DELETE FROM attachments WHERE entity_type = 'property' AND entity_id = ?").run(req.params.id);
       db.prepare('DELETE FROM properties WHERE id = ?').run(req.params.id);
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'property_deleted', 'property', ?, ?, ?)
-      `).run(req.user!.userId, property.id, `Deleted property: ${property.name}`, req.ip || 'unknown');
     });
     delTx();
+    auditLog(req, 'property_deleted', 'property', property.id, `Deleted property #${property.id}: ${property.name}`);
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
     console.error('Delete property error:', error?.message || 'Unknown error');
@@ -1660,12 +1585,8 @@ router.post('/properties/:id/archive', requireRole('admin', 'manager', 'supervis
     if (!prop) { res.status(404).json({ error: 'Property not found' }); return; }
     if (prop.archived_at) { res.status(400).json({ error: 'Property is already archived' }); return; }
     const now = localNow();
-    const pArchiveTx = db.transaction(() => {
-      db.prepare('UPDATE properties SET archived_at = ? WHERE id = ?').run(now, prop.id);
-      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'property_archived', 'property', ?, ?, ?)`).run(req.user!.userId, prop.id, `Archived property: ${prop.name}`, req.ip || 'unknown');
-    });
-    pArchiveTx();
+    db.prepare('UPDATE properties SET archived_at = ? WHERE id = ?').run(now, prop.id);
+    auditLog(req, 'property_archived', 'property', prop.id, `Archived property #${prop.id}: ${prop.name}`);
     res.json(db.prepare('SELECT * FROM properties WHERE id = ?').get(prop.id));
   } catch (error: any) { console.error('Archive property error:', error?.message || 'Unknown error'); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -1677,12 +1598,8 @@ router.post('/properties/:id/unarchive', requireRole('admin', 'manager', 'superv
     const prop = db.prepare('SELECT * FROM properties WHERE id = ?').get(req.params.id) as any;
     if (!prop) { res.status(404).json({ error: 'Property not found' }); return; }
     if (!prop.archived_at) { res.status(400).json({ error: 'Property is not archived' }); return; }
-    const pUnarchiveTx = db.transaction(() => {
-      db.prepare('UPDATE properties SET archived_at = NULL WHERE id = ?').run(prop.id);
-      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'property_unarchived', 'property', ?, ?, ?)`).run(req.user!.userId, prop.id, `Restored property: ${prop.name}`, req.ip || 'unknown');
-    });
-    pUnarchiveTx();
+    db.prepare('UPDATE properties SET archived_at = NULL WHERE id = ?').run(prop.id);
+    auditLog(req, 'property_unarchived', 'property', prop.id, `Restored property #${prop.id}: ${prop.name}`);
     res.json(db.prepare('SELECT * FROM properties WHERE id = ?').get(prop.id));
   } catch (error: any) { console.error('Unarchive property error:', error?.message || 'Unknown error'); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -1739,11 +1656,7 @@ router.post('/evidence', requireRole('admin', 'manager', 'supervisor', 'officer'
       notes || null
     );
 
-    // Activity log
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'evidence_created', 'evidence', ?, ?, ?)
-    `).run(req.user!.userId, result.lastInsertRowid, `Created evidence: ${evidenceNumber} - ${description}`, req.ip || 'unknown');
+    auditLog(req, 'evidence_created', 'evidence', Number(result.lastInsertRowid), `Created evidence #${result.lastInsertRowid}: ${evidenceNumber}`);
 
     const created = db.prepare(`
       SELECT e.*, i.incident_number, u.full_name as collected_by_name
@@ -1859,13 +1772,7 @@ router.post('/links', requireRole('admin', 'manager', 'supervisor', 'officer', '
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(source_type, source_id, target_type, target_id, relationship || 'associated', notes || null, req.user!.userId);
 
-    // Activity log
-    const sourceLabel = getRecordLabel(db, source_type, source_id);
-    const targetLabel = getRecordLabel(db, target_type, target_id);
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'record_linked', 'record_link', ?, ?, ?)
-    `).run(req.user!.userId, result.lastInsertRowid, `Linked ${source_type} "${sourceLabel}" to ${target_type} "${targetLabel}"`, req.ip || 'unknown');
+    auditLog(req, 'record_linked', 'record_link', Number(result.lastInsertRowid), `Linked ${source_type} #${source_id} to ${target_type} #${target_id}`);
 
     const created = db.prepare(`
       SELECT rl.*, u.full_name as created_by_name
@@ -1896,10 +1803,7 @@ router.delete('/links/:id', requireRole('admin', 'manager'), (req: Request, res:
 
     db.prepare('DELETE FROM record_links WHERE id = ?').run(req.params.id);
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'record_unlinked', 'record_link', ?, ?, ?)
-    `).run(req.user!.userId, link.id, `Removed link between ${link.source_type} #${link.source_id} and ${link.target_type} #${link.target_id}`, req.ip || 'unknown');
+    auditLog(req, 'record_unlinked', 'record_link', link.id, `Removed link between ${link.source_type} #${link.source_id} and ${link.target_type} #${link.target_id}`);
 
     res.json({ success: true });
   } catch (error: any) {
@@ -2052,6 +1956,8 @@ router.post('/persons/:id/criminal-history', requireRole('admin', 'manager', 'su
       notes || null, user.userId,
     );
 
+    auditLog(req, 'criminal_history_created', 'criminal_history', Number(result.lastInsertRowid), `Created criminal history entry for person #${personId}: ${offense}`);
+
     const newRecord = db.prepare('SELECT * FROM criminal_history WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json(newRecord);
   } catch (error: any) {
@@ -2094,6 +2000,8 @@ router.put('/criminal-history/:id', requireRole('admin', 'manager', 'supervisor'
       sentence || null, source || null, notes || null, localNow(), req.params.id,
     );
 
+    auditLog(req, 'criminal_history_updated', 'criminal_history', String(req.params.id), `Updated criminal history record #${req.params.id}`);
+
     const updated = db.prepare('SELECT * FROM criminal_history WHERE id = ?').get(req.params.id);
     res.json(updated);
   } catch (error: any) {
@@ -2107,6 +2015,7 @@ router.delete('/criminal-history/:id', requireRole('admin', 'manager'), (req: Re
   try {
     const db = getDb();
     db.prepare('DELETE FROM criminal_history WHERE id = ?').run(req.params.id);
+    auditLog(req, 'criminal_history_deleted', 'criminal_history', String(req.params.id), `Deleted criminal history record #${req.params.id}`);
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete criminal history error:', error?.message || 'Unknown error');
@@ -2196,14 +2105,7 @@ router.post('/client-persons', requireRole('admin', 'manager', 'supervisor', 'of
       user.userId
     );
 
-    // Activity log
-    db.prepare(
-      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(
-      user.userId, 'client_person_linked', 'person', person_id,
-      `Linked person ${person.first_name} ${person.last_name} to client ${client.name} as ${relationship || 'contact'}`,
-      req.ip || 'unknown', localNow()
-    );
+    auditLog(req, 'client_person_linked', 'person', person_id, `Linked person ${person.first_name} ${person.last_name} to client ${client.name}`);
 
     const link = db.prepare('SELECT * FROM client_persons WHERE id = ?').get(result.lastInsertRowid);
     if (!link) { res.status(500).json({ error: 'Failed to retrieve created link' }); return; }
@@ -2248,6 +2150,8 @@ router.put('/client-persons/:id', requireRole('admin', 'manager', 'supervisor', 
       req.params.id
     );
 
+    auditLog(req, 'client_person_updated', 'person', link.person_id, `Updated client-person link #${req.params.id}`);
+
     const updated = db.prepare('SELECT * FROM client_persons WHERE id = ?').get(req.params.id);
     res.json(updated);
   } catch (error: any) {
@@ -2271,15 +2175,7 @@ router.delete('/client-persons/:id', requireRole('admin', 'manager'), (req: Requ
 
     db.prepare('DELETE FROM client_persons WHERE id = ?').run(req.params.id);
 
-    // Activity log
-    const user = (req as any).user;
-    db.prepare(
-      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(
-      user.userId, 'client_person_unlinked', 'person', link.person_id,
-      `Unlinked person ${link.first_name} ${link.last_name} from client ${link.client_name}`,
-      req.ip || 'unknown', localNow()
-    );
+    auditLog(req, 'client_person_unlinked', 'person', link.person_id, `Unlinked person ${link.first_name} ${link.last_name} from client ${link.client_name}`);
 
     res.json({ message: 'Link removed' });
   } catch (error: any) {
