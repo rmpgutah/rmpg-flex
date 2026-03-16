@@ -494,7 +494,7 @@ export interface Person {
   caution_flags?: string;
   watchlist_match?: string | null;
   watchlist_checked_at?: string | null;
-  flags: string[];
+  flags: (string | { type: string; severity?: string; count?: number; updated_at?: string })[];
   notes?: string;
   incident_ids: string[];
   created_at: string;
@@ -538,7 +538,7 @@ export interface Vehicle {
   stolen_status?: string;
   stolen_date?: string;
   recovery_date?: string;
-  flags: string[];
+  flags: (string | { type: string; severity?: string; count?: number; updated_at?: string })[];
   notes?: string;
   incident_ids: string[];
   created_at: string;

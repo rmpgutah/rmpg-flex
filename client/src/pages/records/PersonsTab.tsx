@@ -259,7 +259,7 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
   useEffect(() => {
     if (!selectedPerson) { setPersonAlerts([]); return; }
     const alerts: RecordAlert[] = [];
-    const flagsLower = selectedPerson.flags.map(f => f.toLowerCase());
+    const flagsLower = selectedPerson.flags.map(f => (typeof f === 'object' ? f.type : f).toLowerCase());
     if (flagsLower.some(f => f.includes('known_offender') || f.includes('known offender') || f.includes('trespass'))) {
       alerts.push({ type: 'flag', priority: 'high', title: 'FLAG ALERT', description: 'Known offender / trespass warning on file' });
     }
@@ -353,7 +353,7 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
     return (
       `${p.first_name} ${p.last_name}`.toLowerCase().includes(q) ||
       p.address?.toLowerCase().includes(q) ||
-      p.flags.some((f) => f.toLowerCase().includes(q))
+      p.flags.some((f) => (typeof f === 'object' ? f.type : f).toLowerCase().includes(q))
     );
   });
 

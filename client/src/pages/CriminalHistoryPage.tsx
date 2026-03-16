@@ -317,14 +317,11 @@ export default function CriminalHistoryPage() {
                       <span className="text-[9px] font-bold text-red-400 uppercase tracking-wider">Caution Flags</span>
                     </div>
                     <div className="flex flex-wrap gap-1">
-                      {cautionFlags.map((flag, i) => {
-                        const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
-                        return (
-                          <span key={i} className="text-[9px] font-bold uppercase px-1.5 py-0.5 bg-red-900/50 text-red-300 border border-red-700/50">
-                            {label}
-                          </span>
-                        );
-                      })}
+                      {cautionFlags.map((flag, i) => (
+                        <span key={i} className="text-[9px] font-bold uppercase px-1.5 py-0.5 bg-red-900/50 text-red-300 border border-red-700/50">
+                          {flag}
+                        </span>
+                      ))}
                     </div>
                   </div>
                 )}

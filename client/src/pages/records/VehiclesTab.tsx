@@ -203,7 +203,7 @@ export function useVehiclesTab(props: VehiclesTabProps): VehiclesTabState {
   useEffect(() => {
     if (!selectedVehicle) { setVehicleAlerts([]); return; }
     const alerts: RecordAlert[] = [];
-    const flagsLower = selectedVehicle.flags.map(f => f.toLowerCase());
+    const flagsLower = selectedVehicle.flags.map(f => (typeof f === 'object' ? f.type : f).toLowerCase());
     if (flagsLower.some(f => f.includes('stolen'))) {
       alerts.push({ type: 'flag', priority: 'critical', title: 'STOLEN VEHICLE', description: 'Vehicle reported stolen — do not approach alone' });
     }
