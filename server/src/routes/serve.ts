@@ -9,7 +9,7 @@ import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { validateParamId } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
-import { broadcast } from '../utils/websocket';
+import { broadcast, broadcastDispatchUpdate } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
 import config from '../config';
 import crypto from 'crypto';
@@ -489,6 +489,60 @@ router.post('/:id/attempt', validateParamId, requireRole(...WRITE_ROLES), (req: 
 
     auditLog(req, 'CREATE', 'serve_queue', String(req.params.id), `Attempt #${attemptNumber}: ${result}`);
     broadcast('serve', 'serve_attempt', { job: updatedJob, attempt });
+
+    // Sync back to linked dispatch call
+    const updatedJobForSync = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
+    if (updatedJobForSync?.call_id) {
+      const linkedCall = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(updatedJobForSync.call_id) as any;
+      if (linkedCall) {
+        // Map serve result to dispatch disposition
+        const dispositionMap: Record<string, Record<string, string>> = {
+          served: { personal: 'Served - Personal', substitute: 'Served - Substitute', posting: 'Served - Posting' },
+        };
+
+        const updates: string[] = ['process_attempts = ?'];
+        const values: any[] = [attemptNumber];
+
+        updates.push('process_service_result = ?');
+        values.push(result || 'no_answer');
+
+        if (result === 'served' || result === 'posted') {
+          // Auto-close the dispatch call
+          const attemptMethod = method || 'personal';
+          const disposition = dispositionMap['served']?.[attemptMethod] || 'Served';
+
+          updates.push('process_served_at = ?');
+          values.push(now);
+
+          if (req.body.person_served_name) {
+            updates.push('process_served_to = ?');
+            values.push(req.body.person_served_name);
+          }
+
+          updates.push('status = ?', 'closed_at = ?', 'disposition = ?');
+          values.push('closed', now, disposition);
+        }
+
+        values.push(linkedCall.id);
+        db.prepare(`UPDATE calls_for_service SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+
+        // Broadcast dispatch update
+        const updatedCall = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(linkedCall.id);
+        broadcastDispatchUpdate({ action: 'call_updated', call: updatedCall });
+
+        // Activity log
+        try {
+          const activities = JSON.parse(linkedCall.activity_log || '[]');
+          activities.push({
+            action: 'process_served_via_serve_queue',
+            timestamp: now,
+            user_id: req.user!.userId,
+            details: `Serve attempt #${attemptNumber}: ${result}${result === 'served' ? ` (${method || 'personal'})` : ''}`,
+          });
+          db.prepare('UPDATE calls_for_service SET activity_log = ? WHERE id = ?').run(JSON.stringify(activities), linkedCall.id);
+        } catch {}
+      }
+    }
 
     res.status(201).json({ attempt, job: updatedJob, dueDiligenceComplete });
   } catch (err: any) {
