@@ -9,7 +9,7 @@ import { sendNotificationEmail } from '../utils/emailSender';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -333,8 +333,10 @@ router.get('/health/detailed', requireRole('admin', 'manager'), (req: Request, r
     let diskUsed = 0;
     let diskFree = 0;
     try {
-      const dfOutput = execSync("df -k / | tail -1", { encoding: 'utf-8', timeout: 3000 });
-      const parts = dfOutput.trim().split(/\s+/);
+      const dfOutput = execFileSync('df', ['-k', '/'], { encoding: 'utf-8', timeout: 3000 });
+      const dfLines = dfOutput.trim().split('\n');
+      const lastLine = dfLines[dfLines.length - 1];
+      const parts = lastLine.trim().split(/\s+/);
       if (parts.length >= 4) {
         diskTotal = parseInt(parts[1], 10) * 1024; // KB to bytes
         diskUsed = parseInt(parts[2], 10) * 1024;
@@ -368,9 +370,12 @@ router.get('/health/detailed', requireRole('admin', 'manager'), (req: Request, r
     try {
       // Quick single-sample via /proc/stat (Linux) or vm_stat (macOS)
       if (os.platform() === 'linux') {
-        const topOutput = execSync("top -bn1 | head -3 | grep 'Cpu'", { encoding: 'utf-8', timeout: 3000 });
-        const idleMatch = topOutput.match(/(\d+\.?\d*)\s*id/);
-        if (idleMatch) cpuUsagePercent = Math.round((100 - parseFloat(idleMatch[1])) * 10) / 10;
+        const topOutput = execFileSync('top', ['-bn1'], { encoding: 'utf-8', timeout: 3000 });
+        const cpuLine = topOutput.split('\n').find(l => l.includes('Cpu'));
+        if (cpuLine) {
+          const idleMatch = cpuLine.match(/(\d+\.?\d*)\s*id/);
+          if (idleMatch) cpuUsagePercent = Math.round((100 - parseFloat(idleMatch[1])) * 10) / 10;
+        }
       } else {
         // macOS fallback — approximate from load average vs core count
         cpuUsagePercent = cpus.length > 0 ? Math.round((loadAvg[0] / cpus.length) * 100 * 10) / 10 : null;
@@ -381,9 +386,11 @@ router.get('/health/detailed', requireRole('admin', 'manager'), (req: Request, r
     let networkIO: { rxBytes: number; txBytes: number } | null = null;
     try {
       if (os.platform() === 'linux') {
-        const netDev = execSync("cat /proc/net/dev | grep -v 'lo:' | tail -n +3", { encoding: 'utf-8', timeout: 3000 });
+        const netDev = fs.readFileSync('/proc/net/dev', 'utf-8');
         let totalRx = 0, totalTx = 0;
-        for (const line of netDev.trim().split('\n')) {
+        // Skip header lines and loopback interface
+        const netLines = netDev.trim().split('\n').slice(2).filter(l => !l.includes('lo:'));
+        for (const line of netLines) {
           const parts = line.trim().split(/\s+/);
           if (parts.length >= 10) {
             totalRx += parseInt(parts[1], 10) || 0;
@@ -397,8 +404,8 @@ router.get('/health/detailed', requireRole('admin', 'manager'), (req: Request, r
     // Process count (Linux)
     let processCount: number | null = null;
     try {
-      const psOutput = execSync("ps aux --no-heading 2>/dev/null | wc -l || ps aux | wc -l", { encoding: 'utf-8', timeout: 3000 });
-      processCount = parseInt(psOutput.trim(), 10) || null;
+      const psOutput = execFileSync('ps', ['aux', '--no-heading'], { encoding: 'utf-8', timeout: 3000 });
+      processCount = psOutput.trim().split('\n').filter(l => l.trim()).length || null;
     } catch { /* ignore */ }
 
     // Read version from changelog

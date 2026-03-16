@@ -377,11 +377,11 @@ export function closeAutoSection(doc: jsPDF, sectionY: number, contentEndY: numb
         doc.rect(LAYOUT.PAGE_MARGIN, sectionY, cw, bottomY - sectionY);
       } else if (p === currentPage) {
         // Last page: from below continuation header to contentEndY
-        const topY = 10; // Just below continuation header (contY=4 + contH=5 + 1mm gap)
+        const topY = 13.5; // Just below continuation header (contY=4 + contH=4.5 + 5mm gap)
         doc.rect(LAYOUT.PAGE_MARGIN, topY, cw, Math.max((contentEndY + padding) - topY, 12));
       } else {
         // Middle pages: full page border
-        const topY = 10;
+        const topY = 13.5;
         const bottomY = pageH - LAYOUT.FOOTER_HEIGHT - 2;
         doc.rect(LAYOUT.PAGE_MARGIN, topY, cw, bottomY - topY);
       }
@@ -682,23 +682,22 @@ export function addSignatureBlock(
   roleLabel: string,
   _x: number,
   y: number,
-  _width: number,
+  blockWidth: number,
   sigData?: PdfSignatureData,
 ): number {
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
 
-  // Always use full page width (margin to margin)
-  const x = LAYOUT.PAGE_MARGIN;
-  const width = getContentWidth(doc);
-  const boxH = SPACING.SIGNATURE_BOX_H;
+  // Use provided width (allows side-by-side layout)
+  const x = _x;
+  const width = blockWidth;
 
-  const roleBarH = SPACING.SIGNATURE_ROLE_H;   // 5mm header
-  const sigRowH = 16;                           // Row 1: signature area
-  const infoRowH = 11;                          // Row 2: officer info
+  const roleBarH = SPACING.SIGNATURE_ROLE_H;
+  const sigRowH = 12;
+  const infoRowH = 8;
   const totalH = roleBarH + sigRowH + infoRowH;
 
-  // ── Role label header bar (dark background, white text) ──
+  // ── Role label header bar ──
   doc.setFillColor(...COLOR.BG_SECTION_HDR);
   doc.rect(x, y, width, roleBarH, 'F');
   doc.setFont('helvetica', 'bold');
@@ -707,85 +706,74 @@ export function addSignatureBlock(
   const roleTextY = y + roleBarH / 2 + FONT.SIZE_FIELD_LABEL * 0.14;
   doc.text(roleLabel.toUpperCase(), x + SPACING.CONTENT_INSET, roleTextY);
 
-  // ── ROW 1: Signature area (solid bordered) ──
+  // ── Signature area ──
   const row1Y = y + roleBarH;
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(BORDER.SECTION_OUTER);
   doc.rect(x, row1Y, width, sigRowH);
 
-  // Embed digital signature image if provided
   if (sigData?.signatureImage) {
     try {
-      const imgW = Math.min(width * 0.4, 80);
-      const imgH = 10;
-      doc.addImage(sigData.signatureImage, 'PNG', x + SPACING.MD + 5, y + roleBarH + 1, imgW, imgH);
-    } catch { /* signature image unavailable — fall back to empty line */ }
-  }
-
-  // Signature line + "X" marker — only for unsigned blocks
-  const sigLineY = row1Y + sigRowH - 3;
-  if (!sigData?.signatureImage) {
+      const imgW = Math.min(width * 0.5, 70);
+      const imgH = sigRowH - 2;
+      doc.addImage(sigData.signatureImage, 'PNG', x + SPACING.MD + 5, row1Y + 1, imgW, imgH);
+    } catch { /* skip */ }
+  } else {
+    // Write-in line + X
+    const sigLineY = row1Y + sigRowH - 2.5;
     doc.setDrawColor(...COLOR.TEXT_PRIMARY);
     doc.setLineWidth(BORDER.SIGNATURE_LINE);
     doc.line(x + SPACING.MD, sigLineY, x + width - SPACING.MD, sigLineY);
-
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_SIGNATURE_X);
     doc.setTextColor(...COLOR.TEXT_TERTIARY);
-    doc.text('X', x + SPACING.CONTENT_INSET, sigLineY - 2);
-
-    // "SIGNATURE" label below the line
+    doc.text('X', x + SPACING.CONTENT_INSET, sigLineY - 1.5);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
-    const sigLabelW = doc.getTextWidth('SIGNATURE');
-    doc.text('SIGNATURE', x + width / 2 - sigLabelW / 2, sigLineY + 2.5);
+    doc.setTextColor(...COLOR.TEXT_TERTIARY);
+    doc.text('SIGNATURE', x + width / 2, sigLineY + 2, { align: 'center' });
   }
 
-  // ── ROW 2: Officer info grid — three solid-bordered cells ──
+  // ── Info row: PRINTED NAME | BADGE NUMBER | DATE ──
   const row2Y = row1Y + sigRowH;
   const colW = width / 3;
-
-  // Draw solid outer border for entire row
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(BORDER.SECTION_OUTER);
   doc.rect(x, row2Y, width, infoRowH);
-
-  // Vertical dividers (solid black)
   doc.line(x + colW, row2Y, x + colW, row2Y + infoRowH);
   doc.line(x + colW * 2, row2Y, x + colW * 2, row2Y + infoRowH);
 
-  // Cell labels (top of each cell — consistent 2.5mm from cell top)
+  // Labels
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
-  const labelY = row2Y + 2.8;
-  doc.text('PRINTED NAME', x + SPACING.MD, labelY);
-  doc.text('BADGE NUMBER', x + colW + SPACING.MD, labelY);
-  doc.text('DATE', x + colW * 2 + SPACING.MD, labelY);
+  doc.text('PRINTED NAME', x + SPACING.MD, row2Y + 2.2);
+  doc.text('BADGE NUMBER', x + colW + SPACING.MD, row2Y + 2.2);
+  doc.text('DATE', x + colW * 2 + SPACING.MD, row2Y + 2.2);
 
-  // Cell values (centered vertically in remaining cell space)
-  const valY = row2Y + infoRowH / 2 + 2;
-  if (sigData?.printedName || sigData?.badgeNumber || sigData?.date) {
+  // Values — auto-fill from sigData
+  const hasSigData = sigData?.printedName || sigData?.badgeNumber || sigData?.date;
+  if (hasSigData) {
     doc.setFont('courier', 'normal');
-    doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+    doc.setFontSize(7);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    if (sigData.printedName) doc.text(sigData.printedName, x + SPACING.MD, valY);
-    if (sigData.badgeNumber) doc.text(sigData.badgeNumber, x + colW + SPACING.MD, valY);
+    const valY = row2Y + infoRowH - 1.5;
+    if (sigData!.printedName) doc.text(sigData!.printedName, x + SPACING.MD, valY);
+    if (sigData!.badgeNumber) doc.text(sigData!.badgeNumber, x + colW + SPACING.MD, valY);
     const now = new Date();
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const defaultDate = `${pad(now.getMonth() + 1)}/${pad(now.getDate())}/${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-    const dateStr = sigData.date || defaultDate;
+    const pad2 = (n: number) => String(n).padStart(2, '0');
+    const dateStr = sigData!.date || `${pad2(now.getMonth() + 1)}/${pad2(now.getDate())}/${now.getFullYear()} ${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`;
     doc.text(dateStr, x + colW * 2 + SPACING.MD, valY);
   }
 
-  // Outer border around entire block (signature area + info row)
+  // Outer border
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(BORDER.SECTION_OUTER);
   doc.rect(x, y, width, totalH);
 
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  return y + boxH + SPACING.SM;
+  return y + totalH + SPACING.SM;
 }
 
 /**
@@ -802,11 +790,59 @@ export function addStackedSignatures(
   sig2?: PdfSignatureData,
   priority?: string,
 ): number {
+  const mx = LAYOUT.PAGE_MARGIN;
   const cw = getContentWidth(doc);
-  y = checkPageBreak(doc, y, SPACING.SIGNATURE_BOX_H * 2 + SPACING.SM * 2, priority);
-  y = addSignatureBlock(doc, role1, LAYOUT.PAGE_MARGIN, y, cw, sig1);
-  y = addSignatureBlock(doc, role2, LAYOUT.PAGE_MARGIN, y, cw, sig2);
-  return y;
+  const totalNeeded = 60; // approximate space for both blocks + seal
+  y = checkPageBreak(doc, y, totalNeeded, priority);
+
+  // ── Reporting Officer — full width ──
+  y = addSignatureBlock(doc, role1, mx, y, cw, sig1);
+
+  // ── Supervisor Review + Company Seal — side by side ──
+  const sealSize = 24; // square box
+  const sealGap = 2;
+  const supW = cw - sealSize - sealGap;
+  const supY = y;
+
+  // Supervisor block at reduced width (reuses addSignatureBlock)
+  const supEndY = addSignatureBlock(doc, role2, mx, supY, supW, sig2);
+
+  // Company Seal box — same height as supervisor block
+  const roleBarH = SPACING.SIGNATURE_ROLE_H;
+  const sigRowH = 12;
+  const infoRowH = 8;
+  const blockH = roleBarH + sigRowH + infoRowH;
+  const sealX = mx + supW + sealGap;
+
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(BORDER.SECTION_OUTER);
+  doc.rect(sealX, supY, sealSize, blockH);
+
+  // Dashed circle
+  const circleR = (sealSize - 6) / 2;
+  const cx = sealX + sealSize / 2;
+  const cy = supY + blockH / 2;
+  doc.setDrawColor(...COLOR.BORDER_FIELD);
+  doc.setLineWidth(0.3);
+  const segs = 36;
+  for (let i = 0; i < segs; i++) {
+    if (i % 2 === 0) {
+      const a1 = (i / segs) * 2 * Math.PI;
+      const a2 = ((i + 1) / segs) * 2 * Math.PI;
+      doc.line(cx + circleR * Math.cos(a1), cy + circleR * Math.sin(a1),
+               cx + circleR * Math.cos(a2), cy + circleR * Math.sin(a2));
+    }
+  }
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
+  doc.setTextColor(...COLOR.TEXT_TERTIARY);
+  doc.text('COMPANY', cx, cy - 1, { align: 'center' });
+  doc.text('SEAL', cx, cy + 2, { align: 'center' });
+
+  doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  return supEndY;
 }
 
 /**
@@ -904,10 +940,11 @@ export function addWrappedText(doc: jsPDF, text: string, x: number, y: number, m
  * Text is justified (words distributed to fill line width) except for
  * the last line of each paragraph which stays left-aligned.
  */
-export function addFormattedText(doc: jsPDF, text: string, x: number, y: number, maxWidth: number, fontSize: number = FONT.SIZE_FIELD_VALUE): number {
+export function addFormattedText(doc: jsPDF, text: string, x: number, y: number, maxWidth: number, fontSize: number = FONT.SIZE_FIELD_VALUE, onPageBreak?: (newY: number) => number): number {
   if (!text) return y;
   const lineH = fontSize * 0.42 + 1.2;
   const paragraphGap = SPACING.MD;
+  let lastPage = doc.getNumberOfPages();
   const stripMarkers = (s: string) => s.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1').replace(/__(.+?)__/g, '$1');
   const hasMarkers = (s: string) => /(\*\*|__|\*[^*])/.test(s);
   const paragraphs = text.split(/\n\n+/);
@@ -929,6 +966,12 @@ export function addFormattedText(doc: jsPDF, text: string, x: number, y: number,
         const wrappedLine = wrappedLines[wli];
         const isLastLine = wli === wrappedLines.length - 1 && hlIdx === hardLines.length - 1;
         y = checkPageBreak(doc, y, lineH + SPACING.SM);
+        // If page changed, call onPageBreak to draw section continuation header
+        const curPage = doc.getNumberOfPages();
+        if (curPage !== lastPage) {
+          lastPage = curPage;
+          if (onPageBreak) y = onPageBreak(y);
+        }
         const lineLen = wrappedLine.length;
         let segStart = charIdx;
         let visibleCount = 0;
@@ -1058,12 +1101,40 @@ export function addNarrativeSection(
   }
   const estimatedH = totalLines * lineH + Math.max(0, paraCount - 1) * paragraphGap + SPACING.SM + 2;
 
-  // Draw background tint sized to actual content (subtle light gray)
+  // Draw background tint sized to actual content (subtle light gray) — first page only
+  const pageH = doc.internal.pageSize.getHeight();
+  const maxTintH = Math.min(estimatedH, pageH - y - LAYOUT.FOOTER_HEIGHT - 4);
   doc.setFillColor(246, 246, 250);
-  doc.rect(lx - 2, y - 2, ffw + 4, estimatedH, 'F');
+  doc.rect(lx - 2, y - 2, ffw + 4, maxTintH, 'F');
 
-  // Render text on top (with formatting marker support)
-  y = addFormattedText(doc, text, lx, y, ffw);
+  // Page break callback: draw section continuation sub-header + fresh tint
+  const contTitle = title.toUpperCase() + ' \u2014 CONTINUED';
+  const narrativePageBreak = (newY: number): number => {
+    // Draw section sub-header bar
+    const cw = getContentWidth(doc);
+    doc.setFillColor(...COLOR.BG_SECTION_HDR);
+    doc.rect(LAYOUT.PAGE_MARGIN, newY, cw, SPACING.SECTION_HEADER_H, 'F');
+    doc.setDrawColor(...COLOR.BORDER_SECTION);
+    doc.setLineWidth(BORDER.SECTION_OUTER);
+    doc.rect(LAYOUT.PAGE_MARGIN, newY, cw, SPACING.SECTION_HEADER_H);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(FONT.SIZE_SECTION_TITLE);
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    const textYpos = newY + SPACING.SECTION_HEADER_H / 2 + FONT.SIZE_SECTION_TITLE * 0.14;
+    doc.text(contTitle, LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, textYpos);
+    const contentStartY = newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD;
+    // Draw fresh background tint for remaining text on this page
+    const remainH = pageH - contentStartY - LAYOUT.FOOTER_HEIGHT - 4;
+    doc.setFillColor(246, 246, 250);
+    doc.rect(lx - 2, contentStartY - 2, ffw + 4, remainH, 'F');
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    doc.setFont('courier', 'normal');
+    doc.setFontSize(fontSize);
+    return contentStartY;
+  };
+
+  // Render text on top (with formatting marker support + page break callback)
+  y = addFormattedText(doc, text, lx, y, ffw, fontSize, narrativePageBreak);
   y += SPACING.SM;
   y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   return y;
@@ -1095,7 +1166,7 @@ function addSupplementsSection(doc: jsPDF, data: IncidentData, y: number): numbe
     if (sup.subject) {
       metaRows.push({ cells: [
         { label: 'SUBJECT', value: sup.subject, ratio: 1 },
-      ], height: 11 });
+      ], height: 9.5 });
     }
 
     // Render as boxed section with banner title + grid cells
@@ -1235,7 +1306,7 @@ export function addAttachmentsSection(
  */
 export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?: string): number {
   const pageHeight = doc.internal.pageSize.getHeight();
-  if (y + needed > pageHeight - LAYOUT.FOOTER_HEIGHT - 4) {
+  if (y + needed > pageHeight - LAYOUT.FOOTER_HEIGHT - 2) {
     doc.addPage();
     addConfidentialWatermark(doc);
 
@@ -1272,8 +1343,8 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.setDrawColor(...COLOR.TEXT_PRIMARY);
 
-    // Content starts below continuation header (tight but clear of bar)
-    return contY + contH + 1;
+    // Content starts below continuation header (clear of Courier ascenders at 8.5pt)
+    return contY + contH + 5;
   }
   return y;
 }

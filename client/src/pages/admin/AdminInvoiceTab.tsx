@@ -97,7 +97,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
     try {
       const res = await apiFetch<{ data: InvoiceStats }>(`/invoices/stats?client_id=${clientId}`);
       setStats(res.data);
-    } catch { /* silent */ }
+    } catch (e) { console.error('Failed to load invoice stats:', e); }
   }, [clientId]);
 
   const fetchInvoiceDetail = useCallback(async (id: string) => {
@@ -131,10 +131,11 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         }),
       });
       // Auto-generate line items
-      const invoiceId = res?.data?.id ?? (res as any)?.id;
+      const invoiceId = res?.data?.id;
       if (!invoiceId) throw new Error('Invoice creation returned no ID');
       const genRes = await apiFetch<{ data: InvoiceDetail }>(`/invoices/${invoiceId}/generate`, { method: 'POST' });
-      setSelectedInvoice(genRes?.data ?? genRes as any);
+      if (!genRes?.data) throw new Error('Invoice generation returned no data');
+      setSelectedInvoice(genRes.data);
       setView('detail');
       fetchInvoices();
       fetchStats();
@@ -240,7 +241,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         method: 'PUT',
         body: JSON.stringify({ internal_notes: notes }),
       });
-    } catch { /* silent */ }
+    } catch (e) { console.error('Failed to save invoice notes:', e); }
   };
 
   // ─── Render Stats Bar ─────────────────────────────
@@ -570,7 +571,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                 </tr>
               ))}
               {(!inv.line_items || inv.line_items.length === 0) && (
-                <tr><td colSpan={6} className="text-center p-3 text-rmpg-500">No line items</td></tr>
+                <tr><td colSpan={inv.status === 'draft' ? 6 : 5} className="text-center p-3 text-rmpg-500">No line items</td></tr>
               )}
             </tbody>
           </table>
@@ -737,9 +738,14 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                 const html = generatePrintableInvoiceHtml(res.data.invoice);
                 const win = window.open('', '_blank');
                 if (win) {
-                  win.document.write(html);
-                  win.document.close();
-                  setTimeout(() => win.print(), 500);
+                  // Safe print: use Blob URL instead of direct DOM write to prevent XSS
+                  const blob = new Blob([html], { type: 'text/html; charset=utf-8' });
+                  const blobUrl = URL.createObjectURL(blob);
+                  win.location.href = blobUrl;
+                  win.addEventListener('load', () => {
+                    URL.revokeObjectURL(blobUrl);
+                    setTimeout(() => win.print(), 300);
+                  });
                 } else {
                   setError('Pop-up blocked — please allow pop-ups for this site');
                 }

@@ -283,6 +283,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   // Drains the queue and POSTs all collected points to the server.
   // On failure, persists points to localStorage so they survive page reloads.
   const isSendingRef = useRef(false);
+  const mountedRef = useRef(true);
   const sendBatch = useCallback(async () => {
     // Guard against concurrent sends (interval can fire while await is pending)
     if (isSendingRef.current) return;
@@ -317,7 +318,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         if (needsUnitFetch) {
           apiFetch<{ id: number; call_sign: string; status: string } | null>('/dispatch/gps/my-unit')
             .then((unit) => {
-              if (unit) {
+              if (unit && mountedRef.current) {
                 unitIdRef.current = unit.id;
                 setState((p) => ({ ...p, unitCallSign: unit.call_sign, unitId: unit.id }));
               }
@@ -725,6 +726,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   useEffect(() => {
     startTracking();
     return () => {
+      mountedRef.current = false;
       // Flush remaining points and clean up all timers/watchers
       cleanupTracking(true);
     };
@@ -759,9 +761,9 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       console.log(`[GPS] Network changed: ${prevType} → ${newType} (${newConnType})`);
       setState((prev) => ({ ...prev, connectionType: newConnType }));
 
-      // Flush any queued points before restarting
+      // Flush any queued points before restarting (fire-and-forget; restart waits 1s anyway)
       if (queueRef.current.length > 0) {
-        sendBatch();
+        sendBatch().catch((e) => console.warn('[GPS] sendBatch on network change failed:', e));
       }
 
       // Restart watchPosition to force re-acquisition on the new network

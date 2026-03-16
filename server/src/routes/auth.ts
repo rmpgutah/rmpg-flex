@@ -50,6 +50,13 @@ import { validateEmail, validatePhone } from '../utils/inputValidation';
 
 const router = Router();
 
+// Prevent browsers and proxies from caching auth responses (tokens, user data)
+router.use((_req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.set('Pragma', 'no-cache');
+  next();
+});
+
 // ─── Helper: Check if account is locked out ──────────
 function isLockedOut(username: string): { locked: boolean; minutesRemaining: number } {
   const db = getDb();
@@ -129,8 +136,10 @@ function createSession(
     if (activeSessions.length >= config.session.maxPerUser) {
       const toRemove = activeSessions.length - config.session.maxPerUser + 1;
       const oldestIds = activeSessions.slice(0, toRemove).map(s => s.id);
-      db.prepare(`UPDATE sessions SET is_active = 0 WHERE id IN (${oldestIds.map(() => '?').join(',')})`)
-        .run(...oldestIds);
+      if (oldestIds.length > 0) {
+        db.prepare(`UPDATE sessions SET is_active = 0 WHERE id IN (${oldestIds.map(() => '?').join(',')})`)
+          .run(...oldestIds);
+      }
     }
 
     db.prepare(`
@@ -283,7 +292,7 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
 
     // Build list of pending actions
     const pendingActions: string[] = [];
-    const needsPasswordChange = user.force_password_change === 1 || user.must_change_password === 1 || isPasswordExpired(user);
+    const needsPasswordChange = user.force_password_change === 1 || user.must_change_password === 1 || isPasswordExpired(user.password_changed_at);
     // 2FA is mandatory for ALL users regardless of account age or role.
     // Check the actual TOTP secret table — the source of truth for verified 2FA.
     // This prevents the "already configured" error when totp_setup_required flag
@@ -360,11 +369,8 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
 
     // ── Two-Factor Authentication gate ──────────────────
     if (has2FA) {
-      // Check if this device is trusted — skip 2FA if so
-      if (deviceFingerprint && isDeviceTrusted(user.id, deviceFingerprint)) {
-        // Trusted device — bypass 2FA, proceed to token issuance below
-        logLoginAttempt(username, ip, true, undefined, userAgent, deviceFingerprint);
-      } else {
+      // Trusted device case already handled above — this branch is for untrusted devices
+      {
         // Not trusted — require 2FA
         const tempToken = generate2faPendingToken(payload);
         res.json({
@@ -498,6 +504,17 @@ router.post('/refresh', refreshRateLimit, (req: Request, res: Response) => {
     if (!session) {
       res.status(401).json({ error: 'Session not found or expired', code: 'SESSION_INVALID' });
       return;
+    }
+
+    // Enforce idle session timeout — invalidate sessions unused for extended periods
+    if (session.last_used_at) {
+      const idleMs = Date.now() - new Date(session.last_used_at).getTime();
+      const maxIdleMs = (config.session?.idleTimeoutMinutes || 480) * 60 * 1000; // default 8 hours
+      if (idleMs > maxIdleMs) {
+        db.prepare('UPDATE sessions SET is_active = 0 WHERE id = ?').run(session.id);
+        res.status(401).json({ error: 'Session expired due to inactivity', code: 'SESSION_IDLE_TIMEOUT' });
+        return;
+      }
     }
 
     // Detect device fingerprint mismatch — potential token theft
@@ -2123,7 +2140,7 @@ router.post('/login/verify-backup-code', authenticateTempToken, (req: Request, r
 
 // ─── POST /api/auth/login/change-password ───────────────
 // During login flow — change password then issue final tokens
-router.post('/login/change-password', authenticateTempToken, (req: Request, res: Response) => {
+router.post('/login/change-password', passwordRateLimit, authenticateTempToken, (req: Request, res: Response) => {
   try {
     const { newPassword, deviceFingerprint } = req.body;
     const userId = req.user!.userId;

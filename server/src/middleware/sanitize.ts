@@ -151,5 +151,16 @@ export function sanitizeInput(req: Request, _res: Response, next: NextFunction):
     }
   }
 
+  // Sanitize URL params — strip dangerous HTML tag characters from string params
+  // (numeric IDs are already validated by validateParamId, but string params like
+  // filenames, call_signs, etc. could carry XSS payloads into error messages or logs)
+  if (req.params) {
+    for (const [key, value] of Object.entries(req.params)) {
+      if (typeof value === 'string') {
+        (req.params as Record<string, string>)[key] = sanitizeStr(value.trim(), key);
+      }
+    }
+  }
+
   next();
 }

@@ -84,8 +84,8 @@ router.post('/calls/:id/dispatch', validateParamId, requireRole('admin', 'manage
     let currentUnits: number[] = [];
     try {
       const parsed = JSON.parse(call.assigned_unit_ids || '[]');
-      currentUnits = Array.isArray(parsed) ? parsed : [];
-    } catch { /* ignore */ }
+      currentUnits = (Array.isArray(parsed) ? parsed : []).filter((n: any) => typeof n === 'number' && !isNaN(n));
+    } catch (e) { console.error(`Failed to parse assigned_unit_ids for call ${call.id}:`, e); }
 
     const allUnits = [...new Set([...currentUnits, ...unit_ids])];
 
@@ -200,11 +200,16 @@ router.post('/calls/:id/assign-unit', validateParamId, requireRole('admin', 'man
     let currentUnits: number[] = [];
     try {
       const parsed = JSON.parse(call.assigned_unit_ids || '[]');
-      currentUnits = Array.isArray(parsed) ? parsed : [];
-    } catch { /* ignore */ }
+      currentUnits = (Array.isArray(parsed) ? parsed : []).filter((n: any) => typeof n === 'number' && !isNaN(n));
+    } catch (e) { console.error(`Failed to parse assigned_unit_ids for call ${call.id}:`, e); }
 
-    if (!currentUnits.includes(Number(unit_id))) {
-      currentUnits.push(Number(unit_id));
+    const unitIdNum = Number(unit_id);
+    if (isNaN(unitIdNum)) {
+      res.status(400).json({ error: 'Invalid unit_id' });
+      return;
+    }
+    if (!currentUnits.includes(unitIdNum)) {
+      currentUnits.push(unitIdNum);
     }
 
     // Transaction: update call + unit + activity log atomically

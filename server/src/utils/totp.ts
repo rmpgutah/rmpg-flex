@@ -16,6 +16,9 @@ import config from '../config';
 
 function deriveKey(): Buffer {
   const key = config.totp?.encryptionKey || config.jwt.secret;
+  if (!key || key.length < 16) {
+    throw new Error('TOTP encryption key is not configured or too short. Set TOTP_ENCRYPTION_KEY or JWT_SECRET (min 16 chars).');
+  }
   // Derive a 32-byte key from the config secret using SHA-256
   return crypto.createHash('sha256').update(key).digest();
 }

@@ -168,6 +168,7 @@ export const config = {
     maxPerUser: envInt('SESSION_MAX_PER_USER', 5),
     enforceIpBinding: envBool('SESSION_ENFORCE_IP_BINDING', true),
     ipChangeAction: (process.env.SESSION_IP_CHANGE_ACTION || 'invalidate') as 'invalidate' | 'reauth' | 'warn',
+    idleTimeoutMinutes: envInt('SESSION_IDLE_TIMEOUT_MINUTES', 480), // 8 hours default
   },
 
   // CORS — localhost origins only in development; production is restricted to real domains

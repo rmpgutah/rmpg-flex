@@ -153,7 +153,8 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
 });
 
 // GET /api/personnel/:id - Get user details
-router.get('/:id', validateParamId, (req: Request, res: Response, next) => {
+// Restrict to sworn/dispatch/command roles — contract_manager must NOT see officer PII
+router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), validateParamId, (req: Request, res: Response, next) => {
   try {
     // Check for route conflicts with sub-paths handled by mountScheduleRoutes
     const subPaths = ['schedules', 'time', 'credentials', 'training', 'training-requirements', 'deployments', 'coverage-gaps', 'analytics', 'activity', 'equipment', 'body-cameras', 'bodycam-videos'];
@@ -555,6 +556,15 @@ router.get('/bodycam-videos/:videoId/stream', (req: Request, res: Response) => {
       return;
     }
 
+    // IDOR protection: only the video's officer, admins, managers, or supervisors may stream
+    const callerRole = req.user?.role;
+    const isOwner = video.officer_id === req.user?.userId;
+    const isPrivileged = ['admin', 'manager', 'supervisor'].includes(callerRole || '');
+    if (!isOwner && !isPrivileged) {
+      res.status(403).json({ error: 'You do not have permission to view this video' });
+      return;
+    }
+
     // Serve processed (overlaid) file if available, otherwise original
     const servePath = (video.overlay_status === 'complete' && video.processed_file_path)
       ? path.resolve(BODYCAM_DIR, video.processed_file_path)
@@ -590,19 +600,23 @@ router.get('/bodycam-videos/:videoId/stream', (req: Request, res: Response) => {
         'Accept-Ranges': 'bytes',
         'Content-Length': chunkSize,
         'Content-Type': mimeType,
+        'X-Content-Type-Options': 'nosniff',
       });
 
       const stream = fs.createReadStream(filePath, { start, end });
-      stream.on('error', (err) => { console.error('Bodycam stream error:', err); res.destroy(); });
+      stream.once('error', (err) => { console.error('Bodycam stream error:', err); if (!res.headersSent) res.status(500).end(); else res.destroy(); });
+      res.on('error', () => { stream.destroy(); });
       stream.pipe(res);
     } else {
       res.writeHead(200, {
         'Content-Length': fileSize,
         'Content-Type': mimeType,
+        'X-Content-Type-Options': 'nosniff',
       });
 
       const stream = fs.createReadStream(filePath);
-      stream.on('error', (err) => { console.error('Bodycam stream error:', err); res.destroy(); });
+      stream.once('error', (err) => { console.error('Bodycam stream error:', err); if (!res.headersSent) res.status(500).end(); else res.destroy(); });
+      res.on('error', () => { stream.destroy(); });
       stream.pipe(res);
     }
   } catch (error: any) {
@@ -621,6 +635,15 @@ router.get('/bodycam-videos/:videoId/download', (req: Request, res: Response) =>
       return;
     }
 
+    // IDOR protection: only the video's officer, admins, managers, or supervisors may download
+    const callerRole = req.user?.role;
+    const isOwner = video.officer_id === req.user?.userId;
+    const isPrivileged = ['admin', 'manager', 'supervisor'].includes(callerRole || '');
+    if (!isOwner && !isPrivileged) {
+      res.status(403).json({ error: 'You do not have permission to download this video' });
+      return;
+    }
+
     const servePath = (video.overlay_status === 'complete' && video.processed_file_path)
       ? path.resolve(BODYCAM_DIR, video.processed_file_path)
       : path.resolve(BODYCAM_DIR, video.file_path);
@@ -633,10 +656,14 @@ router.get('/bodycam-videos/:videoId/download', (req: Request, res: Response) =>
     }
 
     const stat = fs.statSync(filePath);
-    const safeTitle = (video.title || `bodycam_${video.id}`).replace(/[^a-zA-Z0-9_\-. ]/g, '_');
+    // Sanitize filename: strip non-alphanumeric chars and CRLF/null bytes to prevent header injection
+    const safeTitle = (video.title || `bodycam_${video.id}`)
+      .replace(/[\r\n\0"]/g, '')
+      .replace(/[^a-zA-Z0-9_\-. ]/g, '_');
     res.writeHead(200, {
       'Content-Type': 'video/mp4',
       'Content-Length': stat.size,
+      'X-Content-Type-Options': 'nosniff',
       'Content-Disposition': `attachment; filename="BWC_${safeTitle}.mp4"`,
     });
     const dlStream = fs.createReadStream(filePath);

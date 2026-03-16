@@ -128,19 +128,37 @@ if (config.isProduction || config.ssl.enabled) {
   });
 }
 
+// ─── DNS Rebinding Protection ────────────────────────
+// Validate Host header to prevent DNS rebinding attacks that could bypass same-origin policy
+if (config.isProduction) {
+  const allowedHosts = new Set([
+    config.primaryDomain,
+    `www.${config.primaryDomain}`,
+    `crm.${config.primaryDomain}`,
+  ]);
+  app.use((req, res, next) => {
+    const host = (req.hostname || req.headers.host?.split(':')[0] || '').toLowerCase();
+    if (!allowedHosts.has(host)) {
+      res.status(421).json({ error: 'Misdirected request' });
+      return;
+    }
+    next();
+  });
+}
+
 // ─── Security Middleware ─────────────────────────────
 app.use(securityHeaders);
 app.use(cors({
   origin: config.corsOrigins,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'X-CSRF-Token'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'X-CSRF-Token', 'X-Requested-With'],
   exposedHeaders: ['X-Request-ID', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'Retry-After'],
   maxAge: 600, // 10 minutes — browser caches preflight results
 }));
 
 // ─── GitHub Webhook (must come BEFORE express.json() for raw body HMAC) ──
-app.post('/api/webhook/github', webhookRateLimit, express.raw({ type: 'application/json', limit: '5mb' }), (req, res) => {
+app.post('/api/webhook/github', webhookRateLimit, express.raw({ type: 'application/json', limit: '256kb' }), (req, res) => {
   const WEBHOOK_SECRET_FILE = path.resolve(__dirname, '../../.webhook-secret');
   let secret = '';
   try { secret = fs.readFileSync(WEBHOOK_SECRET_FILE, 'utf8').trim(); } catch { /* no secret file */ }

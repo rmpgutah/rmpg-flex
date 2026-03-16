@@ -32,8 +32,9 @@ function getOrigin(): string[] {
   const origins: string[] = [];
   const domain = config.primaryDomain;
   if (domain && domain !== 'localhost') {
-    origins.push(`https://${domain}`);
-    origins.push(`https://www.${domain}`);
+    const cleanDomain = domain.replace(/^https?:\/\//, '');
+    origins.push(`https://${cleanDomain}`);
+    origins.push(`https://www.${cleanDomain}`);
   }
   // Always allow localhost origins for development + Electron
   origins.push('http://localhost:5173');
@@ -75,6 +76,15 @@ function getCredentialById(credentialId: string): (WebAuthnCredential & { userna
 // ── Pending challenge storage (in-memory, short-lived) ────
 // Maps challenge → { userId, expires }
 const pendingChallenges = new Map<string, { userId: number; expires: number }>();
+
+// Periodic cleanup of expired challenges — prevents stale entries from accumulating
+// when no new challenges are created for extended periods
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, val] of pendingChallenges) {
+    if (val.expires < now) pendingChallenges.delete(key);
+  }
+}, 5 * 60 * 1000).unref();
 
 function storePendingChallenge(challenge: string, userId: number): void {
   // Clean expired entries (collect keys first to avoid delete-during-iteration)

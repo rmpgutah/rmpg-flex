@@ -411,7 +411,7 @@ export function drawFormSection(
     : getGridContentWidth(doc);
 
   // Calculate total section height (include banner if applicable)
-  const bannerH = useBanner ? 5 : 0;
+  const bannerH = useBanner ? SPACING.SECTION_HEADER_H : 0;
   let totalH = bannerH;
   for (const row of config.rows) {
     totalH += row.height || SPACING.FORM_CELL_H;
@@ -512,48 +512,54 @@ export function drawNibrsHeader(
     } catch { /* skip if image fails */ }
   }
 
-  // Agency name (centered in header bar)
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(FONT.SIZE_HEADER_TITLE);
-  doc.setTextColor(...COLOR.TEXT_INVERTED);
-  doc.text((config.agencyName || '').toUpperCase(), pageW / 2, y + 8, { align: 'center' });
+  // Left-aligned text block (after seal)
+  const textX = margin + (config.sealBase64 ? sealSize + 6 : 4);
+  const headerH = LAYOUT.HEADER_HEIGHT;
+  const midY = y + headerH / 2; // vertical center of header bar
 
-  // State identifier (small, above agency name if present)
+  // State identifier (small, above center)
   if (config.stateIdentifier) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(FONT.SIZE_SUBHEADER);
-    doc.text(config.stateIdentifier.toUpperCase(), pageW / 2, y + 4, { align: 'center' });
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.text(config.stateIdentifier.toUpperCase(), textX, midY - 5);
   }
 
-  // Form title (below agency name)
+  // Agency name (main title, centered vertically)
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(FONT.SIZE_HEADER_TITLE);
+  doc.setTextColor(...COLOR.TEXT_INVERTED);
+  doc.text((config.agencyName || '').toUpperCase(), textX, midY + 0.5);
+
+  // Form title (below center)
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_REPORT_TYPE);
-  doc.text((config.formTitle || '').toUpperCase(), pageW / 2, y + 13, { align: 'center' });
+  doc.setTextColor(...COLOR.TEXT_INVERTED);
+  doc.text((config.formTitle || '').toUpperCase(), textX, midY + 5.5);
 
-  // Case number box (right side)
+  // Case number (right side — thin white border frame, white text)
   if (config.caseNumber) {
     const caseBoxW = LAYOUT.CASE_BOX_W;
-    const caseBoxH = 12;
+    const caseBoxH = headerH - 6;
     const caseBoxX = margin + contentW - caseBoxW - 2;
-    const caseBoxY = y + 4;
+    const caseBoxY = y + 3;
 
-    // White box with border
-    doc.setFillColor(255, 255, 255);
+    // Subtle white border frame (no fill)
     doc.setDrawColor(...COLOR.TEXT_INVERTED);
-    doc.setLineWidth(BORDER.CASE_BOX);
-    doc.rect(caseBoxX, caseBoxY, caseBoxW, caseBoxH, 'FD');
+    doc.setLineWidth(0.5);
+    doc.rect(caseBoxX, caseBoxY, caseBoxW, caseBoxH);
 
     // "CASE NUMBER" label
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
-    doc.setTextColor(...COLOR.TEXT_TERTIARY);
-    doc.text('CASE NUMBER', caseBoxX + caseBoxW / 2, caseBoxY + 3, { align: 'center' });
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.text('CASE NUMBER', caseBoxX + caseBoxW / 2, caseBoxY + 3.5, { align: 'center' });
 
     // Case number value
     doc.setFont('courier', 'bold');
     doc.setFontSize(FONT.SIZE_CASE_NUMBER);
-    doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    doc.text(config.caseNumber, caseBoxX + caseBoxW / 2, caseBoxY + 9, { align: 'center' });
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.text(config.caseNumber, caseBoxX + caseBoxW / 2, caseBoxY + caseBoxH - 2, { align: 'center' });
   }
 
   y += LAYOUT.HEADER_HEIGHT;

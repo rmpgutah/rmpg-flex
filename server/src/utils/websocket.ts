@@ -212,12 +212,19 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
     // Try to authenticate from URL query parameter (token in ?token=...)
     // NOTE: URL tokens are less secure than header-based auth (visible in logs/history)
     // Kept for backward compatibility — clients should migrate to message-based auth
+    // SECURITY: URL tokens are logged in server access logs and browser history
     const url = req.url || '';
     const tokenMatch = url.match(/[?&]token=([^&]+)/);
     if (tokenMatch) {
       const token = decodeURIComponent(tokenMatch[1]);
       console.warn(`[WS] Client authenticating via URL token (deprecated) from ${clientIp}`);
       authenticateClient(client, token);
+      // Notify client to migrate away from URL token auth
+      safeSend(ws, JSON.stringify({
+        type: 'warning',
+        code: 'URL_TOKEN_DEPRECATED',
+        message: 'URL token authentication is deprecated. Use message-based auth instead.',
+      }));
     }
 
     // Auto-disconnect unauthenticated clients after timeout
