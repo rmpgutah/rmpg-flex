@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../../models/database';
 import { requireRole } from '../../middleware/auth';
 import { validateParamId } from '../../middleware/sanitize';
-import { broadcastDispatchUpdate, broadcastUnitUpdate } from '../../utils/websocket';
+import { broadcast, broadcastDispatchUpdate, broadcastUnitUpdate } from '../../utils/websocket';
 import { localNow } from '../../utils/timeUtils';
 import { generateIncidentNumber } from '../../utils/caseNumbers';
 import { createNotification, createNotificationForRoles } from '../notifications';
@@ -900,10 +900,28 @@ router.post('/calls/:id/persons', validateParamId, requireRole('admin', 'manager
       `Linked ${person.first_name} ${person.last_name} as ${role} to call ${call.call_number}`,
       req.ip || 'unknown');
 
-    // Async warrant check for linked person
-    universalWarrantCheck(Number(person_id)).catch(err =>
-      console.error('[Warrant Check] Async check failed:', err.message)
-    );
+    // Async warrant check for linked person — auto-add activity log note + broadcast alert on hits
+    universalWarrantCheck(Number(person_id)).then(result => {
+      if (result.hitsFound > 0 || result.warrantsCreated > 0) {
+        try {
+          const db2 = getDb();
+          const noteText = `⚠️ WARRANT ALERT: ${result.personName} — ${result.hitsFound} active warrant(s)`;
+          db2.prepare(`
+            INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+            VALUES (0, 'warrant_alert', 'call', ?, ?, 'system')
+          `).run(call.id, noteText);
+
+          broadcast('dispatch', 'call:warrant_alert', {
+            callId: call.id,
+            personId: Number(person_id),
+            personName: result.personName,
+            warrantCount: result.hitsFound,
+          });
+        } catch (err: any) {
+          console.error('[Dispatch Warrant Alert] Note creation error:', err.message);
+        }
+      }
+    }).catch(err => console.error('[Warrant Check] Async check failed:', err.message));
 
     broadcastDispatchUpdate({ action: 'call_person_linked', call_id: call.id, person: linked });
     res.status(201).json(linked);

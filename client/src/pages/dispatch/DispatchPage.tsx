@@ -61,6 +61,7 @@ import PrintRecordButton from '../../components/PrintRecordButton';
 import { useToast } from '../../components/ToastProvider';
 import { useWebSocket } from '../../context/WebSocketContext';
 import WarningTags from '../../components/WarningTags';
+import WarrantBadge from '../../components/WarrantBadge';
 import type { WarningTag } from '../../components/WarningTags';
 import FloatingSaveBar from '../../components/FloatingSaveBar';
 import CadCommandLine from '../../components/CadCommandLine';
@@ -609,7 +610,15 @@ export default function DispatchPage() {
       announcePanicAlert(data.user_name || data.userName);
     });
 
-    return () => { unsubDispatch(); unsubUnit(); unsubPanic(); };
+    // Listen for warrant alerts on linked persons
+    const unsubWarrant = subscribe('call:warrant_alert', (msg: any) => {
+      const data = msg.data || msg;
+      addToast(`⚠️ WARRANT ALERT: ${data.personName} — ${data.warrantCount} active warrant(s) on call`, 'error');
+      // Refresh data so warrant badges appear immediately
+      fetchData({ silent: true });
+    });
+
+    return () => { unsubDispatch(); unsubUnit(); unsubPanic(); unsubWarrant(); };
   }, [subscribe, fetchData, addToast, setFilterTab]);
 
   // When switching to the archived tab, fetch archived calls if not loaded
@@ -3119,6 +3128,7 @@ export default function DispatchPage() {
                                 <span key={cp.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono bg-rmpg-700 border border-rmpg-500 rounded text-rmpg-200">
                                   <span className="text-brand-gold-500 uppercase text-[7px] font-black">{(cp.role || '').replace('_', ' ')}</span>
                                   {cp.last_name}, {cp.first_name}
+                                  <WarrantBadge flags={cp.flags} size="sm" />
                                   {cp.dob && <span className="text-rmpg-500">DOB:{cp.dob}</span>}
                                   <button onClick={() => unlinkPersonFromCall(selectedCall.id, cp.id)} className="text-red-500 hover:text-red-300 ml-0.5" title="Remove">&times;</button>
                                 </span>
@@ -3233,6 +3243,7 @@ export default function DispatchPage() {
                               <div key={cp.id} className="flex items-center gap-2 px-2 py-1 bg-rmpg-800/60 border border-rmpg-700 rounded text-[10px]">
                                 <span className="text-brand-gold-500 uppercase text-[7px] font-black px-1 py-px bg-rmpg-700 rounded">{(cp.role || '').replace(/_/g, ' ')}</span>
                                 <span className="text-white font-semibold">{cp.last_name}, {cp.first_name}</span>
+                                <WarrantBadge flags={cp.flags} size="sm" />
                                 {cp.dob && <span className="text-rmpg-400">DOB: {cp.dob}</span>}
                                 {cp.race && <span className="text-rmpg-500">{cp.race}</span>}
                                 {cp.sex && <span className="text-rmpg-500">{cp.sex}</span>}
