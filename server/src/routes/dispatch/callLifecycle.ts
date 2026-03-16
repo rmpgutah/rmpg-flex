@@ -23,16 +23,31 @@ router.post('/calls/archive-bulk', requireRole('admin', 'manager', 'dispatcher')
         res.status(400).json({ error: 'Cannot archive more than 500 calls at once' });
         return;
       }
+      // Validate that all call_ids are positive integers to prevent type confusion
+      const validatedIds = call_ids.map(id => {
+        const n = typeof id === 'number' ? id : parseInt(String(id), 10);
+        if (isNaN(n) || n < 1) return null;
+        return n;
+      });
+      if (validatedIds.some(id => id === null)) {
+        res.status(400).json({ error: 'All call_ids must be positive integers' });
+        return;
+      }
       // Archive specific calls by ID
-      const placeholders = call_ids.map(() => '?').join(',');
+      const placeholders = validatedIds.map(() => '?').join(',');
       callsToArchive = db.prepare(
         `SELECT * FROM calls_for_service WHERE id IN (${placeholders}) AND status != 'archived'`
-      ).all(...call_ids);
+      ).all(...(validatedIds as number[]));
     } else {
       // Archive all calls matching the given statuses (default: cleared, closed, cancelled)
+      const VALID_ARCHIVE_STATUSES = ['cleared', 'closed', 'cancelled'];
       const targetStatuses = Array.isArray(statuses) && statuses.length > 0
-        ? statuses
-        : ['cleared', 'closed', 'cancelled'];
+        ? statuses.filter((s: string) => VALID_ARCHIVE_STATUSES.includes(s))
+        : VALID_ARCHIVE_STATUSES;
+      if (targetStatuses.length === 0) {
+        res.status(400).json({ error: `Invalid statuses. Must be one of: ${VALID_ARCHIVE_STATUSES.join(', ')}` });
+        return;
+      }
       const placeholders = targetStatuses.map(() => '?').join(',');
       callsToArchive = db.prepare(
         `SELECT * FROM calls_for_service WHERE status IN (${placeholders})`
@@ -371,11 +386,21 @@ router.post('/calls/:id/generate-incident', validateParamId, requireRole('admin'
 // PUT /api/dispatch/calls/:id/timeline/:entryId - Edit a timeline/activity entry
 router.put('/calls/:id/timeline/:entryId', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
+    const entryId = parseInt(String(req.params.entryId), 10);
+    if (isNaN(entryId) || entryId < 1) { res.status(400).json({ error: 'Invalid entryId parameter' }); return; }
+
     const db = getDb();
     const entry = db.prepare('SELECT * FROM activity_log WHERE id = ? AND entity_type = ? AND entity_id = ?')
-      .get(req.params.entryId, 'call', req.params.id) as any;
+      .get(entryId, 'call', req.params.id) as any;
     if (!entry) {
       res.status(404).json({ error: 'Timeline entry not found' });
+      return;
+    }
+
+    // Ownership check: only the entry's author or privileged roles can edit
+    const privilegedRoles = ['admin', 'manager', 'supervisor'];
+    if (entry.user_id !== req.user!.userId && !privilegedRoles.includes(req.user!.role)) {
+      res.status(403).json({ error: 'You can only edit your own timeline entries' });
       return;
     }
 
@@ -393,6 +418,12 @@ router.put('/calls/:id/timeline/:entryId', validateParamId, requireRole('admin',
     params.push(entry.id);
     db.prepare(`UPDATE activity_log SET ${updates.join(', ')} WHERE id = ?`).run(...params);
 
+    // Audit the edit — record who modified which timeline entry
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'timeline_entry_edited', 'call', ?, ?, ?, ?)
+    `).run(req.user!.userId, req.params.id, `Edited timeline entry #${entry.id} on call #${req.params.id}`, req.ip || 'unknown', localNow());
+
     const updated = db.prepare('SELECT al.*, u.full_name as user_name FROM activity_log al LEFT JOIN users u ON al.user_id = u.id WHERE al.id = ?').get(entry.id);
     res.json(updated);
   } catch (error: any) {
@@ -404,15 +435,34 @@ router.put('/calls/:id/timeline/:entryId', validateParamId, requireRole('admin',
 // DELETE /api/dispatch/calls/:id/timeline/:entryId - Delete a timeline/activity entry
 router.delete('/calls/:id/timeline/:entryId', validateParamId, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
+    const entryId = parseInt(String(req.params.entryId), 10);
+    if (isNaN(entryId) || entryId < 1) { res.status(400).json({ error: 'Invalid entryId parameter' }); return; }
+
     const db = getDb();
     const entry = db.prepare('SELECT * FROM activity_log WHERE id = ? AND entity_type = ? AND entity_id = ?')
-      .get(req.params.entryId, 'call', req.params.id) as any;
+      .get(entryId, 'call', req.params.id) as any;
     if (!entry) {
       res.status(404).json({ error: 'Timeline entry not found' });
       return;
     }
 
+    // Ownership check: only the entry's author or privileged roles can delete
+    const privilegedRoles = ['admin', 'manager', 'supervisor'];
+    if (entry.user_id !== req.user!.userId && !privilegedRoles.includes(req.user!.role)) {
+      res.status(403).json({ error: 'You can only delete your own timeline entries' });
+      return;
+    }
+
+    // Capture entry details before deletion for audit trail
+    const entryDetails = entry.details ? String(entry.details).substring(0, 200) : '';
     db.prepare('DELETE FROM activity_log WHERE id = ?').run(entry.id);
+
+    // Audit the deletion — record who deleted which timeline entry
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'timeline_entry_deleted', 'call', ?, ?, ?, ?)
+    `).run(req.user!.userId, req.params.id, `Deleted timeline entry #${entry.id} on call #${req.params.id}: "${entryDetails}"`, req.ip || 'unknown', localNow());
+
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete timeline entry error:', error?.message || 'Unknown error');
@@ -430,17 +480,21 @@ router.post('/calls/:id/timeline', validateParamId, requireRole('admin', 'manage
       return;
     }
 
-    const { action, details, created_at } = req.body;
+    const { action, details } = req.body;
     if (!details) {
       res.status(400).json({ error: 'details is required' });
       return;
     }
 
-    const timestamp = created_at || localNow();
+    // Validate action against allowed manual timeline actions to prevent audit log spoofing
+    const ALLOWED_TIMELINE_ACTIONS = ['note_added', 'status_update', 'unit_note', 'supervisor_note', 'narrative_added'];
+    const safeAction = ALLOWED_TIMELINE_ACTIONS.includes(action) ? action : 'note_added';
+
+    const timestamp = localNow();
     const result = db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, ?, 'call', ?, ?, ?, ?)
-    `).run(req.user!.userId, action || 'note_added', call.id, details, req.ip || 'unknown', timestamp);
+    `).run(req.user!.userId, safeAction, call.id, details, req.ip || 'unknown', timestamp);
 
     const entry = db.prepare('SELECT al.*, u.full_name as user_name FROM activity_log al LEFT JOIN users u ON al.user_id = u.id WHERE al.id = ?').get(result.lastInsertRowid);
     if (!entry) { res.status(500).json({ error: 'Failed to retrieve created entry' }); return; }
@@ -586,6 +640,14 @@ router.put('/calls/:id/mileage', validateParamId, requireRole('admin', 'manager'
     }
 
     const { starting_mileage, ending_mileage } = req.body;
+
+    // Validate mileage values are numeric if provided
+    if (starting_mileage !== undefined && starting_mileage !== null && (typeof starting_mileage !== 'number' || isNaN(starting_mileage) || starting_mileage < 0)) {
+      res.status(400).json({ error: 'starting_mileage must be a non-negative number' }); return;
+    }
+    if (ending_mileage !== undefined && ending_mileage !== null && (typeof ending_mileage !== 'number' || isNaN(ending_mileage) || ending_mileage < 0)) {
+      res.status(400).json({ error: 'ending_mileage must be a non-negative number' }); return;
+    }
 
     const updates: string[] = [];
     const params: any[] = [];

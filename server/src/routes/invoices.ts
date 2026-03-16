@@ -173,7 +173,7 @@ router.get('/stats', requireRole('admin', 'manager', 'contract_manager'), (req: 
 router.get('/', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
+    const page = Math.min(10000, Math.max(1, parseInt(req.query.page as string, 10) || 1));
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string, 10) || 50));
     const offset = (page - 1) * limit;
 

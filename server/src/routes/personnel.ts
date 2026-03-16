@@ -9,6 +9,7 @@ import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { rateLimit } from '../middleware/rateLimiter';
 import { localNow, localToday } from '../utils/timeUtils';
 import { queueOverlayProcessing, type BodyCamOverlayConfig } from '../utils/videoOverlay';
 import { validateEmail, validatePhone, validateBadgeNumber, validateAll } from '../utils/inputValidation';
@@ -129,6 +130,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
       whereClause += ' AND u.archived_at IS NULL';
     }
 
+    // Select all fields — PII redaction applied below based on caller's role
     const users = db.prepare(`
       SELECT u.id, u.username, u.full_name, u.first_name, u.last_name, u.middle_name, u.email, u.role,
         u.badge_number, u.phone, u.status, u.avatar_url, u.rank, u.department, u.address, u.city, u.state, u.zip,
@@ -144,7 +146,23 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
       LEFT JOIN units un ON un.officer_id = u.id
       ${whereClause}
       ORDER BY u.full_name
-    `).all(...params);
+    `).all(...params) as any[];
+
+    // Redact PII for non-privileged callers — same logic as GET /:id
+    const callerRole = req.user?.role;
+    const isPrivileged = ['admin', 'manager', 'supervisor'].includes(callerRole || '');
+    if (!isPrivileged) {
+      const PII_FIELDS = ['address', 'city', 'state', 'zip', 'date_of_birth',
+        'dl_number', 'dl_state', 'dl_expiry', 'blood_type', 'allergies',
+        'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship'];
+      for (const user of users) {
+        if (user.id !== req.user?.userId) {
+          for (const field of PII_FIELDS) {
+            delete user[field];
+          }
+        }
+      }
+    }
 
     res.json(users);
   } catch (error: any) {
@@ -240,7 +258,15 @@ router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dis
 });
 
 // POST /api/personnel - Create user (admin/manager only)
-router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+// Rate limit user creation — 10 per 15 min to prevent bulk account creation
+const personnelCreateRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  maxRequests: 10,
+  keyGenerator: (req) => `personnel-create:${req.user?.userId || req.ip || 'unknown'}`,
+  message: 'Too many user creation requests. Please try again later.',
+});
+
+router.post('/', requireRole('admin', 'manager'), personnelCreateRateLimit, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const {
@@ -272,7 +298,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
     // Validate role against allowlist
     const VALID_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'];
     if (!VALID_ROLES.includes(role)) {
-      res.status(400).json({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(', ')}` });
+      res.status(400).json({ error: 'Invalid role' });
       return;
     }
     // Only admins can create admin accounts
@@ -368,7 +394,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Reque
     // Validate role against allowlist if provided
     const VALID_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'];
     if (req.body.role && !VALID_ROLES.includes(req.body.role)) {
-      res.status(400).json({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(', ')}` });
+      res.status(400).json({ error: 'Invalid role' });
       return;
     }
     // Only admins can assign the admin role; prevent self-role-modification
@@ -570,20 +596,38 @@ router.get('/bodycam-videos/:videoId/stream', validateNumericParams('videoId'), 
     }
 
     // Serve processed (overlaid) file if available, otherwise original
-    const servePath = (video.overlay_status === 'complete' && video.processed_file_path)
-      ? path.resolve(BODYCAM_DIR, video.processed_file_path)
-      : path.resolve(BODYCAM_DIR, video.file_path);
+    // Security: validate EVERY candidate path against BODYCAM_DIR before filesystem access
+    // to prevent path traversal via compromised DB values
+    const isInsideBase = (p: string) => {
+      const rel = path.relative(BODYCAM_DIR, p);
+      return !rel.startsWith('..') && !path.isAbsolute(rel);
+    };
 
-    const filePath = fs.existsSync(servePath) ? servePath : path.resolve(BODYCAM_DIR, video.file_path);
+    let filePath: string | null = null;
+    if (video.overlay_status === 'complete' && video.processed_file_path) {
+      const candidate = path.resolve(BODYCAM_DIR, video.processed_file_path);
+      if (isInsideBase(candidate) && fs.existsSync(candidate)) {
+        filePath = candidate;
+      }
+    }
+    if (!filePath && video.file_path) {
+      const candidate = path.resolve(BODYCAM_DIR, video.file_path);
+      if (isInsideBase(candidate) && fs.existsSync(candidate)) {
+        filePath = candidate;
+      }
+    }
 
-    if (path.relative(BODYCAM_DIR, filePath).startsWith('..') || !fs.existsSync(filePath)) {
+    if (!filePath) {
       res.status(404).json({ error: 'Video file not found on disk' });
       return;
     }
 
     const stat = fs.statSync(filePath);
     const fileSize = stat.size;
-    const mimeType = filePath.endsWith('.mp4') ? 'video/mp4' : (video.mime_type || 'video/mp4');
+    // Only allow known safe video MIME types — prevents MIME-type confusion attacks
+    const ALLOWED_MIME_TYPES = new Set(['video/mp4', 'video/webm', 'video/ogg', 'video/quicktime']);
+    const rawMime = filePath.endsWith('.mp4') ? 'video/mp4' : (video.mime_type || 'video/mp4');
+    const mimeType = ALLOWED_MIME_TYPES.has(rawMime) ? rawMime : 'video/mp4';
     const range = req.headers.range;
 
     if (range) {
@@ -604,6 +648,7 @@ router.get('/bodycam-videos/:videoId/stream', validateNumericParams('videoId'), 
         'Accept-Ranges': 'bytes',
         'Content-Length': chunkSize,
         'Content-Type': mimeType,
+        'Content-Disposition': 'inline',
         'X-Content-Type-Options': 'nosniff',
       });
 
@@ -615,6 +660,7 @@ router.get('/bodycam-videos/:videoId/stream', validateNumericParams('videoId'), 
       res.writeHead(200, {
         'Content-Length': fileSize,
         'Content-Type': mimeType,
+        'Content-Disposition': 'inline',
         'X-Content-Type-Options': 'nosniff',
       });
 
@@ -648,17 +694,32 @@ router.get('/bodycam-videos/:videoId/download', validateNumericParams('videoId')
       return;
     }
 
-    const servePath = (video.overlay_status === 'complete' && video.processed_file_path)
-      ? path.resolve(BODYCAM_DIR, video.processed_file_path)
-      : path.resolve(BODYCAM_DIR, video.file_path);
+    // Security: validate EVERY candidate path against BODYCAM_DIR before filesystem access
+    const isInsideBodycam = (p: string) => {
+      const rel = path.relative(BODYCAM_DIR, p);
+      return !rel.startsWith('..') && !path.isAbsolute(rel);
+    };
 
-    const filePath = fs.existsSync(servePath) ? servePath : path.resolve(BODYCAM_DIR, video.file_path);
+    let dlFilePath: string | null = null;
+    if (video.overlay_status === 'complete' && video.processed_file_path) {
+      const candidate = path.resolve(BODYCAM_DIR, video.processed_file_path);
+      if (isInsideBodycam(candidate) && fs.existsSync(candidate)) {
+        dlFilePath = candidate;
+      }
+    }
+    if (!dlFilePath && video.file_path) {
+      const candidate = path.resolve(BODYCAM_DIR, video.file_path);
+      if (isInsideBodycam(candidate) && fs.existsSync(candidate)) {
+        dlFilePath = candidate;
+      }
+    }
 
-    if (path.relative(BODYCAM_DIR, filePath).startsWith('..') || !fs.existsSync(filePath)) {
+    if (!dlFilePath) {
       res.status(404).json({ error: 'Video file not found on disk' });
       return;
     }
 
+    const filePath = dlFilePath;
     const stat = fs.statSync(filePath);
     // Sanitize filename: strip non-alphanumeric chars and CRLF/null bytes to prevent header injection
     const safeTitle = (video.title || `bodycam_${video.id}`)
@@ -978,8 +1039,11 @@ export function mountScheduleRoutes(parentRouter: Router): void {
   });
 
   // GET /api/personnel/credentials/:officerId
-  parentRouter.get('/personnel/credentials/:officerId', authenticateToken, (req: Request, res: Response) => {
+  parentRouter.get('/personnel/credentials/:officerId', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
     try {
+      const officerId = parseInt(String(req.params.officerId), 10);
+      if (isNaN(officerId) || officerId < 1) { res.status(400).json({ error: 'Invalid officerId parameter' }); return; }
+
       const db = getDb();
       const credentials = db.prepare(`
         SELECT c.*, u.full_name as officer_name
@@ -987,7 +1051,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         LEFT JOIN users u ON c.officer_id = u.id
         WHERE c.officer_id = ?
         ORDER BY c.credential_type
-      `).all(req.params.officerId);
+      `).all(officerId);
 
       res.json(credentials);
     } catch (error: any) {
@@ -1067,9 +1131,9 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       const newStatus = clock_out ? 'completed' : 'active';
 
       db.prepare(`
-        UPDATE time_entries SET clock_in = ?, clock_out = ?, total_hours = ?, status = 'edited'
+        UPDATE time_entries SET clock_in = ?, clock_out = ?, total_hours = ?, status = ?
         WHERE id = ?
-      `).run(clock_in, clock_out || null, totalHours, req.params.id);
+      `).run(clock_in, clock_out || null, totalHours, newStatus, req.params.id);
 
       db.prepare(`
         INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
@@ -1254,8 +1318,11 @@ export function mountScheduleRoutes(parentRouter: Router): void {
   });
 
   // GET /api/personnel/activity/:userId - User-specific activity log
-  parentRouter.get('/personnel/activity/:userId', authenticateToken, (req: Request, res: Response) => {
+  parentRouter.get('/personnel/activity/:userId', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
     try {
+      const userId = parseInt(String(req.params.userId), 10);
+      if (isNaN(userId) || userId < 1) { res.status(400).json({ error: 'Invalid userId parameter' }); return; }
+
       const db = getDb();
       const limit = Math.min(500, Math.max(1, parseInt(req.query.limit as string, 10) || 50));
 

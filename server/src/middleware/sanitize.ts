@@ -37,7 +37,8 @@ const CC_RE = /\b(\d{4})[-.\s]?(\d{4})[-.\s]?(\d{4})[-.\s]?(\d{1,7})\b/g;
 // whitespace and control characters before matching.
 const DANGEROUS_URI_RE = /^\s*(javascript|vbscript|data|livescript|mocha)\s*:/i;
 // Extended pattern that catches control-char obfuscation (e.g., "j\navas\tcript:")
-const OBFUSCATED_URI_RE = /^\s*j\s*a\s*v\s*a\s*s\s*c\s*r\s*i\s*p\s*t\s*:/i;
+// Bounded repetitions prevent ReDoS — max 5 whitespace/control chars between each letter
+const OBFUSCATED_URI_RE = /^\s{0,10}j[\s\x00-\x1f]{0,5}a[\s\x00-\x1f]{0,5}v[\s\x00-\x1f]{0,5}a[\s\x00-\x1f]{0,5}s[\s\x00-\x1f]{0,5}c[\s\x00-\x1f]{0,5}r[\s\x00-\x1f]{0,5}i[\s\x00-\x1f]{0,5}p[\s\x00-\x1f]{0,5}t\s{0,5}:/i;
 
 function sanitizeStr(str: string, fieldName?: string): string {
   const maxLen = fieldName && LONG_TEXT_FIELDS.has(fieldName) ? MAX_LONG_TEXT_LENGTH : MAX_STRING_LENGTH;
@@ -201,7 +202,7 @@ export function safePagination(
   defaultLimit = 50,
   maxLimit = 200,
 ): { page: number; limit: number; offset: number } {
-  const page = Math.max(1, parseInt(String(query.page ?? query.p ?? '1'), 10) || 1);
+  const page = Math.min(10000, Math.max(1, parseInt(String(query.page ?? query.p ?? '1'), 10) || 1));
   const rawLimit = parseInt(String(query.limit ?? query.per_page ?? String(defaultLimit)), 10);
   const limit = Math.min(maxLimit, Math.max(1, isNaN(rawLimit) ? defaultLimit : rawLimit));
   return { page, limit, offset: (page - 1) * limit };

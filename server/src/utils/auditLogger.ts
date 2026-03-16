@@ -312,7 +312,7 @@ const SENSITIVE_PATTERNS = [
   /totp[_\s]*(?:secret|key)["']?\s*[:=]\s*["']?[^\s,}"']+/gi,
   /api[_\s]*key["']?\s*[:=]\s*["']?[^\s,}"']+/gi,
   /Bearer\s+[A-Za-z0-9._-]+/g,
-  /\b[A-Za-z0-9+/=]{40,}\b/g, // Long base64-ish strings (potential secrets)
+  /\beyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, // JWT tokens (eyJ... pattern)
 ];
 
 function maskSensitiveData(text: string): string {
@@ -409,8 +409,8 @@ export function auditLogBatch(
     const now = localNow();
 
     const stmt = db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at, log_hash)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const batchInsert = db.transaction(() => {
@@ -418,7 +418,8 @@ export function auditLogBatch(
         const safeDetails = maskSensitiveData(
           entry.details.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '').substring(0, 1000)
         );
-        stmt.run(userId, entry.action, entry.entityType, String(entry.entityId), safeDetails, ip, now);
+        const logHash = computeLogHash(userId, entry.action, entry.entityType, String(entry.entityId), safeDetails, ip, now);
+        stmt.run(userId, entry.action, entry.entityType, String(entry.entityId), safeDetails, ip, now, logHash);
       }
     });
 

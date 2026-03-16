@@ -274,17 +274,20 @@ router.put('/reorder', requireRole(...WRITE_ROLES), (req: Request, res: Response
       }
     }
 
-    // IDOR check: verify all jobs belong to the requesting officer (or user is supervisor+)
+    // IDOR check: verify EACH job belongs to the requesting officer (or user is supervisor+)
     const isSupervisor = ['admin', 'manager', 'supervisor'].includes(req.user!.role);
     if (!isSupervisor) {
-      const ids = order.map((item: any) => item.id);
-      const placeholders = ids.map(() => '?').join(',');
-      const foreignCount = db.prepare(
-        `SELECT COUNT(*) as cnt FROM serve_queue WHERE id IN (${placeholders}) AND officer_id != ?`
-      ).get(...ids, req.user!.userId) as any;
-      if (foreignCount?.cnt > 0) {
-        res.status(403).json({ error: 'You can only reorder your own serve jobs' });
-        return;
+      const checkStmt = db.prepare('SELECT id, officer_id FROM serve_queue WHERE id = ?');
+      for (const item of order) {
+        const job = checkStmt.get(item.id) as any;
+        if (!job) {
+          res.status(404).json({ error: `Serve job #${item.id} not found` });
+          return;
+        }
+        if (job.officer_id !== req.user!.userId) {
+          res.status(403).json({ error: 'You can only reorder your own serve jobs' });
+          return;
+        }
       }
     }
 
@@ -366,6 +369,48 @@ router.post('/', requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
 
     if (!recipient_name || !recipient_name.trim()) {
       return res.status(400).json({ error: 'recipient_name is required' });
+    }
+
+    // IDOR protection: non-supervisors can only create jobs for themselves
+    if (officer_id && officer_id !== req.user!.userId &&
+        !['admin', 'manager', 'supervisor'].includes(req.user!.role)) {
+      return res.status(403).json({ error: 'You can only create serve jobs assigned to yourself' });
+    }
+
+    // Validate max_attempts is within reasonable bounds
+    if (max_attempts !== undefined) {
+      const ma = typeof max_attempts === 'number' ? max_attempts : parseInt(String(max_attempts), 10);
+      if (isNaN(ma) || ma < 1 || ma > 20) {
+        return res.status(400).json({ error: 'max_attempts must be between 1 and 20' });
+      }
+    }
+
+    // Validate GPS coordinates are within valid ranges
+    if (recipient_lat !== undefined && recipient_lat !== null) {
+      const lat = Number(recipient_lat);
+      if (isNaN(lat) || lat < -90 || lat > 90) {
+        return res.status(400).json({ error: 'recipient_lat must be between -90 and 90' });
+      }
+    }
+    if (recipient_lng !== undefined && recipient_lng !== null) {
+      const lng = Number(recipient_lng);
+      if (isNaN(lng) || lng < -180 || lng > 180) {
+        return res.status(400).json({ error: 'recipient_lng must be between -180 and 180' });
+      }
+    }
+
+    // Field length limits — prevent storage abuse and rendering issues
+    const FIELD_LIMITS: Record<string, number> = {
+      recipient_name: 200, recipient_address: 500, recipient_city: 100,
+      recipient_state: 50, recipient_zip: 20, document_type: 100,
+      case_number: 100, court_name: 200, jurisdiction: 100,
+      client_name: 200, attorney_name: 200, priority: 20,
+      time_window: 200, service_instructions: 5000, notes: 5000,
+    };
+    for (const [field, max] of Object.entries(FIELD_LIMITS)) {
+      if (req.body[field] && String(req.body[field]).length > max) {
+        return res.status(400).json({ error: `${field} exceeds maximum length (${max} chars)` });
+      }
     }
 
     const info = db.prepare(`

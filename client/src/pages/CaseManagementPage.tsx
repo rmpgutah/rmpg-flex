@@ -109,10 +109,13 @@ export default function CaseManagementPage() {
         ...(filterPriority ? { priority: filterPriority } : {}),
       });
       const res = await apiFetch<{ data: Case[]; pagination: any }>(`/cases?${params}`);
-      setCases(res.data || []);
+      const newCases = res.data || [];
+      setCases(newCases);
       setTotalPages(res.pagination?.totalPages || 1);
       setTotalCount(res.pagination?.total || 0);
-    } catch { /* silent */ } finally { setLoading(false); }
+      // Keep selected item in sync with refreshed data
+      setSelected(prev => prev ? newCases.find((c: Case) => c.id === prev.id) || null : null);
+    } catch { addToast('Failed to load cases', 'error'); } finally { setLoading(false); }
   }, [page, searchQuery, filterStatus, filterType, filterPriority]);
 
   const fetchStats = useCallback(async () => {

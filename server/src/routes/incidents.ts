@@ -64,7 +64,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
       params.push(req.user!.userId);
     }
 
-    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
     const limitNum = Math.max(1, Math.min(500, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 

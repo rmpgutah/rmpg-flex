@@ -215,7 +215,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
       setUnreadCount(0);
     } catch {
-      // Silently fail
+      console.warn('[NotificationCenter] Failed to mark all as read');
     }
   }, []);
 
@@ -225,12 +225,15 @@ export default function NotificationCenter({ className = '' }: NotificationCente
   const handleMarkRead = useCallback(async (id: string) => {
     try {
       await apiFetch<void>(`/notifications/${id}/read`, { method: 'PUT' });
-      setNotifications((prev) =>
-        prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
-      );
-      setUnreadCount((prev) => Math.max(0, prev - 1));
+      setNotifications((prev) => {
+        const target = prev.find((n) => n.id === id);
+        if (target && !target.is_read) {
+          setUnreadCount((c) => Math.max(0, c - 1));
+        }
+        return prev.map((n) => (n.id === id ? { ...n, is_read: true } : n));
+      });
     } catch {
-      // Silently fail
+      console.warn('[NotificationCenter] Failed to mark notification as read');
     }
   }, []);
 
@@ -249,7 +252,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
         return prev.filter((n) => n.id !== id);
       });
     } catch {
-      // Silently fail
+      console.warn('[NotificationCenter] Failed to dismiss notification');
     }
   }, []);
 

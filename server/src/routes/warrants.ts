@@ -270,7 +270,7 @@ router.get('/watch/log', requireRole('admin', 'manager', 'supervisor', 'officer'
   try {
     const db = getDb();
     const { event, person_id, page = '1', limit = '50' } = req.query;
-    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
     const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
@@ -960,7 +960,7 @@ router.get('/scraped/search', requireRole('admin', 'manager', 'supervisor', 'off
       return;
     }
 
-    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
     const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 

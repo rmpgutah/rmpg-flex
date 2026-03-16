@@ -64,6 +64,7 @@ function SignatureEditor({ onClose }: { onClose: () => void }) {
   const [signature, setSignature] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [signatureError, setSignatureError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -77,7 +78,7 @@ function SignatureEditor({ onClose }: { onClose: () => void }) {
   const handleSave = async () => {
     setSaving(true);
     try { await apiFetch('/email/signature', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ signature }) }); onClose(); }
-    catch { /* ignore */ } finally { setSaving(false); }
+    catch { setSignatureError('Failed to save signature'); } finally { setSaving(false); }
   };
 
   if (loading) return <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-400" />;
@@ -90,9 +91,10 @@ function SignatureEditor({ onClose }: { onClose: () => void }) {
       </div>
       <textarea value={signature} onChange={e => setSignature(e.target.value)} rows={4}
         className="input-dark w-full text-xs font-mono resize-y" placeholder="Your Name&#10;Title | Organization&#10;Phone: (555) 123-4567" />
+      {signatureError && <p className="text-[10px] text-red-400">{signatureError}</p>}
       <div className="flex justify-end gap-1.5">
         <button onClick={onClose} className="btn-secondary text-[10px] px-2 py-0.5">Cancel</button>
-        <button onClick={handleSave} disabled={saving} className="btn-primary text-[10px] px-2 py-0.5">{saving ? 'Saving...' : 'Save Signature'}</button>
+        <button onClick={() => { setSignatureError(null); handleSave(); }} disabled={saving} className="btn-primary text-[10px] px-2 py-0.5">{saving ? 'Saving...' : 'Save Signature'}</button>
       </div>
     </div>
   );
@@ -141,6 +143,7 @@ function ContactAutocompleteInput({
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const fetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suggestGenRef = useRef(0);
 
   // Close on outside click
   useEffect(() => {
@@ -151,16 +154,23 @@ function ContactAutocompleteInput({
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  // Clean up pending fetch timer on unmount
+  useEffect(() => {
+    return () => { if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current); };
+  }, []);
+
   const fetchSuggestions = useCallback((query: string) => {
     if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current);
     if (query.length < 2) { setSuggestions([]); return; }
     fetchTimerRef.current = setTimeout(async () => {
+      const gen = ++suggestGenRef.current;
       try {
         const data = await apiFetch<ContactSuggestion[]>(`/email/contacts/search?q=${encodeURIComponent(query)}`);
+        if (gen !== suggestGenRef.current) return;
         setSuggestions(data || []);
         setShowSuggestions(true);
         setActiveIdx(-1);
-      } catch { setSuggestions([]); }
+      } catch { if (gen === suggestGenRef.current) setSuggestions([]); }
     }, 250);
   }, []);
 
@@ -1289,15 +1299,17 @@ function InlineReply({ messageId, onSent }: { messageId: string; onSent: () => v
   const [expanded, setExpanded] = useState(false);
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
+  const [replyError, setReplyError] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSend = async () => {
     if (!body.trim()) return;
     setSending(true);
+    setReplyError(null);
     try {
       await apiFetch(`/email/messages/${messageId}/reply`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body }) });
       setBody(''); setExpanded(false); onSent();
-    } catch { /* ignore */ } finally { setSending(false); }
+    } catch { setReplyError('Failed to send reply'); } finally { setSending(false); }
   };
 
   if (!expanded) {
@@ -1316,9 +1328,9 @@ function InlineReply({ messageId, onSent }: { messageId: string; onSent: () => v
         rows={4} className="w-full bg-transparent text-xs text-white p-3 resize-none focus:outline-none placeholder:text-rmpg-500"
         placeholder="Type your reply... (Ctrl+Enter to send, Esc to cancel)" autoFocus />
       <div className="flex items-center justify-between px-3 py-1.5 border-t border-border-subtle/50">
-        <span className="text-[9px] text-rmpg-600">Signature auto-appended</span>
+        {replyError ? <span className="text-[9px] text-red-400">{replyError}</span> : <span className="text-[9px] text-rmpg-600">Signature auto-appended</span>}
         <div className="flex items-center gap-1.5">
-          <button onClick={() => { setExpanded(false); setBody(''); }} className="text-[10px] text-rmpg-500 hover:text-white px-2 py-0.5">Cancel</button>
+          <button onClick={() => { setExpanded(false); setBody(''); setReplyError(null); }} className="text-[10px] text-rmpg-500 hover:text-white px-2 py-0.5">Cancel</button>
           <button onClick={handleSend} disabled={sending || !body.trim()} className="btn-primary text-[10px] px-3 py-0.5 flex items-center gap-1 disabled:opacity-40">
             {sending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />} Send
           </button>

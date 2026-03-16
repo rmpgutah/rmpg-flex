@@ -240,6 +240,8 @@ export default function CitationsPage() {
   const [showPersonDropdown, setShowPersonDropdown] = useState(false);
   const personDropdownRef = useRef<HTMLDivElement>(null);
   const personSearchTimer = useRef<ReturnType<typeof setTimeout>>();
+  const personSearchGenRef = useRef(0);
+  const saveSuccessTimer = useRef<ReturnType<typeof setTimeout>>();
 
   // ── Data fetching ────────────────────────────────────────
 
@@ -254,8 +256,11 @@ export default function CitationsPage() {
       if (searchQuery.trim()) params.set('q', searchQuery.trim());
 
       const res = await apiFetch<{ data: Citation[]; pagination: any }>(`/citations?${params}`);
-      setCitations(res.data || []);
+      const newCitations = res.data || [];
+      setCitations(newCitations);
       setTotalPages(res.pagination?.totalPages || 1);
+      // Keep selected citation in sync if viewing in list mode
+      setSelectedCitation(prev => prev ? newCitations.find((c: Citation) => c.id === prev.id) || null : null);
     } catch (err: any) {
       if (!options?.silent) setError(err.message || 'Failed to load citations');
     } finally {
@@ -307,14 +312,16 @@ export default function CitationsPage() {
     }
     setPersonSearching(true);
     personSearchTimer.current = setTimeout(async () => {
+      const gen = ++personSearchGenRef.current;
       try {
         const res = await apiFetch<{ data: any[] }>(`/records/persons/search?q=${encodeURIComponent(val)}&limit=10`);
+        if (gen !== personSearchGenRef.current) return;
         setPersonResults(res.data || []);
         setShowPersonDropdown(true);
       } catch {
-        setPersonResults([]);
+        if (gen === personSearchGenRef.current) setPersonResults([]);
       } finally {
-        setPersonSearching(false);
+        if (gen === personSearchGenRef.current) setPersonSearching(false);
       }
     }, 300);
   };
@@ -382,6 +389,7 @@ export default function CitationsPage() {
     setPersonSearch('');
     setSaveError('');
     setSaveSuccess(false);
+    if (saveSuccessTimer.current) clearTimeout(saveSuccessTimer.current);
     clearFormErrors();
     setMode('create');
     setSelectedCitation(null);
@@ -458,7 +466,8 @@ export default function CitationsPage() {
         const res = await apiFetch<{ data: Citation }>('/citations', { method: 'POST', body: JSON.stringify(payload) });
         setSelectedCitation(res.data);
         setSaveSuccess(true);
-        setTimeout(() => {
+        if (saveSuccessTimer.current) clearTimeout(saveSuccessTimer.current);
+        saveSuccessTimer.current = setTimeout(() => {
           setMode('list');
           setSaveSuccess(false);
           fetchCitations({ silent: true });
@@ -468,7 +477,8 @@ export default function CitationsPage() {
         const res = await apiFetch<{ data: Citation }>(`/citations/${selectedCitation.id}`, { method: 'PUT', body: JSON.stringify(payload) });
         setSelectedCitation(res.data);
         setSaveSuccess(true);
-        setTimeout(() => {
+        if (saveSuccessTimer.current) clearTimeout(saveSuccessTimer.current);
+        saveSuccessTimer.current = setTimeout(() => {
           setMode('list');
           setSaveSuccess(false);
           fetchCitations({ silent: true });

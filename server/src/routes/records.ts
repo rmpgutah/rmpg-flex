@@ -84,7 +84,7 @@ router.get('/persons', requireRole('admin', 'manager', 'supervisor', 'officer', 
   try {
     const db = getDb();
     const { page = '1', limit = '50', flags, search, archived } = req.query;
-    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
     const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
@@ -670,7 +670,7 @@ router.get('/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer',
   try {
     const db = getDb();
     const { page = '1', limit = '50', search, archived } = req.query;
-    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
     const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
@@ -1223,7 +1223,7 @@ router.get('/evidence', requireRole('admin', 'manager', 'supervisor', 'officer',
   try {
     const db = getDb();
     const { page = '1', limit = '50', per_page, archived, search, status, type } = req.query;
-    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
     const limitNum = Math.min(200, Math.max(1, parseInt((per_page || limit) as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 

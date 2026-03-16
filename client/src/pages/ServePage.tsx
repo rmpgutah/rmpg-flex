@@ -391,11 +391,8 @@ export default function ServePage() {
     loadGoogleMaps(GMAPS_API_KEY).then(() => {
       if (cancelled || !mapContainerRef.current) return;
 
-      // If map already exists, just update markers
-      if (mapRef.current) {
-        updateMapMarkers();
-        return;
-      }
+      // If map already exists, the separate mapReady effect will handle marker updates
+      if (mapRef.current) return;
 
       const center = { lat: 40.7608, lng: -111.891 }; // SLC default
       const map = new google.maps.Map(mapContainerRef.current, {

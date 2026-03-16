@@ -266,14 +266,18 @@ function authenticateTokenOrQuery(req: Request, res: Response, next: NextFunctio
 
   try {
     // Verify with iss/aud claims for consistency with main authenticateToken
-    const JWT_VERIFY_OPTIONS = { issuer: 'rmpg-flex', audience: 'rmpg-flex-api' };
+    const JWT_VERIFY_OPTIONS = { issuer: 'rmpg-flex', audience: 'rmpg-flex-api', algorithms: ['HS256'] as jwt.Algorithm[] };
     let decoded: JwtPayload;
     try {
       decoded = jwt.verify(token, config.jwt.secret, JWT_VERIFY_OPTIONS) as JwtPayload;
     } catch (strictErr: any) {
       // Legacy token backward compat — enforce strict validation after 2026-04-15
       if (strictErr.message?.includes('jwt issuer invalid') || strictErr.message?.includes('jwt audience invalid')) {
-        decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
+        if (Date.now() >= new Date('2026-04-15T00:00:00Z').getTime()) {
+          res.status(401).json({ error: 'Token format no longer accepted. Please log in again.', code: 'TOKEN_LEGACY_REJECTED' });
+          return;
+        }
+        decoded = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] }) as JwtPayload;
       } else {
         throw strictErr;
       }
@@ -347,10 +351,20 @@ router.get('/entity/:type/:id', validateParamId, authenticateToken, (req: Reques
 router.get('/sign/:fileId', authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const attachment = db.prepare('SELECT file_id FROM attachments WHERE file_id = ?').get(req.params.fileId) as any;
+    const attachment = db.prepare(
+      'SELECT file_id, entity_type, entity_id, uploaded_by FROM attachments WHERE file_id = ?'
+    ).get(req.params.fileId) as any;
 
     if (!attachment) {
       res.status(404).json({ error: 'File not found' });
+      return;
+    }
+
+    // Ownership check: only the uploader, admin, manager, or supervisor can sign files
+    const userRole = req.user!.role;
+    const isPrivileged = ['admin', 'manager', 'supervisor'].includes(userRole);
+    if (attachment.uploaded_by !== req.user!.userId && !isPrivileged) {
+      res.status(403).json({ error: 'Not authorized to access this file' });
       return;
     }
 
@@ -566,7 +580,17 @@ router.post('/', uploadRateLimit, upload.array('files', 10), (req: Request, res:
             res.status(500).json({ error: 'Server security scan misconfigured' });
             return;
           }
+          // Validate scanner arguments: reject args that look like path traversal or shell tricks
           const args = parts.slice(1);
+          const SAFE_ARG_RE = /^--?[a-zA-Z0-9][a-zA-Z0-9_=-]*$/;
+          for (const arg of args) {
+            if (!SAFE_ARG_RE.test(arg)) {
+              console.error(`[Upload] BLOCKED — VIRUS_SCAN_CMD contains unsafe argument: ${arg}`);
+              try { fs.unlinkSync(file.path); } catch { /* best effort */ }
+              res.status(500).json({ error: 'Server security scan misconfigured' });
+              return;
+            }
+          }
           execFileSync(cmd, [...args, file.path], { timeout: 30_000, stdio: 'pipe' });
         } catch (scanErr: any) {
           // Non-zero exit = infected or scan error — reject the file
@@ -682,9 +706,10 @@ router.delete('/:fileId', authenticateToken, (req: Request, res: Response) => {
       return;
     }
 
-    // Ownership check: only the uploader or admin/manager can delete files
+    // Ownership check: only the uploader or admin/manager/supervisor can delete files
     const userRole = req.user!.role;
-    if (attachment.uploaded_by !== req.user!.userId && !['admin', 'manager'].includes(userRole)) {
+    const isPrivileged = ['admin', 'manager', 'supervisor'].includes(userRole);
+    if (attachment.uploaded_by !== req.user!.userId && !isPrivileged) {
       res.status(403).json({ error: 'Not authorized to delete this file' });
       return;
     }

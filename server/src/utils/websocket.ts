@@ -52,8 +52,9 @@ function safeSend(ws: WebSocket, data: string): boolean {
   return false;
 }
 
-// Authentication timeout — disconnect clients that don't authenticate within 3 seconds
-const AUTH_TIMEOUT_MS = 3_000;
+// Authentication timeout — disconnect clients that don't authenticate within 8 seconds
+// Increased from 3s to accommodate field officers on slow cellular networks
+const AUTH_TIMEOUT_MS = 8_000;
 
 // All channels every authenticated client auto-subscribes to
 const DEFAULT_CHANNELS = ['dispatch', 'alerts', 'records', 'personnel', 'fleet', 'incidents', 'citations', 'patrol', 'admin', 'presence', 'messages', 'email'];
@@ -144,29 +145,9 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000).unref();
 
-// ─── Periodic session revalidation (every 2 min) ────────
-// Disconnect WebSocket clients whose sessions have been revoked server-side
-// (e.g., password change, admin termination, logout-all)
-setInterval(() => {
-  try {
-    const db = database.getDb();
-    for (const [clientId, client] of clients) {
-      if (!client.authenticated || !client.userId) continue;
-      // Check if the user still has at least one active session
-      const activeSession = db.prepare(
-        'SELECT 1 FROM sessions WHERE user_id = ? AND is_active = 1 LIMIT 1'
-      ).get(client.userId);
-      if (!activeSession) {
-        safeSend(client.ws, JSON.stringify({
-          type: 'session_revoked',
-          message: 'Your session has been terminated',
-        }));
-        client.ws.close(4003, 'Session revoked');
-        clients.delete(clientId);
-      }
-    }
-  } catch { /* DB not available — skip this cycle */ }
-}, 2 * 60 * 1000).unref();
+// NOTE: Session revalidation (disconnect revoked sessions, deactivated accounts,
+// role changes) is handled inside initWebSocket() to avoid duplicate timers
+// and to ensure it only runs after the WS server is initialized.
 
 /** Directory where radio recordings are saved */
 const RADIO_UPLOAD_DIR = path.resolve(__ws_dirname, '../../uploads/radio');
@@ -211,12 +192,25 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
     maxPayload: 1 * 1024 * 1024, // 1 MB — prevents oversized frame DoS
   });
 
-  // Periodic session re-validation — disconnects clients whose session was revoked
+  // Periodic session re-validation — disconnects clients whose session was revoked,
+  // account was deactivated, or role was changed
   const revalidationTimer = setInterval(() => {
     for (const [clientId, client] of clients) {
       if (!client.authenticated || !client.userId) continue;
       try {
         const db = database.getDb();
+
+        // Check if user still has at least one active session
+        const activeSession = db.prepare(
+          'SELECT 1 FROM sessions WHERE user_id = ? AND is_active = 1 LIMIT 1'
+        ).get(client.userId);
+        if (!activeSession) {
+          safeSend(client.ws, JSON.stringify({ type: 'session_revoked', message: 'Your session has been terminated' }));
+          client.ws.close(4003, 'Session revoked');
+          clients.delete(clientId);
+          continue;
+        }
+
         // Check if user account is still active and role hasn't changed
         const user = db.prepare('SELECT status, role FROM users WHERE id = ?').get(client.userId) as { status: string; role: string } | undefined;
         if (!user || user.status !== 'active') {
@@ -283,6 +277,11 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
           code: 'URL_TOKEN_REJECTED',
           message: 'URL token authentication has been removed. Update your client.',
         }));
+        // Decrement IP counter before early return — close handler isn't registered yet
+        const cnt = ipConnectionCounts.get(clientIp) || 1;
+        if (cnt <= 1) ipConnectionCounts.delete(clientIp);
+        else ipConnectionCounts.set(clientIp, cnt - 1);
+        clients.delete(clientId);
         ws.close(4010, 'URL token auth removed');
         return;
       }
@@ -411,6 +410,13 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
       const count = ipConnectionCounts.get(clientIp) || 1;
       if (count <= 1) ipConnectionCounts.delete(clientIp);
       else ipConnectionCounts.set(clientIp, count - 1);
+      // Decrement per-user connection counter (must happen before clients.delete)
+      const errorClient = clients.get(clientId);
+      if (errorClient?.userId) {
+        const uc = userConnectionCounts.get(errorClient.userId) || 1;
+        if (uc <= 1) userConnectionCounts.delete(errorClient.userId);
+        else userConnectionCounts.set(errorClient.userId, uc - 1);
+      }
       try { handlePrivateCallDisconnect(clientId); } catch (e) { console.error('[WS] Error in private call disconnect:', e); }
       try { handleRadioDisconnect(clientId); } catch (e) { console.error('[WS] Error in radio disconnect:', e); }
       clients.delete(clientId);
@@ -459,14 +465,14 @@ function generateClientId(): string {
 function authenticateClient(client: WSClient, token: string): boolean {
   try {
     // Verify with iss/aud claims for consistency with main authenticateToken
-    const JWT_VERIFY_OPTIONS = { issuer: 'rmpg-flex', audience: 'rmpg-flex-api' };
+    const JWT_VERIFY_OPTIONS = { issuer: 'rmpg-flex', audience: 'rmpg-flex-api', algorithms: ['HS256'] as jwt.Algorithm[] };
     let decoded: JwtPayload;
     try {
       decoded = jwt.verify(token, config.jwt.secret, JWT_VERIFY_OPTIONS) as JwtPayload;
     } catch (strictErr: any) {
       // Legacy token backward compat — enforce strict validation after 2026-04-15
       if (strictErr.message?.includes('jwt issuer invalid') || strictErr.message?.includes('jwt audience invalid')) {
-        decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
+        decoded = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] }) as JwtPayload;
       } else {
         throw strictErr;
       }

@@ -147,17 +147,18 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
     }
   }, []);
 
-  const isSelectedAdmin = employees.find(em => String(em.id) === selectedUserId)?.role === 'admin';
-
   const handleSubmit = useCallback(async () => {
     if (!selectedUserId && employees.length > 0) {
       setError('Select your name from the dropdown');
       return;
     }
 
+    // Compute inside callback to avoid stale closure
+    const isAdmin = employees.find(em => String(em.id) === selectedUserId)?.role === 'admin';
+
     const pin = digits.join('');
     // Admin users don't need a PIN — the server-side validatePin() returns success for admins
-    if (!isSelectedAdmin && pin.length !== 6) {
+    if (!isAdmin && pin.length !== 6) {
       setError('Enter all 6 digits');
       return;
     }
@@ -167,7 +168,7 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
 
     try {
       // For admin: any PIN value works (validatePin returns success for admin role)
-      const result = await enterPin(isSelectedAdmin ? '000000' : pin);
+      const result = await enterPin(isAdmin ? '000000' : pin);
 
       if (result.success) {
         onSuccess?.();
@@ -186,15 +187,16 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
     } finally {
       setSubmitting(false);
     }
-  }, [digits, enterPin, onClose, onSuccess, selectedUserId, employees.length]);
+  }, [digits, enterPin, onClose, onSuccess, selectedUserId, employees]);
 
   // Auto-submit when all 6 digits entered
   useEffect(() => {
     if (digits.every(d => d !== '') && !submitting && (selectedUserId || employees.length === 0)) {
       handleSubmit();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [digits]);
+  }, [digits, handleSubmit, submitting, selectedUserId, employees.length]);
+
+  const isSelectedAdmin = employees.find(em => String(em.id) === selectedUserId)?.role === 'admin';
 
   if (!isOpen) return null;
 
@@ -299,7 +301,7 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
                 <input
                   key={i}
                   ref={el => { inputRefs.current[i] = el; }}
-                  type="text"
+                  type="password"
                   inputMode="numeric"
                   maxLength={1}
                   value={digit}

@@ -684,8 +684,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [tempToken, scheduleRefresh]);
 
   // ─── Setup 2FA (get QR code) ─────────────────────
+  const setup2FABusyRef = useRef(false);
   const setup2FA = useCallback(async (): Promise<{ qrCodeDataUri: string; manualKey: string }> => {
-    if (loginBusy) throw new Error('Setup already in progress');
+    if (setup2FABusyRef.current) throw new Error('Setup already in progress');
+    setup2FABusyRef.current = true;
     setLoginBusy(true);
     setError(null);
 
@@ -719,9 +721,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = await res.json();
       return { qrCodeDataUri: data.qrCodeDataUri, manualKey: data.manualKey };
     } finally {
+      setup2FABusyRef.current = false;
       setLoginBusy(false);
     }
-  }, [loginBusy]);
+  }, []);
 
   // ─── Confirm 2FA Setup (verify first code) ───────
   const confirmSetup2FA = useCallback(async (code: string) => {
@@ -787,7 +790,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         headers: {
           'Content-Type': 'application/json',
           'X-Requested-With': 'XMLHttpRequest',
-          Authorization: `Bearer ${tempToken}`,
+          Authorization: `Bearer ${tempTokenRef.current || tempToken}`,
         },
         body: JSON.stringify({ newPassword, deviceFingerprint: deviceFingerprintRef.current }),
       });

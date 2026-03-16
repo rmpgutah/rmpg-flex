@@ -135,10 +135,20 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
     };
   }, []);
 
+  // Track map overlays for cleanup
+  const markersRef = React.useRef<google.maps.Marker[]>([]);
+  const polylinesRef = React.useRef<google.maps.Polyline[]>([]);
+
   // Add markers + polylines when map is ready
   React.useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !mapReady) return;
+
+    // Clean up previous markers and polylines
+    markersRef.current.forEach(m => { google.maps.event.clearInstanceListeners(m); m.setMap(null); });
+    markersRef.current = [];
+    polylinesRef.current.forEach(p => { p.setMap(null); });
+    polylinesRef.current = [];
 
     const bounds = new google.maps.LatLngBounds();
     let hasPoints = false;
@@ -163,6 +173,7 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
           scale: 8,
         },
       });
+      markersRef.current.push(marker);
 
       const info = new google.maps.InfoWindow({
         content: `<div style="color:#000;font-size:12px;font-weight:bold">${escapeHtml(cp.name)}</div>
@@ -193,13 +204,14 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
       });
 
       if (path.length > 1) {
-        new google.maps.Polyline({
+        const polyline = new google.maps.Polyline({
           map,
           path,
           strokeColor: colors[colorIdx % colors.length],
           strokeOpacity: 0.7,
           strokeWeight: 2,
         });
+        polylinesRef.current.push(polyline);
       }
       colorIdx++;
     });
@@ -207,6 +219,13 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
     if (hasPoints) {
       map.fitBounds(bounds, 50);
     }
+
+    return () => {
+      markersRef.current.forEach(m => { google.maps.event.clearInstanceListeners(m); m.setMap(null); });
+      markersRef.current = [];
+      polylinesRef.current.forEach(p => { p.setMap(null); });
+      polylinesRef.current = [];
+    };
   }, [mapReady, checkpoints, scans]);
 
   return (
@@ -286,9 +305,11 @@ const PatrolPage: React.FC = () => {
       if (activeTab === 'checkpoints') {
         await loadCheckpoints();
       } else if (activeTab === 'scans') {
-        await loadScans();
+        await Promise.all([loadScans(), loadCheckpoints()]);
       } else if (activeTab === 'compliance') {
         await loadCompliance();
+      } else if (activeTab === 'map') {
+        await Promise.all([loadCheckpoints(), loadScans()]);
       }
     } catch (err: any) {
       if (!options?.silent) {

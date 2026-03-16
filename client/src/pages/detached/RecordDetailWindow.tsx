@@ -25,8 +25,8 @@ export default function RecordDetailWindow() {
         const data = await apiFetch<any>(endpoint);
         setRecord(data);
         document.title = type === 'person'
-          ? `${data.last_name}, ${data.first_name} — RMPG Flex`
-          : `${data.plate_number || 'Vehicle'} — RMPG Flex`;
+          ? `${data?.last_name || 'Unknown'}, ${data?.first_name || ''} — RMPG Flex`
+          : `${data?.plate_number || 'Vehicle'} — RMPG Flex`;
       } catch (err: any) {
         setError(err.message || 'Failed to load record');
       } finally {

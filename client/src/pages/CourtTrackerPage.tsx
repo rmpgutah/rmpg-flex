@@ -100,10 +100,13 @@ export default function CourtTrackerPage() {
         ...(filterType ? { event_type: filterType } : {}),
       });
       const res = await apiFetch<{ data: CourtEvent[]; pagination: any }>(`/court/events?${params}`);
-      setEvents(res.data || []);
+      const newEvents = res.data || [];
+      setEvents(newEvents);
       setTotalPages(res.pagination?.totalPages || 1);
       setTotalCount(res.pagination?.total || 0);
-    } catch { /* silent */ } finally { setLoading(false); }
+      // Keep selected item in sync with refreshed data
+      setSelected(prev => prev ? newEvents.find(e => e.id === prev.id) || null : null);
+    } catch { addToast('Failed to load court events', 'error'); } finally { setLoading(false); }
   }, [page, searchQuery, filterType]);
 
   const fetchUpcoming = useCallback(async () => {

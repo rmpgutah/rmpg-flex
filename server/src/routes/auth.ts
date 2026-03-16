@@ -65,6 +65,14 @@ router.use((_req, res, next) => {
   next();
 });
 
+// ─── Helper: Timing jitter for auth responses ────────
+// Adds random delay (50-250ms) to error responses to prevent timing-based username enumeration.
+// Wider range makes statistical analysis significantly harder — an attacker needs exponentially
+// more samples to distinguish user-not-found from wrong-password through noise.
+function authJitter(): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, 50 + Math.floor(Math.random() * 200)));
+}
+
 // ─── Helper: Check if account is locked out ──────────
 function isLockedOut(username: string): { locked: boolean; minutesRemaining: number } {
   const db = getDb();
@@ -201,12 +209,13 @@ function issueTokens(user: any, ip: string, userAgent: string, deviceFingerprint
         // Create security notification for admins
         try {
           db.prepare(`
-            INSERT INTO security_notifications (user_id, type, severity, title, message, created_at)
-            VALUES (?, 'ip_anomaly', 'warning', ?, ?, datetime('now', 'localtime'))
+            INSERT INTO security_notifications (user_id, event_type, title, details, ip_address, created_at)
+            VALUES (?, 'suspicious_login', ?, ?, ?, datetime('now', 'localtime'))
           `).run(
             user.id,
             `Rapid IP change: ${user.username}`,
-            `User "${user.username}" logged in from ${ip}, but was on ${lastLogin.ip_address} just ${Math.round(timeDiffMinutes)} minute(s) ago. This may indicate credential sharing or theft.`
+            `User "${user.username}" logged in from ${ip}, but was on ${lastLogin.ip_address} just ${Math.round(timeDiffMinutes)} minute(s) ago. This may indicate credential sharing or theft.`,
+            ip
           );
         } catch { /* security_notifications table may not exist */ }
       }
@@ -235,7 +244,7 @@ function issueTokens(user: any, ip: string, userAgent: string, deviceFingerprint
 // ═══════════════════════════════════════════════════════
 // POST /api/auth/login — Multi-step login
 // ═══════════════════════════════════════════════════════
-router.post('/login', authIpRateLimit, authRateLimit, (req: Request, res: Response) => {
+router.post('/login', authIpRateLimit, authRateLimit, async (req: Request, res: Response) => {
   try {
     const { username, password, deviceFingerprint } = req.body;
     const ip = req.ip || 'unknown';
@@ -282,6 +291,7 @@ router.post('/login', authIpRateLimit, authRateLimit, (req: Request, res: Respon
       // from a valid-user-wrong-password response — prevents username enumeration via timing
       bcryptjs.compareSync(password, '$2a$12$000000000000000000000uGq7b1nk/MhFmqMD/R1FKqEEUjpkui2');
       logLoginAttempt(username, ip, false, 'user_not_found', userAgent, deviceFingerprint);
+      await authJitter(); // Random delay to prevent statistical timing analysis
       res.status(401).json({ error: 'Invalid username or password' });
       return;
     }
@@ -290,6 +300,7 @@ router.post('/login', authIpRateLimit, authRateLimit, (req: Request, res: Respon
       logLoginAttempt(username, ip, false, 'account_inactive');
       // Perform dummy bcrypt to maintain constant timing
       bcryptjs.compareSync(password, '$2a$12$000000000000000000000uGq7b1nk/MhFmqMD/R1FKqEEUjpkui2');
+      await authJitter();
       res.status(401).json({ error: 'Invalid username or password' });
       return;
     }
@@ -322,6 +333,7 @@ router.post('/login', authIpRateLimit, authRateLimit, (req: Request, res: Respon
         } catch { /* notification failure should not block login response */ }
       }
 
+      await authJitter();
       res.status(401).json({
         error: 'Invalid username or password',
         ...(attemptsRemaining <= 2 && attemptsRemaining > 0 && {
@@ -617,9 +629,9 @@ router.post('/refresh', refreshRateLimit, (req: Request, res: Response) => {
     }
 
     // Enforce idle session timeout — invalidate sessions unused for extended periods
-    if (session.last_used_at) {
+    if (config.session.idleTimeoutMinutes > 0 && session.last_used_at) {
       const idleMs = Date.now() - new Date(session.last_used_at).getTime();
-      const maxIdleMs = (config.session?.idleTimeoutMinutes || 60) * 60 * 1000; // default 1 hour
+      const maxIdleMs = config.session.idleTimeoutMinutes * 60 * 1000;
       if (idleMs > maxIdleMs) {
         db.prepare('UPDATE sessions SET is_active = 0 WHERE id = ?').run(session.id);
         res.status(401).json({ error: 'Session expired due to inactivity', code: 'SESSION_IDLE_TIMEOUT' });
@@ -1086,6 +1098,17 @@ router.put('/profile', profileRateLimit, authenticateToken, (req: Request, res: 
         res.status(400).json({ error: 'First and last name are required and cannot be empty.' });
         return;
       }
+      // Length and character validation — prevent storage abuse and rendering attacks
+      if (fn.length > 100 || ln.length > 100) {
+        res.status(400).json({ error: 'Name exceeds maximum length (100 characters)' });
+        return;
+      }
+      // Block Unicode control characters (RTL overrides, zero-width chars) that could spoof display
+      const CONTROL_CHAR_RE = /[\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/;
+      if (CONTROL_CHAR_RE.test(fn) || CONTROL_CHAR_RE.test(ln)) {
+        res.status(400).json({ error: 'Name contains invalid characters' });
+        return;
+      }
       updates.push('first_name = ?', 'last_name = ?', 'full_name = ?');
       values.push(fn, ln, `${fn} ${ln}`);
     }
@@ -1134,6 +1157,12 @@ router.put('/profile-image', authenticateToken, (req: Request, res: Response) =>
     if (profile_image !== null && profile_image !== undefined) {
       if (typeof profile_image !== 'string' || !profile_image.startsWith('data:image/')) {
         res.status(400).json({ error: 'Profile image must be an image data URL' });
+        return;
+      }
+      // Only allow safe raster formats — SVG can embed scripts, other formats may carry exploits
+      const SAFE_IMAGE_TYPES = ['data:image/jpeg', 'data:image/png', 'data:image/webp', 'data:image/gif'];
+      if (!SAFE_IMAGE_TYPES.some(prefix => profile_image.startsWith(prefix))) {
+        res.status(400).json({ error: 'Profile image must be JPEG, PNG, WebP, or GIF' });
         return;
       }
       // Limit size (~2MB for a profile photo)

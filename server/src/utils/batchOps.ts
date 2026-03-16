@@ -25,9 +25,10 @@ function assertSafeIdentifier(value: string, label: string): void {
   const stripped = value.replace(/"[^"]+"/g, 'QUOTED');
 
   // ALLOWLIST: Only permit characters valid in SQL identifier expressions
-  // Letters, digits, underscores, dots, spaces, commas, parens, *, =, <, >, !, single quotes (for values)
+  // Letters, digits, underscores, dots, spaces, commas, parens, *, =, <, >, !
   // This covers: table.column, aliases, JOIN...ON expressions, ORDER BY, SELECT lists
-  const ALLOWED_CHARS = /^[a-zA-Z0-9_.*, ()=<>!|'\-\n\r\t]+$/;
+  // Note: single quotes are NOT allowed — use parameterized values instead
+  const ALLOWED_CHARS = /^[a-zA-Z0-9_.*, ()=<>!|\-\n\r\t]+$/;
   if (!ALLOWED_CHARS.test(stripped)) {
     throw new Error(`Unsafe characters in ${label}: "${value}"`);
   }
@@ -116,6 +117,9 @@ export function batchUpdate(
       const { [idColumn]: id, ...fields } = row;
       const columns = Object.keys(fields);
       if (columns.length === 0) continue;
+
+      // Validate column names to prevent SQL injection via crafted object keys
+      for (const col of columns) assertSafeIdentifier(col, 'column');
 
       const setClauses = columns.map((col) => `"${col}" = ?`).join(', ');
       const sql = `UPDATE "${table}" SET ${setClauses} WHERE "${idColumn}" = ?`;

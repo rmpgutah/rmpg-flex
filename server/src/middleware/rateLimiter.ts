@@ -26,7 +26,7 @@ const BASE_BLOCK_DURATION_MS = 5 * 60 * 1000; // 5 minute initial block
 const MAX_BLOCK_DURATION_MS = 60 * 60 * 1000; // 1 hour max block
 
 function recordViolation(ip: string): void {
-  if (!ip || ip === 'unknown') return;
+  if (!ip) return; // Still record violations for 'unknown' IPs
   const now = Date.now();
   let entry = ipBlocklist.get(ip);
   if (!entry) {
@@ -50,7 +50,8 @@ function recordViolation(ip: string): void {
 }
 
 function isIpBlocked(ip: string): { blocked: boolean; retryAfter: number } {
-  if (!ip || ip === 'unknown') return { blocked: false, retryAfter: 0 };
+  if (!ip) return { blocked: false, retryAfter: 0 };
+  // 'unknown' IPs are still checked — fail closed rather than bypassing rate limits
   const entry = ipBlocklist.get(ip);
   if (!entry) return { blocked: false, retryAfter: 0 };
   const now = Date.now();

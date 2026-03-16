@@ -34,6 +34,7 @@ declare global {
 const JWT_VERIFY_OPTIONS: VerifyOptions = {
   issuer: JWT_ISSUER,
   audience: JWT_AUDIENCE,
+  algorithms: ['HS256'], // Explicitly pin algorithm — prevents algorithm confusion attacks
 };
 
 export function authenticateToken(req: Request, res: Response, next: NextFunction): void {
@@ -61,7 +62,7 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
           return;
         }
         console.warn(`[AUTH] Legacy token without iss/aud accepted — ${daysLeft} days until enforcement (2026-04-15)`);
-        decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
+        decoded = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] }) as JwtPayload;
       } else {
         throw strictErr;
       }
@@ -73,13 +74,15 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
       return;
     }
 
-    // IP and user-agent session validation
-    if (config.session.enforceIpBinding && decoded.sessionId) {
+    // Session validation — always check session validity when sessionId is present.
+    // Previously this was gated by enforceIpBinding, which meant disabling IP binding
+    // also disabled session revocation, idle timeout, UA binding, and max lifetime checks.
+    if (decoded.sessionId) {
       try {
         const db = getDb();
         const session = db.prepare(
-          'SELECT ip_address, ua_hash, last_used_at FROM sessions WHERE session_id = ? AND is_active = 1'
-        ).get(decoded.sessionId) as { ip_address: string; ua_hash?: string; last_used_at?: string } | undefined;
+          'SELECT ip_address, ua_hash, last_used_at, created_at FROM sessions WHERE session_id = ? AND is_active = 1'
+        ).get(decoded.sessionId) as { ip_address: string; ua_hash?: string; last_used_at?: string; created_at?: string } | undefined;
 
         // Reject if session was revoked, expired, or deleted
         if (!session) {
@@ -88,8 +91,6 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
         }
 
         // User-agent binding — detect token theft across different browsers
-        // Use 32 hex chars (16 bytes / 128 bits) — sufficient to prevent collisions
-        // while keeping DB storage reasonable. 16 chars (64 bits) had birthday-problem risk.
         if (session.ua_hash) {
           const currentUaHash = crypto.createHash('sha256')
             .update(req.headers['user-agent'] || '').digest('hex').slice(0, 32);
@@ -101,7 +102,8 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
           }
         }
 
-        if (session.ip_address !== req.ip) {
+        // IP binding — only enforced when config.session.enforceIpBinding is true
+        if (config.session.enforceIpBinding && session.ip_address !== req.ip) {
           const action = config.session.ipChangeAction;
           if (action === 'invalidate') {
             db.prepare('UPDATE sessions SET is_active = 0 WHERE session_id = ?')
@@ -127,11 +129,23 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
           }
         }
 
+        // Enforce absolute maximum session lifetime — sessions cannot be refreshed past this
+        if (config.jwt.maxSessionHours > 0 && (session as any).created_at) {
+          const createdTime = new Date((session as any).created_at).getTime();
+          const maxLifetimeMs = config.jwt.maxSessionHours * 60 * 60 * 1000;
+          if (!isNaN(createdTime) && Date.now() - createdTime > maxLifetimeMs) {
+            db.prepare('UPDATE sessions SET is_active = 0 WHERE session_id = ?')
+              .run(decoded.sessionId);
+            res.status(401).json({ error: 'Session has exceeded maximum lifetime. Please log in again.', code: 'SESSION_MAX_LIFETIME' });
+            return;
+          }
+        }
+
         // Update session last_used_at for idle timeout detection
         db.prepare('UPDATE sessions SET last_used_at = ? WHERE session_id = ?')
           .run(localNow(), decoded.sessionId);
       } catch {
-        // DB unavailable — deny request rather than silently bypassing IP binding
+        // DB unavailable — deny request rather than silently bypassing session checks
         res.status(503).json({ error: 'Service temporarily unavailable' });
         return;
       }
@@ -208,7 +222,7 @@ export function verifyRefreshToken(token: string): JwtPayload {
       if (Date.now() >= deadline.getTime()) {
         throw new Error('Legacy token format no longer accepted');
       }
-      decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
+      decoded = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] }) as JwtPayload;
     } else {
       throw err;
     }
@@ -248,7 +262,7 @@ export function authenticateTempToken(req: Request, res: Response, next: NextFun
           res.status(401).json({ error: 'Token format no longer accepted. Please log in again.', code: 'TOKEN_LEGACY_REJECTED' });
           return;
         }
-        decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
+        decoded = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] }) as JwtPayload;
       } else {
         throw strictErr;
       }
@@ -294,7 +308,7 @@ export function authenticateAnyToken(req: Request, res: Response, next: NextFunc
           return;
         }
         console.warn('[AUTH] Legacy token without iss/aud in authenticateAnyToken — rejected after 2026-04-15');
-        decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
+        decoded = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] }) as JwtPayload;
       } else {
         throw strictErr;
       }

@@ -101,6 +101,7 @@ export default function FieldInterviewsPage() {
   const [personResults, setPersonResults] = useState<any[]>([]);
   const [selectedPerson, setSelectedPerson] = useState<any>(null);
   const personSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const personSearchGenRef = useRef(0);
 
   // Delete
   const [deleteTarget, setDeleteTarget] = useState<FieldInterview | null>(null);
@@ -117,9 +118,12 @@ export default function FieldInterviewsPage() {
         archived: showArchived ? 'true' : 'false',
       });
       const res = await apiFetch<{ data: FieldInterview[]; pagination: any }>(`/field-interviews?${params}`);
-      setFis(res.data || []);
+      const newFis = res.data || [];
+      setFis(newFis);
       setTotalPages(res.pagination?.totalPages || 1);
       setTotalCount(res.pagination?.total || 0);
+      // Keep selected item in sync with refreshed data
+      setSelectedFi(prev => prev ? newFis.find((fi: FieldInterview) => fi.id === prev.id) || null : null);
     } catch (err: any) {
       setError(err?.message || 'Operation failed');
     } finally {
@@ -135,10 +139,12 @@ export default function FieldInterviewsPage() {
     if (personSearch.length < 2) { setPersonResults([]); return; }
     if (personSearchTimer.current) clearTimeout(personSearchTimer.current);
     personSearchTimer.current = setTimeout(async () => {
+      const gen = ++personSearchGenRef.current;
       try {
         const res = await apiFetch<{ data: any[] }>(`/records/persons?search=${encodeURIComponent(personSearch)}&per_page=8`);
+        if (gen !== personSearchGenRef.current) return;
         setPersonResults(res.data || []);
-      } catch { setPersonResults([]); }
+      } catch { if (gen === personSearchGenRef.current) setPersonResults([]); }
     }, 300);
     return () => { if (personSearchTimer.current) clearTimeout(personSearchTimer.current); };
   }, [personSearch]);

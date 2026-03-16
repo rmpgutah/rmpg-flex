@@ -396,7 +396,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
     try {
       await apiFetch(`/auth/sessions/${sessionId}`, { method: 'DELETE' });
       setSessions(prev => prev.filter(s => s.session_id !== sessionId));
-    } catch { /* silent */ }
+    } catch { setSecurityMsg({ type: 'error', text: 'Failed to revoke session' }); }
   };
 
   // ── 2FA Handlers ─────────────────────────────────
@@ -695,7 +695,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                         {imageUploading ? 'Uploading...' : 'Drop image here or click to browse'}
                       </div>
                       <div className="text-[9px] mt-0.5" style={{ color: '#3a4e60' }}>
-                        JPG, PNG, WebP — max 2MB
+                        JPG, PNG, WebP — max 10MB
                       </div>
                     </div>
                     {profileImage && (

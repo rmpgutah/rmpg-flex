@@ -98,7 +98,12 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     let whereClause = 'WHERE 1=1';
     const params: any[] = [];
 
+    const VALID_FLEET_STATUSES = ['in_service', 'maintenance', 'out_of_service', 'retired'];
     if (status) {
+      if (!VALID_FLEET_STATUSES.includes(status as string)) {
+        res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_FLEET_STATUSES.join(', ')}` });
+        return;
+      }
       whereClause += ' AND fv.status = ?';
       params.push(status);
     }
@@ -116,7 +121,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
       whereClause += ' AND fv.archived_at IS NULL';
     }
 
-    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
     const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 50));
     const offset = (pageNum - 1) * perPage;
 
@@ -680,7 +685,7 @@ router.get('/:id/maintenance', validateParamId, requireRole('admin', 'manager', 
       return;
     }
 
-    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
     const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 25));
     const offset = (pageNum - 1) * perPage;
 
@@ -739,6 +744,29 @@ router.post('/:id/maintenance', validateParamId, requireRole('admin', 'manager',
       return;
     }
 
+    // Validate numeric fields to prevent type confusion and storage of invalid data
+    if (mileage_at_service !== undefined && mileage_at_service !== null) {
+      const m = Number(mileage_at_service);
+      if (isNaN(m) || m < 0 || m > 9999999) {
+        res.status(400).json({ error: 'mileage_at_service must be a number between 0 and 9,999,999' });
+        return;
+      }
+    }
+    if (cost !== undefined && cost !== null) {
+      const c = Number(cost);
+      if (isNaN(c) || c < 0 || c > 9999999) {
+        res.status(400).json({ error: 'cost must be a number between 0 and 9,999,999' });
+        return;
+      }
+    }
+    if (next_due_mileage !== undefined && next_due_mileage !== null) {
+      const ndm = Number(next_due_mileage);
+      if (isNaN(ndm) || ndm < 0 || ndm > 9999999) {
+        res.status(400).json({ error: 'next_due_mileage must be a number between 0 and 9,999,999' });
+        return;
+      }
+    }
+
     const result = db.prepare(`
       INSERT INTO fleet_maintenance (
         vehicle_id, type, description, mileage_at_service, cost,
@@ -795,6 +823,18 @@ router.put('/maintenance/:id', validateParamId, requireRole('admin', 'manager', 
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_maintenance WHERE id = ?').get(req.params.id) as any;
     if (!record) { res.status(404).json({ error: 'Maintenance record not found' }); return; }
+
+    // Validate numeric fields if provided
+    const numericFields = ['mileage_at_service', 'cost', 'next_due_mileage'];
+    for (const field of numericFields) {
+      if (req.body[field] !== undefined && req.body[field] !== null) {
+        const val = Number(req.body[field]);
+        if (isNaN(val) || val < 0) {
+          res.status(400).json({ error: `${field} must be a non-negative number` }); return;
+        }
+        req.body[field] = val;
+      }
+    }
 
     const mFields: string[] = [];
     const mValues: any[] = [];
@@ -884,7 +924,7 @@ router.get('/:id/fuel', validateParamId, requireRole('admin', 'manager', 'superv
       return;
     }
 
-    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
     const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 50));
     const offset = (pageNum - 1) * perPage;
 
@@ -1012,6 +1052,18 @@ router.put('/fuel/:id', validateParamId, requireRole('admin', 'manager', 'superv
     const record = db.prepare('SELECT * FROM fleet_fuel_logs WHERE id = ?').get(req.params.id) as any;
     if (!record) { res.status(404).json({ error: 'Fuel log not found' }); return; }
 
+    // Validate numeric fields if provided
+    const fuelNumericFields = ['gallons', 'cost_per_gallon', 'total_cost', 'odometer_reading'];
+    for (const field of fuelNumericFields) {
+      if (req.body[field] !== undefined && req.body[field] !== null) {
+        const val = Number(req.body[field]);
+        if (isNaN(val) || val < 0) {
+          res.status(400).json({ error: `${field} must be a non-negative number` }); return;
+        }
+        req.body[field] = val;
+      }
+    }
+
     const fFields: string[] = [];
     const fValues: any[] = [];
     const fBodyKeys = Object.keys(req.body);
@@ -1107,7 +1159,7 @@ router.get('/:id/inspections', validateParamId, requireRole('admin', 'manager', 
       params.push(type);
     }
 
-    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
     const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 25));
     const offset = (pageNum - 1) * perPage;
 
@@ -1208,7 +1260,7 @@ router.post('/:id/inspections', validateParamId, requireRole('admin', 'manager',
 });
 
 // PUT /api/fleet/inspections/:id - Update inspection
-router.put('/inspections/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/inspections/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(req.params.id) as any;
@@ -1244,7 +1296,7 @@ router.put('/inspections/:id', requireRole('admin', 'manager', 'supervisor'), (r
 });
 
 // DELETE /api/fleet/inspections/:id
-router.delete('/inspections/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/inspections/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(req.params.id) as any;
@@ -1259,7 +1311,7 @@ router.delete('/inspections/:id', requireRole('admin', 'manager'), (req: Request
 });
 
 // POST /api/fleet/inspections/:id/archive
-router.post('/inspections/:id/archive', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/inspections/:id/archive', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(req.params.id) as any;
@@ -1278,7 +1330,7 @@ router.post('/inspections/:id/archive', requireRole('admin', 'manager'), (req: R
 });
 
 // POST /api/fleet/inspections/:id/unarchive
-router.post('/inspections/:id/unarchive', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/inspections/:id/unarchive', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const record = db.prepare('SELECT * FROM fleet_inspections WHERE id = ?').get(req.params.id) as any;
@@ -1308,7 +1360,7 @@ router.get('/:id/assignments', validateParamId, requireRole('admin', 'manager', 
       return;
     }
 
-    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
     const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 50));
     const offset = (pageNum - 1) * perPage;
 
@@ -1808,7 +1860,7 @@ router.post('/dashcam-videos', requireRole('admin', 'manager'), (req: Request, r
 });
 
 // ── GET /api/fleet/dashcam-videos/:id/stream — Stream with overlay ──
-router.get('/dashcam-videos/:id/stream', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/dashcam-videos/:id/stream', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const video = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
@@ -1869,7 +1921,7 @@ router.get('/dashcam-videos/:id/stream', requireRole('admin', 'manager', 'superv
 });
 
 // ── GET /api/fleet/dashcam-videos/:id/download — Force-download with overlay ──
-router.get('/dashcam-videos/:id/download', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/dashcam-videos/:id/download', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const video = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
@@ -1906,7 +1958,7 @@ router.get('/dashcam-videos/:id/download', requireRole('admin', 'manager', 'supe
 });
 
 // ── PUT /api/fleet/dashcam-videos/:id — Update metadata ──
-router.put('/dashcam-videos/:id', requireRole('admin'), (req: Request, res: Response) => {
+router.put('/dashcam-videos/:id', validateParamId, requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
@@ -1957,7 +2009,7 @@ router.put('/dashcam-videos/:id', requireRole('admin'), (req: Request, res: Resp
 });
 
 // ── DELETE /api/fleet/dashcam-videos/:id — Delete video + files ──
-router.delete('/dashcam-videos/:id', requireRole('admin'), (req: Request, res: Response) => {
+router.delete('/dashcam-videos/:id', validateParamId, requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
@@ -1989,7 +2041,7 @@ router.delete('/dashcam-videos/:id', requireRole('admin'), (req: Request, res: R
 });
 
 // ── POST /api/fleet/dashcam-videos/:id/reprocess — Re-queue overlay ──
-router.post('/dashcam-videos/:id/reprocess', requireRole('admin'), (req: Request, res: Response) => {
+router.post('/dashcam-videos/:id/reprocess', validateParamId, requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const video = db.prepare(`

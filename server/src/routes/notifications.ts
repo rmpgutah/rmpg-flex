@@ -231,7 +231,7 @@ router.get('/', (req: Request, res: Response) => {
       is_read,
     } = req.query;
 
-    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
     const perPageNum = Math.min(100, Math.max(1, parseInt(per_page as string, 10) || 25));
     const offset = (pageNum - 1) * perPageNum;
 

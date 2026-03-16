@@ -73,6 +73,7 @@ export default function TrespassOrdersPage() {
   const [personResults, setPersonResults] = useState<any[]>([]);
   const [selectedPerson, setSelectedPerson] = useState<any>(null);
   const personSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const personSearchGenRef = useRef(0);
 
   // Properties
   const [properties, setProperties] = useState<any[]>([]);
@@ -88,9 +89,12 @@ export default function TrespassOrdersPage() {
         archived: showArchived ? 'true' : 'false',
       });
       const res = await apiFetch<{ data: TrespassOrder[]; pagination: any }>(`/trespass-orders?${params}`);
-      setOrders(res.data || []);
+      const newOrders = res.data || [];
+      setOrders(newOrders);
       setTotalPages(res.pagination?.totalPages || 1);
       setTotalCount(res.pagination?.total || 0);
+      // Keep selected item in sync with refreshed data
+      setSelectedOrder(prev => prev ? newOrders.find((o: TrespassOrder) => o.id === prev.id) || null : null);
     } catch (err: any) { setError(err.message); } finally { setLoading(false); }
   }, [page, searchQuery, filterStatus, showArchived]);
 
@@ -109,10 +113,12 @@ export default function TrespassOrdersPage() {
     if (personSearch.length < 2) { setPersonResults([]); return; }
     if (personSearchTimer.current) clearTimeout(personSearchTimer.current);
     personSearchTimer.current = setTimeout(async () => {
+      const gen = ++personSearchGenRef.current;
       try {
         const res = await apiFetch<{ data: any[] }>(`/records/persons?search=${encodeURIComponent(personSearch)}&per_page=8`);
+        if (gen !== personSearchGenRef.current) return;
         setPersonResults(res.data || []);
-      } catch { setPersonResults([]); }
+      } catch { if (gen === personSearchGenRef.current) setPersonResults([]); }
     }, 300);
     return () => { if (personSearchTimer.current) clearTimeout(personSearchTimer.current); };
   }, [personSearch]);

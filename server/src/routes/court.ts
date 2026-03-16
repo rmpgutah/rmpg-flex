@@ -43,17 +43,33 @@ router.get('/events', requireRole('admin', 'manager', 'supervisor', 'officer', '
   try {
     const db = getDb();
     const { status, event_type, date_from, date_to, officer_id, search, page = '1', limit = '50' } = req.query;
-    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
     const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
+    // Validate enum query params to prevent arbitrary values reaching the database
+    const VALID_STATUSES = ['scheduled', 'continued', 'completed', 'cancelled', 'no_show'];
+    const VALID_EVENT_TYPES = ['arraignment', 'preliminary', 'trial', 'sentencing', 'hearing', 'motion', 'review', 'other'];
+
     let where = 'WHERE 1=1';
     const params: any[] = [];
-    if (status) { where += ' AND e.status = ?'; params.push(status); }
-    if (event_type) { where += ' AND e.event_type = ?'; params.push(event_type); }
+    if (status) {
+      if (!VALID_STATUSES.includes(status as string)) {
+        res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` });
+        return;
+      }
+      where += ' AND e.status = ?'; params.push(status);
+    }
+    if (event_type) {
+      if (!VALID_EVENT_TYPES.includes(event_type as string)) {
+        res.status(400).json({ error: `Invalid event_type. Must be one of: ${VALID_EVENT_TYPES.join(', ')}` });
+        return;
+      }
+      where += ' AND e.event_type = ?'; params.push(event_type);
+    }
     if (date_from) { where += ' AND e.event_date >= ?'; params.push(date_from); }
     if (date_to) { where += ' AND e.event_date <= ?'; params.push(date_to); }
-    if (officer_id) { where += " AND e.officers_required LIKE ? ESCAPE '\\'"; params.push(`%${escapeLike(String(officer_id))}%`); }
+    if (officer_id) { where += ' AND EXISTS (SELECT 1 FROM json_each(e.officers_required) WHERE value = ?)'; params.push(Number(officer_id)); }
     if (search) {
       where += " AND (e.event_number LIKE ? ESCAPE '\\' OR e.defendant_name LIKE ? ESCAPE '\\' OR e.court_case_number LIKE ? ESCAPE '\\' OR e.court_name LIKE ? ESCAPE '\\')";
       const s = `%${escapeLike(String(search))}%`; params.push(s, s, s, s);
@@ -84,10 +100,10 @@ router.get('/events/upcoming', requireRole('admin', 'manager', 'supervisor', 'of
     const rows = db.prepare(`
       SELECT * FROM court_events
       WHERE event_date >= ? AND status = 'scheduled'
-      AND (officers_required LIKE ? ESCAPE '\\' OR created_by = ?)
+      AND (EXISTS (SELECT 1 FROM json_each(officers_required) WHERE value = ?) OR created_by = ?)
       ORDER BY event_date ASC, event_time ASC
       LIMIT 30
-    `).all(today, `%${escapeLike(String(userId))}%`, userId);
+    `).all(today, userId, userId);
     res.json({ data: rows });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -147,6 +163,36 @@ router.post('/events', requireRole('admin', 'manager', 'supervisor', 'officer'),
       officers_required, notes } = req.body;
     if (!event_type || !event_date) return res.status(400).json({ error: 'Event type and date required' });
 
+    // Validate event_type against allowed values
+    const VALID_EVENT_TYPES = ['arraignment', 'preliminary', 'trial', 'sentencing', 'hearing', 'motion', 'review', 'other'];
+    if (!VALID_EVENT_TYPES.includes(event_type)) {
+      return res.status(400).json({ error: `Invalid event_type. Must be one of: ${VALID_EVENT_TYPES.join(', ')}` });
+    }
+
+    // Validate officers_required is an array of positive integers (if provided)
+    if (officers_required !== undefined && officers_required !== null) {
+      if (!Array.isArray(officers_required) || officers_required.some((id: any) => typeof id !== 'number' || id < 1)) {
+        return res.status(400).json({ error: 'officers_required must be an array of valid officer IDs' });
+      }
+    }
+
+    // Validate defendant_person_id exists if provided
+    if (defendant_person_id) {
+      const person = db.prepare('SELECT id FROM persons WHERE id = ?').get(defendant_person_id);
+      if (!person) return res.status(400).json({ error: 'defendant_person_id does not match a known person' });
+    }
+
+    // Field length limits
+    const COURT_FIELD_LIMITS: Record<string, number> = {
+      court_name: 200, courtroom: 100, judge_name: 200, court_case_number: 100,
+      defendant_name: 200, prosecutor: 200, defense_attorney: 200, notes: 5000,
+    };
+    for (const [field, max] of Object.entries(COURT_FIELD_LIMITS)) {
+      if (req.body[field] && String(req.body[field]).length > max) {
+        return res.status(400).json({ error: `${field} exceeds maximum length (${max} chars)` });
+      }
+    }
+
     // Wrap sequence generation + INSERT in a transaction to prevent duplicate event numbers
     const createEvent = db.transaction(() => {
       const event_number = nextEventNumber();
@@ -180,8 +226,18 @@ router.post('/events', requireRole('admin', 'manager', 'supervisor', 'officer'),
 router.put('/events/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const existing = db.prepare('SELECT id FROM court_events WHERE id = ?').get(req.params.id);
+    const existing = db.prepare('SELECT * FROM court_events WHERE id = ?').get(req.params.id) as any;
     if (!existing) return res.status(404).json({ error: 'Court event not found' });
+
+    // Officers can only edit events they created or are assigned to
+    if (req.user!.role === 'officer') {
+      const isAssigned = existing.created_by === req.user!.userId ||
+        (existing.officers_required && JSON.parse(existing.officers_required || '[]').includes(req.user!.userId));
+      if (!isAssigned) {
+        res.status(403).json({ error: 'You can only edit court events you created or are assigned to' });
+        return;
+      }
+    }
 
     const now = localNow();
     const fields = ['event_type', 'status', 'event_date', 'event_time', 'court_name', 'courtroom',
