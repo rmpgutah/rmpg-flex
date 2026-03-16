@@ -147,6 +147,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (refreshTimerRef.current) {
       clearTimeout(refreshTimerRef.current);
     }
+    // Reset the refresh lock — a new schedule means the previous attempt
+    // either succeeded or was superseded (e.g. useApi refreshed the token).
+    // Without this, a failed backoff leaves isRefreshingRef=true and the
+    // new timer's callback would skip the refresh entirely.
+    isRefreshingRef.current = false;
 
     const expiresAt = parseJwtExpiry(accessToken);
     if (!expiresAt) return;
