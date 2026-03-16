@@ -462,11 +462,14 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
               <div className="flex flex-col items-end gap-1">
                 {person.flags.length > 0 && (
                   <div className="flex gap-1">
-                    {person.flags.slice(0, 2).map((flag) => (
-                      <span key={flag} className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-semibold border ${FLAG_COLORS[flag] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
-                        {flag}
-                      </span>
-                    ))}
+                    {person.flags.slice(0, 2).map((flag, i) => {
+                      const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
+                      return (
+                        <span key={`${label}-${i}`} className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-semibold border ${FLAG_COLORS[label] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
+                          {label}
+                        </span>
+                      );
+                    })}
                     {person.flags.length > 2 && (
                       <span className="text-[9px] text-rmpg-400">+{person.flags.length - 2}</span>
                     )}
@@ -556,11 +559,14 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
         {/* Special Flags */}
         {(selectedPerson.flags.length > 0 || selectedPerson.is_sex_offender || selectedPerson.is_veteran || selectedPerson.gang_affiliation || selectedPerson.watchlist_match || (selectedPerson.probation_parole && selectedPerson.probation_parole !== 'None')) && (
           <div className="flex flex-wrap gap-2 mt-1">
-            {selectedPerson.flags.map((flag) => (
-              <span key={flag} className={`inline-flex items-center px-2 py-0.5 text-[10px] font-semibold border ${FLAG_COLORS[flag] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
-                {flag}
-              </span>
-            ))}
+            {selectedPerson.flags.map((flag, i) => {
+              const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
+              return (
+                <span key={`${label}-${i}`} className={`inline-flex items-center px-2 py-0.5 text-[10px] font-semibold border ${FLAG_COLORS[label] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
+                  {label}
+                </span>
+              );
+            })}
             {selectedPerson.watchlist_match && <span className="px-2 py-0.5 text-[10px] font-bold bg-red-900/80 text-red-300 border border-red-500/70 animate-pulse">⚠ OFAC WATCHLIST MATCH</span>}
             {selectedPerson.is_sex_offender && <span className="px-2 py-0.5 text-[10px] font-bold bg-red-900/50 text-red-400 border border-red-700/50">SEX OFFENDER</span>}
             {selectedPerson.is_veteran && <span className="px-2 py-0.5 text-[10px] font-bold bg-brand-900/50 text-brand-400 border border-brand-700/50">VETERAN</span>}
