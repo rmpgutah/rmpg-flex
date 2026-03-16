@@ -3,7 +3,7 @@ import bcryptjs from 'bcryptjs';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { migrateIncidentNumbers } from '../utils/caseNumbers';
+import { migrateIncidentNumbers, generateCaseNumber } from '../utils/caseNumbers';
 import crypto from 'crypto';
 import { localNow } from '../utils/timeUtils';
 import { seedAllStatutes } from '../seeds/seedAllStatutes';
@@ -2897,7 +2897,6 @@ function migrateSchema(): void {
         daily_activity: 'admin', special_event: 'admin', training_exercise: 'admin',
       };
 
-      const { generateCaseNumber } = require('../utils/caseNumbers');
       const backfillTx = db.transaction(() => {
         for (const call of callsWithoutCase) {
           const caseType = INCIDENT_TO_CASE_TYPE[call.incident_type] || 'general';
@@ -3820,6 +3819,23 @@ function migrateSchema(): void {
   // ── MULTI-STATE JAIL ROSTER — add state columns ──────────────
   addCol('jail_roster_config', 'state', "TEXT DEFAULT 'UT'");
   addCol('arrest_records', 'state', "TEXT DEFAULT 'UT'");
+
+  // ── WARRANT SYSTEM REDESIGN — universal scanner fields ──
+  addCol('warrants', 'source', "TEXT DEFAULT 'manual'");
+  addCol('warrants', 'external_warrant_id', 'TEXT');
+  addCol('warrants', 'external_source_key', 'TEXT');
+  addCol('warrants', 'auto_created', 'INTEGER DEFAULT 0');
+
+  try {
+    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_warrants_external_id ON warrants(external_warrant_id) WHERE external_warrant_id IS NOT NULL');
+  } catch { /* already exists */ }
+
+  // ── ARREST RECORDS — columns needed by warrant scraper extraction ──
+  addCol('arrest_records', 'gender', 'TEXT');
+  addCol('arrest_records', 'race', 'TEXT');
+  addCol('arrest_records', 'bail_amount', 'TEXT');
+  addCol('arrest_records', 'booking_number', 'TEXT');
+  addCol('arrest_records', 'agency', 'TEXT');
 
   // Backfill state='UT' on existing scraper records
   try {
