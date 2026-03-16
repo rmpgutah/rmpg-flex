@@ -1195,6 +1195,10 @@ router.post('/calls/:id/send-to-serve', validateParamId, requireRole('admin', 'm
     };
     const documentType = docTypeMap[call.process_service_type] || call.process_service_type || 'civil';
 
+    // Map dispatch priority (P1-P5) to serve queue priority (low/normal/high/rush)
+    const priorityMap: Record<string, string> = { P1: 'rush', P2: 'high', P3: 'normal', P4: 'low', P5: 'low' };
+    const servePriority = priorityMap[call.priority] || 'normal';
+
     const info = db.prepare(`
       INSERT INTO serve_queue (
         call_id, officer_id, serve_date, recipient_name,
@@ -1210,7 +1214,7 @@ router.post('/calls/:id/send-to-serve', validateParamId, requireRole('admin', 'm
       recipientAddress, recipientCity, recipientState, recipientZip,
       call.latitude || null, call.longitude || null,
       documentType, call.case_number || '',
-      call.pso_requestor_name || '', call.priority || 'normal',
+      call.pso_requestor_name || '', servePriority,
       3, '', `From dispatch ${call.call_number}`,
       now, now,
     );
