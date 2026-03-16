@@ -3002,6 +3002,8 @@ function migrateSchema(): void {
         beat_descriptor TEXT
       )
     `);
+    // Beat must be unique within its zone+section; zone_id is inherently unique within a section
+    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_district_beat_unique ON dispatch_districts (section_id, zone_id, beat_id)`);
   } catch { /* already exists */ }
 
   // Seed dispatch_districts — delete & reseed to pick up expanded coverage
