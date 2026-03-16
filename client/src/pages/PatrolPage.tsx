@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useId } from 'react';
+import { escapeHtml } from '../utils/sanitize';
 import {
   QrCode,
   MapPin,
@@ -164,8 +165,8 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
       });
 
       const info = new google.maps.InfoWindow({
-        content: `<div style="color:#000;font-size:12px;font-weight:bold">${cp.name}</div>
-          <div style="color:#666;font-size:10px">${cp.is_active ? 'Active' : 'Inactive'} • Every ${cp.scan_required_interval_minutes || '?'} min</div>`,
+        content: `<div style="color:#000;font-size:12px;font-weight:bold">${escapeHtml(cp.name)}</div>
+          <div style="color:#666;font-size:10px">${cp.is_active ? 'Active' : 'Inactive'} • Every ${escapeHtml(String(cp.scan_required_interval_minutes || '?'))} min</div>`,
       });
       marker.addListener('click', () => info.open(map, marker));
     });
@@ -273,8 +274,9 @@ const PatrolPage: React.FC = () => {
     try {
       const data = await apiFetch<Property[]>('/records/properties');
       setProperties(data || []);
-    } catch (error) {
-      console.error('Error loading properties:', error);
+    } catch (err: any) {
+      console.error('Error loading properties:', err);
+      setError(err?.message || 'Failed to load properties');
     }
   };
 

@@ -8,6 +8,7 @@ import { searchUtahWarrants } from '../utils/utahWarrantScraper';
 import { searchOfacLocal } from '../utils/ofacScraper';
 import { auditLog } from '../utils/auditLogger';
 import { universalWarrantCheck } from '../utils/universalWarrantScanner';
+import { exportRateLimit } from '../middleware/rateLimiter';
 
 const router = Router();
 
@@ -160,7 +161,7 @@ router.get('/persons/search', requireRole('admin', 'manager', 'supervisor', 'off
 });
 
 // GET /api/records/persons/export - Export persons as CSV
-router.get('/persons/export', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.get('/persons/export', requireRole('admin', 'manager', 'supervisor'), exportRateLimit, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { flags } = req.query;
@@ -744,7 +745,7 @@ router.get('/vehicles/search', requireRole('admin', 'manager', 'supervisor', 'of
 });
 
 // GET /api/records/vehicles/export - Export vehicles as CSV
-router.get('/vehicles/export', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.get('/vehicles/export', requireRole('admin', 'manager', 'supervisor'), exportRateLimit, (req: Request, res: Response) => {
   try {
     const db = getDb();
 
@@ -1525,7 +1526,11 @@ router.post('/evidence/:id/chain-action', validateParamId, requireRole('admin', 
     db.prepare(`UPDATE evidence SET chain_of_custody = ?, status = ?, storage_location = ?, updated_at = ? WHERE id = ?`)
       .run(JSON.stringify(chain), newStatus, storageLocation, localNow(), evidence.id);
 
-    auditLog(req, `evidence_${action}` as any, 'evidence', evidence.id, `Evidence #${evidence.id} chain action: ${action}${to_location ? ` to ${to_location}` : ''}`);
+    const auditActionMap: Record<string, 'evidence_check_in' | 'evidence_check_out' | 'evidence_transfer' | 'evidence_lab_submit' | 'evidence_release' | 'evidence_dispose'> = {
+      check_in: 'evidence_check_in', check_out: 'evidence_check_out', transfer: 'evidence_transfer',
+      lab_submit: 'evidence_lab_submit', release: 'evidence_release', dispose: 'evidence_dispose',
+    };
+    auditLog(req, auditActionMap[action], 'evidence', evidence.id, `Evidence #${evidence.id} chain action: ${action}${to_location ? ` to ${to_location}` : ''}`);
 
     res.json({ data: { id: evidence.id, status: newStatus, chain_of_custody: chain } });
   } catch (error: any) {
@@ -1973,7 +1978,7 @@ router.get('/persons/:id/criminal-history', validateParamId, requireRole('admin'
 router.post('/persons/:id/criminal-history', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const personId = req.params.id;
     const {
       record_type, offense, offense_level, statute, case_number,
@@ -2117,7 +2122,7 @@ router.get('/clients/:id/persons', validateParamId, requireRole('admin', 'manage
 router.post('/client-persons', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const { client_id, person_id, relationship, title, notes, is_primary } = req.body;
 
     if (!client_id || !person_id) {

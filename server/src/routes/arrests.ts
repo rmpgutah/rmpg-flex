@@ -132,7 +132,7 @@ router.post('/manual', requireRole('admin', 'manager', 'officer', 'supervisor'),
   try {
     const db = getDb();
     const now = localNow();
-    const user = (req as any).user;
+    const user = req.user!;
     const b = req.body;
 
     // Require at minimum a name
@@ -170,7 +170,7 @@ router.post('/manual', requireRole('admin', 'manager', 'officer', 'supervisor'),
       charges, b.county || '', b.state || 'UT', b.status || 'active', b.booking_number || null, b.agency || null,
       b.gender || null, b.race || null, b.height || null, b.weight || null, b.hair_color || null, b.eye_color || null,
       b.address || null, b.bail_amount != null && !isNaN(parseFloat(b.bail_amount)) && isFinite(parseFloat(b.bail_amount)) ? parseFloat(b.bail_amount) : null, b.hold_reason || null, b.notes || null,
-      user?.id || null, now, now,
+      user?.userId || null, now, now,
     );
 
     const newId = result.lastInsertRowid as number;
@@ -265,9 +265,11 @@ router.delete('/manual/:id', validateParamId, requireRole('admin', 'manager'), (
     const existing = db.prepare('SELECT id FROM arrest_records WHERE id = ?').get(id);
     if (!existing) return res.status(404).json({ error: 'Record not found' });
 
-    // Delete cross-links first (FK cascade should handle, but be explicit)
-    db.prepare('DELETE FROM arrest_cross_links WHERE arrest_record_id = ?').run(id);
-    db.prepare('DELETE FROM arrest_records WHERE id = ?').run(id);
+    // Delete cross-links + record atomically
+    db.transaction(() => {
+      db.prepare('DELETE FROM arrest_cross_links WHERE arrest_record_id = ?').run(id);
+      db.prepare('DELETE FROM arrest_records WHERE id = ?').run(id);
+    })();
 
     auditLog(req, 'arrest_deleted', 'arrest_record', id, `Deleted arrest record #${id}`);
     broadcastRecordUpdate({ type: 'arrest_deleted', id });
@@ -279,7 +281,7 @@ router.delete('/manual/:id', validateParamId, requireRole('admin', 'manager'), (
 });
 
 // ── GET /manual/:id — Get a single booking record ───────────
-router.get('/manual/:id', validateParamId, (req: Request, res: Response) => {
+router.get('/manual/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id as string, 10);
@@ -308,7 +310,7 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
   try {
     const db = getDb();
     const now = localNow();
-    const user = (req as any).user;
+    const user = req.user!;
     const { records, county, agency } = req.body;
 
     if (!Array.isArray(records) || records.length === 0) {
@@ -389,7 +391,7 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
             (() => { const v = parseFloat(r.bail_amount ?? r.BailAmount ?? r.BAIL_AMOUNT); return isNaN(v) || !isFinite(v) ? null : v; })(),
             r.hold_reason || r.HoldReason || null,
             r.notes || null,
-            user?.id || null, now, now,
+            user?.userId || null, now, now,
           );
           imported++;
         } catch (rowErr: any) {
@@ -539,7 +541,7 @@ router.post('/test', requireRole('admin', 'manager'), async (_req: Request, res:
 });
 
 // ── GET /search — Search arrest records by name ─────────────
-router.get('/search', async (req: Request, res: Response) => {
+router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (req: Request, res: Response) => {
   try {
     const name = (req.query.name as string || '').trim();
     if (!name || name.length < 2) return res.status(400).json({ error: 'Name required (min 2 characters)' });
@@ -564,7 +566,7 @@ router.get('/search', async (req: Request, res: Response) => {
 });
 
 // ── GET /recent — Recent arrests (paginated, filterable) ────
-router.get('/recent', (req: Request, res: Response) => {
+router.get('/recent', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const county = (req.query.county as string || '').trim();
@@ -684,7 +686,7 @@ router.put('/counties', requireRole('admin', 'manager'), (req: Request, res: Res
 });
 
 // ── GET /:id/cross-links ────────────────────────────────────
-router.get('/:id/cross-links', validateParamId, (req: Request, res: Response) => {
+router.get('/:id/cross-links', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id as string, 10);
@@ -710,19 +712,20 @@ router.put('/:id/link-person', validateParamId, requireRole('admin', 'manager', 
     const person = db.prepare('SELECT id, first_name, last_name FROM persons WHERE id = ?').get(person_id) as any;
     if (!person) return res.status(404).json({ error: 'Person not found' });
 
-    // Update arrest record with person_id
-    db.prepare('UPDATE arrest_records SET person_id = ?, updated_at = ? WHERE id = ?')
-      .run(person_id, localNow(), id);
+    // Atomically update arrest record + add cross-link
+    db.transaction(() => {
+      db.prepare('UPDATE arrest_records SET person_id = ?, updated_at = ? WHERE id = ?')
+        .run(person_id, localNow(), id);
 
-    // Also add a cross-link if not already present
-    const existing = db.prepare(
-      'SELECT id FROM arrest_cross_links WHERE arrest_record_id = ? AND linked_type = ? AND linked_id = ?'
-    ).get(id, 'person', person_id);
-    if (!existing) {
-      db.prepare(
-        'INSERT INTO arrest_cross_links (arrest_record_id, linked_type, linked_id, match_type, match_confidence) VALUES (?, ?, ?, ?, ?)'
-      ).run(id, 'person', person_id, 'manual', 1.0);
-    }
+      const existing = db.prepare(
+        'SELECT id FROM arrest_cross_links WHERE arrest_record_id = ? AND linked_type = ? AND linked_id = ?'
+      ).get(id, 'person', person_id);
+      if (!existing) {
+        db.prepare(
+          'INSERT INTO arrest_cross_links (arrest_record_id, linked_type, linked_id, match_type, match_confidence) VALUES (?, ?, ?, ?, ?)'
+        ).run(id, 'person', person_id, 'manual', 1.0);
+      }
+    })();
 
     auditLog(req, 'arrest_linked', 'arrest_record', id,
       `Linked arrest #${id} to person ${person.last_name}, ${person.first_name} (ID: ${person_id})`);
@@ -743,15 +746,17 @@ router.delete('/:id/link-person', validateParamId, requireRole('admin', 'manager
     const record = db.prepare('SELECT person_id FROM arrest_records WHERE id = ?').get(id) as any;
     if (!record) return res.status(404).json({ error: 'Arrest record not found' });
 
-    db.prepare('UPDATE arrest_records SET person_id = NULL, updated_at = ? WHERE id = ?')
-      .run(localNow(), id);
+    // Atomically unlink person + remove cross-link
+    db.transaction(() => {
+      db.prepare('UPDATE arrest_records SET person_id = NULL, updated_at = ? WHERE id = ?')
+        .run(localNow(), id);
 
-    // Remove manual cross-link
-    if (record.person_id) {
-      db.prepare(
-        'DELETE FROM arrest_cross_links WHERE arrest_record_id = ? AND linked_type = ? AND linked_id = ? AND match_type = ?'
-      ).run(id, 'person', record.person_id, 'manual');
-    }
+      if (record.person_id) {
+        db.prepare(
+          'DELETE FROM arrest_cross_links WHERE arrest_record_id = ? AND linked_type = ? AND linked_id = ? AND match_type = ?'
+        ).run(id, 'person', record.person_id, 'manual');
+      }
+    })();
 
     auditLog(req, 'arrest_unlinked', 'arrest_record', id,
       `Unlinked person from arrest #${id}`);

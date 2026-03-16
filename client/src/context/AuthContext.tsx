@@ -133,7 +133,7 @@ function safeSetItem(key: string, value: string): void {
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(localStorage.getItem(TOKEN_KEY));
+  const [token, setToken] = useState<string | null>(() => { try { return localStorage.getItem(TOKEN_KEY); } catch { return null; } });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -158,7 +158,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isRefreshingRef.current = true;
 
       try {
-        const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
+        let refreshToken: string | null = null;
+        try { refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY); } catch { /* ignore */ }
         if (!refreshToken) {
           // No refresh token — force logout
           isRefreshingRef.current = false;
@@ -223,9 +224,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   function clearTokens() {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(REFRESH_TOKEN_KEY);
-    localStorage.removeItem(SESSION_ID_KEY);
+    try { localStorage.removeItem(TOKEN_KEY); } catch { /* ignore */ }
+    try { localStorage.removeItem(REFRESH_TOKEN_KEY); } catch { /* ignore */ }
+    try { localStorage.removeItem(SESSION_ID_KEY); } catch { /* ignore */ }
     if (refreshTimerRef.current) {
       clearTimeout(refreshTimerRef.current);
       refreshTimerRef.current = null;

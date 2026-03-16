@@ -11,6 +11,7 @@
 
 import { getDb } from '../models/database';
 import { localNow } from './timeUtils';
+import { escapeLike } from '../middleware/sanitize';
 
 // ── Types ───────────────────────────────────────────────────
 
@@ -184,8 +185,9 @@ export function searchDlLocal(query: string, options?: {
   const params: any[] = [];
 
   for (const word of words) {
-    conditions.push('(UPPER(last_name) LIKE ? OR UPPER(first_name) LIKE ? OR UPPER(full_name) LIKE ?)');
-    params.push(`%${word}%`, `%${word}%`, `%${word}%`);
+    conditions.push("(UPPER(last_name) LIKE ? ESCAPE '\\' OR UPPER(first_name) LIKE ? ESCAPE '\\' OR UPPER(full_name) LIKE ? ESCAPE '\\')");
+    const escaped = escapeLike(word);
+    params.push(`%${escaped}%`, `%${escaped}%`, `%${escaped}%`);
   }
 
   let sql = `SELECT * FROM dl_records WHERE ${conditions.join(' AND ')}`;

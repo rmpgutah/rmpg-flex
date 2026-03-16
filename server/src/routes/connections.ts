@@ -166,7 +166,7 @@ function findConnections(db: any, type: string, id: number): Connection[] {
         }
 
         // cases.linked_persons (JSON array) → cases
-        const casesWithPerson = db.prepare("SELECT id, linked_persons FROM cases WHERE linked_persons LIKE ?").all(`%${escapeLike(String(id))}%`) as any[];
+        const casesWithPerson = db.prepare("SELECT id, linked_persons FROM cases WHERE linked_persons LIKE ? ESCAPE '\\'").all(`%${escapeLike(String(id))}%`) as any[];
         for (const c of casesWithPerson) {
           try {
             const linkedIds = JSON.parse(c.linked_persons || '[]');
@@ -243,7 +243,7 @@ function findConnections(db: any, type: string, id: number): Connection[] {
         }
 
         // cases.linked_incidents (JSON array) → cases
-        const casesWithInc = db.prepare("SELECT id, linked_incidents FROM cases WHERE linked_incidents LIKE ?").all(`%${escapeLike(String(id))}%`) as any[];
+        const casesWithInc = db.prepare("SELECT id, linked_incidents FROM cases WHERE linked_incidents LIKE ? ESCAPE '\\'").all(`%${escapeLike(String(id))}%`) as any[];
         for (const c of casesWithInc) {
           try {
             const linkedIds = JSON.parse(c.linked_incidents || '[]');
@@ -311,7 +311,7 @@ function findConnections(db: any, type: string, id: number): Connection[] {
         }
 
         // cases.linked_evidence (JSON array) → cases
-        const casesWithEv = db.prepare("SELECT id, linked_evidence FROM cases WHERE linked_evidence LIKE ?").all(`%${escapeLike(String(id))}%`) as any[];
+        const casesWithEv = db.prepare("SELECT id, linked_evidence FROM cases WHERE linked_evidence LIKE ? ESCAPE '\\'").all(`%${escapeLike(String(id))}%`) as any[];
         for (const c of casesWithEv) {
           try {
             const linkedIds = JSON.parse(c.linked_evidence || '[]');

@@ -10,7 +10,7 @@ import { authenticateToken as authenticate, requireRole } from '../middleware/au
 import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
 import { localNow } from '../utils/timeUtils';
-import { escapeLike, validateParamId } from '../middleware/sanitize';
+import { escapeLike, validateParamId, validateNumericParams } from '../middleware/sanitize';
 
 const router = Router();
 router.use(authenticate);
@@ -216,7 +216,7 @@ router.delete('/tasks/:id', validateParamId, requireRole('admin', 'manager'), (r
 });
 
 // ── Client Activity Log ──────────────────────────────────
-router.get('/activity/:clientId', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.get('/activity/:clientId', validateNumericParams('clientId'), requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { clientId } = req.params;

@@ -10,7 +10,7 @@ import crypto from 'crypto';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { rateLimit } from '../middleware/rateLimiter';
-import { sanitizeObject } from '../middleware/sanitize';
+import { sanitizeObject, escapeLike } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
 import { generateIncidentNumber } from '../utils/caseNumbers';
 import { auditLog } from '../utils/auditLogger';
@@ -241,8 +241,8 @@ function pushCallForService(db: any, body: any, userId: number) {
   // Generate a proper call number
   const year = parseInt(new Date().toISOString().slice(0, 4), 10); // UTC is acceptable for offline push CFS numbers
   const last = db.prepare(
-    `SELECT call_number FROM calls_for_service WHERE call_number LIKE ? ORDER BY id DESC LIMIT 1`
-  ).get(`CFS-${year}-%`);
+    `SELECT call_number FROM calls_for_service WHERE call_number LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT 1`
+  ).get(`${escapeLike(`CFS-${year}-`)}%`);
   let seq = 1;
   if (last) {
     const parts = last.call_number.split('-');
@@ -331,8 +331,8 @@ function pushUpdate(db: any, endpoint: string, body: any) {
 
   const entityId = parts[parts.length - 1];
 
-  // Validate entityId is a positive integer to prevent injection
-  if (!/^\d+$/.test(entityId)) {
+  // Validate entityId is a positive integer or UUID to prevent injection
+  if (!/^\d+$/.test(entityId) && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(entityId)) {
     throw new Error('Invalid entity ID');
   }
 
@@ -373,7 +373,7 @@ function pushUpdate(db: any, endpoint: string, body: any) {
 
 // ─── GET /secrets (admin only) ───────────────────────────────
 // Returns all user offline secrets for the admin's local cache
-router.get('/secrets', requireRole('admin'), (req: Request, res: Response) => {
+router.get('/secrets', rateLimit({ maxRequests: 5, windowMs: 60000 }), requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const secrets = db.prepare(`
@@ -388,12 +388,15 @@ router.get('/secrets', requireRole('admin'), (req: Request, res: Response) => {
       `SELECT secret FROM offline_pin_secrets WHERE user_id = ?`
     ).get(req.user!.userId) as { secret: string } | undefined;
 
+    auditLog(req, 'offline_secrets_bulk_accessed', 'offline_secret', req.user!.userId,
+      `Admin ${req.user!.username} (IP: ${req.ip || 'unknown'}) retrieved all ${(secrets as any[]).length} offline secrets`);
+
     res.json({
       secrets,
       admin_secret: adminSecret ? adminSecret.secret : null,
     });
   } catch (error: any) {
-    console.error('[OFFLINE] Get secrets error:', error.message);
+    console.error('[OFFLINE] Get secrets error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to get offline secrets' });
   }
 });
@@ -424,7 +427,7 @@ router.get('/my-secret', requireRole('admin', 'manager', 'supervisor', 'officer'
 
 // ─── POST /secrets/generate ──────────────────────────────────
 // Generate or rotate an offline secret for a user (admin only)
-router.post('/secrets/generate', requireRole('admin'), (req: Request, res: Response) => {
+router.post('/secrets/generate', rateLimit({ maxRequests: 10, windowMs: 60000 }), requireRole('admin'), (req: Request, res: Response) => {
   try {
     const { userId } = req.body;
     const db = getDb();
@@ -463,7 +466,7 @@ router.post('/secrets/generate', requireRole('admin'), (req: Request, res: Respo
 
 // ─── POST /secrets/generate-all ──────────────────────────────
 // Generate offline secrets for all active users who don't have one
-router.post('/secrets/generate-all', requireRole('admin'), (req: Request, res: Response) => {
+router.post('/secrets/generate-all', rateLimit({ maxRequests: 3, windowMs: 60000 }), requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const users = db.prepare(

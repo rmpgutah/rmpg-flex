@@ -9,6 +9,7 @@ import { geocodeCallIfNeeded } from '../../utils/geocode';
 import { identifyBeat } from '../../utils/geofence';
 import { broadcastDispatchUpdate } from '../../utils/websocket';
 import { createNotificationForRoles } from '../notifications';
+import { exportRateLimit } from '../../middleware/rateLimiter';
 
 // ── PSO Service Window helpers (shared with callActions.ts) ──
 type ServiceWindow = 'early_morning' | 'daytime' | 'evening';
@@ -203,9 +204,6 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       return;
     }
 
-    // Generate call number: YY-CFS#####
-    const callNumber = generateCallNumber(db);
-
     // Auto-generate case number for every dispatch call
     const INCIDENT_TO_CASE_TYPE: Record<string, string> = {
       theft: 'theft', burglary: 'burglary', robbery: 'criminal', assault: 'assault', battery: 'assault',
@@ -225,7 +223,6 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       daily_activity: 'admin', special_event: 'admin', training_exercise: 'admin',
     };
     const caseType = INCIDENT_TO_CASE_TYPE[incident_type] || 'general';
-    const caseNumber = generateCaseNumber(db, caseType);
 
     // Determine status — allow historical entries to set any valid status
     const validStatuses = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived'];
@@ -295,7 +292,12 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     }
 
     // Transaction: insert call + activity log atomically
+    // NOTE: callNumber and caseNumber are generated INSIDE the transaction to prevent
+    // race conditions where two concurrent requests could get the same number.
     const createCallTx = db.transaction(() => {
+      const callNumber = generateCallNumber(db);
+      const caseNumber = generateCaseNumber(db, caseType);
+
       const result = db.prepare(`
         INSERT INTO calls_for_service (call_number, case_number, incident_type, priority, status, caller_name, caller_phone,
           caller_relationship, caller_address, location_address, property_id, latitude, longitude, description, notes, source, dispatcher_id,
@@ -415,7 +417,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
 });
 
 // GET /api/dispatch/calls/export - Export calls as CSV
-router.get('/calls/export', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.get('/calls/export', requireRole('admin', 'manager', 'supervisor'), exportRateLimit, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { status, priority, startDate, endDate } = req.query;

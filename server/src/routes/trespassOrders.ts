@@ -152,7 +152,7 @@ router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
 router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const order_number = generateOrderNumber(db);
     const now = localNow();
 
@@ -167,6 +167,12 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
 
     if (!subject_first_name || !subject_last_name) return res.status(400).json({ error: 'Subject name is required' });
     if (!location) return res.status(400).json({ error: 'Location is required' });
+
+    // Validate order_type enum
+    const validOrderTypes = ['trespass_warning', 'trespass_order', 'criminal_trespass', 'ban_order'];
+    if (order_type && !validOrderTypes.includes(order_type)) {
+      return res.status(400).json({ error: `Invalid order_type. Must be one of: ${validOrderTypes.join(', ')}` });
+    }
 
     // Auto-fill Section/Zone/Beat from linked call, incident, or property
     let { section_id, zone_id, beat_id, zone_beat } = req.body;
@@ -299,7 +305,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
 router.put('/:id/serve', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const now = localNow();
     const existing = db.prepare('SELECT id FROM trespass_orders WHERE id = ?').get(req.params.id);
     if (!existing) { res.status(404).json({ error: 'Trespass order not found' }); return; }

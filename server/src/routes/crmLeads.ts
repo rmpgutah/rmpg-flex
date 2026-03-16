@@ -12,7 +12,7 @@ import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
 import { localNow } from '../utils/timeUtils';
 import { calculateLeadScore, runScraper, getRegisteredScraper } from '../utils/leadScraperBase';
-import { escapeLike, validateParamId } from '../middleware/sanitize';
+import { escapeLike, validateParamId, validateNumericParams } from '../middleware/sanitize';
 
 // Import scrapers so they register themselves
 import '../utils/utahBizScraper';
@@ -179,7 +179,7 @@ router.post('/leads', requireRole('admin', 'manager', 'contract_manager'), (req:
     );
 
     const leadId = Number(result.lastInsertRowid);
-    auditLog(req, 'CREATE', 'crm_leads' as any, leadId, `Created lead: ${business_name.trim()}`);
+    auditLog(req, 'CREATE', 'crm_leads', leadId, `Created lead: ${business_name.trim()}`);
 
     // Log creation activity
     db.prepare(`
@@ -245,7 +245,7 @@ router.put('/leads/:id', validateParamId, requireRole('admin', 'manager', 'contr
     params.push(id);
 
     db.prepare(`UPDATE crm_leads SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-    auditLog(req, 'UPDATE', 'crm_leads' as any, String(id), `Updated lead: ${existing.business_name}`);
+    auditLog(req, 'UPDATE', 'crm_leads', String(id), `Updated lead: ${existing.business_name}`);
 
     const lead = db.prepare(`
       SELECT l.*, u.full_name as assigned_to_name
@@ -274,7 +274,7 @@ router.delete('/leads/:id', validateParamId, requireRole('admin', 'manager'), (r
     // Cascade: delete activity (handled by FK ON DELETE CASCADE, but be explicit)
     db.prepare('DELETE FROM crm_lead_activity WHERE lead_id = ?').run(id);
     db.prepare('DELETE FROM crm_leads WHERE id = ?').run(id);
-    auditLog(req, 'DELETE', 'crm_leads' as any, String(id), `Deleted lead: ${existing.business_name}`);
+    auditLog(req, 'DELETE', 'crm_leads', String(id), `Deleted lead: ${existing.business_name}`);
     res.json({ success: true });
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
@@ -319,7 +319,7 @@ router.put('/leads/:id/stage', validateParamId, requireRole('admin', 'manager', 
       VALUES (?, 'stage_change', ?, ?, ?, ?, ?)
     `).run(id, `Pipeline: ${existing.pipeline_stage} → ${pipeline_stage}`, existing.pipeline_stage, pipeline_stage, req.user?.userId || null, now);
 
-    auditLog(req, 'UPDATE', 'crm_leads' as any, String(id), `Stage: ${existing.pipeline_stage} → ${pipeline_stage}`);
+    auditLog(req, 'UPDATE', 'crm_leads', String(id), `Stage: ${existing.pipeline_stage} → ${pipeline_stage}`);
 
     const lead = db.prepare(`
       SELECT l.*, u.full_name as assigned_to_name
@@ -362,7 +362,7 @@ router.put('/leads/:id/assign', validateParamId, requireRole('admin', 'manager',
       VALUES (?, 'assignment', ?, ?, ?, ?, ?)
     `).run(id, `Assigned to ${assigneeName}`, String(existing.assigned_to || ''), String(assigned_to || ''), req.user?.userId || null, now);
 
-    auditLog(req, 'UPDATE', 'crm_leads' as any, String(id), `Assigned lead to ${assigneeName}`);
+    auditLog(req, 'UPDATE', 'crm_leads', String(id), `Assigned lead to ${assigneeName}`);
 
     const lead = db.prepare(`
       SELECT l.*, u.full_name as assigned_to_name
@@ -436,7 +436,7 @@ router.post('/leads/:id/convert', validateParamId, requireRole('admin', 'manager
     `).run(id, String(clientId), req.user?.userId || null, now);
 
     auditLog(req, 'CREATE', 'client', clientId, `Converted lead "${lead.business_name}" to client`);
-    auditLog(req, 'UPDATE', 'crm_leads' as any, String(id), `Converted to client #${clientId}`);
+    auditLog(req, 'UPDATE', 'crm_leads', String(id), `Converted to client #${clientId}`);
 
     const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(clientId);
     res.json({ success: true, client: client || null, lead_id: Number(id), client_id: clientId });
@@ -457,15 +457,22 @@ router.post('/leads/bulk-action', requireRole('admin', 'manager', 'contract_mana
       return;
     }
 
+    // Validate all IDs are positive integers to prevent type coercion issues
+    const validIds = lead_ids.map((id: any) => parseInt(String(id), 10)).filter((n: number) => !isNaN(n) && n > 0);
+    if (validIds.length === 0) {
+      res.status(400).json({ error: 'No valid lead IDs provided' });
+      return;
+    }
+
     const now = localNow();
-    const placeholders = lead_ids.map(() => '?').join(',');
+    const placeholders = validIds.map(() => '?').join(',');
     let updated = 0;
 
     switch (action) {
       case 'mark_contacted':
         updated = db.prepare(
           `UPDATE crm_leads SET pipeline_stage = 'contacted', updated_at = ? WHERE id IN (${placeholders}) AND pipeline_stage = 'new'`
-        ).run(now, ...lead_ids).changes;
+        ).run(now, ...validIds).changes;
         break;
 
       case 'assign':
@@ -475,13 +482,13 @@ router.post('/leads/bulk-action', requireRole('admin', 'manager', 'contract_mana
         }
         updated = db.prepare(
           `UPDATE crm_leads SET assigned_to = ?, updated_at = ? WHERE id IN (${placeholders})`
-        ).run(assigned_to, now, ...lead_ids).changes;
+        ).run(assigned_to, now, ...validIds).changes;
         break;
 
       case 'dismiss':
         updated = db.prepare(
           `UPDATE crm_leads SET pipeline_stage = 'dismissed', updated_at = ? WHERE id IN (${placeholders})`
-        ).run(now, ...lead_ids).changes;
+        ).run(now, ...validIds).changes;
         break;
 
       default:
@@ -489,7 +496,7 @@ router.post('/leads/bulk-action', requireRole('admin', 'manager', 'contract_mana
         return;
     }
 
-    auditLog(req, 'UPDATE', 'crm_leads' as any, lead_ids.join(','), `Bulk ${action}: ${updated} leads`);
+    auditLog(req, 'UPDATE', 'crm_leads', validIds.join(','), `Bulk ${action}: ${updated} leads`);
     res.json({ success: true, updated });
   } catch (err: any) {
     console.error('CRM leads error:', err?.message || err);
@@ -517,7 +524,7 @@ router.get('/leads/pipeline-summary', requireRole('admin', 'manager', 'contract_
 });
 
 // ── Lead Activity Log ───────────────────────────────────────
-router.get('/lead-activity/:leadId', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.get('/lead-activity/:leadId', validateNumericParams('leadId'), requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { leadId } = req.params;

@@ -21,11 +21,26 @@ const uploadRateLimit = rateLimit({
 });
 
 /** Sanitize a filename for safe use in Content-Disposition headers.
- *  Strips CRLF, null bytes, double quotes, and non-printable chars
+ *  Strips CRLF, null bytes, double quotes, backslashes, and non-printable chars
  *  to prevent header injection / response splitting attacks. */
 function safeContentDisposition(type: 'inline' | 'attachment', filename: string): string {
-  const safe = filename.replace(/[\r\n\0"]/g, '_').replace(/[^\x20-\x7E]/g, '_');
+  const safe = filename.replace(/[\r\n\0"\\]/g, '_').replace(/[^\x20-\x7E]/g, '_');
   return `${type}; filename="${safe}"`;
+}
+
+/** Set security headers on all file-serving responses to prevent uploaded files
+ *  from being interpreted as executable content by the browser. */
+function setFileSecurityHeaders(res: Response): void {
+  res.set('X-Content-Type-Options', 'nosniff');
+  // Prevent uploaded files from being framed (clickjacking via uploaded HTML)
+  res.set('X-Frame-Options', 'DENY');
+  // Strict CSP for served files — no scripts, no styles, images only from self
+  res.set('Content-Security-Policy', "default-src 'none'; img-src 'self'; style-src 'none'; script-src 'none'");
+  // Prevent served files from opening popups or navigating the parent window
+  res.set('Cross-Origin-Resource-Policy', 'same-origin');
+  res.set('Referrer-Policy', 'no-referrer');
+  res.set('X-Download-Options', 'noopen');
+  res.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
 }
 
 const __filename = fileURLToPath(import.meta.url);
@@ -61,8 +76,10 @@ function safeFilePath(relativePath: string): string | null {
 }
 
 // Allowed MIME types
+// NOTE: image/svg+xml is intentionally EXCLUDED — SVG files can contain embedded
+// <script> tags and event handlers that execute in the browser context (XSS vector).
 const ALLOWED_TYPES = new Set([
-  // Images
+  // Images (raster only — no SVG)
   'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff',
   // Documents
   'application/pdf',
@@ -108,6 +125,21 @@ const MAGIC_BYTES: Record<string, { offset: number; bytes: number[] }[]> = {
 // Extensions that are plain text — no magic bytes to verify
 const TEXT_EXTENSIONS = new Set(['.txt', '.csv']);
 
+// Dangerous extensions that must NEVER be uploaded regardless of MIME type
+const BLOCKED_EXTENSIONS = new Set([
+  '.svg', '.html', '.htm', '.xhtml', '.xml',    // XSS vectors
+  '.js', '.mjs', '.cjs', '.ts', '.jsx', '.tsx',  // Script files
+  '.php', '.phtml', '.phar', '.php5', '.php7',   // PHP variants
+  '.asp', '.aspx', '.jsp', '.jspx',              // Server-side scripting
+  '.cgi', '.wsgi', '.pl', '.py', '.rb',          // CGI/scripting
+  '.sh', '.bash', '.zsh', '.fish',               // Shell scripts
+  '.bat', '.cmd', '.ps1', '.vbs', '.vbe',        // Windows scripting
+  '.exe', '.dll', '.so', '.dylib',               // Binary executables
+  '.com', '.scr', '.msi', '.msp',                // Windows executables
+  '.hta', '.htaccess', '.htpasswd',              // Server config / HTML apps
+  '.shtml', '.shtm',                              // Server-side includes
+]);
+
 function verifyMagicBytes(filePath: string, ext: string): boolean {
   const lowerExt = ext.toLowerCase();
   // Plain text files have no magic bytes — allow if extension is in the text set
@@ -118,16 +150,18 @@ function verifyMagicBytes(filePath: string, ext: string): boolean {
     console.warn(`[Uploads] Rejected file with unrecognized extension: ${ext}`);
     return false;
   }
+  let fd: number | null = null;
   try {
-    const fd = fs.openSync(filePath, 'r');
+    fd = fs.openSync(filePath, 'r');
     const buf = Buffer.alloc(16);
     fs.readSync(fd, buf, 0, 16, 0);
-    fs.closeSync(fd);
     return signatures.some(sig =>
       sig.bytes.every((b, i) => buf[sig.offset + i] === b)
     );
   } catch {
     return false; // Can't read file — fail closed
+  } finally {
+    if (fd !== null) try { fs.closeSync(fd); } catch { /* ignore close error */ }
   }
 }
 
@@ -146,7 +180,10 @@ const storage = multer.diskStorage({
   },
   filename: (_req, file, cb) => {
     // Generate a unique filename while preserving extension
-    const ext = path.extname(file.originalname).toLowerCase();
+    // Sanitize originalname to strip path separators and null bytes that could
+    // bypass path.extname() and create files with unexpected paths
+    const safeName = file.originalname.replace(/[\0/\\]/g, '_');
+    const ext = path.extname(safeName).toLowerCase();
     const uniqueName = `${crypto.randomUUID()}${ext}`;
     cb(null, uniqueName);
   },
@@ -169,16 +206,19 @@ const upload = multer({
 // without requiring a valid JWT session.  This prevents TOKEN_EXPIRED
 // errors when viewing photos/documents across sessions or computers.
 
-function signFileAccess(fileId: string, ttlSeconds = 86400): { sig: string; exp: number } {
+function signFileAccess(fileId: string, ttlSeconds = 86400): { sig: string; exp: number; nonce: string } {
   const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
-  const data = `file:${fileId}:${exp}`;
+  // Include a random nonce so each signature is unique — prevents signature caching/prediction
+  const nonce = crypto.randomBytes(8).toString('hex');
+  const data = `file:${fileId}:${exp}:${nonce}`;
   const sig = crypto.createHmac('sha256', config.jwt.secret).update(data).digest('hex');
-  return { sig, exp };
+  return { sig, exp, nonce };
 }
 
-function verifyFileAccess(fileId: string, sig: string, exp: number): boolean {
+function verifyFileAccess(fileId: string, sig: string, exp: number, nonce?: string): boolean {
   if (Date.now() / 1000 > exp) return false;
-  const data = `file:${fileId}:${exp}`;
+  // Support both new (with nonce) and legacy (without nonce) signatures during migration
+  const data = nonce ? `file:${fileId}:${exp}:${nonce}` : `file:${fileId}:${exp}`;
   const expected = crypto.createHmac('sha256', config.jwt.secret).update(data).digest('hex');
   try {
     return crypto.timingSafeEqual(Buffer.from(sig, 'hex'), Buffer.from(expected, 'hex'));
@@ -196,9 +236,11 @@ function authenticateTokenOrQuery(req: Request, res: Response, next: NextFunctio
   const sigParam = typeof req.query.sig === 'string' ? req.query.sig : null;
   const expParam = typeof req.query.exp === 'string' ? parseInt(req.query.exp, 10) : null;
 
+  const nonceParam = typeof req.query.nonce === 'string' ? req.query.nonce : undefined;
+
   if (sigParam && expParam) {
     const fileId = req.params.fileId as string;
-    if (fileId && verifyFileAccess(fileId, sigParam, expParam)) {
+    if (fileId && verifyFileAccess(fileId, sigParam, expParam, nonceParam)) {
       // Signed access verified — minimal user context for read-only serving
       req.user = { userId: 0, username: 'signed-access', role: 'viewer', fullName: 'Signed Access' };
       next();
@@ -252,7 +294,25 @@ function authenticateTokenOrQuery(req: Request, res: Response, next: NextFunctio
   }
 }
 
+// Rate limiter for file downloads — prevent bulk data exfiltration via file enumeration
+const downloadRateLimit = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  maxRequests: 100,          // 100 downloads per 5 minutes per user/IP
+  keyGenerator: (req) => `download:${req.user?.userId || req.ip || 'unknown'}`,
+  message: 'Too many file download requests. Please try again later.',
+});
+
 const router = Router();
+
+// Validate fileId params as UUID format (all file IDs are crypto.randomUUID())
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+router.param('fileId', (req: Request, res: Response, next: Function) => {
+  if (!UUID_RE.test(String(req.params.fileId))) {
+    res.status(400).json({ error: 'Invalid file ID format' });
+    return;
+  }
+  next();
+});
 
 // ─── GET /api/uploads/entity/:type/:id ─── List files for entity ───
 // (Must be before /:fileId catch-all to avoid route conflict)
@@ -270,8 +330,8 @@ router.get('/entity/:type/:id', validateParamId, authenticateToken, (req: Reques
 
     // Enrich each attachment with an HMAC-signed access token (24h TTL)
     const enriched = (attachments as any[]).map((att) => {
-      const { sig, exp } = signFileAccess(att.file_id);
-      return { ...att, access_sig: sig, access_exp: exp };
+      const { sig, exp, nonce } = signFileAccess(att.file_id);
+      return { ...att, access_sig: sig, access_exp: exp, access_nonce: nonce };
     });
 
     res.json(enriched);
@@ -294,8 +354,8 @@ router.get('/sign/:fileId', authenticateToken, (req: Request, res: Response) => 
       return;
     }
 
-    const { sig, exp } = signFileAccess(req.params.fileId as string);
-    res.json({ sig, exp, file_id: req.params.fileId });
+    const { sig, exp, nonce } = signFileAccess(req.params.fileId as string);
+    res.json({ sig, exp, nonce, file_id: req.params.fileId });
   } catch (error: any) {
     console.error('Sign file error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -306,7 +366,7 @@ router.get('/sign/:fileId', authenticateToken, (req: Request, res: Response) => 
 // This allows <img src="...">, <iframe src="...">, and <a href="..."> to work
 
 // ─── GET /api/uploads/:fileId ─── Serve/inline a file ───
-router.get('/:fileId', authenticateTokenOrQuery, (req: Request, res: Response) => {
+router.get('/:fileId', downloadRateLimit, authenticateTokenOrQuery, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const attachment = db.prepare('SELECT * FROM attachments WHERE file_id = ?').get(req.params.fileId) as any;
@@ -323,8 +383,15 @@ router.get('/:fileId', authenticateTokenOrQuery, (req: Request, res: Response) =
       return;
     }
 
-    // Set appropriate headers
-    res.set('Content-Type', attachment.mime_type);
+    // Validate stored MIME type is still in the allowed list — defense against
+    // DB tampering where an attacker modifies the mime_type to bypass Content-Type restrictions
+    const serveMime = ALLOWED_TYPES.has(attachment.mime_type)
+      ? attachment.mime_type
+      : 'application/octet-stream'; // Fall back to binary download if MIME was tampered
+
+    // Set appropriate headers + security hardening for served files
+    setFileSecurityHeaders(res);
+    res.set('Content-Type', serveMime);
     res.set('Content-Disposition', safeContentDisposition('inline', attachment.original_name));
     res.set('Content-Length', String(attachment.file_size));
     // Allow browser caching for 5 minutes
@@ -338,7 +405,7 @@ router.get('/:fileId', authenticateTokenOrQuery, (req: Request, res: Response) =
 });
 
 // ─── GET /api/uploads/:fileId/download ─── Force download ───
-router.get('/:fileId/download', authenticateTokenOrQuery, (req: Request, res: Response) => {
+router.get('/:fileId/download', downloadRateLimit, authenticateTokenOrQuery, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const attachment = db.prepare('SELECT * FROM attachments WHERE file_id = ?').get(req.params.fileId) as any;
@@ -355,6 +422,7 @@ router.get('/:fileId/download', authenticateTokenOrQuery, (req: Request, res: Re
       return;
     }
 
+    setFileSecurityHeaders(res);
     res.set('Content-Type', 'application/octet-stream');
     res.set('Content-Disposition', safeContentDisposition('attachment', attachment.original_name));
     res.sendFile(filePath);
@@ -388,6 +456,7 @@ router.get('/:fileId/thumbnail', authenticateTokenOrQuery, (req: Request, res: R
       return;
     }
 
+    setFileSecurityHeaders(res);
     res.set('Content-Type', attachment.mime_type);
     res.set('Content-Disposition', safeContentDisposition('inline', attachment.original_name));
     res.set('Content-Length', String(attachment.file_size));
@@ -403,6 +472,15 @@ router.get('/:fileId/thumbnail', authenticateTokenOrQuery, (req: Request, res: R
 // ── All routes below require standard header auth ──
 router.use(authenticateToken);
 
+// Allowed entity types for file attachments — prevents data pollution
+const ALLOWED_ENTITY_TYPES = new Set([
+  'incident', 'person', 'vehicle', 'call', 'warrant', 'citation', 'arrest',
+  'field_interview', 'trespass_order', 'case', 'code_enforcement', 'report',
+  'fleet', 'patrol', 'serve', 'invoice', 'dar', 'personnel', 'bodycam',
+  'company_document', 'evidence', 'training', 'attachment', 'crm_lead',
+  'crm_proposal', 'connection', 'offender', 'property',
+]);
+
 // ─── POST /api/uploads ─── Upload one or more files ───
 router.post('/', uploadRateLimit, upload.array('files', 10), (req: Request, res: Response) => {
   try {
@@ -413,12 +491,52 @@ router.post('/', uploadRateLimit, upload.array('files', 10), (req: Request, res:
     }
 
     const { entity_type, entity_id } = req.body;
+
+    // Validate entity_type against allowlist if provided
+    if (entity_type && !ALLOWED_ENTITY_TYPES.has(entity_type)) {
+      // Clean up uploaded files before rejecting
+      for (const file of files) {
+        try { fs.unlinkSync(file.path); } catch { /* best effort */ }
+      }
+      res.status(400).json({ error: 'Invalid entity_type' });
+      return;
+    }
     const db = getDb();
     const results: any[] = [];
 
     for (const file of files) {
-      // Verify magic bytes match claimed file type — prevents MIME spoofing attacks
+      // Reject zero-byte and suspiciously small files
+      if (file.size === 0) {
+        try { fs.unlinkSync(file.path); } catch { /* best effort */ }
+        res.status(400).json({ error: `File "${file.originalname}" is empty` });
+        return;
+      }
+
+      // Check for dangerous file extensions that could execute code
       const ext = path.extname(file.originalname).toLowerCase();
+
+      // Block double-extension attacks (e.g., "image.php.jpg" where inner ext is dangerous)
+      const nameParts = file.originalname.toLowerCase().split('.');
+      if (nameParts.length > 2) {
+        const innerExt = '.' + nameParts[nameParts.length - 2];
+        if (BLOCKED_EXTENSIONS.has(innerExt)) {
+          try { fs.unlinkSync(file.path); } catch { /* best effort */ }
+          console.warn(`[Upload] BLOCKED — double extension attack: ${file.originalname} from user ${req.user!.userId}`);
+          auditLog(req, 'BLOCK', 'attachment', 0, `Blocked upload: ${file.originalname} — double extension attack`);
+          res.status(400).json({ error: `Suspicious filename rejected for security reasons` });
+          return;
+        }
+      }
+
+      if (BLOCKED_EXTENSIONS.has(ext)) {
+        try { fs.unlinkSync(file.path); } catch { /* best effort */ }
+        console.warn(`[Upload] BLOCKED — dangerous extension ${ext} from user ${req.user!.userId}`);
+        auditLog(req, 'BLOCK', 'attachment', 0, `Blocked upload: ${file.originalname} — dangerous extension ${ext}`);
+        res.status(400).json({ error: `File type "${ext}" is not allowed for security reasons` });
+        return;
+      }
+
+      // Verify magic bytes match claimed file type — prevents MIME spoofing attacks
       if (!verifyMagicBytes(file.path, ext)) {
         // Delete the suspicious file immediately
         try { fs.unlinkSync(file.path); } catch { /* best effort */ }
@@ -426,6 +544,38 @@ router.post('/', uploadRateLimit, upload.array('files', 10), (req: Request, res:
         auditLog(req, 'BLOCK', 'attachment', 0, `Blocked upload: ${file.originalname} — magic byte mismatch (ext=${ext})`);
         res.status(400).json({ error: `File "${file.originalname}" content does not match its file type` });
         return;
+      }
+
+      // ── Virus scan hook point ──────────────────────────
+      // If VIRUS_SCAN_CMD is set (e.g., "clamscan --no-summary"),
+      // run it against the uploaded file before accepting it.
+      // Exit code 0 = clean, non-zero = infected or error.
+      // SECURITY: Only whitelisted scanner binaries are allowed to prevent
+      // command injection via environment variable manipulation.
+      const virusScanCmd = process.env.VIRUS_SCAN_CMD;
+      const ALLOWED_SCANNERS = new Set(['clamscan', 'clamdscan', 'freshclam', '/usr/bin/clamscan', '/usr/bin/clamdscan', '/usr/local/bin/clamscan']);
+      if (virusScanCmd) {
+        try {
+          const { execFileSync } = require('child_process');
+          const parts = virusScanCmd.split(' ').filter(Boolean);
+          const cmd = parts[0];
+          // Validate the scanner binary against whitelist to prevent command injection
+          if (!ALLOWED_SCANNERS.has(cmd)) {
+            console.error(`[Upload] BLOCKED — VIRUS_SCAN_CMD uses non-whitelisted binary: ${cmd}`);
+            try { fs.unlinkSync(file.path); } catch { /* best effort */ }
+            res.status(500).json({ error: 'Server security scan misconfigured' });
+            return;
+          }
+          const args = parts.slice(1);
+          execFileSync(cmd, [...args, file.path], { timeout: 30_000, stdio: 'pipe' });
+        } catch (scanErr: any) {
+          // Non-zero exit = infected or scan error — reject the file
+          try { fs.unlinkSync(file.path); } catch { /* best effort */ }
+          console.warn(`[Upload] QUARANTINED — virus scan failed for ${file.originalname} from user ${req.user!.userId}: ${scanErr.message}`);
+          auditLog(req, 'BLOCK', 'attachment', 0, `Quarantined upload: ${file.originalname} — virus scan failure`);
+          res.status(400).json({ error: 'File rejected by security scan' });
+          return;
+        }
       }
 
       // Store path relative to uploads dir
@@ -483,6 +633,12 @@ router.put('/:fileId/link', requireRole('admin', 'manager', 'supervisor'), (req:
 
     if (!entity_type || !entity_id) {
       res.status(400).json({ error: 'entity_type and entity_id are required' });
+      return;
+    }
+
+    // Validate entity_type against allowlist
+    if (!ALLOWED_ENTITY_TYPES.has(entity_type)) {
+      res.status(400).json({ error: 'Invalid entity_type' });
       return;
     }
 

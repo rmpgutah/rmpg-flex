@@ -30,8 +30,8 @@ function generateFiNumber(db: ReturnType<typeof getDb>): string {
   const prefix = `FI-${year}-`;
   return db.transaction(() => {
     const row = db.prepare(
-      `SELECT fi_number FROM field_interviews WHERE fi_number LIKE ? ORDER BY id DESC LIMIT 1`
-    ).get(`${prefix}%`) as { fi_number: string } | undefined;
+      `SELECT fi_number FROM field_interviews WHERE fi_number LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT 1`
+    ).get(`${escapeLike(prefix)}%`) as { fi_number: string } | undefined;
 
     let seq = 1;
     if (row) {
@@ -116,7 +116,7 @@ router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
 router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const fi_number = generateFiNumber(db);
     const now = localNow();
 

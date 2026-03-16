@@ -17,6 +17,7 @@ import { createNotificationForRoles } from './notifications';
 import { escapeLike, validateParamId, validateNumericParams } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
 import { universalWarrantCheck } from '../utils/universalWarrantScanner';
+import { exportRateLimit } from '../middleware/rateLimiter';
 
 const router = Router();
 
@@ -115,7 +116,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
 });
 
 // GET /api/warrants/export — Export warrants as CSV
-router.get('/export', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), (req: Request, res: Response) => {
+router.get('/export', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), exportRateLimit, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const warrants = db.prepare(`
@@ -203,7 +204,7 @@ router.get('/check/:personId', validateNumericParams('personId'), requireRole('a
 // NOTE: These must be declared BEFORE /:id to avoid being caught by the param route
 
 // GET /api/warrants/utah — Search Utah state warrants (live from warrants.utah.gov)
-router.get('/utah', async (req: Request, res: Response) => {
+router.get('/utah', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (req: Request, res: Response) => {
   try {
     const { search } = req.query;
 
@@ -233,7 +234,7 @@ router.get('/utah', async (req: Request, res: Response) => {
 });
 
 // GET /api/warrants/utah/count — Cached warrant count for tab badge
-router.get('/utah/count', (req: Request, res: Response) => {
+router.get('/utah/count', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare('SELECT COUNT(*) as count FROM utah_warrants').get() as any;
@@ -244,7 +245,7 @@ router.get('/utah/count', (req: Request, res: Response) => {
 });
 
 // GET /api/warrants/utah/sync-status — Status info for UI
-router.get('/utah/sync-status', (req: Request, res: Response) => {
+router.get('/utah/sync-status', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const status = getUtahWarrantSyncStatus();
     res.json({

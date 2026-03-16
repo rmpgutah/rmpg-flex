@@ -235,7 +235,7 @@ router.post('/jobs', requireRole('admin', 'manager'), async (req: Request, res: 
 });
 
 // ── GET /jobs — List processing jobs ────────────────────────
-router.get('/jobs', (req: Request, res: Response) => {
+router.get('/jobs', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
@@ -272,7 +272,7 @@ router.get('/jobs', (req: Request, res: Response) => {
 });
 
 // ── GET /jobs/:id — Job details ─────────────────────────────
-router.get('/jobs/:id', validateParamId, (req: Request, res: Response) => {
+router.get('/jobs/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id as string, 10);
@@ -474,7 +474,7 @@ router.delete('/hash-sets/:name', requireRole('admin'), (req: Request, res: Resp
 // ── IPED Web API Proxy Routes ───────────────────────────────
 
 // List processed cases
-router.get('/cases', async (_req: Request, res: Response) => {
+router.get('/cases', requireRole('admin', 'manager'), async (_req: Request, res: Response) => {
   try {
     const data = await proxyIpedApi('/cases');
     res.json(data);
@@ -485,10 +485,10 @@ router.get('/cases', async (_req: Request, res: Response) => {
 });
 
 // Search within a case
-router.get('/cases/:caseId/search', async (req: Request, res: Response) => {
+router.get('/cases/:caseId/search', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
   try {
     const query = req.query.q as string || '';
-    const data = await proxyIpedApi(`/cases/${req.params.caseId}/search?q=${encodeURIComponent(query)}`);
+    const data = await proxyIpedApi(`/cases/${encodeURIComponent(String(req.params.caseId))}/search?q=${encodeURIComponent(query)}`);
     res.json(data);
   } catch (err: any) {
     console.error('[IPED] Search error:', err?.message || err);
@@ -497,9 +497,9 @@ router.get('/cases/:caseId/search', async (req: Request, res: Response) => {
 });
 
 // Get file metadata
-router.get('/cases/:caseId/file/:fileId', async (req: Request, res: Response) => {
+router.get('/cases/:caseId/file/:fileId', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
   try {
-    const data = await proxyIpedApi(`/cases/${req.params.caseId}/file/${req.params.fileId}`);
+    const data = await proxyIpedApi(`/cases/${encodeURIComponent(String(req.params.caseId))}/file/${encodeURIComponent(String(req.params.fileId))}`);
     res.json(data);
   } catch (err: any) {
     console.error('[IPED] File metadata error:', err?.message || err);
@@ -508,9 +508,9 @@ router.get('/cases/:caseId/file/:fileId', async (req: Request, res: Response) =>
 });
 
 // Get file thumbnail
-router.get('/cases/:caseId/file/:fileId/thumb', async (req: Request, res: Response) => {
+router.get('/cases/:caseId/file/:fileId/thumb', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
   try {
-    const data = await proxyIpedApi(`/cases/${req.params.caseId}/file/${req.params.fileId}/thumb`);
+    const data = await proxyIpedApi(`/cases/${encodeURIComponent(String(req.params.caseId))}/file/${encodeURIComponent(String(req.params.fileId))}/thumb`);
     res.json(data);
   } catch (err: any) {
     console.error('[IPED] File thumbnail error:', err?.message || err);

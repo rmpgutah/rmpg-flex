@@ -12,7 +12,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 import { queueOverlayProcessing, type BodyCamOverlayConfig } from '../utils/videoOverlay';
 import { validateEmail, validatePhone, validateBadgeNumber, validateAll } from '../utils/inputValidation';
-import { validateParamId } from '../middleware/sanitize';
+import { validateParamId, validateNumericParams } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
 
 const execFileAsync = promisify(execFile);
@@ -66,7 +66,7 @@ const bodycamUpload = multer({
     if (VIDEO_MIME_TYPES.has(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error(`File type ${file.mimetype} is not allowed. Accepted: MP4, MOV, AVI, WebM`));
+      cb(new Error('File type is not allowed. Accepted: MP4, MOV, AVI, WebM'));
     }
   },
 });
@@ -482,7 +482,7 @@ router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Re
     });
     delTx();
 
-    auditLog(req, 'TERMINATE' as any, 'user' as any, Number(req.params.id),
+    auditLog(req, 'user_terminated', 'user', Number(req.params.id),
       `Terminated user: ${user.username} (${user.full_name || 'N/A'})`);
 
     res.json({ success: true, id: req.params.id });
@@ -551,7 +551,7 @@ router.post('/:id/unarchive', validateParamId, requireRole('admin', 'manager'), 
 // intercepts the path first. The blanket router.use() above handles token promotion
 // and authenticateToken, so no additional auth middleware needed here.
 
-router.get('/bodycam-videos/:videoId/stream', (req: Request, res: Response) => {
+router.get('/bodycam-videos/:videoId/stream', validateNumericParams('videoId'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const video = db.prepare('SELECT * FROM bodycam_videos WHERE id = ?').get(req.params.videoId) as any;
@@ -630,7 +630,7 @@ router.get('/bodycam-videos/:videoId/stream', (req: Request, res: Response) => {
 });
 
 // ── GET /api/personnel/bodycam-videos/:videoId/download — Force-download with overlay ──
-router.get('/bodycam-videos/:videoId/download', (req: Request, res: Response) => {
+router.get('/bodycam-videos/:videoId/download', validateNumericParams('videoId'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const video = db.prepare('SELECT * FROM bodycam_videos WHERE id = ?').get(req.params.videoId) as any;
@@ -2427,7 +2427,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       console.log(`[Bodycam] Reassembly complete: ${verifiedSize} bytes`);
 
       const relativePath = path.relative(BODYCAM_DIR, finalPath);
-      const user = (req as any).user;
+      const user = req.user!;
 
       const result = db.prepare(`
         INSERT INTO bodycam_videos (camera_id, officer_id, title, file_path, file_size, duration_seconds, mime_type, recorded_at, case_number, classification, notes, uploaded_by)

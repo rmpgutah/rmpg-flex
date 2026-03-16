@@ -155,16 +155,18 @@ function isSpeechAvailable(): boolean {
 }
 
 function isVoiceEnabled(): boolean {
-  return localStorage.getItem('rmpg-sound') !== 'false'
-    && localStorage.getItem(VOICE_ALERTS_KEY) !== 'false';
+  try {
+    return localStorage.getItem('rmpg-sound') !== 'false'
+      && localStorage.getItem(VOICE_ALERTS_KEY) !== 'false';
+  } catch { return true; }
 }
 
 export function setVoiceAlertsEnabled(enabled: boolean): void {
-  localStorage.setItem(VOICE_ALERTS_KEY, String(enabled));
+  try { localStorage.setItem(VOICE_ALERTS_KEY, String(enabled)); } catch { /* ignore */ }
 }
 
 export function getVoiceAlertsEnabled(): boolean {
-  return localStorage.getItem(VOICE_ALERTS_KEY) !== 'false';
+  try { return localStorage.getItem(VOICE_ALERTS_KEY) !== 'false'; } catch { return true; }
 }
 
 // ─── Deduplication Cache ────────────────────────────────────

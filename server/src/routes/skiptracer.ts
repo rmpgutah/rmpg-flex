@@ -289,9 +289,10 @@ router.post('/test', requireRole('admin'), async (req: Request, res: Response) =
       });
     } else {
       const text = await testRes.text().catch(() => '');
+      console.error('[SkipTracer] API test returned:', testRes.status, text.slice(0, 200));
       res.status(502).json({
         success: false,
-        error: `API returned ${testRes.status}: ${text.slice(0, 200)}`,
+        error: `API returned status ${testRes.status}`,
       });
     }
   } catch (err: any) {
@@ -415,8 +416,8 @@ router.get('/history', async (req: Request, res: Response) => {
   try {
     ensureTable();
     const db = getDb();
-    const limit = Math.min(Number(req.query.limit) || 50, 200);
-    const offset = Number(req.query.offset) || 0;
+    const limit = Math.min(parseInt(String(req.query.limit), 10) || 50, 200);
+    const offset = Math.max(0, Math.min(parseInt(String(req.query.offset), 10) || 0, 10000));
 
     const rows = db.prepare(`
       SELECT s.*, u.full_name AS searched_by_name

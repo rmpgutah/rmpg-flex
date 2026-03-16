@@ -7,10 +7,11 @@
 // - OAuth2 callback (no JWT — CSRF state validated)
 
 import { Router, Request, Response } from 'express';
+import crypto from 'crypto';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
-import { escapeLike, validateParamId } from '../middleware/sanitize';
+import { escapeLike, validateParamId, validateNumericParams } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
 import config from '../config';
 import {
@@ -94,9 +95,11 @@ router.get('/oauth/callback', async (req: Request, res: Response) => {
       return;
     }
 
-    // Validate CSRF state
+    // Validate CSRF state (timing-safe to prevent side-channel leakage)
     const storedState = getConfigValue(CONFIG_KEYS.oauthState);
-    if (!storedState || storedState !== String(state)) {
+    const stateStr = String(state);
+    if (!storedState || storedState.length !== stateStr.length ||
+        !crypto.timingSafeEqual(Buffer.from(storedState), Buffer.from(stateStr))) {
       res.redirect('/admin?tab=email&status=error&message=Invalid+state+token');
       return;
     }
@@ -104,8 +107,8 @@ router.get('/oauth/callback', async (req: Request, res: Response) => {
     // Clear state to prevent replay
     deleteConfigValue(CONFIG_KEYS.oauthState);
 
-    // Exchange code for tokens — use hardcoded production domain to prevent Host header injection
-    const host = config.isProduction ? 'rmpgutah.us' : (req.get('host') || 'localhost:3001');
+    // Exchange code for tokens — use config domain to prevent Host header injection
+    const host = config.isProduction ? config.primaryDomain : (req.get('host') || 'localhost:3001');
     const redirectUri = `https://${host}/api/email/oauth/callback`;
     await exchangeCodeForTokens(String(code), redirectUri);
 
@@ -308,7 +311,7 @@ router.get('/messages', async (req: Request, res: Response) => {
       try {
         const client = await getGraphClient();
         // Sanitize folder ID to prevent path traversal in Graph API URL
-        const safeFolder = String(folder).replace(/[^a-zA-Z0-9_-]/g, '');
+        const safeFolder = String(folder).replace(/[^a-zA-Z0-9_-]/g, '') || 'inbox';
         let apiPath = safeFolder === 'inbox'
           ? '/me/mailFolders/inbox/messages'
           : `/me/mailFolders/${safeFolder}/messages`;
@@ -906,7 +909,7 @@ router.get('/contacts/search', (req: Request, res: Response) => {
     // Search persons (external contacts)
     const persons = db.prepare(`
       SELECT first_name, last_name, email FROM persons
-      WHERE (first_name || ' ' || last_name LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\')
+      WHERE ((first_name || ' ' || last_name) LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\')
         AND email IS NOT NULL AND email != ''
         AND archived_at IS NULL
       ORDER BY last_name, first_name LIMIT 10
@@ -989,7 +992,7 @@ router.get('/links/:emailGraphId', (req: Request, res: Response) => {
 });
 
 // GET /api/email/links/incident/:incidentId — Get emails linked to an incident
-router.get('/links/incident/:incidentId', (req: Request, res: Response) => {
+router.get('/links/incident/:incidentId', validateNumericParams('incidentId'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const links = db.prepare(`
@@ -1156,8 +1159,9 @@ router.get('/admin/oauth/authorize', requireRole('admin'), (req: Request, res: R
     // Store who initiated the OAuth flow
     setConfigValue(CONFIG_KEYS.oauthInitiator, String(req.user!.userId));
 
-    // Always use https — req.protocol may report http incorrectly with https.createServer
-    const redirectUri = `https://${req.get('host')}/api/email/oauth/callback`;
+    // Use hardcoded domain in production to prevent Host header injection
+    const host = config.isProduction ? config.primaryDomain : (req.get('host') || 'localhost:3001');
+    const redirectUri = `https://${host}/api/email/oauth/callback`;
     const url = getAuthorizationUrl(redirectUri);
 
     auditLog(req, 'OAUTH_INITIATE', 'system_config', 0, 'ms_email_oauth_started');

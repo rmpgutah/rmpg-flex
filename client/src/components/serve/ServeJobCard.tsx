@@ -175,7 +175,7 @@ export default React.memo(function ServeJobCard({
 
           {/* Status label */}
           <span className="text-[9px] font-mono text-rmpg-400 ml-auto">
-            {job.status.replace('_', ' ').toUpperCase()}
+            {job.status.replace(/_/g, ' ').toUpperCase()}
           </span>
         </div>
       </div>

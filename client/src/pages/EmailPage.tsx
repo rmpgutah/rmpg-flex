@@ -412,7 +412,7 @@ function loadDraft(): DraftState | null {
   } catch { return null; }
 }
 
-function clearDraft(): void { localStorage.removeItem(DRAFT_STORAGE_KEY); }
+function clearDraft(): void { try { localStorage.removeItem(DRAFT_STORAGE_KEY); } catch { /* ignore */ } }
 
 // ============================================================
 // Email-Incident Link Panel
@@ -1363,7 +1363,7 @@ export default function EmailPage() {
   const [selectedFolder, setSelectedFolder] = useState('inbox');
   const [childFolders, setChildFolders] = useState<Map<string, EmailFolder[]>>(new Map());
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
-  const [folderCollapsed, setFolderCollapsed] = useState(() => localStorage.getItem('email_folder_collapsed') === 'true');
+  const [folderCollapsed, setFolderCollapsed] = useState(() => { try { return localStorage.getItem('email_folder_collapsed') === 'true'; } catch { return false; } });
 
   // Folder management
   const [newFolderName, setNewFolderName] = useState('');

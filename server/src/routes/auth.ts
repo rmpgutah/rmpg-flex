@@ -16,8 +16,16 @@ import {
   verifyRefreshToken,
   JwtPayload,
 } from '../middleware/auth';
-import { authRateLimit, mfaRateLimit, refreshRateLimit, passwordRateLimit } from '../middleware/rateLimiter';
-import { validatePassword, getPasswordPolicyDescription, checkPasswordHistory, isPasswordExpired } from '../middleware/validatePassword';
+import { authRateLimit, authIpRateLimit, mfaRateLimit, refreshRateLimit, passwordRateLimit, rateLimit } from '../middleware/rateLimiter';
+
+// Rate limiter for profile updates — prevent automated enumeration/modification
+const profileRateLimit = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  maxRequests: 15,          // 15 profile updates per 5 min
+  keyGenerator: (req) => `profile:${req.user?.userId || req.ip || 'unknown'}`,
+  message: 'Too many profile update attempts. Please try again later.',
+});
+import { validatePassword, getPasswordPolicyDescription, checkPasswordHistory, isPasswordExpired, checkPasswordBreach } from '../middleware/validatePassword';
 import config from '../config';
 import { localNow } from '../utils/timeUtils';
 import { auditLog } from '../utils/auditLogger';
@@ -123,7 +131,8 @@ function createSession(
   const deviceName = parseDeviceName(userAgent);
 
   // Hash user-agent for session binding — prevents token theft across different browsers
-  const uaHash = crypto.createHash('sha256').update(userAgent).digest('hex').slice(0, 16);
+  // Use 32 hex chars (128 bits) to avoid birthday-problem collisions
+  const uaHash = crypto.createHash('sha256').update(userAgent).digest('hex').slice(0, 32);
 
   // Use transaction to prevent race condition: two concurrent logins could both
   // read session count, each decide to evict, then both insert — exceeding max
@@ -136,9 +145,9 @@ function createSession(
     if (activeSessions.length >= config.session.maxPerUser) {
       const toRemove = activeSessions.length - config.session.maxPerUser + 1;
       const oldestIds = activeSessions.slice(0, toRemove).map(s => s.id);
-      if (oldestIds.length > 0) {
-        db.prepare(`UPDATE sessions SET is_active = 0 WHERE id IN (${oldestIds.map(() => '?').join(',')})`)
-          .run(...oldestIds);
+      // Evict oldest sessions one at a time to avoid dynamic SQL construction
+      for (const sessionDbId of oldestIds) {
+        db.prepare('UPDATE sessions SET is_active = 0 WHERE id = ?').run(sessionDbId);
       }
     }
 
@@ -161,9 +170,10 @@ function issueTokens(user: any, ip: string, userAgent: string, deviceFingerprint
     fullName: user.full_name,
   };
 
-  const accessToken = generateAccessToken(payload);
   const refreshToken = generateRefreshToken(payload);
   const sessionId = createSession(user.id, refreshToken, ip, userAgent, deviceFingerprint);
+  // Generate access token WITH sessionId so auth middleware can enforce IP binding
+  const accessToken = generateAccessToken({ ...payload, sessionId });
 
   // Log the login activity
   const db = getDb();
@@ -171,6 +181,37 @@ function issueTokens(user: any, ip: string, userAgent: string, deviceFingerprint
     INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
     VALUES (?, 'user_login', 'user', ?, 'User logged in', ?)
   `).run(user.id, user.id, ip);
+
+  // ── Login IP anomaly detection ──────────────────────
+  // Check if the user's last successful login was from a different IP within the last hour.
+  // Rapid IP changes ("impossible travel") could indicate credential theft.
+  try {
+    const lastLogin = db.prepare(`
+      SELECT ip_address, created_at FROM login_attempts
+      WHERE username = ? AND success = 1 AND ip_address != ?
+      ORDER BY created_at DESC LIMIT 1
+    `).get(user.username, ip) as { ip_address: string; created_at: string } | undefined;
+
+    if (lastLogin) {
+      const lastTime = new Date(lastLogin.created_at).getTime();
+      const timeDiffMinutes = (Date.now() - lastTime) / 60000;
+      // Flag if different IP was used within the last 60 minutes
+      if (timeDiffMinutes < 60 && timeDiffMinutes >= 0) {
+        console.warn(`[AUTH] IP anomaly: ${user.username} logged in from ${ip}, previous login ${Math.round(timeDiffMinutes)}m ago from ${lastLogin.ip_address}`);
+        // Create security notification for admins
+        try {
+          db.prepare(`
+            INSERT INTO security_notifications (user_id, type, severity, title, message, created_at)
+            VALUES (?, 'ip_anomaly', 'warning', ?, ?, datetime('now', 'localtime'))
+          `).run(
+            user.id,
+            `Rapid IP change: ${user.username}`,
+            `User "${user.username}" logged in from ${ip}, but was on ${lastLogin.ip_address} just ${Math.round(timeDiffMinutes)} minute(s) ago. This may indicate credential sharing or theft.`
+          );
+        } catch { /* security_notifications table may not exist */ }
+      }
+    }
+  } catch { /* Non-critical — don't block login */ }
 
   return {
     token: accessToken,
@@ -194,7 +235,7 @@ function issueTokens(user: any, ip: string, userAgent: string, deviceFingerprint
 // ═══════════════════════════════════════════════════════
 // POST /api/auth/login — Multi-step login
 // ═══════════════════════════════════════════════════════
-router.post('/login', authRateLimit, (req: Request, res: Response) => {
+router.post('/login', authIpRateLimit, authRateLimit, (req: Request, res: Response) => {
   try {
     const { username, password, deviceFingerprint } = req.body;
     const ip = req.ip || 'unknown';
@@ -219,10 +260,11 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
     const lockout = isLockedOut(username);
     if (lockout.locked) {
       logLoginAttempt(username, ip, false, 'account_locked', userAgent, deviceFingerprint);
+      // Don't disclose exact lockout timing — prevents attackers from precisely
+      // scheduling brute-force retries after the lockout window expires
       res.status(423).json({
-        error: `Account temporarily locked. Try again in ${lockout.minutesRemaining} minute(s).`,
+        error: 'Account temporarily locked due to too many failed attempts. Please try again later.',
         code: 'ACCOUNT_LOCKED',
-        retryAfter: lockout.minutesRemaining * 60,
       });
       return;
     }
@@ -236,6 +278,9 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
     `).get(username) as any;
 
     if (!user) {
+      // Perform a dummy bcrypt comparison to make the response time indistinguishable
+      // from a valid-user-wrong-password response — prevents username enumeration via timing
+      bcryptjs.compareSync(password, '$2a$12$000000000000000000000uGq7b1nk/MhFmqMD/R1FKqEEUjpkui2');
       logLoginAttempt(username, ip, false, 'user_not_found', userAgent, deviceFingerprint);
       res.status(401).json({ error: 'Invalid username or password' });
       return;
@@ -243,7 +288,8 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
 
     if (user.status !== 'active') {
       logLoginAttempt(username, ip, false, 'account_inactive');
-      // Return identical error to invalid credentials to prevent account enumeration
+      // Perform dummy bcrypt to maintain constant timing
+      bcryptjs.compareSync(password, '$2a$12$000000000000000000000uGq7b1nk/MhFmqMD/R1FKqEEUjpkui2');
       res.status(401).json({ error: 'Invalid username or password' });
       return;
     }
@@ -288,6 +334,27 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
       });
       return;
     }
+
+    // ── IP velocity anomaly detection ─────────────────
+    // Flag logins from multiple distinct IPs within 5 minutes as suspicious
+    try {
+      const recentLogins = db.prepare(`
+        SELECT DISTINCT ip_address FROM login_attempts
+        WHERE username = ? AND success = 1 AND created_at > datetime('now', '-5 minutes')
+      `).all(username) as { ip_address: string }[];
+      const distinctIps = recentLogins.filter(r => r.ip_address !== ip);
+      if (distinctIps.length > 0) {
+        auditLog(req, 'session_anomaly', 'user', user.id,
+          `Login from IP ${ip} while active sessions exist from ${distinctIps.map(r => r.ip_address).join(', ')} (possible credential sharing or theft)`);
+        createNotificationForRoles(
+          ['admin'],
+          'security',
+          `Suspicious login: ${username}`,
+          `User "${username}" logged in from IP ${ip} while recent logins exist from ${distinctIps.map(r => r.ip_address).join(', ')}. This may indicate credential sharing or compromise.`,
+          'user', null, 'high', 'login_anomaly'
+        );
+      }
+    } catch { /* anomaly detection failure should not block login */ }
 
     // ── Password verified. Determine next steps. ──────
 
@@ -413,12 +480,9 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
     }
 
     // ── No 2FA — issue full tokens ──────────────────────
-    const accessToken = generateAccessToken(payload);
     const refreshToken = generateRefreshToken(payload);
     const sessionId = createSession(user.id, refreshToken, ip, userAgent);
-
-    // Include sessionId in a fresh access token so IP binding works
-    const accessTokenWithSession = generateAccessToken({ ...payload, sessionId });
+    const accessToken = generateAccessToken({ ...payload, sessionId });
 
     // Log the login to activity log — must never block login
     try {
@@ -467,7 +531,7 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
     } catch { /* notification failure should never block login */ }
 
     res.json({
-      token: accessTokenWithSession,
+      token: accessToken,
       refreshToken,
       sessionId,
       expiresIn: config.jwt.accessExpiry,
@@ -521,6 +585,33 @@ router.post('/refresh', refreshRateLimit, (req: Request, res: Response) => {
     `).get(tokenHash, decoded.userId) as any;
 
     if (!session) {
+      // ── Refresh token reuse detection ─────────────────
+      // If the token hash is not found but matches a PREVIOUS hash for this user,
+      // it means an already-rotated token was replayed. This is a strong indicator
+      // of token theft — invalidate ALL sessions for this user as a precaution.
+      const staleSession = db.prepare(`
+        SELECT session_id FROM sessions
+        WHERE user_id = ? AND previous_token_hash = ? AND is_active = 1
+      `).get(decoded.userId, tokenHash) as any;
+
+      if (staleSession) {
+        console.warn(`[Security] Refresh token reuse detected for user ${decoded.userId} — revoking all sessions (possible token theft)`);
+        db.prepare('UPDATE sessions SET is_active = 0 WHERE user_id = ?').run(decoded.userId);
+        auditLog(req, 'session_anomaly', 'user', decoded.userId,
+          `Refresh token reuse detected — all sessions revoked (token theft indicator)`);
+        try {
+          createNotificationForRoles(
+            ['admin'],
+            'security',
+            `Token Theft Alert: User #${decoded.userId}`,
+            `Refresh token reuse detected for user #${decoded.userId}. All sessions have been automatically revoked.`,
+            'user', null, 'high', 'token_reuse'
+          );
+        } catch { /* notification failure should not block response */ }
+        res.status(401).json({ error: 'Session invalidated due to security event', code: 'TOKEN_REUSE_DETECTED' });
+        return;
+      }
+
       res.status(401).json({ error: 'Session not found or expired', code: 'SESSION_INVALID' });
       return;
     }
@@ -549,20 +640,32 @@ router.post('/refresh', refreshRateLimit, (req: Request, res: Response) => {
 
     // Detect device fingerprint mismatch — potential token theft
     const currentUa = req.headers['user-agent'] || '';
-    const currentUaHash = crypto.createHash('sha256').update(currentUa).digest('hex').slice(0, 16);
+    const currentUaHash = crypto.createHash('sha256').update(currentUa).digest('hex').slice(0, 32);
     if (session.ua_hash && currentUaHash !== session.ua_hash) {
       console.warn(`[Security] Session refresh UA mismatch for user ${decoded.userId} session ${session.session_id} — stored=${session.ua_hash} current=${currentUaHash}`);
-      auditLog(req, 'session_anomaly' as any, 'user' as any, decoded.userId,
+      auditLog(req, 'session_anomaly', 'user', decoded.userId,
         `Refresh token used from different user-agent for session ${session.session_id} (possible token theft)`);
     }
 
-    const user = db.prepare('SELECT id, status, role, full_name, username FROM users WHERE id = ?')
+    const user = db.prepare('SELECT id, status, role, full_name, username, password_changed_at FROM users WHERE id = ?')
       .get(decoded.userId) as any;
 
     if (!user || user.status !== 'active') {
       db.prepare('UPDATE sessions SET is_active = 0 WHERE id = ?').run(session.id);
       res.status(403).json({ error: 'Account is no longer active' });
       return;
+    }
+
+    // Reject refresh tokens issued before a password change — forces re-authentication
+    // after password changes, closing the window where old tokens remain usable
+    if (user.password_changed_at && session.created_at) {
+      const pwdChangedMs = new Date(user.password_changed_at).getTime();
+      const sessionCreatedMs = new Date(session.created_at).getTime();
+      if (!isNaN(pwdChangedMs) && !isNaN(sessionCreatedMs) && sessionCreatedMs < pwdChangedMs) {
+        db.prepare('UPDATE sessions SET is_active = 0 WHERE id = ?').run(session.id);
+        res.status(401).json({ error: 'Session invalidated after password change. Please log in again.', code: 'PASSWORD_CHANGED' });
+        return;
+      }
     }
 
     const payload: Omit<JwtPayload, 'type'> = {
@@ -578,10 +681,12 @@ router.post('/refresh', refreshRateLimit, (req: Request, res: Response) => {
     const newTokenHash = crypto.createHash('sha256').update(newRefreshToken).digest('hex');
 
     const now = localNow();
+    // Store previous token hash for reuse detection — if the OLD token is replayed
+    // after rotation, it indicates token theft (see reuse detection above)
     db.prepare(`
-      UPDATE sessions SET refresh_token_hash = ?, last_used_at = ?
+      UPDATE sessions SET refresh_token_hash = ?, previous_token_hash = ?, last_used_at = ?
       WHERE id = ?
-    `).run(newTokenHash, now, session.id);
+    `).run(newTokenHash, tokenHash, now, session.id);
 
     // Audit log token refresh for security monitoring
     try {
@@ -714,10 +819,17 @@ router.get('/sessions', authenticateToken, (req: Request, res: Response) => {
 // ═══════════════════════════════════════════════════════
 router.delete('/sessions/:sessionId', authenticateToken, (req: Request, res: Response) => {
   try {
+    // Validate sessionId is a valid UUID to prevent malformed input
+    const sessionId = String(req.params.sessionId);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId)) {
+      res.status(400).json({ error: 'Invalid session ID format' });
+      return;
+    }
+
     const db = getDb();
     const result = db.prepare(
       'UPDATE sessions SET is_active = 0 WHERE session_id = ? AND user_id = ?'
-    ).run(req.params.sessionId, req.user!.userId);
+    ).run(sessionId, req.user!.userId);
 
     if (result.changes === 0) {
       res.status(404).json({ error: 'Session not found' });
@@ -807,7 +919,7 @@ router.get('/session-timeout', authenticateToken, (_req: Request, res: Response)
 });
 
 // ─── POST /api/auth/change-password ───────────────────
-router.post('/change-password', passwordRateLimit, authenticateToken, (req: Request, res: Response) => {
+router.post('/change-password', passwordRateLimit, authenticateToken, async (req: Request, res: Response) => {
   try {
     const { currentPassword, newPassword } = req.body;
     const ip = req.ip || 'unknown';
@@ -827,9 +939,11 @@ router.post('/change-password', passwordRateLimit, authenticateToken, (req: Requ
 
     const validation = validatePassword(newPassword);
     if (!validation.valid) {
+      // Return error count but not specific failures — prevents attackers from
+      // iteratively probing which requirements are met/unmet
       res.status(400).json({
         error: 'Password does not meet requirements',
-        details: validation.errors,
+        requirementsFailed: validation.errors.length,
         policy: getPasswordPolicyDescription(),
       });
       return;
@@ -854,6 +968,19 @@ router.post('/change-password', passwordRateLimit, authenticateToken, (req: Requ
       res.status(400).json({ error: 'New password must be different from current password' });
       return;
     }
+
+    // Check if password has been exposed in known data breaches (HaveIBeenPwned k-Anonymity)
+    // This is async but we await it since password security is critical for law enforcement
+    try {
+      const breachCount = await checkPasswordBreach(newPassword);
+      if (breachCount > 0) {
+        res.status(400).json({
+          error: `This password has appeared in ${breachCount.toLocaleString()} data breach(es). Please choose a different password.`,
+          code: 'PASSWORD_BREACHED',
+        });
+        return;
+      }
+    } catch { /* API failure — fail open, don't block password change */ }
 
     // Check password history — prevent reuse of recent passwords
     if (config.password.historyCount > 0) {
@@ -908,8 +1035,13 @@ router.post('/change-password', passwordRateLimit, authenticateToken, (req: Requ
       `Your RMPG Flex password was changed.\n\nIP: ${ip}\nDevice: ${parseDeviceName(userAgent)}\nTime: ${localNow()}\n\nAll active sessions have been terminated. If this was not you, contact your administrator immediately.`
     ).catch(() => { /* email failure should never block response */ });
 
-    // Invalidate all sessions
+    // Invalidate all sessions AND trusted devices — password change should
+    // force full re-authentication on every device to prevent stolen tokens
+    // from being used after a password compromise
     db.prepare('UPDATE sessions SET is_active = 0 WHERE user_id = ?').run(user.id);
+    try {
+      db.prepare('DELETE FROM trusted_devices WHERE user_id = ?').run(user.id);
+    } catch { /* trusted_devices table may not exist */ }
 
     res.json({ message: 'Password changed successfully. Please log in again.' });
   } catch (error: any) {
@@ -922,7 +1054,7 @@ router.post('/change-password', passwordRateLimit, authenticateToken, (req: Requ
 // ═══════════════════════════════════════════════════════
 // PUT /api/auth/profile
 // ═══════════════════════════════════════════════════════
-router.put('/profile', authenticateToken, (req: Request, res: Response) => {
+router.put('/profile', profileRateLimit, authenticateToken, (req: Request, res: Response) => {
   try {
     const { email, phone, first_name, last_name } = req.body;
     const db = getDb();
@@ -1223,7 +1355,7 @@ router.post('/verify-2fa', mfaRateLimit, (req: Request, res: Response) => {
           res.status(401).json({ error: '2FA secret could not be decrypted. Please re-enroll 2FA.' });
           return;
         }
-        codeValid = verifyTotpCode(secret, code);
+        codeValid = verifyTotpCode(secret, code, decoded.userId);
 
         // If TOTP fails, try legacy backup codes
         if (!codeValid && legacySecrets.totp_backup_codes) {
@@ -1507,8 +1639,9 @@ router.post('/totp/verify-setup', authenticateToken, mfaRateLimit, (req: Request
     }
 
     // Decrypt pending secret and verify code (legacy — combined string format)
+    // Pass userId=0 during setup so replay protection doesn't block initial verification
     const secret = legacyDecryptSecret(user.totp_pending_secret);
-    if (!verifyTotpCode(secret, code)) {
+    if (!verifyTotpCode(secret, code, 0)) {
       res.status(401).json({ error: 'Invalid code. Ensure your authenticator app is synced and try again.' });
       return;
     }
@@ -1935,12 +2068,16 @@ router.post('/login/verify-2fa', authenticateTempToken, mfaRateLimit, (req: Requ
 
     const isValid = verifyTotpToken(secretBase32, code);
     if (!isValid) {
+      auditLog(req, 'login_failed', 'user', userId,
+        `Failed 2FA verification (invalid TOTP code) from IP ${ip}`);
       res.status(401).json({ error: 'Invalid verification code' });
       return;
     }
 
     // Atomic replay protection — check AND mark in one step to prevent race conditions
     if (checkAndMarkTotpCode(userId, code)) {
+      auditLog(req, 'login_failed', 'user', userId,
+        `Failed 2FA verification (replayed TOTP code) from IP ${ip}`);
       res.status(401).json({ error: 'This code has already been used. Please wait for the next code.' });
       return;
     }
@@ -2208,9 +2345,11 @@ router.post('/login/change-password', passwordRateLimit, authenticateTempToken, 
     // Validate password policy
     const validation = validatePassword(newPassword);
     if (!validation.valid) {
+      // Return error count but not specific failures — prevents attackers from
+      // iteratively probing which requirements are met/unmet
       res.status(400).json({
         error: 'Password does not meet requirements',
-        details: validation.errors,
+        requirementsFailed: validation.errors.length,
         policy: getPasswordPolicyDescription(),
       });
       return;

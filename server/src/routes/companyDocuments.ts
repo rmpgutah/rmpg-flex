@@ -206,11 +206,15 @@ router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Re
         // Remove the actual file from disk to prevent orphaned files
         if (att.file_path) {
           const uploadsDir = path.resolve(process.cwd(), 'uploads');
-          const filePath = path.resolve(uploadsDir, att.file_path);
-          if (!filePath.startsWith(uploadsDir)) {
-            // Path traversal guard
+          const filePath = path.resolve(uploadsDir, path.basename(att.file_path));
+          // Resolve symlinks before checking containment — prevents symlink-based traversal
+          let realPath: string;
+          try { realPath = fs.realpathSync(filePath); } catch { realPath = filePath; }
+          const realUploadsDir = fs.existsSync(uploadsDir) ? fs.realpathSync(uploadsDir) : uploadsDir;
+          if (!realPath.startsWith(realUploadsDir + path.sep) && realPath !== realUploadsDir) {
+            console.warn(`[SECURITY] Path traversal blocked in companyDocuments delete: ${att.file_path}`);
           } else {
-            try { fs.unlinkSync(filePath); } catch { /* file may already be deleted */ }
+            try { fs.unlinkSync(realPath); } catch { /* file may already be deleted */ }
           }
         }
         db.prepare('DELETE FROM attachments WHERE file_id = ?').run(doc.file_id);

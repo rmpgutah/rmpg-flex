@@ -6,8 +6,10 @@
 // the sanitization middleware.
 // ============================================================
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const PHONE_RE = /^[\d\s()+\-.*#]{3,25}$/;
+// Stricter email regex — requires valid local part, domain with at least one dot,
+// and a TLD of 2-63 chars. Rejects bare domains, IP addresses, and common malformed patterns.
+const EMAIL_RE = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\.[a-zA-Z]{2,63}$/;
+const PHONE_RE = /^[\d\s()+\-]{3,25}$/;  // Removed * and # — not valid in phone numbers stored as contact info
 const BADGE_RE = /^[A-Za-z0-9\-]{1,20}$/;
 
 /**

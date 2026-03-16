@@ -4,6 +4,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { sendCsv } from '../utils/csvExport';
 import { localNow } from '../utils/timeUtils';
 import { escapeLike } from '../middleware/sanitize';
+import { exportRateLimit } from '../middleware/rateLimiter';
 
 const router = Router();
 
@@ -170,7 +171,7 @@ router.get('/stats', (req: Request, res: Response) => {
 });
 
 // GET /api/audit/export - Export audit log as CSV
-router.get('/export', (req: Request, res: Response) => {
+router.get('/export', exportRateLimit, (req: Request, res: Response) => {
   try {
     const {
       action,

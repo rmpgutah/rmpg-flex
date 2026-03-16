@@ -125,8 +125,7 @@ function invoiceStatusColor(s: string): string {
 export default function CrmPage() {
   const { addToast } = useToast();
   const [activeSection, setActiveSection] = useState<CrmSection>(() => {
-    const saved = localStorage.getItem('crm_active_section');
-    return (saved as CrmSection) || 'dashboard';
+    try { const saved = localStorage.getItem('crm_active_section'); return (saved as CrmSection) || 'dashboard'; } catch { return 'dashboard'; }
   });
   const [isLoading, setIsLoading] = useState(true);
 

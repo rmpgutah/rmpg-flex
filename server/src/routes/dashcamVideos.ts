@@ -16,7 +16,7 @@ import { localNow } from '../utils/timeUtils';
 import { escapeLike } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
 import { broadcast } from '../utils/websocket';
-import { validateParamId } from '../middleware/sanitize';
+import { validateParamId, validateNumericParams } from '../middleware/sanitize';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -127,7 +127,7 @@ router.get('/', authenticateToken, (req: Request, res: Response) => {
 // ============================================================
 // GET /api/fleet/dashcam-videos/:id — Single video detail
 // ============================================================
-router.get('/:id', validateParamId, authenticateToken, (req: Request, res: Response) => {
+router.get('/:id', validateParamId, authenticateToken, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const video = db.prepare(`
@@ -187,7 +187,7 @@ router.post('/', authenticateToken, requireRole('admin', 'manager', 'supervisor'
       if (fv) resolvedVehicleId = fv.id;
     }
 
-    const user = (req as any).user;
+    const user = req.user!;
 
     const result = db.prepare(`
       INSERT INTO dashcam_videos
@@ -331,7 +331,7 @@ router.get('/:id/stream', validateParamId, (req: Request, res: Response, next) =
     req.headers['authorization'] = `Bearer ${req.query.token}`;
   }
   next();
-}, authenticateToken, (req: Request, res: Response) => {
+}, authenticateToken, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const video = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
@@ -397,7 +397,7 @@ router.get('/:id/stream', validateParamId, (req: Request, res: Response, next) =
 // ============================================================
 // GET /api/fleet/dashcam-videos/:id/links — List linked entities
 // ============================================================
-router.get('/:id/links', validateParamId, authenticateToken, (req: Request, res: Response) => {
+router.get('/:id/links', validateParamId, authenticateToken, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const videoId = parseInt(String(req.params.id), 10);
@@ -423,7 +423,7 @@ router.post('/:id/links', validateParamId, authenticateToken, requireRole('admin
     const videoId = parseInt(String(req.params.id), 10);
     if (isNaN(videoId)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
     const { entity_type, entity_id, notes } = req.body;
-    const user = (req as any).user;
+    const user = req.user!;
 
     if (!entity_type || !entity_id) {
       res.status(400).json({ error: 'entity_type and entity_id are required' });
@@ -471,7 +471,7 @@ router.post('/:id/links', validateParamId, authenticateToken, requireRole('admin
 // ============================================================
 // DELETE /api/fleet/dashcam-videos/:id/links/:linkId — Remove link
 // ============================================================
-router.delete('/:id/links/:linkId', validateParamId, authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.delete('/:id/links/:linkId', validateNumericParams('id', 'linkId'), authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const linkId = parseInt(String(req.params.linkId), 10);
@@ -505,6 +505,20 @@ router.post('/webhook/clearpathgps', webhookUpload.single('video'), (req: Reques
   try {
     const db = getDb();
 
+    // ── IP Allowlist for webhook callers ──────────────────
+    // If CLEARPATHGPS_WEBHOOK_IPS is set, only accept requests from those IPs.
+    // Format: comma-separated CIDR or IP addresses (e.g., "1.2.3.4,5.6.7.0/24")
+    const allowedIps = process.env.CLEARPATHGPS_WEBHOOK_IPS;
+    if (allowedIps) {
+      const clientIp = req.ip || '';
+      const allowed = allowedIps.split(',').map(s => s.trim()).filter(Boolean);
+      if (!allowed.some(ip => clientIp === ip || clientIp.startsWith(ip.replace(/\/\d+$/, '')))) {
+        console.warn(`[DASHCAM] Webhook rejected: IP ${clientIp} not in allowlist`);
+        res.status(403).json({ error: 'Forbidden' });
+        return;
+      }
+    }
+
     // Validate webhook secret (required — reject if not configured)
     const webhookSecret = process.env.CLEARPATHGPS_WEBHOOK_SECRET;
     if (!webhookSecret) {
@@ -515,6 +529,7 @@ router.post('/webhook/clearpathgps', webhookUpload.single('video'), (req: Reques
     const providedSecret = String(req.headers['x-webhook-secret'] || req.body?.webhook_secret || '');
     if (!providedSecret || providedSecret.length !== webhookSecret.length ||
         !crypto.timingSafeEqual(Buffer.from(providedSecret), Buffer.from(webhookSecret))) {
+      console.warn(`[DASHCAM] Webhook rejected: invalid secret from IP ${req.ip}`);
       res.status(401).json({ error: 'Unauthorized' });
       return;
     }

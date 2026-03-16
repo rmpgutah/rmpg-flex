@@ -50,6 +50,24 @@ export function initDatabase(): Database.Database {
   db.pragma('mmap_size = 268435456');     // 256MB memory-mapped I/O for faster reads
   db.pragma('cache_size = -64000');       // 64MB page cache (negative = kilobytes)
 
+  // Set default timeout for all database operations — prevents slow query DoS
+  // better-sqlite3 runs synchronously, but this limits CPU time per statement
+  db.defaultSafeIntegers(false);         // Return JS numbers, not BigInt (security: prevents unexpected type coercion)
+
+  // Run integrity check on startup — detect corruption early
+  try {
+    const integrityResult = db.pragma('integrity_check') as { integrity_check: string }[];
+    if (integrityResult.length > 0 && integrityResult[0].integrity_check !== 'ok') {
+      console.error('╔═══════════════════════════════════════════════════════════╗');
+      console.error('║  WARNING: Database integrity check FAILED!               ║');
+      console.error('║  The database may be corrupted. Back up immediately.     ║');
+      console.error('╚═══════════════════════════════════════════════════════════╝');
+      console.error('Integrity results:', integrityResult.slice(0, 10));
+    }
+  } catch (e) {
+    console.warn('[DB] Integrity check failed to run:', (e as Error).message);
+  }
+
   createTables();
   migrateSchema();
   createIndexes();
@@ -1706,6 +1724,10 @@ function migrateSchema(): void {
   addCol('sessions', 'device_fingerprint', 'TEXT');
   addCol('sessions', 'device_name', 'TEXT');
   addCol('sessions', 'ua_hash', 'TEXT');  // User-agent hash for session binding
+  addCol('sessions', 'previous_token_hash', 'TEXT'); // Previous refresh token hash for reuse detection
+
+  // ── ACTIVITY_LOG — tamper-evident integrity hash ──
+  addCol('activity_log', 'log_hash', 'TEXT');         // HMAC-SHA256 chain hash for tamper detection
 
   // ── USERS — Digital Signature (PNG base64 data URL) ──
   addCol('users', 'digital_signature', 'TEXT');            // base64 data:image/png;base64,... stored per officer

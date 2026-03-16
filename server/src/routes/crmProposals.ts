@@ -10,7 +10,7 @@ import { Router, Request, Response } from 'express';
 import { authenticateToken as authenticate, requireRole } from '../middleware/auth';
 import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
-import { validateParamId } from '../middleware/sanitize';
+import { validateParamId, escapeLike } from '../middleware/sanitize';
 import { localNow, localToday } from '../utils/timeUtils';
 
 const router = Router();
@@ -22,8 +22,8 @@ function generateProposalNumber(db: ReturnType<typeof getDb>): string {
   const prefix = `PROP-${year}-`;
 
   const row = db.prepare(
-    "SELECT proposal_number FROM crm_proposals WHERE proposal_number LIKE ? ORDER BY proposal_number DESC LIMIT 1"
-  ).get(`${prefix}%`) as { proposal_number: string } | undefined;
+    "SELECT proposal_number FROM crm_proposals WHERE proposal_number LIKE ? ESCAPE '\\' ORDER BY proposal_number DESC LIMIT 1"
+  ).get(`${escapeLike(prefix)}%`) as { proposal_number: string } | undefined;
 
   let nextNum = 1;
   if (row) {
@@ -210,7 +210,7 @@ router.post('/proposals', requireRole('admin', 'manager', 'contract_manager'), (
         db.prepare('UPDATE crm_leads SET proposal_id = ?, updated_at = ? WHERE id = ?').run(proposalId, now, lead_id);
       }
 
-      auditLog(req, 'CREATE', 'crm_proposals' as any, proposalId, `Created proposal ${proposalNumber}: ${title.trim()}`);
+      auditLog(req, 'CREATE', 'crm_proposals', proposalId, `Created proposal ${proposalNumber}: ${title.trim()}`);
 
       const proposal = db.prepare(`
         SELECT p.*, l.business_name as lead_name, c.name as client_name
@@ -272,7 +272,7 @@ router.put('/proposals/:id', validateParamId, requireRole('admin', 'manager', 'c
     params.push(id);
 
     db.prepare(`UPDATE crm_proposals SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-    auditLog(req, 'UPDATE', 'crm_proposals' as any, String(id), `Updated proposal ${existing.proposal_number}`);
+    auditLog(req, 'UPDATE', 'crm_proposals', String(id), `Updated proposal ${existing.proposal_number}`);
 
     const proposal = db.prepare(`
       SELECT p.*, l.business_name as lead_name, c.name as client_name
@@ -305,7 +305,7 @@ router.delete('/proposals/:id', validateParamId, requireRole('admin', 'manager')
     db.prepare('UPDATE crm_leads SET proposal_id = NULL WHERE proposal_id = ?').run(id);
 
     db.prepare('DELETE FROM crm_proposals WHERE id = ?').run(id);
-    auditLog(req, 'DELETE', 'crm_proposals' as any, String(id), `Deleted proposal ${existing.proposal_number}`);
+    auditLog(req, 'DELETE', 'crm_proposals', String(id), `Deleted proposal ${existing.proposal_number}`);
     res.json({ success: true });
   } catch (err: any) {
     console.error('CRM proposals error:', err?.message || err);
@@ -367,7 +367,7 @@ router.put('/proposals/:id/stage', validateParamId, requireRole('admin', 'manage
     params.push(id);
     db.prepare(`UPDATE crm_proposals SET ${updates.join(', ')} WHERE id = ?`).run(...params);
 
-    auditLog(req, 'UPDATE', 'crm_proposals' as any, String(id),
+    auditLog(req, 'UPDATE', 'crm_proposals', String(id),
       `Proposal ${existing.proposal_number} stage: ${existing.stage} → ${stage}`);
 
     // If accepted and linked to a lead, update lead stage
@@ -431,7 +431,7 @@ router.post('/proposal-templates', requireRole('admin'), (req: Request, res: Res
     );
 
     const templateId = Number(result.lastInsertRowid);
-    auditLog(req, 'CREATE', 'crm_proposals' as any, templateId, `Created proposal template: ${name.trim()}`);
+    auditLog(req, 'CREATE', 'crm_proposals', templateId, `Created proposal template: ${name.trim()}`);
 
     const template = db.prepare('SELECT * FROM crm_proposal_templates WHERE id = ?').get(templateId);
     res.json(template);
@@ -478,7 +478,7 @@ router.put('/proposal-templates/:id', validateParamId, requireRole('admin'), (re
     params.push(id);
 
     db.prepare(`UPDATE crm_proposal_templates SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-    auditLog(req, 'UPDATE', 'crm_proposals' as any, String(id), `Updated proposal template: ${existing.name}`);
+    auditLog(req, 'UPDATE', 'crm_proposals', String(id), `Updated proposal template: ${existing.name}`);
 
     const template = db.prepare('SELECT * FROM crm_proposal_templates WHERE id = ?').get(id);
     res.json(template);
@@ -502,7 +502,7 @@ router.delete('/proposal-templates/:id', validateParamId, requireRole('admin'), 
     // Soft delete
     const now = localNow();
     db.prepare('UPDATE crm_proposal_templates SET is_active = 0, updated_at = ? WHERE id = ?').run(now, id);
-    auditLog(req, 'DELETE', 'crm_proposals' as any, String(id), `Soft-deleted proposal template: ${existing.name}`);
+    auditLog(req, 'DELETE', 'crm_proposals', String(id), `Soft-deleted proposal template: ${existing.name}`);
     res.json({ success: true });
   } catch (err: any) {
     console.error('CRM proposals error:', err?.message || err);

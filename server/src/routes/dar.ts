@@ -33,8 +33,8 @@ function nextDarNumber(): string {
   const prefix = `DAR-${yr}-`;
   return db.transaction(() => {
     const last = db.prepare(
-      "SELECT dar_number FROM daily_activity_reports WHERE dar_number LIKE ? ORDER BY id DESC LIMIT 1"
-    ).get(`${prefix}%`) as { dar_number: string } | undefined;
+      "SELECT dar_number FROM daily_activity_reports WHERE dar_number LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT 1"
+    ).get(`${escapeLike(prefix)}%`) as { dar_number: string } | undefined;
     const parsed = last ? parseInt(last.dar_number.replace(prefix, ''), 10) : 0;
     const seq = (isNaN(parsed) ? 0 : parsed) + 1;
     return `${prefix}${String(seq).padStart(4, '0')}`;
@@ -163,9 +163,9 @@ router.post('/auto-populate', requireRole('admin', 'manager', 'supervisor', 'off
     }
 
     if (timeEntry?.clock_in) {
-      const clockIn = new Date(timeEntry.clock_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      const clockIn = new Date(timeEntry.clock_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Denver' });
       const clockOut = timeEntry.clock_out
-        ? new Date(timeEntry.clock_out).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+        ? new Date(timeEntry.clock_out).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Denver' })
         : 'ongoing';
       narrativeParts.push(`On duty ${clockIn} - ${clockOut}.`);
     }

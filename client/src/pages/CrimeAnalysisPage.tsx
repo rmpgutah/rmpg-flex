@@ -20,6 +20,7 @@ export default function CrimeAnalysisPage() {
   const isMobile = useIsMobile();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState('90');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -29,6 +30,7 @@ export default function CrimeAnalysisPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       let url = '/reports/crime-analysis';
       if (dateRange === 'custom' && startDate && endDate) {
@@ -38,7 +40,9 @@ export default function CrimeAnalysisPage() {
       }
       const res = await apiFetch<{ data: any }>(url);
       if (mountedRef.current) setData(res.data);
-    } catch { /* silent */ }
+    } catch {
+      if (mountedRef.current) setError('Failed to load crime analysis data');
+    }
     finally { if (mountedRef.current) setLoading(false); }
   }, [dateRange, startDate, endDate]);
 
@@ -50,6 +54,18 @@ export default function CrimeAnalysisPage() {
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin text-rmpg-500 mx-auto mb-2" />
           <div className="text-xs text-rmpg-500">Loading crime analysis...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center">
+          <AlertTriangle className="w-6 h-6 text-red-500 mx-auto mb-2" />
+          <div className="text-xs text-red-400">{error}</div>
+          <button onClick={fetchData} className="mt-2 text-xs text-brand-400 hover:text-brand-300">Retry</button>
         </div>
       </div>
     );

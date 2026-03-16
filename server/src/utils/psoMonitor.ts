@@ -30,7 +30,7 @@ function checkPsoCalls(): void {
     // A re-dispatched call gets set back to 'pending', so these are only
     // calls still sitting in a terminal status.
     const psoCalls = db.prepare(`
-      SELECT id, call_number, pso_attempt_number, status, location,
+      SELECT id, call_number, pso_attempt_number, status, location_address,
              cleared_at, closed_at, pso_72hr_notified, pso_requestor_name
       FROM calls_for_service
       WHERE incident_type = 'pso_client_request'
@@ -60,7 +60,7 @@ function checkPsoCalls(): void {
             ['admin', 'manager', 'supervisor', 'dispatcher'],
             'dispatch',
             `PSO OVERDUE: ${call.call_number} — 72hr deadline passed`,
-            `PSO call ${call.call_number} (Visit #${attempt}) at ${call.location || 'unknown location'} has been ${call.status} for over 72 hours without re-dispatch. ${call.pso_requestor_name ? `Requestor: ${call.pso_requestor_name}` : ''}`,
+            `PSO call ${call.call_number} (Visit #${attempt}) at ${call.location_address || 'unknown location'} has been ${call.status} for over 72 hours without re-dispatch. ${call.pso_requestor_name ? `Requestor: ${call.pso_requestor_name}` : ''}`,
             'call',
             call.id,
             'critical',
@@ -85,7 +85,7 @@ function checkPsoCalls(): void {
           ['admin', 'manager', 'supervisor', 'dispatcher'],
           'dispatch',
           `PSO Warning: ${call.call_number} — 24hrs until deadline`,
-          `PSO call ${call.call_number} (Visit #${attempt}) at ${call.location || 'unknown location'} has been ${call.status} for 48+ hours. Re-dispatch within 24 hours to meet the 72-hour requirement. ${call.pso_requestor_name ? `Requestor: ${call.pso_requestor_name}` : ''}`,
+          `PSO call ${call.call_number} (Visit #${attempt}) at ${call.location_address || 'unknown location'} has been ${call.status} for 48+ hours. Re-dispatch within 24 hours to meet the 72-hour requirement. ${call.pso_requestor_name ? `Requestor: ${call.pso_requestor_name}` : ''}`,
           'call',
           call.id,
           'high',

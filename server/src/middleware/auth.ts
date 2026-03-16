@@ -3,6 +3,7 @@ import jwt, { type SignOptions, type VerifyOptions } from 'jsonwebtoken';
 import crypto from 'crypto';
 import config from '../config';
 import { getDb } from '../models/database';
+import { localNow } from '../utils/timeUtils';
 
 // JWT issuer/audience claims — bind tokens to this application to prevent
 // cross-application token reuse if the same JWT_SECRET were ever shared
@@ -50,9 +51,16 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
     try {
       decoded = jwt.verify(token, config.jwt.secret, JWT_VERIFY_OPTIONS) as JwtPayload;
     } catch (strictErr: any) {
-      // Legacy token backward compat — log for deprecation tracking (enforce after 2026-04-15)
+      // Legacy token backward compat — enforce strict validation after 2026-04-15
       if (strictErr.message?.includes('jwt issuer invalid') || strictErr.message?.includes('jwt audience invalid')) {
-        console.warn('[AUTH] Legacy token without iss/aud accepted — enforce strict validation after 2026-04-15');
+        const deadline = new Date('2026-04-15T00:00:00Z');
+        const daysLeft = Math.ceil((deadline.getTime() - Date.now()) / (86400 * 1000));
+        if (daysLeft <= 0) {
+          // Deadline passed — reject legacy tokens
+          res.status(401).json({ error: 'Token format no longer accepted. Please log in again.', code: 'TOKEN_LEGACY_REJECTED' });
+          return;
+        }
+        console.warn(`[AUTH] Legacy token without iss/aud accepted — ${daysLeft} days until enforcement (2026-04-15)`);
         decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
       } else {
         throw strictErr;
@@ -70,8 +78,8 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
       try {
         const db = getDb();
         const session = db.prepare(
-          'SELECT ip_address, ua_hash FROM sessions WHERE session_id = ? AND is_active = 1'
-        ).get(decoded.sessionId) as { ip_address: string; ua_hash?: string } | undefined;
+          'SELECT ip_address, ua_hash, last_used_at FROM sessions WHERE session_id = ? AND is_active = 1'
+        ).get(decoded.sessionId) as { ip_address: string; ua_hash?: string; last_used_at?: string } | undefined;
 
         // Reject if session was revoked, expired, or deleted
         if (!session) {
@@ -80,9 +88,11 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
         }
 
         // User-agent binding — detect token theft across different browsers
-        if (session?.ua_hash) {
+        // Use 32 hex chars (16 bytes / 128 bits) — sufficient to prevent collisions
+        // while keeping DB storage reasonable. 16 chars (64 bits) had birthday-problem risk.
+        if (session.ua_hash) {
           const currentUaHash = crypto.createHash('sha256')
-            .update(req.headers['user-agent'] || '').digest('hex').slice(0, 16);
+            .update(req.headers['user-agent'] || '').digest('hex').slice(0, 32);
           if (currentUaHash !== session.ua_hash) {
             db.prepare('UPDATE sessions SET is_active = 0 WHERE session_id = ?')
               .run(decoded.sessionId);
@@ -91,7 +101,7 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
           }
         }
 
-        if (session && session.ip_address !== req.ip) {
+        if (session.ip_address !== req.ip) {
           const action = config.session.ipChangeAction;
           if (action === 'invalidate') {
             db.prepare('UPDATE sessions SET is_active = 0 WHERE session_id = ?')
@@ -105,11 +115,21 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
           // 'warn' mode: log but allow through
         }
 
-        // Update session last_used_at for idle timeout detection
-        if (session) {
-          db.prepare('UPDATE sessions SET last_used_at = ? WHERE session_id = ?')
-            .run(new Date().toISOString(), decoded.sessionId);
+        // Enforce idle session timeout — invalidate sessions not used within the configured window
+        if (config.session.idleTimeoutMinutes > 0 && session.last_used_at) {
+          const lastUsedTime = new Date(session.last_used_at).getTime();
+          const idleMs = config.session.idleTimeoutMinutes * 60 * 1000;
+          if (!isNaN(lastUsedTime) && Date.now() - lastUsedTime > idleMs) {
+            db.prepare('UPDATE sessions SET is_active = 0 WHERE session_id = ?')
+              .run(decoded.sessionId);
+            res.status(401).json({ error: 'Session expired due to inactivity', code: 'SESSION_IDLE_TIMEOUT' });
+            return;
+          }
         }
+
+        // Update session last_used_at for idle timeout detection
+        db.prepare('UPDATE sessions SET last_used_at = ? WHERE session_id = ?')
+          .run(localNow(), decoded.sessionId);
       } catch {
         // DB unavailable — deny request rather than silently bypassing IP binding
         res.status(503).json({ error: 'Service temporarily unavailable' });
@@ -155,6 +175,7 @@ export function generateAccessToken(payload: Omit<JwtPayload, 'type'>): string {
     expiresIn: config.jwt.accessExpiry as SignOptions['expiresIn'],
     issuer: JWT_ISSUER,
     audience: JWT_AUDIENCE,
+    jwtid: crypto.randomUUID(), // Unique token ID — prevents token replay and aids forensics
   };
   return jwt.sign(
     { ...payload, type: 'access' },
@@ -168,6 +189,7 @@ export function generateRefreshToken(payload: Omit<JwtPayload, 'type'>): string 
     expiresIn: config.jwt.refreshExpiry as SignOptions['expiresIn'],
     issuer: JWT_ISSUER,
     audience: JWT_AUDIENCE,
+    jwtid: crypto.randomUUID(), // Unique token ID — correlates with session for revocation
   };
   return jwt.sign(
     { ...payload, type: 'refresh' },
@@ -182,6 +204,10 @@ export function verifyRefreshToken(token: string): JwtPayload {
     decoded = jwt.verify(token, config.jwt.secret, JWT_VERIFY_OPTIONS) as JwtPayload;
   } catch (err: any) {
     if (err.message?.includes('jwt issuer invalid') || err.message?.includes('jwt audience invalid')) {
+      const deadline = new Date('2026-04-15T00:00:00Z');
+      if (Date.now() >= deadline.getTime()) {
+        throw new Error('Legacy token format no longer accepted');
+      }
       decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
     } else {
       throw err;
@@ -218,6 +244,10 @@ export function authenticateTempToken(req: Request, res: Response, next: NextFun
       decoded = jwt.verify(token, config.jwt.secret, JWT_VERIFY_OPTIONS) as JwtPayload;
     } catch (strictErr: any) {
       if (strictErr.message?.includes('jwt issuer invalid') || strictErr.message?.includes('jwt audience invalid')) {
+        if (Date.now() >= new Date('2026-04-15T00:00:00Z').getTime()) {
+          res.status(401).json({ error: 'Token format no longer accepted. Please log in again.', code: 'TOKEN_LEGACY_REJECTED' });
+          return;
+        }
         decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
       } else {
         throw strictErr;
@@ -259,7 +289,11 @@ export function authenticateAnyToken(req: Request, res: Response, next: NextFunc
       decoded = jwt.verify(token, config.jwt.secret, JWT_VERIFY_OPTIONS) as JwtPayload;
     } catch (strictErr: any) {
       if (strictErr.message?.includes('jwt issuer invalid') || strictErr.message?.includes('jwt audience invalid')) {
-        console.warn('[AUTH] Legacy token without iss/aud in authenticateAnyToken — enforce after 2026-04-15');
+        if (Date.now() >= new Date('2026-04-15T00:00:00Z').getTime()) {
+          res.status(401).json({ error: 'Token format no longer accepted. Please log in again.', code: 'TOKEN_LEGACY_REJECTED' });
+          return;
+        }
+        console.warn('[AUTH] Legacy token without iss/aud in authenticateAnyToken — rejected after 2026-04-15');
         decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
       } else {
         throw strictErr;

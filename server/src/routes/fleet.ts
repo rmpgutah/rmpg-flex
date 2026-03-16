@@ -45,11 +45,12 @@ const dashcamStorage = multer.diskStorage({
 
 const dashcamUpload = multer({
   storage: dashcamStorage,
+  limits: { fileSize: 10 * 1024 * 1024 * 1024 }, // 10 GB max per file
   fileFilter: (_req, file, cb) => {
     if (DASHCAM_MIME_TYPES.has(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error(`File type ${file.mimetype} is not allowed. Accepted: MP4, MOV, AVI, WebM`));
+      cb(new Error('File type is not allowed. Accepted: MP4, MOV, AVI, WebM'));
     }
   },
 });
@@ -247,7 +248,7 @@ router.get('/analytics', requireRole('admin', 'manager', 'supervisor'), (req: Re
       month: f.month,
       total_gallons: f.total_gallons || 0,
       total_cost: f.total_cost || 0,
-      avg_mpg: mpgByMonth[f.month]
+      avg_mpg: mpgByMonth[f.month] && mpgByMonth[f.month].total_gallons > 0
         ? Math.round((mpgByMonth[f.month].total_miles / mpgByMonth[f.month].total_gallons) * 10) / 10
         : null,
     }));
@@ -1807,7 +1808,7 @@ router.post('/dashcam-videos', requireRole('admin', 'manager'), (req: Request, r
 });
 
 // ── GET /api/fleet/dashcam-videos/:id/stream — Stream with overlay ──
-router.get('/dashcam-videos/:id/stream', (req: Request, res: Response) => {
+router.get('/dashcam-videos/:id/stream', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const video = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
@@ -1868,7 +1869,7 @@ router.get('/dashcam-videos/:id/stream', (req: Request, res: Response) => {
 });
 
 // ── GET /api/fleet/dashcam-videos/:id/download — Force-download with overlay ──
-router.get('/dashcam-videos/:id/download', (req: Request, res: Response) => {
+router.get('/dashcam-videos/:id/download', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const video = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;

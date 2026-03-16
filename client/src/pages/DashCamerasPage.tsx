@@ -198,7 +198,7 @@ export default function DashCamerasPage() {
       addToast('Video deleted', 'success');
       if (selectedVideo?.id === id) setSelectedVideo(null);
       fetchVideos();
-    } catch { addToast('Failed to delete video', 'error'); }
+    } catch (err: any) { addToast(err?.message || 'Failed to delete video', 'error'); }
   };
 
   const handleEditSave = async (videoId: number, data: DashCamVideoEditData) => {
@@ -546,9 +546,9 @@ export default function DashCamerasPage() {
               {selectedVideo.address && (
                 <div className="text-rmpg-200">{selectedVideo.address}</div>
               )}
-              {selectedVideo.latitude != null && (
+              {selectedVideo.latitude != null && selectedVideo.longitude != null && (
                 <div className="font-mono text-rmpg-400 text-[9px]">
-                  {selectedVideo.latitude.toFixed(5)}, {selectedVideo.longitude?.toFixed(5)}
+                  {selectedVideo.latitude.toFixed(5)}, {selectedVideo.longitude.toFixed(5)}
                 </div>
               )}
             </div>

@@ -29,6 +29,8 @@ interface Attachment {
   access_sig?: string;
   /** Expiry timestamp (unix seconds) for access_sig */
   access_exp?: number;
+  /** Nonce for HMAC signature uniqueness */
+  access_nonce?: string;
 }
 
 interface FileAttachmentsProps {
@@ -47,12 +49,13 @@ const TOKEN_KEY = 'rmpg_token';
  * and lasts 24 hours.  Falls back to the JWT access token for backwards
  * compatibility (but this is what caused TOKEN_EXPIRED errors).
  */
-export function authUrl(path: string, sig?: string, exp?: number): string {
+export function authUrl(path: string, sig?: string, exp?: number, nonce?: string): string {
   const separator = path.includes('?') ? '&' : '?';
 
   // Prefer HMAC signature — session-independent, 24h TTL
   if (sig && exp) {
-    return `${path}${separator}sig=${encodeURIComponent(sig)}&exp=${exp}`;
+    const nonceParam = nonce ? `&nonce=${encodeURIComponent(nonce)}` : '';
+    return `${path}${separator}sig=${encodeURIComponent(sig)}&exp=${exp}${nonceParam}`;
   }
 
   // Fallback to JWT token (short-lived, same session only)
@@ -64,7 +67,7 @@ export function authUrl(path: string, sig?: string, exp?: number): string {
  * Fetch a fresh HMAC signature from the server for a given file.
  * Used when an existing signature has expired (e.g. page open > 24h).
  */
-async function fetchFreshSignature(fileId: string): Promise<{ sig: string; exp: number } | null> {
+async function fetchFreshSignature(fileId: string): Promise<{ sig: string; exp: number; nonce?: string } | null> {
   try {
     const token = localStorage.getItem(TOKEN_KEY);
     if (!token) return null;
@@ -73,7 +76,7 @@ async function fetchFreshSignature(fileId: string): Promise<{ sig: string; exp: 
     });
     if (res.ok) {
       const data = await res.json();
-      return { sig: data.sig, exp: data.exp };
+      return { sig: data.sig, exp: data.exp, nonce: data.nonce };
     }
   } catch { /* silent */ }
   return null;
@@ -188,7 +191,7 @@ export default function FileAttachments({
       setPreviewAttachment(attachment);
     } else {
       // Direct download for non-previewable files
-      window.open(authUrl(`/api/uploads/${attachment.file_id}/download`, attachment.access_sig, attachment.access_exp), '_blank');
+      window.open(authUrl(`/api/uploads/${attachment.file_id}/download`, attachment.access_sig, attachment.access_exp, attachment.access_nonce), '_blank');
     }
   };
 
@@ -271,7 +274,7 @@ export default function FileAttachments({
                   onClick={() => openPreview(att)}
                 >
                   <img
-                    src={authUrl(`/api/uploads/${att.file_id}/thumbnail`, att.access_sig, att.access_exp)}
+                    src={authUrl(`/api/uploads/${att.file_id}/thumbnail`, att.access_sig, att.access_exp, att.access_nonce)}
                     alt={att.original_name}
                     className="w-full h-28 object-cover"
                     loading="lazy"
@@ -350,7 +353,7 @@ export default function FileAttachments({
                         </button>
                       )}
                       <a
-                        href={authUrl(`/api/uploads/${att.file_id}/download`, att.access_sig, att.access_exp)}
+                        href={authUrl(`/api/uploads/${att.file_id}/download`, att.access_sig, att.access_exp, att.access_nonce)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-green-400 transition-colors"
@@ -392,7 +395,7 @@ export default function FileAttachments({
               <span className="text-sm text-rmpg-200 truncate mr-4">{previewAttachment.original_name}</span>
               <div className="flex items-center gap-2">
                 <a
-                  href={authUrl(`/api/uploads/${previewAttachment.file_id}/download`, previewAttachment.access_sig, previewAttachment.access_exp)}
+                  href={authUrl(`/api/uploads/${previewAttachment.file_id}/download`, previewAttachment.access_sig, previewAttachment.access_exp, previewAttachment.access_nonce)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-green-400 transition-colors"
@@ -410,13 +413,13 @@ export default function FileAttachments({
             </div>
             {previewAttachment.mime_type === 'application/pdf' ? (
               <iframe
-                src={authUrl(`/api/uploads/${previewAttachment.file_id}`, previewAttachment.access_sig, previewAttachment.access_exp)}
+                src={authUrl(`/api/uploads/${previewAttachment.file_id}`, previewAttachment.access_sig, previewAttachment.access_exp, previewAttachment.access_nonce)}
                 className="w-[800px] h-[600px] bg-white"
                 title="PDF Preview"
               />
             ) : (
               <img
-                src={authUrl(`/api/uploads/${previewAttachment.file_id}`, previewAttachment.access_sig, previewAttachment.access_exp)}
+                src={authUrl(`/api/uploads/${previewAttachment.file_id}`, previewAttachment.access_sig, previewAttachment.access_exp, previewAttachment.access_nonce)}
                 alt={previewAttachment.original_name}
                 className="max-w-full max-h-[80vh] object-contain border border-rmpg-600"
               />

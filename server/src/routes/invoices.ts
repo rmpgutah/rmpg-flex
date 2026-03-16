@@ -33,8 +33,8 @@ function generateInvoiceNumber(): string {
   const prefix = `INV-${year}-`;
   return db.transaction(() => {
     const last = db.prepare(
-      "SELECT invoice_number FROM invoices WHERE invoice_number LIKE ? ORDER BY id DESC LIMIT 1"
-    ).get(`${prefix}%`) as any;
+      "SELECT invoice_number FROM invoices WHERE invoice_number LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT 1"
+    ).get(`${escapeLike(prefix)}%`) as any;
     let seq = 1;
     if (last) {
       const parts = last.invoice_number.split('-');
@@ -61,7 +61,7 @@ function addDays(dateStr: string, days: number): string {
 }
 
 // ─── Helper: Recalculate invoice totals ───────────────────
-function recalculateInvoiceTotals(invoiceId: number | string | string[]): void {
+function recalculateInvoiceTotals(invoiceId: number | string): void {
   const db = getDb();
   const now = localNow();
 
@@ -281,7 +281,7 @@ router.get('/:id', validateParamId, requireRole('admin', 'manager', 'contract_ma
 router.post('/', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const now = localNow();
     const { client_id, period_start, period_end, issue_date, notes, internal_notes } = req.body;
 
@@ -556,7 +556,7 @@ router.post('/:id/generate', validateParamId, requireRole('admin', 'manager', 'c
 router.put('/:id', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const now = localNow();
 
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;
@@ -591,7 +591,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'contract_ma
 
     // Recalculate if amounts changed
     if (req.body.tax_amount !== undefined || req.body.late_fee_amount !== undefined) {
-      recalculateInvoiceTotals(req.params.id);
+      recalculateInvoiceTotals(String(req.params.id));
     }
 
     db.prepare(
@@ -614,7 +614,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'contract_ma
 router.put('/:id/status', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const now = localNow();
     const { status } = req.body;
 
@@ -656,7 +656,7 @@ router.put('/:id/status', validateParamId, requireRole('admin', 'manager'), (req
     db.prepare(`UPDATE invoices SET ${updates.join(', ')} WHERE id = ?`).run(...values);
 
     // Recalculate client aggregates
-    recalculateInvoiceTotals(req.params.id);
+    recalculateInvoiceTotals(String(req.params.id));
 
     db.prepare(
       'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
@@ -698,7 +698,7 @@ router.post('/:id/line-items', validateParamId, requireRole('admin', 'manager', 
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(req.params.id, line_type, description, qty, price, amount, linked_entity_type || null, linked_entity_id || null, maxSort.m + 1, now);
 
-    recalculateInvoiceTotals(req.params.id);
+    recalculateInvoiceTotals(String(req.params.id));
 
     const item = db.prepare('SELECT * FROM invoice_line_items WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json({ data: item || { id: result.lastInsertRowid } });
@@ -738,7 +738,7 @@ router.put('/:id/line-items/:itemId', validateParamId, requireRole('admin', 'man
       req.params.itemId
     );
 
-    recalculateInvoiceTotals(req.params.id);
+    recalculateInvoiceTotals(String(req.params.id));
 
     const updated = db.prepare('SELECT * FROM invoice_line_items WHERE id = ?').get(req.params.itemId);
     res.json({ data: updated });
@@ -758,7 +758,13 @@ router.delete('/:id/line-items/:itemId', validateParamId, requireRole('admin', '
     if (!item) return res.status(404).json({ error: 'Line item not found' });
 
     db.prepare('DELETE FROM invoice_line_items WHERE id = ?').run(req.params.itemId);
-    recalculateInvoiceTotals(req.params.id);
+    recalculateInvoiceTotals(String(req.params.id));
+
+    db.prepare(
+      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).run(req.user!.userId, 'line_item_deleted', 'invoice', req.params.id,
+      `Deleted line item #${req.params.itemId} from invoice #${req.params.id}`, req.ip || 'unknown', localNow());
+
     res.json({ success: true });
   } catch (error: any) {
     console.error('Delete line item error:', error?.message || 'Unknown error');
@@ -771,7 +777,7 @@ router.delete('/:id/line-items/:itemId', validateParamId, requireRole('admin', '
 router.post('/:id/payments', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const now = localNow();
 
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;
@@ -788,7 +794,7 @@ router.post('/:id/payments', validateParamId, requireRole('admin', 'manager'), (
     `).run(req.params.id, amount, payment_date, payment_method || null, reference_number || null, notes || null, user.userId, now);
 
     // Recalculate totals
-    recalculateInvoiceTotals(req.params.id);
+    recalculateInvoiceTotals(String(req.params.id));
 
     // Auto-transition status
     const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;
@@ -821,7 +827,7 @@ router.post('/:id/payments', validateParamId, requireRole('admin', 'manager'), (
 router.delete('/:id/payments/:paymentId', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const now = localNow();
 
     const payment = db.prepare(
@@ -829,22 +835,25 @@ router.delete('/:id/payments/:paymentId', validateParamId, requireRole('admin', 
     ).get(req.params.paymentId, req.params.id) as any;
     if (!payment) return res.status(404).json({ error: 'Payment not found' });
 
-    db.prepare('DELETE FROM payments WHERE id = ?').run(req.params.paymentId);
-    recalculateInvoiceTotals(req.params.id);
+    // Atomically delete payment, recalculate totals, and revert status
+    db.transaction(() => {
+      db.prepare('DELETE FROM payments WHERE id = ?').run(req.params.paymentId);
+      recalculateInvoiceTotals(String(req.params.id));
 
-    // May need to revert status from paid/partial back to sent
-    const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;
-    if (updated) {
-      if (updated.amount_paid <= 0 && (updated.status === 'paid' || updated.status === 'partial')) {
-        db.prepare("UPDATE invoices SET status = 'sent', paid_date = NULL, updated_at = ? WHERE id = ?").run(now, req.params.id);
-      } else if (updated.balance_due > 0 && updated.status === 'paid') {
-        db.prepare("UPDATE invoices SET status = 'partial', paid_date = NULL, updated_at = ? WHERE id = ?").run(now, req.params.id);
+      // May need to revert status from paid/partial back to sent
+      const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;
+      if (updated) {
+        if (updated.amount_paid <= 0 && (updated.status === 'paid' || updated.status === 'partial')) {
+          db.prepare("UPDATE invoices SET status = 'sent', paid_date = NULL, updated_at = ? WHERE id = ?").run(now, req.params.id);
+        } else if (updated.balance_due > 0 && updated.status === 'paid') {
+          db.prepare("UPDATE invoices SET status = 'partial', paid_date = NULL, updated_at = ? WHERE id = ?").run(now, req.params.id);
+        }
       }
-    }
 
-    db.prepare(
-      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(user.userId, 'payment_reversed', 'invoice', req.params.id, `Payment of $${payment.amount} reversed on invoice ${updated.invoice_number}`, req.ip || 'unknown', now);
+      db.prepare(
+        'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).run(user.userId, 'payment_reversed', 'invoice', req.params.id, `Payment of $${payment.amount} reversed on invoice ${updated?.invoice_number || req.params.id}`, req.ip || 'unknown', now);
+    })();
 
     res.json({ success: true });
   } catch (error: any) {

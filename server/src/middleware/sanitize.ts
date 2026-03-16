@@ -16,13 +16,45 @@ const MAX_JSON_DEPTH = 10;
 // Maximum length for individual query parameter values
 const MAX_QUERY_PARAM_LENGTH = 1_000;
 
+// Fields where SSN or credit card numbers should be redacted to prevent
+// accidental PII storage in free-text fields (notes, descriptions, narratives).
+// The actual SSN storage field (ssn_full, ssn_last4) is handled separately.
+const PII_REDACT_FIELDS = new Set([
+  'notes', 'description', 'narrative', 'details', 'conditions',
+  'body', 'content', 'text', 'report_content', 'supplemental_narrative',
+]);
+// SSN pattern: 3 digits, separator, 2 digits, separator, 4 digits (with various separators)
+const SSN_RE = /\b(\d{3})[-.\s](\d{2})[-.\s](\d{4})\b/g;
+// Credit card patterns: 13-19 digits with optional separators
+const CC_RE = /\b(\d{4})[-.\s]?(\d{4})[-.\s]?(\d{4})[-.\s]?(\d{1,7})\b/g;
+
 // Sanitize strings to prevent XSS — only strip dangerous tag characters.
 // Do NOT encode quotes or apostrophes: they are normal data characters
 // (e.g. 6'2", O'Brien, "North" entrance) and encoding them corrupts stored data.
+// Dangerous URI schemes that can execute scripts when rendered in href/src attributes.
+// Case-insensitive match with optional whitespace/control chars between letters.
+// Also catches obfuscation like "java\tscript:" or "j\na\rv\0ascript:" by stripping
+// whitespace and control characters before matching.
+const DANGEROUS_URI_RE = /^\s*(javascript|vbscript|data|livescript|mocha)\s*:/i;
+// Extended pattern that catches control-char obfuscation (e.g., "j\navas\tcript:")
+const OBFUSCATED_URI_RE = /^\s*j\s*a\s*v\s*a\s*s\s*c\s*r\s*i\s*p\s*t\s*:/i;
+
 function sanitizeStr(str: string, fieldName?: string): string {
   const maxLen = fieldName && LONG_TEXT_FIELDS.has(fieldName) ? MAX_LONG_TEXT_LENGTH : MAX_STRING_LENGTH;
   const truncated = str.length > maxLen ? str.slice(0, maxLen) : str;
-  return truncated
+  // Strip null bytes that can bypass filters in some parsers
+  let cleaned = truncated.replace(/\0/g, '');
+  // Neutralize dangerous URI schemes (javascript:, vbscript:, data:, livescript:, mocha:)
+  cleaned = cleaned.replace(DANGEROUS_URI_RE, 'blocked:');
+  // Also catch control-char obfuscated javascript: URIs
+  cleaned = cleaned.replace(OBFUSCATED_URI_RE, 'blocked:');
+  // Redact SSN and credit card numbers from free-text fields to prevent
+  // accidental PII storage — officers sometimes paste sensitive data into notes
+  if (fieldName && PII_REDACT_FIELDS.has(fieldName)) {
+    cleaned = cleaned.replace(SSN_RE, '***-**-$3');
+    cleaned = cleaned.replace(CC_RE, '****-****-****-$4');
+  }
+  return cleaned
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 }
@@ -43,10 +75,15 @@ function sanitizeValue(value: unknown, fieldName?: string, depth: number = 0): u
   return value;
 }
 
+// Maximum number of keys per object level — prevents DoS via objects with millions of keys
+const MAX_OBJECT_KEYS = 500;
+
 function sanitizeObject(obj: Record<string, unknown>, depth: number = 0): Record<string, unknown> {
   if (depth > MAX_JSON_DEPTH) return {}; // Refuse to recurse beyond depth limit
   const sanitized: Record<string, unknown> = {};
+  let keyCount = 0;
   for (const [key, value] of Object.entries(obj)) {
+    if (++keyCount > MAX_OBJECT_KEYS) break; // Truncate excessively large objects
     // Reject prototype pollution attempts — __proto__, constructor, prototype are never valid field names
     if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
       continue;
@@ -120,15 +157,31 @@ export function validateParamId(req: Request, res: Response, next: NextFunction)
   next();
 }
 
-/** Express middleware factory that validates one or more named route params are positive integers.
- *  Usage: `router.get('/:personId', validateNumericParams('personId'), handler)` */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Express middleware that validates req.params.id is a positive integer OR a UUID.
+ *  Use on routes where primary keys may be either format (e.g., serve_queue uses UUIDs). */
+export function validateParamIdOrUuid(req: Request, res: Response, next: NextFunction): void {
+  const id = String(req.params.id ?? '');
+  if (id) {
+    const n = parseInt(id, 10);
+    const isInt = !isNaN(n) && n >= 1 && String(n) === id;
+    if (!isInt && !UUID_RE.test(id)) {
+      res.status(400).json({ error: 'Invalid ID parameter' });
+      return;
+    }
+  }
+  next();
+}
+
+/** Validate one or more named route params as positive integers. */
 export function validateNumericParams(...paramNames: string[]) {
   return (req: Request, res: Response, next: NextFunction): void => {
     for (const name of paramNames) {
-      const val = String(req.params[name] ?? '');
-      if (val) {
-        const n = parseInt(val, 10);
-        if (isNaN(n) || n < 1 || String(n) !== val) {
+      const raw = String(req.params[name] ?? '');
+      if (raw) {
+        const n = parseInt(raw, 10);
+        if (isNaN(n) || n < 1 || String(n) !== raw) {
           res.status(400).json({ error: `Invalid ${name} parameter` });
           return;
         }

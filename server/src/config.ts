@@ -124,6 +124,9 @@ export const config = {
     lockoutDurationMinutes: envInt('LOCKOUT_DURATION_MINUTES', 10),
     rateLimitWindowMs: envInt('RATE_LIMIT_WINDOW_MS', 1 * 60 * 1000),
     rateLimitMaxRequests: envInt('RATE_LIMIT_MAX_REQUESTS', 300),
+    // bcrypt cost factor — minimum 12 rounds. Lower values make brute-force
+    // attacks against stolen password hashes significantly easier.
+    bcryptRounds: Math.max(12, envInt('BCRYPT_ROUNDS', 12)),
   },
 
   // Password Policy

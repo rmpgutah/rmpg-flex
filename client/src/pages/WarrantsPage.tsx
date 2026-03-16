@@ -436,6 +436,12 @@ export default function WarrantsPage() {
   const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [scanRunning, setScanRunning] = useState(false);
 
+  // Cleanup scan poll/timeout on unmount to prevent memory leaks
+  useEffect(() => () => {
+    if (scanPollRef.current) clearInterval(scanPollRef.current);
+    if (scanTimeoutRef.current) clearTimeout(scanTimeoutRef.current);
+  }, []);
+
   // ============================================================
   // DASHBOARD FETCHES
   // ============================================================

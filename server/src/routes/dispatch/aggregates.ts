@@ -222,10 +222,11 @@ router.post('/panic', requireRole('admin', 'manager', 'supervisor', 'officer', '
     }
 
     // ── All DB writes in a single transaction for atomicity ──
-    const callNumber = generateCallNumber(db);
     const description = `PANIC ALARM — Officer ${user.full_name} (Badge: ${user.badge_number || 'N/A'}) triggered emergency alert.${message ? ' Message: ' + message : ''}`;
 
     const panicTx = db.transaction(() => {
+      // Generate call number INSIDE transaction to prevent race conditions
+      const callNumber = generateCallNumber(db);
       // Log the panic alert to activity log
       db.prepare(`
         INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
@@ -283,10 +284,10 @@ router.post('/panic', requireRole('admin', 'manager', 'supervisor', 'officer', '
         VALUES (?, 'call_created', 'call', ?, ?, ?)
       `).run(user.id, call.id, `PANIC auto-created ${callNumber}: officer_assist`, req.ip || 'unknown');
 
-      return { call, unit };
+      return { call, unit, callNumber };
     });
 
-    const { call, unit } = panicTx();
+    const { call, unit, callNumber } = panicTx();
 
     // ── Broadcasts happen AFTER transaction commits ──
     if (unit) {
@@ -427,7 +428,7 @@ router.get('/safety-screen', requireRole('admin', 'manager', 'supervisor', 'offi
         SELECT * FROM persons
         WHERE (first_name LIKE ? ESCAPE '\\' AND last_name LIKE ? ESCAPE '\\')
            OR (first_name LIKE ? ESCAPE '\\' AND last_name LIKE ? ESCAPE '\\')
-           OR (first_name || ' ' || last_name LIKE ? ESCAPE '\\')
+           OR ((first_name || ' ' || last_name) LIKE ? ESCAPE '\\')
         LIMIT 10
       `).all(
         `%${escapeLike(parts[0])}%`, `%${escapeLike(parts[1])}%`,
@@ -497,7 +498,7 @@ router.get('/safety-screen', requireRole('admin', 'manager', 'supervisor', 'offi
         p.warrants.length > 0 ||
         p.person.caution_flags ||
         p.person.is_sex_offender ||
-        p.person.has_criminal_history
+        (p.criminalHistory && p.criminalHistory.length > 0)
       ) ||
       uniqueDirectWarrants.length > 0;
 

@@ -7,7 +7,8 @@ import { localNow, localToday } from '../utils/timeUtils';
 import { identifyBeat } from '../utils/geofence';
 import { createNotificationForRoles } from './notifications';
 import { auditLog } from '../utils/auditLogger';
-import { validateParamId, escapeLike } from '../middleware/sanitize';
+import { validateParamId, validateNumericParams, escapeLike } from '../middleware/sanitize';
+import { exportRateLimit } from '../middleware/rateLimiter';
 import { universalWarrantCheck } from '../utils/universalWarrantScanner';
 
 const router = Router();
@@ -144,7 +145,7 @@ router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
 });
 
 // GET /api/incidents/export - Export incidents as CSV
-router.get('/export', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.get('/export', requireRole('admin', 'manager', 'supervisor'), exportRateLimit, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { status, priority, officerId, startDate, endDate } = req.query;
@@ -1030,8 +1031,8 @@ router.post('/:id/evidence', validateParamId, requireRole('admin', 'manager', 's
     // Generate evidence number
     const currentYear = parseInt(localToday().slice(0, 4), 10);
     const lastEvidence = db.prepare(
-      `SELECT evidence_number FROM evidence WHERE evidence_number LIKE ? ORDER BY id DESC LIMIT 1`
-    ).get(`EV-${currentYear}-%`) as any;
+      `SELECT evidence_number FROM evidence WHERE evidence_number LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT 1`
+    ).get(`${escapeLike(`EV-${currentYear}-`)}%`) as any;
 
     let nextNum = 1;
     if (lastEvidence) {
@@ -1121,8 +1122,8 @@ router.post('/:id/supplements', validateParamId, requireRole('admin', 'manager',
     // Generate report number: SUP-YYYY-NNNNN
     const currentYearSup = parseInt(localToday().slice(0, 4), 10);
     const lastSup = db.prepare(
-      `SELECT report_number FROM supplemental_reports WHERE report_number LIKE ? ORDER BY id DESC LIMIT 1`
-    ).get(`SUP-${currentYearSup}-%`) as any;
+      `SELECT report_number FROM supplemental_reports WHERE report_number LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT 1`
+    ).get(`${escapeLike(`SUP-${currentYearSup}-`)}%`) as any;
 
     let nextNum = 1;
     if (lastSup) {
@@ -1155,7 +1156,7 @@ router.post('/:id/supplements', validateParamId, requireRole('admin', 'manager',
 });
 
 // PUT /api/incidents/:incidentId/supplements/:supId - Update a supplement
-router.put('/:incidentId/supplements/:supId', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/:incidentId/supplements/:supId', validateNumericParams('incidentId', 'supId'), requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const sup = db.prepare('SELECT * FROM supplemental_reports WHERE id = ? AND incident_id = ?')
@@ -1211,7 +1212,7 @@ router.put('/:incidentId/supplements/:supId', requireRole('admin', 'manager', 's
 });
 
 // DELETE /api/incidents/:incidentId/supplements/:supId - Delete a draft supplement
-router.delete('/:incidentId/supplements/:supId', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/:incidentId/supplements/:supId', validateNumericParams('incidentId', 'supId'), requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const sup = db.prepare('SELECT * FROM supplemental_reports WHERE id = ? AND incident_id = ?')

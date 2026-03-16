@@ -223,7 +223,7 @@ router.get('/training', requireRole('admin', 'manager', 'supervisor'), (req: Req
 router.post('/health/client-error', authenticateToken, (req: Request, res: Response) => {
   try {
     const { message, componentStack, url, timestamp } = req.body || {};
-    const user = (req as any).user;
+    const user = req.user!;
     console.error(
       `[CLIENT ERROR] user=${user?.username || '?'} url=${url || '?'} time=${timestamp || '?'}`,
       `\n  message: ${message || 'unknown'}`,

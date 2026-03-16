@@ -13,7 +13,7 @@ import {
   testConnection, getApiKey, encryptApiKey,
   ServeManagerError,
 } from '../utils/serveManagerClient';
-import { escapeLike, validateParamId } from '../middleware/sanitize';
+import { escapeLike, validateParamId, validateNumericParams } from '../middleware/sanitize';
 
 const router = Router();
 router.use(authenticateToken);
@@ -487,7 +487,7 @@ router.post('/jobs/:id/cancel', validateParamId, requireRole('admin', 'manager')
 // ============================================================
 
 // GET /jobs/:jobId/attempts
-router.get('/jobs/:jobId/attempts', requireRole('admin', 'manager', 'supervisor', 'officer'), async (req: Request, res: Response) => {
+router.get('/jobs/:jobId/attempts', validateNumericParams('jobId'), requireRole('admin', 'manager', 'supervisor', 'officer'), async (req: Request, res: Response) => {
   try {
     if (!requireApiKey(req, res)) return;
     ensureTables();
@@ -541,7 +541,7 @@ router.post('/attempts', requireRole('admin', 'manager'), async (req: Request, r
 // ============================================================
 
 // POST /jobs/:jobId/notes
-router.post('/jobs/:jobId/notes', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+router.post('/jobs/:jobId/notes', validateNumericParams('jobId'), requireRole('admin', 'manager'), async (req: Request, res: Response) => {
   try {
     if (!requireApiKey(req, res)) return;
     const result = await smPost(`/jobs/${req.params.jobId}/notes`, { type: 'note', ...req.body });

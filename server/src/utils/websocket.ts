@@ -142,7 +142,31 @@ setInterval(() => {
     const timer = audioBufferTimers.get(key);
     if (timer) { clearTimeout(timer); audioBufferTimers.delete(key); }
   }
-}, 5 * 60 * 1000);
+}, 5 * 60 * 1000).unref();
+
+// ─── Periodic session revalidation (every 2 min) ────────
+// Disconnect WebSocket clients whose sessions have been revoked server-side
+// (e.g., password change, admin termination, logout-all)
+setInterval(() => {
+  try {
+    const db = database.getDb();
+    for (const [clientId, client] of clients) {
+      if (!client.authenticated || !client.userId) continue;
+      // Check if the user still has at least one active session
+      const activeSession = db.prepare(
+        'SELECT 1 FROM sessions WHERE user_id = ? AND is_active = 1 LIMIT 1'
+      ).get(client.userId);
+      if (!activeSession) {
+        safeSend(client.ws, JSON.stringify({
+          type: 'session_revoked',
+          message: 'Your session has been terminated',
+        }));
+        client.ws.close(4003, 'Session revoked');
+        clients.delete(clientId);
+      }
+    }
+  } catch { /* DB not available — skip this cycle */ }
+}, 2 * 60 * 1000).unref();
 
 /** Directory where radio recordings are saved */
 const RADIO_UPLOAD_DIR = path.resolve(__ws_dirname, '../../uploads/radio');
@@ -244,21 +268,31 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
     };
     clients.set(clientId, client);
 
-    // Try to authenticate from URL query parameter (token in ?token=...)
-    // NOTE: URL tokens are less secure than header-based auth (visible in logs/history)
-    // Kept for backward compatibility — clients should migrate to message-based auth
-    // SECURITY: URL tokens are logged in server access logs and browser history
+    // URL token auth — DEPRECATED and disabled in production after 2026-04-15
+    // URL tokens are visible in server access logs and browser history, making them
+    // vulnerable to log exfiltration attacks. Use message-based auth instead.
     const url = req.url || '';
     const tokenMatch = url.match(/[?&]token=([^&]+)/);
     if (tokenMatch) {
+      const isProductionMode = process.env.NODE_ENV === 'production';
+      const pastDeadline = Date.now() >= new Date('2026-04-15T07:00:00Z').getTime(); // 00:00 Mountain Time (UTC-7)
+      if (isProductionMode && pastDeadline) {
+        console.warn(`[WS] Rejected URL token auth (deprecated) from ${clientIp}`);
+        safeSend(ws, JSON.stringify({
+          type: 'error',
+          code: 'URL_TOKEN_REJECTED',
+          message: 'URL token authentication has been removed. Update your client.',
+        }));
+        ws.close(4010, 'URL token auth removed');
+        return;
+      }
       const token = decodeURIComponent(tokenMatch[1]);
       console.warn(`[WS] Client authenticating via URL token (deprecated) from ${clientIp}`);
       authenticateClient(client, token);
-      // Notify client to migrate away from URL token auth
       safeSend(ws, JSON.stringify({
         type: 'warning',
         code: 'URL_TOKEN_DEPRECATED',
-        message: 'URL token authentication is deprecated. Use message-based auth instead.',
+        message: 'URL token authentication is deprecated and will be removed on 2026-04-15. Use message-based auth.',
       }));
     }
 
@@ -314,6 +348,12 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
 
       try {
         const message = JSON.parse(data.toString());
+
+        // Validate message structure — must be an object with a string 'type'
+        if (!message || typeof message !== 'object' || typeof message.type !== 'string') {
+          safeSend(ws, JSON.stringify({ type: 'error', code: 'INVALID_MESSAGE', message: 'Message must have a string "type" field' }));
+          return;
+        }
 
         // Per-message-type rate limiting for sensitive operations
         const msgType = message?.type;
@@ -399,6 +439,7 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
       ws.ping();
     });
   }, PING_INTERVAL_MS);
+  pingInterval.unref();
 
   wss.on('close', () => clearInterval(pingInterval));
 
@@ -438,6 +479,24 @@ function authenticateClient(client: WSClient, token: string): boolean {
         message: 'Invalid token type',
       }));
       return false;
+    }
+
+    // Verify session is still active in database — reject revoked sessions
+    if (decoded.sessionId) {
+      try {
+        const db = database.getDb();
+        const session = db.prepare(
+          'SELECT is_active FROM sessions WHERE session_id = ? AND is_active = 1'
+        ).get(decoded.sessionId) as { is_active: number } | undefined;
+        if (!session) {
+          safeSend(client.ws, JSON.stringify({
+            type: 'auth_error',
+            message: 'Session has been revoked',
+            code: 'SESSION_REVOKED',
+          }));
+          return false;
+        }
+      } catch { /* DB not ready — allow through rather than blocking */ }
     }
 
     // Per-user connection limit — prevent resource abuse
@@ -619,6 +678,17 @@ function handleClientMessage(clientId: string, message: any): void {
     case 'private_call_audio':
       if (!client.authenticated) return;
       relayPrivateCallAudio(clientId, message.data);
+      break;
+
+    default:
+      // Reject unknown message types — prevents abuse via crafted payloads
+      if (message.type && typeof message.type === 'string') {
+        safeSend(client.ws, JSON.stringify({
+          type: 'error',
+          code: 'UNKNOWN_MESSAGE_TYPE',
+          message: `Unknown message type: ${String(message.type).slice(0, 50)}`,
+        }));
+      }
       break;
   }
 }

@@ -107,8 +107,9 @@ router.post('/calls/:id/dispatch', validateParamId, requireRole('admin', 'manage
       // Update each unit status
       for (const unitId of unit_ids) {
         db.prepare(`
-          UPDATE units SET status = 'dispatched', current_call_id = ?, last_status_change = ? WHERE id = ?
-        `).run(call.id, now, unitId);
+          UPDATE units SET status = 'dispatched', current_call_id = ?, last_status_change = ?
+          WHERE id = ? AND (current_call_id IS NULL OR current_call_id = ?)
+        `).run(call.id, now, unitId, call.id);
 
         // Log activity
         const unit = db.prepare('SELECT call_sign FROM units WHERE id = ?').get(unitId) as any;
@@ -228,8 +229,9 @@ router.post('/calls/:id/assign-unit', validateParamId, requireRole('admin', 'man
 
       // Update unit: set status to dispatched and link to this call
       db.prepare(`
-        UPDATE units SET status = 'dispatched', current_call_id = ?, last_status_change = ? WHERE id = ?
-      `).run(call.id, now, unit_id);
+        UPDATE units SET status = 'dispatched', current_call_id = ?, last_status_change = ?
+        WHERE id = ? AND (current_call_id IS NULL OR current_call_id = ?)
+      `).run(call.id, now, unit_id, call.id);
 
       // Log activity
       db.prepare(`
@@ -302,8 +304,9 @@ router.post('/calls/:id/unassign-unit', validateParamId, requireRole('admin', 'm
 
       // Update unit: set status to available and clear current_call_id
       db.prepare(`
-        UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = ? WHERE id = ?
-      `).run(now, unit_id);
+        UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = ?
+        WHERE id = ? AND current_call_id = ?
+      `).run(now, unit_id, call.id);
 
       // Log activity
       db.prepare(`

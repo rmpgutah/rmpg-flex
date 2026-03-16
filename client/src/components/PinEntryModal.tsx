@@ -100,7 +100,7 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
       if (emp?.role) {
         setConfig('current_user_role', emp.role).catch((err) => { console.warn('[PinEntryModal] set current_user_role config failed:', err); });
       }
-      localStorage.setItem('rmpg_offline_user_id', userId);
+      try { localStorage.setItem('rmpg_offline_user_id', userId); } catch { /* ignore */ }
     }
   }, [employees]);
 

@@ -12,7 +12,7 @@ import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 import { auditLog } from '../utils/auditLogger';
 import { computeFileHashes, computeContentFingerprint } from '../utils/ipedManager';
-import { validateParamId, escapeLike } from '../middleware/sanitize';
+import { validateParamId, validateNumericParams, escapeLike, quoteIdent } from '../middleware/sanitize';
 import path from 'path';
 import fs from 'fs';
 
@@ -150,7 +150,7 @@ router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
 router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const {
       title, case_type = 'digital', priority = 'routine', incident_id,
       evidence_ids, requesting_officer_id, requesting_officer_name,
@@ -213,7 +213,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
 router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const existing = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.id) as any;
     if (!existing) return res.status(404).json({ error: 'Case not found' });
 
@@ -330,7 +330,7 @@ router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Re
 
 // ─── GET /:id/exhibits ───────────────────────────────────
 
-router.get('/:id/exhibits', validateParamId, (req: Request, res: Response) => {
+router.get('/:id/exhibits', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const exhibits = db.prepare('SELECT * FROM forensic_exhibits WHERE forensic_case_id = ? ORDER BY exhibit_number').all(req.params.id);
@@ -345,7 +345,7 @@ router.get('/:id/exhibits', validateParamId, (req: Request, res: Response) => {
 router.post('/:id/exhibits', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const caseRow = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.id) as any;
     if (!caseRow) return res.status(404).json({ error: 'Case not found' });
 
@@ -376,7 +376,7 @@ router.post('/:id/exhibits', validateParamId, requireRole('admin', 'manager', 's
 
 // ─── PUT /:caseId/exhibits/:exhibitId ────────────────────
 
-router.put('/:caseId/exhibits/:exhibitId', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/:caseId/exhibits/:exhibitId', validateNumericParams('caseId', 'exhibitId'), requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { description, item_type, condition_received, examination_requested, examination_performed, results, status, notes, returned_date } = req.body;
@@ -413,7 +413,7 @@ router.put('/:caseId/exhibits/:exhibitId', requireRole('admin', 'manager', 'supe
 
 // ─── GET /:id/analyses ───────────────────────────────────
 
-router.get('/:id/analyses', validateParamId, (req: Request, res: Response) => {
+router.get('/:id/analyses', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const analyses = db.prepare('SELECT * FROM forensic_analyses WHERE forensic_case_id = ? ORDER BY created_at DESC').all(req.params.id);
@@ -428,7 +428,7 @@ router.get('/:id/analyses', validateParamId, (req: Request, res: Response) => {
 router.post('/:id/analyses', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const caseRow = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.id) as any;
     if (!caseRow) return res.status(404).json({ error: 'Case not found' });
 
@@ -454,10 +454,10 @@ router.post('/:id/analyses', validateParamId, requireRole('admin', 'manager', 's
 
 // ─── PUT /:caseId/analyses/:analysisId ───────────────────
 
-router.put('/:caseId/analyses/:analysisId', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/:caseId/analyses/:analysisId', validateNumericParams('caseId', 'analysisId'), requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const { analysis_type, examiner_id, examiner_name, status, methodology, instruments_used, results, conclusion, started_at, completed_at, notes } = req.body;
     const now = localNow();
 
@@ -509,7 +509,7 @@ router.put('/:caseId/analyses/:analysisId', requireRole('admin', 'manager', 'sup
 
 // ═══ TIMELINE ═══════════════════════════════════════════
 
-router.get('/:id/timeline', validateParamId, (req: Request, res: Response) => {
+router.get('/:id/timeline', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const timeline = db.prepare('SELECT * FROM forensic_timeline WHERE forensic_case_id = ? ORDER BY created_at DESC').all(req.params.id);
@@ -524,7 +524,7 @@ router.get('/:id/timeline', validateParamId, (req: Request, res: Response) => {
 router.post('/:id/timeline', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const { action = 'note', description } = req.body;
     if (!description?.trim()) return res.status(400).json({ error: 'Description is required' });
 
@@ -541,7 +541,7 @@ router.post('/:id/timeline', validateParamId, requireRole('admin', 'manager', 's
 
 // ─── GET /:id/hashes — List hashes for a forensic case ──
 
-router.get('/:id/hashes', validateParamId, (req: Request, res: Response) => {
+router.get('/:id/hashes', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const caseRow = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.id) as any;
@@ -572,7 +572,7 @@ router.get('/:id/hashes', validateParamId, (req: Request, res: Response) => {
 router.post('/:id/hashes/compute', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), async (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const caseRow = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.id) as any;
     if (!caseRow) return res.status(404).json({ error: 'Case not found' });
 
@@ -599,7 +599,12 @@ router.post('/:id/hashes/compute', validateParamId, requireRole('admin', 'manage
         `).get(exhibit.evidence_id) as any;
         if (attachment) {
           attachmentId = attachment.id;
-          filePath = path.resolve(attachment.file_path);
+          const uploadsDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../uploads');
+          filePath = path.resolve(uploadsDir, path.basename(attachment.file_path));
+          const relCheck = path.relative(uploadsDir, filePath);
+          if (relCheck.startsWith('..') || path.isAbsolute(relCheck)) {
+            return res.status(403).json({ error: 'Access denied' });
+          }
           fileName = fileName || attachment.original_name || attachment.stored_name;
           mimeType = attachment.mime_type;
         }
@@ -696,7 +701,7 @@ router.post('/:id/hashes/compute', validateParamId, requireRole('admin', 'manage
 router.post('/:id/hashes/manual', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const caseRow = db.prepare('SELECT * FROM forensic_cases WHERE id = ?').get(req.params.id) as any;
     if (!caseRow) return res.status(404).json({ error: 'Case not found' });
 
@@ -747,7 +752,7 @@ router.post('/:id/hashes/manual', validateParamId, requireRole('admin', 'manager
 router.put('/:id/hashes/:hashId', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const existing = db.prepare(`
       SELECT * FROM digital_evidence_hashes WHERE id = ? AND forensic_case_id = ?
     `).get(req.params.hashId, req.params.id) as any;
@@ -815,7 +820,7 @@ router.delete('/:id/hashes/:hashId', validateParamId, requireRole('admin', 'mana
 
     db.prepare('DELETE FROM digital_evidence_hashes WHERE id = ?').run(req.params.hashId);
 
-    const user = (req as any).user;
+    const user = req.user!;
     addTimelineEntry(
       parseInt(req.params.id as string, 10), 'hash_deleted',
       `Hash record deleted: ${existing.file_name}`,
@@ -845,7 +850,7 @@ router.post('/:id/hashes/verify', validateParamId, requireRole('admin', 'manager
       SELECT deh.*, fc.lab_case_number, fc.title as case_title
       FROM digital_evidence_hashes deh
       LEFT JOIN forensic_cases fc ON deh.forensic_case_id = fc.id
-      WHERE deh.${hash_type} = ?
+      WHERE deh.${quoteIdent(hash_type)} = ?
       ORDER BY deh.created_at DESC
     `).all(hash_value.trim().toLowerCase());
 
@@ -937,7 +942,7 @@ function resolveLinkedRecord(type: string, id: number): any {
 }
 
 // ─── GET /:id/links — List all linked evidence for a case ────
-router.get('/:id/links', validateParamId, (req: Request, res: Response) => {
+router.get('/:id/links', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const caseId = parseInt(req.params.id as string, 10);
@@ -981,7 +986,7 @@ router.post('/:id/links', validateParamId, requireRole('admin', 'manager', 'supe
   try {
     const db = getDb();
     const caseId = parseInt(req.params.id as string, 10);
-    const user = (req as any).user;
+    const user = req.user!;
     const { linked_type, linked_id, relationship, relevance, notes } = req.body;
 
     // Validate
@@ -997,12 +1002,12 @@ router.post('/:id/links', validateParamId, requireRole('admin', 'manager', 'supe
     const result = db.prepare(`
       INSERT INTO forensic_case_links (forensic_case_id, linked_type, linked_id, relationship, relevance, notes, linked_by, linked_by_name, linked_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(caseId, linked_type, linked_id, relationship || 'associated', relevance || 'standard', notes || null, user.id, user.full_name, localNow());
+    `).run(caseId, linked_type, linked_id, relationship || 'associated', relevance || 'standard', notes || null, user.userId, user.fullName, localNow());
 
     // Timeline entry
     addTimelineEntry(caseId, 'evidence_linked',
       `Linked ${linked_type.replace(/_/g, ' ')} "${resolved.display_name}" (${relationship || 'associated'})`,
-      user.id, user.full_name
+      user.userId, user.fullName
     );
 
     const link = db.prepare('SELECT * FROM forensic_case_links WHERE id = ?').get(result.lastInsertRowid) as any;
@@ -1023,7 +1028,7 @@ router.put('/:id/links/:linkId', validateParamId, requireRole('admin', 'manager'
     const db = getDb();
     const caseId = parseInt(req.params.id as string, 10);
     const linkId = parseInt(req.params.linkId as string, 10);
-    const user = (req as any).user;
+    const user = req.user!;
     const { relationship, relevance, notes } = req.body;
 
     const existing = db.prepare('SELECT * FROM forensic_case_links WHERE id = ? AND forensic_case_id = ?').get(linkId, caseId) as any;
@@ -1044,7 +1049,7 @@ router.put('/:id/links/:linkId', validateParamId, requireRole('admin', 'manager'
     if (relationship && relationship !== existing.relationship) {
       addTimelineEntry(caseId, 'link_updated',
         `Changed link relationship for ${existing.linked_type} #${existing.linked_id}: ${existing.relationship} → ${relationship}`,
-        user.id, user.full_name
+        user.userId, user.fullName
       );
     }
 
@@ -1063,7 +1068,7 @@ router.delete('/:id/links/:linkId', validateParamId, requireRole('admin', 'manag
     const db = getDb();
     const caseId = parseInt(req.params.id as string, 10);
     const linkId = parseInt(req.params.linkId as string, 10);
-    const user = (req as any).user;
+    const user = req.user!;
 
     const existing = db.prepare('SELECT * FROM forensic_case_links WHERE id = ? AND forensic_case_id = ?').get(linkId, caseId) as any;
     if (!existing) return res.status(404).json({ error: 'Link not found' });
@@ -1072,7 +1077,7 @@ router.delete('/:id/links/:linkId', validateParamId, requireRole('admin', 'manag
 
     addTimelineEntry(caseId, 'evidence_unlinked',
       `Removed link to ${existing.linked_type.replace(/_/g, ' ')} #${existing.linked_id}`,
-      user.id, user.full_name
+      user.userId, user.fullName
     );
 
     res.json({ success: true });
@@ -1083,7 +1088,7 @@ router.delete('/:id/links/:linkId', validateParamId, requireRole('admin', 'manag
 });
 
 // ─── GET /:id/links/search — Search available records to link ─
-router.get('/:id/links/search', validateParamId, (req: Request, res: Response) => {
+router.get('/:id/links/search', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const caseId = parseInt(req.params.id as string, 10);
@@ -1223,7 +1228,7 @@ router.get('/:id/links/search', validateParamId, (req: Request, res: Response) =
 });
 
 // ─── GET /:id/links/summary — Case linkage summary for formatting ─
-router.get('/:id/links/summary', validateParamId, (req: Request, res: Response) => {
+router.get('/:id/links/summary', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const caseId = parseInt(req.params.id as string, 10);

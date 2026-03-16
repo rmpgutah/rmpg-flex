@@ -628,7 +628,7 @@ router.get('/activity-feed', (req: Request, res: Response) => {
 // ─── RADIO TRANSCRIPTS ─────────────────────────────────
 
 // GET /api/comms/radio/transcripts - List radio transcripts with pagination + filtering
-router.get('/radio/transcripts', (req: Request, res: Response) => {
+router.get('/radio/transcripts', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { channel, user_id, search, limit, offset, from, to } = req.query;
@@ -717,7 +717,7 @@ router.get('/radio-channels', (req: Request, res: Response) => {
 // ─── RADIO AUDIO FILE ─────────────────────────────────
 
 // GET /api/comms/radio/audio/:id — Stream a saved radio recording
-router.get('/radio/audio/:id', validateParamId, (req: Request, res: Response) => {
+router.get('/radio/audio/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare('SELECT audio_file, file_size FROM radio_transcripts WHERE id = ?').get(req.params.id) as any;

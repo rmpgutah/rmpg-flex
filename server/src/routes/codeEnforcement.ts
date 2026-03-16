@@ -20,8 +20,8 @@ router.use(requireRole('admin', 'manager', 'supervisor', 'officer'));
 
 // Whitelist of valid table/column pairs to prevent SQL injection via interpolation
 const SEQUENCE_TARGETS: Record<string, string> = {
-  'code_violations:violation_number': 'SELECT violation_number FROM code_violations WHERE violation_number LIKE ? ORDER BY id DESC LIMIT 1',
-  'vehicle_tows:tow_number': 'SELECT tow_number FROM vehicle_tows WHERE tow_number LIKE ? ORDER BY id DESC LIMIT 1',
+  'code_violations:violation_number': "SELECT violation_number FROM code_violations WHERE violation_number LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT 1",
+  'vehicle_tows:tow_number': "SELECT tow_number FROM vehicle_tows WHERE tow_number LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT 1",
 };
 
 function nextNumber(table: string, prefix: string, col: string): string {
@@ -32,7 +32,7 @@ function nextNumber(table: string, prefix: string, col: string): string {
 
   const yr = parseInt(localToday().slice(0, 4), 10);
   const pfx = `${prefix}-${yr}-`;
-  const last = db.prepare(sql).get(`${pfx}%`) as any;
+  const last = db.prepare(sql).get(`${escapeLike(pfx)}%`) as any;
   const parsed = last ? parseInt(last[col].replace(pfx, ''), 10) : 0;
   const seq = (isNaN(parsed) ? 0 : parsed) + 1;
   return `${pfx}${String(seq).padStart(4, '0')}`;

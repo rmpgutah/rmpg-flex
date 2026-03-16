@@ -9,7 +9,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
-import { escapeLike, validateParamId } from '../middleware/sanitize';
+import { escapeLike, validateParamId, validateNumericParams } from '../middleware/sanitize';
 
 const router = Router();
 router.use(authenticateToken);
@@ -99,7 +99,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
 
 // ─── GET /check/:personId ────────────────────────────────
 // Quick check: all active alerts for a specific person
-router.get('/check/:personId', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/check/:personId', validateNumericParams('personId'), requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const alerts = db.prepare(`
