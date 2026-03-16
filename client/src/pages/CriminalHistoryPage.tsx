@@ -54,8 +54,8 @@ export default function CriminalHistoryPage() {
     setLoading(true);
     try {
       const params = new URLSearchParams({ [searchType]: searchQuery.trim() });
-      const data = await apiFetch<any[]>(`/records/persons?${params}`);
-      setPersons(data || []);
+      const resp = await apiFetch<any>(`/records/persons?${params}`);
+      setPersons(Array.isArray(resp) ? resp : (resp?.data || []));
       setSelectedPerson(null);
       setHistory([]);
     } catch (err) {

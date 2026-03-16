@@ -2417,16 +2417,21 @@ function migrateSchema(): void {
   // ── FIX CORRUPTED DATA — undo HTML entity encoding of quotes/apostrophes ──
   // The old sanitize middleware was encoding ' → &#x27; and " → &quot; in stored data
   const corruptionTables = ['persons', 'incidents', 'warrants', 'calls_for_service', 'bolos', 'vehicles_records', 'properties', 'clients'];
+  // Quote SQL identifier: wrap in double quotes, escape embedded quotes
+  const qi = (name: string) => `"${name.replace(/"/g, '""')}"`;
   for (const tbl of corruptionTables) {
     try {
       // Get all TEXT columns for this table
-      const cols = db.prepare(`PRAGMA table_info(${tbl})`).all() as { name: string; type: string }[];
+      const qtbl = qi(tbl);
+      const cols = db.prepare(`PRAGMA table_info(${qtbl})`).all() as { name: string; type: string }[];
       const textCols = cols.filter(c => c.type.toUpperCase().includes('TEXT'));
       for (const col of textCols) {
-        db.exec(`UPDATE ${tbl} SET ${col.name} = REPLACE(${col.name}, '&#x27;', '''') WHERE ${col.name} LIKE '%&#x27;%'`);
-        db.exec(`UPDATE ${tbl} SET ${col.name} = REPLACE(${col.name}, '&quot;', '"') WHERE ${col.name} LIKE '%&quot;%'`);
-        db.exec(`UPDATE ${tbl} SET ${col.name} = REPLACE(${col.name}, '&#039;', '''') WHERE ${col.name} LIKE '%&#039;%'`);
-        db.exec(`UPDATE ${tbl} SET ${col.name} = REPLACE(${col.name}, '&amp;', '&') WHERE ${col.name} LIKE '%&amp;%'`);
+        // Quote column names to prevent SQL breakage from reserved words or special chars
+        const qcol = qi(col.name);
+        db.prepare(`UPDATE ${qtbl} SET ${qcol} = REPLACE(${qcol}, '&#x27;', '''') WHERE ${qcol} LIKE '%&#x27;%'`).run();
+        db.prepare(`UPDATE ${qtbl} SET ${qcol} = REPLACE(${qcol}, '&quot;', '"') WHERE ${qcol} LIKE '%&quot;%'`).run();
+        db.prepare(`UPDATE ${qtbl} SET ${qcol} = REPLACE(${qcol}, '&#039;', '''') WHERE ${qcol} LIKE '%&#039;%'`).run();
+        db.prepare(`UPDATE ${qtbl} SET ${qcol} = REPLACE(${qcol}, '&amp;', '&') WHERE ${qcol} LIKE '%&amp;%'`).run();
       }
     } catch { /* table may not exist */ }
   }

@@ -274,7 +274,8 @@ export type AuditEntityType =
   | 'field_interview'
   | 'trespass_order'
   | 'code_violation'
-  | 'vehicle_tow';
+  | 'vehicle_tow'
+  | 'attachment';
 
 // Sensitive field patterns that must never appear in audit log details
 const SENSITIVE_PATTERNS = [
