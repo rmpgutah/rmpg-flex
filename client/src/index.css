@@ -1051,7 +1051,7 @@
   background-color: var(--surface-base) !important;
   color: #b0bcc8 !important;
   border-color: #1e3048 !important;
-  border-radius: 0 !important;
+  border-radius: 4px !important;
 }
 
 .leaflet-control-zoom a:hover {
@@ -1062,7 +1062,7 @@
   background-color: var(--surface-base) !important;
   color: #d0d8e0 !important;
   border: 1px solid #1e3048;
-  border-radius: 2px !important;
+  border-radius: 4px !important;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.7) !important;
 }
 
