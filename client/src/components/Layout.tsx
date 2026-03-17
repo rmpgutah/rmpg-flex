@@ -679,9 +679,29 @@ export default function Layout() {
                 <span className="text-[10px] font-bold tracking-[0.2em] leading-none" style={{ color: '#3b8ad4' }}>FLEX</span>
               </div>
             </div>
-            {/* Page title */}
+            {/* Back/Forward + Page title */}
             <div className="flex items-center gap-1.5">
               <div className="w-px h-6" style={{ background: '#2a3e58' }} />
+              <button
+                type="button"
+                onClick={handleNavBack}
+                disabled={!canGoBack}
+                className="toolbar-btn"
+                title="Back (Alt+←)"
+                style={{ padding: '2px 3px', opacity: canGoBack ? 1 : 0.3 }}
+              >
+                <ChevronLeft style={{ width: 14, height: 14 }} />
+              </button>
+              <button
+                type="button"
+                onClick={handleNavForward}
+                disabled={!canGoForward}
+                className="toolbar-btn"
+                title="Forward (Alt+→)"
+                style={{ padding: '2px 3px', opacity: canGoForward ? 1 : 0.3 }}
+              >
+                <ChevronRight style={{ width: 14, height: 14 }} />
+              </button>
               <span className="text-[11px] font-mono font-bold tracking-wider text-rmpg-400">
                 {pageTitle.toUpperCase()}
               </span>
@@ -709,8 +729,8 @@ export default function Layout() {
                 className="flex items-center gap-1 px-2 py-0.5 panel-inset cursor-pointer transition-colors bg-surface-sunken hover:bg-rmpg-800"
               >
                 <Phone style={{ width: 9, height: 9 }} className="text-red-500" />
-                <span className="text-[9px] font-mono font-bold text-rmpg-400">CALLS:</span>
-                <span className="text-[9px] font-mono font-bold text-white">{activeCallCount}</span>
+                <span className="text-[10px] font-mono font-bold text-rmpg-400">CALLS:</span>
+                <span className="text-[10px] font-mono font-bold text-white">{activeCallCount}</span>
               </button>
 
               {/* BOLO Indicator */}
@@ -721,7 +741,7 @@ export default function Layout() {
                   style={{ background: 'rgba(220, 38, 38, 0.25)', border: '1px solid #991b1b' }}
                 >
                   <span className="led-dot led-red animate-led-blink" />
-                  <span className="text-[9px] font-mono font-bold" style={{ color: '#ef7a7a' }}>
+                  <span className="text-[10px] font-mono font-bold" style={{ color: '#ef7a7a' }}>
                     BOLO: {activeBOLOs}
                   </span>
                 </button>
@@ -741,7 +761,7 @@ export default function Layout() {
               <div className="flex items-center gap-1 px-1.5 py-0.5 panel-inset bg-surface-sunken">
                 <span className={`led-dot ${isConnected ? 'led-green' : 'led-red animate-led-blink'}`} />
                 <Users style={{ width: 9, height: 9 }} className="text-rmpg-500" />
-                <span className="text-[9px] font-mono font-bold text-rmpg-300">{presence.count}</span>
+                <span className="text-[10px] font-mono font-bold text-rmpg-300">{presence.count}</span>
               </div>
 
               {/* Notifications */}
@@ -821,16 +841,16 @@ export default function Layout() {
                     <div className="text-xs font-bold text-white">
                       {user?.first_name} {user?.last_name}
                     </div>
-                    <div className="text-[9px] font-mono text-rmpg-500">
+                    <div className="text-[10px] font-mono text-rmpg-500">
                       {user?.email}
                     </div>
                     <div className="flex items-center gap-2 mt-1">
                       {user?.badge_number && (
-                        <span className="text-[9px] font-mono px-1.5 py-0.5 bg-surface-overlay text-rmpg-400 border border-rmpg-800">
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 bg-surface-overlay text-rmpg-400 border border-rmpg-800">
                           {user.badge_number}
                         </span>
                       )}
-                      <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 bg-brand-900/20 text-brand-300 border border-brand-800/40">
+                      <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 bg-brand-900/20 text-brand-300 border border-brand-800/40">
                         {toDisplayLabel(user?.role || '')}
                       </span>
                     </div>
@@ -880,10 +900,10 @@ export default function Layout() {
             flexShrink: 0,
           }}
         >
-          <span className="text-[9px] font-bold uppercase tracking-widest text-green-500">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-green-500">
             Contract Manager View — ICU Investigations
           </span>
-          <span className="text-[8px] font-mono px-1.5 py-0.5 bg-amber-900/30 text-amber-400 border border-amber-800/40">
+          <span className="text-[9px] font-mono px-1.5 py-0.5 bg-amber-900/30 text-amber-400 border border-amber-800/40">
             DEMO DATA
           </span>
         </div>
