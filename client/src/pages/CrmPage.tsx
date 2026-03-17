@@ -374,7 +374,7 @@ export default function CrmPage() {
   }
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full app-grid-bg">
       {/* ── Sidebar ────────────────────────────────────── */}
       <div className="w-48 border-r border-rmpg-600 bg-surface-sunken flex flex-col flex-shrink-0">
         <div className="px-3 py-2 border-b border-rmpg-600">

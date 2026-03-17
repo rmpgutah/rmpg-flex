@@ -254,7 +254,7 @@ export default function FieldInterviewsPage() {
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full app-grid-bg">
       {/* Header */}
       <PanelTitleBar icon={ClipboardList} title="FIELD INTERVIEWS">
         <span className="text-[9px] font-mono text-rmpg-400">{totalCount} TOTAL</span>

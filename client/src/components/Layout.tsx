@@ -656,19 +656,19 @@ export default function Layout() {
       {/* ============================================================ */}
       {!isMobile && (
         <div
-          className="flex items-center justify-between relative"
+          className="flex items-center justify-between relative scan-line"
           style={{
             height: '52px',
             paddingLeft: isMacElectron ? '78px' : '12px',
             paddingRight: '12px',
-            background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)',
+            background: 'linear-gradient(180deg, #162640 0%, #0f1a28 100%)',
             borderBottom: '1px solid #1e3048',
             flexShrink: 0,
             WebkitAppRegion: isElectron ? 'drag' : undefined,
           } as React.CSSProperties}
         >
           {/* Blue accent at very top */}
-          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3359, #1a5a9e, #0e3359)', zIndex: 1 }} />
+          <div className="absolute top-0 left-0 right-0 h-px card-accent" style={{ zIndex: 1 }} />
 
           {/* Left — Logo + FLEX branding */}
           <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
@@ -793,7 +793,10 @@ export default function Layout() {
                       color: '#fff',
                       border: '2px solid #3b8ad4',
                       borderRadius: '50%',
+                      transition: 'box-shadow 0.3s ease',
                     }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = '0 0 10px rgba(59, 138, 212, 0.5)'; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = 'none'; }}
                   >
                     {initials}
                   </div>
@@ -896,7 +899,7 @@ export default function Layout() {
         className="hidden md:flex items-center justify-between px-2"
         style={{
           height: '22px',
-          background: 'linear-gradient(180deg, #1e3048 0%, #1a2636 100%)',
+          background: 'linear-gradient(180deg, #162640 0%, #0f1a28 100%)',
           borderBottom: '1px solid #141e2b',
           flexShrink: 0,
         }}
@@ -914,7 +917,7 @@ export default function Layout() {
         {/* Right side — Operator info (persists name + badge from user profile) */}
         <div className="flex items-center gap-2 text-[10px] font-mono text-rmpg-400">
           <span>
-            OPR: {user?.badge_number ? `#${user.badge_number}` : '---'} {user?.last_name?.toUpperCase() || '---'}, {user?.first_name || '---'} | {toDisplayLabel(user?.role || '---').toUpperCase()}
+            OPR: {user?.badge_number ? <span style={{ color: '#4a9aee', textShadow: '0 0 6px rgba(26, 90, 158, 0.3)' }}>#{user.badge_number}</span> : '---'} {user?.last_name?.toUpperCase() || '---'}, {user?.first_name || '---'} | {toDisplayLabel(user?.role || '---').toUpperCase()}
           </span>
         </div>
       </div>
@@ -927,7 +930,7 @@ export default function Layout() {
         className="hidden md:flex items-center gap-0 px-1 select-none"
         style={{
           height: 46,
-          background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)',
+          background: 'linear-gradient(180deg, #162640 0%, #0f1a28 100%)',
           borderBottom: '1px solid #1e3048',
           flexShrink: 0,
         }}
@@ -1033,6 +1036,7 @@ export default function Layout() {
                           ? 'rgba(255,255,255,0.05)'
                           : 'transparent',
                       borderBottom: isActive ? '2px solid #3b8ad4' : '2px solid transparent',
+                      boxShadow: isActive ? '0 0 8px rgba(26, 90, 158, 0.3), inset 0 0 12px rgba(26, 90, 158, 0.08)' : undefined,
                       color: isActive ? '#ffffff' : '#8a9aaa',
                       cursor: 'pointer',
                     }}
@@ -1109,7 +1113,7 @@ export default function Layout() {
                   {/* Dropdown menu for items with children */}
                   {hasChildren && isDropdownOpen && (
                     <div
-                      className="absolute top-full left-0 z-50 py-1 animate-dropdown-appear"
+                      className="absolute top-full left-0 z-50 py-1 animate-dropdown-appear card-accent"
                       style={{
                         minWidth: 200,
                         background: '#1a2636',

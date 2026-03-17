@@ -61,7 +61,7 @@ export default function StatsCard({
     <div
       onClick={onClick}
       className={`
-        relative overflow-hidden p-3 border-l-4 panel-beveled shimmer-on-hover
+        relative overflow-hidden p-3 border-l-4 panel-beveled shimmer-on-hover card-glass stat-pod
         ${ACCENT_COLORS[accent] || ACCENT_COLORS.blue}
         bg-surface-base
         ${onClick ? 'cursor-pointer hover:bg-surface-raised transition-all duration-150' : ''}

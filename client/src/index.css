@@ -448,6 +448,157 @@
   box-shadow: 0 0 6px rgba(26, 90, 158, 0.4);
 }
 
+/* ============================================================
+   GLOBAL AMBIENT — Login-derived design language
+   Drifting grid, vignette, scan-line, glass panels
+   ============================================================ */
+
+/* App-wide drifting grid background (opt-in per container) */
+.app-grid-bg {
+  position: relative;
+}
+.app-grid-bg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(26, 90, 158, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(26, 90, 158, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  animation: login-grid-drift 25s linear infinite;
+  mask-image: radial-gradient(ellipse at center, black 50%, transparent 90%);
+  -webkit-mask-image: radial-gradient(ellipse at center, black 50%, transparent 90%);
+}
+
+/* Vignette overlay for depth */
+.app-vignette::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.25) 100%);
+}
+
+/* Scan-line — unifies login-scan-line and dash-scan-line */
+.scan-line {
+  position: relative;
+  overflow: hidden;
+}
+.scan-line::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(26, 90, 158, 0.12), transparent);
+  animation: login-scan 10s linear infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Glass card — hover glow + transition (login-card pattern) */
+.card-glass {
+  background: var(--surface-base);
+  border: 1px solid var(--border-default);
+  transition: box-shadow 0.3s ease, border-color 0.3s ease;
+  position: relative;
+}
+.card-glass:hover {
+  box-shadow: 0 4px 24px rgba(26, 90, 158, 0.08), 0 0 0 1px rgba(26, 90, 158, 0.12);
+  border-color: rgba(26, 90, 158, 0.25);
+}
+
+/* Card top accent line (login-card-accent pattern) */
+.card-accent {
+  position: relative;
+}
+.card-accent::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 10%;
+  right: 10%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--brand-blue), transparent);
+  z-index: 2;
+}
+
+/* Action card — clickable card with hover lift (login-method-card pattern) */
+.action-card {
+  background: rgba(13, 21, 32, 0.6);
+  border: 1.5px solid var(--border-default);
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+.action-card:hover {
+  border-color: var(--brand-blue);
+  background: rgba(26, 90, 158, 0.06);
+  box-shadow: 0 0 12px rgba(26, 90, 158, 0.12);
+  transform: translateY(-1px);
+}
+
+/* Step entrance animation (login-step-enter generalized) */
+.animate-step-enter {
+  animation: login-fade-in 0.3s ease-out;
+}
+
+/* Error shake (login-error-shake generalized) */
+.alert-shake {
+  animation: login-shake 0.5s ease-in-out;
+}
+
+/* Status badge with LED dot (login-badge-ok generalized) */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  font-size: 7px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border-radius: 2px;
+}
+.status-badge-ok {
+  background: rgba(34, 197, 94, 0.08);
+  border: 1px solid rgba(34, 197, 94, 0.2);
+  color: #4ade80;
+}
+.status-badge-warn {
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+}
+.status-badge-error {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #f87171;
+}
+.status-badge-info {
+  background: rgba(26, 90, 158, 0.08);
+  border: 1px solid rgba(26, 90, 158, 0.2);
+  color: #4a9aee;
+}
+
+/* Modal overlay — like login page background */
+.modal-overlay {
+  background: rgba(6, 12, 20, 0.85);
+  backdrop-filter: blur(4px);
+}
+
+/* Modal panel — login card pattern */
+.modal-panel {
+  background: var(--surface-base);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 4px 40px rgba(26, 90, 158, 0.08), 0 0 0 1px rgba(26, 90, 158, 0.1);
+  animation: login-fade-in 0.2s ease-out;
+  position: relative;
+  overflow: hidden;
+}
+
 /* --- Dashboard Scan-Line Effect --- */
 .dash-scan-line {
   position: absolute;
@@ -832,7 +983,7 @@
   }
   .input-dark:focus {
     border-color: var(--brand-blue);
-    box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.35);
+    box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.3), 0 0 12px rgba(26, 90, 158, 0.12);
   }
 
   .select-dark {
@@ -853,7 +1004,7 @@
   }
   .select-dark:focus {
     border-color: var(--brand-blue);
-    box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.35);
+    box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.3), 0 0 12px rgba(26, 90, 158, 0.12);
   }
   .select-dark option {
     background: var(--surface-base);
@@ -873,17 +1024,25 @@
   }
   .textarea-dark:focus {
     border-color: var(--brand-blue);
-    box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.35);
+    box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.3), 0 0 12px rgba(26, 90, 158, 0.12);
   }
 
   /* --- Button Styles (Blocky / Raised) --- Motorola Blue primary */
   .btn-primary {
-    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-bold uppercase tracking-wide shadow-sm transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed;
-    background: #164d87;
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-bold uppercase tracking-wide shadow-sm focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed;
+    background: linear-gradient(135deg, #1a5a9e 0%, #0e3d6e 100%);
     border: 1px solid #1a5a9e;
+    box-shadow: 0 2px 8px rgba(26, 90, 158, 0.2), inset 0 1px 0 rgba(255,255,255,0.06);
+    transition: all 0.2s ease;
   }
   .btn-primary:hover:not(:disabled) {
-    background: #1a5a9e;
+    background: linear-gradient(135deg, #2570b5 0%, #1a5a9e 100%);
+    box-shadow: 0 4px 16px rgba(26, 90, 158, 0.35), inset 0 1px 0 rgba(255,255,255,0.08);
+    transform: translateY(-1px);
+  }
+  .btn-primary:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: 0 1px 4px rgba(26, 90, 158, 0.15);
   }
 
   .btn-secondary {
@@ -998,7 +1157,7 @@
     align-items: center;
     gap: 6px;
     padding: 3px 8px;
-    background: linear-gradient(180deg, #1e3048 0%, #162236 50%, #1a2636 100%);
+    background: linear-gradient(180deg, #162640 0%, #0f1a28 100%);
     border-bottom: 1px solid #0d1520;
     border-top: 1px solid #2a3e58;
     font-size: 10px;
@@ -1386,6 +1545,11 @@
   .status-bar-section:last-child {
     border-right: none;
     margin-left: auto;
+  }
+
+  .status-bar .clock-display {
+    color: #4a9aee;
+    text-shadow: 0 0 8px rgba(26, 90, 158, 0.3);
   }
 
   /* --- Dispatch Edit Mode Indicator --- */

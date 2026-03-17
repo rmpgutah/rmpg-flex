@@ -203,7 +203,7 @@ export default function CaseManagementPage() {
   const getPriorityColor = (priority: string) => PRIORITY_OPTIONS.find(p => p.value === priority)?.color || '';
 
   return (
-    <div className={`h-full flex ${isMobile ? 'flex-col' : ''}`}>
+    <div className={`h-full flex app-grid-bg ${isMobile ? 'flex-col' : ''}`}>
       {/* ── Left: Case List ── */}
       <div className={`flex flex-col ${isMobile ? 'h-1/2' : 'w-[400px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Case Management" icon={Briefcase}>

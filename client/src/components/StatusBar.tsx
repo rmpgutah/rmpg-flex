@@ -43,7 +43,7 @@ export default function StatusBar({
       {/* Connection Status */}
       <div className="status-bar-section">
         <span className={`led-dot ${isConnected ? 'led-green' : 'led-red animate-led-blink'}`} />
-        <span style={{ color: isConnected ? '#22c55e' : '#ef4444' }}>
+        <span style={{ color: isConnected ? '#22c55e' : '#ef4444', textShadow: isConnected ? '0 0 6px rgba(34, 197, 94, 0.3)' : undefined }}>
           {isConnected ? 'CONNECTED' : 'OFFLINE'}
         </span>
       </div>
@@ -51,7 +51,7 @@ export default function StatusBar({
       {/* Server */}
       <div className="status-bar-section">
         <RmpgLogo height={12} iconOnly />
-        <span>RMPG-FLEX v{APP_VERSION}</span>
+        <span style={{ padding: '0 4px', background: '#0d1520', border: '1px solid #1e3048', borderRadius: '2px', fontSize: '9px', letterSpacing: '0.04em' }}>RMPG-FLEX v{APP_VERSION}</span>
       </div>
 
       {/* Active Calls */}
@@ -105,7 +105,7 @@ export default function StatusBar({
 
       {/* Timestamp (right-aligned) */}
       <div className="status-bar-section">
-        <span style={{ color: '#22c55e' }}>
+        <span className="clock-display">
           {now.toLocaleTimeString('en-US', { hour12: false })}
         </span>
         <span style={{ color: '#5a6e80', marginLeft: 8 }}>

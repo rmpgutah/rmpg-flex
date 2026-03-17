@@ -1213,7 +1213,7 @@ export default function CitationsPage() {
   const showRightOnMobile = !isMobile || mode !== 'list' || !!selectedCitation;
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden app-grid-bg">
       {/* Stats bar */}
       <div className={`${isMobile ? 'px-3 pt-3' : 'px-4 pt-4'} pb-0 shrink-0`}>
         {isMobile ? (
@@ -1229,14 +1229,14 @@ export default function CitationsPage() {
       <div className={`flex flex-1 overflow-hidden ${isMobile ? 'px-2 pb-2 flex-col' : 'px-4 pb-4 gap-4'}`}>
         {/* Left panel */}
         {showListOnMobile && (
-          <div className={`${isMobile ? 'flex-1' : 'w-[420px] min-w-[360px] shrink-0'} panel-beveled bg-surface-base border border-rmpg-700 flex flex-col overflow-hidden`}>
+          <div className={`${isMobile ? 'flex-1' : 'w-[420px] min-w-[360px] shrink-0'} panel-beveled card-glass bg-surface-base border border-rmpg-700 flex flex-col overflow-hidden`}>
             {renderListPanel()}
           </div>
         )}
 
         {/* Right panel */}
         {showRightOnMobile && (
-          <div className={`flex-1 panel-beveled bg-surface-base border border-rmpg-700 overflow-hidden flex flex-col ${isMobile && !showListOnMobile ? '' : ''}`}>
+          <div className={`flex-1 panel-beveled card-glass bg-surface-base border border-rmpg-700 overflow-hidden flex flex-col ${isMobile && !showListOnMobile ? '' : ''}`}>
             {isMobile && selectedCitation && mode === 'list' && (
               <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700">
                 <button onClick={() => setSelectedCitation(null)} className="toolbar-btn text-[10px]">← Back</button>

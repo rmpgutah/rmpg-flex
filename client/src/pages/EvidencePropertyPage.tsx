@@ -254,7 +254,7 @@ export default function EvidencePropertyPage() {
 
   // ─── Render ────────────────────────────────────────
   return (
-    <div className={`h-full flex ${isMobile ? 'flex-col' : ''}`}>
+    <div className={`h-full flex app-grid-bg ${isMobile ? 'flex-col' : ''}`}>
       {/* ── Left Panel: Evidence List ── */}
       <div className={`flex flex-col ${isMobile ? 'h-1/2' : 'w-[420px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Evidence / Property Room" icon={Package}>

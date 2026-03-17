@@ -1840,7 +1840,7 @@ export default function EmailPage() {
   // ─── Render ───
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="flex h-full overflow-hidden app-grid-bg">
       {/* ─── Folder Panel ─── */}
       <div className={`flex-shrink-0 border-r border-border-subtle bg-surface-sunken hidden md:flex flex-col transition-all ${folderCollapsed ? 'w-12' : 'w-48'}`}>
         {/* Collapse toggle + compose */}

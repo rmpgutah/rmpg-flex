@@ -119,8 +119,8 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         group relative p-2 cursor-pointer transition-all duration-100
         priority-border-${call.priority}
         ${isSelected
-          ? 'bg-brand-900/30 panel-beveled'
-          : 'panel-beveled hover:bg-surface-raised'
+          ? 'bg-brand-900/30 panel-beveled card-glass'
+          : 'panel-beveled card-glass hover:bg-surface-raised'
         }
         ${isEmergency ? 'animate-emergency-pulse' : ''}
         ${isOverdue ? 'timer-overdue' : ''}

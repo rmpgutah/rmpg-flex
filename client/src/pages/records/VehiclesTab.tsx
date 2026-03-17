@@ -444,7 +444,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
   if (!selectedVehicle) return null;
 
   return (
-    <div className="h-full flex flex-col overflow-hidden detail-panel-enter">
+    <div className="h-full flex flex-col overflow-hidden detail-panel-enter card-glass">
       {/* Alert Banner + Status badges */}
       <div className="px-4 pt-3 pb-2 border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
         <AlertBanner alerts={vehicleAlerts} />

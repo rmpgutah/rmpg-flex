@@ -499,7 +499,7 @@ export default function MdtPage() {
   }
 
   return (
-    <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden">
+    <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden app-grid-bg">
       {/* ── Error Toast ── */}
       {errorToast && (
         <div className="absolute top-2 right-2 z-50 flex items-center gap-2 px-3 py-2 bg-red-900/90 border border-red-700 text-red-200 text-[10px] font-bold shadow-lg"

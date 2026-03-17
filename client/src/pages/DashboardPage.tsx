@@ -313,7 +313,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="p-4 space-y-4 animate-fade-in">
+    <div className="p-4 space-y-4 animate-fade-in app-grid-bg">
       {/* Portal Header — RMPG Logo + System Title */}
       <div className="panel-beveled bg-surface-base overflow-hidden relative">
         {/* Scan-line overlay */}
@@ -420,7 +420,7 @@ export default function DashboardPage() {
           <div
             key={key}
             onClick={() => navigate('/dispatch')}
-            className={`flex items-center gap-3 ${isMobile ? 'p-3 min-h-[56px]' : 'p-2'} panel-beveled border-l-4 ${border} cursor-pointer hover:bg-surface-raised transition-all duration-150 group bg-surface-base`}
+            className={`flex items-center gap-3 ${isMobile ? 'p-3 min-h-[56px]' : 'p-2'} panel-beveled border-l-4 ${border} cursor-pointer hover:bg-surface-raised transition-all duration-150 group bg-surface-base card-glass`}
             title={`View ${key} calls in Dispatch`}
           >
             <span className={`led-dot ${led}`} />
@@ -435,7 +435,7 @@ export default function DashboardPage() {
 
       {/* BOLO Ticker */}
       {bolos.length > 0 && (
-        <div className="bg-red-900/20 panel-beveled p-2 cursor-pointer hover:bg-red-900/30 transition-colors border-l-4 border-l-red-500" onClick={() => navigate('/communications')}>
+        <div className="bg-red-900/20 panel-beveled p-2 cursor-pointer hover:bg-red-900/30 transition-colors border-l-4 border-l-red-500 alert-banner alert-banner-critical" onClick={() => navigate('/communications')}>
           <div className="flex items-center gap-2 mb-1.5">
             <span className="led-dot led-red animate-led-pulse" />
             <AlertTriangle className="w-3.5 h-3.5 text-red-400 animate-emergency-blink" />
@@ -459,7 +459,7 @@ export default function DashboardPage() {
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Calls by Hour — Area Chart with Gradient */}
-        <div className="lg:col-span-2 panel-beveled bg-surface-base">
+        <div className="lg:col-span-2 panel-beveled bg-surface-base card-glass">
           <PanelTitleBar title="CALLS BY HOUR — TODAY" icon={Activity} statusLed={stats.calls_today > 0 ? 'green' : 'off'} />
           <div className="p-3">
           <ResponsiveContainer width="100%" height={isMobile ? 160 : 220}>
@@ -508,7 +508,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Priority Distribution Pie + Quick Actions */}
-        <div className="panel-beveled bg-surface-base flex flex-col">
+        <div className="panel-beveled bg-surface-base flex flex-col card-glass">
           <PanelTitleBar title="PRIORITY DISTRIBUTION" icon={Shield} />
           <div className="p-3 flex-1">
             {/* Pie Chart */}
@@ -578,16 +578,16 @@ export default function DashboardPage() {
           <div className="border-t border-rmpg-700 px-3 py-2 space-y-1.5">
             <h4 className="text-[9px] font-bold text-rmpg-500 uppercase tracking-wider">Quick Actions</h4>
             <div className="grid grid-cols-2 gap-1.5">
-              <button className={`toolbar-btn toolbar-btn-primary justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/dispatch')}>
+              <button className={`toolbar-btn toolbar-btn-primary justify-center action-card ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/dispatch')}>
                 <Plus style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> New Call
               </button>
-              <button className={`toolbar-btn justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/incidents')}>
+              <button className={`toolbar-btn justify-center action-card ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/incidents')}>
                 <FileText style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Incident
               </button>
-              <button className={`toolbar-btn justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/map')}>
+              <button className={`toolbar-btn justify-center action-card ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/map')}>
                 <MapPin style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Map
               </button>
-              <button className={`toolbar-btn justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => window.open('/warrants', '_blank', 'noopener,noreferrer')}>
+              <button className={`toolbar-btn justify-center action-card ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => window.open('/warrants', '_blank', 'noopener,noreferrer')}>
                 <Gavel style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Warrants
               </button>
             </div>
@@ -608,7 +608,7 @@ export default function DashboardPage() {
           <div
             key={label}
             onClick={() => navigate(path)}
-            className={`panel-beveled bg-surface-sunken ${isMobile ? 'p-3 min-h-[64px]' : 'p-2.5'} cursor-pointer hover:bg-surface-raised transition-colors group`}
+            className={`panel-beveled bg-surface-sunken ${isMobile ? 'p-3 min-h-[64px]' : 'p-2.5'} cursor-pointer hover:bg-surface-raised transition-colors group card-glass stat-pod`}
           >
             <div className="flex items-center gap-2 mb-1">
               <Icon className={`${isMobile ? 'w-4 h-4' : 'w-3.5 h-3.5'}`} style={{ color }} />
@@ -636,7 +636,7 @@ export default function DashboardPage() {
           other: 'Other',
         };
         return (
-          <div className="panel-beveled bg-surface-base">
+          <div className="panel-beveled bg-surface-base card-glass">
             <PanelTitleBar title="PSO OPERATIONS — THIS MONTH" icon={Briefcase} />
             <div className="p-3 space-y-3">
               {/* PSO Stats Cards */}
@@ -758,7 +758,7 @@ export default function DashboardPage() {
       {/* Activity Feed + Operational Alerts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Activity Feed */}
-        <div className="lg:col-span-2 panel-beveled bg-surface-base">
+        <div className="lg:col-span-2 panel-beveled bg-surface-base card-glass">
           <PanelTitleBar title="RECENT ACTIVITY" icon={Activity} statusLed="green" ledPulse>
             <button
               className="toolbar-btn flex items-center gap-1"
@@ -775,7 +775,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Operational Summary */}
-        <div className="panel-beveled bg-surface-base">
+        <div className="panel-beveled bg-surface-base card-glass">
           <PanelTitleBar title="OPERATIONAL STATUS" icon={Radio} statusLed="green" />
           <div className="p-3 space-y-3">
             {/* Active Warrant Alerts */}
@@ -833,7 +833,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Credential Alerts */}
-      <div className="panel-beveled bg-surface-base">
+      <div className="panel-beveled bg-surface-base card-glass">
         <PanelTitleBar title="CREDENTIAL ALERTS" icon={Shield} />
         <div className="p-3">
           {expiringCredentials.length === 0 ? (
@@ -913,7 +913,7 @@ export default function DashboardPage() {
         }));
 
         return (
-          <div className="panel-beveled bg-surface-base">
+          <div className="panel-beveled bg-surface-base card-glass">
             <PanelTitleBar title="OFFICER ACTIVITY COMPARISON — LAST 30 DAYS" icon={Users} />
             <div className="p-3">
               {/* Role Legend */}

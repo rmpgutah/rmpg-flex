@@ -553,7 +553,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
   if (!selectedPerson) return null;
 
   return (
-    <div className="h-full flex flex-col overflow-hidden detail-panel-enter">
+    <div className="h-full flex flex-col overflow-hidden detail-panel-enter card-glass">
       {/* Alert Banner + Flags (below PanelTitleBar, which RecordsPage provides) */}
       <div className="px-4 pt-3 pb-2 border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
         <AlertBanner alerts={personAlerts} />

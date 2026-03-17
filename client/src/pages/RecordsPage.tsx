@@ -518,7 +518,7 @@ export default function RecordsPage() {
   // ════════════════════════════════════════════════════
 
   const rightPanel = (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col card-glass">
       {/* Panel Title Bar — Selected Record */}
       <PanelTitleBar
         title={selectedLabel}
@@ -560,7 +560,7 @@ export default function RecordsPage() {
   // ════════════════════════════════════════════════════
 
   return (
-    <div className="flex flex-col h-full animate-fade-in">
+    <div className="flex flex-col h-full animate-fade-in app-grid-bg">
       <SplitPanel
         left={leftPanel}
         right={rightPanel}

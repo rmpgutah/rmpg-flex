@@ -1071,7 +1071,7 @@ export default function IncidentsPage() {
       </PanelTitleBar>
 
       {/* Detail Body — Collapsible Sections */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto p-4 card-glass">
         {/* Returned Warning */}
         {selectedIncident.status === 'returned' && selectedIncident.review_notes && (
           <div className="p-3 bg-red-900/20 border border-red-700/40 mb-3">
@@ -1086,13 +1086,13 @@ export default function IncidentsPage() {
         {(inc.alcohol_involved || inc.drugs_involved || inc.domestic_violence) && (
           <div className="flex items-center gap-2 mb-3">
             {inc.alcohol_involved && (
-              <span className="px-2 py-0.5 bg-amber-900/40 text-amber-300 text-[10px] uppercase font-bold border border-amber-700/40">Alcohol</span>
+              <span className="badge-pill bg-amber-900/40 text-amber-300 border border-amber-700/40">Alcohol</span>
             )}
             {inc.drugs_involved && (
-              <span className="px-2 py-0.5 bg-purple-900/40 text-purple-300 text-[10px] uppercase font-bold border border-purple-700/40">Drugs</span>
+              <span className="badge-pill bg-purple-900/40 text-purple-300 border border-purple-700/40">Drugs</span>
             )}
             {inc.domestic_violence && (
-              <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Domestic Violence</span>
+              <span className="badge-pill bg-red-900/40 text-red-300 border border-red-700/40">Domestic Violence</span>
             )}
           </div>
         )}
@@ -1178,7 +1178,7 @@ export default function IncidentsPage() {
                 <label className="field-label">District:</label>
                 <div className="flex items-center gap-2 mt-0.5">
                   {inc.dispatch_code && (
-                    <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1.5 py-0.5 tracking-wide">
+                    <span className="badge-pill font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40">
                       {inc.dispatch_code}
                     </span>
                   )}
@@ -1192,7 +1192,7 @@ export default function IncidentsPage() {
               <div>
                 <label className="field-label">Disposition:</label>
                 <p className="text-sm text-rmpg-200">
-                  <span className="inline-block px-1.5 py-0.5 bg-brand-900/40 text-brand-300 text-[11px] uppercase font-bold border border-brand-600/40 mr-1">
+                  <span className="badge-pill bg-brand-900/40 text-brand-300 border border-brand-600/40 mr-1">
                     {inc.disposition}
                   </span>
                   {(() => {
@@ -1353,13 +1353,13 @@ export default function IncidentsPage() {
                 return (
                   <div key={lp.id} className="flex items-center justify-between px-3 py-1.5 bg-surface-sunken border border-rmpg-700 group">
                     <div className="flex items-center gap-3">
-                      <span className="px-1.5 py-0.5 bg-brand-900/40 text-brand-300 text-[10px] uppercase font-bold border border-brand-600/40">
+                      <span className="badge-pill bg-brand-900/40 text-brand-300 border border-brand-600/40">
                         {lp.role.replace(/_/g, ' ')}
                       </span>
                       <span className="text-sm text-white font-medium">{lp.last_name}, {lp.first_name}</span>
                       {lp.dob && <span className="text-[11px] text-rmpg-400">DOB: {lp.dob}</span>}
                       {flags.map((f, i) => (
-                        <span key={i} className="px-1 py-0.5 bg-red-900/40 text-red-400 text-[10px] uppercase font-bold">
+                        <span key={i} className="badge-pill bg-red-900/40 text-red-400">
                           {f}
                         </span>
                       ))}
@@ -1401,7 +1401,7 @@ export default function IncidentsPage() {
               {detailVehicles.map((lv) => (
                 <div key={lv.id} className="flex items-center justify-between px-3 py-1.5 bg-surface-sunken border border-rmpg-700 group">
                   <div className="flex items-center gap-3">
-                    <span className="px-1.5 py-0.5 bg-amber-900/40 text-amber-300 text-[10px] uppercase font-bold border border-amber-600/40">
+                    <span className="badge-pill bg-amber-900/40 text-amber-300 border border-amber-600/40">
                       {lv.role.replace(/_/g, ' ')}
                     </span>
                     <span className="text-sm text-white font-medium">
@@ -1457,7 +1457,7 @@ export default function IncidentsPage() {
                 return (
                   <div key={ev.id} className="px-3 py-1.5 bg-surface-sunken border border-rmpg-700">
                     <div className="flex items-center gap-3">
-                      <span className="px-1.5 py-0.5 bg-purple-900/40 text-purple-300 text-[10px] uppercase font-bold border border-purple-600/40">
+                      <span className="badge-pill bg-purple-900/40 text-purple-300 border border-purple-600/40">
                         {ev.evidence_type || 'physical'}
                       </span>
                       <span className="text-xs text-white font-mono font-bold">{ev.evidence_number}</span>
@@ -1755,7 +1755,7 @@ export default function IncidentsPage() {
   ) : null;
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col app-grid-bg">
       <SplitPanel
         left={tablePanel}
         right={detailPanel}

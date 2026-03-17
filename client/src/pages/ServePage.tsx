@@ -484,7 +484,7 @@ export default function ServePage() {
   // ══════════════════════════════════════════════════════════════════════
 
   return (
-    <div className="flex flex-col h-full bg-surface-base">
+    <div className="flex flex-col h-full bg-surface-base app-grid-bg">
       {/* ─── Header Bar ────────────────────────────────────────────── */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-[#1e3048] bg-[#0d1520] flex-wrap">
         <div className="flex items-center gap-1.5">

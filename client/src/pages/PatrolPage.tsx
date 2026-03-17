@@ -512,7 +512,7 @@ const PatrolPage: React.FC = () => {
   ];
 
   return (
-    <div className="flex flex-col h-full animate-fade-in">
+    <div className="flex flex-col h-full animate-fade-in app-grid-bg">
       {/* Portal Header */}
       {!isMobile && (
         <div className="panel-beveled bg-surface-base overflow-hidden">
@@ -829,7 +829,7 @@ const PatrolPage: React.FC = () => {
                 return (
                   <div
                     key={item.checkpoint_id}
-                    className={`panel-beveled p-6 border-2 bg-surface-base ${complianceColor}`}
+                    className={`panel-beveled card-glass p-6 border-2 bg-surface-base ${complianceColor}`}
                   >
                     <div className="flex items-start justify-between mb-4">
                       <div>
