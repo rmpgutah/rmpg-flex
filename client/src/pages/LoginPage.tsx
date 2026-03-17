@@ -367,7 +367,7 @@ export default function LoginPage() {
         </div>
 
         {/* ── Login Card ──────────────────────────────── */}
-        <div className="shadow-2xl relative overflow-hidden panel-beveled bg-surface-base">
+        <div className={`shadow-2xl relative overflow-hidden panel-beveled bg-surface-base login-card-enter login-glow${loginStep === 'complete' ? ' login-success' : ''}`}>
           {/* Title bar */}
           <div className="panel-title-bar flex items-center gap-2">
             <ShieldCheck className="w-3 h-3" style={{ color: '#1a5a9e' }} />
@@ -778,7 +778,7 @@ export default function LoginPage() {
                     inputMode="numeric"
                     pattern="[0-9]*"
                     maxLength={6}
-                    className="input-dark h-10 text-center text-lg tracking-[0.5em] font-mono"
+                    className="input-dark login-input-glow h-10 text-center text-lg tracking-[0.5em] font-mono"
                     placeholder="000000"
                     value={setupCode}
                     onChange={(e) => setSetupCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
@@ -839,7 +839,7 @@ export default function LoginPage() {
                   </label>
                   <input
                     type="password"
-                    className="input-dark h-9"
+                    className="input-dark login-input-glow h-9"
                     placeholder="Enter new password"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
@@ -856,7 +856,7 @@ export default function LoginPage() {
                   </label>
                   <input
                     type="password"
-                    className="input-dark h-9"
+                    className="input-dark login-input-glow h-9"
                     placeholder="Confirm new password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
