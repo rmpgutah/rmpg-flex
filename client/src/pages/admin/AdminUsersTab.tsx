@@ -198,6 +198,26 @@ export default function AdminUsersTab({
     setSecurityActionLoading(null);
   };
 
+  const handleAdminResetPassword = async (userId: string) => {
+    const newPassword = prompt('Enter new temporary password for this user (min 8 characters):');
+    if (!newPassword || newPassword.trim().length < 8) {
+      if (newPassword !== null) setSecurityMsg({ type: 'error', text: 'Password must be at least 8 characters.' });
+      return;
+    }
+    setSecurityActionLoading('reset-pw');
+    setSecurityMsg(null);
+    try {
+      await apiFetch(`/admin/users/${userId}/reset-password`, {
+        method: 'POST',
+        body: JSON.stringify({ password: newPassword.trim() }),
+      });
+      setSecurityMsg({ type: 'success', text: 'Password reset. User must change it on next login. Login lockout cleared.' });
+    } catch (err: any) {
+      setSecurityMsg({ type: 'error', text: err.message || 'Failed to reset password' });
+    }
+    setSecurityActionLoading(null);
+  };
+
   return (
     <div className="flex h-full overflow-hidden">
       {/* Left: User List */}
@@ -658,6 +678,18 @@ export default function AdminUsersTab({
                       <KeyRound className="w-3 h-3" />
                     )}
                     Force Password Change
+                  </button>
+                  <button
+                    onClick={() => handleAdminResetPassword(selectedUser.id)}
+                    disabled={securityActionLoading === 'reset-pw'}
+                    className="toolbar-btn toolbar-btn-primary text-[9px] flex items-center gap-1"
+                  >
+                    {securityActionLoading === 'reset-pw' ? (
+                      <RefreshCw className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <KeyRound className="w-3 h-3" />
+                    )}
+                    Reset Password
                   </button>
                 </div>
 

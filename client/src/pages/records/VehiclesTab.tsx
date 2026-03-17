@@ -31,16 +31,21 @@ import type { VehicleFormData } from '../../components/VehicleFormModal';
 // ── DB Mapper ──────────────────────────────────────
 
 function parseFlags(raw: unknown): string[] {
-  if (Array.isArray(raw)) return raw;
-  if (typeof raw === 'string') {
+  let arr: unknown[] = [];
+  if (Array.isArray(raw)) {
+    arr = raw;
+  } else if (typeof raw === 'string') {
     try {
       const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
+      if (Array.isArray(parsed)) arr = parsed;
+    } catch { /* invalid JSON — skip */ }
   }
-  return [];
+  // Normalize: objects like {type, severity, count, updated_at} → string label
+  return arr.map(item => {
+    if (typeof item === 'string') return item;
+    if (item && typeof item === 'object' && 'type' in item) return String((item as any).type);
+    return String(item ?? '');
+  }).filter(Boolean);
 }
 
 export function mapDbVehicle(row: Record<string, unknown>): Vehicle {
@@ -374,9 +379,9 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
               <div className="flex flex-col items-end gap-1">
                 {v.flags.length > 0 && (
                   <div className="flex gap-1">
-                    {v.flags.slice(0, 2).map((flag) => (
-                      <span key={flag} className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-semibold border ${FLAG_COLORS[flag] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
-                        {flag}
+                    {v.flags.slice(0, 2).map((flag, fi) => (
+                      <span key={`${flag}-${fi}`} className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-semibold border ${FLAG_COLORS[String(flag)] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
+                        {String(flag)}
                       </span>
                     ))}
                   </div>
@@ -452,9 +457,9 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
         {/* Flags */}
         {selectedVehicle.flags.length > 0 && (
           <div className="flex flex-wrap gap-2 mt-1">
-            {selectedVehicle.flags.map((flag) => (
-              <span key={flag} className={`inline-flex items-center px-2 py-0.5 text-[10px] font-semibold border ${FLAG_COLORS[flag] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
-                {flag}
+            {selectedVehicle.flags.map((flag, fi) => (
+              <span key={`${flag}-${fi}`} className={`inline-flex items-center px-2 py-0.5 text-[10px] font-semibold border ${FLAG_COLORS[String(flag)] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
+                {String(flag)}
               </span>
             ))}
           </div>

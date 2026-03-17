@@ -254,7 +254,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
             {initState.label} {initState.formatted}
           </span>
         </div>
-        {call.assigned_units.length > 0 && (
+        {call.assigned_units?.length > 0 && (
           <div className="flex items-center gap-1">
             <Users className="w-3 h-3" />
             <span>{call.assigned_units.length} unit{call.assigned_units.length !== 1 ? 's' : ''}</span>

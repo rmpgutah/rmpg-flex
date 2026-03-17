@@ -1694,6 +1694,7 @@ function migrateSchema(): void {
   // ── USERS — Password history & expiry ─────────────────
   addCol('users', 'password_history', 'TEXT');             // JSON array of previous bcrypt hashes
   addCol('users', 'password_changed_at', 'TEXT');          // ISO timestamp of last password change
+  addCol('users', 'password_expiry_exempt', 'INTEGER DEFAULT 0'); // Exempt from scheduled password rotation
 
   // ── LOGIN_ATTEMPTS / SESSIONS — Device fingerprinting ──
   addCol('login_attempts', 'user_agent', 'TEXT');

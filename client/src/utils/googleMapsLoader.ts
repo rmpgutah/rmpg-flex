@@ -187,12 +187,20 @@ export interface TileMonitorCallbacks {
  * Monitor tile loading on a Google Maps instance.
  * Detects stalled tiles (no `tilesloaded` event within threshold) and
  * auto-recovers when device comes back online.
+ *
+ * Vehicle WiFi resilience:
+ * - Fast 5s detection threshold so drivers see "CACHED MAP" quickly
+ * - Immediate detection when browser goes offline (no timer wait)
+ * - Auto-recovery with map nudge when connectivity returns
+ * - Periodic 15s recovery attempts while stalled
+ * - Tracks online/offline transitions to reset stall state
+ *
  * Returns a cleanup function.
  */
 export function monitorTileLoading(
   map: google.maps.Map,
   callbacks: TileMonitorCallbacks,
-  thresholdMs: number = 15000,
+  thresholdMs: number = 5000,
 ): () => void {
   let tilesLoaded = false;
   let stallTimer: ReturnType<typeof setTimeout> | null = null;
@@ -216,17 +224,25 @@ export function monitorTileLoading(
 
   // Reset stall timer on map idle (user panned/zoomed — new tiles loading)
   const idleListener = google.maps.event.addListener(map, 'idle', () => {
-    if (!tilesLoaded) startStallTimer();
+    tilesLoaded = false;
+    startStallTimer();
   });
   listeners.push(idleListener);
 
+  // Immediately flag stalled when browser goes offline
+  const onOffline = () => {
+    if (stallTimer) clearTimeout(stallTimer);
+    tilesLoaded = false;
+    callbacks.onStalled();
+  };
+  window.addEventListener('offline', onOffline);
+
   // Auto-recover on connectivity restore
   const onOnline = () => {
-    if (tilesLoaded) return;
     callbacks.onRecovering();
-    // Force tile re-fetch by nudging the map
     tilesLoaded = false;
     startStallTimer();
+    // Force tile re-fetch by nudging the map
     const center = map.getCenter();
     if (center) {
       map.panTo({ lat: center.lat() + 0.0001, lng: center.lng() });
@@ -235,13 +251,13 @@ export function monitorTileLoading(
   };
   window.addEventListener('online', onOnline);
 
-  // Periodic recovery attempt every 30s if tiles are stalled
+  // Periodic recovery attempt every 15s if tiles are stalled
   const recoveryInterval = setInterval(() => {
     if (tilesLoaded) return;
     if (navigator.onLine) {
       onOnline(); // retry
     }
-  }, 30000);
+  }, 15000);
 
   // Start initial stall timer
   startStallTimer();
@@ -251,6 +267,7 @@ export function monitorTileLoading(
     clearInterval(recoveryInterval);
     listeners.forEach(l => google.maps.event.removeListener(l));
     window.removeEventListener('online', onOnline);
+    window.removeEventListener('offline', onOffline);
   };
 }
 
@@ -303,8 +320,12 @@ export const OFFLINE_TILE_MAX_ZOOM = 15;
  *
  * Returns a cleanup function that removes the layer from the map.
  */
-export function addOfflineTileLayer(map: google.maps.Map): () => void {
-  const offlineLayer = new google.maps.ImageMapType({
+/**
+ * Creates the offline ImageMapType for CartoDB dark_matter tiles.
+ * Used both as overlay and as a registered map type for offline-only mode.
+ */
+function createOfflineImageMapType(): google.maps.ImageMapType {
+  return new google.maps.ImageMapType({
     getTileUrl: (coord: google.maps.Point, zoom: number): string | null => {
       // Only serve tiles within our downloaded range
       if (zoom < OFFLINE_TILE_MIN_ZOOM || zoom > OFFLINE_TILE_MAX_ZOOM) return null;
@@ -325,22 +346,67 @@ export function addOfflineTileLayer(map: google.maps.Map): () => void {
     name: 'Offline',
     opacity: 1.0,
   });
+}
 
-  // Insert at position 0 — renders UNDER Google's base tiles.
-  // When Google tiles load, they cover the offline layer.
-  // When they fail (no WiFi), offline tiles show through.
-  map.overlayMapTypes.insertAt(0, offlineLayer);
+/**
+ * Creates and attaches an offline tile layer to a Google Maps instance.
+ * The layer renders pre-downloaded CartoDB dark_matter tiles.
+ *
+ * Two-layer strategy for vehicle WiFi resilience:
+ * 1. Overlay layer (overlayMapTypes[0]) — always active, renders on top of Google
+ *    base map. When Google tiles load, they're the base and offline is transparent.
+ *    When Google tiles fail, offline tiles show against the dark background.
+ * 2. Registered map type ('offline') — available as a base map type. When tiles
+ *    are stalled, components can switch to map.setMapTypeId('offline') which
+ *    renders ONLY the cached tiles with no Google tile requests at all.
+ *
+ * Returns a cleanup function and a reference to toggle offline-only mode.
+ */
+export function addOfflineTileLayer(map: google.maps.Map): () => void {
+  const offlineOverlay = createOfflineImageMapType();
+
+  // Register as a custom map type so it can be used as the base layer
+  const offlineBase = createOfflineImageMapType();
+  map.mapTypes.set('offline', offlineBase);
+
+  // Insert overlay at position 0 — renders on top of Google's base.
+  // Offline tiles are always present; when Google tiles load they're
+  // rendered as the base map beneath the overlay.
+  map.overlayMapTypes.insertAt(0, offlineOverlay);
 
   // Return cleanup function
   return () => {
-    // Find and remove the offline layer
     for (let i = 0; i < map.overlayMapTypes.getLength(); i++) {
-      if (map.overlayMapTypes.getAt(i) === offlineLayer) {
+      if (map.overlayMapTypes.getAt(i) === offlineOverlay) {
         map.overlayMapTypes.removeAt(i);
         break;
       }
     }
   };
+}
+
+/**
+ * Switch a map to offline-only mode (no Google tile requests).
+ * Uses the registered 'offline' map type as the base layer.
+ * Returns the previous mapTypeId for restoration.
+ */
+export function switchToOfflineMode(map: google.maps.Map): string {
+  const prev = map.getMapTypeId() as string;
+  map.setMapTypeId('offline');
+  map.setOptions({ styles: [] }); // No styles needed for offline tiles
+  return prev;
+}
+
+/**
+ * Restore a map from offline-only mode to its previous map type.
+ */
+export function restoreFromOfflineMode(
+  map: google.maps.Map,
+  previousMapTypeId: string,
+  styles: google.maps.MapTypeStyle[],
+): void {
+  map.setMapTypeId(previousMapTypeId);
+  map.setOptions({ styles });
 }
 
 /** Dark map style matching RMPG Flex theme */

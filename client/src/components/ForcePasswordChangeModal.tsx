@@ -16,7 +16,7 @@ interface PasswordRule {
 }
 
 export default function ForcePasswordChangeModal() {
-  const { user, logout } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -78,12 +78,17 @@ export default function ForcePasswordChangeModal() {
 
       setSuccess(true);
 
-      // The server invalidates all sessions on password change,
-      // so we log out after a brief delay to let the user read the message.
-      logoutTimerRef.current = setTimeout(() => {
+      // Refresh user state so must_change_password is cleared and modal dismisses.
+      // Brief delay so the user can see the success message.
+      logoutTimerRef.current = setTimeout(async () => {
         logoutTimerRef.current = null;
-        logout();
-      }, 2000);
+        try {
+          await refreshUser();
+        } catch {
+          // If refresh fails (session invalidated), fall back to logout
+          logout();
+        }
+      }, 1500);
     } catch (err: any) {
       setError(err?.message || 'Failed to change password');
     } finally {

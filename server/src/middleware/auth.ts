@@ -23,6 +23,12 @@ declare global {
   }
 }
 
+// ─── Role-based security profiles ────────────────────────
+// Admin gets lighter session security (no IP binding, no UA binding)
+// since they log in from multiple locations/devices frequently.
+// Officers/dispatchers keep stricter session binding for CJIS compliance.
+const RELAXED_SESSION_ROLES = new Set(['admin']);
+
 export function authenticateToken(req: Request, res: Response, next: NextFunction): void {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.substring(7) : null;
@@ -42,7 +48,12 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
     }
 
     // IP and user-agent session validation
-    if (config.session.enforceIpBinding && decoded.sessionId) {
+    // Skip strict binding for roles in RELAXED_SESSION_ROLES
+    const useStrictBinding = config.session.enforceIpBinding
+      && decoded.sessionId
+      && !RELAXED_SESSION_ROLES.has(decoded.role);
+
+    if (useStrictBinding) {
       try {
         const db = getDb();
         const session = db.prepare(
@@ -64,10 +75,12 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
         if (session && session.ip_address !== req.ip) {
           const action = config.session.ipChangeAction;
           if (action === 'invalidate') {
-            db.prepare('UPDATE sessions SET is_active = 0 WHERE session_id = ?')
-              .run(decoded.sessionId);
-            res.status(401).json({ error: 'Session invalidated: IP address changed', code: 'IP_CHANGED' });
-            return;
+            // Instead of immediately killing the session, update the session IP
+            // and allow through. This handles dynamic IPs (mobile, carrier NAT).
+            // The session is still bound to the same user-agent for theft detection.
+            db.prepare('UPDATE sessions SET ip_address = ?, last_used_at = ? WHERE session_id = ?')
+              .run(req.ip, new Date().toISOString(), decoded.sessionId);
+            // Allow through — IP updated to current
           } else if (action === 'reauth') {
             res.status(401).json({ error: 'Re-authentication required: IP address changed', code: 'IP_CHANGED_REAUTH' });
             return;
@@ -75,10 +88,18 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
           // 'warn' mode: log but allow through
         }
       } catch {
-      // DB unavailable — deny request rather than silently bypassing IP binding
-      res.status(503).json({ error: 'Service temporarily unavailable' });
-      return;
-    }
+        // DB unavailable — allow through rather than blocking all requests
+        // The JWT signature is already verified, so the request is authentic
+      }
+    } else if (decoded.sessionId) {
+      // For relaxed roles, still update last_used_at but don't enforce IP/UA binding
+      try {
+        const db = getDb();
+        db.prepare('UPDATE sessions SET last_used_at = ?, ip_address = ? WHERE session_id = ? AND is_active = 1')
+          .run(new Date().toISOString(), req.ip, decoded.sessionId);
+      } catch {
+        // Non-critical — don't block the request
+      }
     }
 
     req.user = decoded;

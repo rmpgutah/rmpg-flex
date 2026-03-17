@@ -3512,7 +3512,7 @@ export default function DispatchPage() {
                             ? 'bg-red-900/40 border border-red-700/50 text-red-400'
                             : 'bg-amber-900/40 border border-amber-700/50 text-amber-400'
                         }`}>
-                          {selectedCall.process_service_result.replace(/_/g, ' ').toUpperCase()}
+                          {(selectedCall.process_service_result || '').replace(/_/g, ' ').toUpperCase()}
                         </span>
                       )}
                       {!isEditing && (selectedCall.process_attempts || 0) > 0 && (

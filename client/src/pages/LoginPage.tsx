@@ -8,6 +8,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Eye, EyeOff, AlertCircle, ShieldCheck, ArrowLeft, Lock,
   KeyRound, Usb, Fingerprint, Monitor, Server, Wifi, Clock,
+  User, ChevronDown, ChevronUp, Shield,
 } from 'lucide-react';
 import { useAuth, type LoginStep } from '../context/AuthContext';
 import TotpCodeInput from '../components/TotpCodeInput';
@@ -121,6 +122,9 @@ export default function LoginPage() {
 
   // Device info (computed once)
   const device = useMemo(() => getDeviceInfo(), []);
+
+  // Collapsible system info panels
+  const [showSystemInfo, setShowSystemInfo] = useState(false);
 
   // Idle logout message
   const [showIdleMessage, setShowIdleMessage] = useState(false);
@@ -307,38 +311,42 @@ export default function LoginPage() {
 
       {/* ── Security Warning Banner ─────────────────── */}
       <div
-        className="w-full max-w-lg mb-2 sm:mb-3 px-3 sm:px-0 relative z-10"
+        className="w-full max-w-lg mb-3 sm:mb-4 px-3 sm:px-0 relative z-10"
         role="alert"
       >
         <div
           style={{
-            background: 'linear-gradient(180deg, #1a0000 0%, #0d0000 100%)',
-            border: '1px solid #991b1b',
+            background: 'linear-gradient(180deg, rgba(26, 0, 0, 0.6) 0%, rgba(13, 0, 0, 0.4) 100%)',
+            borderLeft: '1px solid rgba(153, 27, 27, 0.6)',
+            borderRight: '1px solid rgba(153, 27, 27, 0.6)',
+            borderBottom: '1px solid rgba(153, 27, 27, 0.6)',
             borderTop: '2px solid #ef4444',
+            backdropFilter: 'blur(8px)',
           }}
-          className="p-2 sm:p-2.5 text-center"
+          className="py-1.5 px-3 text-center"
         >
-          <div className="flex items-center justify-center gap-1.5 mb-1">
-            <div className="w-1 h-1 rounded-full animate-pulse" style={{ background: '#ef4444', boxShadow: '0 0 4px #ef4444' }} />
-            <span className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.2em]" style={{ color: '#ef4444' }}>Warning</span>
-            <div className="w-1 h-1 rounded-full animate-pulse" style={{ background: '#ef4444', boxShadow: '0 0 4px #ef4444' }} />
+          <div className="flex items-center justify-center gap-4">
+            <div className="w-1 h-1 rounded-full animate-pulse" style={{ background: '#ef4444', boxShadow: '0 0 6px #ef4444' }} />
+            <p className="text-[7px] sm:text-[8px] leading-relaxed font-bold uppercase tracking-[0.15em]" style={{ color: '#ef7a7a' }}>
+              Restricted System — Authorized Users Only — All Activity Monitored
+            </p>
+            <div className="w-1 h-1 rounded-full animate-pulse" style={{ background: '#ef4444', boxShadow: '0 0 6px #ef4444' }} />
           </div>
-          <p className="text-[8px] sm:text-[9px] leading-relaxed font-medium" style={{ color: '#ef7a7a' }}>
-            RESTRICTED INTERNAL SYSTEM. AUTHORIZED USERS ONLY.
-            ALL ACTIVITY IS MONITORED. UNAUTHORIZED ACCESS IS PROHIBITED.
-          </p>
         </div>
       </div>
 
       {/* ── Main Content ─────────────────────────────── */}
       <div className="relative w-full max-w-lg px-2 sm:px-0 z-10">
-        {/* Logo */}
-        <div className="text-center mb-2">
-          <div className="inline-flex items-center justify-center">
+        {/* Logo with animated rings */}
+        <div className="text-center mb-3">
+          <div className="relative inline-flex items-center justify-center" style={{ width: 'clamp(72px, 18vw, 110px)', height: 'clamp(72px, 18vw, 110px)' }}>
+            <div className="login-logo-ring-dashed" />
+            <div className="login-logo-ring-outer" />
+            <div className="login-logo-ring-inner" />
             <img
               src="/rmpg flex.png"
               alt="RMPG Flex"
-              className="drop-shadow-[0_0_15px_rgba(26,90,158,0.25)]"
+              className="relative z-10 drop-shadow-[0_0_20px_rgba(26,90,158,0.35)]"
               style={{
                 height: 'clamp(56px, 14vw, 88px)',
                 width: 'clamp(56px, 14vw, 88px)',
@@ -347,17 +355,22 @@ export default function LoginPage() {
               draggable={false}
             />
           </div>
-          <div className="flex items-center justify-center gap-2 mt-0.5">
-            <div className="h-px w-8 sm:w-12" style={{ background: 'linear-gradient(90deg, transparent, #124070)' }} />
-            <p className="text-[7px] sm:text-[8px] tracking-[0.15em] uppercase font-bold" style={{ color: 'rgba(26, 90, 158, 0.65)' }}>
-              Secure Authentication
-            </p>
-            <div className="h-px w-8 sm:w-12" style={{ background: 'linear-gradient(90deg, #124070, transparent)' }} />
+          <div className="flex items-center justify-center gap-2 mt-2">
+            <div className="h-px w-10 sm:w-16" style={{ background: 'linear-gradient(90deg, transparent, #1a5a9e)' }} />
+            <div className="flex items-center gap-1.5">
+              <Shield className="w-2.5 h-2.5" style={{ color: '#1a5a9e' }} />
+              <p className="text-[8px] sm:text-[9px] tracking-[0.2em] uppercase font-bold" style={{ color: '#1a5a9e' }}>
+                Secure Authentication
+              </p>
+            </div>
+            <div className="h-px w-10 sm:w-16" style={{ background: 'linear-gradient(90deg, #1a5a9e, transparent)' }} />
           </div>
         </div>
 
         {/* ── Login Card ──────────────────────────────── */}
-        <div className="shadow-2xl relative overflow-hidden panel-beveled bg-surface-base">
+        <div className="shadow-2xl relative overflow-hidden panel-beveled bg-surface-base" style={{ boxShadow: '0 4px 40px rgba(26, 90, 158, 0.08), 0 0 0 1px rgba(26, 90, 158, 0.1)' }}>
+          <div className="login-card-accent" />
+          <div className="login-scan-line" />
           {/* Title bar */}
           <div className="panel-title-bar flex items-center gap-2">
             <ShieldCheck className="w-3 h-3" style={{ color: '#1a5a9e' }} />
@@ -379,8 +392,8 @@ export default function LoginPage() {
                   <span className="text-[8px] uppercase tracking-wide" style={{ color: '#4ade80' }}>Password OK</span>
                 </div>
               )}
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2a3e58', border: '1px solid #3a5070', borderBottom: '1px solid #162236' }}>_</div>
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2a3e58', border: '1px solid #3a5070', borderBottom: '1px solid #162236' }}>□</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2a3e58', borderLeft: '1px solid #3a5070', borderRight: '1px solid #3a5070', borderTop: '1px solid #3a5070', borderBottom: '1px solid #162236' }}>_</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2a3e58', borderLeft: '1px solid #3a5070', borderRight: '1px solid #3a5070', borderTop: '1px solid #3a5070', borderBottom: '1px solid #162236' }}>□</div>
             </div>
           </div>
 
@@ -406,33 +419,37 @@ export default function LoginPage() {
 
             {/* ══════ CREDENTIALS STEP (username + password on one screen) ══════ */}
             {isCredentialStep && (
-              <form onSubmit={handleCredentialsSubmit} className="space-y-3">
+              <form onSubmit={handleCredentialsSubmit} className="space-y-3.5 login-step-enter">
                 <div>
-                  <label htmlFor="username" className="block text-[10px] font-bold uppercase mb-1 tracking-wide" style={{ color: '#8a9aaa' }}>
+                  <label htmlFor="username" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#8a9aaa' }}>
                     Username
                   </label>
-                  <input
-                    ref={usernameRef}
-                    id="username"
-                    type="text"
-                    className="input-dark login-input-glow h-9"
-                    placeholder="Enter your username"
-                    value={loginUsername}
-                    onChange={(e) => setLoginUsername(e.target.value)}
-                    autoComplete="username"
-                    required
-                  />
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: '#3a5070' }} />
+                    <input
+                      ref={usernameRef}
+                      id="username"
+                      type="text"
+                      className="input-dark login-input-glow h-10 pl-9"
+                      placeholder="Enter your username"
+                      value={loginUsername}
+                      onChange={(e) => setLoginUsername(e.target.value)}
+                      autoComplete="username"
+                      required
+                    />
+                  </div>
                 </div>
                 <div>
-                  <label htmlFor="password" className="block text-[10px] font-bold uppercase mb-1 tracking-wide" style={{ color: '#8a9aaa' }}>
+                  <label htmlFor="password" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#8a9aaa' }}>
                     Password
                   </label>
                   <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: '#3a5070' }} />
                     <input
                       ref={passwordRef}
                       id="password"
                       type={showPassword ? 'text' : 'password'}
-                      className="input-dark login-input-glow h-9 pr-8"
+                      className="input-dark login-input-glow h-10 pl-9 pr-9"
                       placeholder="Enter your password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
@@ -442,7 +459,7 @@ export default function LoginPage() {
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 transition-colors"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 transition-colors"
                       style={{ color: '#5a6e80' }}
                       onMouseEnter={(e) => { e.currentTarget.style.color = '#e0e0e0'; }}
                       onMouseLeave={(e) => { e.currentTarget.style.color = '#5a6e80'; }}
@@ -456,7 +473,8 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={loginBusy || !loginUsername.trim() || !password}
-                  className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="login-btn-primary w-full h-10 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-1"
+                  style={{ border: '1px solid rgba(26, 90, 158, 0.5)', borderRadius: '2px' }}
                 >
                   {loginBusy ? (
                     <>
@@ -464,7 +482,10 @@ export default function LoginPage() {
                       Authenticating...
                     </>
                   ) : (
-                    'Sign In'
+                    <>
+                      <ShieldCheck className="w-4 h-4" />
+                      Sign In
+                    </>
                   )}
                 </button>
               </form>
@@ -478,7 +499,7 @@ export default function LoginPage() {
                   const trimmed = totpCode.replace(/\s/g, '');
                   if (trimmed.length === 6 && !loginBusy) handleTotpSubmit(trimmed);
                 }}
-                className="space-y-4"
+                className="space-y-4 login-step-enter"
               >
                 <div className="text-center mb-2">
                   <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#8a9aaa' }}>
@@ -500,7 +521,7 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={loginBusy || totpCode.replace(/\s/g, '').length < 6}
-                  className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="login-btn-primary w-full h-10 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {loginBusy ? (
                     <>
@@ -572,7 +593,7 @@ export default function LoginPage() {
 
             {/* ══════ WebAuthn: Security Key Verification ══════ */}
             {pending2FA && effectiveMode === 'webauthn' && (
-              <div className="space-y-4">
+              <div className="space-y-4 login-step-enter">
                 <div className="text-center mb-2">
                   <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#8a9aaa' }}>Security Key</p>
                   <p className="text-[9px]" style={{ color: '#5a6e80' }}>
@@ -584,7 +605,7 @@ export default function LoginPage() {
                   type="button"
                   onClick={handleSecurityKeyAuth}
                   disabled={loginBusy}
-                  className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="login-btn-primary w-full h-10 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {loginBusy ? (
                     <>
@@ -636,7 +657,7 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={loginBusy || !backupCode.trim()}
-                  className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="login-btn-primary w-full h-10 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {loginBusy ? (
                     <>
@@ -676,7 +697,7 @@ export default function LoginPage() {
 
             {/* ══════ 2FA Setup Required ══════ */}
             {loginStep === 'setup_2fa' && (
-              <div className="space-y-4">
+              <div className="space-y-4 login-step-enter">
                 <div className="text-center">
                   <ShieldCheck className="w-10 h-10 mx-auto mb-2" style={{ color: '#1a5a9e' }} />
                   <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#8a9aaa' }}>
@@ -691,7 +712,7 @@ export default function LoginPage() {
                   type="button"
                   onClick={handleStartSetup}
                   disabled={loginBusy}
-                  className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="login-btn-primary w-full h-10 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {loginBusy ? (
                     <>
@@ -770,7 +791,7 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={loginBusy || setupCode.length !== 6}
-                  className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="login-btn-primary w-full h-10 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {loginBusy ? (
                     <>
@@ -802,7 +823,7 @@ export default function LoginPage() {
 
             {/* ══════ Password Change Required ══════ */}
             {loginStep === 'password_change' && (
-              <form onSubmit={handlePasswordChange} className="space-y-3">
+              <form onSubmit={handlePasswordChange} className="space-y-3 login-step-enter">
                 <div className="text-center mb-2">
                   <Lock className="w-8 h-8 mx-auto mb-2" style={{ color: '#1a5a9e' }} />
                   <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#8a9aaa' }}>
@@ -851,7 +872,7 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={loginBusy || !newPassword || newPassword !== confirmPassword}
-                  className="toolbar-btn toolbar-btn-primary w-full h-9 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="login-btn-primary w-full h-10 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {loginBusy ? (
                     <>
@@ -865,7 +886,6 @@ export default function LoginPage() {
               </form>
             )}
 
-            <div className="mt-3 pt-2" style={{ borderTop: '1px solid #1e3048' }} />
           </div>
 
           {/* Status bar */}
@@ -883,54 +903,71 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* ── System Info + Device Info Panels ─────────── */}
+        {/* ── Collapsible System Info + Device Info ─────── */}
         {isCredentialStep && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
-            {/* System Info */}
-            <div className="panel-beveled bg-surface-base overflow-hidden">
-              <div className="panel-title-bar flex items-center gap-1.5">
-                <Server className="w-2.5 h-2.5" style={{ color: '#1a5a9e' }} />
-                <span>SYSTEM</span>
-              </div>
-              <div className="px-3 py-2">
-                <InfoRow label="Application" value="RMPG Flex CAD/RMS" />
-                <InfoRow label="Version" value={`v${APP_VERSION}`} />
-                {BUILD_TIME && <InfoRow label="Build" value={new Date(BUILD_TIME).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} />}
-                <InfoRow label="Operator" value="Rocky Mountain Protective Group" />
-                <InfoRow label="Jurisdiction" value="Salt Lake City, UT" />
-                <div className="flex items-center justify-between py-[3px]">
-                  <span className="text-[8px] uppercase tracking-wider font-bold" style={{ color: '#5a6e80' }}>Server</span>
-                  <div className="flex items-center gap-1">
-                    <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#22c55e', boxShadow: '0 0 3px #22c55e' }} />
-                    <span className="text-[9px] font-mono" style={{ color: '#4ade80' }}>Online</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+          <div className="mt-2">
+            <button
+              type="button"
+              onClick={() => setShowSystemInfo(!showSystemInfo)}
+              className="w-full flex items-center justify-center gap-1.5 py-1.5 transition-colors"
+              style={{ color: '#3a5070' }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = '#5a7a9e'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = '#3a5070'; }}
+            >
+              <Server className="w-2.5 h-2.5" />
+              <span className="text-[8px] uppercase tracking-[0.15em] font-bold">System & Device Info</span>
+              {showSystemInfo ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            </button>
 
-            {/* Device Info */}
-            <div className="panel-beveled bg-surface-base overflow-hidden">
-              <div className="panel-title-bar flex items-center gap-1.5">
-                <Monitor className="w-2.5 h-2.5" style={{ color: '#1a5a9e' }} />
-                <span>DEVICE</span>
-              </div>
-              <div className="px-3 py-2">
-                <InfoRow label="Browser" value={device.browser} />
-                <InfoRow label="OS" value={device.os} />
-                <InfoRow label="Type" value={device.deviceType} />
-                <InfoRow label="Display" value={device.screen} />
-                <InfoRow label="Viewport" value={device.viewport} />
-                <div className="flex items-center justify-between py-[3px]">
-                  <span className="text-[8px] uppercase tracking-wider font-bold" style={{ color: '#5a6e80' }}>Connection</span>
-                  <div className="flex items-center gap-1">
-                    <Wifi className="w-2.5 h-2.5" style={{ color: device.online ? '#4ade80' : '#ef4444' }} />
-                    <span className="text-[9px] font-mono" style={{ color: device.online ? '#4ade80' : '#ef4444' }}>
-                      {device.online ? 'Online' : 'Offline'}
-                    </span>
+            {showSystemInfo && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1 login-step-enter">
+                {/* System Info */}
+                <div className="panel-beveled bg-surface-base overflow-hidden">
+                  <div className="panel-title-bar flex items-center gap-1.5">
+                    <Server className="w-2.5 h-2.5" style={{ color: '#1a5a9e' }} />
+                    <span>SYSTEM</span>
+                  </div>
+                  <div className="px-3 py-2">
+                    <InfoRow label="Application" value="RMPG Flex CAD/RMS" />
+                    <InfoRow label="Version" value={`v${APP_VERSION}`} />
+                    {BUILD_TIME && <InfoRow label="Build" value={new Date(BUILD_TIME).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} />}
+                    <InfoRow label="Operator" value="Rocky Mountain Protective Group" />
+                    <InfoRow label="Jurisdiction" value="Salt Lake City, UT" />
+                    <div className="flex items-center justify-between py-[3px]">
+                      <span className="text-[8px] uppercase tracking-wider font-bold" style={{ color: '#5a6e80' }}>Server</span>
+                      <div className="flex items-center gap-1">
+                        <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#22c55e', boxShadow: '0 0 3px #22c55e' }} />
+                        <span className="text-[9px] font-mono" style={{ color: '#4ade80' }}>Online</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Device Info */}
+                <div className="panel-beveled bg-surface-base overflow-hidden">
+                  <div className="panel-title-bar flex items-center gap-1.5">
+                    <Monitor className="w-2.5 h-2.5" style={{ color: '#1a5a9e' }} />
+                    <span>DEVICE</span>
+                  </div>
+                  <div className="px-3 py-2">
+                    <InfoRow label="Browser" value={device.browser} />
+                    <InfoRow label="OS" value={device.os} />
+                    <InfoRow label="Type" value={device.deviceType} />
+                    <InfoRow label="Display" value={device.screen} />
+                    <InfoRow label="Viewport" value={device.viewport} />
+                    <div className="flex items-center justify-between py-[3px]">
+                      <span className="text-[8px] uppercase tracking-wider font-bold" style={{ color: '#5a6e80' }}>Connection</span>
+                      <div className="flex items-center gap-1">
+                        <Wifi className="w-2.5 h-2.5" style={{ color: device.online ? '#4ade80' : '#ef4444' }} />
+                        <span className="text-[9px] font-mono" style={{ color: device.online ? '#4ade80' : '#ef4444' }}>
+                          {device.online ? 'Online' : 'Offline'}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 
@@ -940,7 +977,9 @@ export default function LoginPage() {
             className="text-center py-1.5 px-3"
             style={{
               background: '#060c14',
-              border: '1px solid #1e3048',
+              borderLeft: '1px solid #1e3048',
+              borderRight: '1px solid #1e3048',
+              borderBottom: '1px solid #1e3048',
               borderTop: '2px solid #124070',
             }}
           >

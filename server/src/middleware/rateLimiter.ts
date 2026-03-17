@@ -173,10 +173,10 @@ export const authRateLimit = rateLimit({
 });
 
 // Rate limiter for 2FA verification — prevent brute-forcing TOTP codes
-// TOTP has 1M possible codes; 3 attempts per 15min = ~288/day = 3,472 days to exhaust
+// TOTP has 1M possible codes; 5 attempts per 15min = ~480/day = 2,083 days to exhaust
 export const mfaRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  maxRequests: 3,            // 3 attempts per window (TOTP codes rotate every 30s)
+  maxRequests: 5,            // 5 attempts per window (allows for TOTP rotation edge cases)
   keyGenerator: (req) => `mfa:${req.ip || 'unknown'}:${req.body?.username || req.user?.userId || ''}`,
   message: 'Too many verification attempts. Please wait 15 minutes before trying again.',
 });
