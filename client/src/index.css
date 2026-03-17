@@ -644,18 +644,17 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 3px 8px;
-    background: linear-gradient(180deg, #1e3048 0%, #162236 50%, #1a2636 100%);
-    border-bottom: 1px solid #0d1520;
-    border-top: 1px solid #2a3e58;
-    font-size: 10px;
+    padding: 4px 10px;
+    background: linear-gradient(180deg, rgba(30, 48, 72, 0.5) 0%, rgba(22, 34, 54, 0.5) 100%);
+    border-bottom: 1px solid var(--border-default);
+    font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: #b0bcc8;
     user-select: none;
     flex-wrap: wrap;
-    min-height: 24px;
+    min-height: 26px;
   }
 
   .panel-title-bar .title-icon {
@@ -991,8 +990,8 @@
     align-items: center;
     gap: 0;
     height: 22px;
-    background: linear-gradient(180deg, #162236 0%, var(--surface-base) 100%);
-    border-top: 1px solid #1e3048;
+    background: var(--surface-base);
+    border-top: 1px solid var(--border-default);
     font-size: 10px;
     font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
     color: #8a9aaa;
