@@ -227,7 +227,7 @@ export default function AdminUsersTab({
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
             <input
               type="text"
-              className="input-dark pl-9 text-xs"
+              className="input-dark search-glow pl-9 text-xs"
               placeholder="Search users..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -256,14 +256,14 @@ export default function AdminUsersTab({
                 <div
                   key={user.id}
                   onClick={() => { setSelectedUser(selectedUser?.id === user.id ? null : user); setUserDetailTab('profile'); }}
-                  className={`px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-colors ${
+                  className={`record-list-item px-4 py-3 border-b border-rmpg-700/50 cursor-pointer ${
                     selectedUser?.id === user.id
-                      ? 'bg-brand-900/20 border-l-2 border-l-brand-500'
-                      : 'hover:bg-rmpg-700/30 border-l-2 border-l-transparent'
+                      ? 'record-selected border-l-2 border-l-brand-500'
+                      : 'border-l-2 border-l-transparent'
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <div className={`flex-shrink-0 w-9 h-9 rounded-full border flex items-center justify-center text-xs font-bold ${
+                    <div className={`record-avatar flex-shrink-0 w-9 h-9 rounded-full border flex items-center justify-center text-xs font-bold transition-all duration-150 ${
                       user.is_active ? 'bg-rmpg-700 border-rmpg-600 text-rmpg-300' : 'bg-rmpg-800 border-rmpg-700 text-rmpg-500'
                     }`}>
                       {user.first_name?.[0]}{user.last_name?.[0]}
@@ -298,8 +298,8 @@ export default function AdminUsersTab({
                         const cfg = STATUS_CONFIG[rawStatus] || STATUS_CONFIG.active;
                         const Icon = cfg.icon;
                         return (
-                          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-semibold ${cfg.color}`}>
-                            <Icon className="w-2.5 h-2.5" />
+                          <span className={`inline-flex items-center gap-1.5 px-1.5 py-0.5 text-[9px] font-semibold ${cfg.color}`}>
+                            <span className={`user-status-led led-${rawStatus}`} />
                             {cfg.label}
                           </span>
                         );
@@ -324,7 +324,7 @@ export default function AdminUsersTab({
 
       {/* Right: User Detail Panel */}
       {selectedUser && (
-        <div className="w-[60%] flex flex-col overflow-hidden">
+        <div className="w-[60%] flex flex-col overflow-hidden detail-panel-enter">
           {/* Detail Header */}
           <div className="p-4 border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
             <div className="flex items-start justify-between">

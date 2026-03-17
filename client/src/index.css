@@ -448,6 +448,28 @@
   box-shadow: 0 0 6px rgba(26, 90, 158, 0.4);
 }
 
+/* --- Dashboard Scan-Line Effect --- */
+.dash-scan-line {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 1;
+}
+.dash-scan-line::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(26, 90, 158, 0.12), transparent);
+  animation: dash-scan 12s linear infinite;
+}
+@keyframes dash-scan {
+  0% { top: -1px; }
+  100% { top: 100%; }
+}
+
 /* --- LED Indicator Animations (Spillman Flex) --- */
 @keyframes led-blink {
   0%, 100% { opacity: 1; }
@@ -499,6 +521,60 @@
   .animate-slide-in {
     animation: slideIn 0.3s ease-out;
   }
+
+  /* Staggered slide-in for list items */
+  .animate-stagger-in > * {
+    animation: stagger-slide-in 0.25s ease-out both;
+  }
+  .animate-stagger-in > *:nth-child(1) { animation-delay: 0ms; }
+  .animate-stagger-in > *:nth-child(2) { animation-delay: 30ms; }
+  .animate-stagger-in > *:nth-child(3) { animation-delay: 60ms; }
+  .animate-stagger-in > *:nth-child(4) { animation-delay: 90ms; }
+  .animate-stagger-in > *:nth-child(5) { animation-delay: 120ms; }
+  .animate-stagger-in > *:nth-child(6) { animation-delay: 150ms; }
+  .animate-stagger-in > *:nth-child(7) { animation-delay: 180ms; }
+  .animate-stagger-in > *:nth-child(8) { animation-delay: 210ms; }
+
+  /* Shimmer effect for cards on hover */
+  .shimmer-on-hover {
+    position: relative;
+    overflow: hidden;
+  }
+  .shimmer-on-hover::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(26, 90, 158, 0.06), transparent);
+    transition: none;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .shimmer-on-hover:hover::before {
+    animation: shimmer-sweep 0.6s ease-out;
+  }
+
+  /* Glow pulse for active/important elements */
+  .glow-pulse-blue {
+    animation: glow-pulse-blue 2s ease-in-out infinite;
+  }
+}
+
+@keyframes stagger-slide-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shimmer-sweep {
+  0% { left: -50%; }
+  100% { left: 150%; }
+}
+
+@keyframes glow-pulse-blue {
+  0%, 100% { box-shadow: 0 0 4px rgba(26, 90, 158, 0.2); }
+  50% { box-shadow: 0 0 12px rgba(26, 90, 158, 0.4); }
 }
 
 @keyframes slideIn {
@@ -722,17 +798,20 @@
     color: var(--field-label-color);
   }
 
-  /* --- Priority Left Border --- */
+  /* --- Priority Left Border (with ambient glow) --- */
   .priority-border-P1 {
     border-left: 4px solid #dc2626;
+    box-shadow: inset 3px 0 8px -3px rgba(220, 38, 38, 0.2);
   }
 
   .priority-border-P2 {
     border-left: 4px solid #d4a017;
+    box-shadow: inset 3px 0 8px -3px rgba(212, 160, 23, 0.15);
   }
 
   .priority-border-P3 {
     border-left: 4px solid #4a90c4;
+    box-shadow: inset 3px 0 8px -3px rgba(74, 144, 196, 0.12);
   }
 
   .priority-border-P4 {
@@ -894,6 +973,14 @@
     border-left-color: #3a5070;
     border-bottom-color: #0d1520;
     border-right-color: #0d1520;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  }
+
+  /* Interactive panels glow on hover */
+  .panel-beveled[onclick]:hover,
+  .panel-beveled.panel-interactive:hover,
+  [role="button"] > .panel-beveled:hover {
+    box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.15), 0 2px 12px rgba(0, 0, 0, 0.3);
   }
 
   .panel-inset {
@@ -906,6 +993,7 @@
 
   /* --- Panel Title Bar (Desktop Window Chrome) --- */
   .panel-title-bar {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 6px;
@@ -922,11 +1010,23 @@
     flex-wrap: wrap;
     min-height: 24px;
   }
+  /* Subtle blue accent line at bottom of title bar */
+  .panel-title-bar::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 10%;
+    right: 10%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(26, 90, 158, 0.3), transparent);
+    pointer-events: none;
+  }
 
   .panel-title-bar .title-icon {
     width: 12px;
     height: 12px;
     color: #3b8ad4;
+    filter: drop-shadow(0 0 3px rgba(59, 138, 212, 0.3));
   }
 
   /* --- Tab Bar (Spillman Flex Tabs) --- */
@@ -2939,6 +3039,21 @@
   50% { box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.7), 0 0 14px rgba(239, 68, 68, 0.3); }
 }
 
+/* --- Call Card On-Hold Amber Pulse --- */
+.call-on-hold {
+  animation: call-on-hold-pulse 3s ease-in-out infinite;
+}
+@keyframes call-on-hold-pulse {
+  0%, 100% { box-shadow: inset 3px 0 8px -3px rgba(245, 158, 11, 0.2); }
+  50% { box-shadow: inset 3px 0 12px -3px rgba(245, 158, 11, 0.35); }
+}
+
+/* --- Call Card Drag-Over Glow Animation --- */
+@keyframes call-drag-glow {
+  0%, 100% { box-shadow: 0 0 8px rgba(34, 197, 94, 0.4); }
+  50% { box-shadow: 0 0 16px rgba(34, 197, 94, 0.6); }
+}
+
 /* ============================================================
    Unit Recommendation Panel
    ============================================================ */
@@ -3119,6 +3234,104 @@
   gap: 6px;
   padding: 3px 8px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+/* ── Record List Item — shared hover/selection effects for record lists ── */
+.record-list-item {
+  position: relative;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.record-list-item::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  background: linear-gradient(90deg, rgba(26, 90, 158, 0.06) 0%, transparent 60%);
+}
+
+.record-list-item:hover::before {
+  opacity: 1;
+}
+
+.record-list-item:hover {
+  background: rgba(26, 90, 158, 0.08) !important;
+}
+
+.record-list-item.record-selected {
+  background: rgba(26, 90, 158, 0.12) !important;
+  box-shadow: inset 3px 0 8px -3px rgba(26, 90, 158, 0.3);
+}
+
+/* Avatar ring pulse for selected items */
+.record-list-item.record-selected .record-avatar {
+  border-color: rgba(26, 90, 158, 0.6);
+  box-shadow: 0 0 6px rgba(26, 90, 158, 0.3);
+}
+
+/* Action buttons — visible on hover with fade */
+.record-list-item .record-actions {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.record-list-item:hover .record-actions,
+.record-list-item.record-selected .record-actions {
+  opacity: 1;
+}
+
+/* ── Detail Panel Slide-In ── */
+@keyframes detail-slide-in {
+  from { opacity: 0; transform: translateX(12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.detail-panel-enter {
+  animation: detail-slide-in 0.2s ease-out;
+}
+
+/* ── Empty State Enhancement ── */
+.record-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1rem;
+  opacity: 0;
+  animation: fade-in-up 0.3s ease-out forwards;
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Admin User Status LED ── */
+.user-status-led {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.user-status-led.led-active {
+  background: #22c55e;
+  box-shadow: 0 0 4px rgba(34, 197, 94, 0.5);
+}
+.user-status-led.led-inactive {
+  background: #eab308;
+  box-shadow: 0 0 4px rgba(234, 179, 8, 0.3);
+}
+.user-status-led.led-terminated {
+  background: #ef4444;
+  box-shadow: 0 0 4px rgba(239, 68, 68, 0.3);
+}
+
+/* ── Search Input Glow Focus ── */
+.search-glow:focus {
+  box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.4), 0 0 8px rgba(26, 90, 158, 0.15);
+  border-color: rgba(26, 90, 158, 0.5) !important;
 }
 
 /* ── Compact Mode — reduces padding/gaps throughout ── */

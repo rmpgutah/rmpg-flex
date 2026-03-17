@@ -315,7 +315,9 @@ export default function DashboardPage() {
   return (
     <div className="p-4 space-y-4 animate-fade-in">
       {/* Portal Header — RMPG Logo + System Title */}
-      <div className="panel-beveled bg-surface-base overflow-hidden">
+      <div className="panel-beveled bg-surface-base overflow-hidden relative">
+        {/* Scan-line overlay */}
+        <div className="dash-scan-line" />
         <div className={`flex items-center gap-4 ${isMobile ? 'px-3 py-2' : 'px-4 py-3'} relative`}>
           {/* Blue accent line */}
           <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3359, #1a5a9e 30%, #1a5a9e 70%, #0e3359)' }} />
@@ -337,9 +339,12 @@ export default function DashboardPage() {
               </p>
             )}
           </div>
-          <div className="hidden md:flex items-center gap-2 text-[9px] font-mono text-rmpg-600">
+          <div className="hidden md:flex items-center gap-3 text-[9px] font-mono text-rmpg-600">
             <PrintButton />
-            <span>{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
+            <div className="flex items-center gap-1.5 px-2 py-1 panel-inset">
+              <span className="led-dot led-green" />
+              <span>{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -361,7 +366,7 @@ export default function DashboardPage() {
       )}
 
       {/* Stats Cards Row */}
-      <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3'}`}>
+      <div className={`grid animate-stagger-in ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3'}`}>
         <StatsCard
           icon={Phone}
           label="Active Calls"
@@ -405,7 +410,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Priority Breakdown — Clickable beveled panels with LED dots */}
-      <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2'}`}>
+      <div className={`grid animate-stagger-in ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2'}`}>
         {[
           { key: 'P1', label: 'P1 Emergency', led: 'led-red', border: 'border-l-red-500', count: stats.calls_by_priority.P1 },
           { key: 'P2', label: 'P2 Urgent', led: 'led-amber', border: 'border-l-amber-500', count: stats.calls_by_priority.P2 },
@@ -455,7 +460,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Calls by Hour — Area Chart with Gradient */}
         <div className="lg:col-span-2 panel-beveled bg-surface-base">
-          <PanelTitleBar title="CALLS BY HOUR — TODAY" icon={Activity} />
+          <PanelTitleBar title="CALLS BY HOUR — TODAY" icon={Activity} statusLed={stats.calls_today > 0 ? 'green' : 'off'} />
           <div className="p-3">
           <ResponsiveContainer width="100%" height={isMobile ? 160 : 220}>
             <AreaChart data={chartData}>
@@ -591,7 +596,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Shift Summary Row */}
-      <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2'}`}>
+      <div className={`grid animate-stagger-in ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2'}`}>
         {[
           { icon: Phone, label: 'Calls Handled', value: stats.calls_today, color: '#3b82f6', path: '/dispatch' },
           { icon: FileText, label: 'Incidents Filed', value: stats.incidents_today, color: '#22c55e', path: '/incidents' },
@@ -754,7 +759,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Activity Feed */}
         <div className="lg:col-span-2 panel-beveled bg-surface-base">
-          <PanelTitleBar title="RECENT ACTIVITY" icon={Activity}>
+          <PanelTitleBar title="RECENT ACTIVITY" icon={Activity} statusLed="green" ledPulse>
             <button
               className="toolbar-btn flex items-center gap-1"
               onClick={() => navigate('/audit')}
@@ -771,7 +776,7 @@ export default function DashboardPage() {
 
         {/* Operational Summary */}
         <div className="panel-beveled bg-surface-base">
-          <PanelTitleBar title="OPERATIONAL STATUS" icon={Radio} />
+          <PanelTitleBar title="OPERATIONAL STATUS" icon={Radio} statusLed="green" />
           <div className="p-3 space-y-3">
             {/* Active Warrant Alerts */}
             <div
