@@ -432,7 +432,7 @@ async function refreshAndRetry(endpoint: string, options: RequestInit): Promise<
 
   const refreshResponse = await fetch(`${serverUrl}/api/auth/refresh`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
     body: JSON.stringify({ refreshToken }),
   });
 

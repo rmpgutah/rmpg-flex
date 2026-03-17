@@ -28,12 +28,40 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
     'payment=()', 'usb=()', 'bluetooth=()', 'serial=()',
     'hid=()', 'magnetometer=()', 'gyroscope=()',
     'accelerometer=()', 'ambient-light-sensor=()',
+    'autoplay=()', 'display-capture=()', 'document-domain=()',
+    'encrypted-media=(self)', 'fullscreen=(self)',
+    'idle-detection=()', 'screen-wake-lock=()',
+    'interest-cohort=()',  // Block FLoC — prevent privacy-invasive ad tracking
+    'browsing-topics=()',  // Block Topics API (FLoC successor)
+    'join-ad-interest-group=()', // Block FLEDGE/Protected Audience API
+    'run-ad-auction=()',   // Block FLEDGE ad auctions
+    'attribution-reporting=()',   // Block Attribution Reporting API
+    'compute-pressure=()',        // Block Compute Pressure API
+    'local-fonts=()',             // Block local font enumeration (fingerprinting)
+    'storage-access=()',          // Block Storage Access API (cross-site tracking)
+    'window-management=(self)',   // Restrict window placement to same-origin
+    'xr-spatial-tracking=()',     // Block WebXR spatial tracking
+    'publickey-credentials-create=(self)',  // Restrict WebAuthn to same-origin
+    'publickey-credentials-get=(self)',     // Restrict WebAuthn to same-origin
+    'clipboard-read=(self)',               // Restrict clipboard read to same-origin
+    'clipboard-write=(self)',              // Restrict clipboard write to same-origin
+    'gamepad=()',                           // Block Gamepad API (fingerprinting vector)
+    'speaker-selection=(self)',            // Restrict audio output selection
+    'midi=()',                              // Block Web MIDI API
+    'otp-credentials=()',                  // Block OTP credential sharing API
+    'identity-credentials-get=()',         // Block FedCM identity credential API
+    'deferred-fetch=()',                   // Block deferred fetch API
   ].join(', '));
 
   // Cross-Origin isolation headers — prevent cross-origin attacks
   res.set('Cross-Origin-Opener-Policy', 'same-origin');
   res.set('Cross-Origin-Resource-Policy', 'same-origin');
+  res.set('Cross-Origin-Embedder-Policy', 'credentialless');
   res.set('X-Permitted-Cross-Domain-Policies', 'none');
+
+  // Prevent DNS prefetching — stops browsers from resolving domains in page content
+  // before they're needed, reducing information leakage about what data officers are viewing
+  res.set('X-DNS-Prefetch-Control', 'off');
 
   // Prevent caching of API responses containing sensitive law enforcement data
   // Static assets are cached separately with their own Cache-Control in index.ts
@@ -71,7 +99,27 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
     "child-src 'self' blob:",
     "manifest-src 'self'",
     "frame-ancestors 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "form-action 'self'",
+    // Auto-upgrade HTTP → HTTPS for mixed content in production
+    ...(config.isProduction ? ["upgrade-insecure-requests"] : []),
+    // CSP violation reporting — logs policy violations for security monitoring
+    // report-uri is deprecated but still needed for older browsers; report-to is the modern replacement
+    ...(config.isProduction ? ["report-uri /api/csp-report", "report-to csp-endpoint"] : []),
   ].join('; '));
+
+  // Report-To header for modern CSP reporting (Chrome 69+, Edge 79+)
+  if (config.isProduction) {
+    res.set('Report-To', JSON.stringify({
+      group: 'csp-endpoint',
+      max_age: 86400,
+      endpoints: [{ url: '/api/csp-report' }],
+    }));
+  }
+
+  // Prevent IE from opening downloads directly in the browser context
+  res.set('X-Download-Options', 'noopen');
 
   // Remove powered-by header
   res.removeHeader('X-Powered-By');

@@ -5,13 +5,14 @@ import { reverseGeocodeDetailed } from '../utils/geocode';
 import { identifyBeat } from '../utils/geofence';
 import { listDailyReports, getReportPath, generateAndSaveDailyReport } from '../utils/dailyReportGenerator';
 import { localToday } from '../utils/timeUtils';
+import { escapeLike, quoteIdent, validateParamId } from '../middleware/sanitize';
 
 const router = Router();
 
 router.use(authenticateToken);
 
 // GET /api/reports/dashboard - Overall dashboard statistics
-router.get('/dashboard', (req: Request, res: Response) => {
+router.get('/dashboard', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
 
@@ -219,7 +220,7 @@ router.get('/dashboard', (req: Request, res: Response) => {
 });
 
 // GET /api/reports/incidents-summary - Incident summary with grouping
-router.get('/incidents-summary', (req: Request, res: Response) => {
+router.get('/incidents-summary', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { startDate, endDate, groupBy = 'type' } = req.query;
@@ -243,12 +244,13 @@ router.get('/incidents-summary', (req: Request, res: Response) => {
       officer: 'officer_id',
     };
     const groupColumn = columnMap[groupBy as string] || 'incident_type';
+    const quotedCol = quoteIdent(groupColumn);
 
     const summary = db.prepare(`
-      SELECT ${groupColumn} as group_key, COUNT(*) as count
+      SELECT ${quotedCol} as group_key, COUNT(*) as count
       FROM incidents
       WHERE 1=1 ${dateFilter}
-      GROUP BY ${groupColumn}
+      GROUP BY ${quotedCol}
       ORDER BY count DESC
     `).all(...params);
 
@@ -281,7 +283,7 @@ router.get('/incidents-summary', (req: Request, res: Response) => {
 });
 
 // GET /api/reports/response-times - Response time analytics
-router.get('/response-times', (req: Request, res: Response) => {
+router.get('/response-times', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { startDate, endDate, propertyId } = req.query;
@@ -388,7 +390,7 @@ router.get('/response-times', (req: Request, res: Response) => {
 });
 
 // GET /api/reports/officer-activity - Per-officer metrics
-router.get('/officer-activity', (req: Request, res: Response) => {
+router.get('/officer-activity', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { startDate, endDate } = req.query;
@@ -438,8 +440,8 @@ router.get('/officer-activity', (req: Request, res: Response) => {
       if (unit) {
         const callCount = db.prepare(`
           SELECT COUNT(*) as count FROM calls_for_service
-          WHERE assigned_unit_ids LIKE ? ${dateFilter}
-        `).get(`%${unit.id}%`, ...params) as any;
+          WHERE assigned_unit_ids LIKE ? ESCAPE '\\' ${dateFilter}
+        `).get(`%${escapeLike(String(unit.id))}%`, ...params) as any;
         callsResponded = callCount.count;
       }
 
@@ -463,12 +465,17 @@ router.get('/officer-activity', (req: Request, res: Response) => {
 });
 
 // GET /api/reports/client/:clientId - Client-specific report data
-router.get('/client/:clientId', (req: Request, res: Response) => {
+router.get('/client/:clientId', requireRole('admin', 'manager', 'supervisor', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const clientId = parseInt(String(req.params.clientId), 10);
+    if (isNaN(clientId) || clientId < 1 || String(clientId) !== req.params.clientId) {
+      res.status(400).json({ error: 'Invalid client ID' });
+      return;
+    }
     const { startDate, endDate } = req.query;
 
-    const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(req.params.clientId) as any;
+    const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(clientId) as any;
     if (!client) {
       res.status(404).json({ error: 'Client not found' });
       return;
@@ -582,15 +589,20 @@ router.get('/client/:clientId', (req: Request, res: Response) => {
 });
 
 // GET /api/reports/shift-activity/:officerId — End-of-shift activity report data
-router.get('/shift-activity/:officerId', (req: Request, res: Response) => {
+router.get('/shift-activity/:officerId', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { officerId } = req.params;
+    const officerId = String(req.params.officerId);
+    const parsedOfficerId = parseInt(officerId, 10);
+    if (isNaN(parsedOfficerId) || parsedOfficerId < 1 || String(parsedOfficerId) !== officerId) {
+      res.status(400).json({ error: 'Invalid officer ID' });
+      return;
+    }
     const date = (req.query.date as string) || localToday();
 
     // Authorization: officers can only view their own shift data
     const privilegedRoles = ['admin', 'manager', 'supervisor'];
-    if (!privilegedRoles.includes(req.user!.role) && String(req.user!.userId) !== String(officerId)) {
+    if (!privilegedRoles.includes(req.user!.role) && req.user!.userId !== parsedOfficerId) {
       res.status(403).json({ error: 'You can only view your own shift activity' });
       return;
     }
@@ -607,10 +619,10 @@ router.get('/shift-activity/:officerId', (req: Request, res: Response) => {
       SELECT c.*
       FROM calls_for_service c
       WHERE DATE(c.created_at) = ? AND (
-        c.dispatcher_id = ? OR c.assigned_unit_ids LIKE ?
+        c.dispatcher_id = ? OR c.assigned_unit_ids LIKE ? ESCAPE '\\'
       )
       ORDER BY c.created_at ASC
-    `).all(date, officerId, `%${unitId}%`) as any[];
+    `).all(date, officerId, `%${escapeLike(unitId)}%`) as any[];
 
     // Incidents authored today
     const incidents = db.prepare(`
@@ -682,7 +694,7 @@ router.get('/training-compliance', requireRole('admin', 'manager'), (req: Reques
 });
 
 // GET /api/reports/call-density — Call density data for heatmap
-router.get('/call-density', (req: Request, res: Response) => {
+router.get('/call-density', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const days = parseInt(req.query.days as string, 10) || 30;
@@ -710,7 +722,7 @@ router.get('/call-density', (req: Request, res: Response) => {
 });
 
 // GET /api/reports/statute-analytics — Statute violation analytics
-router.get('/statute-analytics', (req: Request, res: Response) => {
+router.get('/statute-analytics', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 90));
@@ -765,7 +777,7 @@ router.get('/statute-analytics', (req: Request, res: Response) => {
 });
 
 // GET /api/reports/patrol-compliance — Patrol scan compliance analytics
-router.get('/patrol-compliance', (req: Request, res: Response) => {
+router.get('/patrol-compliance', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
@@ -854,27 +866,28 @@ router.post('/custom', requireRole('admin', 'manager'), (req: Request, res: Resp
     const selectedCols = (columns || allowedCols).filter((c: string) => allowedCols.includes(c));
     if (selectedCols.length === 0) return res.status(400).json({ error: 'No valid columns selected' });
 
-    // Quote SQL identifiers to prevent injection even if allowlists are modified
-    const q = (id: string) => `"${id.replace(/"/g, '')}"`;
-
-    let sql = `SELECT ${selectedCols.map(q).join(', ')} FROM ${q(source)}`;
+    let sql = `SELECT ${selectedCols.map(quoteIdent).join(', ')} FROM ${quoteIdent(source)}`;
     const params: any[] = [];
     const conditions: string[] = [];
+
+    // Validate filter operators to prevent injection via operator field
+    const VALID_OPERATORS = new Set(['eq', 'contains', 'gte', 'lte']);
 
     if (filters && Array.isArray(filters)) {
       for (const f of filters) {
         if (!allowedCols.includes(f.column)) continue;
-        const col = q(f.column);
+        if (!VALID_OPERATORS.has(f.operator)) continue;
+        const col = quoteIdent(f.column);
         if (f.operator === 'eq') { conditions.push(`${col} = ?`); params.push(f.value); }
-        else if (f.operator === 'contains') { conditions.push(`${col} LIKE ?`); params.push(`%${f.value}%`); }
+        else if (f.operator === 'contains') { conditions.push(`${col} LIKE ? ESCAPE '\\'`); params.push(`%${escapeLike(String(f.value))}%`); }
         else if (f.operator === 'gte') { conditions.push(`${col} >= ?`); params.push(f.value); }
         else if (f.operator === 'lte') { conditions.push(`${col} <= ?`); params.push(f.value); }
       }
     }
 
     if (conditions.length > 0) sql += ` WHERE ${conditions.join(' AND ')}`;
-    if (groupBy && allowedCols.includes(groupBy)) sql += ` GROUP BY ${q(groupBy)}`;
-    if (sortBy && allowedCols.includes(sortBy)) sql += ` ORDER BY ${q(sortBy)} ${sortDir === 'asc' ? 'ASC' : 'DESC'}`;
+    if (groupBy && allowedCols.includes(groupBy)) sql += ` GROUP BY ${quoteIdent(groupBy)}`;
+    if (sortBy && allowedCols.includes(sortBy)) sql += ` ORDER BY ${quoteIdent(sortBy)} ${sortDir === 'asc' ? 'ASC' : 'DESC'}`;
     const parsedLimit = parseInt(queryLimit, 10);
     const safeLimit = Math.min(isNaN(parsedLimit) ? 500 : parsedLimit, 2000);
     sql += ` LIMIT ?`;
@@ -890,7 +903,7 @@ router.post('/custom', requireRole('admin', 'manager'), (req: Request, res: Resp
 
 // ─── GET /crime-analysis ─────────────────────────────────
 // Crime analysis / ILP dashboard data
-router.get('/crime-analysis', (req: Request, res: Response) => {
+router.get('/crime-analysis', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { days = '90' } = req.query;
@@ -1421,6 +1434,10 @@ router.get('/daily-reports', requireRole('admin', 'manager', 'supervisor'), (req
 router.get('/daily-reports/:filename', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const filename = req.params.filename as string;
+    if (!filename || filename.includes('\0') || !/^[\w.\-]+$/.test(filename)) {
+      res.status(400).json({ error: 'Invalid filename' });
+      return;
+    }
     const filepath = getReportPath(filename);
     if (!filepath) {
       res.status(404).json({ error: 'Report not found' });

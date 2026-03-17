@@ -11,6 +11,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
+import { validateParamId, escapeLike } from '../middleware/sanitize';
 
 const router = Router();
 router.use(authenticateToken);
@@ -54,7 +55,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
   try {
     const db = getDb();
     const { search, tier, status, risk_level, page = '1', limit = '25' } = req.query;
-    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
     const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 25));
     const offset = (pageNum - 1) * limitNum;
 
@@ -64,8 +65,8 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     if (status) { where += ' AND s.registration_status = ?'; params.push(status); }
     if (risk_level) { where += ' AND s.risk_level = ?'; params.push(risk_level); }
     if (search) {
-      where += ' AND (s.first_name LIKE ? OR s.last_name LIKE ? OR s.registry_id LIKE ? OR s.aliases LIKE ?)';
-      const s = `%${search}%`; params.push(s, s, s, s);
+      where += " AND (s.first_name LIKE ? ESCAPE '\\' OR s.last_name LIKE ? ESCAPE '\\' OR s.registry_id LIKE ? ESCAPE '\\' OR s.aliases LIKE ? ESCAPE '\\')";
+      const s2 = `%${escapeLike(String(search))}%`; params.push(s2, s2, s2, s2);
     }
 
     const total = (db.prepare(`SELECT COUNT(*) as count FROM sex_offender_registry s ${where}`).get(...params) as any)?.count || 0;
@@ -97,7 +98,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
 });
 
 // ─── GET /:id ────────────────────────────────────────────
-router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare('SELECT * FROM sex_offender_registry WHERE id = ?').get(req.params.id);
@@ -182,7 +183,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor'), (req: Request, r
 });
 
 // ─── PUT /:id ────────────────────────────────────────────
-router.put('/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -225,7 +226,7 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request,
 
 // ─── PUT /:id/verify ─────────────────────────────────────
 // Log a compliance verification check
-router.put('/:id/verify', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/:id/verify', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();

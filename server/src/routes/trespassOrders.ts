@@ -5,9 +5,22 @@ import { broadcast } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
 import { createNotificationForRoles } from './notifications';
 import { resolveDistrict } from '../utils/districtResolver';
+import { escapeLike, validateParamId } from '../middleware/sanitize';
+import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 router.use(authenticateToken);
+
+// Validate :id params as positive integers
+router.param('id', (req: Request, res: Response, next) => {
+  const raw = String(req.params.id);
+  const n = parseInt(raw, 10);
+  if (isNaN(n) || n < 1 || String(n) !== raw) {
+    res.status(400).json({ error: 'Invalid ID parameter' });
+    return;
+  }
+  next();
+});
 
 /** Generate next order number: TO-YYYY-NNNN — wrapped in transaction to prevent race conditions */
 function generateOrderNumber(db: ReturnType<typeof getDb>): string {
@@ -15,8 +28,8 @@ function generateOrderNumber(db: ReturnType<typeof getDb>): string {
   const prefix = `TO-${year}-`;
   return db.transaction(() => {
     const row = db.prepare(
-      `SELECT order_number FROM trespass_orders WHERE order_number LIKE ? ORDER BY id DESC LIMIT 1`
-    ).get(`${prefix}%`) as { order_number: string } | undefined;
+      `SELECT order_number FROM trespass_orders WHERE order_number LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT 1`
+    ).get(`${escapeLike(prefix)}%`) as { order_number: string } | undefined;
 
     let seq = 1;
     if (row) {
@@ -29,7 +42,7 @@ function generateOrderNumber(db: ReturnType<typeof getDb>): string {
 }
 
 // GET / — List trespass orders
-router.get('/', (req: Request, res: Response) => {
+router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { status, property_id, search, archived, page = '1', per_page = '50' } = req.query;
@@ -40,8 +53,8 @@ router.get('/', (req: Request, res: Response) => {
     if (status) { where += ' AND t.status = ?'; params.push(status); }
     if (property_id) { where += ' AND t.property_id = ?'; params.push(property_id); }
     if (search) {
-      where += ` AND ((t.subject_first_name || ' ' || t.subject_last_name) LIKE ? OR t.order_number LIKE ? OR t.location LIKE ? OR t.property_name LIKE ?)`;
-      const s = `%${search}%`;
+      where += ` AND ((t.subject_first_name || ' ' || t.subject_last_name) LIKE ? ESCAPE '\\' OR t.order_number LIKE ? ESCAPE '\\' OR t.location LIKE ? ESCAPE '\\' OR t.property_name LIKE ? ESCAPE '\\')`;
+      const s = `%${escapeLike(String(search))}%`;
       params.push(s, s, s, s);
     }
     if (archived === 'true') {
@@ -50,7 +63,7 @@ router.get('/', (req: Request, res: Response) => {
       where += ' AND t.archived_at IS NULL';
     }
 
-    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
     const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 25));
     const offset = (pageNum - 1) * perPage;
 
@@ -79,7 +92,7 @@ router.get('/', (req: Request, res: Response) => {
 });
 
 // GET /check — Check active trespass orders for a property (dispatch alert use)
-router.get('/check', (req: Request, res: Response) => {
+router.get('/check', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { property_id, address } = req.query;
@@ -91,8 +104,8 @@ router.get('/check', (req: Request, res: Response) => {
       where += ' AND t.property_id = ?';
       params.push(property_id);
     } else if (address) {
-      where += ' AND t.location LIKE ?';
-      params.push(`%${address}%`);
+      where += " AND t.location LIKE ? ESCAPE '\\'";
+      params.push(`%${escapeLike(String(address))}%`);
     } else {
       return res.json({ orders: [], count: 0 });
     }
@@ -113,7 +126,7 @@ router.get('/check', (req: Request, res: Response) => {
 });
 
 // GET /:id — Single order detail
-router.get('/:id', (req: Request, res: Response) => {
+router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare(`
@@ -139,7 +152,7 @@ router.get('/:id', (req: Request, res: Response) => {
 router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const order_number = generateOrderNumber(db);
     const now = localNow();
 
@@ -154,6 +167,12 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
 
     if (!subject_first_name || !subject_last_name) return res.status(400).json({ error: 'Subject name is required' });
     if (!location) return res.status(400).json({ error: 'Location is required' });
+
+    // Validate order_type enum
+    const validOrderTypes = ['trespass_warning', 'trespass_order', 'criminal_trespass', 'ban_order'];
+    if (order_type && !validOrderTypes.includes(order_type)) {
+      return res.status(400).json({ error: `Invalid order_type. Must be one of: ${validOrderTypes.join(', ')}` });
+    }
 
     // Auto-fill Section/Zone/Beat from linked call, incident, or property
     let { section_id, zone_id, beat_id, zone_beat } = req.body;
@@ -232,6 +251,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
       'trespass_order', created.id, 'normal', 'trespass.created', req.user!.userId,
     );
 
+    auditLog(req, 'CREATE', 'trespass_order', created.id, `Created trespass order ${created.order_number}`);
     res.status(201).json(created);
   } catch (err: any) {
     res.status(500).json({ error: 'Internal server error' });
@@ -239,7 +259,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
 });
 
 // PUT /:id — Update order
-router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -268,11 +288,13 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (re
     db.prepare(`UPDATE trespass_orders SET ${setClauses.join(', ')} WHERE id = ?`).run(...params);
 
     const updated = db.prepare('SELECT * FROM trespass_orders WHERE id = ?').get(req.params.id) as any;
+    if (!updated) { res.status(404).json({ error: 'Trespass order not found after update' }); return; }
     // Broadcast minimal payload — no subject PII over WebSocket
     broadcast('alerts', 'trespass_order_updated', {
       id: updated.id, order_number: updated.order_number, property_name: updated.property_name,
       order_type: updated.order_type, status: updated.status,
     });
+    auditLog(req, 'UPDATE', 'trespass_order', Number(req.params.id), `Updated trespass order #${req.params.id}`);
     res.json(updated);
   } catch (err: any) {
     res.status(500).json({ error: 'Internal server error' });
@@ -280,10 +302,10 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (re
 });
 
 // PUT /:id/serve — Mark order as served
-router.put('/:id/serve', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/:id/serve', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const user = (req as any).user;
+    const user = req.user!;
     const now = localNow();
     const existing = db.prepare('SELECT id FROM trespass_orders WHERE id = ?').get(req.params.id);
     if (!existing) { res.status(404).json({ error: 'Trespass order not found' }); return; }
@@ -294,6 +316,7 @@ router.put('/:id/serve', requireRole('admin', 'manager', 'supervisor', 'officer'
       id: updated.id, order_number: updated.order_number, property_name: updated.property_name,
       order_type: updated.order_type, status: updated.status,
     });
+    auditLog(req, 'UPDATE', 'trespass_order', Number(req.params.id), `Served trespass order #${req.params.id}`);
     res.json(updated);
   } catch (err: any) {
     res.status(500).json({ error: 'Internal server error' });
@@ -301,7 +324,7 @@ router.put('/:id/serve', requireRole('admin', 'manager', 'supervisor', 'officer'
 });
 
 // PUT /:id/lift — Lift order
-router.put('/:id/lift', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/:id/lift', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -313,6 +336,7 @@ router.put('/:id/lift', requireRole('admin', 'manager', 'supervisor'), (req: Req
       id: updated.id, order_number: updated.order_number, property_name: updated.property_name,
       order_type: updated.order_type, status: updated.status,
     });
+    auditLog(req, 'UPDATE', 'trespass_order', Number(req.params.id), `Lifted trespass order #${req.params.id}`);
     res.json(updated);
   } catch (err: any) {
     res.status(500).json({ error: 'Internal server error' });
@@ -320,7 +344,7 @@ router.put('/:id/lift', requireRole('admin', 'manager', 'supervisor'), (req: Req
 });
 
 // PUT /:id/violate — Record violation
-router.put('/:id/violate', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/:id/violate', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -332,6 +356,7 @@ router.put('/:id/violate', requireRole('admin', 'manager', 'supervisor', 'office
       id: updated.id, order_number: updated.order_number, property_name: updated.property_name,
       order_type: updated.order_type, status: updated.status,
     });
+    auditLog(req, 'UPDATE', 'trespass_order', Number(req.params.id), `Recorded trespass order violation #${req.params.id}`);
     res.json(updated);
   } catch (err: any) {
     res.status(500).json({ error: 'Internal server error' });

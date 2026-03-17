@@ -1,5 +1,6 @@
 import React from 'react';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { useCountUp } from '../hooks/useCountUp';
 
 interface StatsCardProps {
   icon: React.ElementType;
@@ -44,6 +45,18 @@ const TREND_COLOR_MAP: Record<string, string> = {
   gray: 'text-rmpg-300',
 };
 
+function AnimatedValue({ value, className }: { value: string | number; className: string }) {
+  const numericValue = typeof value === 'number' ? value : parseInt(String(value), 10);
+  const isNumeric = typeof value === 'number' || (!isNaN(numericValue) && String(numericValue) === String(value));
+  const animated = useCountUp(isNumeric ? numericValue : 0);
+
+  return (
+    <p className={className}>
+      {isNumeric ? animated : value}
+    </p>
+  );
+}
+
 export default function StatsCard({
   icon: Icon,
   label,
@@ -73,7 +86,7 @@ export default function StatsCard({
           <p className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">
             {label}
           </p>
-          <p className={`text-xl font-bold font-mono ${VALUE_COLORS[accent] || VALUE_COLORS.blue}`}>{value}</p>
+          <AnimatedValue value={value} className={`text-xl font-bold font-mono ${VALUE_COLORS[accent] || VALUE_COLORS.blue}`} />
         </div>
         <div className={`p-1.5 panel-inset ${ICON_COLORS[accent] || ICON_COLORS.blue}`}>
           <Icon className="w-4 h-4" />

@@ -9,8 +9,10 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { validateParamId, escapeLike } from '../middleware/sanitize';
 import { localNow, localToday } from '../utils/timeUtils';
 import { resolveDistrict } from '../utils/districtResolver';
+import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 router.use(authenticateToken);
@@ -18,8 +20,8 @@ router.use(requireRole('admin', 'manager', 'supervisor', 'officer'));
 
 // Whitelist of valid table/column pairs to prevent SQL injection via interpolation
 const SEQUENCE_TARGETS: Record<string, string> = {
-  'code_violations:violation_number': 'SELECT violation_number FROM code_violations WHERE violation_number LIKE ? ORDER BY id DESC LIMIT 1',
-  'vehicle_tows:tow_number': 'SELECT tow_number FROM vehicle_tows WHERE tow_number LIKE ? ORDER BY id DESC LIMIT 1',
+  'code_violations:violation_number': "SELECT violation_number FROM code_violations WHERE violation_number LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT 1",
+  'vehicle_tows:tow_number': "SELECT tow_number FROM vehicle_tows WHERE tow_number LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT 1",
 };
 
 function nextNumber(table: string, prefix: string, col: string): string {
@@ -30,7 +32,7 @@ function nextNumber(table: string, prefix: string, col: string): string {
 
   const yr = parseInt(localToday().slice(0, 4), 10);
   const pfx = `${prefix}-${yr}-`;
-  const last = db.prepare(sql).get(`${pfx}%`) as any;
+  const last = db.prepare(sql).get(`${escapeLike(pfx)}%`) as any;
   const parsed = last ? parseInt(last[col].replace(pfx, ''), 10) : 0;
   const seq = (isNaN(parsed) ? 0 : parsed) + 1;
   return `${pfx}${String(seq).padStart(4, '0')}`;
@@ -68,7 +70,7 @@ router.get('/violations', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { status, violation_type, severity, search, page = '1', limit = '50' } = req.query;
-    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
     const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
@@ -78,8 +80,8 @@ router.get('/violations', (req: Request, res: Response) => {
     if (violation_type) { where += ' AND violation_type = ?'; params.push(violation_type); }
     if (severity) { where += ' AND severity = ?'; params.push(severity); }
     if (search) {
-      where += ' AND (violation_number LIKE ? OR location LIKE ? OR description LIKE ? OR violator_name LIKE ?)';
-      const s = `%${search}%`; params.push(s, s, s, s);
+      where += " AND (violation_number LIKE ? ESCAPE '\\' OR location LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\' OR violator_name LIKE ? ESCAPE '\\')";
+      const s = `%${escapeLike(String(search))}%`; params.push(s, s, s, s);
     }
 
     const total = (db.prepare(`SELECT COUNT(*) as count FROM code_violations ${where}`).get(...params) as any)?.count || 0;
@@ -91,7 +93,7 @@ router.get('/violations', (req: Request, res: Response) => {
   }
 });
 
-router.get('/violations/:id', (req: Request, res: Response) => {
+router.get('/violations/:id', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare('SELECT * FROM code_violations WHERE id = ?').get(req.params.id);
@@ -143,9 +145,7 @@ router.post('/violations', requireRole('admin', 'manager', 'supervisor', 'office
     });
     const { result, violation_number } = createViolation();
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'create', 'code_violation', ?, ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ violation_number }), req.ip || 'unknown', now);
-
+    auditLog(req, 'CREATE', 'code_violation', Number(result.lastInsertRowid), 'Created code enforcement violation');
     res.status(201).json({ data: { id: result.lastInsertRowid, violation_number } });
   } catch (error: any) {
     console.error('Create violation error:', error?.message || 'Unknown error');
@@ -153,7 +153,7 @@ router.post('/violations', requireRole('admin', 'manager', 'supervisor', 'office
   }
 });
 
-router.put('/violations/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/violations/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT id FROM code_violations WHERE id = ?').get(req.params.id);
@@ -170,11 +170,12 @@ router.put('/violations/:id', requireRole('admin', 'manager', 'supervisor', 'off
     }
     params.push(req.params.id);
     db.prepare(`UPDATE code_violations SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+    auditLog(req, 'UPDATE', 'code_violation', String(req.params.id), `Updated code enforcement violation #${req.params.id}`);
     res.json({ data: { id: parseInt(req.params.id as string, 10) } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.put('/violations/:id/status', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/violations/:id/status', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT id FROM code_violations WHERE id = ?').get(req.params.id);
@@ -192,9 +193,7 @@ router.put('/violations/:id/status', requireRole('admin', 'manager', 'supervisor
     updateParams.push(req.params.id);
     db.prepare(`UPDATE code_violations SET ${setClauses.join(', ')} WHERE id = ?`).run(...updateParams);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'status_change', 'code_violation', ?, ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ status }), req.ip || 'unknown', now);
-
+    auditLog(req, 'UPDATE', 'code_violation', String(req.params.id), `Changed violation #${req.params.id} status`);
     res.json({ data: { id: parseInt(req.params.id as string, 10), status } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -207,7 +206,7 @@ router.get('/tows', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { status, search, page = '1', limit = '50' } = req.query;
-    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
     const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
@@ -215,8 +214,8 @@ router.get('/tows', (req: Request, res: Response) => {
     const params: any[] = [];
     if (status) { where += ' AND status = ?'; params.push(status); }
     if (search) {
-      where += ' AND (tow_number LIKE ? OR vehicle_plate LIKE ? OR tow_from LIKE ? OR tow_company LIKE ?)';
-      const s = `%${search}%`; params.push(s, s, s, s);
+      where += " AND (tow_number LIKE ? ESCAPE '\\' OR vehicle_plate LIKE ? ESCAPE '\\' OR tow_from LIKE ? ESCAPE '\\' OR tow_company LIKE ? ESCAPE '\\')";
+      const s = `%${escapeLike(String(search))}%`; params.push(s, s, s, s);
     }
 
     const total = (db.prepare(`SELECT COUNT(*) as count FROM vehicle_tows ${where}`).get(...params) as any)?.count || 0;
@@ -225,7 +224,7 @@ router.get('/tows', (req: Request, res: Response) => {
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.get('/tows/:id', (req: Request, res: Response) => {
+router.get('/tows/:id', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare('SELECT * FROM vehicle_tows WHERE id = ?').get(req.params.id);
@@ -267,9 +266,7 @@ router.post('/tows', requireRole('admin', 'manager', 'supervisor', 'officer'), (
     });
     const { result, tow_number } = createTow();
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'create', 'vehicle_tow', ?, ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ tow_number }), req.ip || 'unknown', now);
-
+    auditLog(req, 'CREATE', 'vehicle_tow', Number(result.lastInsertRowid), 'Created tow record');
     res.status(201).json({ data: { id: result.lastInsertRowid, tow_number } });
   } catch (error: any) {
     console.error('Create tow error:', error?.message || 'Unknown error');
@@ -277,7 +274,7 @@ router.post('/tows', requireRole('admin', 'manager', 'supervisor', 'officer'), (
   }
 });
 
-router.put('/tows/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/tows/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT id FROM vehicle_tows WHERE id = ?').get(req.params.id);
@@ -294,11 +291,12 @@ router.put('/tows/:id', requireRole('admin', 'manager', 'supervisor', 'officer')
     }
     params.push(req.params.id);
     db.prepare(`UPDATE vehicle_tows SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+    auditLog(req, 'UPDATE', 'vehicle_tow', String(req.params.id), `Updated tow record #${req.params.id}`);
     res.json({ data: { id: parseInt(req.params.id as string, 10) } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
-router.put('/tows/:id/status', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/tows/:id/status', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const existing = db.prepare('SELECT id FROM vehicle_tows WHERE id = ?').get(req.params.id);
@@ -316,9 +314,7 @@ router.put('/tows/:id/status', requireRole('admin', 'manager', 'supervisor'), (r
     const setClauses = Object.keys(updates).map(k => `${k} = ?`).join(', ');
     db.prepare(`UPDATE vehicle_tows SET ${setClauses} WHERE id = ?`).run(...Object.values(updates), req.params.id);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'status_change', 'vehicle_tow', ?, ?, ?, ?)`).run(req.user!.userId, req.params.id, JSON.stringify({ status }), req.ip || 'unknown', now);
-
+    auditLog(req, 'UPDATE', 'vehicle_tow', String(req.params.id), `Changed tow #${req.params.id} status`);
     res.json({ data: { id: parseInt(req.params.id as string, 10), status } });
   } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
 });

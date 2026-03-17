@@ -11,6 +11,7 @@ import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 import { generateCaseNumber } from '../utils/caseNumbers';
+import { validateParamId, escapeLike } from '../middleware/sanitize';
 
 const router = Router();
 router.use(authenticateToken);
@@ -48,7 +49,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
   try {
     const db = getDb();
     const { status, case_type, priority, investigator, search, page = '1', limit = '50' } = req.query;
-    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
     const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
@@ -60,8 +61,8 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     if (priority) { where += ' AND c.priority = ?'; params.push(priority); }
     if (investigator) { where += ' AND c.lead_investigator_id = ?'; params.push(investigator); }
     if (search) {
-      where += ' AND (c.case_number LIKE ? OR c.title LIKE ? OR c.summary LIKE ?)';
-      const s = `%${search}%`;
+      where += " AND (c.case_number LIKE ? ESCAPE '\\' OR c.title LIKE ? ESCAPE '\\' OR c.summary LIKE ? ESCAPE '\\')";
+      const s = `%${escapeLike(String(search))}%`;
       params.push(s, s, s);
     }
 
@@ -85,7 +86,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
 });
 
 // ─── GET /:id ────────────────────────────────────────────
-router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare(`
@@ -109,25 +110,33 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
     const { title, case_type = 'general', priority = 'normal', summary, lead_investigator_id, linked_call_id } = req.body;
     if (!title) return res.status(400).json({ error: 'Title is required' });
 
-    const case_number = generateCaseNumber(db, case_type);
-    const result = db.prepare(`
-      INSERT INTO cases (case_number, title, case_type, status, priority, lead_investigator_id,
-        summary, linked_calls, created_by, created_at, updated_at, opened_date)
-      VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(case_number, title, case_type, priority, lead_investigator_id || null, summary || null,
-      linked_call_id ? JSON.stringify([linked_call_id]) : '[]',
-      req.user!.userId, now, now, localToday());
+    // Wrap in transaction to prevent duplicate case numbers from concurrent requests
+    const createCase = db.transaction(() => {
+      const case_number = generateCaseNumber(db, case_type);
+      const result = db.prepare(`
+        INSERT INTO cases (case_number, title, case_type, status, priority, lead_investigator_id,
+          summary, linked_calls, created_by, created_at, updated_at, opened_date)
+        VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(case_number, title, case_type, priority, lead_investigator_id || null, summary || null,
+        linked_call_id ? JSON.stringify([linked_call_id]) : '[]',
+        req.user!.userId, now, now, localToday());
 
-    // Update the linked call with this case_id for bidirectional linkage
-    if (linked_call_id) {
-      db.prepare('UPDATE calls_for_service SET case_id = ?, case_number = ? WHERE id = ?')
-        .run(result.lastInsertRowid, case_number, linked_call_id);
-    }
+      // Update the linked call with this case_id for bidirectional linkage
+      if (linked_call_id) {
+        const callId = parseInt(String(linked_call_id), 10);
+        if (isNaN(callId)) throw new Error('Invalid linked_call_id');
+        db.prepare('UPDATE calls_for_service SET case_id = ?, case_number = ? WHERE id = ?')
+          .run(result.lastInsertRowid, case_number, callId);
+      }
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'create', 'case', ?, ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ case_number, title }), req.ip || 'unknown', now);
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+        VALUES (?, 'create', 'case', ?, ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ case_number, title }), req.ip || 'unknown', now);
 
-    res.status(201).json({ data: { id: result.lastInsertRowid, case_number } });
+      return { id: result.lastInsertRowid, case_number };
+    });
+
+    const caseData = createCase();
+    res.status(201).json({ data: caseData });
   } catch (error: any) {
     console.error('Create case error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -135,7 +144,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
 });
 
 // ─── PUT /:id ────────────────────────────────────────────
-router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -170,7 +179,7 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (re
 });
 
 // ─── PUT /:id/status ────────────────────────────────────
-router.put('/:id/status', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/:id/status', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -200,7 +209,7 @@ router.put('/:id/status', requireRole('admin', 'manager', 'supervisor'), (req: R
 });
 
 // ─── POST /:id/notes ────────────────────────────────────
-router.post('/:id/notes', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/:id/notes', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -222,7 +231,7 @@ router.post('/:id/notes', requireRole('admin', 'manager', 'supervisor', 'officer
 });
 
 // ─── GET /:id/notes ─────────────────────────────────────
-router.get('/:id/notes', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id/notes', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const notes = db.prepare(`
@@ -236,7 +245,7 @@ router.get('/:id/notes', requireRole('admin', 'manager', 'supervisor', 'officer'
 });
 
 // ─── POST /:id/calculate-solvability ────────────────────
-router.post('/:id/calculate-solvability', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/:id/calculate-solvability', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();

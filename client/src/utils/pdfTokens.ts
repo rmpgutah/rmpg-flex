@@ -106,21 +106,21 @@ export const SPACING = {
   XL:                 3.5,   // Generous gap
 
   CONTENT_INSET:      1.5,   // Left/right padding inside sections
-  SECTION_HEADER_H:   5,     // Section header bar height
-  SECTION_GAP:        2,     // Gap between sections
-  SECTION_CONTENT_PAD: 3.5,  // Gap from header bar to first content
-  SECTION_BOTTOM_PAD:  2.5,  // Padding inside section before bottom border
+  SECTION_HEADER_H:   4.5,   // Section header bar height
+  SECTION_GAP:        0.8,   // Gap between sections
+  SECTION_CONTENT_PAD: 1.8,  // Gap from header bar to first content
+  SECTION_BOTTOM_PAD:  1.2,  // Padding inside section before bottom border
 
-  FIELD_ROW_HEIGHT:   8,     // Height of field box
-  FIELD_ROW_ADVANCE:  8.5,   // Y-advance after field row
+  FIELD_ROW_HEIGHT:   7,     // Height of field box
+  FIELD_ROW_ADVANCE:  7.5,   // Y-advance after field row
 
-  SIGNATURE_BOX_H:    28,    // Signature block total height
-  SIGNATURE_ROLE_H:   4.5,   // Role label header bar height
-  SIGNATURE_SUB_GAP:  5,     // Gap between sig line and sub-fields
+  SIGNATURE_BOX_H:    25,    // Signature block total height
+  SIGNATURE_ROLE_H:   4,     // Role label header bar height
+  SIGNATURE_SUB_GAP:  4,     // Gap between sig line and sub-fields
 
-  FORM_CELL_PAD:      1,     // Padding inside form cells
-  FORM_CELL_LABEL_H:  3.5,   // Form cell label height
-  FORM_CELL_H:        7,     // Form cell total height
+  FORM_CELL_PAD:      0.8,   // Padding inside form cells
+  FORM_CELL_LABEL_H:  2.5,   // Form cell label strip height
+  FORM_CELL_H:        7.5,   // Form cell total height (label + value + padding)
 } as const;
 
 // ── Layout Tokens ────────────────────────────────────────────

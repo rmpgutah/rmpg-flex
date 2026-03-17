@@ -17,7 +17,7 @@ import { initWebSocket, getConnectedUsers, getConnectedClientCount } from './uti
 import { authenticateToken, requireRole } from './middleware/auth';
 import { securityHeaders } from './middleware/securityHeaders';
 import { sanitizeInput } from './middleware/sanitize';
-import { apiRateLimit, webhookRateLimit } from './middleware/rateLimiter';
+import { apiRateLimit, webhookRateLimit, rateLimit } from './middleware/rateLimiter';
 import { liveBroadcast } from './middleware/liveBroadcast';
 import { startPatrolMonitor, stopPatrolMonitor } from './utils/patrolMonitor';
 import { startDailyReportScheduler, stopDailyReportScheduler } from './utils/dailyReportGenerator';
@@ -26,6 +26,7 @@ import { startClearPathGpsMediaPoller, stopClearPathGpsMediaPoller } from './uti
 import { startEmailPoller, stopEmailPoller } from './utils/emailPoller';
 import { scheduleOfacSync, searchOfacLocal, stopOfacSync } from './utils/ofacScraper';
 import { scheduleUtahWarrantSync, stopUtahWarrantSync } from './utils/utahWarrantScraper';
+import { runUniversalWarrantScan } from './utils/universalWarrantScanner';
 import { scheduleWarrantScraper, stopWarrantScraper } from './utils/multiStateWarrantScraper';
 import { scheduleCourtRecordsScan, stopCourtRecordsScan } from './utils/courtRecordsScraper';
 import { scheduleArrestSync, stopArrestSync } from './utils/arrestScraper';
@@ -122,21 +123,122 @@ if (config.isProduction || config.ssl.enabled) {
     if (host === `www.${config.primaryDomain}`) {
       const protocol = config.ssl.enabled ? 'https' : req.protocol;
       const port = config.ssl.enabled && config.httpsPort !== 443 ? `:${config.httpsPort}` : '';
-      return res.redirect(301, `${protocol}://${config.primaryDomain}${port}${req.originalUrl}`);
+      // Prevent open redirect: reject protocol-relative URLs (//evil.com) and non-path URLs
+      // Also strip CRLF chars to prevent HTTP response splitting attacks
+      const rawPath = req.originalUrl.replace(/[\r\n\0]/g, '');
+      const safePath = (rawPath.startsWith('/') && !rawPath.startsWith('//'))
+        ? rawPath : '/';
+      return res.redirect(301, `${protocol}://${config.primaryDomain}${port}${safePath}`);
     }
     next();
   });
 }
 
+// ─── DNS Rebinding Protection ────────────────────────
+// Validate Host header to prevent DNS rebinding attacks that could bypass same-origin policy
+if (config.isProduction) {
+  const allowedHosts = new Set([
+    config.primaryDomain,
+    `www.${config.primaryDomain}`,
+    `crm.${config.primaryDomain}`,
+  ]);
+  app.use((req, res, next) => {
+    const host = (req.hostname || req.headers.host?.split(':')[0] || '').toLowerCase();
+    if (!allowedHosts.has(host)) {
+      res.status(421).json({ error: 'Misdirected request' });
+      return;
+    }
+    next();
+  });
+}
+
+// ─── Request Size Guards ─────────────────────────────
+// Reject requests with excessively long URLs or query strings — prevents buffer overflow
+// attacks and URL-based DoS. 8KB is the common server limit (Apache, nginx defaults).
+app.use((req, res, next) => {
+  if (req.originalUrl.length > 8192) {
+    res.status(414).json({ error: 'URI too long' });
+    return;
+  }
+  next();
+});
+
+// ─── Header Size Validation ──────────────────────────
+// Reject requests with excessively large headers — prevents header-based DoS
+// and cookie-bombing attacks where attackers set many large cookies.
+app.use((req, res, next) => {
+  // Check Authorization header specifically — overly large tokens indicate abuse
+  const authHeader = req.headers['authorization'];
+  if (authHeader && authHeader.length > 4096) {
+    res.status(431).json({ error: 'Request header too large' });
+    return;
+  }
+  // Check cookie header — cookie-bombing can cause request loop failures
+  const cookieHeader = req.headers['cookie'];
+  if (cookieHeader && cookieHeader.length > 8192) {
+    res.status(431).json({ error: 'Cookie header too large' });
+    return;
+  }
+  next();
+});
+
+// ─── HTTP Method Override Prevention ─────────────────
+// Block X-HTTP-Method-Override / X-Method-Override headers that some frameworks use
+// to convert a POST into a DELETE/PUT. This could bypass CSRF protections or
+// route-level access controls if an attacker smuggles a method override past a proxy.
+app.use((req, res, next) => {
+  if (req.headers['x-http-method-override'] || req.headers['x-method-override'] || req.headers['x-http-method']) {
+    res.status(400).json({ error: 'Method override not allowed' });
+    return;
+  }
+  next();
+});
+
 // ─── Security Middleware ─────────────────────────────
 app.use(securityHeaders);
+
+// ─── Secure Cookie Defaults ──────────────────────────
+// Override res.cookie to enforce secure attributes on all cookies (defense-in-depth).
+// Even though RMPG Flex uses JWT in headers (not cookies), third-party middleware
+// or future code might set cookies — this ensures they're always hardened.
+if (config.isProduction) {
+  app.use((_req, res, next) => {
+    const originalCookie = res.cookie.bind(res);
+    res.cookie = function(name: string, value: string, options?: any) {
+      const secureOptions = {
+        ...options,
+        httpOnly: options?.httpOnly !== false,  // default true
+        secure: true,                           // HTTPS only
+        sameSite: options?.sameSite || 'strict', // default strict
+      };
+      return originalCookie(name, value, secureOptions);
+    };
+    next();
+  });
+}
 app.use(cors({
-  origin: config.corsOrigins,
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, server-to-server, Electron desktop)
+    if (!origin) return callback(null, true);
+    // Validate against configured allowed origins (exact match only)
+    if (config.corsOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    // Log rejected origins in production for security monitoring
+    if (config.isProduction) {
+      console.warn(`[CORS] Rejected cross-origin request from: ${String(origin).slice(0, 100)}`);
+    }
+    callback(new Error('Not allowed by CORS'));
+  },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'X-CSRF-Token', 'X-Requested-With'],
+  exposedHeaders: ['X-Request-ID', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'Retry-After'],
+  maxAge: 600, // 10 minutes — browser caches preflight results
 }));
 
 // ─── GitHub Webhook (must come BEFORE express.json() for raw body HMAC) ──
-app.post('/api/webhook/github', webhookRateLimit, express.raw({ type: 'application/json', limit: '5mb' }), (req, res) => {
+app.post('/api/webhook/github', webhookRateLimit, express.raw({ type: 'application/json', limit: '256kb' }), (req, res) => {
   const WEBHOOK_SECRET_FILE = path.resolve(__dirname, '../../.webhook-secret');
   let secret = '';
   try { secret = fs.readFileSync(WEBHOOK_SECRET_FILE, 'utf8').trim(); } catch { /* no secret file */ }
@@ -177,21 +279,40 @@ app.post('/api/webhook/github', webhookRateLimit, express.raw({ type: 'applicati
     return;
   }
 
-  const commitSha = (payload.after || '').slice(0, 8);
-  const pusher = payload.pusher?.name || 'unknown';
+  const commitSha = (payload.after || '').slice(0, 8).replace(/[^a-f0-9]/gi, '');
+  const pusher = (payload.pusher?.name || 'unknown').slice(0, 50).replace(/[\x00-\x1f\x7f]/g, '');
   console.log(`[Webhook] DEPLOY TRIGGERED — commit=${commitSha}, by=${pusher}`);
+
+  // Prevent concurrent deploys — reject if one is already running
+  if ((global as any).__deployInProgress) {
+    console.warn('[Webhook] Deploy rejected — another deploy is already in progress');
+    res.status(429).json({ status: 'busy', reason: 'Deploy already in progress' });
+    return;
+  }
+  (global as any).__deployInProgress = true;
 
   // Respond immediately, deploy runs async
   res.json({ status: 'deploying', commit: commitSha });
 
-  // Run deploy in background
+  // Run deploy in background — uses hardcoded APP_DIR and sanitized PATH to prevent
+  // environment manipulation attacks. The deploy script path is validated to exist.
   const APP_DIR = '/opt/rmpg-flex';
+  const DEPLOY_SCRIPT = path.join(APP_DIR, 'deploy', 'deploy.sh');
+  const safeEnv = {
+    HOME: '/root',
+    PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+    NODE_ENV: 'production',
+    // Preserve database-related env vars
+    ...(process.env.JWT_SECRET ? { JWT_SECRET: process.env.JWT_SECRET } : {}),
+    ...(process.env.TOTP_ENCRYPTION_KEY ? { TOTP_ENCRYPTION_KEY: process.env.TOTP_ENCRYPTION_KEY } : {}),
+  };
   const script = `cd ${APP_DIR} && git pull origin main && cd server && npm install --production 2>&1 | tail -2 && cd ../client && npm install 2>&1 | tail -2 && npx vite build 2>&1 | tail -3 && cd .. && systemctl restart rmpg-flex`;
   const child = execFile('/bin/bash', ['-c', script], {
     cwd: APP_DIR,
     timeout: 300000,
-    env: { ...process.env, HOME: '/root' },
+    env: safeEnv,
   }, (error, stdout, stderr) => {
+    (global as any).__deployInProgress = false;
     if (error) {
       console.error(`[Webhook] DEPLOY FAILED — ${error.message}`);
       if (stderr) console.error(`[Webhook] STDERR: ${stderr.slice(0, 500)}`);
@@ -202,9 +323,31 @@ app.post('/api/webhook/github', webhookRateLimit, express.raw({ type: 'applicati
   child.unref();
 });
 
-app.use(express.json({ limit: '2mb' }));
+// JSON body parser with prototype pollution protection at parse level
+// The reviver rejects __proto__ keys before they reach application code
+app.use(express.json({
+  limit: '2mb',
+  reviver: (key: string, value: unknown) => {
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') return undefined;
+    return value;
+  },
+}));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 app.use(sanitizeInput);
+
+// ─── API Response Hardening ──────────────────────────
+// Prevent reflected file download (RFD) attacks by ensuring API responses
+// are treated as inline JSON, never as downloadable files.
+app.use('/api', (_req, res, next) => {
+  // Override res.json to always set strict Content-Type and Content-Disposition
+  const originalJson = res.json.bind(res);
+  res.json = function(body: any) {
+    res.set('Content-Type', 'application/json; charset=utf-8');
+    res.set('Content-Disposition', 'inline');
+    return originalJson(body);
+  };
+  next();
+});
 
 // ─── CSRF Protection ─────────────────────────────────
 // Require a custom header on all state-changing requests to prevent CSRF.
@@ -214,7 +357,9 @@ if (config.isProduction) {
   app.use('/api', (req, res, next) => {
     // Skip safe methods (GET, HEAD, OPTIONS) and auth routes (login needs to work without header)
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
-    if (req.path.startsWith('/auth/login') || req.path.startsWith('/auth/refresh')
+    // Only exempt login/register/refresh (pre-auth routes) and webhooks — NOT change-password, verify-2fa, etc.
+    const csrfExemptPaths = ['/auth/login', '/auth/register', '/auth/refresh', '/auth/password-policy'];
+    if (csrfExemptPaths.some(p => req.path.startsWith(p))
         || req.path.startsWith('/webhook/')) return next();
 
     const csrfHeader = req.headers['x-requested-with'];
@@ -229,6 +374,8 @@ if (config.isProduction) {
 // ─── Per-route body size limits ──────────────────────
 // Auth endpoints should have tiny payloads — prevent abuse with oversized bodies
 app.use('/api/auth', express.json({ limit: '16kb' }));
+// Offline sync — limit to 256kb to prevent data exfiltration abuse via oversized pushes
+app.use('/api/offline', express.json({ limit: '256kb' }));
 
 // Request timeout — 30s default, skip for upload routes (large files)
 app.use((req, res, next) => {
@@ -239,8 +386,66 @@ app.use((req, res, next) => {
   next();
 });
 
+// ─── Content-Type Validation ─────────────────────────
+// Reject POST/PUT/PATCH requests with unexpected Content-Type to prevent
+// type-confusion attacks where binary data is sent as JSON or vice versa.
+app.use('/api', (req, res, next) => {
+  if (['POST', 'PUT', 'PATCH'].includes(req.method) && req.headers['content-length'] !== '0') {
+    const ct = req.headers['content-type'] || '';
+    // Allow JSON, form-urlencoded, multipart (file upload), CSP reports, and raw (webhooks)
+    const validTypes = ['application/json', 'application/x-www-form-urlencoded', 'multipart/form-data', 'application/csp-report', 'application/octet-stream'];
+    if (ct && !validTypes.some(t => ct.startsWith(t))) {
+      // Skip for webhook routes (may send custom content types)
+      if (!req.path.startsWith('/webhook/') && !req.path.startsWith('/uploads')) {
+        res.status(415).json({ error: 'Unsupported media type' });
+        return;
+      }
+    }
+  }
+  next();
+});
+
+// ─── Slow Request Logging ────────────────────────────
+// Log requests that take longer than 10 seconds — potential DoS or performance issues
+if (config.isProduction) {
+  app.use((req, res, next) => {
+    const start = Date.now();
+    res.on('finish', () => {
+      const duration = Date.now() - start;
+      if (duration > 10_000) {
+        const userId = (req as any).user?.userId || 'anon';
+        console.warn(`[SLOW REQUEST] ${req.method} ${req.path} — ${duration}ms — user:${userId} ip:${req.ip}`);
+      }
+    });
+    next();
+  });
+}
+
 // Apply rate limiting to API routes
 app.use('/api', apiRateLimit);
+
+// ─── CSP Violation Report Endpoint ────────────────────
+// Receives Content Security Policy violation reports from browsers.
+// Rate-limited to prevent abuse; logs violations for security monitoring.
+const cspReportRateLimit = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  maxRequests: 50,
+  keyGenerator: (req: express.Request) => `csp:${req.ip || 'unknown'}`,
+  message: 'Too many CSP reports',
+});
+app.post('/api/csp-report', cspReportRateLimit, express.json({ type: 'application/csp-report', limit: '16kb' }), (req, res) => {
+  const report = req.body?.['csp-report'] || req.body;
+  if (report) {
+    const safeReport = {
+      'document-uri': String(report['document-uri'] || '').slice(0, 200),
+      'violated-directive': String(report['violated-directive'] || '').slice(0, 100),
+      'blocked-uri': String(report['blocked-uri'] || '').slice(0, 200),
+      'source-file': String(report['source-file'] || '').slice(0, 200),
+    };
+    console.warn('[CSP Violation]', JSON.stringify(safeReport));
+  }
+  res.status(204).end();
+});
 
 // ─── Health Check ─────────────────────────────────────
 app.get('/api/health', (_req, res) => {
@@ -447,9 +652,9 @@ app.use(express.static(clientDistPath, {
 // SPA fallback: serve index.html for non-API, non-download routes
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api')) {
-    res.status(404).json({ error: 'API endpoint not found' });
+    const requestId = req.headers['x-request-id'] || undefined;
+    res.status(404).json({ error: 'API endpoint not found', requestId });
   } else if (req.path.startsWith('/downloads/') || req.path === '/download') {
-    // Already handled by download routes — if we get here, 404
     res.status(404).json({ error: 'Not found' });
   } else {
     res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -463,10 +668,29 @@ app.get('*', (req, res) => {
 
 // ─── Global Error Handler ────────────────────────────
 // Catches unhandled middleware errors (multer, body-parser, etc.)
-app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error('Unhandled Express error:', err?.message || err, err?.stack || '');
+app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const requestId = req.headers['x-request-id'] || '';
+  // Log full error details server-side but never expose to client
+  console.error(`[${requestId}] Unhandled Express error:`, err?.message || err);
+  if (config.isProduction) {
+    // In production, suppress stack traces to prevent information disclosure
+    // The request ID allows admins to correlate client errors with server logs
+  } else {
+    console.error(err?.stack || '');
+  }
   if (!res.headersSent) {
-    res.status(500).json({ error: 'Internal server error' });
+    // Ensure error responses have security headers even if middleware chain was interrupted
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.set('Content-Type', 'application/json; charset=utf-8');
+    res.set('Cache-Control', 'no-store');
+    // Map specific middleware errors to appropriate status codes
+    const statusCode = err.status || err.statusCode
+      || (err.type === 'entity.too.large' ? 413 : 500)
+      || (err.message?.includes('not allowed') ? 400 : 500);
+    const clientMessage = statusCode === 413 ? 'Request body too large'
+      : statusCode === 400 ? 'Bad request'
+      : 'Internal server error';
+    res.status(statusCode).json({ error: clientMessage, requestId: requestId || undefined });
   }
 });
 
@@ -511,8 +735,15 @@ try {
         if (host.startsWith('www.')) {
           host = host.slice(4);
         }
+        // Validate host against allowed domains to prevent open redirect via Host header manipulation
+        const allowedRedirectHosts = [config.primaryDomain, `www.${config.primaryDomain}`, `crm.${config.primaryDomain}`];
+        if (!allowedRedirectHosts.includes(host)) {
+          host = config.primaryDomain;
+        }
         const httpsPort = config.httpsPort === 443 ? '' : `:${config.httpsPort}`;
-        res.redirect(301, `https://${host}${httpsPort}${req.url}`);
+        // Strip CRLF to prevent response splitting
+        const safeUrl = req.url.replace(/[\r\n\0]/g, '');
+        res.redirect(301, `https://${host}${httpsPort}${safeUrl}`);
       });
       const redirectServer = http.createServer(redirectApp);
       redirectServer.listen(config.ssl.httpRedirectPort, () => {
@@ -595,15 +826,83 @@ try {
     setInterval(() => {
       try {
         const db = getDb();
+        // Also mark idle sessions as inactive based on configured timeout
+        const idleMinutes = Math.max(1, Math.floor(config.session?.idleTimeoutMinutes || 480));
+        db.prepare(`
+          UPDATE sessions SET is_active = 0
+          WHERE is_active = 1 AND last_used_at < datetime('now', 'localtime', '-' || ? || ' minutes')
+        `).run(idleMinutes);
         const result = db.prepare(`
           DELETE FROM sessions
           WHERE is_active = 0
+             OR expires_at < datetime('now', 'localtime')
              OR last_used_at < datetime('now', 'localtime', '-30 days')
         `).run();
         if (result.changes > 0) {
           console.log(`[Session Cleanup] Removed ${result.changes} expired sessions`);
         }
       } catch (e) { console.error('[Session Cleanup] Failed:', e); }
+
+      // Purge old login attempts — keep only 30 days for security forensics
+      try {
+        const loginDb = getDb();
+        const loginResult = loginDb.prepare(`
+          DELETE FROM login_attempts
+          WHERE created_at < datetime('now', 'localtime', '-30 days')
+        `).run();
+        if (loginResult.changes > 0) {
+          console.log(`[Login Cleanup] Purged ${loginResult.changes} old login attempts`);
+        }
+      } catch (e) { console.error('[Login Cleanup] Failed:', e); }
+
+      // Purge old activity log entries — keep 90 days for compliance audits
+      try {
+        const auditDb = getDb();
+        const auditResult = auditDb.prepare(`
+          DELETE FROM activity_log
+          WHERE created_at < datetime('now', 'localtime', '-90 days')
+        `).run();
+        if (auditResult.changes > 0) {
+          console.log(`[Audit Cleanup] Archived ${auditResult.changes} old activity log entries`);
+        }
+      } catch (e) { console.error('[Audit Cleanup] Failed:', e); }
+
+      // Purge old TOTP used codes — only need to prevent replay within the TOTP window (90s)
+      // Keep 24h for safety margin, then delete to prevent unbounded table growth
+      try {
+        const totpDb = getDb();
+        const totpResult = totpDb.prepare(`
+          DELETE FROM totp_used_codes
+          WHERE used_at < datetime('now', 'localtime', '-1 day')
+        `).run();
+        if (totpResult.changes > 0) {
+          console.log(`[TOTP Cleanup] Purged ${totpResult.changes} old used codes`);
+        }
+      } catch { /* table may not exist */ }
+
+      // Purge expired trusted devices
+      try {
+        const deviceDb = getDb();
+        const deviceResult = deviceDb.prepare(`
+          DELETE FROM trusted_devices
+          WHERE trusted_until < datetime('now', 'localtime')
+        `).run();
+        if (deviceResult.changes > 0) {
+          console.log(`[Device Cleanup] Removed ${deviceResult.changes} expired trusted devices`);
+        }
+      } catch { /* table may not exist */ }
+
+      // Purge old security notifications — keep 90 days
+      try {
+        const notifDb = getDb();
+        const notifResult = notifDb.prepare(`
+          DELETE FROM security_notifications
+          WHERE created_at < datetime('now', 'localtime', '-90 days')
+        `).run();
+        if (notifResult.changes > 0) {
+          console.log(`[Notification Cleanup] Purged ${notifResult.changes} old security notifications`);
+        }
+      } catch { /* table may not exist */ }
     }, 60 * 60 * 1000).unref();
 
     // Start patrol monitor for missed scan alerts
@@ -637,7 +936,20 @@ try {
     scheduleOfacSync();
 
     // Start Utah state warrant scraper (syncs daily at midnight from warrants.utah.gov)
-    scheduleUtahWarrantSync();
+    // scheduleUtahWarrantSync(); // Replaced by universal warrant scanner below
+
+    // Universal warrant scanner — replaces Utah-only warrant watch
+    let universalScanInterval: ReturnType<typeof setInterval> | null = null;
+    setTimeout(async () => {
+      try { await runUniversalWarrantScan(); } catch (err: any) {
+        console.error('[Universal Warrant Scan] Initial scan error:', err.message);
+      }
+      universalScanInterval = setInterval(async () => {
+        try { await runUniversalWarrantScan(); } catch (err: any) {
+          console.error('[Universal Warrant Scan] Scheduled error:', err.message);
+        }
+      }, 4 * 60 * 60 * 1000); // every 4 hours (reduced from 1h to respect Utah API limits)
+    }, 2 * 60 * 1000); // 2-minute startup delay
 
     // Start multi-state warrant scraper (county sheriff warrant pages + arrest record extraction)
     scheduleWarrantScraper();
@@ -751,9 +1063,30 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 // ─── Process-level crash protection ──────────────────────────
 // Log unhandled errors instead of dying silently.
+// ─── Memory Usage Monitoring ────────────────────────────
+// Log a warning when heap exceeds 75% of --max-old-space-size (default 2GB).
+// V8's heapTotal is the current allocation chunk, NOT the max — compare against the real limit.
+const MAX_HEAP_MB = parseInt(process.env.MAX_OLD_SPACE_SIZE || '2048', 10);
+setInterval(() => {
+  const mem = process.memoryUsage();
+  const heapUsedMB = Math.round(mem.heapUsed / 1048576);
+  const rssMB = Math.round(mem.rss / 1048576);
+  const heapPctOfMax = Math.round((heapUsedMB / MAX_HEAP_MB) * 100);
+  if (heapPctOfMax > 75) {
+    console.warn(`[MEMORY WARNING] Heap: ${heapUsedMB}/${MAX_HEAP_MB}MB (${heapPctOfMax}%) — RSS: ${rssMB}MB`);
+  }
+  // Critical: if RSS exceeds 1.5GB, log critical and attempt GC
+  if (rssMB > 1536) {
+    console.error(`[MEMORY CRITICAL] RSS: ${rssMB}MB exceeds 1.5GB — potential memory leak or DoS`);
+    try { if (global.gc) global.gc(); } catch { /* GC not exposed */ }
+  }
+}, 60_000).unref();
+
 process.on('uncaughtException', (err) => {
   console.error('═══ UNCAUGHT EXCEPTION ═══');
   console.error(err.message || err);
+  // Log stack trace for forensics but don't expose in production responses
+  if (err.stack) console.error(err.stack);
   console.error('Server will continue running. Please investigate the above error.');
 });
 

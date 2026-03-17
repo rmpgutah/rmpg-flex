@@ -19,6 +19,7 @@
 
 import { getDb } from '../models/database';
 import { localNow } from './timeUtils';
+import { escapeLike } from '../middleware/sanitize';
 
 // ── Constants ───────────────────────────────────────────────
 
@@ -418,10 +419,10 @@ export function getCachedCourtRecords(
     return db.prepare(`
       SELECT * FROM court_records
       WHERE UPPER(defendant_name) = UPPER(?)
-        OR (defendant_name LIKE ? AND defendant_name LIKE ?)
+        OR (defendant_name LIKE ? ESCAPE '\\' AND defendant_name LIKE ? ESCAPE '\\')
       ORDER BY filing_date DESC
       LIMIT ?
-    `).all(name, `%${firstName}%`, `%${lastName}%`, limit) as (CourtRecord & { fetched_at?: string })[];
+    `).all(name, `%${escapeLike(firstName)}%`, `%${escapeLike(lastName)}%`, limit) as (CourtRecord & { fetched_at?: string })[];
   } catch {
     return [];
   }
@@ -502,7 +503,7 @@ async function runCourtRecordsScan(): Promise<{
         AND p.last_name IS NOT NULL AND p.last_name != ''
         AND p.archived_at IS NULL
         AND (
-          p.has_criminal_history = 1
+          EXISTS (SELECT 1 FROM criminal_history ch WHERE ch.person_id = p.id)
           OR EXISTS (SELECT 1 FROM scraped_warrants sw WHERE sw.person_id = p.id AND sw.status = 'active')
           OR EXISTS (SELECT 1 FROM warrant_watch_log wl WHERE wl.person_id = p.id AND wl.event = 'warrant_found')
         )

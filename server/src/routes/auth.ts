@@ -16,10 +16,19 @@ import {
   verifyRefreshToken,
   JwtPayload,
 } from '../middleware/auth';
-import { authRateLimit, mfaRateLimit, refreshRateLimit, passwordRateLimit } from '../middleware/rateLimiter';
-import { validatePassword, getPasswordPolicyDescription, checkPasswordHistory, isPasswordExpired } from '../middleware/validatePassword';
+import { authRateLimit, authIpRateLimit, mfaRateLimit, refreshRateLimit, passwordRateLimit, rateLimit } from '../middleware/rateLimiter';
+
+// Rate limiter for profile updates — prevent automated enumeration/modification
+const profileRateLimit = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  maxRequests: 15,          // 15 profile updates per 5 min
+  keyGenerator: (req) => `profile:${req.user?.userId || req.ip || 'unknown'}`,
+  message: 'Too many profile update attempts. Please try again later.',
+});
+import { validatePassword, getPasswordPolicyDescription, checkPasswordHistory, isPasswordExpired, checkPasswordBreach } from '../middleware/validatePassword';
 import config from '../config';
 import { localNow } from '../utils/timeUtils';
+import { auditLog } from '../utils/auditLogger';
 import {
   generateTotpSecret as legacyGenerateTotpSecret,
   generateQrCodeDataUrl,
@@ -45,8 +54,24 @@ import {
   isPasswordInHistory,
   addToPasswordHistory,
 } from '../utils/passwordExpiry';
+import { validateEmail, validatePhone } from '../utils/inputValidation';
 
 const router = Router();
+
+// Prevent browsers and proxies from caching auth responses (tokens, user data)
+router.use((_req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.set('Pragma', 'no-cache');
+  next();
+});
+
+// ─── Helper: Timing jitter for auth responses ────────
+// Adds random delay (50-250ms) to error responses to prevent timing-based username enumeration.
+// Wider range makes statistical analysis significantly harder — an attacker needs exponentially
+// more samples to distinguish user-not-found from wrong-password through noise.
+function authJitter(): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, 50 + Math.floor(Math.random() * 200)));
+}
 
 // ─── Helper: Check if account is locked out ──────────
 function isLockedOut(username: string): { locked: boolean; minutesRemaining: number } {
@@ -114,7 +139,8 @@ function createSession(
   const deviceName = parseDeviceName(userAgent);
 
   // Hash user-agent for session binding — prevents token theft across different browsers
-  const uaHash = crypto.createHash('sha256').update(userAgent).digest('hex').slice(0, 16);
+  // Use 32 hex chars (128 bits) to avoid birthday-problem collisions
+  const uaHash = crypto.createHash('sha256').update(userAgent).digest('hex').slice(0, 32);
 
   // Use transaction to prevent race condition: two concurrent logins could both
   // read session count, each decide to evict, then both insert — exceeding max
@@ -127,8 +153,10 @@ function createSession(
     if (activeSessions.length >= config.session.maxPerUser) {
       const toRemove = activeSessions.length - config.session.maxPerUser + 1;
       const oldestIds = activeSessions.slice(0, toRemove).map(s => s.id);
-      db.prepare(`UPDATE sessions SET is_active = 0 WHERE id IN (${oldestIds.map(() => '?').join(',')})`)
-        .run(...oldestIds);
+      // Evict oldest sessions one at a time to avoid dynamic SQL construction
+      for (const sessionDbId of oldestIds) {
+        db.prepare('UPDATE sessions SET is_active = 0 WHERE id = ?').run(sessionDbId);
+      }
     }
 
     db.prepare(`
@@ -150,9 +178,10 @@ function issueTokens(user: any, ip: string, userAgent: string, deviceFingerprint
     fullName: user.full_name,
   };
 
-  const accessToken = generateAccessToken(payload);
   const refreshToken = generateRefreshToken(payload);
   const sessionId = createSession(user.id, refreshToken, ip, userAgent, deviceFingerprint);
+  // Generate access token WITH sessionId so auth middleware can enforce IP binding
+  const accessToken = generateAccessToken({ ...payload, sessionId });
 
   // Log the login activity
   const db = getDb();
@@ -160,6 +189,38 @@ function issueTokens(user: any, ip: string, userAgent: string, deviceFingerprint
     INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
     VALUES (?, 'user_login', 'user', ?, 'User logged in', ?)
   `).run(user.id, user.id, ip);
+
+  // ── Login IP anomaly detection ──────────────────────
+  // Check if the user's last successful login was from a different IP within the last hour.
+  // Rapid IP changes ("impossible travel") could indicate credential theft.
+  try {
+    const lastLogin = db.prepare(`
+      SELECT ip_address, created_at FROM login_attempts
+      WHERE username = ? AND success = 1 AND ip_address != ?
+      ORDER BY created_at DESC LIMIT 1
+    `).get(user.username, ip) as { ip_address: string; created_at: string } | undefined;
+
+    if (lastLogin) {
+      const lastTime = new Date(lastLogin.created_at).getTime();
+      const timeDiffMinutes = (Date.now() - lastTime) / 60000;
+      // Flag if different IP was used within the last 60 minutes
+      if (timeDiffMinutes < 60 && timeDiffMinutes >= 0) {
+        console.warn(`[AUTH] IP anomaly: ${user.username} logged in from ${ip}, previous login ${Math.round(timeDiffMinutes)}m ago from ${lastLogin.ip_address}`);
+        // Create security notification for admins
+        try {
+          db.prepare(`
+            INSERT INTO security_notifications (user_id, event_type, title, details, ip_address, created_at)
+            VALUES (?, 'suspicious_login', ?, ?, ?, datetime('now', 'localtime'))
+          `).run(
+            user.id,
+            `Rapid IP change: ${user.username}`,
+            `User "${user.username}" logged in from ${ip}, but was on ${lastLogin.ip_address} just ${Math.round(timeDiffMinutes)} minute(s) ago. This may indicate credential sharing or theft.`,
+            ip
+          );
+        } catch { /* security_notifications table may not exist */ }
+      }
+    }
+  } catch { /* Non-critical — don't block login */ }
 
   return {
     token: accessToken,
@@ -183,7 +244,7 @@ function issueTokens(user: any, ip: string, userAgent: string, deviceFingerprint
 // ═══════════════════════════════════════════════════════
 // POST /api/auth/login — Multi-step login
 // ═══════════════════════════════════════════════════════
-router.post('/login', authRateLimit, (req: Request, res: Response) => {
+router.post('/login', authIpRateLimit, authRateLimit, async (req: Request, res: Response) => {
   try {
     const { username, password, deviceFingerprint } = req.body;
     const ip = req.ip || 'unknown';
@@ -199,7 +260,7 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
       res.status(400).json({ error: 'Invalid username' });
       return;
     }
-    if (typeof password !== 'string' || password.length > 256) {
+    if (typeof password !== 'string' || password.length > 128) {
       res.status(400).json({ error: 'Invalid password' });
       return;
     }
@@ -208,10 +269,11 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
     const lockout = isLockedOut(username);
     if (lockout.locked) {
       logLoginAttempt(username, ip, false, 'account_locked', userAgent, deviceFingerprint);
+      // Don't disclose exact lockout timing — prevents attackers from precisely
+      // scheduling brute-force retries after the lockout window expires
       res.status(423).json({
-        error: `Account temporarily locked. Try again in ${lockout.minutesRemaining} minute(s).`,
+        error: 'Account temporarily locked due to too many failed attempts. Please try again later.',
         code: 'ACCOUNT_LOCKED',
-        retryAfter: lockout.minutesRemaining * 60,
       });
       return;
     }
@@ -219,19 +281,26 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
     const db = getDb();
     const user = db.prepare(`
       SELECT id, username, password_hash, first_name, last_name, full_name, email, role,
-             badge_number, phone, status, avatar_url, profile_image, must_change_password
+             badge_number, phone, status, avatar_url, profile_image, must_change_password,
+             force_password_change, password_expires_at, password_changed_at
       FROM users WHERE username = ?
     `).get(username) as any;
 
     if (!user) {
+      // Perform a dummy bcrypt comparison to make the response time indistinguishable
+      // from a valid-user-wrong-password response — prevents username enumeration via timing
+      bcryptjs.compareSync(password, '$2a$12$000000000000000000000uGq7b1nk/MhFmqMD/R1FKqEEUjpkui2');
       logLoginAttempt(username, ip, false, 'user_not_found', userAgent, deviceFingerprint);
+      await authJitter(); // Random delay to prevent statistical timing analysis
       res.status(401).json({ error: 'Invalid username or password' });
       return;
     }
 
     if (user.status !== 'active') {
       logLoginAttempt(username, ip, false, 'account_inactive');
-      // Return identical error to invalid credentials to prevent account enumeration
+      // Perform dummy bcrypt to maintain constant timing
+      bcryptjs.compareSync(password, '$2a$12$000000000000000000000uGq7b1nk/MhFmqMD/R1FKqEEUjpkui2');
+      await authJitter();
       res.status(401).json({ error: 'Invalid username or password' });
       return;
     }
@@ -264,6 +333,7 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
         } catch { /* notification failure should not block login response */ }
       }
 
+      await authJitter();
       res.status(401).json({
         error: 'Invalid username or password',
         ...(attemptsRemaining <= 2 && attemptsRemaining > 0 && {
@@ -277,11 +347,46 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
       return;
     }
 
+    // ── IP velocity anomaly detection ─────────────────
+    // Flag logins from multiple distinct IPs within 5 minutes as suspicious
+    try {
+      const recentLogins = db.prepare(`
+        SELECT DISTINCT ip_address FROM login_attempts
+        WHERE username = ? AND success = 1 AND created_at > datetime('now', '-5 minutes')
+      `).all(username) as { ip_address: string }[];
+      const distinctIps = recentLogins.filter(r => r.ip_address !== ip);
+      if (distinctIps.length > 0) {
+        auditLog(req, 'session_anomaly', 'user', user.id,
+          `Login from IP ${ip} while active sessions exist from ${distinctIps.map(r => r.ip_address).join(', ')} (possible credential sharing or theft)`);
+        createNotificationForRoles(
+          ['admin'],
+          'security',
+          `Suspicious login: ${username}`,
+          `User "${username}" logged in from IP ${ip} while recent logins exist from ${distinctIps.map(r => r.ip_address).join(', ')}. This may indicate credential sharing or compromise.`,
+          'user', null, 'high', 'login_anomaly'
+        );
+      }
+    } catch { /* anomaly detection failure should not block login */ }
+
     // ── Password verified. Determine next steps. ──────
 
     // Build list of pending actions
     const pendingActions: string[] = [];
-    const needsPasswordChange = user.force_password_change === 1 || user.must_change_password === 1 || isPasswordExpired(user);
+
+    // Backfill password_changed_at for users who never had it set (prevents
+    // isPasswordExpired from treating null as "expired" and trapping them)
+    if (!user.password_changed_at) {
+      try {
+        db.prepare('UPDATE users SET password_changed_at = ? WHERE id = ? AND password_changed_at IS NULL')
+          .run(localNow(), user.id);
+        user.password_changed_at = localNow();
+      } catch { /* non-fatal */ }
+    }
+
+    // Defensive: if isPasswordExpired throws, don't block login — treat as not expired
+    let passwordExpired = false;
+    try { passwordExpired = isPasswordExpired(user.password_changed_at); } catch { /* fail open */ }
+    const needsPasswordChange = user.force_password_change === 1 || user.must_change_password === 1 || passwordExpired;
     // 2FA is mandatory for ALL users regardless of account age or role.
     // Check the actual TOTP secret table — the source of truth for verified 2FA.
     // This prevents the "already configured" error when totp_setup_required flag
@@ -358,11 +463,8 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
 
     // ── Two-Factor Authentication gate ──────────────────
     if (has2FA) {
-      // Check if this device is trusted — skip 2FA if so
-      if (deviceFingerprint && isDeviceTrusted(user.id, deviceFingerprint)) {
-        // Trusted device — bypass 2FA, proceed to token issuance below
-        logLoginAttempt(username, ip, true, undefined, userAgent, deviceFingerprint);
-      } else {
+      // Trusted device case already handled above — this branch is for untrusted devices
+      {
         // Not trusted — require 2FA
         const tempToken = generate2faPendingToken(payload);
         res.json({
@@ -390,23 +492,24 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
     }
 
     // ── No 2FA — issue full tokens ──────────────────────
-    const accessToken = generateAccessToken(payload);
     const refreshToken = generateRefreshToken(payload);
     const sessionId = createSession(user.id, refreshToken, ip, userAgent);
+    const accessToken = generateAccessToken({ ...payload, sessionId });
 
-    // Include sessionId in a fresh access token so IP binding works
-    const accessTokenWithSession = generateAccessToken({ ...payload, sessionId });
-
-    // Log the login to activity log
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'user_login', 'user', ?, 'User logged in', ?)
-    `).run(user.id, user.id, ip);
+    // Log the login to activity log — must never block login
+    try {
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'user_login', 'user', ?, 'User logged in', ?)
+      `).run(user.id, user.id, ip);
+    } catch { /* audit log failure must never prevent login */ }
 
     // Update login statistics
-    db.prepare(`
-      UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login_at = ? WHERE id = ?
-    `).run(localNow(), user.id);
+    try {
+      db.prepare(`
+        UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login_at = ? WHERE id = ?
+      `).run(localNow(), user.id);
+    } catch { /* stats failure must never prevent login */ }
 
     // Login notification — alert user if logging in from a new IP
     try {
@@ -440,7 +543,7 @@ router.post('/login', authRateLimit, (req: Request, res: Response) => {
     } catch { /* notification failure should never block login */ }
 
     res.json({
-      token: accessTokenWithSession,
+      token: accessToken,
       refreshToken,
       sessionId,
       expiresIn: config.jwt.accessExpiry,
@@ -494,17 +597,87 @@ router.post('/refresh', refreshRateLimit, (req: Request, res: Response) => {
     `).get(tokenHash, decoded.userId) as any;
 
     if (!session) {
+      // ── Refresh token reuse detection ─────────────────
+      // If the token hash is not found but matches a PREVIOUS hash for this user,
+      // it means an already-rotated token was replayed. This is a strong indicator
+      // of token theft — invalidate ALL sessions for this user as a precaution.
+      const staleSession = db.prepare(`
+        SELECT session_id FROM sessions
+        WHERE user_id = ? AND previous_token_hash = ? AND is_active = 1
+      `).get(decoded.userId, tokenHash) as any;
+
+      if (staleSession) {
+        console.warn(`[Security] Refresh token reuse detected for user ${decoded.userId} — revoking all sessions (possible token theft)`);
+        db.prepare('UPDATE sessions SET is_active = 0 WHERE user_id = ?').run(decoded.userId);
+        auditLog(req, 'session_anomaly', 'user', decoded.userId,
+          `Refresh token reuse detected — all sessions revoked (token theft indicator)`);
+        try {
+          createNotificationForRoles(
+            ['admin'],
+            'security',
+            `Token Theft Alert: User #${decoded.userId}`,
+            `Refresh token reuse detected for user #${decoded.userId}. All sessions have been automatically revoked.`,
+            'user', null, 'high', 'token_reuse'
+          );
+        } catch { /* notification failure should not block response */ }
+        res.status(401).json({ error: 'Session invalidated due to security event', code: 'TOKEN_REUSE_DETECTED' });
+        return;
+      }
+
       res.status(401).json({ error: 'Session not found or expired', code: 'SESSION_INVALID' });
       return;
     }
 
-    const user = db.prepare('SELECT id, status, role, full_name, username FROM users WHERE id = ?')
+    // Enforce idle session timeout — invalidate sessions unused for extended periods
+    if (config.session.idleTimeoutMinutes > 0 && session.last_used_at) {
+      const idleMs = Date.now() - new Date(session.last_used_at).getTime();
+      const maxIdleMs = config.session.idleTimeoutMinutes * 60 * 1000;
+      if (idleMs > maxIdleMs) {
+        db.prepare('UPDATE sessions SET is_active = 0 WHERE id = ?').run(session.id);
+        res.status(401).json({ error: 'Session expired due to inactivity', code: 'SESSION_IDLE_TIMEOUT' });
+        return;
+      }
+    }
+
+    // Enforce absolute session duration — force re-login after maxSessionHours
+    if (session.created_at) {
+      const sessionAgeMs = Date.now() - new Date(session.created_at).getTime();
+      const maxSessionMs = config.jwt.maxSessionHours * 60 * 60 * 1000;
+      if (sessionAgeMs > maxSessionMs) {
+        db.prepare('UPDATE sessions SET is_active = 0 WHERE id = ?').run(session.id);
+        res.status(401).json({ error: 'Session expired — maximum duration reached', code: 'SESSION_MAX_DURATION' });
+        return;
+      }
+    }
+
+    // Detect device fingerprint mismatch — potential token theft
+    const currentUa = req.headers['user-agent'] || '';
+    const currentUaHash = crypto.createHash('sha256').update(currentUa).digest('hex').slice(0, 32);
+    if (session.ua_hash && currentUaHash !== session.ua_hash) {
+      console.warn(`[Security] Session refresh UA mismatch for user ${decoded.userId} session ${session.session_id} — stored=${session.ua_hash} current=${currentUaHash}`);
+      auditLog(req, 'session_anomaly', 'user', decoded.userId,
+        `Refresh token used from different user-agent for session ${session.session_id} (possible token theft)`);
+    }
+
+    const user = db.prepare('SELECT id, status, role, full_name, username, password_changed_at FROM users WHERE id = ?')
       .get(decoded.userId) as any;
 
     if (!user || user.status !== 'active') {
       db.prepare('UPDATE sessions SET is_active = 0 WHERE id = ?').run(session.id);
       res.status(403).json({ error: 'Account is no longer active' });
       return;
+    }
+
+    // Reject refresh tokens issued before a password change — forces re-authentication
+    // after password changes, closing the window where old tokens remain usable
+    if (user.password_changed_at && session.created_at) {
+      const pwdChangedMs = new Date(user.password_changed_at).getTime();
+      const sessionCreatedMs = new Date(session.created_at).getTime();
+      if (!isNaN(pwdChangedMs) && !isNaN(sessionCreatedMs) && sessionCreatedMs < pwdChangedMs) {
+        db.prepare('UPDATE sessions SET is_active = 0 WHERE id = ?').run(session.id);
+        res.status(401).json({ error: 'Session invalidated after password change. Please log in again.', code: 'PASSWORD_CHANGED' });
+        return;
+      }
     }
 
     const payload: Omit<JwtPayload, 'type'> = {
@@ -519,10 +692,21 @@ router.post('/refresh', refreshRateLimit, (req: Request, res: Response) => {
     const newRefreshToken = generateRefreshToken(payload);
     const newTokenHash = crypto.createHash('sha256').update(newRefreshToken).digest('hex');
 
+    const now = localNow();
+    // Store previous token hash for reuse detection — if the OLD token is replayed
+    // after rotation, it indicates token theft (see reuse detection above)
     db.prepare(`
-      UPDATE sessions SET refresh_token_hash = ?, last_used_at = ?
+      UPDATE sessions SET refresh_token_hash = ?, previous_token_hash = ?, last_used_at = ?
       WHERE id = ?
-    `).run(newTokenHash, localNow(), session.id);
+    `).run(newTokenHash, tokenHash, now, session.id);
+
+    // Audit log token refresh for security monitoring
+    try {
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+        VALUES (?, 'token_refresh', 'session', ?, ?, ?, ?)
+      `).run(user.id, session.id, `Session ${session.session_id} refreshed`, req.ip || 'unknown', now);
+    } catch { /* activity_log insert failure should not block the refresh */ }
 
     res.json({
       token: newAccessToken,
@@ -647,10 +831,17 @@ router.get('/sessions', authenticateToken, (req: Request, res: Response) => {
 // ═══════════════════════════════════════════════════════
 router.delete('/sessions/:sessionId', authenticateToken, (req: Request, res: Response) => {
   try {
+    // Validate sessionId is a valid UUID to prevent malformed input
+    const sessionId = String(req.params.sessionId);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId)) {
+      res.status(400).json({ error: 'Invalid session ID format' });
+      return;
+    }
+
     const db = getDb();
     const result = db.prepare(
       'UPDATE sessions SET is_active = 0 WHERE session_id = ? AND user_id = ?'
-    ).run(req.params.sessionId, req.user!.userId);
+    ).run(sessionId, req.user!.userId);
 
     if (result.changes === 0) {
       res.status(404).json({ error: 'Session not found' });
@@ -708,7 +899,7 @@ router.get('/session-timeout', authenticateToken, (_req: Request, res: Response)
   try {
     const db = getDb();
     // Check system_config for security_config JSON or session_timeout_minutes
-    let timeoutMinutes = 480; // default: 8 hours
+    let timeoutMinutes = 60; // default: 1 hour inactivity
 
     const row = db.prepare(
       "SELECT config_value FROM system_config WHERE config_key = 'security_config' AND category = 'settings'"
@@ -732,15 +923,15 @@ router.get('/session-timeout', authenticateToken, (_req: Request, res: Response)
       timeoutMinutes = parseInt(standalone.config_value, 10) || timeoutMinutes;
     }
 
-    res.json({ timeoutMinutes });
+    res.json({ timeoutMinutes, maxSessionHours: config.jwt.maxSessionHours });
   } catch (error: any) {
     console.error('Get session timeout error:', error?.message || 'Unknown error');
-    res.json({ timeoutMinutes: 480 }); // safe fallback
+    res.json({ timeoutMinutes: 60, maxSessionHours: config.jwt.maxSessionHours }); // safe fallback
   }
 });
 
 // ─── POST /api/auth/change-password ───────────────────
-router.post('/change-password', passwordRateLimit, authenticateToken, (req: Request, res: Response) => {
+router.post('/change-password', passwordRateLimit, authenticateToken, async (req: Request, res: Response) => {
   try {
     const { currentPassword, newPassword } = req.body;
     const ip = req.ip || 'unknown';
@@ -751,11 +942,20 @@ router.post('/change-password', passwordRateLimit, authenticateToken, (req: Requ
       return;
     }
 
+    // Prevent bcrypt DoS — reject oversized passwords before they reach compareSync
+    if (typeof currentPassword !== 'string' || currentPassword.length > 128 ||
+        typeof newPassword !== 'string' || newPassword.length > 128) {
+      res.status(400).json({ error: 'Invalid password length' });
+      return;
+    }
+
     const validation = validatePassword(newPassword);
     if (!validation.valid) {
+      // Return error count but not specific failures — prevents attackers from
+      // iteratively probing which requirements are met/unmet
       res.status(400).json({
         error: 'Password does not meet requirements',
-        details: validation.errors,
+        requirementsFailed: validation.errors.length,
         policy: getPasswordPolicyDescription(),
       });
       return;
@@ -781,6 +981,19 @@ router.post('/change-password', passwordRateLimit, authenticateToken, (req: Requ
       return;
     }
 
+    // Check if password has been exposed in known data breaches (HaveIBeenPwned k-Anonymity)
+    // This is async but we await it since password security is critical for law enforcement
+    try {
+      const breachCount = await checkPasswordBreach(newPassword);
+      if (breachCount > 0) {
+        res.status(400).json({
+          error: `This password has appeared in ${breachCount.toLocaleString()} data breach(es). Please choose a different password.`,
+          code: 'PASSWORD_BREACHED',
+        });
+        return;
+      }
+    } catch { /* API failure — fail open, don't block password change */ }
+
     // Check password history — prevent reuse of recent passwords
     if (config.password.historyCount > 0) {
       let historyHashes: string[] = [];
@@ -796,7 +1009,7 @@ router.post('/change-password', passwordRateLimit, authenticateToken, (req: Requ
     // Save to history
     addToPasswordHistory(user.id, user.password_hash);
 
-    const newHash = bcryptjs.hashSync(newPassword, 10);
+    const newHash = bcryptjs.hashSync(newPassword, 12);
     const now = localNow();
 
     // Update password history: prepend old hash, keep last N
@@ -834,8 +1047,13 @@ router.post('/change-password', passwordRateLimit, authenticateToken, (req: Requ
       `Your RMPG Flex password was changed.\n\nIP: ${ip}\nDevice: ${parseDeviceName(userAgent)}\nTime: ${localNow()}\n\nAll active sessions have been terminated. If this was not you, contact your administrator immediately.`
     ).catch(() => { /* email failure should never block response */ });
 
-    // Invalidate all sessions
+    // Invalidate all sessions AND trusted devices — password change should
+    // force full re-authentication on every device to prevent stolen tokens
+    // from being used after a password compromise
     db.prepare('UPDATE sessions SET is_active = 0 WHERE user_id = ?').run(user.id);
+    try {
+      db.prepare('DELETE FROM trusted_devices WHERE user_id = ?').run(user.id);
+    } catch { /* trusted_devices table may not exist */ }
 
     res.json({ message: 'Password changed successfully. Please log in again.' });
   } catch (error: any) {
@@ -848,10 +1066,16 @@ router.post('/change-password', passwordRateLimit, authenticateToken, (req: Requ
 // ═══════════════════════════════════════════════════════
 // PUT /api/auth/profile
 // ═══════════════════════════════════════════════════════
-router.put('/profile', authenticateToken, (req: Request, res: Response) => {
+router.put('/profile', profileRateLimit, authenticateToken, (req: Request, res: Response) => {
   try {
     const { email, phone, first_name, last_name } = req.body;
     const db = getDb();
+
+    // Validate input formats
+    const emailErr = validateEmail(email);
+    if (emailErr) { res.status(400).json({ error: emailErr }); return; }
+    const phoneErr = validatePhone(phone);
+    if (phoneErr) { res.status(400).json({ error: phoneErr }); return; }
 
     const user = db.prepare('SELECT id FROM users WHERE id = ?')
       .get(req.user!.userId) as any;
@@ -872,6 +1096,17 @@ router.put('/profile', authenticateToken, (req: Request, res: Response) => {
       const ln = String(last_name).trim();
       if (!fn || !ln) {
         res.status(400).json({ error: 'First and last name are required and cannot be empty.' });
+        return;
+      }
+      // Length and character validation — prevent storage abuse and rendering attacks
+      if (fn.length > 100 || ln.length > 100) {
+        res.status(400).json({ error: 'Name exceeds maximum length (100 characters)' });
+        return;
+      }
+      // Block Unicode control characters (RTL overrides, zero-width chars) that could spoof display
+      const CONTROL_CHAR_RE = /[\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/;
+      if (CONTROL_CHAR_RE.test(fn) || CONTROL_CHAR_RE.test(ln)) {
+        res.status(400).json({ error: 'Name contains invalid characters' });
         return;
       }
       updates.push('first_name = ?', 'last_name = ?', 'full_name = ?');
@@ -922,6 +1157,12 @@ router.put('/profile-image', authenticateToken, (req: Request, res: Response) =>
     if (profile_image !== null && profile_image !== undefined) {
       if (typeof profile_image !== 'string' || !profile_image.startsWith('data:image/')) {
         res.status(400).json({ error: 'Profile image must be an image data URL' });
+        return;
+      }
+      // Only allow safe raster formats — SVG can embed scripts, other formats may carry exploits
+      const SAFE_IMAGE_TYPES = ['data:image/jpeg', 'data:image/png', 'data:image/webp', 'data:image/gif'];
+      if (!SAFE_IMAGE_TYPES.some(prefix => profile_image.startsWith(prefix))) {
+        res.status(400).json({ error: 'Profile image must be JPEG, PNG, WebP, or GIF' });
         return;
       }
       // Limit size (~2MB for a profile photo)
@@ -1050,10 +1291,17 @@ router.post('/verify-2fa', mfaRateLimit, (req: Request, res: Response) => {
       return;
     }
 
-    // Verify the temp token
+    // Input length validation — TOTP codes are 6-8 digits, backup codes up to 20 chars
+    if (typeof code !== 'string' || code.length > 20 || typeof tempToken !== 'string' || tempToken.length > 2048) {
+      res.status(400).json({ error: 'Invalid input' });
+      return;
+    }
+
+    // Verify the temp token — validate type claim to prevent token confusion attacks
     let decoded: JwtPayload;
     try {
       decoded = jwt.verify(tempToken, config.jwt.secret) as JwtPayload;
+      if (!decoded || typeof decoded !== 'object') throw new Error('Invalid token payload');
     } catch {
       res.status(401).json({ error: 'Verification session expired. Please log in again.' });
       return;
@@ -1136,7 +1384,7 @@ router.post('/verify-2fa', mfaRateLimit, (req: Request, res: Response) => {
           res.status(401).json({ error: '2FA secret could not be decrypted. Please re-enroll 2FA.' });
           return;
         }
-        codeValid = verifyTotpCode(secret, code);
+        codeValid = verifyTotpCode(secret, code, decoded.userId);
 
         // If TOTP fails, try legacy backup codes
         if (!codeValid && legacySecrets.totp_backup_codes) {
@@ -1162,6 +1410,29 @@ router.post('/verify-2fa', mfaRateLimit, (req: Request, res: Response) => {
     }
 
     if (!codeValid) {
+      // Check lockout BEFORE logging the new attempt — prevents off-by-one
+      // and avoids logging attempts for already-locked users
+      const lockout = isLockedOut(user.username);
+      if (lockout.locked) {
+        res.status(423).json({
+          error: `Too many failed verification attempts. Try again in ${lockout.minutesRemaining} minute(s).`,
+          code: 'MFA_LOCKED',
+          retryAfter: lockout.minutesRemaining * 60,
+        });
+        return;
+      }
+      // Track failed 2FA attempts — lock after threshold failures in window
+      logLoginAttempt(user.username, ip, false, '2fa_invalid_code', userAgent, deviceFingerprint);
+      // Re-check after logging — if this attempt just triggered the threshold, lock now
+      const lockoutAfter = isLockedOut(user.username);
+      if (lockoutAfter.locked) {
+        res.status(423).json({
+          error: `Too many failed verification attempts. Try again in ${lockoutAfter.minutesRemaining} minute(s).`,
+          code: 'MFA_LOCKED',
+          retryAfter: lockoutAfter.minutesRemaining * 60,
+        });
+        return;
+      }
       res.status(401).json({ error: 'Invalid verification code' });
       return;
     }
@@ -1176,10 +1447,8 @@ router.post('/verify-2fa', mfaRateLimit, (req: Request, res: Response) => {
     logLoginAttempt(user.username, ip, true, undefined, userAgent, deviceFingerprint);
 
     // Trust this device if requested
-    console.log(`[Auth] verify-2fa trust check: shouldTrust=${shouldTrust}, hasFingerprint=${!!deviceFingerprint}, userId=${user.id}`);
     if (shouldTrust && deviceFingerprint) {
       trustDevice(user.id, deviceFingerprint, ip, userAgent);
-      console.log(`[Auth] Device trusted for user ${user.id}`);
     }
 
     // Device fingerprint tracking (new device notification)
@@ -1195,9 +1464,9 @@ router.post('/verify-2fa', mfaRateLimit, (req: Request, res: Response) => {
     }
 
     // ── Check if password change is required before issuing final tokens ──
-    const needsPasswordChange = user.must_change_password === 1 || isPasswordExpired(
-      (db.prepare('SELECT password_changed_at FROM users WHERE id = ?').get(user.id) as any)?.password_changed_at
-    );
+    const pwUser = db.prepare('SELECT password_changed_at FROM users WHERE id = ?').get(user.id) as any;
+    let _pwExp = false; try { _pwExp = isPasswordExpired(pwUser?.password_changed_at); } catch { /* fail open */ }
+    const needsPasswordChange = user.must_change_password === 1 || _pwExp;
 
     const payload: Omit<JwtPayload, 'type'> = {
       userId: user.id,
@@ -1381,7 +1650,7 @@ router.post('/totp/setup', authenticateToken, async (req: Request, res: Response
 
 // ─── POST /api/auth/totp/verify-setup ────────────────
 // Verify the first TOTP code to activate 2FA
-router.post('/totp/verify-setup', authenticateToken, (req: Request, res: Response) => {
+router.post('/totp/verify-setup', authenticateToken, mfaRateLimit, (req: Request, res: Response) => {
   try {
     const { code } = req.body;
     if (!code) {
@@ -1399,8 +1668,9 @@ router.post('/totp/verify-setup', authenticateToken, (req: Request, res: Respons
     }
 
     // Decrypt pending secret and verify code (legacy — combined string format)
+    // Pass userId=0 during setup so replay protection doesn't block initial verification
     const secret = legacyDecryptSecret(user.totp_pending_secret);
-    if (!verifyTotpCode(secret, code)) {
+    if (!verifyTotpCode(secret, code, 0)) {
       res.status(401).json({ error: 'Invalid code. Ensure your authenticator app is synced and try again.' });
       return;
     }
@@ -1537,7 +1807,7 @@ router.post('/2fa/setup', authenticateAnyToken, async (req: Request, res: Respon
 
 // ─── POST /api/auth/2fa/setup/verify ────────────────────
 // Confirm first TOTP code to activate 2FA
-router.post('/2fa/setup/verify', authenticateAnyToken, (req: Request, res: Response) => {
+router.post('/2fa/setup/verify', authenticateAnyToken, mfaRateLimit, (req: Request, res: Response) => {
   try {
     const { code } = req.body;
     const userId = req.user!.userId;
@@ -1623,7 +1893,8 @@ router.post('/2fa/setup/verify', authenticateAnyToken, (req: Request, res: Respo
         FROM users WHERE id = ?
       `).get(userId) as any;
 
-      const needsPasswordChange = user.force_password_change === 1 || isPasswordExpired(user?.password_changed_at);
+      let _pwExpired = false; try { _pwExpired = isPasswordExpired(user.password_changed_at); } catch { /* fail open */ }
+      const needsPasswordChange = user.force_password_change === 1 || _pwExpired;
       if (needsPasswordChange) {
         const tempToken = generateTempToken(
           { userId: user.id, username: user.username, role: user.role, fullName: user.full_name },
@@ -1792,7 +2063,7 @@ router.post('/2fa/disable', authenticateToken, (req: Request, res: Response) => 
 
 // ─── POST /api/auth/login/verify-2fa ────────────────────
 // Verify TOTP code during login (uses user_totp_secrets table)
-router.post('/login/verify-2fa', authenticateTempToken, (req: Request, res: Response) => {
+router.post('/login/verify-2fa', authenticateTempToken, mfaRateLimit, (req: Request, res: Response) => {
   try {
     const { code, trustDevice: shouldTrust, deviceFingerprint } = req.body;
     const ip = req.ip || 'unknown';
@@ -1826,12 +2097,16 @@ router.post('/login/verify-2fa', authenticateTempToken, (req: Request, res: Resp
 
     const isValid = verifyTotpToken(secretBase32, code);
     if (!isValid) {
+      auditLog(req, 'login_failed', 'user', userId,
+        `Failed 2FA verification (invalid TOTP code) from IP ${ip}`);
       res.status(401).json({ error: 'Invalid verification code' });
       return;
     }
 
     // Atomic replay protection — check AND mark in one step to prevent race conditions
     if (checkAndMarkTotpCode(userId, code)) {
+      auditLog(req, 'login_failed', 'user', userId,
+        `Failed 2FA verification (replayed TOTP code) from IP ${ip}`);
       res.status(401).json({ error: 'This code has already been used. Please wait for the next code.' });
       return;
     }
@@ -1868,7 +2143,8 @@ router.post('/login/verify-2fa', authenticateTempToken, (req: Request, res: Resp
       return;
     }
 
-    const needsPasswordChange = user.force_password_change === 1 || isPasswordExpired(user?.password_changed_at);
+    let _pwExpired = false; try { _pwExpired = isPasswordExpired(user.password_changed_at); } catch { /* fail open */ }
+      const needsPasswordChange = user.force_password_change === 1 || _pwExpired;
     if (needsPasswordChange) {
       const tempToken = generateTempToken(
         { userId: user.id, username: user.username, role: user.role, fullName: user.full_name },
@@ -1919,7 +2195,7 @@ router.post('/login/verify-2fa', authenticateTempToken, (req: Request, res: Resp
 });
 
 // ─── POST /api/auth/login/verify-backup-code ────────────
-router.post('/login/verify-backup-code', authenticateTempToken, (req: Request, res: Response) => {
+router.post('/login/verify-backup-code', authenticateTempToken, mfaRateLimit, (req: Request, res: Response) => {
   try {
     const { code, deviceFingerprint } = req.body;
     const ip = req.ip || 'unknown';
@@ -2020,7 +2296,8 @@ router.post('/login/verify-backup-code', authenticateTempToken, (req: Request, r
       return;
     }
 
-    const needsPasswordChange = user.force_password_change === 1 || isPasswordExpired(user?.password_changed_at);
+    let _pwExpired = false; try { _pwExpired = isPasswordExpired(user.password_changed_at); } catch { /* fail open */ }
+      const needsPasswordChange = user.force_password_change === 1 || _pwExpired;
     if (needsPasswordChange) {
       const tempToken = generateTempToken(
         { userId: user.id, username: user.username, role: user.role, fullName: user.full_name },
@@ -2076,7 +2353,7 @@ router.post('/login/verify-backup-code', authenticateTempToken, (req: Request, r
 
 // ─── POST /api/auth/login/change-password ───────────────
 // During login flow — change password then issue final tokens
-router.post('/login/change-password', authenticateTempToken, (req: Request, res: Response) => {
+router.post('/login/change-password', passwordRateLimit, authenticateTempToken, (req: Request, res: Response) => {
   try {
     const { newPassword, deviceFingerprint } = req.body;
     const userId = req.user!.userId;
@@ -2097,9 +2374,11 @@ router.post('/login/change-password', authenticateTempToken, (req: Request, res:
     // Validate password policy
     const validation = validatePassword(newPassword);
     if (!validation.valid) {
+      // Return error count but not specific failures — prevents attackers from
+      // iteratively probing which requirements are met/unmet
       res.status(400).json({
         error: 'Password does not meet requirements',
-        details: validation.errors,
+        requirementsFailed: validation.errors.length,
         policy: getPasswordPolicyDescription(),
       });
       return;
@@ -2138,8 +2417,8 @@ router.post('/login/change-password', authenticateTempToken, (req: Request, res:
     // Save old password to history
     try { if (userPwHash) addToPasswordHistory(userId, userPwHash.password_hash); } catch { /* ignore */ }
 
-    // Update password
-    const newHash = bcryptjs.hashSync(newPassword, 10);
+    // Update password (cost factor 12 — consistent across all password operations)
+    const newHash = bcryptjs.hashSync(newPassword, 12);
     db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0, force_password_change = 0, password_changed_at = ?, updated_at = ? WHERE id = ?')
       .run(newHash, localNow(), localNow(), userId);
 

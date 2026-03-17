@@ -494,7 +494,7 @@ export interface Person {
   caution_flags?: string;
   watchlist_match?: string | null;
   watchlist_checked_at?: string | null;
-  flags: string[];
+  flags: (string | { type: string; severity?: string; count?: number; updated_at?: string })[];
   notes?: string;
   incident_ids: string[];
   created_at: string;
@@ -538,7 +538,7 @@ export interface Vehicle {
   stolen_status?: string;
   stolen_date?: string;
   recovery_date?: string;
-  flags: string[];
+  flags: (string | { type: string; severity?: string; count?: number; updated_at?: string })[];
   notes?: string;
   incident_ids: string[];
   created_at: string;
@@ -890,6 +890,13 @@ export interface DashCamVideo {
   linked_dashcam_event_id?: number;
   /** JSON string of GPS track: [{latitude,longitude,speed,altitude,timestamp},...] */
   cpg_gps_track?: string;
+  /** Overlay / burn / thumbnail fields */
+  thumbnail_path?: string;
+  processed_file_path?: string;
+  burned_file_path?: string;
+  burn_status?: 'none' | 'pending' | 'processing' | 'complete' | 'error';
+  burn_error?: string;
+  burn_progress?: number;
 }
 
 // --- Equipment ---
@@ -1476,7 +1483,8 @@ export type WSMessageType =
   // Process Server
   | 'serve:created'
   | 'serve:updated'
-  | 'serve:attempt';
+  | 'serve:attempt'
+  | 'call:warrant_alert';
 
 export interface WSMessage {
   type: WSMessageType;
@@ -1759,6 +1767,7 @@ export interface FieldInterview {
   officer_display_name?: string;
   linked_person_first?: string;
   linked_person_last?: string;
+  person_flags?: string;
   status: 'active' | 'archived';
   created_at: string;
   archived_at?: string;
@@ -2397,8 +2406,20 @@ export interface ServeJob {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  call_id: number | null;
   attempts?: ServeAttempt[];
   skipTraces?: ServeSkipTrace[];
+}
+
+export interface ServeJobLinkedCall {
+  id: number;
+  call_number: string;
+  status: string;
+  priority: string;
+  assigned_unit_ids: string;
+  pso_requestor_name: string | null;
+  contract_id: string | null;
+  pso_service_windows: string | null;
 }
 
 export interface ServeAttempt {

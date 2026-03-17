@@ -95,14 +95,14 @@ interface UnitTrail {
 function formatDateTime(isoStr: string): string {
   try {
     const d = new Date(isoStr);
-    return d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' }) + ' '
-      + d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', timeZone: 'America/Denver' }) + ' '
+      + d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'America/Denver' });
   } catch { return isoStr; }
 }
 
 function formatDate(isoStr: string): string {
   try {
-    return new Date(isoStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    return new Date(isoStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'America/Denver' });
   } catch { return isoStr; }
 }
 
@@ -396,7 +396,7 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
   const pageH = doc.internal.pageSize.getHeight();
   const margin = 18;
   const contentW = pageW - margin * 2;
-  const reportDate = new Date().toLocaleString('en-US');
+  const reportDate = new Date().toLocaleString('en-US', { timeZone: 'America/Denver' });
   const totalPoints = trails.reduce((s, t) => s + t.stats.total_points, 0);
 
   let yPos = margin;
@@ -895,7 +895,7 @@ export function startDailyReportScheduler(): void {
 
     const msUntilMidnight = nextMidnight.getTime() - now.getTime();
     const hoursUntil = Math.round(msUntilMidnight / 3600000 * 10) / 10;
-    console.log(`[Daily Report] Next generation scheduled in ${hoursUntil}h (${nextMidnight.toLocaleString()})`);
+    console.log(`[Daily Report] Next generation scheduled in ${hoursUntil}h (${nextMidnight.toLocaleString('en-US', { timeZone: 'America/Denver' })})`);
 
     midnightTimer = setTimeout(async () => {
       try {

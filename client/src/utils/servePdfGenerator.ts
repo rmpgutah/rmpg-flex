@@ -316,7 +316,7 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
     y += SPACING.SM;
     const r2y = y;
     addFieldPair(doc, 'Method of Service', methodLabel, lx, r2y, hfw);
-    y = addFieldPair(doc, 'GPS Coordinates', `${data.gpsLat.toFixed(6)}, ${data.gpsLng.toFixed(6)}`, rx, r2y, hfw);
+    y = addFieldPair(doc, 'GPS Coordinates', `${(data.gpsLat ?? 0).toFixed(6)}, ${(data.gpsLng ?? 0).toFixed(6)}`, rx, r2y, hfw);
     y += SPACING.SM;
 
     // Substitute service details
@@ -466,11 +466,11 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
       { label: 'RESULT', x: cols[4] },
       { label: 'NOTES', x: cols[5] },
     ];
-    const rows = data.attempts.map(a => [
+    const rows = (data.attempts || []).map(a => [
       String(a.number),
       a.date,
       a.time,
-      `${a.gpsLat.toFixed(4)}, ${a.gpsLng.toFixed(4)}`,
+      `${(a.gpsLat ?? 0).toFixed(4)}, ${(a.gpsLng ?? 0).toFixed(4)}`,
       a.result,
       a.notes,
     ]);
@@ -481,7 +481,7 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
   }
 
   // ── Photos from attempts ──
-  for (const attempt of data.attempts) {
+  for (const attempt of (data.attempts || [])) {
     if (attempt.photos && attempt.photos.length > 0) {
       y = checkPageBreak(doc, y, 40);
       const sec = openAutoSection(doc, `Attempt #${attempt.number} Photos`, y);

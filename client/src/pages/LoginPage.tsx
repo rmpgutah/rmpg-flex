@@ -124,11 +124,18 @@ export default function LoginPage() {
 
   // Idle logout message
   const [showIdleMessage, setShowIdleMessage] = useState(false);
+  const [showSessionExpired, setShowSessionExpired] = useState(false);
   useEffect(() => {
     if (sessionStorage.getItem('rmpg_idle_logout') === '1') {
       setShowIdleMessage(true);
       sessionStorage.removeItem('rmpg_idle_logout');
       const t = setTimeout(() => setShowIdleMessage(false), 15000);
+      return () => clearTimeout(t);
+    }
+    if (sessionStorage.getItem('rmpg_session_expired') === '1') {
+      setShowSessionExpired(true);
+      sessionStorage.removeItem('rmpg_session_expired');
+      const t = setTimeout(() => setShowSessionExpired(false), 15000);
       return () => clearTimeout(t);
     }
   }, []);
@@ -148,12 +155,15 @@ export default function LoginPage() {
     return () => clearTimeout(timer);
   }, [loginStep]);
 
-  // Auto-submit TOTP when 6 digits entered
+  // Auto-submit TOTP when 6 digits entered (with ref guard to prevent double-submit)
+  const totpSubmittedRef = useRef(false);
   useEffect(() => {
     const trimmed = totpCode.replace(/\s/g, '');
-    if (trimmed.length === 6 && loginStep === 'verify_2fa' && !loginBusy) {
+    if (trimmed.length === 6 && loginStep === 'verify_2fa' && !loginBusy && !totpSubmittedRef.current) {
+      totpSubmittedRef.current = true;
       handleTotpSubmit(trimmed);
     }
+    if (trimmed.length < 6) totpSubmittedRef.current = false;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [totpCode, loginStep, loginBusy]);
 
@@ -357,7 +367,7 @@ export default function LoginPage() {
         </div>
 
         {/* ── Login Card ──────────────────────────────── */}
-        <div className="shadow-2xl relative overflow-hidden panel-beveled bg-surface-base">
+        <div className={`shadow-2xl relative overflow-hidden panel-beveled bg-surface-base login-card-enter login-glow${loginStep === 'complete' ? ' login-success' : ''}`}>
           {/* Title bar */}
           <div className="panel-title-bar flex items-center gap-2">
             <ShieldCheck className="w-3 h-3" style={{ color: '#1a5a9e' }} />
@@ -392,6 +402,16 @@ export default function LoginPage() {
                 <div>
                   <p className="text-[10px] text-amber-300 font-semibold">Session Expired</p>
                   <p className="text-[9px] text-amber-400/80">You were automatically logged out due to inactivity.</p>
+                </div>
+              </div>
+            )}
+            {/* Max session duration message */}
+            {showSessionExpired && (
+              <div className="mb-3 p-2.5 bg-blue-900/25 border border-blue-700/50 flex items-start gap-2">
+                <Lock className="w-3.5 h-3.5 text-blue-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-[10px] text-blue-300 font-semibold">Session Duration Limit</p>
+                  <p className="text-[9px] text-blue-400/80">Your session reached the maximum duration. Please sign in again.</p>
                 </div>
               </div>
             )}
@@ -758,7 +778,7 @@ export default function LoginPage() {
                     inputMode="numeric"
                     pattern="[0-9]*"
                     maxLength={6}
-                    className="input-dark h-10 text-center text-lg tracking-[0.5em] font-mono"
+                    className="input-dark login-input-glow h-10 text-center text-lg tracking-[0.5em] font-mono"
                     placeholder="000000"
                     value={setupCode}
                     onChange={(e) => setSetupCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
@@ -819,7 +839,7 @@ export default function LoginPage() {
                   </label>
                   <input
                     type="password"
-                    className="input-dark h-9"
+                    className="input-dark login-input-glow h-9"
                     placeholder="Enter new password"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
@@ -836,7 +856,7 @@ export default function LoginPage() {
                   </label>
                   <input
                     type="password"
-                    className="input-dark h-9"
+                    className="input-dark login-input-glow h-9"
                     placeholder="Confirm new password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}

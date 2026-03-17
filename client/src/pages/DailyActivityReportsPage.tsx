@@ -70,10 +70,13 @@ export default function DailyActivityReportsPage() {
         ...(filterStatus ? { status: filterStatus } : {}),
       });
       const res = await apiFetch<{ data: DailyActivityReport[]; pagination: any }>(`/dar?${params}`);
-      setDars(res.data || []);
+      const newDars = res.data || [];
+      setDars(newDars);
       setTotalPages(res.pagination?.totalPages || 1);
       setTotalCount(res.pagination?.total || 0);
-    } catch { /* silent */ } finally { setLoading(false); }
+      // Keep selected item in sync with refreshed data
+      setSelected(prev => prev ? newDars.find((d: DailyActivityReport) => d.id === prev.id) || null : null);
+    } catch { addToast('Failed to load activity reports', 'error'); } finally { setLoading(false); }
   }, [page, searchQuery, filterStatus]);
 
   useEffect(() => { fetchDars(); }, [fetchDars]);

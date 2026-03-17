@@ -7,10 +7,13 @@
 // - OAuth2 callback (no JWT — CSRF state validated)
 
 import { Router, Request, Response } from 'express';
+import crypto from 'crypto';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
+import { escapeLike, validateParamId, validateNumericParams } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
+import config from '../config';
 import {
   CONFIG_KEYS,
   GRAPH_SCOPES,
@@ -50,7 +53,16 @@ function textToEmailHtml(text: string, signature?: string): string {
   // Basic markdown: **bold**, *italic*, [text](url)
   escaped = escaped.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   escaped = escaped.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  escaped = escaped.replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" style="color:#1a5a9e;">$1</a>');
+  escaped = escaped.replace(/\[(.+?)\]\((.+?)\)/g, (_match, linkText, url) => {
+    // Only allow safe URL schemes — block javascript:, data:, vbscript: etc.
+    const trimmedUrl = url.trim().toLowerCase();
+    if (trimmedUrl.startsWith('http://') || trimmedUrl.startsWith('https://') || trimmedUrl.startsWith('mailto:')) {
+      // Escape URL for safe insertion into href attribute — prevents attribute injection
+      const safeUrl = url.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+      return `<a href="${safeUrl}" style="color:#1a5a9e;">${linkText}</a>`;
+    }
+    return `${linkText} (${url})`;
+  });
   const bodyHtml = escaped.replace(/\n/g, '<br>');
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"></head>
@@ -74,7 +86,7 @@ router.get('/oauth/callback', async (req: Request, res: Response) => {
 
     if (error) {
       console.error('[OAuth] Microsoft returned error:', error, error_description);
-      res.redirect(`/admin?tab=email&status=error&message=${encodeURIComponent(String(error_description || error))}`);
+      res.redirect('/admin?tab=email&status=error&message=Microsoft+authorization+failed');
       return;
     }
 
@@ -83,9 +95,11 @@ router.get('/oauth/callback', async (req: Request, res: Response) => {
       return;
     }
 
-    // Validate CSRF state
+    // Validate CSRF state (timing-safe to prevent side-channel leakage)
     const storedState = getConfigValue(CONFIG_KEYS.oauthState);
-    if (!storedState || storedState !== String(state)) {
+    const stateStr = String(state);
+    if (!storedState || storedState.length !== stateStr.length ||
+        !crypto.timingSafeEqual(Buffer.from(storedState), Buffer.from(stateStr))) {
       res.redirect('/admin?tab=email&status=error&message=Invalid+state+token');
       return;
     }
@@ -93,8 +107,9 @@ router.get('/oauth/callback', async (req: Request, res: Response) => {
     // Clear state to prevent replay
     deleteConfigValue(CONFIG_KEYS.oauthState);
 
-    // Exchange code for tokens — always use https (req.protocol may report http incorrectly)
-    const redirectUri = `https://${req.get('host')}/api/email/oauth/callback`;
+    // Exchange code for tokens — use config domain to prevent Host header injection
+    const host = config.isProduction ? config.primaryDomain : (req.get('host') || 'localhost:3001');
+    const redirectUri = `https://${host}/api/email/oauth/callback`;
     await exchangeCodeForTokens(String(code), redirectUri);
 
     // Enable integration and start poller
@@ -105,7 +120,7 @@ router.get('/oauth/callback', async (req: Request, res: Response) => {
     res.redirect('/admin?tab=email&status=authorized');
   } catch (err: any) {
     console.error('[OAuth] Token exchange failed:', err.message);
-    res.redirect(`/admin?tab=email&status=error&message=${encodeURIComponent(err.message)}`);
+    res.redirect('/admin?tab=email&status=error&message=Token+exchange+failed');
   }
 });
 
@@ -226,8 +241,8 @@ router.get('/folders/:id/children', async (req: Request, res: Response) => {
   }
 });
 
-// POST /api/email/folders — Create a new folder
-router.post('/folders', async (req: Request, res: Response) => {
+// POST /api/email/folders — Create a new folder (admin/manager only)
+router.post('/folders', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
     const { displayName, parentFolderId } = req.body;
@@ -247,8 +262,8 @@ router.post('/folders', async (req: Request, res: Response) => {
   }
 });
 
-// PATCH /api/email/folders/:id — Rename a folder
-router.patch('/folders/:id', async (req: Request, res: Response) => {
+// PATCH /api/email/folders/:id — Rename a folder (admin/manager only)
+router.patch('/folders/:id', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
     const { displayName } = req.body;
@@ -264,8 +279,8 @@ router.patch('/folders/:id', async (req: Request, res: Response) => {
   }
 });
 
-// DELETE /api/email/folders/:id — Delete a folder
-router.delete('/folders/:id', async (req: Request, res: Response) => {
+// DELETE /api/email/folders/:id — Delete a folder (admin/manager only)
+router.delete('/folders/:id', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
   try {
     if (!isAuthorized()) { res.status(503).json({ error: 'Email not authorized' }); return; }
     const client = await getGraphClient();
@@ -288,16 +303,18 @@ router.get('/messages', async (req: Request, res: Response) => {
       search,
     } = req.query;
 
-    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
     const perPage = Math.min(50, Math.max(1, parseInt(per_page as string, 10) || 25));
 
     // Try live from Graph API
     if (isAuthorized()) {
       try {
         const client = await getGraphClient();
-        let apiPath = folder === 'inbox'
+        // Sanitize folder ID to prevent path traversal in Graph API URL
+        const safeFolder = String(folder).replace(/[^a-zA-Z0-9_-]/g, '') || 'inbox';
+        let apiPath = safeFolder === 'inbox'
           ? '/me/mailFolders/inbox/messages'
-          : `/me/mailFolders/${folder}/messages`;
+          : `/me/mailFolders/${safeFolder}/messages`;
 
         let query = client
           .api(apiPath)
@@ -307,7 +324,17 @@ router.get('/messages', async (req: Request, res: Response) => {
           .skip((pageNum - 1) * perPage);
 
         if (search) {
-          query = query.search(`"${String(search)}"`);
+          // Sanitize search term — escape KQL special characters to prevent injection
+          // KQL operators: AND, OR, NOT, parentheses, colons, brackets, quotes
+          const safeSearch = String(search)
+            .replace(/["\\]/g, ' ')         // Remove quotes and backslashes
+            .replace(/[()[\]{}:!~?&|]/g, ' ') // Remove KQL operator chars
+            .replace(/\s+/g, ' ')            // Collapse whitespace
+            .trim()
+            .slice(0, 200);
+          if (safeSearch) {
+            query = query.search(`"${safeSearch}"`);
+          }
         }
 
         const result = await query.get();
@@ -354,8 +381,8 @@ router.get('/messages', async (req: Request, res: Response) => {
     }
 
     if (search) {
-      conditions.push('(subject LIKE ? OR from_address LIKE ? OR from_name LIKE ? OR body_preview LIKE ?)');
-      const term = `%${search}%`;
+      conditions.push("(subject LIKE ? ESCAPE '\\' OR from_address LIKE ? ESCAPE '\\' OR from_name LIKE ? ESCAPE '\\' OR body_preview LIKE ? ESCAPE '\\')");
+      const term = `%${escapeLike(String(search))}%`;
       params.push(term, term, term, term);
     }
 
@@ -785,7 +812,7 @@ router.get('/templates', (_req: Request, res: Response) => {
 });
 
 // GET /api/email/templates/:id — Get single template
-router.get('/templates/:id', (req: Request, res: Response) => {
+router.get('/templates/:id', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const template = db.prepare('SELECT * FROM email_templates WHERE id = ?').get(req.params.id);
@@ -818,7 +845,7 @@ router.post('/templates', (req: Request, res: Response) => {
 });
 
 // PUT /api/email/templates/:id — Update template
-router.put('/templates/:id', (req: Request, res: Response) => {
+router.put('/templates/:id', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { name, category, subject, body } = req.body;
@@ -841,7 +868,7 @@ router.put('/templates/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/email/templates/:id — Delete template
-router.delete('/templates/:id', (req: Request, res: Response) => {
+router.delete('/templates/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const template = db.prepare('SELECT * FROM email_templates WHERE id = ?').get(req.params.id) as any;
@@ -871,13 +898,13 @@ router.get('/contacts/search', (req: Request, res: Response) => {
     }
 
     const db = getDb();
-    const query = `%${String(q).trim()}%`;
+    const query = `%${escapeLike(String(q).trim())}%`;
     const results: { name: string; email: string; type: string }[] = [];
 
     // Search users (internal contacts)
     const users = db.prepare(`
       SELECT full_name, email FROM users
-      WHERE (full_name LIKE ? OR email LIKE ? OR username LIKE ?)
+      WHERE (full_name LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\' OR username LIKE ? ESCAPE '\\')
         AND email IS NOT NULL AND email != ''
         AND active = 1
       ORDER BY full_name LIMIT 10
@@ -890,7 +917,7 @@ router.get('/contacts/search', (req: Request, res: Response) => {
     // Search persons (external contacts)
     const persons = db.prepare(`
       SELECT first_name, last_name, email FROM persons
-      WHERE (first_name || ' ' || last_name LIKE ? OR email LIKE ?)
+      WHERE ((first_name || ' ' || last_name) LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\')
         AND email IS NOT NULL AND email != ''
         AND archived_at IS NULL
       ORDER BY last_name, first_name LIMIT 10
@@ -973,7 +1000,7 @@ router.get('/links/:emailGraphId', (req: Request, res: Response) => {
 });
 
 // GET /api/email/links/incident/:incidentId — Get emails linked to an incident
-router.get('/links/incident/:incidentId', (req: Request, res: Response) => {
+router.get('/links/incident/:incidentId', validateNumericParams('incidentId'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const links = db.prepare(`
@@ -993,7 +1020,7 @@ router.get('/links/incident/:incidentId', (req: Request, res: Response) => {
 });
 
 // DELETE /api/email/link/:id — Remove a link
-router.delete('/link/:id', (req: Request, res: Response) => {
+router.delete('/link/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     db.prepare('DELETE FROM email_incident_links WHERE id = ?').run(req.params.id);
@@ -1062,7 +1089,7 @@ router.get('/scheduled', (req: Request, res: Response) => {
 });
 
 // DELETE /api/email/scheduled/:id — Cancel a scheduled email
-router.delete('/scheduled/:id', (req: Request, res: Response) => {
+router.delete('/scheduled/:id', validateParamId, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare('SELECT * FROM scheduled_emails WHERE id = ? AND created_by = ?')
@@ -1112,11 +1139,14 @@ router.delete('/admin/credentials', requireRole('admin'), (req: Request, res: Re
     }
     clearCachedAuth();
 
-    // Clear cached emails
+    // Clear cached emails atomically
     const db = getDb();
-    db.prepare('DELETE FROM email_cache').run();
-    db.prepare('DELETE FROM email_attachments').run();
-    db.prepare('DELETE FROM email_folders').run();
+    const clearCache = db.transaction(() => {
+      db.prepare('DELETE FROM email_cache').run();
+      db.prepare('DELETE FROM email_attachments').run();
+      db.prepare('DELETE FROM email_folders').run();
+    });
+    clearCache();
 
     auditLog(req, 'DELETE', 'system_config', 0, 'ms_email_credentials_cleared');
     res.json({ success: true });
@@ -1137,8 +1167,9 @@ router.get('/admin/oauth/authorize', requireRole('admin'), (req: Request, res: R
     // Store who initiated the OAuth flow
     setConfigValue(CONFIG_KEYS.oauthInitiator, String(req.user!.userId));
 
-    // Always use https — req.protocol may report http incorrectly with https.createServer
-    const redirectUri = `https://${req.get('host')}/api/email/oauth/callback`;
+    // Use hardcoded domain in production to prevent Host header injection
+    const host = config.isProduction ? config.primaryDomain : (req.get('host') || 'localhost:3001');
+    const redirectUri = `https://${host}/api/email/oauth/callback`;
     const url = getAuthorizationUrl(redirectUri);
 
     auditLog(req, 'OAUTH_INITIATE', 'system_config', 0, 'ms_email_oauth_started');

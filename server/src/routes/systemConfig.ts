@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { validateParamId } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
 
 const router = Router();
@@ -93,7 +94,7 @@ router.post('/config', requireRole('admin', 'manager'), (req: Request, res: Resp
 });
 
 // PUT /api/admin/config/:id - Update config item
-router.put('/config/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.put('/config/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const item = db.prepare('SELECT * FROM system_config WHERE id = ?').get(req.params.id) as any;
@@ -129,7 +130,7 @@ router.put('/config/:id', requireRole('admin', 'manager'), (req: Request, res: R
 });
 
 // DELETE /api/admin/config/:id - Soft-delete config item (set is_active = 0)
-router.delete('/config/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/config/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const item = db.prepare('SELECT * FROM system_config WHERE id = ?').get(req.params.id) as any;
@@ -142,9 +143,9 @@ router.delete('/config/:id', requireRole('admin', 'manager'), (req: Request, res
     db.prepare('UPDATE system_config SET is_active = 0, updated_at = ? WHERE id = ?').run(now, item.id);
 
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'config_deleted', 'system_config', ?, ?, ?)
-    `).run(req.user!.userId, item.id, `Removed config: ${item.config_key} = ${item.config_value}`, req.ip || 'unknown');
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'config_deleted', 'system_config', ?, ?, ?, ?)
+    `).run(req.user!.userId, item.id, `Removed config: ${item.config_key} = ${item.config_value}`, req.ip || 'unknown', now);
 
     res.json({ message: 'Config item removed' });
   } catch (error: any) {

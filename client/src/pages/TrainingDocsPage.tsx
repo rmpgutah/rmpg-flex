@@ -104,7 +104,13 @@ export default function TrainingDocsPage() {
 
   const handleDownload = (doc: any) => {
     if (doc.content_type === 'link' && doc.external_url) {
-      window.open(doc.external_url, '_blank', 'noopener,noreferrer');
+      // Validate URL protocol and reject javascript: / data: schemes to prevent open redirect
+      try {
+        const parsed = new URL(doc.external_url);
+        if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+          window.open(doc.external_url, '_blank', 'noopener,noreferrer');
+        }
+      } catch { /* invalid URL — ignore */ }
       return;
     }
     if (doc.file_id) {

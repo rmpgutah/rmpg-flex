@@ -129,6 +129,7 @@ interface SdnAddress {
 async function downloadCSV(url: string): Promise<string> {
   const resp = await fetch(url, {
     headers: { 'User-Agent': 'RMPG-Flex/1.0 OFAC-Compliance-Screening' },
+    signal: AbortSignal.timeout(30_000),
   });
   if (!resp.ok) {
     throw new Error(`Failed to download ${url}: ${resp.status} ${resp.statusText}`);

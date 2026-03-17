@@ -202,13 +202,13 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
 
         doc.setTextColor(30, 30, 30);
         doc.text(descLines, cols[0].x, y);
-        doc.text(String(item.quantity), cols[1].x + cols[1].w, y, { align: 'right' });
-        doc.text(fmt(item.unit_price), cols[2].x + cols[2].w, y, { align: 'right' });
+        doc.text(String(item.quantity ?? 0), cols[1].x + cols[1].w, y, { align: 'right' });
+        doc.text(fmt(item.unit_price ?? 0), cols[2].x + cols[2].w, y, { align: 'right' });
 
         // Unified credit/debit colors from tokens
-        const amtColor: [number, number, number] = item.amount < 0 ? [...COLOR.AMOUNT_CREDIT] : [30, 30, 30];
+        const amtColor: [number, number, number] = (item.amount ?? 0) < 0 ? [...COLOR.AMOUNT_CREDIT] : [30, 30, 30];
         doc.setTextColor(amtColor[0], amtColor[1], amtColor[2]);
-        doc.text(fmt(item.amount), cols[3].x + cols[3].w, y, { align: 'right' });
+        doc.text(fmt(item.amount ?? 0), cols[3].x + cols[3].w, y, { align: 'right' });
         doc.setTextColor(30, 30, 30);
 
         y += rowHeight;
@@ -423,7 +423,7 @@ export function generatePrintableInvoiceHtml(data: InvoicePdfData): string {
       <div class="field-box"><div class="label">Status</div><div class="value">${escHtml((data.status || 'draft').toUpperCase())}</div></div>
       <div class="field-box"><div class="label">Issue Date</div><div class="value">${data.issue_date?.substring(0, 10) || '&mdash;'}</div></div>
       <div class="field-box"><div class="label">Due Date</div><div class="value">${data.due_date?.substring(0, 10) || '&mdash;'}</div></div>
-      <div class="field-box"><div class="label">Terms</div><div class="value">${escHtml(data.payment_terms) || 'Net 30'}</div></div>
+      <div class="field-box"><div class="label">Terms</div><div class="value">${escHtml(data.payment_terms || 'Net 30')}</div></div>
       <div class="field-box"><div class="label">Period</div><div class="value">${data.period_start?.substring(0, 10)} to ${data.period_end?.substring(0, 10)}</div></div>
     </div>
   </div>

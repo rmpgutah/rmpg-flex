@@ -51,6 +51,16 @@ if (!envSecret || envSecret === defaultSecret) {
     }
   }
 } else {
+  // Enforce minimum secret length — short secrets are vulnerable to brute-force
+  if (envSecret.length < 32) {
+    if (isProduction) {
+      console.error('FATAL: JWT_SECRET must be at least 32 characters (256 bits). Current length:', envSecret.length);
+      console.error('Generate one: openssl rand -hex 64');
+      process.exit(1);
+    } else {
+      console.warn(`⚠  WARNING: JWT_SECRET is only ${envSecret.length} chars — use at least 32 for production`);
+    }
+  }
   jwtSecret = envSecret;
 }
 
@@ -114,15 +124,19 @@ export const config = {
   jwt: {
     secret: jwtSecret,
     accessExpiry: process.env.JWT_ACCESS_EXPIRY || '15m',
-    refreshExpiry: process.env.JWT_REFRESH_EXPIRY || '7d',
+    refreshExpiry: process.env.JWT_REFRESH_EXPIRY || '12h',
+    maxSessionHours: Math.max(1, envInt('MAX_SESSION_HOURS', 8)),
   },
 
   // Security
   security: {
-    maxLoginAttempts: envInt('MAX_LOGIN_ATTEMPTS', 5),
-    lockoutDurationMinutes: envInt('LOCKOUT_DURATION_MINUTES', 15),
+    maxLoginAttempts: envInt('MAX_LOGIN_ATTEMPTS', 8),
+    lockoutDurationMinutes: envInt('LOCKOUT_DURATION_MINUTES', 10),
     rateLimitWindowMs: envInt('RATE_LIMIT_WINDOW_MS', 1 * 60 * 1000),
     rateLimitMaxRequests: envInt('RATE_LIMIT_MAX_REQUESTS', 300),
+    // bcrypt cost factor — minimum 12 rounds. Lower values make brute-force
+    // attacks against stolen password hashes significantly easier.
+    bcryptRounds: Math.max(12, envInt('BCRYPT_ROUNDS', 12)),
   },
 
   // Password Policy
@@ -168,6 +182,7 @@ export const config = {
     maxPerUser: envInt('SESSION_MAX_PER_USER', 5),
     enforceIpBinding: envBool('SESSION_ENFORCE_IP_BINDING', true),
     ipChangeAction: (process.env.SESSION_IP_CHANGE_ACTION || 'invalidate') as 'invalidate' | 'reauth' | 'warn',
+    idleTimeoutMinutes: envInt('SESSION_IDLE_TIMEOUT_MINUTES', 120), // 2 hours — balances field officer usability with CJIS security requirements
   },
 
   // CORS — localhost origins only in development; production is restricted to real domains

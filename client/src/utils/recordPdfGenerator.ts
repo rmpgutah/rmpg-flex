@@ -1654,7 +1654,7 @@ function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     const pageH = doc.internal.pageSize.getHeight();
     const recordsPerPage = 3;
     const pageTopY = 14;  // top margin for detail pages
-    const pageBottomY = pageH - LAYOUT.FOOTER_HEIGHT - 8; // safe bottom (matches checkPageBreak)
+    const pageBottomY = pageH - LAYOUT.FOOTER_HEIGHT - 4; // safe bottom (matches checkPageBreak)
     const usableH = pageBottomY - pageTopY;
     const slotH = usableH / recordsPerPage; // each record gets this vertical slot
 

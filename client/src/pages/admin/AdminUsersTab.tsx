@@ -369,7 +369,7 @@ export default function AdminUsersTab({
                       if (window.confirm(`Reset 2FA for ${selectedUser.first_name} ${selectedUser.last_name}? They will need to set up 2FA again.`))
                         apiFetch(`/admin/users/${selectedUser.id}/totp`, { method: 'DELETE' })
                           .then(() => { (selectedUser as any).totp_enabled = false; setSelectedUser({ ...selectedUser }); })
-                          .catch((err) => { console.warn('[AdminUsersTab] reset 2FA failed:', err); });
+                          .catch((err) => { console.warn('[AdminUsersTab] reset 2FA failed:', err); alert('Failed to reset 2FA: ' + (err?.message || 'Unknown error')); });
                     }}
                     className="toolbar-btn text-amber-400 hover:text-amber-300 hover:bg-amber-900/30"
                     title="Reset two-factor authentication"
