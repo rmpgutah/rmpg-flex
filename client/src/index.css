@@ -476,42 +476,36 @@
     border-left: 4px solid #707070;
   }
 
-  /* --- Input Styles (Blocky) --- Motorola Blue focus accent */
+  /* --- Input Styles (Modern / Flat) --- Motorola Blue focus accent */
   .input-dark {
     @apply w-full px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none;
     background: var(--surface-sunken);
     border: 1px solid var(--border-strong);
-    border-top-color: #0d1520;
-    border-left-color: #0d1520;
-    border-bottom-color: #2a3e58;
-    border-right-color: #2a3e58;
+    box-shadow: var(--shadow-inset);
     caret-color: #3b8ad4;
-    transition: border-color 0.1s;
+    transition: var(--transition-fast);
   }
   .input-dark:focus {
     border-color: var(--brand-blue);
-    box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.35);
+    box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.35), var(--shadow-inset);
   }
 
   .select-dark {
     @apply w-full px-3 py-1.5 text-sm text-white focus:outline-none;
     background: var(--surface-sunken);
     border: 1px solid var(--border-strong);
-    border-top-color: #0d1520;
-    border-left-color: #0d1520;
-    border-bottom-color: #2a3e58;
-    border-right-color: #2a3e58;
+    box-shadow: var(--shadow-inset);
     appearance: none;
     -webkit-appearance: none;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%235a6e80'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 8px center;
     padding-right: 24px;
-    transition: border-color 0.1s;
+    transition: var(--transition-fast);
   }
   .select-dark:focus {
     border-color: var(--brand-blue);
-    box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.35);
+    box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.35), var(--shadow-inset);
   }
   .select-dark option {
     background: var(--surface-base);
@@ -522,16 +516,13 @@
     @apply w-full px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none resize-none;
     background: var(--surface-sunken);
     border: 1px solid var(--border-strong);
-    border-top-color: #0d1520;
-    border-left-color: #0d1520;
-    border-bottom-color: #2a3e58;
-    border-right-color: #2a3e58;
+    box-shadow: var(--shadow-inset);
     caret-color: #3b8ad4;
-    transition: border-color 0.1s;
+    transition: var(--transition-fast);
   }
   .textarea-dark:focus {
     border-color: var(--brand-blue);
-    box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.35);
+    box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.35), var(--shadow-inset);
   }
 
   /* --- Button Styles (Blocky / Raised) --- Motorola Blue primary */
