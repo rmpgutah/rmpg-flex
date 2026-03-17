@@ -332,6 +332,122 @@
   animation: led-blink 2s ease-in-out infinite;
 }
 
+/* --- 2FA Method Chooser Cards --- */
+.login-method-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1rem 0.75rem;
+  background: rgba(13, 21, 32, 0.6);
+  border: 1.5px solid #1e3048;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+.login-method-card:hover {
+  border-color: #1a5a9e;
+  background: rgba(26, 90, 158, 0.06);
+  box-shadow: 0 0 12px rgba(26, 90, 158, 0.12);
+  transform: translateY(-1px);
+}
+.login-method-card:active {
+  transform: translateY(0);
+}
+
+/* --- WebAuthn Key Animations --- */
+@keyframes login-key-glow {
+  0%, 100% { box-shadow: 0 0 8px rgba(212, 160, 23, 0.2); }
+  50% { box-shadow: 0 0 20px rgba(212, 160, 23, 0.5); }
+}
+.login-key-pulse {
+  animation: login-key-glow 1.5s ease-in-out infinite;
+}
+@keyframes login-key-ring-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+.login-key-ring {
+  border: 2px solid transparent;
+  border-top-color: rgba(212, 160, 23, 0.6);
+  border-right-color: rgba(212, 160, 23, 0.2);
+  animation: login-key-ring-spin 1.2s linear infinite;
+}
+
+/* --- QR Code Frame --- */
+.login-qr-frame {
+  padding: 0.75rem;
+  background: rgba(13, 21, 32, 0.5);
+  border: 1.5px solid #1e3048;
+  border-radius: 2px;
+  text-align: center;
+}
+
+/* --- Keyboard Hint --- */
+.login-kbd {
+  display: inline-block;
+  padding: 0px 4px;
+  font-size: 7px;
+  font-family: 'JetBrains Mono', monospace;
+  color: #5a6e80;
+  background: #0d1520;
+  border: 1px solid #1e3048;
+  border-radius: 2px;
+  box-shadow: 0 1px 0 #1e3048;
+}
+
+/* --- Login Title Bar Gradient --- */
+.login-title-bar {
+  background: linear-gradient(180deg, #162640 0%, #0f1a28 100%) !important;
+  border-bottom: 1px solid rgba(26, 90, 158, 0.2) !important;
+}
+
+/* --- Authenticated Badge --- */
+.login-badge-ok {
+  background: rgba(34, 197, 94, 0.08);
+  border: 1px solid rgba(34, 197, 94, 0.2);
+  border-radius: 2px;
+}
+
+/* --- Window Control Buttons Hover --- */
+.login-window-btn {
+  transition: background 0.15s ease;
+}
+.login-window-btn:hover {
+  background: #3a5070 !important;
+}
+
+/* --- Trust Device Toggle Switch --- */
+.login-toggle {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  background: #0d1520;
+  border: 1.5px solid #1e3048;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  flex-shrink: 0;
+}
+.login-toggle[data-checked] {
+  background: rgba(26, 90, 158, 0.3);
+  border-color: #1a5a9e;
+}
+.login-toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  background: #3a5070;
+  border-radius: 50%;
+  transition: all 0.25s ease;
+}
+.login-toggle[data-checked] .login-toggle-thumb {
+  left: 16px;
+  background: #1a5a9e;
+  box-shadow: 0 0 6px rgba(26, 90, 158, 0.4);
+}
+
 /* --- LED Indicator Animations (Spillman Flex) --- */
 @keyframes led-blink {
   0%, 100% { opacity: 1; }

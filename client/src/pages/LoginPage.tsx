@@ -8,7 +8,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Eye, EyeOff, AlertCircle, ShieldCheck, ArrowLeft, Lock,
   KeyRound, Usb, Fingerprint, Monitor, Server, Wifi, Clock,
-  User, ChevronDown, ChevronUp, Shield,
+  User, ChevronDown, ChevronUp, Shield, Smartphone, CheckCircle2,
 } from 'lucide-react';
 import { useAuth, type LoginStep } from '../context/AuthContext';
 import TotpCodeInput from '../components/TotpCodeInput';
@@ -296,6 +296,19 @@ export default function LoginPage() {
   const status = stepStatus[loginStep] || stepStatus.username;
   const isCredentialStep = !pending2FA && loginStep !== 'setup_2fa' && loginStep !== 'confirm_setup_2fa' && loginStep !== 'show_backup_codes' && loginStep !== 'password_change';
 
+  // Step indicator logic
+  const getActiveStep = (): number => {
+    if (isCredentialStep) return 0;
+    if (pending2FA || loginStep === 'setup_2fa' || loginStep === 'confirm_setup_2fa' || loginStep === 'show_backup_codes') return 1;
+    if (loginStep === 'password_change') return 2;
+    if (loginStep === 'complete') return 3;
+    return 0;
+  };
+  const activeStep = getActiveStep();
+  const stepLabels = ['Credentials', '2FA', 'Password', 'Complete'];
+  const totalSteps = requiresPasswordChange ? 4 : 3; // skip password step if not required
+  const visibleSteps = requiresPasswordChange ? stepLabels : stepLabels.filter((_, i) => i !== 2);
+
   // ── Info row item ──────────────────────────────
   const InfoRow = ({ label, value }: { label: string; value: string }) => (
     <div className="flex items-center justify-between py-[3px]" style={{ borderBottom: '1px solid #0d1520' }}>
@@ -388,8 +401,8 @@ export default function LoginPage() {
           <div className="login-card-accent" />
           <div className="login-scan-line" />
           {/* Title bar */}
-          <div className="panel-title-bar flex items-center gap-2">
-            <ShieldCheck className="w-3 h-3" style={{ color: '#1a5a9e' }} />
+          <div className="panel-title-bar login-title-bar flex items-center gap-2">
+            <ShieldCheck className="w-3 h-3" style={{ color: '#4a9aee' }} />
             <span>
               {loginStep === 'setup_2fa' || loginStep === 'confirm_setup_2fa'
                 ? '2FA SETUP'
@@ -403,15 +416,51 @@ export default function LoginPage() {
             </span>
             <div className="ml-auto flex items-center gap-1">
               {pending2FA && (
-                <div className="flex items-center gap-1 mr-2">
-                  <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#4ade80' }} />
-                  <span className="text-[8px] uppercase tracking-wide" style={{ color: '#4ade80' }}>Password OK</span>
+                <div className="login-badge-ok flex items-center gap-1 mr-2 px-1.5 py-0.5">
+                  <div className="w-1.5 h-1.5 rounded-full login-secure-dot" style={{ background: '#4ade80' }} />
+                  <span className="text-[7px] uppercase tracking-wider font-bold" style={{ color: '#4ade80' }}>Authenticated</span>
                 </div>
               )}
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2a3e58', borderLeft: '1px solid #3a5070', borderRight: '1px solid #3a5070', borderTop: '1px solid #3a5070', borderBottom: '1px solid #162236' }}>_</div>
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2a3e58', borderLeft: '1px solid #3a5070', borderRight: '1px solid #3a5070', borderTop: '1px solid #3a5070', borderBottom: '1px solid #162236' }}>□</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400 login-window-btn" style={{ background: '#2a3e58', borderLeft: '1px solid #3a5070', borderRight: '1px solid #3a5070', borderTop: '1px solid #3a5070', borderBottom: '1px solid #162236' }}>_</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400 login-window-btn" style={{ background: '#2a3e58', borderLeft: '1px solid #3a5070', borderRight: '1px solid #3a5070', borderTop: '1px solid #3a5070', borderBottom: '1px solid #162236' }}>□</div>
             </div>
           </div>
+
+          {/* Step progress indicator */}
+          {!isCredentialStep && (
+            <div className="px-4 sm:px-5 pt-3 pb-0">
+              <div className="flex items-center justify-between gap-1">
+                {visibleSteps.map((label, i) => {
+                  const stepIdx = requiresPasswordChange ? i : (i >= 2 ? i + 1 : i);
+                  const isActive = stepIdx === activeStep;
+                  const isComplete = stepIdx < activeStep;
+                  return (
+                    <React.Fragment key={label}>
+                      {i > 0 && (
+                        <div className="flex-1 h-px mx-1" style={{ background: isComplete ? '#1a5a9e' : '#1e3048', transition: 'background 0.4s ease' }} />
+                      )}
+                      <div className="flex flex-col items-center gap-1">
+                        <div
+                          className="w-5 h-5 rounded-full flex items-center justify-center text-[7px] font-bold transition-all duration-300"
+                          style={{
+                            background: isComplete ? '#1a5a9e' : isActive ? 'rgba(26, 90, 158, 0.2)' : '#0d1520',
+                            border: `1.5px solid ${isComplete ? '#1a5a9e' : isActive ? '#1a5a9e' : '#1e3048'}`,
+                            color: isComplete || isActive ? '#e5e7eb' : '#3a5070',
+                            boxShadow: isActive ? '0 0 8px rgba(26, 90, 158, 0.3)' : 'none',
+                          }}
+                        >
+                          {isComplete ? <CheckCircle2 className="w-3 h-3" /> : i + 1}
+                        </div>
+                        <span className="text-[7px] uppercase tracking-wider font-bold" style={{ color: isActive ? '#8a9aaa' : isComplete ? '#1a5a9e' : '#3a5070' }}>
+                          {label}
+                        </span>
+                      </div>
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <div className="p-4 sm:p-5">
             {/* Idle timeout message */}
@@ -504,11 +553,80 @@ export default function LoginPage() {
                     </>
                   )}
                 </button>
+                <p className="text-center text-[8px] mt-1.5" style={{ color: '#2a3e58' }}>
+                  Press <kbd className="login-kbd">Enter</kbd> to submit
+                </p>
               </form>
             )}
 
+            {/* ══════ 2FA: Method Chooser ══════ */}
+            {pending2FA && effectiveMode === 'choose' && (
+              <div className="space-y-4 login-step-enter">
+                <div className="text-center mb-1">
+                  <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#8a9aaa' }}>
+                    Choose Verification Method
+                  </p>
+                  <p className="text-[9px]" style={{ color: '#5a6e80' }}>
+                    Select how you'd like to verify your identity
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  {/* TOTP Card */}
+                  <button
+                    type="button"
+                    onClick={() => setTwoFactorMode('totp')}
+                    className="login-method-card group"
+                  >
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center mb-2 transition-all duration-300" style={{ background: 'rgba(26, 90, 158, 0.1)', border: '1.5px solid rgba(26, 90, 158, 0.3)' }}>
+                      <Smartphone className="w-5 h-5 transition-colors" style={{ color: '#1a5a9e' }} />
+                    </div>
+                    <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: '#8a9aaa' }}>Authenticator</span>
+                    <span className="text-[8px] mt-0.5" style={{ color: '#5a6e80' }}>6-digit code</span>
+                  </button>
+
+                  {/* WebAuthn Card */}
+                  <button
+                    type="button"
+                    onClick={() => { setTwoFactorMode('webauthn'); handleSecurityKeyAuth(); }}
+                    className="login-method-card group"
+                  >
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center mb-2 transition-all duration-300" style={{ background: 'rgba(212, 160, 23, 0.1)', border: '1.5px solid rgba(212, 160, 23, 0.3)' }}>
+                      <KeyRound className="w-5 h-5 transition-colors" style={{ color: '#d4a017' }} />
+                    </div>
+                    <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: '#8a9aaa' }}>Security Key</span>
+                    <span className="text-[8px] mt-0.5" style={{ color: '#5a6e80' }}>YubiKey / FIDO2</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between pt-2">
+                  <button
+                    type="button"
+                    onClick={handleBack}
+                    className="flex items-center gap-1 text-[10px] uppercase tracking-wide font-bold transition-colors"
+                    style={{ color: '#5a6e80' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = '#e0e0e0'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = '#5a6e80'; }}
+                  >
+                    <ArrowLeft className="w-3 h-3" />
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setTwoFactorMode('backup'); clearError(); }}
+                    className="text-[10px] uppercase tracking-wide font-bold transition-colors"
+                    style={{ color: '#5a6e80' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = '#1a5a9e'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = '#5a6e80'; }}
+                  >
+                    Use Backup Code
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* ══════ 2FA: TOTP Verification ══════ */}
-            {pending2FA && !useBackupCode && effectiveMode !== 'webauthn' && effectiveMode !== 'backup' && (
+            {pending2FA && !useBackupCode && effectiveMode === 'totp' && (
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -552,18 +670,28 @@ export default function LoginPage() {
                   )}
                 </button>
 
-                {/* Trust this device checkbox */}
-                <label className="flex items-center gap-2 cursor-pointer select-none py-1">
-                  <input
-                    type="checkbox"
-                    checked={trustThisDevice}
-                    onChange={(e) => setTrustThisDevice(e.target.checked)}
-                    className="w-3.5 h-3.5 rounded-sm accent-[#1a5a9e] cursor-pointer"
-                    style={{ accentColor: '#1a5a9e' }}
-                  />
-                  <span className="text-[10px]" style={{ color: '#8a9aaa' }}>
-                    Trust this device for 30 days
-                  </span>
+                {/* Trust this device toggle */}
+                <label className="flex items-center gap-2.5 cursor-pointer select-none py-1.5">
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={trustThisDevice}
+                    onClick={() => setTrustThisDevice(!trustThisDevice)}
+                    className="login-toggle"
+                    data-checked={trustThisDevice || undefined}
+                  >
+                    <div className="login-toggle-thumb" />
+                  </button>
+                  <div>
+                    <span className="text-[10px] font-medium block" style={{ color: trustThisDevice ? '#8a9aaa' : '#5a6e80' }}>
+                      Trust this device for 30 days
+                    </span>
+                    {trustThisDevice && (
+                      <span className="text-[8px] block mt-0.5" style={{ color: '#1a5a9e' }}>
+                        2FA will be skipped on this device
+                      </span>
+                    )}
+                  </div>
                 </label>
 
                 {/* Alternative methods */}
@@ -594,7 +722,7 @@ export default function LoginPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => { setUseBackupCode(true); clearError(); }}
+                      onClick={() => { setTwoFactorMode('backup'); clearError(); }}
                       className="text-[10px] uppercase tracking-wide font-bold transition-colors"
                       style={{ color: '#5a6e80' }}
                       onMouseEnter={(e) => { e.currentTarget.style.color = '#1a5a9e'; }}
@@ -611,9 +739,17 @@ export default function LoginPage() {
             {pending2FA && effectiveMode === 'webauthn' && (
               <div className="space-y-4 login-step-enter">
                 <div className="text-center mb-2">
+                  <div className="relative inline-flex items-center justify-center mb-3">
+                    <div className={`w-16 h-16 rounded-full flex items-center justify-center ${loginBusy ? 'login-key-pulse' : ''}`} style={{ background: webauthnError ? 'rgba(239, 68, 68, 0.1)' : 'rgba(212, 160, 23, 0.08)', border: `2px solid ${webauthnError ? 'rgba(239, 68, 68, 0.4)' : 'rgba(212, 160, 23, 0.3)'}`, transition: 'all 0.3s ease' }}>
+                      <KeyRound className="w-7 h-7" style={{ color: webauthnError ? '#ef4444' : '#d4a017', transition: 'color 0.3s ease' }} />
+                    </div>
+                    {loginBusy && (
+                      <div className="absolute inset-0 w-16 h-16 rounded-full login-key-ring" />
+                    )}
+                  </div>
                   <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#8a9aaa' }}>Security Key</p>
-                  <p className="text-[9px]" style={{ color: '#5a6e80' }}>
-                    {webauthnError ? 'Authentication failed — try again' : 'Touch your security key when it flashes'}
+                  <p className="text-[9px]" style={{ color: webauthnError ? '#ef7a7a' : '#5a6e80' }}>
+                    {webauthnError ? 'Authentication failed — try again' : loginBusy ? 'Waiting for key response...' : 'Touch your security key when it flashes'}
                   </p>
                 </div>
 
@@ -641,9 +777,9 @@ export default function LoginPage() {
                     type="button"
                     onClick={handleBackWebAuthn}
                     className="flex items-center gap-1 text-[10px] uppercase tracking-wide font-bold transition-colors"
-                    style={{ color: '#666' }}
+                    style={{ color: '#5a6e80' }}
                     onMouseEnter={(e) => { e.currentTarget.style.color = '#e0e0e0'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = '#666'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = '#5a6e80'; }}
                   >
                     <ArrowLeft className="w-3 h-3" />
                     Back
@@ -660,15 +796,18 @@ export default function LoginPage() {
                   <p className="text-[9px]" style={{ color: '#5a6e80' }}>Enter one of your single-use backup codes</p>
                 </div>
 
-                <input
-                  type="text"
-                  className="input-dark login-input-glow h-9 text-center font-mono tracking-widest uppercase"
-                  placeholder="XXXX-XXXX"
-                  value={backupCode}
-                  onChange={(e) => setBackupCode(e.target.value)}
-                  autoFocus
-                  maxLength={9}
-                />
+                <div className="relative login-input-group">
+                  <KeyRound className="login-input-icon absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none transition-colors" style={{ color: '#3a5070' }} />
+                  <input
+                    type="text"
+                    className="input-dark login-input-glow h-9 pl-9 text-center font-mono tracking-widest uppercase"
+                    placeholder="XXXX-XXXX"
+                    value={backupCode}
+                    onChange={(e) => setBackupCode(e.target.value)}
+                    autoFocus
+                    maxLength={9}
+                  />
+                </div>
 
                 <button
                   type="submit"
@@ -715,15 +854,37 @@ export default function LoginPage() {
             {loginStep === 'setup_2fa' && (
               <div className="space-y-4 login-step-enter">
                 <div className="text-center">
-                  <ShieldCheck className="w-10 h-10 mx-auto mb-2" style={{ color: '#1a5a9e' }} />
+                  <div className="relative inline-flex items-center justify-center mb-3">
+                    <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: 'rgba(26, 90, 158, 0.08)', border: '2px solid rgba(26, 90, 158, 0.3)' }}>
+                      <ShieldCheck className="w-7 h-7" style={{ color: '#1a5a9e' }} />
+                    </div>
+                  </div>
                   <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#8a9aaa' }}>
                     Two-Factor Authentication Required
                   </p>
                   <p className="text-[9px] leading-relaxed" style={{ color: '#5a6e80' }}>
-                    Your account requires two-factor authentication. You'll need an authenticator app like
-                    <strong> Google Authenticator</strong> or <strong>Authy</strong>.
+                    Your account requires 2FA for access. You'll need an authenticator app.
                   </p>
                 </div>
+
+                {/* App suggestions */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="flex items-center gap-2 p-2" style={{ background: 'rgba(13, 21, 32, 0.5)', border: '1px solid #1e3048', borderRadius: '2px' }}>
+                    <Smartphone className="w-4 h-4 flex-shrink-0" style={{ color: '#1a5a9e' }} />
+                    <div>
+                      <p className="text-[9px] font-bold" style={{ color: '#8a9aaa' }}>Google Authenticator</p>
+                      <p className="text-[7px]" style={{ color: '#5a6e80' }}>iOS / Android</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 p-2" style={{ background: 'rgba(13, 21, 32, 0.5)', border: '1px solid #1e3048', borderRadius: '2px' }}>
+                    <Smartphone className="w-4 h-4 flex-shrink-0" style={{ color: '#d4a017' }} />
+                    <div>
+                      <p className="text-[9px] font-bold" style={{ color: '#8a9aaa' }}>Authy</p>
+                      <p className="text-[7px]" style={{ color: '#5a6e80' }}>Multi-device sync</p>
+                    </div>
+                  </div>
+                </div>
+
                 <button
                   type="button"
                   onClick={handleStartSetup}
@@ -736,13 +897,18 @@ export default function LoginPage() {
                       Generating...
                     </>
                   ) : (
-                    'BEGIN SETUP'
+                    <>
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      BEGIN SETUP
+                    </>
                   )}
                 </button>
                 <button
                   onClick={handleBack}
-                  className="w-full flex items-center justify-center gap-1 py-1.5 text-[9px] uppercase tracking-wider"
+                  className="w-full flex items-center justify-center gap-1 py-1.5 text-[9px] uppercase tracking-wider transition-colors"
                   style={{ color: '#5a6e80', background: 'transparent', border: 'none' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = '#e0e0e0'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = '#5a6e80'; }}
                 >
                   <ArrowLeft className="w-3 h-3" /> Set Up Later
                 </button>
@@ -761,8 +927,14 @@ export default function LoginPage() {
 
                 {qrCodeUri && (
                   <div className="flex justify-center">
-                    <div className="p-2" style={{ background: '#ffffff', borderRadius: '2px' }}>
-                      <img src={qrCodeUri} alt="2FA QR Code" className="w-44 h-44" draggable={false} />
+                    <div className="login-qr-frame">
+                      <div className="p-3" style={{ background: '#ffffff', borderRadius: '2px' }}>
+                        <img src={qrCodeUri} alt="2FA QR Code" className="w-40 h-40" draggable={false} />
+                      </div>
+                      <div className="flex items-center justify-center gap-1.5 mt-2">
+                        <Smartphone className="w-3 h-3" style={{ color: '#5a6e80' }} />
+                        <span className="text-[8px] uppercase tracking-wider font-bold" style={{ color: '#5a6e80' }}>Scan with authenticator app</span>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -795,7 +967,7 @@ export default function LoginPage() {
                     inputMode="numeric"
                     pattern="[0-9]*"
                     maxLength={6}
-                    className="input-dark h-10 text-center text-lg tracking-[0.5em] font-mono"
+                    className="input-dark login-input-glow h-10 text-center text-lg tracking-[0.5em] font-mono"
                     placeholder="000000"
                     value={setupCode}
                     onChange={(e) => setSetupCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
@@ -854,16 +1026,19 @@ export default function LoginPage() {
                   <label className="block text-[10px] font-bold uppercase mb-1 tracking-wide" style={{ color: '#8a9aaa' }}>
                     New Password
                   </label>
-                  <input
-                    type="password"
-                    className="input-dark h-9"
-                    placeholder="Enter new password"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    autoComplete="new-password"
-                    autoFocus
-                    required
-                  />
+                  <div className="relative login-input-group">
+                    <Lock className="login-input-icon absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none transition-colors" style={{ color: '#3a5070' }} />
+                    <input
+                      type="password"
+                      className="input-dark login-input-glow h-9 pl-9"
+                      placeholder="Enter new password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      autoComplete="new-password"
+                      autoFocus
+                      required
+                    />
+                  </div>
                   <PasswordStrengthMeter password={newPassword} />
                 </div>
 
@@ -871,17 +1046,25 @@ export default function LoginPage() {
                   <label className="block text-[10px] font-bold uppercase mb-1 tracking-wide" style={{ color: '#8a9aaa' }}>
                     Confirm Password
                   </label>
-                  <input
-                    type="password"
-                    className="input-dark h-9"
-                    placeholder="Confirm new password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    autoComplete="new-password"
-                    required
-                  />
+                  <div className="relative login-input-group">
+                    <ShieldCheck className="login-input-icon absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none transition-colors" style={{ color: '#3a5070' }} />
+                    <input
+                      type="password"
+                      className="input-dark login-input-glow h-9 pl-9"
+                      placeholder="Confirm new password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      autoComplete="new-password"
+                      required
+                    />
+                  </div>
                   {confirmPassword && newPassword !== confirmPassword && (
                     <p className="text-[9px] mt-1" style={{ color: '#ef4444' }}>Passwords do not match</p>
+                  )}
+                  {confirmPassword && newPassword === confirmPassword && newPassword.length > 0 && (
+                    <p className="text-[9px] mt-1 flex items-center gap-1" style={{ color: '#4ade80' }}>
+                      <CheckCircle2 className="w-3 h-3" /> Passwords match
+                    </p>
                   )}
                 </div>
 
