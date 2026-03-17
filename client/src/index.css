@@ -423,18 +423,23 @@
 
   /* --- Card Styles (Blocky) --- */
   .card-dark {
-    background: var(--surface-base);
-    border: 1px solid var(--border-strong);
-    @apply shadow-sm;
+    background: var(--surface-raised);
+    border: 1px solid var(--border-default);
+    box-shadow: var(--shadow-card);
+    transition: var(--transition-default);
   }
 
   .card-dark-hover {
-    background: var(--surface-base);
-    border: 1px solid var(--border-strong);
-    @apply shadow-sm hover:border-rmpg-400 transition-all duration-150 cursor-pointer;
+    background: var(--surface-raised);
+    border: 1px solid var(--border-default);
+    box-shadow: var(--shadow-card);
+    @apply cursor-pointer;
+    transition: var(--transition-default);
   }
   .card-dark-hover:hover {
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    border-color: var(--border-strong);
+    box-shadow: var(--shadow-card-hover);
+    transform: translateY(-1px);
   }
 
   /* --- Section & Field Labels --- */
@@ -619,21 +624,16 @@
     box-shadow: none;
   }
 
-  /* --- Beveled Panel Borders (3D Raised / Inset) --- */
+  /* --- Modern Panel Borders (replaces beveled) --- */
   .panel-beveled {
-    border: 1px solid #2a3e58;
-    border-top-color: #3a5070;
-    border-left-color: #3a5070;
-    border-bottom-color: #0d1520;
-    border-right-color: #0d1520;
+    border: 1px solid var(--border-default);
+    box-shadow: var(--shadow-card);
+    transition: var(--transition-default);
   }
 
   .panel-inset {
-    border: 1px solid #0d1520;
-    border-top-color: #0a1018;
-    border-left-color: #0a1018;
-    border-bottom-color: #2a3e58;
-    border-right-color: #2a3e58;
+    border: 1px solid var(--border-subtle);
+    box-shadow: var(--shadow-inset);
   }
 
   /* --- Panel Title Bar (Desktop Window Chrome) --- */
