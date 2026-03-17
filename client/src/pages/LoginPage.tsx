@@ -306,8 +306,24 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 relative" style={{ background: 'linear-gradient(180deg, #060c14 0%, #141e2b 100%)' }}>
-      {/* Animated grid background */}
+      {/* Background layers */}
       <div className="login-grid-bg" />
+      <div className="login-vignette" />
+      <div className="login-particles" aria-hidden="true">
+        {[...Array(6)].map((_, i) => (
+          <div
+            key={i}
+            className="login-particle"
+            style={{
+              width: `${2 + i}px`,
+              height: `${2 + i}px`,
+              left: `${10 + i * 15}%`,
+              animationDuration: `${12 + i * 4}s`,
+              animationDelay: `${i * 2}s`,
+            }}
+          />
+        ))}
+      </div>
 
       {/* ── Security Warning Banner ─────────────────── */}
       <div
@@ -368,7 +384,7 @@ export default function LoginPage() {
         </div>
 
         {/* ── Login Card ──────────────────────────────── */}
-        <div className="shadow-2xl relative overflow-hidden panel-beveled bg-surface-base" style={{ boxShadow: '0 4px 40px rgba(26, 90, 158, 0.08), 0 0 0 1px rgba(26, 90, 158, 0.1)' }}>
+        <div className="shadow-2xl relative overflow-hidden panel-beveled bg-surface-base login-card" style={{ boxShadow: '0 4px 40px rgba(26, 90, 158, 0.08), 0 0 0 1px rgba(26, 90, 158, 0.1)' }}>
           <div className="login-card-accent" />
           <div className="login-scan-line" />
           {/* Title bar */}
@@ -400,20 +416,20 @@ export default function LoginPage() {
           <div className="p-4 sm:p-5">
             {/* Idle timeout message */}
             {showIdleMessage && (
-              <div className="mb-3 p-2.5 bg-amber-900/25 border border-amber-700/50 flex items-start gap-2">
-                <Lock className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" />
+              <div className="mb-3 p-2.5 flex items-start gap-2 login-step-enter" style={{ background: 'linear-gradient(135deg, rgba(180, 83, 9, 0.12) 0%, rgba(120, 53, 15, 0.08) 100%)', borderLeft: '2px solid #d97706', borderTop: '1px solid rgba(180, 83, 9, 0.3)', borderRight: '1px solid rgba(180, 83, 9, 0.3)', borderBottom: '1px solid rgba(180, 83, 9, 0.3)' }}>
+                <Clock className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-[10px] text-amber-300 font-semibold">Session Expired</p>
-                  <p className="text-[9px] text-amber-400/80">You were automatically logged out due to inactivity.</p>
+                  <p className="text-[10px] text-amber-300 font-semibold">Session Timed Out</p>
+                  <p className="text-[9px] text-amber-400/80">Automatically signed out after period of inactivity.</p>
                 </div>
               </div>
             )}
 
             {/* Error message */}
             {error && (
-              <div className="flex items-center gap-2 p-2 mb-4 animate-fade-in" style={{ background: 'rgba(220, 38, 38, 0.15)', border: '1px solid #991b1b' }}>
-                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#ef4444' }} />
-                <p className="text-xs" style={{ color: '#ef7a7a' }}>{error}</p>
+              <div className="flex items-center gap-2 p-2.5 mb-4 login-error-shake" style={{ background: 'linear-gradient(135deg, rgba(220, 38, 38, 0.12) 0%, rgba(153, 27, 27, 0.08) 100%)', borderLeft: '2px solid #ef4444', borderTop: '1px solid rgba(153, 27, 27, 0.3)', borderRight: '1px solid rgba(153, 27, 27, 0.3)', borderBottom: '1px solid rgba(153, 27, 27, 0.3)' }}>
+                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 animate-pulse" style={{ color: '#ef4444' }} />
+                <p className="text-xs font-medium" style={{ color: '#ef7a7a' }}>{error}</p>
               </div>
             )}
 
@@ -424,8 +440,8 @@ export default function LoginPage() {
                   <label htmlFor="username" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#8a9aaa' }}>
                     Username
                   </label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: '#3a5070' }} />
+                  <div className="relative login-input-group">
+                    <User className="login-input-icon absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none transition-colors" style={{ color: '#3a5070' }} />
                     <input
                       ref={usernameRef}
                       id="username"
@@ -443,8 +459,8 @@ export default function LoginPage() {
                   <label htmlFor="password" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#8a9aaa' }}>
                     Password
                   </label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: '#3a5070' }} />
+                  <div className="relative login-input-group">
+                    <Lock className="login-input-icon absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none transition-colors" style={{ color: '#3a5070' }} />
                     <input
                       ref={passwordRef}
                       id="password"
@@ -891,11 +907,16 @@ export default function LoginPage() {
           {/* Status bar */}
           <div className="status-bar">
             <div className="status-bar-section">
-              <span className="led-dot" style={{ background: status.color, boxShadow: `0 0 4px ${status.color}` }} />
+              <span className="led-dot login-led-active" style={{ background: status.color, boxShadow: `0 0 4px ${status.color}` }} />
               <span>{status.text}</span>
             </div>
             <div className="status-bar-section">
-              <span style={{ color: '#5a6e80' }}>ENCRYPTED</span>
+              <Lock className="w-2.5 h-2.5" style={{ color: '#3a5070' }} />
+              <span style={{ color: '#5a6e80' }}>TLS 1.3</span>
+            </div>
+            <div className="status-bar-section">
+              <div className="w-1.5 h-1.5 rounded-full login-secure-dot" style={{ background: '#22c55e' }} />
+              <span style={{ color: '#4ade80' }}>SECURE</span>
             </div>
             <div className="status-bar-section border-r-0">
               <span>v{APP_VERSION}</span>
@@ -993,13 +1014,23 @@ export default function LoginPage() {
         </div>
 
         {/* Footer with clock */}
-        <div className="text-center mt-2 flex items-center justify-center gap-3">
-          <p className="text-[7px] sm:text-[8px] tracking-wide" style={{ color: '#2a3e58' }}>
-            RMPG Flex v{APP_VERSION} | Rocky Mountain Protective Group, LLC
-          </p>
-          <div className="flex items-center gap-1">
-            <Clock className="w-2.5 h-2.5" style={{ color: '#2a3e58' }} />
-            <span className="text-[8px] font-mono" style={{ color: '#3a5070' }}>{clock} MT</span>
+        <div className="mt-2">
+          <div className="flex items-center justify-center gap-3 py-1.5">
+            <div className="flex items-center gap-1.5">
+              <div className="w-1 h-1 rounded-full" style={{ background: '#1e3048' }} />
+              <p className="text-[7px] sm:text-[8px] tracking-wider uppercase" style={{ color: '#2a3e58' }}>
+                RMPG Flex v{APP_VERSION}
+              </p>
+            </div>
+            <div className="w-px h-2.5" style={{ background: '#1e3048' }} />
+            <p className="text-[7px] sm:text-[8px] tracking-wide" style={{ color: '#2a3e58' }}>
+              Rocky Mountain Protective Group, LLC
+            </p>
+            <div className="w-px h-2.5" style={{ background: '#1e3048' }} />
+            <div className="flex items-center gap-1">
+              <Clock className="w-2.5 h-2.5" style={{ color: '#2a3e58' }} />
+              <span className="text-[8px] font-mono" style={{ color: '#3a5070' }}>{clock} MT</span>
+            </div>
           </div>
         </div>
       </div>
