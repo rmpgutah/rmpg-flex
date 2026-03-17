@@ -890,6 +890,13 @@ export interface DashCamVideo {
   linked_dashcam_event_id?: number;
   /** JSON string of GPS track: [{latitude,longitude,speed,altitude,timestamp},...] */
   cpg_gps_track?: string;
+  /** Overlay / burn / thumbnail fields */
+  thumbnail_path?: string;
+  processed_file_path?: string;
+  burned_file_path?: string;
+  burn_status?: 'none' | 'pending' | 'processing' | 'complete' | 'error';
+  burn_error?: string;
+  burn_progress?: number;
 }
 
 // --- Equipment ---

@@ -3305,6 +3305,16 @@ function migrateSchema(): void {
   addCol('dashcam_videos', 'linked_dashcam_event_id', 'INTEGER');
   addCol('dashcam_videos', 'cpg_gps_track', 'TEXT');           // JSON array of {lat,lng,speed,altitude,timestamp} points
 
+  // ── DASHCAM overlay + burn + thumbnail columns ──
+  addCol('dashcam_videos', 'overlay_status', "TEXT DEFAULT 'none'");
+  addCol('dashcam_videos', 'overlay_error', 'TEXT');
+  addCol('dashcam_videos', 'processed_file_path', 'TEXT');
+  addCol('dashcam_videos', 'thumbnail_path', 'TEXT');
+  addCol('dashcam_videos', 'burned_file_path', 'TEXT');
+  addCol('dashcam_videos', 'burn_status', "TEXT DEFAULT 'none'");
+  addCol('dashcam_videos', 'burn_error', 'TEXT');
+  addCol('dashcam_videos', 'burn_progress', 'INTEGER DEFAULT 0');
+
   // ── CPG_DEVICE_MAPPINGS — media sync state ──
   addCol('cpg_device_mappings', 'last_media_synced_at', 'TEXT');
   addCol('cpg_device_mappings', 'media_sync_errors', 'INTEGER DEFAULT 0');
