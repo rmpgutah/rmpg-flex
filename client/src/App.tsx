@@ -55,6 +55,8 @@ import CrmPage from './pages/CrmPage';
 import ServePage from './pages/ServePage';
 import IncidentDetailWindow from './pages/detached/IncidentDetailWindow';
 import RecordDetailWindow from './pages/detached/RecordDetailWindow';
+const ForgotPasswordPage = React.lazy(() => import('./pages/ForgotPasswordPage'));
+const ResetPasswordPage = React.lazy(() => import('./pages/ResetPasswordPage'));
 
 
 /** Branded loading splash — matches login page design language */
@@ -149,6 +151,8 @@ function AppRoutes() {
           path="/login"
           element={isAuthenticated ? <Navigate to={window.location.hostname === 'crm.rmpgutah.us' ? '/crm' : '/'} replace /> : <LoginPage />}
         />
+        <Route path="/forgot-password" element={<React.Suspense fallback={<LoadingSplash message="Loading" />}><ForgotPasswordPage /></React.Suspense>} />
+        <Route path="/reset-password" element={<React.Suspense fallback={<LoadingSplash message="Loading" />}><ResetPasswordPage /></React.Suspense>} />
 
         {/* Detached windows — no Layout wrapper */}
         <Route path="/detached/incident/:id" element={<ProtectedRoute><IncidentDetailWindow /></ProtectedRoute>} />

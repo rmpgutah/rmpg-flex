@@ -197,6 +197,14 @@ export const passwordRateLimit = rateLimit({
   message: 'Too many password change attempts. Please try again later.',
 });
 
+// Rate limiter for forgot-password requests — prevent enumeration and abuse
+export const forgotPasswordRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  maxRequests: 3,            // 3 requests per window per IP
+  keyGenerator: (req) => `forgot:${req.ip || 'unknown'}`,
+  message: 'Too many password reset requests. Please try again later.',
+});
+
 // Rate limiter for webhook endpoints — prevent deploy DoS
 export const webhookRateLimit = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutes

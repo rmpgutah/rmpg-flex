@@ -553,9 +553,20 @@ export default function LoginPage() {
                     </>
                   )}
                 </button>
-                <p className="text-center text-[8px] mt-1.5" style={{ color: '#2a3e58' }}>
-                  Press <kbd className="login-kbd">Enter</kbd> to submit
-                </p>
+                <div className="flex items-center justify-between mt-2">
+                  <p className="text-[8px]" style={{ color: '#2a3e58' }}>
+                    Press <kbd className="login-kbd">Enter</kbd> to submit
+                  </p>
+                  <a
+                    href="/forgot-password"
+                    className="text-[9px] font-medium transition-colors"
+                    style={{ color: '#3a6a9e' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = '#5a9ade'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = '#3a6a9e'; }}
+                  >
+                    Forgot Password?
+                  </a>
+                </div>
               </form>
             )}
 

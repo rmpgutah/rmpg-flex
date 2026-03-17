@@ -16,7 +16,7 @@ import {
   verifyRefreshToken,
   JwtPayload,
 } from '../middleware/auth';
-import { authRateLimit, mfaRateLimit, refreshRateLimit, passwordRateLimit } from '../middleware/rateLimiter';
+import { authRateLimit, mfaRateLimit, refreshRateLimit, passwordRateLimit, forgotPasswordRateLimit } from '../middleware/rateLimiter';
 import { validatePassword, getPasswordPolicyDescription, checkPasswordHistory, isPasswordExpired } from '../middleware/validatePassword';
 import config from '../config';
 import { localNow } from '../utils/timeUtils';
@@ -30,7 +30,7 @@ import {
   decryptSecret as legacyDecryptSecret,
 } from '../utils/totp';
 import { createNotification, createNotificationForRoles } from './notifications';
-import { sendNotificationEmail } from '../utils/emailSender';
+import { sendNotificationEmail, sendEmail } from '../utils/emailSender';
 import {
   isDeviceTrusted,
   trustDevice,
@@ -2166,6 +2166,211 @@ router.post('/login/change-password', authenticateTempToken, (req: Request, res:
     });
   } catch (error: any) {
     console.error('Login password change error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FORGOT PASSWORD — request reset email (public, rate-limited)
+// ════════════════════════════════════════════════════════════
+
+router.post('/forgot-password', forgotPasswordRateLimit, async (req: Request, res: Response) => {
+  const { email } = req.body;
+  // Always return the same response to prevent account enumeration
+  const genericResponse = { message: 'If an account with that email exists, a reset link has been sent.' };
+
+  if (!email || typeof email !== 'string') {
+    return res.json(genericResponse);
+  }
+
+  try {
+    const db = getDb();
+    const user = db.prepare(
+      "SELECT id, username, email, first_name, status FROM users WHERE LOWER(email) = LOWER(?) AND status != 'terminated'"
+    ).get(email.trim()) as any;
+
+    if (!user) {
+      // No user found — return generic response (don't reveal)
+      return res.json(genericResponse);
+    }
+
+    // Invalidate any existing unused reset tokens for this user
+    db.prepare(
+      "UPDATE password_reset_tokens SET used_at = ? WHERE user_id = ? AND used_at IS NULL"
+    ).run(localNow(), user.id);
+
+    // Generate a secure token
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour
+
+    db.prepare(
+      "INSERT INTO password_reset_tokens (user_id, token_hash, expires_at, ip_address) VALUES (?, ?, ?, ?)"
+    ).run(user.id, tokenHash, expiresAt, req.ip || 'unknown');
+
+    // Build reset URL
+    const baseUrl = config.isProduction
+      ? `https://${config.primaryDomain}`
+      : `${req.protocol}://${req.get('host')}`;
+    const resetUrl = `${baseUrl}/reset-password?token=${rawToken}`;
+
+    // Send email
+    const emailSent = await sendEmail({
+      to: user.email,
+      subject: 'RMPG Flex — Password Reset Request',
+      html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 520px; margin: 0 auto; background: #0d1520; border: 1px solid #1e3048; padding: 32px;">
+          <div style="text-align: center; margin-bottom: 24px;">
+            <h1 style="color: #e5e7eb; font-size: 20px; margin: 0;">Password Reset</h1>
+            <p style="color: #6b7280; font-size: 12px; margin-top: 4px;">RMPG Flex — Rocky Mountain Protective Group</p>
+          </div>
+          <p style="color: #9ca3af; font-size: 14px; line-height: 1.6;">
+            Hello <strong style="color: #e5e7eb;">${user.first_name || user.username}</strong>,
+          </p>
+          <p style="color: #9ca3af; font-size: 14px; line-height: 1.6;">
+            We received a request to reset your password. Click the button below to set a new password:
+          </p>
+          <div style="text-align: center; margin: 28px 0;">
+            <a href="${resetUrl}" style="display: inline-block; padding: 12px 28px; background: #1a5a9e; color: #ffffff; text-decoration: none; font-weight: bold; font-size: 14px; border: 1px solid #2570b5;">
+              Reset Password
+            </a>
+          </div>
+          <p style="color: #6b7280; font-size: 12px; line-height: 1.5;">
+            This link expires in <strong>1 hour</strong>. If you didn't request this reset, you can safely ignore this email.
+          </p>
+          <p style="color: #6b7280; font-size: 11px; margin-top: 20px; padding-top: 16px; border-top: 1px solid #1e3048;">
+            If the button doesn't work, copy this URL:<br />
+            <span style="color: #1a5a9e; word-break: break-all;">${resetUrl}</span>
+          </p>
+        </div>
+      `,
+    });
+
+    if (!emailSent) {
+      console.warn('[ForgotPassword] Email send failed for user:', user.username);
+    }
+
+    // Audit log
+    try {
+      db.prepare(
+        "INSERT INTO activity_log (user_id, action, description, ip_address, timestamp) VALUES (?, ?, ?, ?, ?)"
+      ).run(user.id, 'password_reset_requested', `Password reset requested for ${user.email}`, req.ip || 'unknown', localNow());
+    } catch { /* audit log failure should not block response */ }
+
+    res.json(genericResponse);
+  } catch (error: any) {
+    console.error('Forgot password error:', error?.message || 'Unknown error');
+    res.json(genericResponse); // Still return generic response on error
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// VALIDATE RESET TOKEN — check if token is valid (public)
+// ════════════════════════════════════════════════════════════
+
+router.get('/reset-password/validate', async (req: Request, res: Response) => {
+  const { token } = req.query;
+  if (!token || typeof token !== 'string') {
+    return res.status(400).json({ valid: false, error: 'Missing token' });
+  }
+
+  try {
+    const db = getDb();
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const record = db.prepare(
+      "SELECT id, user_id, expires_at, used_at FROM password_reset_tokens WHERE token_hash = ?"
+    ).get(tokenHash) as any;
+
+    if (!record) {
+      return res.json({ valid: false, error: 'Invalid or expired reset link' });
+    }
+    if (record.used_at) {
+      return res.json({ valid: false, error: 'This reset link has already been used' });
+    }
+    if (new Date(record.expires_at) < new Date()) {
+      return res.json({ valid: false, error: 'This reset link has expired' });
+    }
+
+    // Get username for display
+    const user = db.prepare("SELECT username FROM users WHERE id = ?").get(record.user_id) as any;
+
+    res.json({ valid: true, username: user?.username || '' });
+  } catch (error: any) {
+    console.error('Validate reset token error:', error?.message || 'Unknown error');
+    res.status(500).json({ valid: false, error: 'Internal server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// RESET PASSWORD — set new password with token (public, rate-limited)
+// ════════════════════════════════════════════════════════════
+
+router.post('/reset-password', passwordRateLimit, async (req: Request, res: Response) => {
+  const { token, password } = req.body;
+
+  if (!token || !password) {
+    return res.status(400).json({ error: 'Token and password are required' });
+  }
+
+  try {
+    const db = getDb();
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const record = db.prepare(
+      "SELECT id, user_id, expires_at, used_at FROM password_reset_tokens WHERE token_hash = ?"
+    ).get(tokenHash) as any;
+
+    if (!record || record.used_at) {
+      return res.status(400).json({ error: 'Invalid or expired reset link' });
+    }
+    if (new Date(record.expires_at) < new Date()) {
+      return res.status(400).json({ error: 'This reset link has expired' });
+    }
+
+    // Validate password against policy
+    const policyResult = validatePassword(password);
+    if (!policyResult.valid) {
+      return res.status(400).json({ error: policyResult.errors.join('. ') });
+    }
+
+    // Check password history
+    const inHistory = isPasswordInHistory(record.user_id, password);
+    if (inHistory) {
+      return res.status(400).json({ error: 'Cannot reuse a recent password. Please choose a different password.' });
+    }
+
+    // Hash and update
+    const hash = bcryptjs.hashSync(password, 12);
+    const now = localNow();
+
+    db.prepare(
+      "UPDATE users SET password_hash = ?, force_password_change = 0, must_change_password = 0, password_changed_at = ?, last_password_change = ? WHERE id = ?"
+    ).run(hash, now, now, record.user_id);
+
+    // Mark token as used
+    db.prepare(
+      "UPDATE password_reset_tokens SET used_at = ? WHERE id = ?"
+    ).run(now, record.id);
+
+    // Add to password history
+    addToPasswordHistory(record.user_id, hash);
+
+    // Set password expiry
+    setPasswordExpiry(record.user_id);
+
+    // Invalidate all existing sessions for security
+    db.prepare("DELETE FROM sessions WHERE user_id = ?").run(record.user_id);
+
+    // Audit log
+    const user = db.prepare("SELECT username FROM users WHERE id = ?").get(record.user_id) as any;
+    try {
+      db.prepare(
+        "INSERT INTO activity_log (user_id, action, description, ip_address, timestamp) VALUES (?, ?, ?, ?, ?)"
+      ).run(record.user_id, 'password_reset_completed', `Password reset via email link for ${user?.username}`, req.ip || 'unknown', now);
+    } catch { /* audit log failure should not block response */ }
+
+    res.json({ success: true, message: 'Password has been reset. You can now log in.' });
+  } catch (error: any) {
+    console.error('Reset password error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
