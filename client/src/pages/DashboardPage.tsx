@@ -328,16 +328,16 @@ export default function DashboardPage() {
               </h1>
               <div className="hidden sm:flex items-center gap-1.5">
                 <span className={`led-dot ${stats.active_calls > 0 ? 'led-green animate-led-pulse' : 'led-green'}`} />
-                <span className="text-[9px] font-mono font-bold text-green-500">OPERATIONAL</span>
+                <span className="text-[10px] font-mono font-bold text-green-500">OPERATIONAL</span>
               </div>
             </div>
             {!isMobile && (
-              <p className="text-[9px] tracking-wide mt-0.5 text-rmpg-600">
+              <p className="text-[10px] tracking-wide mt-0.5 text-rmpg-600">
                 Rocky Mountain Protective Group, LLC &mdash; Resolving today&rsquo;s concerns, to ensure tomorrow&rsquo;s solutions.
               </p>
             )}
           </div>
-          <div className="hidden md:flex items-center gap-2 text-[9px] font-mono text-rmpg-600">
+          <div className="hidden md:flex items-center gap-2 text-[10px] font-mono text-rmpg-600">
             <PrintButton />
             <span>{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
           </div>
@@ -421,7 +421,7 @@ export default function DashboardPage() {
             <span className={`led-dot ${led}`} />
             <div className="flex-1">
               <div className={`${isMobile ? 'text-2xl' : 'text-lg'} font-bold text-green-400 font-mono`}>{count}</div>
-              <div className={`${isMobile ? 'text-[10px]' : 'text-[9px]'} text-rmpg-400 uppercase font-bold tracking-wide`}>{label}</div>
+              <div className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wide">{label}</div>
             </div>
             <ArrowRight className="w-3 h-3 text-rmpg-500 opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
@@ -468,13 +468,13 @@ export default function DashboardPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="#162236" />
               <XAxis
                 dataKey="label"
-                tick={{ fill: '#5a6e80', fontSize: 9 }}
+                tick={{ fill: '#5a6e80', fontSize: 10 }}
                 tickLine={{ stroke: '#1e3048' }}
                 axisLine={{ stroke: '#1e3048' }}
                 interval={2}
               />
               <YAxis
-                tick={{ fill: '#5a6e80', fontSize: 9 }}
+                tick={{ fill: '#5a6e80', fontSize: 10 }}
                 tickLine={{ stroke: '#1e3048' }}
                 axisLine={{ stroke: '#1e3048' }}
                 allowDecimals={false}
@@ -483,7 +483,7 @@ export default function DashboardPage() {
                 contentStyle={{
                   backgroundColor: 'var(--surface-base)',
                   border: '1px solid #2a3e58',
-                  borderRadius: '0px',
+                  borderRadius: '4px',
                   color: '#d0d8e0',
                   fontSize: '11px',
                 }}
@@ -537,7 +537,7 @@ export default function DashboardPage() {
                       contentStyle={{
                         backgroundColor: 'var(--surface-base)',
                         border: '1px solid #2a3e58',
-                        borderRadius: '0px',
+                        borderRadius: '4px',
                         color: '#d0d8e0',
                         fontSize: '11px',
                       }}
@@ -562,8 +562,8 @@ export default function DashboardPage() {
               ].map(({ key, label, color, count }) => (
                 <div key={key} className="flex items-center gap-1.5">
                   <div className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
-                  <span className="text-[9px] text-rmpg-400 truncate">{key} {label}</span>
-                  <span className="text-[9px] font-mono font-bold text-rmpg-200 ml-auto">{count}</span>
+                  <span className="text-[10px] text-rmpg-400 truncate">{key} {label}</span>
+                  <span className="text-[10px] font-mono font-bold text-rmpg-200 ml-auto">{count}</span>
                 </div>
               ))}
             </div>
@@ -571,7 +571,7 @@ export default function DashboardPage() {
 
           {/* Quick Actions — compact */}
           <div className="border-t border-rmpg-700 px-3 py-2 space-y-1.5">
-            <h4 className="text-[9px] font-bold text-rmpg-500 uppercase tracking-wider">Quick Actions</h4>
+            <h4 className="text-[10px] font-bold text-rmpg-500 uppercase tracking-wider">Quick Actions</h4>
             <div className="grid grid-cols-2 gap-1.5">
               <button className={`toolbar-btn toolbar-btn-primary justify-center ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/dispatch')}>
                 <Plus style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> New Call
@@ -607,7 +607,7 @@ export default function DashboardPage() {
           >
             <div className="flex items-center gap-2 mb-1">
               <Icon className={`${isMobile ? 'w-4 h-4' : 'w-3.5 h-3.5'}`} style={{ color }} />
-              <span className={`${isMobile ? 'text-[10px]' : 'text-[9px]'} text-rmpg-500 uppercase font-bold tracking-wide truncate`}>{label}</span>
+              <span className="text-[10px] text-rmpg-500 uppercase font-bold tracking-wide truncate">{label}</span>
             </div>
             <div className={`${isMobile ? 'text-2xl' : 'text-lg'} font-bold font-mono`} style={{ color }}>{value}</div>
           </div>
@@ -639,28 +639,28 @@ export default function DashboardPage() {
                 <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px] border-l-brand-500">
                   <div className="flex items-center gap-1.5 mb-1">
                     <Briefcase className="w-3 h-3 text-brand-400" />
-                    <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Active PSO</span>
+                    <span className="text-[10px] text-rmpg-500 uppercase font-bold tracking-wide">Active PSO</span>
                   </div>
                   <div className="text-lg font-bold font-mono text-brand-400">{psoStats.activeCalls}</div>
                 </div>
                 <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px] border-l-blue-500">
                   <div className="flex items-center gap-1.5 mb-1">
                     <Phone className="w-3 h-3 text-blue-400" />
-                    <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Today</span>
+                    <span className="text-[10px] text-rmpg-500 uppercase font-bold tracking-wide">Today</span>
                   </div>
                   <div className="text-lg font-bold font-mono text-blue-400">{psoStats.todayCalls}</div>
                 </div>
                 <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px] border-l-green-500">
                   <div className="flex items-center gap-1.5 mb-1">
                     <CheckCircle className="w-3 h-3 text-green-400" />
-                    <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Completed</span>
+                    <span className="text-[10px] text-rmpg-500 uppercase font-bold tracking-wide">Completed</span>
                   </div>
                   <div className="text-lg font-bold font-mono text-green-400">{psoStats.monthCompleted}<span className="text-[10px] text-rmpg-500 ml-1">/ {psoStats.monthCalls}</span></div>
                 </div>
                 <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px]" style={{ borderLeftColor: serveRate !== null && serveRate >= 70 ? '#22c55e' : serveRate !== null ? '#f59e0b' : '#5a6e80' }}>
                   <div className="flex items-center gap-1.5 mb-1">
                     <Target className="w-3 h-3" style={{ color: serveRate !== null && serveRate >= 70 ? '#22c55e' : '#f59e0b' }} />
-                    <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Serve Rate</span>
+                    <span className="text-[10px] text-rmpg-500 uppercase font-bold tracking-wide">Serve Rate</span>
                   </div>
                   <div className="text-lg font-bold font-mono" style={{ color: serveRate !== null && serveRate >= 70 ? '#22c55e' : serveRate !== null ? '#f59e0b' : '#5a6e80' }}>
                     {serveRate !== null ? `${serveRate}%` : 'N/A'}
@@ -669,14 +669,14 @@ export default function DashboardPage() {
                 <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px] border-l-amber-500">
                   <div className="flex items-center gap-1.5 mb-1">
                     <TrendingUp className="w-3 h-3 text-amber-400" />
-                    <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Avg Attempts</span>
+                    <span className="text-[10px] text-rmpg-500 uppercase font-bold tracking-wide">Avg Attempts</span>
                   </div>
                   <div className="text-lg font-bold font-mono text-amber-400">{psoStats.avgAttempts ?? 'N/A'}</div>
                 </div>
                 <div className="panel-beveled bg-surface-sunken p-2.5 border-l-[3px] border-l-brand-500">
                   <div className="flex items-center gap-1.5 mb-1">
                     <Clock className="w-3 h-3 text-brand-400" />
-                    <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">PSO Response</span>
+                    <span className="text-[10px] text-rmpg-500 uppercase font-bold tracking-wide">PSO Response</span>
                   </div>
                   <div className="text-lg font-bold font-mono text-brand-400">{psoStats.avgResponseMinutes ? `${psoStats.avgResponseMinutes}m` : 'N/A'}</div>
                 </div>
@@ -687,7 +687,7 @@ export default function DashboardPage() {
                 {/* Service Type Breakdown */}
                 {psoStats.byServiceType.length > 0 && (
                   <div className="panel-beveled bg-surface-sunken p-2.5">
-                    <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-2">By Service Type</div>
+                    <div className="text-[10px] text-rmpg-500 uppercase font-bold tracking-wider mb-2">By Service Type</div>
                     <div className="space-y-1.5">
                       {psoStats.byServiceType.map(st => {
                         const pct = psoStats.monthCalls > 0 ? Math.round((st.count / psoStats.monthCalls) * 100) : 0;
@@ -708,7 +708,7 @@ export default function DashboardPage() {
                 {/* Process Service Results */}
                 {psoStats.serveResults.total > 0 && (
                   <div className="panel-beveled bg-surface-sunken p-2.5">
-                    <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-2">Process Service Results</div>
+                    <div className="text-[10px] text-rmpg-500 uppercase font-bold tracking-wider mb-2">Process Service Results</div>
                     <div className="grid grid-cols-2 gap-2">
                       <div className="flex items-center gap-2">
                         <CheckCircle className="w-3 h-3 text-green-400" />
@@ -734,7 +734,7 @@ export default function DashboardPage() {
                     {/* ServeManager Sync */}
                     {psoStats.serveManager.totalJobs > 0 && (
                       <div className="mt-2 pt-2 border-t border-rmpg-700/50">
-                        <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1">ServeManager Sync</div>
+                        <div className="text-[10px] text-rmpg-500 uppercase font-bold tracking-wider mb-1">ServeManager Sync</div>
                         <div className="flex items-center gap-3 text-[10px]">
                           <span className="text-rmpg-400">Total: <span className="font-mono text-rmpg-200">{psoStats.serveManager.totalJobs}</span></span>
                           <span className="text-rmpg-400">Pending: <span className="font-mono text-amber-400">{psoStats.serveManager.pendingJobs}</span></span>
@@ -761,7 +761,7 @@ export default function DashboardPage() {
               title="View full audit log"
             >
               <Eye style={{ width: 10, height: 10 }} />
-              <span className="text-[9px]">View All</span>
+              <span className="text-[10px]">View All</span>
             </button>
           </PanelTitleBar>
           <div className="p-3">
@@ -934,7 +934,7 @@ export default function DashboardPage() {
                     contentStyle={{
                       backgroundColor: 'var(--surface-base)',
                       border: '1px solid #2a3e58',
-                      borderRadius: '0px',
+                      borderRadius: '4px',
                       color: '#e0e0e0',
                       fontSize: '11px',
                     }}
