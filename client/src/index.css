@@ -716,27 +716,22 @@
     text-transform: uppercase;
     letter-spacing: 0.03em;
     color: #b0bcc8;
-    background: linear-gradient(180deg, #1e3048 0%, #162236 100%);
-    border: 1px solid #2a3e58;
-    border-bottom-color: #0d1520;
-    border-right-color: #0d1520;
+    background: rgba(30, 48, 72, 0.6);
+    border: 1px solid rgba(42, 62, 88, 0.5);
     cursor: pointer;
-    transition: background 0.1s;
+    transition: var(--transition-default);
     white-space: nowrap;
     flex-shrink: 0;
   }
 
   .toolbar-btn:hover {
-    background: linear-gradient(180deg, #2a3e58 0%, #1e3048 100%);
+    background: rgba(42, 62, 88, 0.8);
     color: #ffffff;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.06);
   }
 
   .toolbar-btn:active {
-    background: #0d1520;
-    border-top-color: #0d1520;
-    border-left-color: #0d1520;
-    border-bottom-color: #2a3e58;
-    border-right-color: #2a3e58;
+    background: rgba(13, 21, 32, 0.8);
   }
 
   .toolbar-btn:disabled {
@@ -746,15 +741,14 @@
   }
 
   .toolbar-btn-primary {
-    background: linear-gradient(180deg, var(--toolbar-gradient-start) 0%, #124070 100%);
-    border-color: #3b8ad4;
-    border-bottom-color: #0e3359;
-    border-right-color: #0e3359;
+    background: rgba(26, 90, 158, 0.7);
+    border-color: rgba(59, 138, 212, 0.5);
     color: #ffffff;
   }
 
   .toolbar-btn-primary:hover {
-    background: linear-gradient(180deg, #3b8ad4 0%, #164d87 100%);
+    background: rgba(59, 138, 212, 0.8);
+    box-shadow: 0 0 8px rgba(26, 90, 158, 0.3);
   }
 
   .toolbar-btn-danger {
@@ -833,14 +827,11 @@
     position: absolute;
     z-index: 9990;
     min-width: 220px;
-    background: var(--surface-base);
-    border: 1px solid #2a3e58;
-    border-top-color: #3a5070;
-    border-left-color: #3a5070;
-    border-bottom-color: #0d1520;
-    border-right-color: #0d1520;
-    box-shadow: 3px 3px 8px rgba(0, 0, 0, 0.5);
-    padding: 2px 0;
+    background: rgba(15, 23, 34, 0.95);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border-strong);
+    box-shadow: var(--shadow-dropdown);
+    padding: 4px 0;
   }
   .menu-dropdown-root {
     top: 100%;
