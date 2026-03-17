@@ -261,13 +261,8 @@
   }
 
   .table-dark thead th {
-    @apply px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider;
+    @apply px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider;
     color: #8a9aaa;
-    border-right: 1px solid rgba(30, 48, 72, 0.5);
-  }
-
-  .table-dark thead th:last-child {
-    border-right: none;
   }
 
   .table-dark tbody tr {
@@ -286,7 +281,7 @@
   .table-dark tbody td {
     @apply px-3 py-1.5;
     color: #b0bcc8;
-    font-size: 11px;
+    font-size: 12px;
   }
 
   /* Priority row highlighting */
@@ -597,7 +592,7 @@
   .led-dot {
     width: 8px;
     height: 8px;
-    border-radius: 2px;
+    border-radius: 50%;
     display: inline-block;
     flex-shrink: 0;
   }
@@ -683,7 +678,7 @@
 
   .tab-bar-item {
     padding: 4px 12px;
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -691,7 +686,7 @@
     border: 1px solid transparent;
     border-bottom: none;
     cursor: pointer;
-    transition: color 0.1s, background 0.1s;
+    transition: color 0.15s ease, background 0.15s ease;
     position: relative;
     top: 2px;
     white-space: nowrap;
@@ -706,8 +701,8 @@
   .tab-bar-item.active {
     color: #ffffff;
     background: var(--surface-raised);
-    border-color: #1e3048;
-    border-bottom: 2px solid var(--surface-raised);
+    border-color: transparent;
+    border-bottom: 2px solid var(--brand-blue);
   }
 
   /* --- Toolbar Buttons (Spillman Flex) --- */
