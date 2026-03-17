@@ -131,28 +131,26 @@ export default function DashCameraTab({
   // ── Summary Cards ────────────────────────────────────────
 
   const SUMMARY_CARDS = [
-    { label: 'Devices', value: stats.totalDevices, color: 'text-rmpg-300', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-500' },
-    { label: 'Active', value: stats.activeDevices, color: 'text-green-400', bgClass: 'bg-[#0a1a0a]', border: 'border-green-700/30', topBorder: 'border-t-green-500' },
-    { label: 'Events', value: stats.totalEvents, color: 'text-blue-400', bgClass: 'bg-[#0a0f1a]', border: 'border-blue-700/30', topBorder: 'border-t-blue-500' },
-    { label: 'Hard Brakes', value: stats.hardBrakes, color: 'text-red-400', bgClass: 'bg-[#1a0a0a]', border: 'border-red-700/30', topBorder: 'border-t-red-500' },
-    { label: 'Speeding', value: stats.speeding, color: 'text-amber-400', bgClass: 'bg-[#1a150a]', border: 'border-amber-700/30', topBorder: 'border-t-amber-500' },
-    { label: 'Video Clips', value: stats.videoEvents, color: 'text-purple-400', bgClass: 'bg-[#140a1a]', border: 'border-purple-700/30', topBorder: 'border-t-purple-500' },
+    { label: 'Devices', value: stats.totalDevices, color: 'text-rmpg-300', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-500', podGlow: 'rgba(26, 90, 158, 0.12)' },
+    { label: 'Active', value: stats.activeDevices, color: 'text-green-400', bgClass: 'bg-[#0a1a0a]', border: 'border-green-700/30', topBorder: 'border-t-green-500', podGlow: 'rgba(34, 197, 94, 0.12)' },
+    { label: 'Events', value: stats.totalEvents, color: 'text-blue-400', bgClass: 'bg-[#0a0f1a]', border: 'border-blue-700/30', topBorder: 'border-t-blue-500', podGlow: 'rgba(59, 130, 246, 0.12)' },
+    { label: 'Hard Brakes', value: stats.hardBrakes, color: 'text-red-400', bgClass: 'bg-[#1a0a0a]', border: 'border-red-700/30', topBorder: 'border-t-red-500', podGlow: 'rgba(239, 68, 68, 0.12)' },
+    { label: 'Speeding', value: stats.speeding, color: 'text-amber-400', bgClass: 'bg-[#1a150a]', border: 'border-amber-700/30', topBorder: 'border-t-amber-500', podGlow: 'rgba(245, 158, 11, 0.12)' },
+    { label: 'Video Clips', value: stats.videoEvents, color: 'text-purple-400', bgClass: 'bg-[#140a1a]', border: 'border-purple-700/30', topBorder: 'border-t-purple-500', podGlow: 'rgba(168, 85, 247, 0.12)' },
   ];
 
   // ── Render ───────────────────────────────────────────────
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
-      {/* ── Header ── */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Car className="w-4 h-4 text-brand-400" />
-          <h2 className="text-sm font-bold text-rmpg-200 uppercase tracking-wider">Dash Cameras</h2>
-          <span className="text-[8px] text-rmpg-500 font-mono uppercase bg-surface-base px-1.5 py-0.5 border border-rmpg-700">
-            ClearPathGPS
-          </span>
-        </div>
-        <div className="flex items-center gap-1.5">
+      {/* ── Section Header ── */}
+      <div className="section-header">
+        <Car className="w-4 h-4 section-icon" />
+        <h2>Dash Cameras</h2>
+        <span className="text-[8px] text-rmpg-500 font-mono uppercase bg-surface-sunken px-1.5 py-0.5 border border-rmpg-700 ml-1">
+          ClearPathGPS
+        </span>
+        <div className="flex items-center gap-1.5 ml-auto">
           <RmpgLogo height={20} iconOnly />
           <PrintButton />
           <ExportButton exportUrl="/clearpathgps/dashcam-events/export?format=csv" exportFilename="dashcam-events.csv" />
@@ -165,9 +163,9 @@ export default function DashCameraTab({
         </div>
       </div>
 
-      {/* ── Alert Banner — Impacts ── */}
+      {/* ── Impact Alert Banner ── */}
       {stats.impacts > 0 && (
-        <div className="panel-beveled p-3 flex items-center gap-3 border border-red-700/40 border-l-2 border-l-red-500 bg-[#1a0a0a]">
+        <div className="alert-banner alert-banner-critical p-3 flex items-center gap-3 border border-red-700/40 bg-[#1a0a0a]" style={{ '--alert-color': '#ef4444' } as React.CSSProperties}>
           <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" />
           <span className="text-xs text-red-400 font-semibold">
             {stats.impacts} impact event{stats.impacts !== 1 ? 's' : ''} detected — review immediately
@@ -180,9 +178,10 @@ export default function DashCameraTab({
         {SUMMARY_CARDS.map(card => (
           <div
             key={card.label}
-            className={`panel-beveled p-2.5 text-center border border-t-2 ${card.border} ${card.bgClass} ${card.topBorder}`}
+            className={`stat-pod summary-card-shimmer cascade-item panel-beveled p-2.5 text-center border border-t-2 ${card.border} ${card.bgClass} ${card.topBorder}`}
+            style={{ '--pod-glow': card.podGlow } as React.CSSProperties}
           >
-            <div className={`text-sm font-bold font-mono ${card.color}`}>{card.value}</div>
+            <div className={`stat-value text-sm font-bold font-mono ${card.color}`}>{card.value}</div>
             <div className="text-[7px] text-rmpg-500 uppercase">{card.label}</div>
           </div>
         ))}
@@ -192,27 +191,29 @@ export default function DashCameraTab({
       <div className="flex items-center gap-0 border-b border-rmpg-700">
         <button
           onClick={() => setSubTab('devices')}
-          className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-4 py-2 border-b-2 transition-colors ${
+          className={`sub-tab flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-4 py-2 transition-colors ${
             subTab === 'devices'
-              ? 'text-brand-400 border-brand-500'
-              : 'text-rmpg-500 border-transparent hover:text-rmpg-300'
+              ? 'sub-tab-active text-brand-400'
+              : 'text-rmpg-500 hover:text-rmpg-300'
           }`}
+          style={{ '--tab-color': 'var(--brand-blue)' } as React.CSSProperties}
         >
           <Cpu className="w-3 h-3" />
           Devices ({deviceMappings.length})
         </button>
         <button
           onClick={() => setSubTab('events')}
-          className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-4 py-2 border-b-2 transition-colors ${
+          className={`sub-tab flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-4 py-2 transition-colors ${
             subTab === 'events'
-              ? 'text-amber-400 border-amber-500'
-              : 'text-rmpg-500 border-transparent hover:text-rmpg-300'
+              ? 'sub-tab-active text-amber-400'
+              : 'text-rmpg-500 hover:text-rmpg-300'
           }`}
+          style={{ '--tab-color': '#f59e0b' } as React.CSSProperties}
         >
           <Zap className="w-3 h-3" />
           Events ({dashcamEvents.length})
           {stats.impacts > 0 && (
-            <span className="ml-1 px-1.5 py-0.5 bg-red-900/60 text-red-400 text-[8px] font-bold border border-red-700/50">
+            <span className="ml-1 px-1.5 py-0.5 bg-red-900/60 text-red-400 text-[8px] font-bold border border-red-700/50 animate-pulse">
               {stats.impacts} IMPACT
             </span>
           )}
@@ -228,7 +229,7 @@ export default function DashCameraTab({
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder={subTab === 'devices' ? 'Search devices, units...' : 'Search events, call signs...'}
-            className="input-dark text-[10px] pl-7 pr-2 py-1 w-full"
+            className="search-glow input-dark text-[10px] pl-7 pr-2 py-1 w-full"
           />
         </div>
         {subTab === 'events' && (
@@ -238,7 +239,7 @@ export default function DashCameraTab({
               <button
                 key={f.value}
                 onClick={() => setEventTypeFilter(f.value)}
-                className={`text-[10px] px-2.5 py-1 ${
+                className={`text-[10px] px-2.5 py-1 rounded-sm transition-colors ${
                   eventTypeFilter === f.value ? 'toolbar-btn-primary' : 'toolbar-btn'
                 }`}
               >
@@ -260,7 +261,7 @@ export default function DashCameraTab({
       {/* ── Device Table ── */}
       {!loading && subTab === 'devices' && (
         <div className="panel-beveled overflow-x-auto bg-surface-sunken">
-          <table className="table-dark w-full">
+          <table className="personnel-table table-dark w-full">
             <thead className="sticky top-0 z-10">
               <tr>
                 <th className="text-left">Device Name</th>
@@ -275,7 +276,7 @@ export default function DashCameraTab({
               {filteredDevices.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="text-center py-8">
-                    <div className="w-12 h-12 mx-auto mb-2 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-base">
+                    <div className="empty-state-icon w-12 h-12 mx-auto mb-2 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-base">
                       <Cpu className="w-6 h-6 text-rmpg-600" />
                     </div>
                     <p className="text-[10px] text-rmpg-500">No ClearPathGPS devices mapped.</p>
@@ -286,7 +287,7 @@ export default function DashCameraTab({
                 filteredDevices.map(dev => (
                   <tr
                     key={dev.id}
-                    className="cursor-pointer hover:bg-surface-hover"
+                    className="cursor-pointer"
                     onClick={() => {
                       // Find the officer for this unit — if available in mappings
                       if (dev.officer_name && onSelectOfficer) {
@@ -336,27 +337,27 @@ export default function DashCameraTab({
       {!loading && subTab === 'events' && (
         <>
           {/* Event Stat Bar */}
-          <div className="flex items-center gap-4 text-[10px] text-rmpg-400">
-            <span className="flex items-center gap-1">
-              <Zap className="w-3 h-3" />
-              Total: <span className="font-mono text-rmpg-200">{filteredEvents.length}</span>
+          <div className="flex items-center gap-3 text-[10px] text-rmpg-400 flex-wrap">
+            <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-blue-900/20 border border-blue-700/30 rounded-sm">
+              <Zap className="w-3 h-3 text-blue-400" />
+              Total: <span className="font-mono text-blue-300 font-semibold">{filteredEvents.length}</span>
             </span>
-            <span className="flex items-center gap-1">
+            <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-red-900/20 border border-red-700/30 rounded-sm">
               <AlertTriangle className="w-3 h-3 text-red-400" />
-              Hard Brakes: <span className="font-mono text-red-300">{stats.hardBrakes}</span>
+              Hard Brakes: <span className="font-mono text-red-300 font-semibold">{stats.hardBrakes}</span>
             </span>
-            <span className="flex items-center gap-1">
+            <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-amber-900/20 border border-amber-700/30 rounded-sm">
               <Gauge className="w-3 h-3 text-amber-400" />
-              Speeding: <span className="font-mono text-amber-300">{stats.speeding}</span>
+              Speeding: <span className="font-mono text-amber-300 font-semibold">{stats.speeding}</span>
             </span>
-            <span className="flex items-center gap-1">
+            <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-purple-900/20 border border-purple-700/30 rounded-sm">
               <Video className="w-3 h-3 text-purple-400" />
-              Video Clips: <span className="font-mono text-purple-300">{stats.videoEvents}</span>
+              Video Clips: <span className="font-mono text-purple-300 font-semibold">{stats.videoEvents}</span>
             </span>
           </div>
 
           <div className="panel-beveled overflow-x-auto bg-surface-sunken">
-            <table className="table-dark w-full">
+            <table className="personnel-table table-dark w-full">
               <thead className="sticky top-0 z-10">
                 <tr>
                   <th className="text-left">Timestamp</th>
@@ -373,7 +374,7 @@ export default function DashCameraTab({
                 {filteredEvents.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="text-center py-8">
-                      <div className="w-12 h-12 mx-auto mb-2 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-base">
+                      <div className="empty-state-icon w-12 h-12 mx-auto mb-2 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-base">
                         <Zap className="w-6 h-6 text-rmpg-600" />
                       </div>
                       <p className="text-[10px] text-rmpg-500">No dashcam events recorded.</p>
@@ -384,10 +385,7 @@ export default function DashCameraTab({
                   filteredEvents.map(evt => (
                     <tr
                       key={evt.id}
-                      className={`hover:bg-surface-hover ${
-                        evt.event_type === 'impact' ? 'bg-red-900/10' :
-                        evt.event_type === 'speeding' ? 'bg-amber-900/5' : ''
-                      }`}
+                      className={evt.event_type === 'impact' ? 'row-alert' : ''}
                     >
                       <td>
                         <span className="text-xs font-mono text-rmpg-300 flex items-center gap-1">
@@ -443,7 +441,7 @@ export default function DashCameraTab({
                             CLIP
                           </span>
                         ) : (
-                          <span className="text-rmpg-600 text-[9px]">—</span>
+                          <span className="text-rmpg-600 text-[9px]">---</span>
                         )}
                       </td>
                     </tr>
@@ -455,7 +453,7 @@ export default function DashCameraTab({
 
           {/* Video portal note */}
           {stats.videoEvents > 0 && (
-            <div className="panel-beveled p-2.5 flex items-center gap-2 border border-purple-700/30 bg-purple-900/5">
+            <div className="panel-beveled p-2.5 flex items-center gap-2 border border-purple-700/30 border-l-2 border-l-purple-500 bg-purple-900/5">
               <ExternalLink className="w-3 h-3 text-purple-400 flex-shrink-0" />
               <span className="text-[10px] text-rmpg-400">
                 Video clips are available for download in the{' '}

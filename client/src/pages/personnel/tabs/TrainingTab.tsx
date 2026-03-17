@@ -91,31 +91,57 @@ export default function TrainingTab({ training, requirements, officers, loading,
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-        <div className="panel-beveled p-2.5 text-center bg-surface-base border-t-2 border-t-rmpg-500">
-          <p className="text-lg font-bold font-mono text-rmpg-100">{training.length}</p>
-          <p className="text-[8px] uppercase text-rmpg-400 font-bold tracking-wider">Total Records</p>
+        <div
+          className="stat-pod summary-card-shimmer cascade-item panel-beveled p-3 text-center bg-surface-base border-t-2 border-t-rmpg-500"
+          style={{ '--pod-glow': 'rgba(255,255,255,0.06)' } as React.CSSProperties}
+        >
+          <BookOpen className="stat-icon w-4 h-4 text-rmpg-400 mx-auto mb-1.5" />
+          <p className="stat-value text-lg font-bold font-mono text-rmpg-100">{training.length}</p>
+          <p className="text-[8px] uppercase text-rmpg-400 font-bold tracking-wider mt-0.5">Total Records</p>
         </div>
-        <div className="panel-beveled p-2.5 text-center bg-[#0a1a0a] border-t-2 border-t-green-500">
-          <p className="text-lg font-bold font-mono text-green-400">{completed}</p>
-          <p className="text-[8px] uppercase text-green-400/70 font-bold tracking-wider">Completed</p>
+        <div
+          className="stat-pod summary-card-shimmer cascade-item panel-beveled p-3 text-center bg-[#0a1a0a] border-t-2 border-t-green-500"
+          style={{ '--pod-glow': 'rgba(34,197,94,0.12)' } as React.CSSProperties}
+        >
+          <CheckCircle className="stat-icon w-4 h-4 text-green-400 mx-auto mb-1.5" />
+          <p className="stat-value text-lg font-bold font-mono text-green-400">{completed}</p>
+          <p className="text-[8px] uppercase text-green-400/70 font-bold tracking-wider mt-0.5">Completed</p>
         </div>
-        <div className="panel-beveled p-2.5 text-center bg-[#0a0f1a] border-t-2 border-t-blue-500">
-          <p className="text-lg font-bold font-mono text-blue-400">{inProgress}</p>
-          <p className="text-[8px] uppercase text-blue-400/70 font-bold tracking-wider">In Progress</p>
+        <div
+          className="stat-pod summary-card-shimmer cascade-item panel-beveled p-3 text-center bg-[#0a0f1a] border-t-2 border-t-blue-500"
+          style={{ '--pod-glow': 'rgba(59,130,246,0.12)' } as React.CSSProperties}
+        >
+          <Clock className="stat-icon w-4 h-4 text-blue-400 mx-auto mb-1.5" />
+          <p className="stat-value text-lg font-bold font-mono text-blue-400">{inProgress}</p>
+          <p className="text-[8px] uppercase text-blue-400/70 font-bold tracking-wider mt-0.5">In Progress</p>
         </div>
-        <div className="panel-beveled p-2.5 text-center bg-[#1a170a] border-t-2 border-t-amber-500">
-          <p className="text-lg font-bold font-mono text-amber-400">{scheduled}</p>
-          <p className="text-[8px] uppercase text-amber-400/70 font-bold tracking-wider">Scheduled</p>
+        <div
+          className="stat-pod summary-card-shimmer cascade-item panel-beveled p-3 text-center bg-[#1a170a] border-t-2 border-t-amber-500"
+          style={{ '--pod-glow': 'rgba(245,158,11,0.12)' } as React.CSSProperties}
+        >
+          <BookOpen className="stat-icon w-4 h-4 text-amber-400 mx-auto mb-1.5" />
+          <p className="stat-value text-lg font-bold font-mono text-amber-400">{scheduled}</p>
+          <p className="text-[8px] uppercase text-amber-400/70 font-bold tracking-wider mt-0.5">Scheduled</p>
         </div>
-        <div className="panel-beveled p-2.5 text-center bg-[#1a0a0a] border-t-2 border-t-red-500">
-          <p className="text-lg font-bold font-mono text-red-400">{overdue}</p>
-          <p className="text-[8px] uppercase text-red-400/70 font-bold tracking-wider">Overdue</p>
+        <div
+          className="stat-pod summary-card-shimmer cascade-item panel-beveled p-3 text-center bg-[#1a0a0a] border-t-2 border-t-red-500"
+          style={{ '--pod-glow': 'rgba(239,68,68,0.12)' } as React.CSSProperties}
+        >
+          <AlertTriangle className="stat-icon w-4 h-4 text-red-400 mx-auto mb-1.5" />
+          <p className="stat-value text-lg font-bold font-mono text-red-400">{overdue}</p>
+          <p className="text-[8px] uppercase text-red-400/70 font-bold tracking-wider mt-0.5">Overdue</p>
         </div>
       </div>
 
-      {/* Header & Filters */}
-      <div className="flex items-center justify-between">
-        <div className="panel-inset p-2 flex items-center gap-1.5 flex-wrap">
+      {/* Section Header */}
+      <div className="section-header">
+        <GraduationCap className="section-icon w-4 h-4" />
+        <h3>Training Records</h3>
+      </div>
+
+      {/* Category Filter Bar */}
+      <div className="flex items-center gap-2">
+        <div className="panel-inset p-2 flex items-center gap-1.5 flex-wrap flex-1">
           <button
             onClick={() => setCategoryFilter('all')}
             className={`text-[10px] px-2.5 py-1 ${
@@ -136,7 +162,7 @@ export default function TrainingTab({ training, requirements, officers, loading,
             </button>
           ))}
         </div>
-        <button onClick={onAddTraining} className="toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1">
+        <button onClick={onAddTraining} className="toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5 shrink-0">
           <Plus className="w-3 h-3" />
           Add Training
         </button>
@@ -144,16 +170,16 @@ export default function TrainingTab({ training, requirements, officers, loading,
 
       {/* Table */}
       {filtered.length === 0 ? (
-        <div className="text-center py-12">
-          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-base">
+        <div className="text-center py-16">
+          <div className="empty-state-icon w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-base">
             <GraduationCap className="w-7 h-7 text-rmpg-600" />
           </div>
-          <p className="text-xs text-rmpg-500">No training records found.</p>
-          <p className="text-[10px] text-rmpg-600 mt-1">Add training records or adjust the category filter.</p>
+          <p className="text-xs text-rmpg-400 font-medium">No training records found</p>
+          <p className="text-[10px] text-rmpg-600 mt-1">Add training records or adjust the category filter above.</p>
         </div>
       ) : (
         <div className="panel-beveled overflow-x-auto">
-          <table className="table-dark w-full text-[11px]">
+          <table className="personnel-table table-dark w-full text-[11px]">
             <thead className="sticky top-0 z-10">
               <tr>
                 <th className="text-left py-1.5 px-2">Officer</th>
@@ -168,7 +194,12 @@ export default function TrainingTab({ training, requirements, officers, loading,
             </thead>
             <tbody>
               {filtered.map((record) => (
-                <tr key={record.id} className="border-t border-rmpg-800 hover:bg-rmpg-800/30 transition-colors">
+                <tr
+                  key={record.id}
+                  className={`border-t border-rmpg-800 transition-colors ${
+                    record.status === 'overdue' || record.status === 'expired' ? 'row-alert' : ''
+                  }`}
+                >
                   <td className="py-1.5 px-2 text-rmpg-100">{record.officer_name}</td>
                   <td className="py-1.5 px-2 text-rmpg-100 font-medium">{record.course_name}</td>
                   <td className="py-1.5 px-2">

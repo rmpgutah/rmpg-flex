@@ -880,19 +880,19 @@ export default function PersonnelPage() {
   const rosterList = (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Search + New Officer */}
-      <div className="p-3 border-b border-rmpg-600">
+      <div className="p-3 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)' }}>
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
             <input
               type="text"
-              className="input-dark pl-9 w-full text-[11px]"
+              className="input-dark search-glow pl-9 w-full text-[11px]"
               placeholder="Search by name, badge, rank, department..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
             />
             {searchQuery && (
-              <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white">
+              <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white transition-colors">
                 <X className="w-3 h-3" />
               </button>
             )}
@@ -904,24 +904,31 @@ export default function PersonnelPage() {
             <Plus className="w-3 h-3" /> New Officer
           </button>
         </div>
+        {/* Mini stat line */}
+        <div className="flex items-center gap-3 mt-2 text-[9px] text-rmpg-500 font-mono">
+          <span className="flex items-center gap-1"><span className="led-dot led-green" />{onDutyCount} on duty</span>
+          <span className="personnel-divider" />
+          <span>{filteredOfficers.length} of {officers.length} shown</span>
+          {searchQuery && <span className="text-brand-400">— filtered</span>}
+        </div>
       </div>
 
       {/* Officer List */}
       <div className="flex-1 overflow-auto py-1">
-        {filteredOfficers.map(officer => {
+        {filteredOfficers.map((officer, idx) => {
           const officerCreds = credentials.filter(c => c.officer_id === officer.id);
           const hasExpired = officerCreds.some(c => c.status === 'expired');
           const hasExpiring = officerCreds.some(c => c.status === 'expiring_soon');
           const isSelected = selectedOfficer?.id === officer.id;
+          const isOnDuty = officer.status === 'on_duty';
           return (
             <div
               key={officer.id}
               onClick={() => { setSelectedOfficer(officer); setDetailTab('profile'); }}
-              className={`panel-beveled mb-1 mx-2 p-3 cursor-pointer transition-all border-l-2 ${
-                isSelected
-                  ? 'bg-brand-900/15 border-l-brand-500'
-                  : 'bg-surface-base hover:brightness-110 border-l-transparent'
-              }`}
+              className={`officer-card panel-beveled mb-1 mx-2 p-3 cursor-pointer ${
+                isSelected ? 'officer-selected' : 'bg-surface-base'
+              } ${isOnDuty ? 'duty-card-active' : ''}`}
+              style={{ '--card-accent': isSelected ? 'var(--brand-blue)' : isOnDuty ? '#22c55e' : 'transparent', animationDelay: `${idx * 20}ms` } as React.CSSProperties}
             >
               <div className="flex items-center gap-3">
                 <OfficerAvatar officer={officer} size="md" />
@@ -930,30 +937,33 @@ export default function PersonnelPage() {
                     <span className="text-sm font-semibold text-rmpg-100 truncate">
                       {officer.last_name}, {officer.first_name}
                     </span>
-                    <span className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold uppercase ${ROLE_COLORS[officer.role] || ROLE_COLORS.officer}`}>
+                    <span className={`badge-pill ${ROLE_COLORS[officer.role] || ROLE_COLORS.officer}`}>
                       {toDisplayLabel(officer.role)}
                     </span>
-                    {hasExpired && <span className="led-dot led-red" />}
-                    {!hasExpired && hasExpiring && <span className="led-dot led-amber" />}
+                    {hasExpired && <span className="led-dot led-red" title="Expired credential" />}
+                    {!hasExpired && hasExpiring && <span className="led-dot led-amber" title="Expiring credential" />}
                   </div>
-                  <div className="flex items-center gap-3 mt-0.5 text-[10px] text-rmpg-400">
-                    {officer.rank && <span>{officer.rank}</span>}
+                  <div className="flex items-center gap-2.5 mt-0.5 text-[10px] text-rmpg-400">
+                    {officer.rank && <span className="text-rmpg-300">{officer.rank}</span>}
+                    {officer.rank && officer.department && <span className="text-rmpg-600">·</span>}
                     {officer.department && <span>{officer.department}</span>}
-                    {officer.badge_number && <span className="font-mono text-[10px]">#{officer.badge_number}</span>}
+                    {officer.badge_number && (
+                      <span className="font-mono text-rmpg-500 bg-rmpg-800/50 px-1 py-0.5 text-[9px]">#{officer.badge_number}</span>
+                    )}
                   </div>
                   <CredentialProgressBar credentials={officerCreds} />
                 </div>
                 <div className="text-right flex-shrink-0">
                   <div className="flex items-center gap-1.5 justify-end">
-                    <span className={officer.status === 'on_duty' ? 'led-dot led-green' : 'led-dot led-off'} />
-                    <span className={`text-[10px] font-bold uppercase ${
-                      officer.status === 'on_duty' ? 'text-green-400' : 'text-rmpg-500'
+                    <span className={isOnDuty ? 'led-dot led-green' : 'led-dot led-off'} />
+                    <span className={`text-[10px] font-bold uppercase tracking-wider ${
+                      isOnDuty ? 'text-green-400' : 'text-rmpg-500'
                     }`}>
-                      {officer.status === 'on_duty' ? 'ON DUTY' : 'OFF DUTY'}
+                      {isOnDuty ? 'ON DUTY' : 'OFF'}
                     </span>
                   </div>
                   {officer.shift_preference && (
-                    <div className="text-[9px] text-rmpg-500 mt-0.5">{officer.shift_preference}</div>
+                    <div className="text-[9px] text-rmpg-500 mt-0.5 font-mono">{officer.shift_preference}</div>
                   )}
                 </div>
               </div>
@@ -961,9 +971,12 @@ export default function PersonnelPage() {
           );
         })}
         {filteredOfficers.length === 0 && (
-          <div className="panel-inset p-8 text-center mx-2 mt-2">
-            <Users className="w-8 h-8 text-rmpg-500 mx-auto mb-2" />
-            <p className="text-sm text-rmpg-400">{searchQuery ? 'No matching personnel' : 'No personnel records'}</p>
+          <div className="record-empty-state mx-2 mt-4">
+            <div className="empty-state-icon w-14 h-14 mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
+              <Users className="w-7 h-7 text-rmpg-600" />
+            </div>
+            <p className="text-sm text-rmpg-400 font-medium">{searchQuery ? 'No matching personnel' : 'No personnel records'}</p>
+            <p className="text-[10px] text-rmpg-600 mt-1">{searchQuery ? 'Try adjusting your search terms' : 'Create a new officer to get started'}</p>
           </div>
         )}
       </div>
@@ -1050,42 +1063,34 @@ export default function PersonnelPage() {
         <PrintButton />
       </PanelTitleBar>
 
-      {/* Stats Bar — compact stat cards */}
-      <div className={`panel-inset ${isMobile ? 'px-3 overflow-x-auto' : 'px-4'} py-1.5 border-b border-rmpg-600 flex items-center gap-3`}>
-        <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono">
-          <span className="led-dot led-green" />
-          <span className="text-rmpg-400 uppercase tracking-wider">Active</span>
-          <span className="text-green-400 font-bold text-base ml-0.5">{onDutyCount}</span>
-        </div>
-        <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono">
-          <span className="led-dot led-off" />
-          <span className="text-rmpg-400 uppercase tracking-wider">Off Duty</span>
-          <span className="text-rmpg-200 font-bold text-base ml-0.5">{offDutyCount}</span>
-        </div>
-        <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono">
-          <Clock className="w-3 h-3 text-brand-400" />
-          <span className="text-rmpg-400 uppercase tracking-wider">Clocked In</span>
-          <span className="text-brand-400 font-bold text-base ml-0.5">{clockedInCount}</span>
-        </div>
-        <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono">
-          <BarChart3 className="w-3 h-3 text-rmpg-300" />
-          <span className="text-rmpg-400 uppercase tracking-wider">Hours</span>
-          <span className="text-white font-bold text-base ml-0.5">{totalHoursThisPeriod.toFixed(1)}</span>
-        </div>
-        <div className="flex items-center gap-1.5 px-2.5 py-1 panel-beveled bg-surface-base text-[10px] font-mono">
-          <Users className="w-3 h-3 text-rmpg-300" />
-          <span className="text-rmpg-400 uppercase tracking-wider">Total</span>
-          <span className="text-white font-bold text-base ml-0.5">{officers.length}</span>
-        </div>
+      {/* Stats Bar — ambient-glow stat pods */}
+      <div className={`${isMobile ? 'px-3 overflow-x-auto' : 'px-4'} py-2 border-b border-rmpg-600 flex items-center gap-2`} style={{ background: 'linear-gradient(180deg, var(--surface-sunken) 0%, var(--surface-base) 100%)' }}>
+        {[
+          { label: 'On Duty', value: onDutyCount, led: 'led-green', color: 'text-green-400', glow: 'rgba(34,197,94,0.12)' },
+          { label: 'Off Duty', value: offDutyCount, led: 'led-off', color: 'text-rmpg-200', glow: 'rgba(107,114,128,0.08)' },
+          { label: 'Clocked In', value: clockedInCount, icon: Clock, color: 'text-brand-400', glow: 'rgba(26,90,158,0.12)' },
+          { label: 'Hours', value: totalHoursThisPeriod.toFixed(1), icon: BarChart3, color: 'text-white', glow: 'rgba(255,255,255,0.06)' },
+          { label: 'Total', value: officers.length, icon: Users, color: 'text-white', glow: 'rgba(255,255,255,0.06)' },
+        ].map((s) => (
+          <div
+            key={s.label}
+            className="stat-pod flex items-center gap-1.5 px-3 py-1.5 panel-beveled bg-surface-base text-[10px] font-mono"
+            style={{ '--pod-glow': s.glow } as React.CSSProperties}
+          >
+            {'led' in s && s.led ? <span className={`led-dot ${s.led}`} /> : s.icon ? <s.icon className={`w-3 h-3 stat-icon ${s.color}`} /> : null}
+            <span className="text-rmpg-400 uppercase tracking-wider">{s.label}</span>
+            <span className={`stat-value font-bold text-base ml-0.5 ${s.color}`}>{s.value}</span>
+          </div>
+        ))}
         {expiringCreds > 0 && (
-          <div className="flex items-center gap-1.5 ml-auto px-2.5 py-1 panel-beveled border-l-2 border-l-amber-500 text-[10px]">
-            <span className="led-dot led-amber" />
+          <div className="stat-pod flex items-center gap-1.5 ml-auto px-3 py-1.5 panel-beveled border-l-2 border-l-amber-500 text-[10px]" style={{ '--pod-glow': 'rgba(245,158,11,0.15)' } as React.CSSProperties}>
+            <AlertTriangle className="w-3 h-3 text-amber-400 stat-icon" />
             <span className="text-amber-400 font-bold font-mono">{expiringCreds} credential alert{expiringCreds !== 1 ? 's' : ''}</span>
           </div>
         )}
       </div>
 
-      {/* Tab Navigation */}
+      {/* Tab Navigation — enhanced with count badges */}
       <div className="tab-bar overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
         {MAIN_TABS.map(tab => {
           const Icon = tab.icon;
@@ -1105,8 +1110,8 @@ export default function PersonnelPage() {
               <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-brand-400' : ''}`} />
               {tab.label}
               {count !== undefined && (
-                <span className={`text-[8px] px-1 py-0.5 ml-0.5 font-mono ${
-                  alert ? 'bg-amber-900/30 text-amber-400 border border-amber-700/30' : 'text-rmpg-500'
+                <span className={`tab-count-badge ml-0.5 ${
+                  alert ? 'bg-amber-900/40 text-amber-400 border border-amber-700/40' : 'bg-rmpg-800 text-rmpg-500'
                 }`}>
                   {count}
                 </span>

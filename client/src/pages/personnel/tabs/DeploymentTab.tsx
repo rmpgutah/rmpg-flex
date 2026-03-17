@@ -71,18 +71,24 @@ export default function DeploymentTab({ deployments, coverageGaps, officers, loa
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
-      {/* Coverage Gap Alert */}
+
+      {/* ── Coverage Gap Alert ── */}
       {gapsWithDeficit.length > 0 && (
-        <div className="panel-beveled p-3 border border-red-700/40 border-l-2 border-l-red-500 bg-[#1a0a0a]">
+        <div className="alert-banner alert-banner-critical" style={{ animationDuration: '2s' }}>
           <div className="flex items-center gap-2 mb-2">
-            <AlertTriangle className="w-4 h-4 text-red-400" />
-            <span className="text-xs font-bold text-red-400 uppercase tracking-wider">Coverage Gaps Detected</span>
+            <AlertTriangle className="w-4 h-4 text-red-400 animate-pulse" />
+            <span className="text-xs font-bold text-red-400 uppercase tracking-wider">
+              Coverage Gaps Detected
+            </span>
+            <span className="text-[9px] text-red-500/70 font-mono ml-auto">
+              {gapsWithDeficit.length} gap{gapsWithDeficit.length !== 1 ? 's' : ''}
+            </span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             {gapsWithDeficit.map((gap) => (
               <div
                 key={`${gap.property_id}-${gap.shift_type}`}
-                className="panel-beveled p-2 flex items-center gap-2 bg-surface-sunken"
+                className="gap-indicator panel-beveled p-2 flex items-center gap-2 bg-surface-sunken"
               >
                 <span className={gap.gap > 0 ? 'led-dot led-red' : 'led-dot led-off'} />
                 <div className="flex-1 min-w-0">
@@ -98,59 +104,80 @@ export default function DeploymentTab({ deployments, coverageGaps, officers, loa
         </div>
       )}
 
-      {/* Summary Cards */}
+      {/* ── Summary Cards ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <div className="panel-beveled p-2.5 text-center bg-surface-base border-t-2 border-t-rmpg-500">
+        <div
+          className="stat-pod summary-card-shimmer cascade-item"
+          style={{ '--pod-glow': 'rgba(255,255,255,0.06)' } as React.CSSProperties}
+        >
           <p className="text-lg font-bold font-mono text-rmpg-100">{deployments.length}</p>
           <p className="text-[8px] uppercase text-rmpg-400 font-bold tracking-wider">Total Deployments</p>
         </div>
-        <div className="panel-beveled p-2.5 text-center bg-[#0a1a0a] border-t-2 border-t-green-500">
+        <div
+          className="stat-pod summary-card-shimmer cascade-item"
+          style={{ '--pod-glow': 'rgba(34,197,94,0.12)' } as React.CSSProperties}
+        >
           <p className="text-lg font-bold font-mono text-green-400">{activeCount}</p>
           <p className="text-[8px] uppercase text-green-400/70 font-bold tracking-wider">Active</p>
         </div>
-        <div className="panel-beveled p-2.5 text-center bg-[#0a0f1a] border-t-2 border-t-blue-500">
+        <div
+          className="stat-pod summary-card-shimmer cascade-item"
+          style={{ '--pod-glow': 'rgba(59,130,246,0.12)' } as React.CSSProperties}
+        >
           <p className="text-lg font-bold font-mono text-blue-400">{scheduledCount}</p>
           <p className="text-[8px] uppercase text-blue-400/70 font-bold tracking-wider">Scheduled</p>
         </div>
-        <div className="panel-beveled p-2.5 text-center bg-[#1a170a] border-t-2 border-t-amber-500">
+        <div
+          className="stat-pod summary-card-shimmer cascade-item"
+          style={{ '--pod-glow': 'rgba(245,158,11,0.12)' } as React.CSSProperties}
+        >
           <p className="text-lg font-bold font-mono text-amber-400">{unassignedCount}</p>
           <p className="text-[8px] uppercase text-amber-400/70 font-bold tracking-wider">Unassigned Officers</p>
         </div>
       </div>
 
-      {/* Header & Filter */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5">
-          {FILTER_BUTTONS.map((btn) => (
-            <button
-              key={btn.value}
-              onClick={() => setStatusFilter(btn.value)}
-              className={`text-[10px] px-2.5 py-1 ${
-                statusFilter === btn.value ? 'toolbar-btn-primary' : 'toolbar-btn'
-              }`}
-            >
-              {btn.label}
-            </button>
-          ))}
+      {/* ── Section Header + Filter Bar ── */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <MapPinned className="w-3.5 h-3.5 text-brand-400" />
+            <span className="text-xs font-bold text-rmpg-200 uppercase tracking-wider">Deployments</span>
+          </div>
+          <div className="panel-inset flex items-center gap-0.5 px-1 py-0.5">
+            {FILTER_BUTTONS.map((btn) => (
+              <button
+                key={btn.value}
+                onClick={() => setStatusFilter(btn.value)}
+                className={`text-[10px] px-2.5 py-1 ${
+                  statusFilter === btn.value ? 'toolbar-btn-primary' : 'toolbar-btn'
+                }`}
+              >
+                {btn.label}
+              </button>
+            ))}
+          </div>
         </div>
-        <button onClick={onAddDeployment} className="toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1">
+        <button
+          onClick={onAddDeployment}
+          className="toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1"
+        >
           <Plus className="w-3 h-3" />
           Add Deployment
         </button>
       </div>
 
-      {/* Table */}
+      {/* ── Deployment Table ── */}
       {filtered.length === 0 ? (
-        <div className="text-center py-12">
-          <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-base">
+        <div className="text-center py-16">
+          <div className="empty-state-icon mx-auto mb-3">
             <MapPinned className="w-7 h-7 text-rmpg-600" />
           </div>
-          <p className="text-xs text-rmpg-500">No deployments found.</p>
-          <p className="text-[10px] text-rmpg-600 mt-1">Create a deployment or adjust the filter.</p>
+          <p className="text-xs text-rmpg-400">No deployments found</p>
+          <p className="text-[10px] text-rmpg-600 mt-1">Create a deployment or adjust the filter above.</p>
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="table-dark w-full text-[11px]">
+          <table className="personnel-table w-full text-[11px]">
             <thead className="sticky top-0 z-10">
               <tr>
                 <th className="text-left py-1.5 px-2">Officer</th>
@@ -165,9 +192,12 @@ export default function DeploymentTab({ deployments, coverageGaps, officers, loa
             </thead>
             <tbody>
               {filtered.map((dep) => (
-                <tr key={dep.id} className="border-t border-rmpg-800 hover:bg-rmpg-800/30 transition-colors">
-                  <td className="py-1.5 px-2 text-rmpg-100">{dep.officer_name}</td>
-                  <td className="py-1.5 px-2 text-rmpg-100 font-medium">{dep.property_name}</td>
+                <tr
+                  key={dep.id}
+                  className="border-t border-rmpg-800 hover:bg-brand-500/5 hover:border-l-2 hover:border-l-brand-500 transition-colors"
+                >
+                  <td className="py-1.5 px-2 text-rmpg-100 font-semibold">{dep.officer_name}</td>
+                  <td className="py-1.5 px-2 text-rmpg-100 font-bold">{dep.property_name}</td>
                   <td className="py-1.5 px-2 text-rmpg-400">{dep.client_name || '-'}</td>
                   <td className="py-1.5 px-2 text-rmpg-300">{dep.position}</td>
                   <td className="py-1.5 px-2 text-rmpg-300 font-mono text-[10px]">{formatDate(dep.start_date)}</td>
