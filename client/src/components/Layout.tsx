@@ -58,7 +58,7 @@ import { usePresence } from '../hooks/usePresence';
 import RmpgLogo from './RmpgLogo';
 import StatusBar from './StatusBar';
 import MenuBar from './MenuBar';
-// Sidebar removed — navigation moved to top icon toolbar
+import Sidebar from './Sidebar';
 import ErrorBoundary from './ErrorBoundary';
 import NotificationCenter from './NotificationCenter';
 import PanicButton from './PanicButton';
@@ -919,243 +919,7 @@ export default function Layout() {
         </div>
       </div>
 
-      {/* ============================================================ */}
-      {/* TOOLBAR ROW 2 — Icon Navigation Toolbar (Spillman Flex style) */}
-      {/* Square buttons: icon above label, F-key badge, dropdown for children */}
-      {/* ============================================================ */}
-      <div
-        className="hidden md:flex items-center gap-0 px-1 select-none"
-        style={{
-          height: 46,
-          background: 'linear-gradient(180deg, #1a2636 0%, #141e2b 100%)',
-          borderBottom: '1px solid #1e3048',
-          flexShrink: 0,
-        }}
-        data-nav-dropdown
-      >
-        {/* Back / Forward navigation buttons */}
-        <button
-          type="button"
-          onClick={handleNavBack}
-          disabled={!canGoBack}
-          className="toolbar-btn"
-          title="Back (Alt+←)"
-          style={{ height: 36, width: 30, padding: '2px 4px', opacity: canGoBack ? 1 : 0.3 }}
-        >
-          <ChevronLeft style={{ width: 16, height: 16 }} />
-        </button>
-        <button
-          type="button"
-          onClick={handleNavForward}
-          disabled={!canGoForward}
-          className="toolbar-btn"
-          title="Forward (Alt+→)"
-          style={{ height: 36, width: 30, padding: '2px 4px', opacity: canGoForward ? 1 : 0.3 }}
-        >
-          <ChevronRight style={{ width: 16, height: 16 }} />
-        </button>
-        <div
-          className="self-stretch mx-0.5"
-          style={{ width: 1, background: '#1e3048', margin: '6px 2px' }}
-        />
-
-        {(() => {
-          let lastGroup = '';
-          return TOOLBAR_NAV.filter(item => {
-            if (item.adminOnly && !isAdmin) return false;
-            if (isClientViewer && CLIENT_VIEWER_BLOCKED_PATHS.has(item.path)) return false;
-            return true;
-          }).map((item) => {
-            const Icon = item.icon;
-            const isActive = item.path === '/' ? location.pathname === '/' : location.pathname.startsWith(item.path);
-            const hasChildren = item.children && item.children.length > 0;
-            const isDropdownOpen = openDropdown === item.path;
-            const showSep = lastGroup !== '' && item.group !== lastGroup;
-            lastGroup = item.group;
-
-            // External link (e.g. CRM) — opens in new tab with SSO token
-            if (item.externalUrl) {
-              return (
-                <React.Fragment key={item.path}>
-                  {showSep && <div className="toolbar-separator" style={{ height: 36 }} />}
-                  <button
-                    onClick={() => {
-                      setOpenDropdown(null);
-                      const token = localStorage.getItem('rmpg_token');
-                      const url = token
-                        ? `${item.externalUrl}?token=${encodeURIComponent(token)}`
-                        : item.externalUrl!;
-                      window.open(url, '_blank', 'noopener,noreferrer');
-                    }}
-                    onMouseEnter={() => { if (openDropdown) setOpenDropdown(null); }}
-                    className="toolbar-btn"
-                    title={`Open ${item.label}${item.shortcut ? ` (${item.shortcut})` : ''}`}
-                    style={{ height: 44, padding: '2px 6px' }}
-                  >
-                    <Icon style={{ width: 16, height: 16, color: '#5a6e80', marginBottom: 1 }} />
-                    <span className="font-medium leading-none" style={{ fontSize: 9, letterSpacing: '0.02em' }}>{item.label}</span>
-                  </button>
-                </React.Fragment>
-              );
-            }
-
-            return (
-              <React.Fragment key={item.path}>
-                {showSep && (
-                  <div
-                    className="self-stretch mx-0.5"
-                    style={{ width: 1, background: '#1e3048', margin: '6px 2px' }}
-                  />
-                )}
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (hasChildren) {
-                        setOpenDropdown(isDropdownOpen ? null : item.path);
-                      } else {
-                        setOpenDropdown(null);
-                        if (item.newWindow) {
-                          window.open(item.path, '_blank', 'noopener,noreferrer');
-                        } else {
-                          navigate(item.path);
-                        }
-                      }
-                    }}
-                    className="flex flex-col items-center justify-center transition-all"
-                    style={{
-                      width: 52,
-                      height: 42,
-                      padding: '2px 4px',
-                      background: isActive
-                        ? 'linear-gradient(180deg, rgba(26,90,158,0.35) 0%, rgba(26,90,158,0.15) 100%)'
-                        : isDropdownOpen
-                          ? 'rgba(255,255,255,0.05)'
-                          : 'transparent',
-                      borderBottom: isActive ? '2px solid #3b8ad4' : '2px solid transparent',
-                      color: isActive ? '#ffffff' : '#8a9aaa',
-                      cursor: 'pointer',
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isActive && !isDropdownOpen) {
-                        (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isActive && !isDropdownOpen) {
-                        (e.currentTarget as HTMLElement).style.background = 'transparent';
-                      }
-                    }}
-                    title={`${item.label}${item.shortcut ? ` (${item.shortcut})` : ''}`}
-                  >
-                    <Icon
-                      style={{
-                        width: 16,
-                        height: 16,
-                        color: isActive ? '#3b8ad4' : '#5a6e80',
-                        marginBottom: 1,
-                      }}
-                    />
-                    {/* Email unread badge on Comms toolbar button */}
-                    {item.path === '/communications' && emailUnreadCount > 0 && (
-                      <span
-                        className="absolute flex items-center justify-center font-bold"
-                        style={{
-                          top: 1, left: 30,
-                          minWidth: 14, height: 14, padding: '0 3px',
-                          fontSize: 8, lineHeight: 1,
-                          background: '#dc2626', color: '#fff',
-                          borderRadius: 7, border: '1px solid #141e2b',
-                        }}
-                      >
-                        {emailUnreadCount > 99 ? '99+' : emailUnreadCount}
-                      </span>
-                    )}
-                    <span
-                      className="font-medium leading-none"
-                      style={{ fontSize: 9, letterSpacing: '0.02em' }}
-                    >
-                      {item.label}
-                    </span>
-                    {item.shortcut && (
-                      <span
-                        className="absolute font-mono"
-                        style={{
-                          fontSize: 7,
-                          top: 2,
-                          right: 3,
-                          color: isActive ? '#3b8ad4' : '#3a4e60',
-                        }}
-                      >
-                        {item.shortcut}
-                      </span>
-                    )}
-                    {hasChildren && (
-                      <ChevronDown
-                        style={{
-                          width: 8,
-                          height: 8,
-                          position: 'absolute',
-                          bottom: 2,
-                          right: 2,
-                          color: '#3a4e60',
-                          transform: isDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-                          transition: 'transform 0.15s',
-                        }}
-                      />
-                    )}
-                  </button>
-
-                  {/* Dropdown menu for items with children */}
-                  {hasChildren && isDropdownOpen && (
-                    <div
-                      className="absolute top-full left-0 z-50 py-1 animate-dropdown-appear"
-                      style={{
-                        minWidth: 200,
-                        background: '#1a2636',
-                        border: '1px solid #2a3e58',
-                        borderTop: '2px solid #1a5a9e',
-                        boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-                      }}
-                    >
-                      {item.children!.filter(child => {
-                        if (child.adminOnly && !isAdmin) return false;
-                        if (isContractManager && CONTRACT_MANAGER_BLOCKED_PATHS.has(child.path)) return false;
-                        return true;
-                      }).map((child) => {
-                        const ChildIcon = child.icon;
-                        const childActive = child.path === '/' ? location.pathname === '/' : location.pathname.startsWith(child.path);
-                        return (
-                          <button
-                            key={child.path}
-                            type="button"
-                            onClick={() => {
-                              setOpenDropdown(null);
-                              if (child.newWindow || item.newWindow) {
-                                window.open(child.path, '_blank', 'noopener,noreferrer');
-                              } else {
-                                navigate(child.path);
-                              }
-                            }}
-                            className="flex items-center gap-2.5 w-full px-3 py-1.5 text-left transition-colors hover:bg-white/[0.06]"
-                            style={{
-                              color: childActive ? '#ffffff' : '#b0bcc8',
-                              background: childActive ? 'rgba(26,90,158,0.15)' : 'transparent',
-                            }}
-                          >
-                            <ChildIcon style={{ width: 14, height: 14, color: childActive ? '#3b8ad4' : '#5a6e80', flexShrink: 0 }} />
-                            <span className="text-[11px] font-medium">{child.label}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </React.Fragment>
-            );
-          });
-        })()}
-      </div>
+      {/* Toolbar row removed — navigation moved to Sidebar */}
 
       {/* Mandatory Location Gate — blocks app if GPS permission denied */}
       <LocationGate
@@ -1168,9 +932,22 @@ export default function Layout() {
       />
 
       {/* ============================================================ */}
-      {/* MAIN CONTENT AREA — Full width (no sidebar)                  */}
+      {/* MAIN CONTENT AREA — Sidebar + Page Content                   */}
       {/* ============================================================ */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
+        {/* Sidebar Navigation — Desktop only */}
+        {!isMobile && (
+          <Sidebar
+            items={TOOLBAR_NAV}
+            isAdmin={isAdmin}
+            isClientViewer={isClientViewer}
+            isContractManager={isContractManager}
+            activeCallCount={activeCallCount}
+            emailUnreadCount={emailUnreadCount}
+            activeBOLOs={activeBOLOs}
+          />
+        )}
+
         {/* Page Content (recessed panel) */}
         <main className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter" key={location.pathname} style={{ background: '#1a2636' }}>
           <ErrorBoundary>
