@@ -149,9 +149,43 @@ router.get('/:id', validateParamId, authenticateToken, requireRole('admin', 'man
       res.status(404).json({ error: 'Video not found' });
       return;
     }
-    res.json(video);
+
+    // Include linked entities and audit trail for detail page
+    const links = db.prepare('SELECT * FROM dashcam_video_links WHERE video_id = ? ORDER BY created_at DESC').all(req.params.id);
+    const auditTrail = db.prepare(
+      "SELECT * FROM audit_log WHERE entity_type = 'dashcam_video' AND CAST(entity_id AS TEXT) = ? ORDER BY created_at DESC LIMIT 50"
+    ).all(String(req.params.id));
+
+    res.json({ ...(video as any), links, audit_trail: auditTrail });
   } catch (error: any) {
     console.error('Get dashcam video error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// GET /api/fleet/dashcam-videos/:id/neighbors — Previous/Next video
+// ============================================================
+router.get('/:id/neighbors', validateParamId, authenticateToken, (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const video = db.prepare('SELECT id, recorded_at FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
+    if (!video) {
+      res.status(404).json({ error: 'Video not found' });
+      return;
+    }
+
+    const prev = db.prepare(
+      'SELECT id, title FROM dashcam_videos WHERE recorded_at < ? OR (recorded_at = ? AND id < ?) ORDER BY recorded_at DESC, id DESC LIMIT 1'
+    ).get(video.recorded_at || '', video.recorded_at || '', video.id) as any;
+
+    const next = db.prepare(
+      'SELECT id, title FROM dashcam_videos WHERE recorded_at > ? OR (recorded_at = ? AND id > ?) ORDER BY recorded_at ASC, id ASC LIMIT 1'
+    ).get(video.recorded_at || '', video.recorded_at || '', video.id) as any;
+
+    res.json({ prev: prev || null, next: next || null });
+  } catch (error: any) {
+    console.error('Get dashcam neighbors error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
