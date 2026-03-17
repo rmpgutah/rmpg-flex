@@ -31,7 +31,7 @@ export function useApiData<T>(endpoint: string, options?: { immediate?: boolean 
       if (!controller.signal.aborted) {
         setData(result);
       }
-    } catch (err) {
+    } catch (err: any) {
       // Ignore abort errors (expected on unmount / endpoint change)
       if (err instanceof DOMException && err.name === 'AbortError') return;
       if (!controller.signal.aborted) {

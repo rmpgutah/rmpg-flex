@@ -108,7 +108,7 @@ export const GlobalSearch: React.FC = () => {
       if (stored) {
         setRecentSearches(JSON.parse(stored));
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load recent searches:', error);
     }
   }, []);
@@ -231,16 +231,10 @@ export const GlobalSearch: React.FC = () => {
               }))
             )
             .catch(() => []),
-          // Personnel search
-          apiFetch<any[]>('/personnel')
+          // Personnel search (server-side filtered)
+          apiFetch<any[]>(`/personnel?search=${encodeURIComponent(query)}`)
             .then((data) => {
-              const q = query.toLowerCase();
               return (data || [])
-                .filter((u: any) => {
-                  const name = (u.full_name || `${u.first_name || ''} ${u.last_name || ''}`).toLowerCase();
-                  const badge = (u.badge_number || '').toLowerCase();
-                  return name.includes(q) || badge.includes(q);
-                })
                 .slice(0, 10)
                 .map((item: any) => ({
                   id: item.id,
@@ -257,7 +251,7 @@ export const GlobalSearch: React.FC = () => {
         const flatResults = allResults.flat();
         setResults(flatResults);
         setSelectedIndex(0);
-      } catch (error) {
+      } catch (error: any) {
         if (cancelled) return;
         console.error('Search failed:', error);
         setResults([]);
@@ -286,7 +280,7 @@ export const GlobalSearch: React.FC = () => {
       const updated = [recent, ...filtered].slice(0, MAX_RECENT_SEARCHES);
       try {
         localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(updated));
-      } catch (error) {
+      } catch (error: any) {
         console.error('Failed to save recent search:', error);
       }
       return updated;

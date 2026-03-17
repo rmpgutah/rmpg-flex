@@ -181,6 +181,11 @@ router.get('/', requireRole('admin', 'manager', 'contract_manager'), (req: Reque
     const params: any[] = [];
 
     if (req.query.status) {
+      const VALID_INVOICE_STATUSES = ['draft', 'sent', 'paid', 'partial', 'overdue', 'void', 'cancelled'];
+      if (!VALID_INVOICE_STATUSES.includes(req.query.status as string)) {
+        res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_INVOICE_STATUSES.join(', ')}` });
+        return;
+      }
       conditions.push('i.status = ?');
       params.push(req.query.status);
     }

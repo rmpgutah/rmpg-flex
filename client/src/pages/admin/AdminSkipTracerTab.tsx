@@ -76,7 +76,7 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
     try {
       const data = await apiFetch<SkipTracerStatus>('/skiptracer/status');
       setStatus(data);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to fetch Skip Tracer status:', err);
     } finally {
       setLoading(false);
@@ -88,7 +88,7 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
     try {
       const data = await apiFetch<SearchStats>('/skiptracer/stats');
       setStats(data);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to fetch Skip Tracer stats:', err);
     }
   }, []);
@@ -111,7 +111,7 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
       setApiKey('');
       setShowKey(false);
       await fetchStatus();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to save API key');
     } finally {
       setSaving(false);
@@ -125,7 +125,7 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
       setTestResult(null);
       await fetchStatus();
       await fetchStats();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to clear credentials');
     }
   };
@@ -137,7 +137,7 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
     try {
       const result = await apiFetch<TestResult>('/skiptracer/test', { method: 'POST' });
       setTestResult(result);
-    } catch (err) {
+    } catch (err: any) {
       setTestResult({ success: false, error: err instanceof Error ? err.message : 'Connection test failed' });
     } finally {
       setTesting(false);
@@ -150,7 +150,7 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
       const data = await apiFetch<{ searches: SearchHistoryRow[] }>('/skiptracer/history?limit=20');
       setHistory(data.searches || []);
       setShowHistory(true);
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to load history');
     }
   };

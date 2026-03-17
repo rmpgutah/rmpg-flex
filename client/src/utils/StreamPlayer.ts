@@ -47,6 +47,10 @@ export class StreamPlayer {
   /** Track active source nodes for cleanup */
   private activeSources: AudioBufferSourceNode[] = [];
 
+  /** Concurrency guard for decodeAndPlay */
+  private decoding = false;
+  private pendingDecode = false;
+
   /** Pre-warm the audio system. Call from a user gesture context
    *  (e.g. channel join click) to ensure audio playback is allowed. */
   static preWarm(): void {
@@ -79,7 +83,7 @@ export class StreamPlayer {
         this.audioContext.resume().catch(() => {});
       }
       console.log('[StreamPlayer] AudioContext created, state:', this.audioContext.state);
-    } catch (err) {
+    } catch (err: any) {
       console.error('[StreamPlayer] Failed to create AudioContext:', err);
     }
   }
@@ -136,6 +140,8 @@ export class StreamPlayer {
   /** Combine all chunks, decode with Web Audio API, play new portion */
   private async decodeAndPlay() {
     if (!this.audioContext) return;
+    if (this.decoding) { this.pendingDecode = true; return; }
+    this.decoding = true;
 
     // Slice the pre-allocated buffer to the actual data length (no concatenation needed)
     const combined = this.buffer.subarray(0, this.totalBytes);
@@ -197,7 +203,7 @@ export class StreamPlayer {
         const idx = this.activeSources.indexOf(source);
         if (idx !== -1) this.activeSources.splice(idx, 1);
       };
-    } catch (err) {
+    } catch (err: any) {
       // decodeAudioData can fail if the buffer is too short or malformed
       // This is expected on the very first chunk sometimes — just wait
       // for more data
@@ -205,6 +211,12 @@ export class StreamPlayer {
         console.log('[StreamPlayer] Decode deferred (need more data), chunks:', this.chunkCount);
       } else {
         console.warn('[StreamPlayer] decodeAudioData failed:', err);
+      }
+    } finally {
+      this.decoding = false;
+      if (this.pendingDecode) {
+        this.pendingDecode = false;
+        this.decodeAndPlay();
       }
     }
   }

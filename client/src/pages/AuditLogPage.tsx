@@ -124,7 +124,7 @@ const AuditLogPage: React.FC = () => {
       setLogs(data?.data || []);
       setTotalPages(data?.pagination?.totalPages || 1);
       setTotal(data?.pagination?.total || 0);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error fetching audit logs:', err);
       setError('Failed to load audit logs. Please try again.');
     } finally {
@@ -138,7 +138,7 @@ const AuditLogPage: React.FC = () => {
     try {
       const data = await apiFetch<AuditStats>('/audit/stats');
       setStats(data);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error fetching audit stats:', err);
       setError('Failed to load audit statistics.');
     }
@@ -167,7 +167,7 @@ const AuditLogPage: React.FC = () => {
     } else {
       fetchLogs();
     }
-  }, [filters]);
+  }, [filters, fetchLogs]);
 
   // Get action color — stable callback, no dependencies
   const getActionColor = useCallback((action: string): string => {

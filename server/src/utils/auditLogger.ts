@@ -206,6 +206,12 @@ export type AuditAction =
   | 'microbilt_credentials_cleared'
   | 'microbilt_products_updated'
   | 'ofac_search'
+  // Admin operations — CJIS-required audit events for privileged actions
+  | 'admin_2fa_reset'
+  | 'admin_revoke_sessions'
+  | 'admin_role_change'
+  | 'admin_status_change'
+  | 'admin_settings_update'
   // Generic CRUD (used by newer routes)
   | 'CREATE'
   | 'UPDATE'
@@ -361,7 +367,7 @@ export function auditLog(
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at, log_hash)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(userId, action, entityType, String(entityId), detailsWithId, ip, now, logHash);
-  } catch (err) {
+  } catch (err: any) {
     // Never let audit logging break the actual operation
     console.error('[AUDIT] Failed to log:', action, entityType, entityId, err);
   }
@@ -384,7 +390,7 @@ export function auditLogSystem(
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at, log_hash)
       VALUES (NULL, ?, ?, ?, ?, 'system', ?, ?)
     `).run(action, entityType, String(entityId), details, now, logHash);
-  } catch (err) {
+  } catch (err: any) {
     console.error('[AUDIT] Failed to log system action:', action, entityType, entityId, err);
   }
 }
@@ -424,7 +430,7 @@ export function auditLogBatch(
     });
 
     batchInsert();
-  } catch (err) {
+  } catch (err: any) {
     console.error('[AUDIT] Failed to batch-log:', err);
   }
 }

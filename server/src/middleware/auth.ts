@@ -52,16 +52,16 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
     try {
       decoded = jwt.verify(token, config.jwt.secret, JWT_VERIFY_OPTIONS) as JwtPayload;
     } catch (strictErr: any) {
-      // Legacy token backward compat — enforce strict validation after 2026-04-15
+      // Legacy token backward compat — enforce strict validation after 2026-03-31
       if (strictErr.message?.includes('jwt issuer invalid') || strictErr.message?.includes('jwt audience invalid')) {
-        const deadline = new Date('2026-04-15T00:00:00Z');
+        const deadline = new Date('2026-03-31T00:00:00Z');
         const daysLeft = Math.ceil((deadline.getTime() - Date.now()) / (86400 * 1000));
         if (daysLeft <= 0) {
           // Deadline passed — reject legacy tokens
           res.status(401).json({ error: 'Token format no longer accepted. Please log in again.', code: 'TOKEN_LEGACY_REJECTED' });
           return;
         }
-        console.warn(`[AUTH] Legacy token without iss/aud accepted — ${daysLeft} days until enforcement (2026-04-15)`);
+        console.warn(`[AUTH] Legacy token without iss/aud accepted — ${daysLeft} days until enforcement (2026-03-31)`);
         decoded = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] }) as JwtPayload;
       } else {
         throw strictErr;
@@ -218,7 +218,7 @@ export function verifyRefreshToken(token: string): JwtPayload {
     decoded = jwt.verify(token, config.jwt.secret, JWT_VERIFY_OPTIONS) as JwtPayload;
   } catch (err: any) {
     if (err.message?.includes('jwt issuer invalid') || err.message?.includes('jwt audience invalid')) {
-      const deadline = new Date('2026-04-15T00:00:00Z');
+      const deadline = new Date('2026-03-31T00:00:00Z');
       if (Date.now() >= deadline.getTime()) {
         throw new Error('Legacy token format no longer accepted');
       }
@@ -258,7 +258,7 @@ export function authenticateTempToken(req: Request, res: Response, next: NextFun
       decoded = jwt.verify(token, config.jwt.secret, JWT_VERIFY_OPTIONS) as JwtPayload;
     } catch (strictErr: any) {
       if (strictErr.message?.includes('jwt issuer invalid') || strictErr.message?.includes('jwt audience invalid')) {
-        if (Date.now() >= new Date('2026-04-15T00:00:00Z').getTime()) {
+        if (Date.now() >= new Date('2026-03-31T00:00:00Z').getTime()) {
           res.status(401).json({ error: 'Token format no longer accepted. Please log in again.', code: 'TOKEN_LEGACY_REJECTED' });
           return;
         }
@@ -303,11 +303,11 @@ export function authenticateAnyToken(req: Request, res: Response, next: NextFunc
       decoded = jwt.verify(token, config.jwt.secret, JWT_VERIFY_OPTIONS) as JwtPayload;
     } catch (strictErr: any) {
       if (strictErr.message?.includes('jwt issuer invalid') || strictErr.message?.includes('jwt audience invalid')) {
-        if (Date.now() >= new Date('2026-04-15T00:00:00Z').getTime()) {
+        if (Date.now() >= new Date('2026-03-31T00:00:00Z').getTime()) {
           res.status(401).json({ error: 'Token format no longer accepted. Please log in again.', code: 'TOKEN_LEGACY_REJECTED' });
           return;
         }
-        console.warn('[AUTH] Legacy token without iss/aud in authenticateAnyToken — rejected after 2026-04-15');
+        console.warn('[AUTH] Legacy token without iss/aud in authenticateAnyToken — rejected after 2026-03-31');
         decoded = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] }) as JwtPayload;
       } else {
         throw strictErr;

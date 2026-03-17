@@ -45,8 +45,8 @@ router.use((_req, _res, next) => {
     try {
       initTables();
       tablesInitialized = true;
-    } catch (err) {
-      console.error('shiftPlans initTables retry failed:', err);
+    } catch (err: any) {
+      console.error('shiftPlans initTables retry failed:', err?.message || 'Unknown error');
       _res.status(503).json({ error: 'Database tables not ready' });
       return;
     }
@@ -205,9 +205,9 @@ router.post('/shift-plans', requireRole('admin', 'manager', 'supervisor'), (req:
       );
 
       db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'shift_plan_updated', 'shift_plan', ?, ?, ?)
-      `).run(req.user!.userId, id, `Updated shift plan: ${name}`, req.ip || 'unknown');
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+        VALUES (?, 'shift_plan_updated', 'shift_plan', ?, ?, ?, ?)
+      `).run(req.user!.userId, id, `Updated shift plan: ${name}`, req.ip || 'unknown', localNow());
     } else {
       // Insert new plan
       db.prepare(`
@@ -226,9 +226,9 @@ router.post('/shift-plans', requireRole('admin', 'manager', 'supervisor'), (req:
       );
 
       db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'shift_plan_created', 'shift_plan', ?, ?, ?)
-      `).run(req.user!.userId, id, `Created shift plan: ${name}`, req.ip || 'unknown');
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+        VALUES (?, 'shift_plan_created', 'shift_plan', ?, ?, ?, ?)
+      `).run(req.user!.userId, id, `Created shift plan: ${name}`, req.ip || 'unknown', localNow());
     }
 
     const plan = db.prepare(`
@@ -285,9 +285,9 @@ router.put('/shift-plans/:id', validateParamId, requireRole('admin', 'manager', 
     db.prepare(`UPDATE shift_plans SET ${setClauses.join(', ')} WHERE id = ?`).run(...values);
 
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'shift_plan_updated', 'shift_plan', ?, ?, ?)
-    `).run(req.user!.userId, req.params.id, `Updated shift plan: ${existing.name}`, req.ip || 'unknown');
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'shift_plan_updated', 'shift_plan', ?, ?, ?, ?)
+    `).run(req.user!.userId, req.params.id, `Updated shift plan: ${existing.name}`, req.ip || 'unknown', localNow());
 
     const updated = db.prepare(`
       SELECT sp.*, u.full_name as created_by_name
@@ -319,9 +319,9 @@ router.delete('/shift-plans/:id', validateParamId, requireRole('admin', 'manager
     db.prepare('DELETE FROM shift_plans WHERE id = ?').run(req.params.id);
 
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'shift_plan_deleted', 'shift_plan', ?, ?, ?)
-    `).run(req.user!.userId, existing.id, `Deleted shift plan: ${existing.name}`, req.ip || 'unknown');
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'shift_plan_deleted', 'shift_plan', ?, ?, ?, ?)
+    `).run(req.user!.userId, existing.id, `Deleted shift plan: ${existing.name}`, req.ip || 'unknown', localNow());
 
     res.json({ message: 'Shift plan deleted' });
   } catch (error: any) {
@@ -357,9 +357,9 @@ router.post('/shift-plans/:id/activate', validateParamId, requireRole('admin', '
     `).run(now, req.params.id);
 
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'shift_plan_activated', 'shift_plan', ?, ?, ?)
-    `).run(req.user!.userId, req.params.id, `Activated shift plan: ${existing.name} for ${existing.date}`, req.ip || 'unknown');
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'shift_plan_activated', 'shift_plan', ?, ?, ?, ?)
+    `).run(req.user!.userId, req.params.id, `Activated shift plan: ${existing.name} for ${existing.date}`, req.ip || 'unknown', localNow());
 
     const updated = db.prepare(`
       SELECT sp.*, u.full_name as created_by_name

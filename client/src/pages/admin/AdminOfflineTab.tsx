@@ -72,7 +72,7 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
       });
 
       setSecrets(enriched);
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to load offline data');
     } finally {
       setLoading(false);
@@ -90,7 +90,7 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
         body: JSON.stringify({ user_id: userId }),
       });
       await fetchData();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to generate secret');
     } finally {
       setGeneratingSingle(null);
@@ -105,7 +105,7 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
         method: 'POST',
       });
       await fetchData();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to generate secrets');
     } finally {
       setGeneratingAll(false);

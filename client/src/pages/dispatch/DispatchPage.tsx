@@ -492,7 +492,7 @@ export default function DispatchPage() {
         if (!prev) return mappedCalls[0] || null;
         return mappedCalls.find((c: CallForService) => c.id === prev.id) || mappedCalls[0] || null;
       });
-    } catch (err) {
+    } catch (err: any) {
       if (!options?.silent) {
         console.error('Failed to load dispatch data:', err);
         addToast('Failed to load dispatch data — check connection', 'error');
@@ -513,7 +513,7 @@ export default function DispatchPage() {
       const mapped = archivedRaw.map(mapDbCall);
       setArchivedCalls(mapped);
       setArchivedLoaded(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load archived calls:', err);
       addToast('Failed to load archived calls', 'error');
     }
@@ -594,7 +594,7 @@ export default function DispatchPage() {
         // Refresh the full list to keep unit assignments in sync
         fetchData({ silent: true });
       }
-      } catch (err) {
+      } catch (err: any) {
         console.error('[Dispatch] Error processing WS dispatch_update:', err);
         // Fallback: full refresh to recover from malformed data
         fetchData({ silent: true });
@@ -1086,7 +1086,7 @@ export default function DispatchPage() {
       if (newStatus === 'closed' || newStatus === 'cancelled') {
         await handleArchive(callId);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to update status:', err);
       addToast('Failed to update call status', 'error');
     }
@@ -1141,7 +1141,7 @@ export default function DispatchPage() {
             const errData = await incRes.json().catch(() => ({}));
             addToast(errData.error || 'Failed to create incident report', 'error');
           }
-        } catch (err) {
+        } catch (err: any) {
           console.error('Failed to promote call to incident:', err);
           addToast('Failed to create incident report from call', 'error');
         }
@@ -1160,7 +1160,7 @@ export default function DispatchPage() {
       const updatedCall = mapDbCall(result);
       setCalls((prev) => prev.map((c) => c.id === callId ? updatedCall : c));
       setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to hold call:', err);
       addToast('Failed to hold call', 'error');
     }
@@ -1172,7 +1172,7 @@ export default function DispatchPage() {
       const updatedCall = mapDbCall(result);
       setCalls((prev) => prev.map((c) => c.id === callId ? updatedCall : c));
       setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to resume call:', err);
       addToast('Failed to resume call', 'error');
     }
@@ -1263,7 +1263,7 @@ export default function DispatchPage() {
       setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? updatedCall : c));
       setSelectedCall(updatedCall);
       setNewNote('');
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to add note:', err);
       addToast('Failed to save note', 'error');
     }
@@ -1318,7 +1318,7 @@ export default function DispatchPage() {
       setCalls((prev) => prev.map((c) => c.id === callId ? updatedCall : c));
       setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
       addToast('Law enforcement notified', 'success');
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to notify LE:', err);
       addToast('Failed to notify LE', 'error');
     }
@@ -1333,7 +1333,7 @@ export default function DispatchPage() {
       setCalls((prev) => prev.filter((c) => c.id !== callId));
       setArchivedCalls((prev) => [updatedCall, ...prev]);
       setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to archive call:', err);
       addToast('Failed to archive call', 'error');
     }
@@ -1347,7 +1347,7 @@ export default function DispatchPage() {
       setArchivedCalls((prev) => prev.filter((c) => c.id !== callId));
       setCalls((prev) => [updatedCall, ...prev]);
       setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to unarchive call:', err);
       addToast('Failed to unarchive call', 'error');
     }
@@ -1371,7 +1371,7 @@ export default function DispatchPage() {
         setArchivedLoaded(false);
         setArchivedCalls([]);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to bulk archive calls:', err);
       addToast('Failed to bulk archive calls', 'error');
     } finally {
@@ -1633,7 +1633,7 @@ export default function DispatchPage() {
       setActivityEntries((prev) => prev.map((e) => e.id === entryId ? { ...e, details: editTimelineText.trim() } : e));
       setEditingTimelineId(null);
       setEditTimelineText('');
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to edit timeline entry:', err);
       addToast('Failed to edit timeline entry', 'error');
     }
@@ -1644,7 +1644,7 @@ export default function DispatchPage() {
     try {
       await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/timeline/${entryId}`, { method: 'DELETE' });
       setActivityEntries((prev) => prev.filter((e) => String(e.id) !== String(entryId)));
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to delete timeline entry:', err);
       addToast('Failed to delete timeline entry', 'error');
     }
@@ -1660,7 +1660,7 @@ export default function DispatchPage() {
       setActivityEntries((prev) => [result, ...prev]);
       setNewTimelineText('');
       setShowAddTimeline(false);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to add timeline entry:', err);
       addToast('Failed to add timeline entry', 'error');
     }
@@ -2073,7 +2073,7 @@ export default function DispatchPage() {
                             </div>
                             <button
                               className="text-[10px] text-blue-400 hover:text-blue-300 underline"
-                              onClick={() => window.open('/serve', '_blank')}
+                              onClick={() => window.open('/serve', '_blank', 'noopener,noreferrer')}
                             >
                               View in Process Server
                             </button>

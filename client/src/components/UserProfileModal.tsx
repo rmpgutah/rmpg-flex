@@ -268,7 +268,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
       justUploadedImage.current = true; // Prevent useEffect from resetting our state
       await refreshUser();
       setProfileMsg({ type: 'success', text: 'Profile photo updated.' });
-    } catch (err) {
+    } catch (err: any) {
       console.error('Profile image upload error:', err);
       setProfileMsg({ type: 'error', text: 'Failed to upload profile photo.' });
     } finally {
@@ -296,6 +296,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
   };
 
   const handleSignatureChange = async (dataUrl: string | null) => {
+    const prev = signature;
     setSignature(dataUrl);
     try {
       await apiFetch('/auth/signature', {
@@ -304,7 +305,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
       });
     } catch {
       // Revert on failure
-      setSignature(signature);
+      setSignature(prev);
     }
   };
 

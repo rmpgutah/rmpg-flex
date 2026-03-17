@@ -64,6 +64,18 @@ export function validatePassword(password: string): PasswordValidationResult {
     'marshal', 'ranger', 'warden', 'inspector', 'constable', 'chief',
     'rmpg', 'rmpgflex', 'rmpgsecurity', 'rmpg123', 'flex123', 'rmpg2024',
     'rmpg2025', 'rmpg2026', 'utahpolice', 'slcpd', 'uhp', 'saltlake',
+    // Additional law enforcement / security industry terms
+    'cjis', 'ncic', 'nlets', 'ucjis', 'bci', 'fbi123', 'dps123',
+    'taser', 'bodycam', 'dashcam', 'handcuff', 'miranda', 'felony',
+    'misdemeanor', 'warrant', 'citation', 'booking', 'evidence',
+    'forensic', 'homicide', 'narcotics', 'swat', 'k9unit', 'ert',
+    'tactical', 'command', 'precinct', 'station', 'headquarters',
+    'protectandserve', 'protect1', 'serve1', 'bluelivesmatter',
+    'thinblueline', 'lawenforcement', 'publicservice',
+    // Common keyboard/sequential patterns
+    'qwerty1234', 'asdf1234', 'zxcv1234', 'abcd1234',
+    '1234abcd', 'aaa111', 'abc12345', '12345abcde',
+    'p@ss1234', 'p@$$w0rd1', 'pa55word', 'passw0rd1',
   ];
   if (commonPasswords.includes(password.toLowerCase())) {
     errors.push('Password is too common. Please choose a more unique password.');

@@ -108,7 +108,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
     try {
       const data = await apiFetch<ArrestStatus>('/arrests/status');
       setStatus(data);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to fetch arrest status:', err);
     } finally { setLoading(false); }
   }, []);
@@ -148,7 +148,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
       fetchScraperStatus();
       fetchRecords(recordsPage, sourceFilter, searchTerm);
       fetchStatus();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Sync failed');
     } finally { setSyncingCounty(''); }
   };
@@ -157,7 +157,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
     try {
       await apiFetch(`/jail-roster/config/${county}`, { method: 'PUT', body: JSON.stringify({ enabled }) });
       fetchScraperStatus();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to update');
     }
   };
@@ -166,7 +166,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
     try {
       await apiFetch(`/jail-roster/reset-errors/${county}`, { method: 'POST' });
       fetchScraperStatus();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to reset');
     }
   };
@@ -175,7 +175,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
     try {
       await apiFetch(`/jail-roster/config/${county}`, { method: 'PUT', body: JSON.stringify({ scrape_interval_minutes: minutes }) });
       fetchScraperStatus();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to update');
     }
   };
@@ -206,7 +206,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
       setEditingId(null);
       fetchRecords(recordsPage, sourceFilter, searchTerm);
       fetchStatus();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to save booking');
     } finally { setFormSaving(false); }
   };
@@ -238,7 +238,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
       await apiFetch(`/arrests/manual/${id}`, { method: 'DELETE' });
       fetchRecords(recordsPage, sourceFilter, searchTerm);
       fetchStatus();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to delete');
     }
   };
@@ -270,7 +270,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
       setCsvResult(data);
       fetchRecords(1, sourceFilter, searchTerm);
       fetchStatus();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Import failed');
     } finally { setCsvImporting(false); }
   };
@@ -283,7 +283,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
     try {
       await apiFetch('/arrests/credentials', { method: 'PUT', body: JSON.stringify({ apiKey: apiKey.trim() }) });
       setApiKey(''); setShowKey(false); fetchStatus();
-    } catch (err) { setError(err instanceof Error ? err.message : 'Failed to save'); }
+    } catch (err: any) { setError(err instanceof Error ? err.message : 'Failed to save'); }
     finally { setSaving(false); }
   };
 
@@ -292,7 +292,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
     try {
       await apiFetch('/arrests/sync', { method: 'POST' });
       fetchStatus(); fetchRecords(recordsPage, sourceFilter, searchTerm);
-    } catch (err) { setError(err instanceof Error ? err.message : 'Sync failed'); }
+    } catch (err: any) { setError(err instanceof Error ? err.message : 'Sync failed'); }
     finally { setSyncing(false); }
   };
 

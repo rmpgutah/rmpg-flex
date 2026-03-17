@@ -59,7 +59,7 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
       setLoading(true);
       const data = await apiFetch<RadioChannel[]>('/admin/radio-channels');
       setChannels(Array.isArray(data) ? data : []);
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to load radio channels');
     } finally {
       setLoading(false);
@@ -79,7 +79,7 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
           setChannels(Array.isArray(data) ? data : []);
           setLoading(false);
         }
-      } catch (err) {
+      } catch (err: any) {
         setError(err instanceof Error ? err.message : 'Failed to load radio channels');
         setLoading(false);
       }
@@ -99,7 +99,7 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
       setNewFreq('');
       setShowAdd(false);
       await fetchChannels();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to create channel');
     } finally {
       setSaving(false);
@@ -113,7 +113,7 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
         body: JSON.stringify({ is_active: !ch.is_active }),
       });
       await fetchChannels();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to update channel');
     }
   };
@@ -123,7 +123,7 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
     try {
       await apiFetch(`/admin/radio-channels/${ch.id}`, { method: 'DELETE' });
       await fetchChannels();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to delete channel');
     }
   };
@@ -146,7 +146,7 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
         }),
       ]);
       await fetchChannels();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to reorder channels');
     }
   };
@@ -173,7 +173,7 @@ export default function AdminRadioTab({ LoadingSpinner, error, setError }: Props
       });
       cancelEdit();
       await fetchChannels();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to update channel');
     } finally {
       setSaving(false);

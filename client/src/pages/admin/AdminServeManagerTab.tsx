@@ -62,7 +62,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
     try {
       const data = await apiFetch<SMIntegrationStatus>('/servemanager/status');
       setStatus(data);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to fetch SM status:', err);
     } finally {
       setLoading(false);
@@ -85,7 +85,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
       setJobs(res.data);
       setJobTotal(res.pagination?.total || 0);
       setJobTotalPages(res.pagination?.totalPages || 0);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to fetch SM jobs:', err);
     } finally {
       setLoadingJobs(false);
@@ -118,7 +118,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
       setApiKey('');
       setShowKey(false);
       await fetchStatus();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to save API key');
     } finally {
       setSavingKey(false);
@@ -130,7 +130,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
       await apiFetch('/servemanager/api-key', { method: 'DELETE' });
       setTestResult(null);
       await fetchStatus();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to clear API key');
     }
   };
@@ -141,7 +141,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
     try {
       const result = await apiFetch<SMConnectionTestResult>('/servemanager/test-connection', { method: 'POST' });
       setTestResult(result);
-    } catch (err) {
+    } catch (err: any) {
       setTestResult({ success: false, error: err instanceof Error ? err.message : 'Connection test failed' });
     } finally {
       setTesting(false);
@@ -155,7 +155,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
       await fetchStatus();
       await fetchSyncLog();
       await fetchJobs();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Sync failed');
     } finally {
       setSyncing(false);
@@ -167,7 +167,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
     try {
       const res = await apiFetch<{ data: SMCachedJob & { attempts?: SMCachedAttempt[] } }>(`/servemanager/jobs/${jobId}`);
       setSelectedJob(res.data);
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to load job details');
     } finally {
       setLoadingDetail(false);
@@ -190,7 +190,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
       });
       await fetchPollerStatus();
       setPollerDirty(false);
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to save poller settings');
     } finally {
       setPollerSaving(false);
@@ -205,7 +205,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
       setPollerPollResult(result);
       await fetchPollerStatus();
       await fetchJobs();
-    } catch (err) {
+    } catch (err: any) {
       setPollerPollResult({ synced: 0, callsCreated: 0, error: err instanceof Error ? err.message : 'Poll failed' });
     } finally {
       setPollerPolling(false);

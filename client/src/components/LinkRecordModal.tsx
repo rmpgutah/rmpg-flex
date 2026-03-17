@@ -87,7 +87,7 @@ export default function LinkRecordModal({
         );
         if (cancelled) return;
         setSearchResults(results);
-      } catch (err) {
+      } catch (err: any) {
         if (!cancelled) setSearchResults([]);
       } finally {
         if (!cancelled) setSearching(false);
@@ -123,7 +123,7 @@ export default function LinkRecordModal({
 
         onLinked();
         onClose();
-      } catch (err) {
+      } catch (err: any) {
         setError(err instanceof Error ? err.message : 'Failed to create link.');
       } finally {
         setIsSubmitting(false);

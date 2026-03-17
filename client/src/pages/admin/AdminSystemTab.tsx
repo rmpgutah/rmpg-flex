@@ -433,7 +433,7 @@ export default function AdminSystemTab({
       setSecurityDirty(false);
       setBrandingDirty(false);
       setSettingsDirty(false);
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to load config');
     } finally {
       setLoadingConfig(false);
@@ -445,7 +445,7 @@ export default function AdminSystemTab({
     try {
       const templates = await apiFetch<CallTemplate[]>('/admin/call-templates');
       setCallTemplates(templates.filter((t) => t.is_active));
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to load call templates');
     } finally {
       setLoadingTemplates(false);
@@ -471,7 +471,7 @@ export default function AdminSystemTab({
         created_at: u.created_at || '',
         updated_at: u.updated_at || '',
       } as Unit)));
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to load units');
     } finally {
       setLoadingAdminUnits(false);
@@ -537,7 +537,7 @@ export default function AdminSystemTab({
         });
         if (created?.id) configIdCacheRef.current[`${category}:${key}`] = created.id;
       }
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : `Failed to save ${category}`);
       throw err; // Re-throw so callers know save failed (dirty flag stays true)
     }
@@ -562,7 +562,7 @@ export default function AdminSystemTab({
       });
       setNewIncidentType('');
       await fetchConfig();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to add incident type');
     }
   };
@@ -571,7 +571,7 @@ export default function AdminSystemTab({
     try {
       await apiFetch(`/admin/config/${id}`, { method: 'DELETE' });
       await fetchConfig();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to remove config item');
     }
   };
@@ -594,7 +594,7 @@ export default function AdminSystemTab({
       setNewDispDesc('');
       setNewDispColor('#3b82f6');
       await fetchConfig();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to add disposition code');
     }
   };
@@ -614,7 +614,7 @@ export default function AdminSystemTab({
       });
       setEditingDispId(null);
       await fetchConfig();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to update disposition');
     }
   };
@@ -863,7 +863,7 @@ export default function AdminSystemTab({
       setNewTemplatePriority('P3');
       setNewTemplateDesc('');
       await fetchCallTemplates();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to add template');
     }
   };
@@ -872,7 +872,7 @@ export default function AdminSystemTab({
     try {
       await apiFetch(`/admin/call-templates/${id}`, { method: 'DELETE' });
       await fetchCallTemplates();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to remove template');
     }
   };
@@ -899,7 +899,7 @@ export default function AdminSystemTab({
       });
       setEditingTemplateId(null);
       await fetchCallTemplates();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to update template');
     }
   };
@@ -927,7 +927,7 @@ export default function AdminSystemTab({
         body: JSON.stringify(systemSettingsRef.current),
       });
       setSettingsDirty(false);
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to save settings');
     } finally {
       setSavingSettings(false);
@@ -1042,8 +1042,12 @@ export default function AdminSystemTab({
     if (autoSaveTimerRef.current[key]) {
       clearTimeout(autoSaveTimerRef.current[key]);
     }
-    autoSaveTimerRef.current[key] = setTimeout(() => {
-      saveFn();
+    autoSaveTimerRef.current[key] = setTimeout(async () => {
+      try {
+        await saveFn();
+      } catch (err) {
+        console.error(`[AutoSave] Failed to save ${key}:`, err);
+      }
       delete autoSaveTimerRef.current[key];
     }, 1500);
   }, []);
@@ -1287,7 +1291,7 @@ export default function AdminSystemTab({
                                     body: JSON.stringify({ config_key: 'incident_type', config_value: t.value, category: 'incident_types' }),
                                   });
                                   await fetchConfig();
-                                } catch (err) {
+                                } catch (err: any) {
                                   setError(err instanceof Error ? err.message : 'Failed to add type');
                                 }
                               }}

@@ -87,7 +87,7 @@ export default function DlSearchPage() {
       });
       setResults(data.subjects || []);
       setSource(data.source || 'NONE');
-    } catch (err) {
+    } catch (err: any) {
       console.error('DL search error:', err);
       setResults([]);
       setSource('ERROR');
@@ -102,7 +102,7 @@ export default function DlSearchPage() {
       setShowManualEntry(false);
       // Re-trigger search to show the new record
       if (lastName.trim() || dlNumber.trim()) handleSearch();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Manual DL save error:', err);
     }
     setIsManualSubmitting(false);

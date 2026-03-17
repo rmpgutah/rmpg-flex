@@ -83,7 +83,7 @@ async function fetchWithRetry(
           continue;
         }
         return res;
-      } catch (err) {
+      } catch (err: any) {
         // Don't retry intentional aborts (component unmount, navigation, etc.)
         if (err instanceof DOMException && err.name === 'AbortError') throw err;
         // Network error (connection refused / failed to fetch) — retry with backoff
@@ -174,7 +174,7 @@ export function useApi<T = unknown>(options?: UseApiOptions) {
         const data = await res.json();
         setState({ data, error: null, isLoading: false });
         return data;
-      } catch (err) {
+      } catch (err: any) {
         const message = err instanceof Error ? err.message : 'Request failed';
         setState((prev) => ({ ...prev, error: message, isLoading: false }));
         throw err;
@@ -307,7 +307,7 @@ export async function apiFetch<T>(
 
         return result.data as T;
       }
-    } catch (err) {
+    } catch (err: any) {
       // Re-throw OfflineUnauthorizedError (for PIN modal trigger)
       if (err instanceof OfflineUnauthorizedError) throw err;
       // For other errors during offline check, fall through to normal fetch
@@ -331,7 +331,7 @@ export async function apiFetch<T>(
       }
 
       return result.data as T;
-    } catch (err) {
+    } catch (err: any) {
       if (err instanceof OfflineUnauthorizedError) throw err;
       // If truly offline and offline router failed, surface the error
       // rather than silently falling through to a guaranteed network failure
@@ -347,10 +347,12 @@ export async function apiFetch<T>(
   let token: string | null = null;
   try { token = localStorage.getItem('rmpg_token'); } catch { /* ignore */ }
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
     'X-Requested-With': 'XMLHttpRequest',
     ...(options?.headers as Record<string, string>),
   };
+  if (!(options?.body instanceof FormData)) {
+    headers['Content-Type'] = headers['Content-Type'] || 'application/json';
+  }
 
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
@@ -455,6 +457,29 @@ export async function apiUpdateCompanyDocument(id: number, data: Record<string, 
 
 export async function apiDeleteCompanyDocument(id: number): Promise<void> {
   await apiFetch(`/company-documents/${id}`, { method: 'DELETE' });
+}
+
+/** Centralized auth token accessor — avoids scattering localStorage reads across components.
+ *  Use for binary/blob fetches where apiFetch (JSON-only) can't be used. */
+export function getAuthToken(): string | null {
+  try { return localStorage.getItem('rmpg_token'); } catch { return null; }
+}
+
+/** Authenticated fetch for binary responses (audio, video, images).
+ *  Returns the raw Response so callers can use .blob(), .arrayBuffer(), etc. */
+export async function apiFetchRaw(
+  endpoint: string,
+  options?: RequestInit,
+): Promise<Response> {
+  const url = endpoint.startsWith('/api') ? endpoint : `/api${endpoint}`;
+  const token = getAuthToken();
+  const headers = new Headers(options?.headers);
+  if (token && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+  const res = await fetch(url, { ...options, headers });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res;
 }
 
 export default useApi;

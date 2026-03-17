@@ -129,7 +129,7 @@ export default function SexOffenderRegistryPage() {
       const body = await apiFetch<{ data: SexOffenderRecord[]; pagination: any }>(`/sex-offender-registry?${params}`);
       setRecords(body.data || []);
       setTotalRecords(body.pagination?.total || 0);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to fetch SOR records:', err);
     } finally {
       setLoading(false);

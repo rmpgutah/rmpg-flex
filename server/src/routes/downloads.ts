@@ -368,7 +368,7 @@ export function mountDownloadFileRoute(app: any) {
 
     const stream = fs.createReadStream(filePath);
     stream.once('error', (err) => {
-      console.error('File stream error:', err);
+      console.error('File stream error:', err?.message || 'Unknown error');
       if (!res.headersSent) res.status(500).json({ error: 'Failed to stream file' });
       else res.destroy();
     });

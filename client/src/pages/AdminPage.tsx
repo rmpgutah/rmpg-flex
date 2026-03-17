@@ -304,7 +304,7 @@ export default function AdminPage() {
     try {
       const rows = await apiFetch<PersonnelRow[]>('/personnel');
       setUsers((Array.isArray(rows) ? rows : []).map(mapPersonnelToUser));
-    } catch (err) {
+    } catch (err: any) {
       if (!silent) setError(err instanceof Error ? err.message : 'Failed to load users');
     } finally {
       if (!silent) setLoadingUsers(false);
@@ -333,7 +333,7 @@ export default function AdminPage() {
     try {
       const rows = await apiFetch<ClientRow[]>('/admin/clients');
       setClients((Array.isArray(rows) ? rows : []).map(mapClientRowToClient));
-    } catch (err) {
+    } catch (err: any) {
       if (!silent) setError(err instanceof Error ? err.message : 'Failed to load clients');
     } finally {
       if (!silent) setLoadingClients(false);
@@ -349,7 +349,7 @@ export default function AdminPage() {
     try {
       const res = await apiFetch<{ data: AuditRow[] }>('/comms/activity-feed');
       setAuditLog((Array.isArray(res?.data) ? res.data : []).map(mapAuditRow));
-    } catch (err) {
+    } catch (err: any) {
       if (!silent) setError(err instanceof Error ? err.message : 'Failed to load audit log');
     } finally {
       if (!silent) setLoadingAudit(false);
@@ -445,7 +445,7 @@ export default function AdminPage() {
       setUserModalOpen(false);
       setEditingUser(null);
       await fetchUsers({ silent: true });
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to save user');
     } finally {
       setUserSubmitting(false);
@@ -478,7 +478,7 @@ export default function AdminPage() {
         setSelectedUser(null);
       }
       await fetchUsers({ silent: true });
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to terminate user');
     } finally {
       setUserDeleteLoading(false);
@@ -492,7 +492,7 @@ export default function AdminPage() {
         body: JSON.stringify({ status: newStatus }),
       });
       await fetchUsers({ silent: true });
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to update user status');
     }
   };
@@ -552,7 +552,7 @@ export default function AdminPage() {
       setClientModalOpen(false);
       setEditingClient(null);
       await fetchClients({ silent: true });
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to save client');
     } finally {
       setClientSubmitting(false);
@@ -582,7 +582,7 @@ export default function AdminPage() {
       setDeleteConfirmOpen(false);
       setDeletingClient(null);
       await fetchClients({ silent: true });
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to delete client');
     } finally {
       setDeleteLoading(false);
@@ -594,7 +594,7 @@ export default function AdminPage() {
       await apiFetch(`/admin/clients/${clientId}/archive`, { method: 'POST' });
       await fetchClients({ silent: true });
       if (selectedClient?.id === clientId) setSelectedClient(null);
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to archive client');
     }
   };
@@ -604,7 +604,7 @@ export default function AdminPage() {
       await apiFetch(`/admin/clients/${clientId}/unarchive`, { method: 'POST' });
       await fetchClients({ silent: true });
       if (selectedClient?.id === clientId) setSelectedClient(null);
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to unarchive client');
     }
   };
@@ -934,30 +934,6 @@ export default function AdminPage() {
 
         {activeTab === 'security' && (
           <AdminSecurityTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
-        {activeTab === 'clearpathgps' && (
-          <AdminClearPathGpsTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
-        {activeTab === 'arrests' && (
-          <AdminArrestsTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
-        {activeTab === 'skiptracer' && (
-          <AdminSkipTracerTab
             LoadingSpinner={LoadingSpinner}
             error={error}
             setError={setError}

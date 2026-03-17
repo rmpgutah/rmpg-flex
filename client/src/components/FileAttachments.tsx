@@ -126,7 +126,7 @@ export default function FileAttachments({
       setError(null);
       const data = await apiFetchAttachments(entityType, entityId);
       setAttachments(data || []);
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to load attachments');
     } finally {
       setLoading(false);
@@ -146,7 +146,7 @@ export default function FileAttachments({
     try {
       await apiUploadFiles(fileArray, entityType, entityId);
       await fetchFiles();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Upload failed');
     } finally {
       setUploading(false);
@@ -158,7 +158,7 @@ export default function FileAttachments({
       await apiDeleteAttachment(fileId);
       setAttachments((prev) => prev.filter((a) => a.file_id !== fileId));
       setDeleteTarget(null);
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Delete failed');
     }
   };

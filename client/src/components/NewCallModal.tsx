@@ -13,6 +13,7 @@ import {
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
 import PremiseHistory from './PremiseHistory';
 import SafetyScreening from './SafetyScreening';
+import { safeParseStringArray } from '../utils/sanitize';
 import DuplicateCallWarning from './DuplicateCallWarning';
 import BoloAlertBanner from './BoloAlertBanner';
 import { useDistrictIdentify, useDistrictOptions } from '../hooks/useDistrictLookup';
@@ -478,7 +479,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                         }));
                         // Track recently used client
                         try {
-                          const recent = JSON.parse(localStorage.getItem('rmpg_recent_pso_clients') || '[]') as string[];
+                          const recent = safeParseStringArray(localStorage.getItem('rmpg_recent_pso_clients'));
                           const updated = [selectedId, ...recent.filter((id: string) => id !== selectedId)].slice(0, 5);
                           localStorage.setItem('rmpg_recent_pso_clients', JSON.stringify(updated));
                         } catch { /* localStorage unavailable */ }
@@ -491,7 +492,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                     <option value="">-- Select Client --</option>
                     {(() => {
                       let recentIds: string[] = [];
-                      try { recentIds = JSON.parse(localStorage.getItem('rmpg_recent_pso_clients') || '[]'); } catch { /* ignore */ }
+                      recentIds = safeParseStringArray(localStorage.getItem('rmpg_recent_pso_clients'));
                       const recentClients = recentIds.map((id: string) => clients.find((c) => c.id === id)).filter(Boolean) as typeof clients;
                       const otherClients = clients.filter((c) => !recentIds.includes(c.id));
                       return (

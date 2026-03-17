@@ -14,8 +14,11 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
   // Prevent clickjacking (SAMEORIGIN allows internal blob: PDF viewer iframes)
   res.set('X-Frame-Options', 'SAMEORIGIN');
 
-  // XSS protection (legacy browsers)
-  res.set('X-XSS-Protection', '1; mode=block');
+  // XSS protection — set to '0' to disable the browser's built-in XSS Auditor.
+  // The auditor is deprecated (removed in Chrome 78+, Edge 79+) and in 'mode=block'
+  // can actually introduce vulnerabilities (selective content removal attacks).
+  // CSP is the authoritative XSS mitigation — the auditor adds no value with CSP active.
+  res.set('X-XSS-Protection', '0');
 
   // Referrer policy — 'no-referrer' prevents tokens in URLs from leaking via Referer header
   res.set('Referrer-Policy', 'no-referrer');
@@ -68,11 +71,12 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
   if (req.path.startsWith('/api')) {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
   }
 
-  // Strict Transport Security — ONLY when SSL is actually enabled
-  // Sending HSTS without HTTPS causes browsers to refuse plain HTTP connections
-  if (config.ssl.enabled) {
+  // Strict Transport Security — send when SSL is enabled OR when behind a reverse proxy
+  // that terminates TLS (detected via X-Forwarded-Proto header from nginx/caddy)
+  if (config.ssl.enabled || (config.isProduction && req.headers['x-forwarded-proto'] === 'https')) {
     res.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
   }
 

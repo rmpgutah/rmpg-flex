@@ -18,7 +18,7 @@ export function startPatrolMonitor(intervalMs: number = 5 * 60 * 1000): void {
   intervalHandle = setInterval(() => {
     try {
       checkOverdueScans();
-    } catch (err) {
+    } catch (err: any) {
       console.error('[Patrol Monitor] Error during scan check:', err);
     }
   }, intervalMs);
@@ -26,7 +26,7 @@ export function startPatrolMonitor(intervalMs: number = 5 * 60 * 1000): void {
 
   // Run once immediately
   setTimeout(() => {
-    try { checkOverdueScans(); } catch (err) {
+    try { checkOverdueScans(); } catch (err: any) {
       console.error('[Patrol Monitor] Initial check error:', err);
     }
   }, 10_000);
@@ -73,13 +73,15 @@ function checkOverdueScans(): void {
     if (timeSinceLastScan > overdueThreshold) {
       // Check if we already sent a notification in the last interval
       // Use parameterized offset string to avoid SQL injection
-      const offsetStr = `-${Math.max(1, Math.floor(Number(cp.scan_required_interval_minutes) || 60))} minutes`;
+      const intervalMs = Math.max(1, Math.floor(Number(cp.scan_required_interval_minutes) || 60)) * 60 * 1000;
+      const cutoffDate = new Date(Date.now() - intervalMs);
+      const cutoffStr = `${cutoffDate.getFullYear()}-${String(cutoffDate.getMonth() + 1).padStart(2, '0')}-${String(cutoffDate.getDate()).padStart(2, '0')} ${String(cutoffDate.getHours()).padStart(2, '0')}:${String(cutoffDate.getMinutes()).padStart(2, '0')}:${String(cutoffDate.getSeconds()).padStart(2, '0')}`;
       const existingNotif = db.prepare(`
         SELECT id FROM notifications
         WHERE entity_type = 'patrol_checkpoint' AND entity_id = ?
           AND type = 'patrol_missed'
-          AND created_at >= datetime('now', ?)
-      `).get(cp.id, offsetStr) as any;
+          AND created_at >= ?
+      `).get(cp.id, cutoffStr) as any;
 
       if (existingNotif) continue; // Already notified
 

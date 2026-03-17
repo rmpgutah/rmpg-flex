@@ -55,10 +55,24 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     const db = getDb();
     const { alert_type, severity, status = 'active', search, page = '1', limit = '50' } = req.query;
     const parsedPage = parseInt(page as string, 10);
-    const pageNum = Math.max(1, isNaN(parsedPage) ? 1 : parsedPage);
+    const pageNum = Math.min(10000, Math.max(1, isNaN(parsedPage) ? 1 : parsedPage));
     const parsedLimit = parseInt(limit as string, 10);
     const limitNum = Math.min(100, Math.max(1, isNaN(parsedLimit) ? 50 : parsedLimit));
     const offset = (pageNum - 1) * limitNum;
+
+    // Validate filter values against allowed sets
+    const VALID_STATUSES = ['active', 'inactive', 'cleared', 'monitoring'];
+    const VALID_ALERT_TYPES = ['proximity', 'address_change', 'violation', 'check_in', 'registration'];
+    const VALID_SEVERITIES = ['low', 'medium', 'high', 'critical'];
+    if (status && !VALID_STATUSES.includes(status as string)) {
+      res.status(400).json({ error: 'Invalid status filter' }); return;
+    }
+    if (alert_type && !VALID_ALERT_TYPES.includes(alert_type as string)) {
+      res.status(400).json({ error: 'Invalid alert_type filter' }); return;
+    }
+    if (severity && !VALID_SEVERITIES.includes(severity as string)) {
+      res.status(400).json({ error: 'Invalid severity filter' }); return;
+    }
 
     let where = 'WHERE 1=1';
     const params: any[] = [];

@@ -177,8 +177,8 @@ async function searchUtahCourts(firstName: string, lastName: string): Promise<Co
         source_system: 'utah_xchange',
       });
     }
-  } catch (err) {
-    console.warn(`[Court Records] Utah search error: ${(err as Error).message}`);
+  } catch (err: any) {
+    console.warn(`[Court Records] Utah search error: ${err?.message || "Unknown error"}`);
   }
 
   return records;
@@ -296,8 +296,8 @@ async function searchStateCourts(
         });
       }
     }
-  } catch (err) {
-    console.warn(`[Court Records] ${config.state} search error: ${(err as Error).message}`);
+  } catch (err: any) {
+    console.warn(`[Court Records] ${config.state} search error: ${err?.message || "Unknown error"}`);
   }
 
   return records;
@@ -344,8 +344,8 @@ function cacheCourtRecords(personName: string, records: CourtRecord[]): void {
       }
     });
     txn();
-  } catch (err) {
-    console.warn(`[Court Records] Cache write failed: ${(err as Error).message}`);
+  } catch (err: any) {
+    console.warn(`[Court Records] Cache write failed: ${err?.message || "Unknown error"}`);
   }
 }
 
@@ -483,6 +483,7 @@ export function getCourtRecordStats(): {
 
 let scanInterval: ReturnType<typeof setInterval> | null = null;
 let startupTimer: ReturnType<typeof setTimeout> | null = null;
+let cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
 async function runCourtRecordsScan(): Promise<{
   personsChecked: number;
@@ -535,8 +536,8 @@ async function runCourtRecordsScan(): Promise<{
     }
 
     console.log(`[Court Records] Bulk scan complete: ${personsChecked} checked, ${recordsFound} records found, ${errors} errors`);
-  } catch (err) {
-    console.error(`[Court Records] Bulk scan failed: ${(err as Error).message}`);
+  } catch (err: any) {
+    console.error(`[Court Records] Bulk scan failed: ${err?.message || "Unknown error"}`);
   }
 
   return { personsChecked, recordsFound, errors };
@@ -564,7 +565,7 @@ export function scheduleCourtRecordsScan(): void {
   if (startupTimer.unref) startupTimer.unref();
 
   // Cache cleanup — remove entries older than 30 days
-  const cleanupInterval = setInterval(() => {
+  cleanupTimer = setInterval(() => {
     try {
       const db = getDb();
       const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
@@ -575,7 +576,7 @@ export function scheduleCourtRecordsScan(): void {
     } catch { /* ignore */ }
   }, 12 * 60 * 60 * 1000); // Every 12 hours
 
-  if (cleanupInterval.unref) cleanupInterval.unref();
+  if (cleanupTimer.unref) cleanupTimer.unref();
 }
 
 export function stopCourtRecordsScan(): void {
@@ -586,5 +587,9 @@ export function stopCourtRecordsScan(): void {
   if (scanInterval) {
     clearInterval(scanInterval);
     scanInterval = null;
+  }
+  if (cleanupTimer) {
+    clearInterval(cleanupTimer);
+    cleanupTimer = null;
   }
 }

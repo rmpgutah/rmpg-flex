@@ -1906,12 +1906,12 @@ router.get('/dashcam-videos/:id/stream', validateParamId, requireRole('admin', '
         'Content-Type': mimeType,
       });
       const rangeStream = fs.createReadStream(filePath, { start, end });
-      rangeStream.on('error', (err) => { console.error('Stream error:', err); if (!res.headersSent) res.status(500).end(); else res.destroy(); });
+      rangeStream.on('error', (err) => { console.error('Stream error:', err?.message || 'Unknown error'); if (!res.headersSent) res.status(500).end(); else res.destroy(); });
       rangeStream.pipe(res);
     } else {
       res.writeHead(200, { 'Content-Length': fileSize, 'Content-Type': mimeType });
       const fullStream = fs.createReadStream(filePath);
-      fullStream.on('error', (err) => { console.error('Stream error:', err); if (!res.headersSent) res.status(500).end(); else res.destroy(); });
+      fullStream.on('error', (err) => { console.error('Stream error:', err?.message || 'Unknown error'); if (!res.headersSent) res.status(500).end(); else res.destroy(); });
       fullStream.pipe(res);
     }
   } catch (error: any) {
@@ -1949,7 +1949,7 @@ router.get('/dashcam-videos/:id/download', validateParamId, requireRole('admin',
       'Content-Disposition': `attachment; filename="MVR_${safeTitle}.mp4"`,
     });
     const dlStream = fs.createReadStream(filePath);
-    dlStream.on('error', (err) => { console.error('Download stream error:', err); if (!res.headersSent) res.status(500).end(); else res.destroy(); });
+    dlStream.on('error', (err) => { console.error('Download stream error:', err?.message || 'Unknown error'); if (!res.headersSent) res.status(500).end(); else res.destroy(); });
     dlStream.pipe(res);
   } catch (error: any) {
     console.error('Download dashcam video error:', error?.message || 'Unknown error');

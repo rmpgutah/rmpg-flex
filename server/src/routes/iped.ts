@@ -242,10 +242,15 @@ router.get('/jobs', requireRole('admin', 'manager'), (req: Request, res: Respons
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string, 10) || 20));
     const offset = (page - 1) * limit;
     const status = (req.query.status as string || '').trim();
+    const VALID_IPED_STATUSES = ['pending', 'running', 'completed', 'failed', 'cancelled'];
 
     let where = '';
     const params: any[] = [];
     if (status) {
+      if (!VALID_IPED_STATUSES.includes(status)) {
+        res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_IPED_STATUSES.join(', ')}` });
+        return;
+      }
       where = 'WHERE j.status = ?';
       params.push(status);
     }

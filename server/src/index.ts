@@ -234,7 +234,7 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'X-CSRF-Token', 'X-Requested-With'],
   exposedHeaders: ['X-Request-ID', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'Retry-After'],
-  maxAge: 600, // 10 minutes — browser caches preflight results
+  maxAge: config.isProduction ? 7200 : 600, // 2h production, 10m dev — reduces preflight request volume
 }));
 
 // ─── GitHub Webhook (must come BEFORE express.json() for raw body HMAC) ──
@@ -357,8 +357,9 @@ if (config.isProduction) {
   app.use('/api', (req, res, next) => {
     // Skip safe methods (GET, HEAD, OPTIONS) and auth routes (login needs to work without header)
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
-    // Only exempt login/register/refresh (pre-auth routes) and webhooks — NOT change-password, verify-2fa, etc.
-    const csrfExemptPaths = ['/auth/login', '/auth/register', '/auth/refresh', '/auth/password-policy'];
+    // Only exempt login/register (pre-auth routes) and webhooks — NOT change-password, verify-2fa, etc.
+    // /auth/refresh is NOT exempt — the client sends X-Requested-With on refresh calls
+    const csrfExemptPaths = ['/auth/login', '/auth/register', '/auth/password-policy'];
     if (csrfExemptPaths.some(p => req.path.startsWith(p))
         || req.path.startsWith('/webhook/')) return next();
 
@@ -376,6 +377,14 @@ if (config.isProduction) {
 app.use('/api/auth', express.json({ limit: '16kb' }));
 // Offline sync — limit to 256kb to prevent data exfiltration abuse via oversized pushes
 app.use('/api/offline', express.json({ limit: '256kb' }));
+// Arrest CSV import — allow larger payloads for bulk import but cap at 2MB
+app.use('/api/arrests/import-csv', express.json({ limit: '2mb' }));
+// Serve queue reorder — batch updates, cap at 128kb
+app.use('/api/serve/reorder', express.json({ limit: '128kb' }));
+// Dispatch GPS batch — cap at 64kb (60 items max already enforced in route)
+app.use('/api/dispatch/gps', express.json({ limit: '64kb' }));
+// Comms messages — cap at 64kb per message
+app.use('/api/comms', express.json({ limit: '64kb' }));
 
 // Request timeout — 30s default, skip for upload routes (large files)
 app.use((req, res, next) => {
@@ -445,6 +454,19 @@ app.post('/api/csp-report', cspReportRateLimit, express.json({ type: 'applicatio
     console.warn('[CSP Violation]', JSON.stringify(safeReport));
   }
   res.status(204).end();
+});
+
+// ─── Security.txt (RFC 9116) ──────────────────────────
+// Provides security researchers with contact info and responsible disclosure policy
+app.get('/.well-known/security.txt', (_req, res) => {
+  res.set('Content-Type', 'text/plain; charset=utf-8');
+  res.set('Cache-Control', 'public, max-age=86400');
+  res.send([
+    'Contact: mailto:security@rmpgutah.us',
+    `Expires: ${new Date(Date.now() + 365 * 86400000).toISOString()}`,
+    'Preferred-Languages: en',
+    'Canonical: https://rmpgutah.us/.well-known/security.txt',
+  ].join('\n'));
 });
 
 // ─── Health Check ─────────────────────────────────────
@@ -542,8 +564,8 @@ app.post('/api/dispatch/calls/:id/redispatch', authenticateToken, (req, res) => 
     db.prepare(`UPDATE calls_for_service SET status='pending', dispatched_at=NULL, enroute_at=NULL, onscene_at=NULL, cleared_at=NULL, closed_at=NULL, starting_mileage=NULL, ending_mileage=NULL, responding_vehicle_id=NULL, pso_attempt_number=?, pso_72hr_notified=NULL, notes=?, updated_at=? WHERE id=?`)
       .run(newAttempt, JSON.stringify(notes), now, req.params.id);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'call_redispatched', 'call', ?, ?, ?)`)
-      .run(req.user!.userId, req.params.id, `Re-dispatched PSO call ${call.call_number} — ${ordinal(newAttempt)} visit`, req.ip||'unknown');
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, 'call_redispatched', 'call', ?, ?, ?, ?)`)
+      .run(req.user!.userId, req.params.id, `Re-dispatched PSO call ${call.call_number} — ${ordinal(newAttempt)} visit`, req.ip||'unknown', localNow());
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     const visitHistory = db.prepare('SELECT * FROM call_visit_history WHERE call_id = ? ORDER BY visit_number ASC').all(req.params.id);
@@ -741,8 +763,9 @@ try {
           host = config.primaryDomain;
         }
         const httpsPort = config.httpsPort === 443 ? '' : `:${config.httpsPort}`;
-        // Strip CRLF to prevent response splitting
-        const safeUrl = req.url.replace(/[\r\n\0]/g, '');
+        // Strip CRLF to prevent response splitting, reject protocol-relative URLs for open redirect
+        const rawUrl = req.url.replace(/[\r\n\0]/g, '');
+        const safeUrl = (rawUrl.startsWith('/') && !rawUrl.startsWith('//')) ? rawUrl : '/';
         res.redirect(301, `https://${host}${httpsPort}${safeUrl}`);
       });
       const redirectServer = http.createServer(redirectApp);
@@ -996,12 +1019,12 @@ try {
         } else {
           console.log('[OFAC Backfill] All person records already screened');
         }
-      } catch (err) {
-        console.warn('[OFAC Backfill] Failed:', (err as Error).message);
+      } catch (err: any) {
+        console.warn('[OFAC Backfill] Failed:', err?.message || "Unknown error");
       }
     }, 60_000); // 60s delay — after OFAC sync (15s) has time to complete
   });
-} catch (error) {
+} catch (error: any) {
   console.error('Failed to start server:', error);
   process.exit(1);
 }

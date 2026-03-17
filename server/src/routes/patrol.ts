@@ -6,6 +6,7 @@ import { validateParamId, validateNumericParams } from '../middleware/sanitize';
 import { sendCsv } from '../utils/csvExport';
 import { localNow } from '../utils/timeUtils';
 import { exportRateLimit } from '../middleware/rateLimiter';
+import { broadcast } from '../utils/websocket';
 
 const router = Router();
 
@@ -233,6 +234,7 @@ router.post('/checkpoints/:id/archive', validateParamId, requireRole('admin', 'm
       req.user!.userId, checkpoint.id, `Archived checkpoint: ${checkpoint.name}`, req.ip || 'unknown', now);
 
     const updated = db.prepare('SELECT pc.*, p.name as property_name FROM patrol_checkpoints pc LEFT JOIN properties p ON pc.property_id = p.id WHERE pc.id = ?').get(checkpoint.id);
+    broadcast('patrol', 'checkpoint_updated', updated);
     res.json(updated);
   } catch (error: any) {
     console.error('Archive checkpoint error:', error?.message || 'Unknown error');
@@ -256,6 +258,7 @@ router.post('/checkpoints/:id/unarchive', validateParamId, requireRole('admin', 
       req.user!.userId, checkpoint.id, `Unarchived checkpoint: ${checkpoint.name}`, req.ip || 'unknown', now);
 
     const updated = db.prepare('SELECT pc.*, p.name as property_name FROM patrol_checkpoints pc LEFT JOIN properties p ON pc.property_id = p.id WHERE pc.id = ?').get(checkpoint.id);
+    broadcast('patrol', 'checkpoint_updated', updated);
     res.json(updated);
   } catch (error: any) {
     console.error('Unarchive checkpoint error:', error?.message || 'Unknown error');

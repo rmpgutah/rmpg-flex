@@ -900,7 +900,7 @@ export function startDailyReportScheduler(): void {
     midnightTimer = setTimeout(async () => {
       try {
         await generateAndSaveDailyReport();
-      } catch (err) {
+      } catch (err: any) {
         console.error('[Daily Report] Generation failed:', err);
       }
 
@@ -918,7 +918,7 @@ export function startDailyReportScheduler(): void {
         if (result.changes > 0) {
           console.log(`[Daily Report] Purged ${result.changes} breadcrumbs older than ${days} day(s)`);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('[Daily Report] Breadcrumb retention cleanup failed:', err);
       }
 
@@ -938,7 +938,7 @@ export function startDailyReportScheduler(): void {
             console.log(`[Daily Report] Purged ${camResult.changes} dashcam events older than ${camDays} day(s)`);
           }
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('[Daily Report] Dashcam event retention cleanup failed:', err);
       }
 

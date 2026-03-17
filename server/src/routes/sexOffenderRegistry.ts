@@ -166,11 +166,10 @@ router.post('/', requireRole('admin', 'manager', 'supervisor'), (req: Request, r
       } catch { /* silent — person may not exist */ }
     }
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
-      VALUES (?, 'create', 'sex_offender_registry', ?, ?, ?)`).run(
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'create', 'sex_offender_registry', ?, ?, ?, ?)`).run(
       req.user!.userId, result.lastInsertRowid,
-      JSON.stringify({ first_name, last_name, tier, registration_status: registration_status || 'compliant' }), now,
-    );
+      JSON.stringify({ first_name, last_name, tier, registration_status: registration_status || 'compliant' }), req.ip || 'unknown', localNow());
 
     res.status(201).json({ data: { id: result.lastInsertRowid } });
   } catch (error: any) {
@@ -214,8 +213,8 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
     params.push(req.params.id);
     db.prepare(`UPDATE sex_offender_registry SET ${updates.join(', ')} WHERE id = ?`).run(...params);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
-      VALUES (?, 'update', 'sex_offender_registry', ?, '{}', ?)`).run(req.user!.userId, req.params.id, now);
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'update', 'sex_offender_registry', ?, '{}', ?, ?)`).run(req.user!.userId, req.params.id, req.ip || 'unknown', localNow());
 
     res.json({ data: { id: parseInt(req.params.id as string, 10) } });
   } catch (error: any) {
@@ -255,11 +254,10 @@ router.put('/:id/verify', validateParamId, requireRole('admin', 'manager', 'supe
     params.push(req.params.id);
     db.prepare(`UPDATE sex_offender_registry SET ${updates.join(', ')} WHERE id = ?`).run(...params);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
-      VALUES (?, 'verify', 'sex_offender_registry', ?, ?, ?)`).run(
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'verify', 'sex_offender_registry', ?, ?, ?, ?)`).run(
       req.user!.userId, req.params.id,
-      JSON.stringify({ status: status || 'verified', next_due: nextDueStr }), now,
-    );
+      JSON.stringify({ status: status || 'verified', next_due: nextDueStr }), req.ip || 'unknown', localNow());
 
     res.json({ data: { id: parseInt(req.params.id as string, 10), last_verification: now, next_verification_due: nextDueStr } });
   } catch (error: any) {
@@ -320,10 +318,9 @@ router.post('/import', requireRole('admin'), (req: Request, res: Response) => {
     });
     tx();
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
-      VALUES (?, 'import', 'sex_offender_registry', 0, ?, ?)`).run(
-      req.user!.userId, JSON.stringify({ imported, skipped, total: records.length }), now,
-    );
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'import', 'sex_offender_registry', 0, ?, ?, ?)`).run(
+      req.user!.userId, JSON.stringify({ imported, skipped, total: records.length }), req.ip || 'unknown', localNow());
 
     res.json({ data: { imported, skipped, total: records.length } });
   } catch (error: any) {

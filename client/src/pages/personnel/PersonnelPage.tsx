@@ -189,7 +189,7 @@ export default function PersonnelPage() {
         const err = usersRes.reason;
         setError(err instanceof Error ? err.message : 'Failed to load personnel data');
       }
-    } catch (err) {
+    } catch (err: any) {
       if (!silent) {
         setError(err instanceof Error ? err.message : 'Failed to load personnel data');
       }
@@ -377,7 +377,7 @@ export default function PersonnelPage() {
       const raw = await apiFetch<any[]>('/personnel/schedules');
       setSchedules((Array.isArray(raw) ? raw : []).map(mapSchedule));
       addToast('Schedule created', 'success');
-    } catch (err) {
+    } catch (err: any) {
       addToast('Failed to create schedule', 'error');
     } finally {
       setIsSubmitting(false);

@@ -85,7 +85,7 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
     try {
       const data = await apiFetch<NotificationRule[]>('/admin/notification-rules');
       setRules(data || []);
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to load notification rules');
     } finally {
       setLoading(false);
@@ -123,7 +123,7 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
       setShowForm(false);
       setEditing(null);
       await fetchRules();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to save rule');
     } finally {
       setSubmitting(false);
@@ -137,7 +137,7 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
       await apiFetch(`/admin/notification-rules/${deleteId}`, { method: 'DELETE' });
       setDeleteId(null);
       await fetchRules();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to delete rule');
     } finally {
       setDeleteLoading(false);
@@ -148,7 +148,7 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
     setTesting(ruleId);
     try {
       await apiFetch(`/admin/notification-rules/${ruleId}/test`, { method: 'POST' });
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to send test notification');
     } finally {
       setTimeout(() => setTesting(null), 2000);
@@ -162,7 +162,7 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
         body: JSON.stringify({ is_active: r.is_active ? 0 : 1 }),
       });
       await fetchRules();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to toggle rule');
     }
   };

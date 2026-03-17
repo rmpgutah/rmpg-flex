@@ -126,7 +126,14 @@ async function fetchPdf(url: string): Promise<Buffer> {
       signal: controller.signal,
     });
     if (!res.ok) throw new Error(`HTTP ${res.status} fetching PDF ${url}`);
+    const contentLength = res.headers.get('content-length');
+    if (contentLength && parseInt(contentLength, 10) > MAX_RESPONSE_SIZE) {
+      throw new Error(`PDF too large (${contentLength} bytes) from ${url}`);
+    }
     const arrayBuf = await res.arrayBuffer();
+    if (arrayBuf.byteLength > MAX_RESPONSE_SIZE) {
+      throw new Error(`PDF too large (${arrayBuf.byteLength} bytes) from ${url}`);
+    }
     return Buffer.from(arrayBuf);
   } finally {
     clearTimeout(timeout);
@@ -753,8 +760,8 @@ async function fetchSaltLakeRoster(): Promise<string> {
           start = currentEnd + 1;
           await sleep(REQUEST_DELAY_MS);
         }
-      } catch (err) {
-        console.error(`[Jail Roster] SLCo fetch error for letter ${letter}:`, (err as Error).message);
+      } catch (err: any) {
+        console.error(`[Jail Roster] SLCo fetch error for letter ${letter}:`, err?.message || "Unknown error");
         break;
       }
     }
@@ -792,8 +799,8 @@ async function fetchDavisRoster(): Promise<string> {
     try {
       const html = await fetchPage(`${baseUrl}/Index/${p}/`);
       allHtml.push(html);
-    } catch (err) {
-      console.error(`[Jail Roster] Davis page ${p} fetch error:`, (err as Error).message);
+    } catch (err: any) {
+      console.error(`[Jail Roster] Davis page ${p} fetch error:`, err?.message || "Unknown error");
     }
   }
 
@@ -1010,9 +1017,9 @@ function createJailTrackerParser(countyKey: string): CountyParser {
             detail_url: '',
           });
         }
-      } catch (err) {
+      } catch (err: any) {
         // Re-throw — don't silently swallow parse errors
-        throw new Error(`[JailTracker] Parse error for ${countyKey}: ${(err as Error).message}`);
+        throw new Error(`[JailTracker] Parse error for ${countyKey}: ${err?.message || "Unknown error"}`);
       }
 
       return entries;
@@ -1083,10 +1090,10 @@ async function fetchJailTrackerRoster(countyKey: string): Promise<string> {
         }
       }
     }
-  } catch (err) {
+  } catch (err: any) {
     // Re-throw noRoster errors
     if ((err as any).noRoster) throw err;
-    console.log(`[JailTracker] ${countyKey}: publicroster-api probe failed:`, (err as Error).message);
+    console.log(`[JailTracker] ${countyKey}: publicroster-api probe failed:`, err?.message || "Unknown error");
   }
 
   // ── Strategy 2: Legacy jtclientwebofficial path ───────────
@@ -1138,12 +1145,12 @@ async function fetchJailTrackerRoster(countyKey: string): Promise<string> {
           }
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       // If it's a noRoster error (Invalid Facility, etc.), re-throw — don't fall through
-      if ((err as any).noRoster || (err as Error).message.includes('Invalid Facility') || (err as Error).message.includes('no longer on JailTracker')) {
+      if ((err as any).noRoster || err?.message || "Unknown error".includes('Invalid Facility') || err?.message || "Unknown error".includes('no longer on JailTracker')) {
         throw err;
       }
-      console.log(`[JailTracker] ${countyKey}: jtclientwebofficial fallback failed:`, (err as Error).message);
+      console.log(`[JailTracker] ${countyKey}: jtclientwebofficial fallback failed:`, err?.message || "Unknown error");
     }
   }
 
@@ -1275,8 +1282,8 @@ const utahCountyParser: CountyParser = {
           detail_url: '',
         });
       }
-    } catch (err) {
-      console.error('[Jail Roster] Utah County parse error:', (err as Error).message);
+    } catch (err: any) {
+      console.error('[Jail Roster] Utah County parse error:', err?.message || "Unknown error");
     }
 
     return entries;
@@ -1312,8 +1319,8 @@ async function fetchUtahCountyRoster(): Promise<string> {
           allInmates.push(inmate);
         }
       }
-    } catch (err) {
-      console.error(`[Jail Roster] Utah County letter ${letter} error:`, (err as Error).message);
+    } catch (err: any) {
+      console.error(`[Jail Roster] Utah County letter ${letter} error:`, err?.message || "Unknown error");
     }
 
     // Polite delay between letter queries
@@ -1576,8 +1583,8 @@ const utStatePrisonParser: CountyParser = {
           detail_url: location ? `Facility: ${location}` : '',
         });
       }
-    } catch (err) {
-      console.error('[Jail Roster] UT State Prison parse error:', (err as Error).message);
+    } catch (err: any) {
+      console.error('[Jail Roster] UT State Prison parse error:', err?.message || "Unknown error");
     }
 
     return entries;
@@ -1865,8 +1872,8 @@ const elPasoCoParser: CountyParser = {
           detail_url: inmate.building ? `Facility: ${inmate.building}` : '',
         });
       }
-    } catch (err) {
-      console.error('[Jail Roster] El Paso CO parse error:', (err as Error).message);
+    } catch (err: any) {
+      console.error('[Jail Roster] El Paso CO parse error:', err?.message || "Unknown error");
     }
 
     return entries;
@@ -2559,8 +2566,8 @@ async function fetchDetailPages(county: string, parser: CountyParser): Promise<n
       );
 
       fetched++;
-    } catch (err) {
-      console.error(`[Jail Roster] Error fetching detail for ${rec.jailbase_id}:`, (err as Error).message);
+    } catch (err: any) {
+      console.error(`[Jail Roster] Error fetching detail for ${rec.jailbase_id}:`, err?.message || "Unknown error");
     }
   }
 
@@ -2665,8 +2672,8 @@ async function scrapeCounty(county: string): Promise<{
   // Cross-link newly scraped records
   try {
     crossLinkArrests();
-  } catch (err) {
-    console.error(`[Jail Roster] Cross-link error for ${county}:`, (err as Error).message);
+  } catch (err: any) {
+    console.error(`[Jail Roster] Cross-link error for ${county}:`, err?.message || "Unknown error");
   }
 
   return {
@@ -2705,7 +2712,7 @@ async function syncCounty(county: string): Promise<void> {
 
     console.log(`[Jail Roster] ${county}: ${result.records_found} found, ${result.records_new} new, ${result.records_updated} updated, ${result.records_released} released, ${result.details_fetched} details (${duration}ms)`);
 
-  } catch (err) {
+  } catch (err: any) {
     // If circuit breaker threw, don't re-increment or spam logs
     if ((err as any).circuitBreaker) return;
 
@@ -2719,7 +2726,7 @@ async function syncCounty(county: string): Promise<void> {
     }
 
     const duration = Date.now() - startTime;
-    const errorMsg = (err as Error).message;
+    const errorMsg = err?.message || "Unknown error";
 
     // Log error
     db.prepare(`
@@ -2895,8 +2902,8 @@ export async function scrapeCountyManual(county: string): Promise<{ success: boo
       message: `Scrape completed for ${config.display_name}`,
       result: { last_scrape_at: updatedConfig?.last_scrape_at },
     };
-  } catch (err) {
-    return { success: false, message: (err as Error).message };
+  } catch (err: any) {
+    return { success: false, message: err?.message || "Unknown error" };
   }
 }
 

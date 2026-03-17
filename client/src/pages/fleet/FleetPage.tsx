@@ -126,7 +126,7 @@ export default function FleetPage() {
     try {
       const resp = await apiFetch<{ data: FleetVehicle[]; pagination: any }>(`/fleet?archived=${showArchived}`);
       setVehicles(Array.isArray(resp) ? resp : resp.data || []);
-    } catch (err) {
+    } catch (err: any) {
       if (!options?.silent) addToast('Failed to load fleet vehicles', 'error');
     }
   }, [addToast, showArchived]);
@@ -143,7 +143,7 @@ export default function FleetPage() {
       const { recent_maintenance, maintenance: maint, ...vehicle } = data;
       setDetail(vehicle);
       setMaintenance(recent_maintenance || maint || []);
-    } catch (err) {
+    } catch (err: any) {
       addToast('Failed to load vehicle details', 'error');
     }
   }, [addToast]);
@@ -315,7 +315,7 @@ export default function FleetPage() {
       }
       setModal('none');
       fetchVehicles({ silent: true });
-    } catch (err) {
+    } catch (err: any) {
       addToast(err instanceof Error ? err.message : 'Failed to save vehicle', 'error');
     } finally { setSaving(false); }
   };
@@ -345,7 +345,7 @@ export default function FleetPage() {
       setModal('none');
       setEditingMaintenanceId(null);
       fetchDetail(selectedId);
-    } catch (err) {
+    } catch (err: any) {
       addToast(err instanceof Error ? err.message : 'Failed to save maintenance', 'error');
     } finally { setSaving(false); }
   };
@@ -376,7 +376,7 @@ export default function FleetPage() {
       setEditingFuelId(null);
       fetchFuelLogs(selectedId);
       if (payload.odometer_reading) fetchDetail(selectedId); // refresh mileage
-    } catch (err) {
+    } catch (err: any) {
       addToast(err instanceof Error ? err.message : 'Failed to save fuel entry', 'error');
     } finally { setSaving(false); }
   };
@@ -406,7 +406,7 @@ export default function FleetPage() {
       setEditingInspectionId(null);
       fetchInspections(selectedId);
       if (payload.mileage) fetchDetail(selectedId);
-    } catch (err) {
+    } catch (err: any) {
       addToast(err instanceof Error ? err.message : 'Failed to save inspection', 'error');
     } finally { setSaving(false); }
   };
@@ -421,7 +421,7 @@ export default function FleetPage() {
       fetchVehicles({ silent: true });
       fetchPersonnel(selectedId);
       fetchAssignments(selectedId);
-    } catch (err) {
+    } catch (err: any) {
       addToast(err instanceof Error ? err.message : 'Failed to assign vehicle', 'error');
     }
   };
@@ -435,7 +435,7 @@ export default function FleetPage() {
       fetchVehicles({ silent: true });
       fetchPersonnel(selectedId);
       fetchAssignments(selectedId);
-    } catch (err) {
+    } catch (err: any) {
       addToast(err instanceof Error ? err.message : 'Failed to unassign vehicle', 'error');
     }
   };
@@ -451,7 +451,7 @@ export default function FleetPage() {
       });
       addToast('Note added', 'success');
       fetchPersonnel(selectedId);
-    } catch (err) {
+    } catch (err: any) {
       addToast(err instanceof Error ? err.message : 'Failed to add note', 'error');
     }
   };
@@ -462,7 +462,7 @@ export default function FleetPage() {
       await apiFetch(`/fleet/${selectedId}/personnel-notes/${noteId}`, { method: 'DELETE' });
       addToast('Note deleted', 'success');
       fetchPersonnel(selectedId);
-    } catch (err) {
+    } catch (err: any) {
       addToast(err instanceof Error ? err.message : 'Failed to delete note', 'error');
     }
   };
@@ -480,7 +480,7 @@ export default function FleetPage() {
       setSelectedId(null);
       setDetail(null);
       fetchVehicles({ silent: true });
-    } catch (err) {
+    } catch (err: any) {
       addToast(err instanceof Error ? err.message : 'Failed to archive vehicle', 'error');
     }
   };
@@ -493,7 +493,7 @@ export default function FleetPage() {
       setSelectedId(null);
       setDetail(null);
       fetchVehicles({ silent: true });
-    } catch (err) {
+    } catch (err: any) {
       addToast(err instanceof Error ? err.message : 'Failed to unarchive vehicle', 'error');
     }
   };
@@ -508,7 +508,7 @@ export default function FleetPage() {
       setSelectedId(null);
       setDetail(null);
       fetchVehicles({ silent: true });
-    } catch (err) {
+    } catch (err: any) {
       addToast(err instanceof Error ? err.message : 'Failed to delete vehicle', 'error');
     } finally {
       setIsDeleting(false);
@@ -610,7 +610,7 @@ export default function FleetPage() {
       setDeletingFuel(null);
       fetchFuelLogs(selectedId);
       fetchDetail(selectedId);
-    } catch (err) {
+    } catch (err: any) {
       addToast(err instanceof Error ? err.message : 'Failed to delete fuel log', 'error');
     } finally { setIsDeleting(false); }
   };
@@ -623,7 +623,7 @@ export default function FleetPage() {
       addToast('Maintenance record deleted', 'success');
       setDeletingMaintenance(null);
       fetchDetail(selectedId);
-    } catch (err) {
+    } catch (err: any) {
       addToast(err instanceof Error ? err.message : 'Failed to delete maintenance record', 'error');
     } finally { setIsDeleting(false); }
   };
@@ -636,7 +636,7 @@ export default function FleetPage() {
       addToast('Inspection deleted', 'success');
       setDeletingInspection(null);
       fetchInspections(selectedId);
-    } catch (err) {
+    } catch (err: any) {
       addToast(err instanceof Error ? err.message : 'Failed to delete inspection', 'error');
     } finally { setIsDeleting(false); }
   };

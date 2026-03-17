@@ -229,13 +229,13 @@ router.post('/panic', requireRole('admin', 'manager', 'supervisor', 'officer', '
       const callNumber = generateCallNumber(db);
       // Log the panic alert to activity log
       db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'panic_alert', 'user', ?, ?, ?)
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+        VALUES (?, 'panic_alert', 'user', ?, ?, ?, ?)
       `).run(
         user.id,
         user.id,
         `PANIC ALERT triggered by ${user.full_name} (${user.badge_number || 'N/A'})${message ? ': ' + message : ''}`,
-        req.ip || 'unknown'
+        req.ip || 'unknown', localNow()
       );
 
       // Auto-create "Officer Assist — Panic Alarm" dispatch call
@@ -280,9 +280,9 @@ router.post('/panic', requireRole('admin', 'manager', 'supervisor', 'officer', '
 
       // Log call creation
       db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'call_created', 'call', ?, ?, ?)
-      `).run(user.id, call.id, `PANIC auto-created ${callNumber}: officer_assist`, req.ip || 'unknown');
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+        VALUES (?, 'call_created', 'call', ?, ?, ?, ?)
+      `).run(user.id, call.id, `PANIC auto-created ${callNumber}: officer_assist`, req.ip || 'unknown', localNow());
 
       return { call, unit, callNumber };
     });

@@ -26,7 +26,7 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
       return { latitude: loc.lat, longitude: loc.lng };
     }
     return null;
-  } catch (err) {
+  } catch (err: any) {
     console.error('[geocode] Error geocoding address:', err);
     return null;
   }
@@ -49,7 +49,7 @@ export async function reverseGeocodeAddress(lat: number, lng: number): Promise<s
       return data.results[0].formatted_address;
     }
     return null;
-  } catch (err) {
+  } catch (err: any) {
     console.error('[geocode] Error reverse-geocoding:', err);
     return null;
   }
@@ -111,7 +111,7 @@ export async function reverseGeocodeDetailed(lat: number, lng: number): Promise<
     }
 
     return { formatted_address, road_name, nearest_intersection };
-  } catch (err) {
+  } catch (err: any) {
     console.error('[geocode] Error in detailed reverse geocode:', err);
     return null;
   }
@@ -138,7 +138,7 @@ export function geocodeCallIfNeeded(callId: number, address: string, lat: any, l
       if (updatedCall) {
         broadcastDispatchUpdate({ action: 'call_updated', call: updatedCall });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('[geocode] Failed to update call coordinates:', err);
     }
   }).catch(err => {

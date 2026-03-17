@@ -87,7 +87,7 @@ export function liveBroadcast(req: Request, res: Response, next: NextFunction): 
               user: req.user ? { id: req.user.userId, username: req.user.username } : null,
               timestamp: localNow(),
             });
-          } catch (err) {
+          } catch (err: any) {
             // Never let broadcast errors break the API response
             console.error('[BROADCAST] Error:', err);
           }

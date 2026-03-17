@@ -75,7 +75,7 @@ export default function TrainingDocsPage() {
       setLoading(true);
       const data = await apiFetchCompanyDocuments(category !== 'all' ? category : undefined);
       setDocuments(data || []);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load documents:', err);
     } finally {
       setLoading(false);
@@ -97,7 +97,7 @@ export default function TrainingDocsPage() {
     try {
       await apiDeleteCompanyDocument(doc.id);
       loadDocuments();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Delete failed:', err);
     }
   };

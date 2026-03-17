@@ -34,8 +34,8 @@ router.get('/status', (_req: Request, res: Response) => {
   try {
     const status = getJailRosterStatus();
     res.json(status);
-  } catch (err) {
-    console.error('[Jail Roster API] Error getting status:', (err as Error).message);
+  } catch (err: any) {
+    console.error('[Jail Roster API] Error getting status:', err?.message || "Unknown error");
     res.status(500).json({ error: 'Failed to get scraper status' });
   }
 });
@@ -64,8 +64,8 @@ router.get('/counties', (_req: Request, res: Response) => {
     }));
 
     res.json({ counties, available_parsers: parsers });
-  } catch (err) {
-    console.error('[Jail Roster API] Error listing counties:', (err as Error).message);
+  } catch (err: any) {
+    console.error('[Jail Roster API] Error listing counties:', err?.message || "Unknown error");
     res.status(500).json({ error: 'Failed to list counties' });
   }
 });
@@ -77,8 +77,8 @@ router.get('/config', requireRole('admin'), (_req: Request, res: Response) => {
   try {
     const status = getJailRosterStatus();
     res.json({ configs: status.counties });
-  } catch (err) {
-    console.error('[Jail Roster API] Error getting config:', (err as Error).message);
+  } catch (err: any) {
+    console.error('[Jail Roster API] Error getting config:', err?.message || "Unknown error");
     res.status(500).json({ error: 'Failed to get scraper config' });
   }
 });
@@ -111,8 +111,8 @@ router.put('/config/:county', requireRole('admin'), (req: Request, res: Response
     broadcastAdminUpdate({ type: 'jail_roster_config_updated', county });
 
     res.json({ success: true, message: 'Config updated' });
-  } catch (err) {
-    console.error('[Jail Roster API] Error updating config:', (err as Error).message);
+  } catch (err: any) {
+    console.error('[Jail Roster API] Error updating config:', err?.message || "Unknown error");
     res.status(500).json({ error: 'Failed to update config' });
   }
 });
@@ -130,8 +130,8 @@ router.post('/sync/:county', requireRole('admin', 'manager'), async (req: Reques
     broadcastAdminUpdate({ type: 'jail_roster_sync_triggered', county });
 
     res.json(result);
-  } catch (err) {
-    console.error('[Jail Roster API] Error triggering sync:', (err as Error).message);
+  } catch (err: any) {
+    console.error('[Jail Roster API] Error triggering sync:', err?.message || "Unknown error");
     res.status(500).json({ error: 'Failed to trigger sync' });
   }
 });
@@ -151,8 +151,8 @@ router.post('/reset-errors/:county', requireRole('admin'), (req: Request, res: R
       `Circuit breaker reset for ${county}`);
 
     res.json({ success: true, message: 'Error counter reset' });
-  } catch (err) {
-    console.error('[Jail Roster API] Error resetting errors:', (err as Error).message);
+  } catch (err: any) {
+    console.error('[Jail Roster API] Error resetting errors:', err?.message || "Unknown error");
     res.status(500).json({ error: 'Failed to reset errors' });
   }
 });
@@ -164,8 +164,8 @@ router.get('/statistics', (_req: Request, res: Response) => {
   try {
     const stats = getJailRosterStatistics();
     res.json(stats);
-  } catch (err) {
-    console.error('[Jail Roster API] Error getting statistics:', (err as Error).message);
+  } catch (err: any) {
+    console.error('[Jail Roster API] Error getting statistics:', err?.message || "Unknown error");
     res.status(500).json({ error: 'Failed to get statistics' });
   }
 });
@@ -177,8 +177,8 @@ router.get('/sync-log', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const status = getJailRosterStatus();
     res.json({ sync_log: status.recent_syncs });
-  } catch (err) {
-    console.error('[Jail Roster API] Error getting sync log:', (err as Error).message);
+  } catch (err: any) {
+    console.error('[Jail Roster API] Error getting sync log:', err?.message || "Unknown error");
     res.status(500).json({ error: 'Failed to get sync log' });
   }
 });

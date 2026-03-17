@@ -78,7 +78,7 @@ export default function ExportButton({
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(blobUrl);
-    } catch (err) {
+    } catch (err: any) {
       console.error('[ExportButton] CSV export failed:', err);
     } finally {
       setIsExporting(false);

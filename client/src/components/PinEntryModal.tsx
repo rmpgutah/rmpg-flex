@@ -182,7 +182,7 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
         setDigits(['', '', '', '', '', '']);
         setTimeout(() => inputRefs.current[0]?.focus(), 100);
       }
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'PIN validation failed');
     } finally {
       setSubmitting(false);

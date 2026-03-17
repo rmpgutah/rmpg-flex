@@ -4,6 +4,7 @@ import type { CallForService, CallPriority, CallSource } from '../types';
 import { PRIORITY_OPTIONS, PSO_SERVICE_TYPES, PROCESS_SERVICE_DOC_TYPES } from './NewCallModal';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
 import { useDistrictIdentify } from '../hooks/useDistrictLookup';
+import { safeParseStringArray } from '../utils/sanitize';
 
 interface QuickPsoModalProps {
   isOpen: boolean;
@@ -157,7 +158,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
                       location: client.address || prev.location,
                     }));
                     try {
-                      const recent = JSON.parse(localStorage.getItem('rmpg_recent_pso_clients') || '[]') as string[];
+                      const recent = safeParseStringArray(localStorage.getItem('rmpg_recent_pso_clients'));
                       const updated = [selectedId, ...recent.filter((id: string) => id !== selectedId)].slice(0, 5);
                       localStorage.setItem('rmpg_recent_pso_clients', JSON.stringify(updated));
                     } catch { /* localStorage unavailable */ }
@@ -170,7 +171,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
                 <option value="">-- Select Client --</option>
                 {(() => {
                   let recentIds: string[] = [];
-                  try { recentIds = JSON.parse(localStorage.getItem('rmpg_recent_pso_clients') || '[]'); } catch { /* ignore */ }
+                  recentIds = safeParseStringArray(localStorage.getItem('rmpg_recent_pso_clients'));
                   const recentClients = recentIds.map((id: string) => clients.find((c) => c.id === id)).filter(Boolean) as typeof clients;
                   const otherClients = clients.filter((c) => !recentIds.includes(c.id));
                   return (

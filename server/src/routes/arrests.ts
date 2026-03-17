@@ -184,7 +184,7 @@ router.post('/manual', requireRole('admin', 'manager', 'officer', 'supervisor'),
 
     res.json({ success: true, id: newId, message: 'Booking record created' });
   } catch (err: any) {
-    console.error(err); res.status(500).json({ error: 'Internal server error' });
+    console.error('[Arrests] Error:', err?.message || 'Unknown error'); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -251,7 +251,7 @@ router.put('/manual/:id', validateParamId, requireRole('admin', 'manager', 'offi
 
     res.json({ success: true, message: 'Record updated' });
   } catch (err: any) {
-    console.error(err); res.status(500).json({ error: 'Internal server error' });
+    console.error('[Arrests] Error:', err?.message || 'Unknown error'); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -276,7 +276,7 @@ router.delete('/manual/:id', validateParamId, requireRole('admin', 'manager'), (
 
     res.json({ success: true, message: 'Record deleted' });
   } catch (err: any) {
-    console.error(err); res.status(500).json({ error: 'Internal server error' });
+    console.error('[Arrests] Error:', err?.message || 'Unknown error'); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -301,7 +301,7 @@ router.get('/manual/:id', validateParamId, requireRole('admin', 'manager', 'supe
 
     res.json({ ...record, cross_links: links });
   } catch (err: any) {
-    console.error(err); res.status(500).json({ error: 'Internal server error' });
+    console.error('[Arrests] Error:', err?.message || 'Unknown error'); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -426,7 +426,7 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
       res.json({ success: true, imported, skipped, total: records.length, errors: errors.length > 0 ? errors : undefined });
     }
   } catch (err: any) {
-    console.error(err); res.status(500).json({ error: 'Internal server error' });
+    console.error('[Arrests] Error:', err?.message || 'Unknown error'); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -468,7 +468,7 @@ router.get('/status', (_req: Request, res: Response) => {
       apiOffline,
     });
   } catch (err: any) {
-    console.error(err); res.status(500).json({ error: 'Internal server error' });
+    console.error('[Arrests] Error:', err?.message || 'Unknown error'); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -485,7 +485,7 @@ router.put('/credentials', requireRole('admin', 'manager'), (req: Request, res: 
     }
     res.json({ success: true, message: 'API key saved and encrypted' });
   } catch (err: any) {
-    console.error(err); res.status(500).json({ error: 'Internal server error' });
+    console.error('[Arrests] Error:', err?.message || 'Unknown error'); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -496,7 +496,7 @@ router.delete('/credentials', requireRole('admin', 'manager'), (_req: Request, r
     setConfigValue(CONFIG_KEYS.enabled, 'false');
     res.json({ success: true, message: 'API key removed' });
   } catch (err: any) {
-    console.error(err); res.status(500).json({ error: 'Internal server error' });
+    console.error('[Arrests] Error:', err?.message || 'Unknown error'); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -507,7 +507,7 @@ router.put('/toggle', requireRole('admin', 'manager'), (req: Request, res: Respo
     setConfigValue(CONFIG_KEYS.enabled, enabled ? 'true' : 'false');
     res.json({ success: true, enabled: !!enabled });
   } catch (err: any) {
-    console.error(err); res.status(500).json({ error: 'Internal server error' });
+    console.error('[Arrests] Error:', err?.message || 'Unknown error'); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -561,7 +561,7 @@ router.get('/search', requireRole('admin', 'manager', 'supervisor', 'officer', '
 
     res.json(result);
   } catch (err: any) {
-    console.error(err); res.status(500).json({ error: 'Internal server error' });
+    console.error('[Arrests] Error:', err?.message || 'Unknown error'); res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -573,7 +573,7 @@ router.get('/recent', requireRole('admin', 'manager', 'supervisor', 'officer', '
     const source = (req.query.source as string || '').trim(); // 'manual', 'csv', 'api', or ''
     const statusFilter = (req.query.status as string || '').trim();
     const parsedPage = parseInt(req.query.page as string, 10);
-    const page = Math.max(1, isNaN(parsedPage) ? 1 : parsedPage);
+    const page = Math.min(10000, Math.max(1, isNaN(parsedPage) ? 1 : parsedPage));
     const parsedLimit = parseInt(req.query.limit as string, 10);
     const limit = Math.min(100, Math.max(1, isNaN(parsedLimit) ? 50 : parsedLimit));
     const offset = (page - 1) * limit;
@@ -590,7 +590,14 @@ router.get('/recent', requireRole('admin', 'manager', 'supervisor', 'officer', '
     else if (source === 'csv') { conditions.push("ar.entry_source = 'csv'"); }
     else if (source === 'scraper') { conditions.push("ar.entry_source = 'scraper'"); }
     else if (source === 'api') { conditions.push("(ar.entry_source IS NULL OR ar.entry_source = 'api')"); }
-    if (statusFilter) { conditions.push('ar.status = ?'); params.push(statusFilter); }
+    if (statusFilter) {
+      const VALID_ARREST_STATUSES = ['active', 'released', 'bonded', 'transferred', 'dismissed', 'convicted', 'pending'];
+      if (!VALID_ARREST_STATUSES.includes(statusFilter)) {
+        res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_ARREST_STATUSES.join(', ')}` });
+        return;
+      }
+      conditions.push('ar.status = ?'); params.push(statusFilter);
+    }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
@@ -616,7 +623,7 @@ router.get('/recent', requireRole('admin', 'manager', 'supervisor', 'officer', '
 
     res.json({ records: parsed, total, page, limit, totalPages: Math.ceil(total / limit) });
   } catch (err: any) {
-    console.error(err); res.status(500).json({ error: 'Internal server error' });
+    console.error('[Arrests] Error:', err?.message || 'Unknown error'); res.status(500).json({ error: 'Internal server error' });
   }
 });
 

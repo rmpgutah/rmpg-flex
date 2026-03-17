@@ -60,9 +60,11 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
       return;
     }
 
-    // Validate: at least one point with valid coordinates
+    // Validate: at least one point with finite, in-range coordinates
+    // isFinite() rejects NaN and Infinity which would pass the range checks
     const validPoints = points.filter(
-      (p) => p.lat != null && p.lng != null &&
+      (p) => typeof p.lat === 'number' && typeof p.lng === 'number' &&
+        isFinite(p.lat) && isFinite(p.lng) &&
         p.lat >= -90 && p.lat <= 90 &&
         p.lng >= -180 && p.lng <= 180
     );
@@ -219,7 +221,7 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
             ORDER BY id DESC LIMIT ?
           )
         `).run(geo.road_name, geo.nearest_intersection, unit.id, validPoints.length);
-      } catch (err) {
+      } catch (err: any) {
         console.error('[GPS] Geocode backfill error:', err instanceof Error ? err.message : err);
       }
     })();

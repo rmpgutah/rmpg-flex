@@ -48,7 +48,11 @@ function sanitizeStr(str: string, fieldName?: string): string {
   // Neutralize dangerous URI schemes (javascript:, vbscript:, data:, livescript:, mocha:)
   cleaned = cleaned.replace(DANGEROUS_URI_RE, 'blocked:');
   // Also catch control-char obfuscated javascript: URIs
-  cleaned = cleaned.replace(OBFUSCATED_URI_RE, 'blocked:');
+  // Only check the first 50 chars — obfuscated URI schemes appear at the start of strings;
+  // checking the full string wastes CPU and increases ReDoS surface on long payloads
+  if (cleaned.length <= 50 || OBFUSCATED_URI_RE.test(cleaned.slice(0, 50))) {
+    cleaned = cleaned.replace(OBFUSCATED_URI_RE, 'blocked:');
+  }
   // Redact SSN and credit card numbers from free-text fields to prevent
   // accidental PII storage — officers sometimes paste sensitive data into notes
   if (fieldName && PII_REDACT_FIELDS.has(fieldName)) {

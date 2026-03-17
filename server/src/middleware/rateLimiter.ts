@@ -20,16 +20,26 @@ interface BlockEntry {
   lastViolation: number;
 }
 const ipBlocklist: Map<string, BlockEntry> = new Map();
+const MAX_BLOCKLIST_SIZE = 5_000;         // prevent unbounded blocklist memory growth
 const VIOLATION_THRESHOLD = 10;           // violations before first block
 const VIOLATION_WINDOW_MS = 10 * 60 * 1000; // 10 minute sliding window
 const BASE_BLOCK_DURATION_MS = 5 * 60 * 1000; // 5 minute initial block
 const MAX_BLOCK_DURATION_MS = 60 * 60 * 1000; // 1 hour max block
 
 function recordViolation(ip: string): void {
-  if (!ip) return; // Still record violations for 'unknown' IPs
+  if (ip === undefined || ip === null) return;
   const now = Date.now();
   let entry = ipBlocklist.get(ip);
   if (!entry) {
+    // Cap blocklist size to prevent memory exhaustion from distributed attacks
+    if (ipBlocklist.size >= MAX_BLOCKLIST_SIZE) {
+      let oldestIp = '';
+      let oldestTime = Infinity;
+      for (const [k, v] of ipBlocklist) {
+        if (v.lastViolation < oldestTime) { oldestTime = v.lastViolation; oldestIp = k; }
+      }
+      if (oldestIp) ipBlocklist.delete(oldestIp);
+    }
     entry = { blockedUntil: 0, violations: 0, lastViolation: now };
     ipBlocklist.set(ip, entry);
   }
@@ -50,8 +60,7 @@ function recordViolation(ip: string): void {
 }
 
 function isIpBlocked(ip: string): { blocked: boolean; retryAfter: number } {
-  if (!ip) return { blocked: false, retryAfter: 0 };
-  // 'unknown' IPs are still checked — fail closed rather than bypassing rate limits
+  if (ip === undefined || ip === null) return { blocked: false, retryAfter: 0 };
   const entry = ipBlocklist.get(ip);
   if (!entry) return { blocked: false, retryAfter: 0 };
   const now = Date.now();

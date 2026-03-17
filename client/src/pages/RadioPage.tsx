@@ -23,7 +23,7 @@ import { useRadio } from '../hooks/useRadio';
 import { usePrivateCall } from '../hooks/usePrivateCall';
 import { useAuth } from '../context/AuthContext';
 import { useIsMobile } from '../hooks/useIsMobile';
-import { apiFetch } from '../hooks/useApi';
+import { apiFetch, apiFetchRaw } from '../hooks/useApi';
 
 // ============================================================
 // RMPG Flex — RadioPage
@@ -165,15 +165,8 @@ export default function RadioPage() {
     }
 
     try {
-      // Fetch audio with JWT auth header (new Audio(url) can't set headers)
-      const token = localStorage.getItem('rmpg_token');
-      const res = await fetch(`/api/comms/radio/audio/${entryId}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) {
-        console.error('[Radio Playback] HTTP error:', res.status, res.statusText);
-        throw new Error(`HTTP ${res.status}`);
-      }
+      // Fetch audio with centralized auth (new Audio(url) can't set headers)
+      const res = await apiFetchRaw(`/api/comms/radio/audio/${entryId}`);
       const blob = await res.blob();
       const blobUrl = URL.createObjectURL(blob);
       blobUrlRef.current = blobUrl;
@@ -197,7 +190,7 @@ export default function RadioPage() {
       audioRef.current = audio;
       await audio.play();
       setPlayingId(entryId);
-    } catch (err) {
+    } catch (err: any) {
       console.error('[Radio Playback] Failed:', err);
       setPlayingId(null);
     }

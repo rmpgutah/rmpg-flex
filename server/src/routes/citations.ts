@@ -8,7 +8,7 @@
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { validateEnum, requireInt, validateParamId, escapeLike } from '../middleware/sanitize';
+import { validateEnum, requireInt, validateParamId, escapeLike, quoteIdent } from '../middleware/sanitize';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow, localToday } from '../utils/timeUtils';
 import { createNotificationForRoles } from './notifications';
@@ -439,7 +439,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
 
     for (const [key, transform] of Object.entries(fieldMap)) {
       if (bodyKeys.includes(key)) {
-        fields.push(`${key} = ?`);
+        fields.push(`${quoteIdent(key)} = ?`);
         values.push(transform(req.body[key]));
       }
     }

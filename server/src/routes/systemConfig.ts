@@ -1,8 +1,23 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
-import { validateParamId } from '../middleware/sanitize';
+import { validateParamId, quoteIdent } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
+
+// Allowed categories — reject unknown values to prevent enumeration
+const ALLOWED_CATEGORIES = new Set([
+  'incident_types', 'priorities', 'statuses', 'dispositions', 'unit_types',
+  'beats', 'zones', 'sections', 'signal_codes', 'ten_codes', 'radio_channels',
+  'tow_companies', 'hospitals', 'agencies', 'evidence_types', 'property_types',
+  'vehicle_colors', 'vehicle_makes', 'pso_service_types', 'general',
+]);
+
+// Truncate config values in audit log entries to prevent log injection / info disclosure
+function redactForLog(value: string, maxLen = 100): string {
+  if (!value) return '(empty)';
+  const safe = value.replace(/[\r\n\t]/g, ' ').slice(0, maxLen);
+  return safe.length < value.length ? safe + '...' : safe;
+}
 
 const router = Router();
 
@@ -11,12 +26,18 @@ router.use(authenticateToken);
 // GET /api/admin/config/:category - Get config items by category
 router.get('/config/:category', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
+    const category = String(req.params.category);
+    // Validate category against whitelist to prevent enumeration of arbitrary values
+    if (!ALLOWED_CATEGORIES.has(category)) {
+      res.status(400).json({ error: 'Invalid category' });
+      return;
+    }
     const db = getDb();
     const items = db.prepare(`
       SELECT * FROM system_config
       WHERE category = ? AND is_active = 1
       ORDER BY sort_order ASC
-    `).all(String(req.params.category));
+    `).all(category);
 
     res.json(items);
   } catch (error: any) {
@@ -78,9 +99,9 @@ router.post('/config', requireRole('admin', 'manager'), (req: Request, res: Resp
 
     // Log activity
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'config_created', 'system_config', ?, ?, ?)
-    `).run(req.user!.userId, result.lastInsertRowid, `Added config: ${config_key} = ${config_value}`, req.ip || 'unknown');
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'config_created', 'system_config', ?, ?, ?, ?)
+    `).run(req.user!.userId, result.lastInsertRowid, `Added config: ${redactForLog(config_key)} = ${redactForLog(String(config_value))}`, req.ip || 'unknown', localNow());
 
     res.status(201).json(item);
   } catch (error: any) {
@@ -104,19 +125,20 @@ router.put('/config/:id', validateParamId, requireRole('admin', 'manager'), (req
     }
 
     const now = localNow();
-    const cfgFields = ['config_value', 'sort_order', 'is_active'];
+    // Whitelist of updatable columns — quoteIdent adds defense-in-depth SQL identifier quoting
+    const cfgFields = ['config_value', 'sort_order', 'is_active'] as const;
     const cfgBodyKeys = Object.keys(req.body);
     const cfgSet: string[] = [];
     const cfgVals: any[] = [];
     for (const f of cfgFields) {
       if (cfgBodyKeys.includes(f)) {
-        cfgSet.push(`${f} = ?`);
+        cfgSet.push(`${quoteIdent(f)} = ?`);
         const v = req.body[f];
         cfgVals.push(v === '' ? null : v ?? null);
       }
     }
     if (cfgSet.length > 0) {
-      cfgSet.push(`updated_at = ?`);
+      cfgSet.push(`${quoteIdent('updated_at')} = ?`);
       cfgVals.push(now, item.id);
       db.prepare(`UPDATE system_config SET ${cfgSet.join(', ')} WHERE id = ?`).run(...cfgVals);
     }
@@ -145,7 +167,7 @@ router.delete('/config/:id', validateParamId, requireRole('admin', 'manager'), (
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, 'config_deleted', 'system_config', ?, ?, ?, ?)
-    `).run(req.user!.userId, item.id, `Removed config: ${item.config_key} = ${item.config_value}`, req.ip || 'unknown', now);
+    `).run(req.user!.userId, item.id, `Removed config: ${redactForLog(item.config_key)} = ${redactForLog(String(item.config_value))}`, req.ip || 'unknown', now);
 
     res.json({ message: 'Config item removed' });
   } catch (error: any) {

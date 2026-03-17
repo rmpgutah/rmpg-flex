@@ -11,6 +11,7 @@ import { rateLimit } from '../middleware/rateLimiter';
 import { validateParamId } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
 import config from '../config';
+import { localNow } from '../utils/timeUtils';
 
 // Rate limiter for file uploads — prevent abuse/DoS via large uploads
 const uploadRateLimit = rateLimit({
@@ -271,9 +272,10 @@ function authenticateTokenOrQuery(req: Request, res: Response, next: NextFunctio
     try {
       decoded = jwt.verify(token, config.jwt.secret, JWT_VERIFY_OPTIONS) as JwtPayload;
     } catch (strictErr: any) {
-      // Legacy token backward compat — enforce strict validation after 2026-04-15
+      // Legacy token backward compat — enforce strict validation after 2026-03-31
+      // (aligned with auth.ts deadline — all token endpoints must enforce the same cutoff)
       if (strictErr.message?.includes('jwt issuer invalid') || strictErr.message?.includes('jwt audience invalid')) {
-        if (Date.now() >= new Date('2026-04-15T00:00:00Z').getTime()) {
+        if (Date.now() >= new Date('2026-03-31T00:00:00Z').getTime()) {
           res.status(401).json({ error: 'Token format no longer accepted. Please log in again.', code: 'TOKEN_LEGACY_REJECTED' });
           return;
         }
@@ -628,15 +630,14 @@ router.post('/', uploadRateLimit, upload.array('files', 10), (req: Request, res:
 
     // Log the upload
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'file_uploaded', ?, ?, ?, ?)
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'file_uploaded', ?, ?, ?, ?, ?)
     `).run(
       req.user!.userId,
       entity_type || 'attachment',
       entity_id ? parseInt(entity_id, 10) : null,
       `Uploaded ${files.length} file(s): ${files.map(f => f.originalname).join(', ')}`,
-      req.ip || 'unknown',
-    );
+      req.ip || 'unknown', localNow());
 
     res.status(201).json(results);
   } catch (error: any) {
@@ -679,14 +680,13 @@ router.put('/:fileId/link', requireRole('admin', 'manager', 'supervisor'), (req:
 
     // Audit log: file reassignment
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'file_linked', 'attachment', ?, ?, ?)
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'file_linked', 'attachment', ?, ?, ?, ?)
     `).run(
       req.user!.userId,
       req.params.fileId,
       `Linked file to ${entity_type} #${entity_id}`,
-      req.ip || 'unknown',
-    );
+      req.ip || 'unknown', localNow());
 
     res.json(attachment);
   } catch (error: any) {
@@ -725,15 +725,14 @@ router.delete('/:fileId', authenticateToken, (req: Request, res: Response) => {
 
     // Log deletion
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'file_deleted', ?, ?, ?, ?)
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'file_deleted', ?, ?, ?, ?, ?)
     `).run(
       req.user!.userId,
       attachment.entity_type || 'attachment',
       attachment.entity_id,
       `Deleted file: ${attachment.original_name}`,
-      req.ip || 'unknown',
-    );
+      req.ip || 'unknown', localNow());
 
     res.json({ message: 'File deleted' });
   } catch (error: any) {

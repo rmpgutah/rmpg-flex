@@ -262,14 +262,14 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
     };
     clients.set(clientId, client);
 
-    // URL token auth — DEPRECATED and disabled in production after 2026-04-15
+    // URL token auth — DEPRECATED and disabled in production after 2026-03-31
     // URL tokens are visible in server access logs and browser history, making them
     // vulnerable to log exfiltration attacks. Use message-based auth instead.
     const url = req.url || '';
     const tokenMatch = url.match(/[?&]token=([^&]+)/);
     if (tokenMatch) {
       const isProductionMode = process.env.NODE_ENV === 'production';
-      const pastDeadline = Date.now() >= new Date('2026-04-15T07:00:00Z').getTime(); // 00:00 Mountain Time (UTC-7)
+      const pastDeadline = Date.now() >= new Date('2026-03-31T07:00:00Z').getTime(); // 00:00 Mountain Time (UTC-7)
       if (isProductionMode && pastDeadline) {
         console.warn(`[WS] Rejected URL token auth (deprecated) from ${clientIp}`);
         safeSend(ws, JSON.stringify({
@@ -291,7 +291,7 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
       safeSend(ws, JSON.stringify({
         type: 'warning',
         code: 'URL_TOKEN_DEPRECATED',
-        message: 'URL token authentication is deprecated and will be removed on 2026-04-15. Use message-based auth.',
+        message: 'URL token authentication is deprecated and will be removed on 2026-03-31. Use message-based auth.',
       }));
     }
 
@@ -382,7 +382,10 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
       }
     });
 
-    ws.on('close', () => {
+    let cleanedUp = false;
+    const cleanup = () => {
+      if (cleanedUp) return;
+      cleanedUp = true;
       clearTimeout(authTimer);
       // Decrement per-IP connection counter
       const count = ipConnectionCounts.get(clientIp) || 1;
@@ -402,27 +405,10 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
       clientMessageRates.delete(clientId);
       // Broadcast updated presence when a user disconnects
       setTimeout(() => { try { broadcastPresence(); } catch (e) { console.error('[WS] Error broadcasting presence:', e); } }, 100);
-    });
+    };
 
-    ws.on('error', () => {
-      clearTimeout(authTimer);
-      // Decrement per-IP connection counter
-      const count = ipConnectionCounts.get(clientIp) || 1;
-      if (count <= 1) ipConnectionCounts.delete(clientIp);
-      else ipConnectionCounts.set(clientIp, count - 1);
-      // Decrement per-user connection counter (must happen before clients.delete)
-      const errorClient = clients.get(clientId);
-      if (errorClient?.userId) {
-        const uc = userConnectionCounts.get(errorClient.userId) || 1;
-        if (uc <= 1) userConnectionCounts.delete(errorClient.userId);
-        else userConnectionCounts.set(errorClient.userId, uc - 1);
-      }
-      try { handlePrivateCallDisconnect(clientId); } catch (e) { console.error('[WS] Error in private call disconnect:', e); }
-      try { handleRadioDisconnect(clientId); } catch (e) { console.error('[WS] Error in radio disconnect:', e); }
-      clients.delete(clientId);
-      clientMessageRates.delete(clientId);
-      setTimeout(() => { try { broadcastPresence(); } catch (e) { console.error('[WS] Error broadcasting presence:', e); } }, 100);
-    });
+    ws.on('close', cleanup);
+    ws.on('error', cleanup);
 
     // Send welcome message (but don't confirm authentication yet)
     safeSend(ws, JSON.stringify({
@@ -1153,7 +1139,7 @@ function handleRadioTransmitEnd(clientId: string, data?: { transcript?: string; 
         audioFilePath = `radio/${filename}`; // relative path for DB storage
         console.log(`[Radio] Saved audio recording: ${filename} (${(fileSize / 1024).toFixed(1)} KB)`);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('[Radio] Failed to save audio file:', err);
     }
   }
@@ -1175,7 +1161,7 @@ function handleRadioTransmitEnd(clientId: string, data?: { transcript?: string; 
       fileSize > 1024 ? fileSize : null,
       linkedCallId
     );
-  } catch (err) {
+  } catch (err: any) {
     console.error('Failed to save radio transcript:', err);
   }
 

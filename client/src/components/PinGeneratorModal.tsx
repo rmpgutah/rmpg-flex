@@ -57,7 +57,7 @@ export default function PinGeneratorModal({ isOpen, onClose, users }: PinGenerat
         setGeneratedPin(result.pin);
         setExpiresAt(result.expiresAt || null);
       }
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to generate PIN');
     } finally {
       setGenerating(false);
@@ -141,7 +141,7 @@ export default function PinGeneratorModal({ isOpen, onClose, users }: PinGenerat
             >
               <option value="">Select an employee...</option>
               {employees.map(u => (
-                <option key={u.id} value={u.id}>
+                <option key={u.id} value={String(u.id)}>
                   {u.last_name?.toUpperCase()}, {u.first_name}
                   {u.badge_number ? ` — #${u.badge_number}` : ''}
                   {` (${toDisplayLabel(u.role)})`}

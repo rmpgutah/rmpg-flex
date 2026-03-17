@@ -114,7 +114,7 @@ export function logScrapeRun(
       INSERT INTO lead_scrape_log (source_key, status, records_found, records_imported, records_skipped, error_message, duration_ms, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(sourceKey, status, found, imported, skipped, errorMsg, durationMs, localNow());
-  } catch (err) {
+  } catch (err: any) {
     console.error(`[LeadScraper] Failed to log run for ${sourceKey}:`, err);
   }
 }

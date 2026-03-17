@@ -162,7 +162,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
       const data = await apiFetch<MicrobiltStatus>('/microbilt/status');
       setStatus(data);
       if (data.environment) setEnvironment(data.environment as 'sandbox' | 'production');
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to fetch Microbilt status:', err);
     } finally {
       setLoading(false);
@@ -191,7 +191,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
       setSubscriberId('');
       setShowSecret(false);
       await fetchStatus();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to save credentials');
     } finally {
       setSaving(false);
@@ -204,7 +204,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
       await apiFetch('/microbilt/credentials', { method: 'DELETE' });
       setTestResult(null);
       await fetchStatus();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to clear credentials');
     }
   };
@@ -216,7 +216,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
     try {
       const result = await apiFetch<TestResult>('/microbilt/test-connection', { method: 'POST' });
       setTestResult(result);
-    } catch (err) {
+    } catch (err: any) {
       setTestResult({ success: false, error: err instanceof Error ? err.message : 'Connection test failed' });
     } finally {
       setTesting(false);
@@ -237,7 +237,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
         body: JSON.stringify({ products: updated }),
       });
       setStatus(prev => prev ? { ...prev, enabled_products: updated } : prev);
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to update products');
     }
   };
@@ -252,7 +252,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
           body: JSON.stringify({ environment: env }),
         });
         await fetchStatus();
-      } catch (err) {
+      } catch (err: any) {
         setError(err instanceof Error ? err.message : 'Failed to update environment');
       }
     }

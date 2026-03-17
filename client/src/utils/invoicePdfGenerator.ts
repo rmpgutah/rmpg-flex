@@ -494,7 +494,7 @@ export async function generateInvoicePdfBlobUrl(data: InvoicePdfData): Promise<s
     const doc = await generateInvoicePdf(data);
     const blob = doc.output('blob');
     return URL.createObjectURL(blob);
-  } catch (err) {
+  } catch (err: any) {
     console.error('Invoice PDF preview generation failed:', err);
     throw new Error(`Failed to generate invoice PDF: ${err instanceof Error ? err.message : 'Unknown error'}`);
   }

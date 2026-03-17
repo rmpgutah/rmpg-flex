@@ -84,21 +84,25 @@ if (disableSsl) {
       sslKey = fs.readFileSync(sslKeyPath, 'utf-8');
       sslEnabled = true;
     }
-  } catch (err) {
-    console.warn('⚠  SSL certificate files found but could not be read:', (err as Error).message);
+  } catch (err: any) {
+    console.warn('⚠  SSL certificate files found but could not be read:', err?.message || "Unknown error");
   }
 }
 
-// Warn in production if TOTP_ENCRYPTION_KEY is not explicitly set
+// Enforce separate TOTP_ENCRYPTION_KEY in production — key reuse with
+// JWT_SECRET means a single compromise exposes both sessions AND TOTP secrets.
 if (isProduction && !process.env.TOTP_ENCRYPTION_KEY) {
   console.error('');
   console.error('╔═══════════════════════════════════════════════════════════╗');
-  console.error('║  WARNING: TOTP_ENCRYPTION_KEY is not set!                ║');
-  console.error('║  Falling back to JWT_SECRET for TOTP encryption.         ║');
-  console.error('║  Generate one: openssl rand -hex 32                       ║');
-  console.error('║  Set it in .env: TOTP_ENCRYPTION_KEY=<your-key>           ║');
+  console.error('║  FATAL: TOTP_ENCRYPTION_KEY is not set!                  ║');
+  console.error('║  Reusing JWT_SECRET for TOTP encryption is insecure:     ║');
+  console.error('║  a single key compromise exposes both sessions AND       ║');
+  console.error('║  all TOTP secrets. Use a separate key.                   ║');
+  console.error('║  Generate one: openssl rand -hex 32                      ║');
+  console.error('║  Set it in .env: TOTP_ENCRYPTION_KEY=<your-key>          ║');
   console.error('╚═══════════════════════════════════════════════════════════╝');
   console.error('');
+  process.exit(1);
 }
 
 export const config = {
@@ -125,7 +129,7 @@ export const config = {
     secret: jwtSecret,
     accessExpiry: process.env.JWT_ACCESS_EXPIRY || '15m',
     refreshExpiry: process.env.JWT_REFRESH_EXPIRY || '12h',
-    maxSessionHours: Math.max(1, envInt('MAX_SESSION_HOURS', 8)),
+    maxSessionHours: Math.min(720, Math.max(1, envInt('MAX_SESSION_HOURS', 8))),
   },
 
   // Security

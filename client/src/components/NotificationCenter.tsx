@@ -105,7 +105,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
       try {
         const data = await apiFetch<{ count: number }>('/notifications/unread-count');
         if (!cancelled) {
-          setUnreadCount(data.count);
+          setUnreadCount(data?.count ?? 0);
         }
       } catch {
         // Silently fail — status bar still works

@@ -114,7 +114,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
           setValidationResult(result);
         } catch { /* non-critical — badge still works without it */ }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to fetch IPED status:', err);
     } finally {
       setLoading(false);
@@ -167,7 +167,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
       setWebApiPort('');
       setHashSetsPath('');
       await fetchStatus();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to save IPED config');
     } finally {
       setSaving(false);
@@ -181,7 +181,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
       setValidationResult(null);
       setApiTestResult(null);
       await fetchStatus();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to clear config');
     }
   };
@@ -199,7 +199,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
       setValidationResult(result);
       // Refresh status after validation
       await fetchStatus();
-    } catch (err) {
+    } catch (err: any) {
       setValidationResult({
         valid: false, ipedFound: false, javaFound: false,
         ipedVersion: null, javaVersion: null, platform: 'unknown',
@@ -217,7 +217,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
     try {
       const result = await apiFetch<{ success: boolean; message: string }>('/iped/test-api', { method: 'POST' });
       setApiTestResult(result);
-    } catch (err) {
+    } catch (err: any) {
       setApiTestResult({ success: false, message: err instanceof Error ? err.message : 'API test failed' });
     } finally {
       setTestingApi(false);
@@ -234,7 +234,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
           method: 'PUT',
           body: JSON.stringify({ photodnaEnabled: newVal }),
         });
-      } catch (err) {
+      } catch (err: any) {
         setError(err instanceof Error ? err.message : 'Failed to update setting');
         setPhotoDnaEnabled(!newVal);
       }
@@ -250,7 +250,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
           method: 'PUT',
           body: JSON.stringify({ autoHashOnUpload: newVal }),
         });
-      } catch (err) {
+      } catch (err: any) {
         setError(err instanceof Error ? err.message : 'Failed to update setting');
         setAutoHash(!newVal);
       }
@@ -265,7 +265,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
           method: 'PUT',
           body: JSON.stringify({ defaultProfile: profile }),
         });
-      } catch (err) {
+      } catch (err: any) {
         setError(err instanceof Error ? err.message : 'Failed to update profile');
       }
     }
@@ -276,7 +276,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
     try {
       await apiFetch(`/iped/hash-sets/${encodeURIComponent(name)}`, { method: 'DELETE' });
       await fetchHashSets();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to remove hash set');
     }
   };

@@ -2,15 +2,24 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../../models/database';
 import { requireRole } from '../../middleware/auth';
 import { validateParamId } from '../../middleware/sanitize';
+import { rateLimit } from '../../middleware/rateLimiter';
 import { broadcastDispatchUpdate } from '../../utils/websocket';
 import { generateIncidentNumber } from '../../utils/caseNumbers';
 import { localNow } from '../../utils/timeUtils';
+
+// Rate limiter for bulk archive — prevent mass-archival abuse
+const bulkArchiveRateLimit = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  maxRequests: 10,           // 10 bulk archives per 5 min per user
+  keyGenerator: (req) => `bulk-archive:${req.user?.userId || req.ip || 'unknown'}`,
+  message: 'Too many bulk archive requests. Please try again later.',
+});
 
 const router = Router();
 
 // POST /api/dispatch/calls/archive-bulk - Archive multiple cleared/closed/cancelled calls at once
 // NOTE: This route MUST come before /calls/:id/archive to avoid Express matching "archive-bulk" as :id
-router.post('/calls/archive-bulk', requireRole('admin', 'manager', 'dispatcher'), (req: Request, res: Response) => {
+router.post('/calls/archive-bulk', bulkArchiveRateLimit, requireRole('admin', 'manager', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { call_ids, statuses } = req.body;
@@ -64,7 +73,7 @@ router.post('/calls/archive-bulk', requireRole('admin', 'manager', 'dispatcher')
       `UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = ? WHERE id = ? AND current_call_id = ?`
     );
     const logStmt = db.prepare(
-      `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'call_archived', 'call', ?, ?, ?)`
+      `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, 'call_archived', 'call', ?, ?, ?, ?)`
     );
 
     const archiveTransaction = db.transaction(() => {
@@ -78,7 +87,7 @@ router.post('/calls/archive-bulk', requireRole('admin', 'manager', 'dispatcher')
           freeUnitStmt.run(now, unitId, call.id);
         }
 
-        logStmt.run(req.user!.userId, call.id, `${call.call_number} bulk archived`, req.ip || 'unknown');
+        logStmt.run(req.user!.userId, call.id, `${call.call_number} bulk archived`, req.ip || 'unknown', localNow());
       }
     });
 
@@ -127,9 +136,9 @@ router.post('/calls/:id/archive', validateParamId, requireRole('admin', 'manager
       }
 
       db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'call_archived', 'call', ?, ?, ?)
-      `).run(req.user!.userId, call.id, `${call.call_number} archived`, req.ip || 'unknown');
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+        VALUES (?, 'call_archived', 'call', ?, ?, ?, ?)
+      `).run(req.user!.userId, call.id, `${call.call_number} archived`, req.ip || 'unknown', localNow());
     });
     archiveTx();
 
@@ -160,9 +169,9 @@ router.post('/calls/:id/unarchive', validateParamId, requireRole('admin', 'manag
     const unarchiveTx = db.transaction(() => {
       db.prepare('UPDATE calls_for_service SET status = ? WHERE id = ?').run('closed', call.id);
       db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'call_unarchived', 'call', ?, ?, ?)
-      `).run(req.user!.userId, call.id, `${call.call_number} restored from archive`, req.ip || 'unknown');
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+        VALUES (?, 'call_unarchived', 'call', ?, ?, ?, ?)
+      `).run(req.user!.userId, call.id, `${call.call_number} restored from archive`, req.ip || 'unknown', localNow());
     });
     unarchiveTx();
 
@@ -205,9 +214,9 @@ router.delete('/calls/:id', validateParamId, requireRole('admin', 'manager'), (r
 
       db.prepare('DELETE FROM calls_for_service WHERE id = ?').run(call.id);
 
-      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'call_deleted', 'call', ?, ?, ?)`).run(
-        req.user!.userId, call.id, `Deleted call ${call.call_number}`, req.ip || 'unknown');
+      db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+        VALUES (?, 'call_deleted', 'call', ?, ?, ?, ?)`).run(
+        req.user!.userId, call.id, `Deleted call ${call.call_number}`, req.ip || 'unknown', localNow());
     });
     deleteTx();
 
@@ -368,13 +377,12 @@ router.post('/calls/:id/generate-incident', validateParamId, requireRole('admin'
     if (!incident) { res.status(500).json({ error: 'Failed to retrieve created incident' }); return; }
 
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'incident_created', 'incident', ?, ?, ?)
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'incident_created', 'incident', ?, ?, ?, ?)
     `).run(
       req.user!.userId, result.lastInsertRowid,
       `Generated ${incidentNumber} from call ${call.call_number}`,
-      req.ip || 'unknown'
-    );
+      req.ip || 'unknown', localNow());
 
     res.status(201).json(incident);
   } catch (error: any) {
@@ -677,9 +685,9 @@ router.put('/calls/:id/mileage', validateParamId, requireRole('admin', 'manager'
     if (starting_mileage !== undefined) details.push(`start: ${starting_mileage}`);
     if (ending_mileage !== undefined) details.push(`end: ${ending_mileage}`);
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'mileage_updated', 'call', ?, ?, ?)
-    `).run(req.user!.userId, req.params.id, `Mileage for ${call.call_number}: ${details.join(', ')}`, req.ip || 'unknown');
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'mileage_updated', 'call', ?, ?, ?, ?)
+    `).run(req.user!.userId, req.params.id, `Mileage for ${call.call_number}: ${details.join(', ')}`, req.ip || 'unknown', localNow());
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id);
     broadcastDispatchUpdate({ action: 'call_updated', call: updated });

@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
-import { validateParamId } from '../middleware/sanitize';
+import { validateParamId, quoteIdent } from '../middleware/sanitize';
 import { rateLimit } from '../middleware/rateLimiter';
 import { localNow } from '../utils/timeUtils';
 import { getConnectedClientCount } from '../utils/websocket';
@@ -593,9 +593,9 @@ router.post('/announcements', requireRole('admin', 'manager'), (req: Request, re
     const announcement = db.prepare('SELECT * FROM system_announcements WHERE id = ?').get(result.lastInsertRowid);
 
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'announcement_created', 'announcement', ?, ?, ?)
-    `).run(req.user!.userId, result.lastInsertRowid, `Created announcement: ${title}`, req.ip || 'unknown');
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'announcement_created', 'announcement', ?, ?, ?, ?)
+    `).run(req.user!.userId, result.lastInsertRowid, `Created announcement: ${title}`, req.ip || 'unknown', localNow());
 
     res.status(201).json(announcement || { id: result.lastInsertRowid });
   } catch (error: any) {
@@ -621,7 +621,7 @@ router.put('/announcements/:id', validateParamId, requireRole('admin', 'manager'
 
     for (const f of fields) {
       if (bodyKeys.includes(f)) {
-        setClauses.push(`${f} = ?`);
+        setClauses.push(`${quoteIdent(f)} = ?`);
         let val = req.body[f];
         if (f === 'target_roles' && typeof val !== 'string') {
           val = JSON.stringify(val);
@@ -638,7 +638,7 @@ router.put('/announcements/:id', validateParamId, requireRole('admin', 'manager'
       return;
     }
 
-    setClauses.push('updated_at = ?');
+    setClauses.push(`${quoteIdent('updated_at')} = ?`);
     values.push(localNow());
     values.push(req.params.id);
 
@@ -665,9 +665,9 @@ router.delete('/announcements/:id', validateParamId, requireRole('admin'), (req:
     db.prepare('DELETE FROM system_announcements WHERE id = ?').run(req.params.id);
 
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'announcement_deleted', 'announcement', ?, ?, ?)
-    `).run(req.user!.userId, existing.id, `Deleted announcement: ${existing.title}`, req.ip || 'unknown');
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'announcement_deleted', 'announcement', ?, ?, ?, ?)
+    `).run(req.user!.userId, existing.id, `Deleted announcement: ${existing.title}`, req.ip || 'unknown', localNow());
 
     res.json({ message: 'Announcement deleted' });
   } catch (error: any) {
@@ -709,7 +709,7 @@ router.put('/retention/:id', validateParamId, requireRole('admin', 'manager'), (
 
     for (const f of fields) {
       if (bodyKeys.includes(f)) {
-        setClauses.push(`${f} = ?`);
+        setClauses.push(`${quoteIdent(f)} = ?`);
         let val = req.body[f];
         if (f === 'auto_archive' || f === 'auto_delete' || f === 'is_active') {
           val = val ? 1 : 0;
@@ -723,7 +723,7 @@ router.put('/retention/:id', validateParamId, requireRole('admin', 'manager'), (
       return;
     }
 
-    setClauses.push('updated_at = ?');
+    setClauses.push(`${quoteIdent('updated_at')} = ?`);
     values.push(localNow());
     values.push(req.params.id);
 
@@ -807,7 +807,7 @@ router.post('/retention/run', requireRole('admin'), (req: Request, res: Response
           UPDATE retention_policies SET last_run_at = ?, records_affected = ?, updated_at = ? WHERE id = ?
         `).run(now, totalAffected, now, policy.id);
       } catch (err: any) {
-        console.error(`[Retention] Error processing ${policy.entity_type}:`, err);
+        console.error(`[Retention] Error processing ${policy.entity_type}:`, err?.message || 'Unknown error');
         results.push({
           entity_type: policy.entity_type,
           action: 'error: operation failed',
@@ -817,9 +817,9 @@ router.post('/retention/run', requireRole('admin'), (req: Request, res: Response
     }
 
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'retention_run', 'system', 0, ?, ?)
-    `).run(req.user!.userId, `Retention policies executed: ${results.length} actions`, req.ip || 'unknown');
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'retention_run', 'system', 0, ?, ?, ?)
+    `).run(req.user!.userId, `Retention policies executed: ${results.length} actions`, req.ip || 'unknown', localNow());
 
     res.json({ executed_at: now, results });
   } catch (error: any) {
@@ -952,9 +952,9 @@ router.post('/departments', requireRole('admin', 'manager'), (req: Request, res:
     `).get(result.lastInsertRowid);
 
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'department_created', 'department', ?, ?, ?)
-    `).run(req.user!.userId, result.lastInsertRowid, `Created department: ${name}`, req.ip || 'unknown');
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'department_created', 'department', ?, ?, ?, ?)
+    `).run(req.user!.userId, result.lastInsertRowid, `Created department: ${name}`, req.ip || 'unknown', localNow());
 
     res.status(201).json(department || { id: result.lastInsertRowid });
   } catch (error: any) {
@@ -984,7 +984,7 @@ router.put('/departments/:id', validateParamId, requireRole('admin', 'manager'),
 
     for (const f of fields) {
       if (bodyKeys.includes(f)) {
-        setClauses.push(`${f} = ?`);
+        setClauses.push(`${quoteIdent(f)} = ?`);
         let val = req.body[f];
         if (f === 'is_active') val = val ? 1 : 0;
         values.push(val === '' ? null : val ?? null);
@@ -996,7 +996,7 @@ router.put('/departments/:id', validateParamId, requireRole('admin', 'manager'),
       return;
     }
 
-    setClauses.push('updated_at = ?');
+    setClauses.push(`${quoteIdent('updated_at')} = ?`);
     values.push(localNow());
     values.push(req.params.id);
 
@@ -1049,9 +1049,9 @@ router.delete('/departments/:id', validateParamId, requireRole('admin'), (req: R
     db.prepare('DELETE FROM departments WHERE id = ?').run(existing.id);
 
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'department_deleted', 'department', ?, ?, ?)
-    `).run(req.user!.userId, existing.id, `Deleted department: ${existing.name}`, req.ip || 'unknown');
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'department_deleted', 'department', ?, ?, ?, ?)
+    `).run(req.user!.userId, existing.id, `Deleted department: ${existing.name}`, req.ip || 'unknown', localNow());
 
     res.json({ message: 'Department deleted' });
   } catch (error: any) {
@@ -1128,9 +1128,9 @@ router.post('/notification-rules', requireRole('admin', 'manager'), (req: Reques
     `).get(result.lastInsertRowid);
 
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'notification_rule_created', 'notification_rule', ?, ?, ?)
-    `).run(req.user!.userId, result.lastInsertRowid, `Created notification rule: ${name}`, req.ip || 'unknown');
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'notification_rule_created', 'notification_rule', ?, ?, ?, ?)
+    `).run(req.user!.userId, result.lastInsertRowid, `Created notification rule: ${name}`, req.ip || 'unknown', localNow());
 
     res.status(201).json(rule);
   } catch (error: any) {
@@ -1156,7 +1156,7 @@ router.put('/notification-rules/:id', validateParamId, requireRole('admin', 'man
 
     for (const f of fields) {
       if (bodyKeys.includes(f)) {
-        setClauses.push(`${f} = ?`);
+        setClauses.push(`${quoteIdent(f)} = ?`);
         let val = req.body[f];
         if (['conditions', 'target_roles', 'target_user_ids'].includes(f) && typeof val !== 'string') {
           val = JSON.stringify(val);
@@ -1171,7 +1171,7 @@ router.put('/notification-rules/:id', validateParamId, requireRole('admin', 'man
       return;
     }
 
-    setClauses.push('updated_at = ?');
+    setClauses.push(`${quoteIdent('updated_at')} = ?`);
     values.push(localNow());
     values.push(req.params.id);
 
@@ -1204,9 +1204,9 @@ router.delete('/notification-rules/:id', validateParamId, requireRole('admin', '
     db.prepare('DELETE FROM notification_rules WHERE id = ?').run(existing.id);
 
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'notification_rule_deleted', 'notification_rule', ?, ?, ?)
-    `).run(req.user!.userId, existing.id, `Deleted notification rule: ${existing.name}`, req.ip || 'unknown');
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'notification_rule_deleted', 'notification_rule', ?, ?, ?, ?)
+    `).run(req.user!.userId, existing.id, `Deleted notification rule: ${existing.name}`, req.ip || 'unknown', localNow());
 
     res.json({ message: 'Notification rule deleted' });
   } catch (error: any) {
@@ -1290,9 +1290,9 @@ router.post('/notification-rules/:id/test', validateParamId, requireRole('admin'
     }
 
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'notification_rule_tested', 'notification_rule', ?, ?, ?)
-    `).run(req.user!.userId, rule.id, `Test notification sent to ${sentCount} user(s) for rule: ${rule.name}`, req.ip || 'unknown');
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'notification_rule_tested', 'notification_rule', ?, ?, ?, ?)
+    `).run(req.user!.userId, rule.id, `Test notification sent to ${sentCount} user(s) for rule: ${rule.name}`, req.ip || 'unknown', localNow());
 
     res.json({ message: `Test notification sent to ${sentCount} user(s)`, sent_to: targetUserIds });
   } catch (error: any) {

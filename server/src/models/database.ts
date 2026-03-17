@@ -1526,8 +1526,8 @@ function migrateSchema(): void {
         db.pragma('foreign_keys = ON');
       }
     }
-  } catch (err) {
-    console.log('calls_for_service source migration skipped or already done:', (err as Error).message);
+  } catch (err: any) {
+    console.log('calls_for_service source migration skipped or already done:', err?.message || "Unknown error");
   }
 
   // ── calls_for_service — add 'panic' to source CHECK constraint ──────
@@ -1557,8 +1557,8 @@ function migrateSchema(): void {
         db.pragma('foreign_keys = ON');
       }
     }
-  } catch (err) {
-    console.log('calls_for_service panic source migration skipped or already done:', (err as Error).message);
+  } catch (err: any) {
+    console.log('calls_for_service panic source migration skipped or already done:', err?.message || "Unknown error");
   }
 
   // ── calls_for_service — add 'on_hold' to status CHECK constraint ─────
@@ -1587,8 +1587,8 @@ function migrateSchema(): void {
         db.pragma('foreign_keys = ON');
       }
     }
-  } catch (err) {
-    console.log('calls_for_service on_hold status migration skipped or already done:', (err as Error).message);
+  } catch (err: any) {
+    console.log('calls_for_service on_hold status migration skipped or already done:', err?.message || "Unknown error");
   }
 
   // ── calls_for_service — add 'servemanager' to source CHECK constraint ──
@@ -1617,8 +1617,8 @@ function migrateSchema(): void {
         db.pragma('foreign_keys = ON');
       }
     }
-  } catch (err) {
-    console.log('calls_for_service servemanager source migration skipped or already done:', (err as Error).message);
+  } catch (err: any) {
+    console.log('calls_for_service servemanager source migration skipped or already done:', err?.message || "Unknown error");
   }
 
   // ── calls_for_service — add previous_status column for hold/resume ──
@@ -1886,8 +1886,8 @@ function migrateSchema(): void {
       db.exec(`ALTER TABLE evidence_new RENAME TO evidence`);
       console.log('Migrated evidence table: incident_id now nullable');
     }
-  } catch (err) {
-    console.log('Evidence table migration skipped or already done:', (err as Error).message);
+  } catch (err: any) {
+    console.log('Evidence table migration skipped or already done:', err?.message || "Unknown error");
   }
 
   // ── RECORD LINKS — cross-record connections ───────────
@@ -1935,8 +1935,8 @@ function migrateSchema(): void {
       db.exec(`ALTER TABLE record_links_new RENAME TO record_links`);
       console.log('Migrated record_links: added case + incident entity types');
     }
-  } catch (err) {
-    console.log('record_links migration skipped:', (err as Error).message);
+  } catch (err: any) {
+    console.log('record_links migration skipped:', err?.message || "Unknown error");
   }
 
   // ── CREDENTIALS — issuing authority ───────────────────
@@ -2489,8 +2489,8 @@ function migrateSchema(): void {
         db.pragma('foreign_keys = ON');
       }
     }
-  } catch (err) {
-    console.log('time_entries CHECK migration skipped or already done:', (err as Error).message);
+  } catch (err: any) {
+    console.log('time_entries CHECK migration skipped or already done:', err?.message || "Unknown error");
   }
 
   // ── CASES — investigative case management ──
@@ -2929,8 +2929,8 @@ function migrateSchema(): void {
       backfillTx();
       console.log(`  Backfilled case numbers for ${callsWithoutCase.length} dispatch calls`);
     }
-  } catch (err) {
-    console.warn('[migrate] Case number backfill error:', (err as Error).message);
+  } catch (err: any) {
+    console.warn('[migrate] Case number backfill error:', err?.message || "Unknown error");
   }
 
   // ── Async backfill: geocode past breadcrumbs missing road/cross-street data ──
@@ -3009,8 +3009,8 @@ function migrateSchema(): void {
       }
       if (filled > 0) console.log(`[migrate] Backfilled beat/zone for ${filled} incidents`);
     }
-  } catch (err) {
-    console.log('[migrate] Beat/zone backfill skipped:', (err as Error).message);
+  } catch (err: any) {
+    console.log('[migrate] Beat/zone backfill skipped:', err?.message || "Unknown error");
   }
 
   // ── DISPATCH DISTRICTS — 3-Tier lookup table ───────────────
@@ -3049,8 +3049,8 @@ function migrateSchema(): void {
       db.prepare(`INSERT OR REPLACE INTO system_config (config_key, config_value, category) VALUES ('dispatch_districts_version', ?, 'system')`).run(currentVersion);
       console.log(`[migrate] Reseeded ${DISPATCH_DISTRICTS.length} dispatch districts (v${currentVersion} — full UT + WY coverage)`);
     }
-  } catch (err) {
-    console.log('[migrate] dispatch_districts seed skipped:', (err as Error).message);
+  } catch (err: any) {
+    console.log('[migrate] dispatch_districts seed skipped:', err?.message || "Unknown error");
   }
 
   // ── FLEET — fuel log enrichment for Simply Fleet imports ──
@@ -3361,8 +3361,8 @@ function migrateSchema(): void {
         db.pragma('foreign_keys = ON');
       }
     }
-  } catch (err) {
-    console.log('users CHECK migration skipped or already done:', (err as Error).message);
+  } catch (err: any) {
+    console.log('users CHECK migration skipped or already done:', err?.message || "Unknown error");
   }
 
   // ── UTAH WARRANTS — cache table for warrants.utah.gov search results ──
@@ -3772,7 +3772,7 @@ function migrateSchema(): void {
     if (seeded > 0) {
       console.log(`[migrate] Seeded ${seeded} warrant scraper configs`);
     }
-  } catch (err) {
+  } catch (err: any) {
     // INSERT OR IGNORE — safe if already seeded
   }
 
@@ -3964,8 +3964,8 @@ function migrateSchema(): void {
 
     // Non-UT counties are now supported — noRoster auto-disable and circuit breakers
     // handle failures gracefully. No longer force-disabling on startup.
-  } catch (err) {
-    console.log('[migrate] Multi-state county seed skipped:', (err as Error).message);
+  } catch (err: any) {
+    console.log('[migrate] Multi-state county seed skipped:', err?.message || "Unknown error");
   }
 
   // ── Seed ALL Utah counties ────────────────────────────────
@@ -4017,8 +4017,8 @@ function migrateSchema(): void {
     if (utSeeded > 0) {
       console.log(`[migrate] Seeded ${utSeeded} additional Utah county jail configs`);
     }
-  } catch (err) {
-    console.log('[migrate] Utah county seed skipped:', (err as Error).message);
+  } catch (err: any) {
+    console.log('[migrate] Utah county seed skipped:', err?.message || "Unknown error");
   }
 
   // ── GPS SOURCE PRIORITY — dual-session phone/desktop support ─
@@ -4180,8 +4180,8 @@ async function backfillBreadcrumbRoads(): Promise<void> {
     } else {
       console.log(`[backfill] No road data found for any locations (${apiCalls} API calls)`);
     }
-  } catch (err) {
-    console.error('[backfill] Breadcrumb road backfill error:', (err as Error).message);
+  } catch (err: any) {
+    console.error('[backfill] Breadcrumb road backfill error:', err?.message || "Unknown error");
   }
 }
 

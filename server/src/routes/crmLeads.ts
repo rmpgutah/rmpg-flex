@@ -13,6 +13,15 @@ import { auditLog } from '../utils/auditLogger';
 import { localNow } from '../utils/timeUtils';
 import { calculateLeadScore, runScraper, getRegisteredScraper } from '../utils/leadScraperBase';
 import { escapeLike, validateParamId, validateNumericParams } from '../middleware/sanitize';
+import { rateLimit } from '../middleware/rateLimiter';
+
+// Rate limiter for bulk operations — prevent abuse of mass-update endpoints
+const bulkActionRateLimit = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  maxRequests: 10,           // 10 bulk actions per 5 min per user
+  keyGenerator: (req) => `crm-bulk:${req.user?.userId || req.ip || 'unknown'}`,
+  message: 'Too many bulk actions. Please try again later.',
+});
 
 // Import scrapers so they register themselves
 import '../utils/utahBizScraper';
@@ -447,7 +456,7 @@ router.post('/leads/:id/convert', validateParamId, requireRole('admin', 'manager
 });
 
 // ── Bulk Actions ────────────────────────────────────────────
-router.post('/leads/bulk-action', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.post('/leads/bulk-action', bulkActionRateLimit, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { action, lead_ids, assigned_to } = req.body;

@@ -241,7 +241,7 @@ export function useVehiclesTab(props: VehiclesTabProps): VehiclesTabState {
       setVehicleModalOpen(false);
       setEditingVehicle(undefined);
       await fetchVehicles();
-    } catch (err) {
+    } catch (err: any) {
       const msg = err instanceof Error ? err.message : 'Failed to save vehicle';
       setVehicleSubmitError(msg);
       setError(msg);

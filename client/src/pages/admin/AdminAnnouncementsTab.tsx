@@ -82,7 +82,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
     try {
       const data = await apiFetch<Announcement[]>('/admin/announcements/all');
       setAnnouncements(data || []);
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to load announcements');
     } finally {
       setLoading(false);
@@ -127,7 +127,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
       setShowForm(false);
       setEditing(null);
       await fetchAnnouncements();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to save announcement');
     } finally {
       setSubmitting(false);
@@ -141,7 +141,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
       await apiFetch(`/admin/announcements/${deleteId}`, { method: 'DELETE' });
       setDeleteId(null);
       await fetchAnnouncements();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to delete announcement');
     } finally {
       setDeleteLoading(false);
@@ -155,7 +155,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
         body: JSON.stringify({ is_active: a.is_active ? 0 : 1 }),
       });
       await fetchAnnouncements();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to toggle announcement');
     }
   };

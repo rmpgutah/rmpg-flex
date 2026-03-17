@@ -50,7 +50,7 @@ function screenPersonOfac(personId: number, firstName: string, lastName: string)
         );
       } catch { /* notifications table may not exist */ }
     }
-  } catch (err) {
+  } catch (err: any) {
     console.warn('OFAC screening failed for person', personId, err);
   }
 }
@@ -2420,7 +2420,7 @@ router.get('/ncic-query', requireRole('admin', 'manager', 'supervisor', 'officer
         let utahResults: any[] = [];
         try {
           utahResults = await searchUtahWarrants(q as string);
-        } catch (err) {
+        } catch (err: any) {
           console.warn('[NCIC] Utah warrant search failed:', err);
         }
 

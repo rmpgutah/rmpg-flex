@@ -223,7 +223,7 @@ export default function DashboardPage() {
     try {
       const [dashboardRaw, activityRaw, bolosRaw, warrantsRaw] = await Promise.all([
         apiFetch<DashboardApiResponse>('/reports/dashboard'),
-        apiFetch<{ data: ActivityApiEntry[] }>('/comms/activity-feed?limit=20').then(r => r.data),
+        apiFetch<{ data: ActivityApiEntry[] }>('/comms/activity-feed?limit=20').then(r => r?.data ?? []),
         apiFetch<BoloApiEntry[]>('/comms/bolos/active'),
         apiFetch<any>('/warrants?status=active&per_page=1').catch(() => ({ pagination: { total: 0 } })),
       ]);
@@ -237,7 +237,7 @@ export default function DashboardPage() {
           .map(mapBoloEntry)
       );
       setActiveWarrants(warrantsRaw?.pagination?.total ?? warrantsRaw?.total ?? 0);
-    } catch (err) {
+    } catch (err: any) {
       if (!options?.silent) {
         console.error('Dashboard fetch error:', err);
         setError(err instanceof Error ? err.message : 'Failed to load dashboard');

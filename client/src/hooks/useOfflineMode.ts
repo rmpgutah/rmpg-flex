@@ -174,7 +174,7 @@ export function useOfflineMode() {
           }));
           setBrowserInitialized(true);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.warn('[OFFLINE] Browser offline init failed:', err);
       }
     }

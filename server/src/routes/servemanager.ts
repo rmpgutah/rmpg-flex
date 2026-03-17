@@ -98,7 +98,7 @@ function ensureSmTables(): void {
   initSmTables();
   smTablesReady = true;
 }
-router.use((_req, _res, next) => { try { ensureSmTables(); } catch (err) { console.error('[ServeManager] Table init failed:', err); } next(); });
+router.use((_req, _res, next) => { try { ensureSmTables(); } catch (err: any) { console.error('[ServeManager] Table init failed:', err?.message || 'Unknown error'); } next(); });
 
 // ============================================================
 // Helpers
@@ -342,7 +342,7 @@ router.get('/jobs', requireRole('admin', 'manager', 'supervisor', 'officer'), as
 
     // Cache mode
     const parsedPage = parseInt(String(page), 10);
-    const pageNum = Math.max(1, isNaN(parsedPage) ? 1 : parsedPage);
+    const pageNum = Math.min(10000, Math.max(1, isNaN(parsedPage) ? 1 : parsedPage));
     const parsedPerPage = parseInt(String(per_page), 10);
     const limit = Math.min(100, Math.max(1, isNaN(parsedPerPage) ? 25 : parsedPerPage));
     const offset = (pageNum - 1) * limit;

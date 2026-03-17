@@ -161,7 +161,7 @@ async function getAccessToken(): Promise<string | null> {
       expiresAt: Date.now() + (data.expires_in * 1000),
     };
     return data.access_token;
-  } catch (err) {
+  } catch (err: any) {
     cachedToken = null;
     throw err;
   }

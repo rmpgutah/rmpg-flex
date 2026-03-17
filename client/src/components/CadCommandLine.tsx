@@ -112,7 +112,7 @@ export default function CadCommandLine({ context, onAction }: CadCommandLineProp
       if (result.action.type === 'show_help') {
         setIsExpanded(true);
       }
-    } catch (err) {
+    } catch (err: any) {
       setOutput({ text: `Error: ${err}`, success: false });
       playTone('error');
     }

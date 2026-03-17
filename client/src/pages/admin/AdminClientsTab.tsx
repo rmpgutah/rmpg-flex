@@ -166,7 +166,7 @@ export default function AdminClientsTab({
       const mapped = mapClientRowToClient(updated as any);
       setClients((prev) => prev.map((c) => c.id === sc.id ? mapped : c));
       setSelectedClient(mapped);
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to save client');
     } finally {
       setClientSaving(false);

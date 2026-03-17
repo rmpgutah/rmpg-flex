@@ -74,7 +74,7 @@ export function PersonClientLinks({ personId, personName }: PersonClientLinksPro
       setLoading(true);
       const data = await apiFetch(`/records/persons/${personId}/clients`) as ClientPersonLink[];
       setLinks(data || []);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load person-client links:', err);
     } finally {
       setLoading(false);
@@ -87,7 +87,7 @@ export function PersonClientLinks({ personId, personName }: PersonClientLinksPro
     try {
       await apiFetch(`/records/client-persons/${linkId}`, { method: 'DELETE' });
       fetchLinks();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to remove link:', err);
     }
   };
@@ -176,7 +176,7 @@ export function ClientPersonLinks({ clientId, clientName }: ClientPersonLinksPro
       setLoading(true);
       const data = await apiFetch(`/records/clients/${clientId}/persons`) as ClientPersonLink[];
       setLinks(data || []);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load client-person links:', err);
     } finally {
       setLoading(false);
@@ -189,7 +189,7 @@ export function ClientPersonLinks({ clientId, clientName }: ClientPersonLinksPro
     try {
       await apiFetch(`/records/client-persons/${linkId}`, { method: 'DELETE' });
       fetchLinks();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to remove link:', err);
     }
   };
@@ -312,7 +312,7 @@ function AddClientPersonLinkForm({ personId, clientId, onLinked, onCancel }: Add
           const data = await apiFetch(`/records/persons/search?q=${encodeURIComponent(searchQuery)}`) as any[];
           setSearchResults((Array.isArray(data) ? data : []).slice(0, 10));
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('Search failed:', err);
       } finally {
         setSearching(false);

@@ -88,7 +88,7 @@ function loadBeats(): BeatFeature[] {
     beatFeatures = features;
     console.log(`[geofence] Loaded ${features.length} beat features`);
     return beatFeatures;
-  } catch (err) {
+  } catch (err: any) {
     console.error('[geofence] Failed to load beat.geojson:', err);
     beatFeatures = [];
     return beatFeatures;

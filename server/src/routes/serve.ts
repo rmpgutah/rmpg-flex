@@ -60,7 +60,7 @@ router.get('/stats/summary', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Re
       mileage_today: 0,
     });
   } catch (err: any) {
-    console.error('[SERVE] Stats error:', err);
+    console.error('[SERVE] Stats error:', err?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to fetch stats' });
   }
 });
@@ -96,7 +96,7 @@ router.get('/routes/:date', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Req
 
     res.json(route);
   } catch (err: any) {
-    console.error('[SERVE] Route fetch error:', err);
+    console.error('[SERVE] Route fetch error:', err?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to fetch route' });
   }
 });
@@ -136,6 +136,7 @@ router.post('/routes', requireRole(...WRITE_ROLES), (req: Request, res: Response
         notes ?? null, now, existing.id,
       );
       const updated = db.prepare('SELECT * FROM serve_routes WHERE id = ?').get(existing.id);
+      broadcast("serve", "serve_route_updated", updated);
       res.json(updated);
     } else {
       const info = db.prepare(`
@@ -149,10 +150,11 @@ router.post('/routes', requireRole(...WRITE_ROLES), (req: Request, res: Response
         notes ?? null, now, now,
       );
       const created = db.prepare('SELECT * FROM serve_routes WHERE id = ?').get(info.lastInsertRowid);
+      broadcast("serve", "serve_route_created", created);
       res.status(201).json(created);
     }
   } catch (err: any) {
-    console.error('[SERVE] Route upsert error:', err);
+    console.error('[SERVE] Route upsert error:', err?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to save route' });
   }
 });
@@ -227,7 +229,7 @@ router.post('/sync-from-sm', requireRole('admin', 'manager', 'supervisor'), (req
 
     res.json({ imported: imported.length, jobs: imported });
   } catch (err: any) {
-    console.error('[SERVE] SM sync error:', err);
+    console.error('[SERVE] SM sync error:', err?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to sync from ServeManager' });
   }
 });
@@ -248,6 +250,16 @@ router.put('/reorder', requireRole(...WRITE_ROLES), (req: Request, res: Response
       return;
     }
 
+    // Validate each item has numeric id and sort_order within bounds
+    for (const item of order) {
+      if (!item || typeof item.id !== 'number' || !Number.isInteger(item.id) || item.id < 1 ||
+          typeof item.sort_order !== 'number' || !Number.isInteger(item.sort_order) ||
+          item.sort_order < 0 || item.sort_order > 10000) {
+        res.status(400).json({ error: 'Each item must have integer id (>0) and sort_order (0-10000)' });
+        return;
+      }
+    }
+
     const stmt = db.prepare('UPDATE serve_queue SET sort_order = ?, updated_at = ? WHERE id = ?');
     const now = localNow();
 
@@ -261,7 +273,7 @@ router.put('/reorder', requireRole(...WRITE_ROLES), (req: Request, res: Response
     broadcast('serve', 'serve_reordered', { count: order.length });
     res.json({ success: true, updated: order.length });
   } catch (err: any) {
-    console.error('[SERVE] Reorder error:', err);
+    console.error('[SERVE] Reorder error:', err?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to reorder' });
   }
 });
@@ -275,14 +287,31 @@ router.get('/', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Request, res: R
   try {
     const db = getDb();
     const parsedOid = req.query.officer_id ? Number(req.query.officer_id) : null;
-    const officerId = (parsedOid != null && !isNaN(parsedOid)) ? parsedOid : req.user!.userId;
+    const officerId = (parsedOid != null && !isNaN(parsedOid) && parsedOid > 0 && Number.isInteger(parsedOid)) ? parsedOid : req.user!.userId;
+
+    // IDOR protection: only supervisors+ can view other officers' queues
+    if (officerId !== req.user!.userId && !['admin', 'manager', 'supervisor', 'dispatcher'].includes(req.user!.role)) {
+      res.status(403).json({ error: 'You can only view your own serve queue' });
+      return;
+    }
+
     const date = req.query.date as string || localToday();
+    // Validate date format
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD.' });
+      return;
+    }
     const status = req.query.status as string | undefined;
+    const VALID_SERVE_STATUSES = ['pending', 'in_progress', 'attempted', 'served', 'failed', 'skipped', 'cancelled'];
 
     let sql = 'SELECT * FROM serve_queue WHERE officer_id = ? AND serve_date = ?';
     const params: any[] = [officerId, date];
 
     if (status) {
+      if (!VALID_SERVE_STATUSES.includes(status)) {
+        res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_SERVE_STATUSES.join(', ')}` });
+        return;
+      }
       sql += ' AND status = ?';
       params.push(status);
     }
@@ -292,7 +321,7 @@ router.get('/', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Request, res: R
     const rows = db.prepare(sql).all(...params);
     res.json(rows);
   } catch (err: any) {
-    console.error('[SERVE] List error:', err);
+    console.error('[SERVE] List error:', err?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to list serve queue' });
   }
 });
@@ -328,8 +357,8 @@ router.post('/', requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
     `).run(
       sm_job_id ?? null, officer_id ?? req.user!.userId,
       serve_date ?? localToday(),
-      recipient_name ?? '', recipient_address ?? '', recipient_city ?? '',
-      recipient_state ?? '', recipient_zip ?? '', recipient_lat ?? null, recipient_lng ?? null,
+      (recipient_name || '').trim(), (recipient_address || '').trim(), (recipient_city || '').trim(),
+      (recipient_state || '').trim(), (recipient_zip || '').trim(), recipient_lat ?? null, recipient_lng ?? null,
       document_type ?? '', case_number ?? '', court_name ?? '', jurisdiction ?? '',
       client_name ?? '', attorney_name ?? '', priority ?? 'normal',
       time_window ?? null, deadline ?? null, max_attempts ?? 3,
@@ -338,12 +367,12 @@ router.post('/', requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
 
     const id = info.lastInsertRowid;
     const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(id);
-    auditLog(req, 'CREATE', 'serve_queue', id, `Created serve job for ${recipient_name || 'unknown'}`);
+    auditLog(req, 'CREATE', 'serve_queue', String(id), `Created serve job for ${recipient_name || 'unknown'}`);
     broadcast('serve', 'serve_created', job);
 
     res.status(201).json(job);
   } catch (err: any) {
-    console.error('[SERVE] Create error:', err);
+    console.error('[SERVE] Create error:', err?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to create serve job' });
   }
 });
@@ -379,7 +408,7 @@ router.get('/:id', validateParamId, requireRole(...WRITE_ROLES, 'dispatcher'), (
 
     res.json({ ...job, attempts, skipTraces, linkedCall });
   } catch (err: any) {
-    console.error('[SERVE] Get error:', err);
+    console.error('[SERVE] Get error:', err?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to fetch serve job' });
   }
 });
@@ -429,7 +458,7 @@ router.put('/:id', validateParamId, requireRole(...WRITE_ROLES), (req: Request, 
 
     res.json(updated);
   } catch (err: any) {
-    console.error('[SERVE] Update error:', err);
+    console.error('[SERVE] Update error:', err?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to update serve job' });
   }
 });
@@ -474,7 +503,7 @@ router.post('/:id/attempt', validateParamId, requireRole(...WRITE_ROLES), (req: 
     }
 
     // Atomic: insert attempt + update job status in one transaction
-    let attemptId: number | bigint;
+    let attemptId: number | bigint = 0;
     db.transaction(() => {
       const attemptInfo = db.prepare(`
         INSERT INTO serve_attempts (
@@ -572,7 +601,7 @@ router.post('/:id/attempt', validateParamId, requireRole(...WRITE_ROLES), (req: 
 
     res.status(201).json({ attempt, job: updatedJob, dueDiligenceComplete });
   } catch (err: any) {
-    console.error('[SERVE] Attempt error:', err);
+    console.error('[SERVE] Attempt error:', err?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to record attempt' });
   }
 });
@@ -656,7 +685,7 @@ router.post('/:id/skip-trace', validateParamId, requireRole(...WRITE_ROLES), asy
 
     res.json({ trace, addresses });
   } catch (err: any) {
-    console.error('[SERVE] Skip trace error:', err);
+    console.error('[SERVE] Skip trace error:', err?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to run skip trace' });
   }
 });

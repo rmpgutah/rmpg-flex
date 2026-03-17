@@ -135,7 +135,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
       setLoading(true);
       const data = await apiFetch(`/records/persons/${personId}/criminal-history`) as CriminalRecord[];
       setRecords(data || []);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load criminal history:', err);
     } finally {
       setLoading(false);
@@ -157,7 +157,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
       setEditingId(null);
       setForm({ ...EMPTY_FORM });
       await fetchRecords();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Save criminal history failed:', err);
     } finally {
       setSaving(false);
@@ -188,7 +188,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
     try {
       await apiFetch(`/records/criminal-history/${id}`, { method: 'DELETE' });
       await fetchRecords();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Delete criminal history failed:', err);
     }
   };

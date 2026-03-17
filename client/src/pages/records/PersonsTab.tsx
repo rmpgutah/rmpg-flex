@@ -310,7 +310,7 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
           lastFetchedPersonId.current = savedId;
         } catch { /* keep existing selection */ }
       }
-    } catch (err) {
+    } catch (err: any) {
       const msg = err instanceof Error ? err.message : 'Failed to save person';
       setPersonSubmitError(msg);
       setError(msg);

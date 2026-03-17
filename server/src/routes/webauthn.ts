@@ -526,9 +526,9 @@ router.post('/authenticate-verify', mfaRateLimit, async (req: Request, res: Resp
 
     // Log activity
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'user_login_webauthn', 'user', ?, 'Security key 2FA login completed', ?)
-    `).run(user.id, user.id, ip);
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'user_login_webauthn', 'user', ?, 'Security key 2FA login completed', ?, ?)
+    `).run(user.id, user.id, ip, localNow());
 
     db.prepare(`
       UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login_at = ? WHERE id = ?

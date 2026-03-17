@@ -599,7 +599,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   const firstCallSign = data.trails[0]?.call_sign || 'ALL';
   const suffix = data.total_units === 1 ? `_${firstCallSign}` : '';
   doc.save(`RMPG_Patrol_Tracking${suffix}_${dateStr}.pdf`);
-  } catch (err) {
+  } catch (err: any) {
     console.error('Patrol tracking PDF generation failed:', err);
     throw new Error(`Failed to generate patrol tracking PDF: ${err instanceof Error ? err.message : 'Unknown error'}`);
   }

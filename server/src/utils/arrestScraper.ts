@@ -815,13 +815,13 @@ function scheduleNextSync(): void {
         console.log(`[Arrest Sync] Recovered after ${consecutiveFailures} consecutive failure(s)`);
       }
       consecutiveFailures = 0;
-    } catch (err) {
+    } catch (err: any) {
       consecutiveFailures++;
       const nextDelay = getBackoffMs();
 
       if (consecutiveFailures <= 3) {
         // First few failures: log normally
-        console.error('[Arrest Sync] Scheduled sync failed:', (err as Error).message);
+        console.error('[Arrest Sync] Scheduled sync failed:', err?.message || "Unknown error");
         console.log(`[Arrest Sync] Next retry in ${formatInterval(nextDelay)} (failure #${consecutiveFailures})`);
       } else if (consecutiveFailures === DAILY_CHECK_THRESHOLD) {
         // Threshold: log once that we're switching to daily checks
@@ -888,9 +888,9 @@ export function scheduleArrestSync(): void {
         const status = getArrestSyncStatus();
         console.log(`[Arrest Sync] Data is current (${status.recordsCount} records, last sync: ${status.lastSync})`);
       }
-    } catch (err) {
+    } catch (err: any) {
       consecutiveFailures++;
-      console.error(`[Arrest Sync] Initial sync failed — next retry in ${formatInterval(getBackoffMs())}:`, (err as Error).message);
+      console.error(`[Arrest Sync] Initial sync failed — next retry in ${formatInterval(getBackoffMs())}:`, err?.message || "Unknown error");
     }
 
     scheduleNextSync();

@@ -51,7 +51,7 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
     try {
       const data = await apiFetch<Department[]>('/admin/departments');
       setDepartments(data || []);
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to load departments');
     } finally {
       setLoading(false);
@@ -100,7 +100,7 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
       setShowForm(false);
       setEditing(null);
       await fetchDepartments();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to save department');
     } finally {
       setSubmitting(false);
@@ -114,7 +114,7 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
       await apiFetch(`/admin/departments/${deleteTarget.id}`, { method: 'DELETE' });
       setDeleteTarget(null);
       await fetchDepartments();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to delete department');
     } finally {
       setDeleteLoading(false);

@@ -29,11 +29,11 @@ function classifyServiceWindow(isoTimestamp: string): { window: ServiceWindow; i
 }
 
 /** Safely coerce a value to SQLite integer boolean (1/0).
- *  Handles string "false"/"0" correctly (JS truthy would be wrong). */
+ *  Only accepts explicit boolean-like values to prevent accidental truthy coercion
+ *  (e.g., objects, arrays, or random strings would all incorrectly return 1). */
 function toBoolInt(val: any): number {
-  if (val === undefined || val === null) return 0;
-  if (typeof val === 'string') return val === 'false' || val === '0' || val === '' ? 0 : 1;
-  return val ? 1 : 0;
+  if (val === true || val === 'true' || val === '1' || val === 1) return 1;
+  return 0;
 }
 
 const router = Router();
@@ -178,22 +178,35 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       return;
     }
 
-    // Validate numeric fields to prevent type coercion issues
-    if (latitude != null && (isNaN(Number(latitude)) || Math.abs(Number(latitude)) > 90)) {
-      res.status(400).json({ error: 'Invalid latitude value' });
-      return;
+    // Validate numeric fields — use parseFloat + finite check to reject
+    // Infinity, NaN, and non-numeric strings that Number() would accept
+    if (latitude != null) {
+      const lat = parseFloat(String(latitude));
+      if (!isFinite(lat) || lat < -90 || lat > 90) {
+        res.status(400).json({ error: 'Invalid latitude value' });
+        return;
+      }
     }
-    if (longitude != null && (isNaN(Number(longitude)) || Math.abs(Number(longitude)) > 180)) {
-      res.status(400).json({ error: 'Invalid longitude value' });
-      return;
+    if (longitude != null) {
+      const lng = parseFloat(String(longitude));
+      if (!isFinite(lng) || lng < -180 || lng > 180) {
+        res.status(400).json({ error: 'Invalid longitude value' });
+        return;
+      }
     }
-    if (req.body.num_subjects != null && (isNaN(Number(req.body.num_subjects)) || Number(req.body.num_subjects) < 0)) {
-      res.status(400).json({ error: 'Invalid num_subjects value' });
-      return;
+    if (req.body.num_subjects != null) {
+      const n = parseInt(String(req.body.num_subjects), 10);
+      if (!isFinite(n) || n < 0 || n > 9999) {
+        res.status(400).json({ error: 'Invalid num_subjects value' });
+        return;
+      }
     }
-    if (req.body.num_victims != null && (isNaN(Number(req.body.num_victims)) || Number(req.body.num_victims) < 0)) {
-      res.status(400).json({ error: 'Invalid num_victims value' });
-      return;
+    if (req.body.num_victims != null) {
+      const n = parseInt(String(req.body.num_victims), 10);
+      if (!isFinite(n) || n < 0 || n > 9999) {
+        res.status(400).json({ error: 'Invalid num_victims value' });
+        return;
+      }
     }
 
     // Normalize and validate priority against CHECK constraint (P1, P2, P3, P4)
@@ -377,9 +390,9 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       // Log activity
       const isHistorical = !!customCreatedAt;
       db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'call_created', 'call', ?, ?, ?)
-      `).run(req.user!.userId, call.id, `${isHistorical ? 'Historical entry: ' : 'Created '}${callNumber} (Case ${caseNumber}): ${incident_type}`, req.ip || 'unknown');
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+        VALUES (?, 'call_created', 'call', ?, ?, ?, ?)
+      `).run(req.user!.userId, call.id, `${isHistorical ? 'Historical entry: ' : 'Created '}${callNumber} (Case ${caseNumber}): ${incident_type}`, req.ip || 'unknown', localNow());
 
       return call;
     });
@@ -799,9 +812,9 @@ router.put('/calls/:id', validateParamId, requireRole('admin', 'manager', 'super
 
     // Activity log for call update
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'call_updated', 'call', ?, ?, ?)
-    `).run(req.user!.userId, req.params.id, `Updated call ${call.call_number}: ${updates.map(u => u.split(' = ')[0]).join(', ')}`, req.ip || 'unknown');
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'call_updated', 'call', ?, ?, ?, ?)
+    `).run(req.user!.userId, req.params.id, `Updated call ${call.call_number}: ${updates.map(u => u.split(' = ')[0]).join(', ')}`, req.ip || 'unknown', localNow());
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
 
@@ -923,9 +936,9 @@ router.post('/calls/:id/redispatch', validateParamId, requireRole('admin', 'mana
 
     // Activity log
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'call_redispatched', 'call', ?, ?, ?)
-    `).run(req.user!.userId, req.params.id, `Re-dispatched PSO call ${call.call_number} — ${ordinal(newAttempt)} visit${scheduled_note ? `. ${scheduled_note}` : ''}`, req.ip || 'unknown');
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'call_redispatched', 'call', ?, ?, ?, ?)
+    `).run(req.user!.userId, req.params.id, `Re-dispatched PSO call ${call.call_number} — ${ordinal(newAttempt)} visit${scheduled_note ? `. ${scheduled_note}` : ''}`, req.ip || 'unknown', localNow());
 
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
     // Attach visit history to the response

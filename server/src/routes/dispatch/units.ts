@@ -52,9 +52,9 @@ router.post('/units', requireRole('admin', 'manager', 'dispatcher'), (req: Reque
     const unit = db.prepare('SELECT u.*, usr.full_name as officer_name FROM units u LEFT JOIN users usr ON u.officer_id = usr.id WHERE u.id = ?').get(result.lastInsertRowid);
     if (!unit) { res.status(500).json({ error: 'Failed to retrieve created unit' }); return; }
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'unit_created', 'unit', ?, ?, ?)`).run(
-      req.user!.userId, result.lastInsertRowid, `Created unit: ${call_sign}`, req.ip || 'unknown');
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'unit_created', 'unit', ?, ?, ?, ?)`).run(
+      req.user!.userId, result.lastInsertRowid, `Created unit: ${call_sign}`, req.ip || 'unknown', localNow());
 
     broadcastUnitUpdate({ action: 'unit_created', unit });
     res.status(201).json(unit);
@@ -125,9 +125,9 @@ router.put('/units/:id', validateParamId, requireRole('admin', 'manager', 'dispa
 
     const updated = db.prepare('SELECT u.*, usr.full_name as officer_name FROM units u LEFT JOIN users usr ON u.officer_id = usr.id WHERE u.id = ?').get(req.params.id);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'unit_updated', 'unit', ?, ?, ?)`).run(
-      req.user!.userId, req.params.id, `Updated unit: ${(updated as any)?.call_sign || req.params.id}`, req.ip || 'unknown');
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'unit_updated', 'unit', ?, ?, ?, ?)`).run(
+      req.user!.userId, req.params.id, `Updated unit: ${(updated as any)?.call_sign || req.params.id}`, req.ip || 'unknown', localNow());
 
     if (updated) broadcastUnitUpdate({ action: 'unit_updated', unit: updated });
     res.json(updated);
@@ -155,9 +155,9 @@ router.delete('/units/:id', validateParamId, requireRole('admin', 'manager'), (r
 
     db.prepare('DELETE FROM units WHERE id = ?').run(req.params.id);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'unit_deleted', 'unit', ?, ?, ?)`).run(
-      req.user!.userId, req.params.id, `Deleted unit: ${unit.call_sign}`, req.ip || 'unknown');
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'unit_deleted', 'unit', ?, ?, ?, ?)`).run(
+      req.user!.userId, req.params.id, `Deleted unit: ${unit.call_sign}`, req.ip || 'unknown', localNow());
 
     broadcastUnitUpdate({ action: 'unit_deleted', unit_id: req.params.id });
     res.json({ success: true });
@@ -219,9 +219,9 @@ router.put('/units/:id/status', validateParamId, requireRole('admin', 'manager',
 
     // Log activity
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'status_change', 'unit', ?, ?, ?)
-    `).run(req.user!.userId, unit.id, `${unit.call_sign} status: ${status || 'location update'}`, req.ip || 'unknown');
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'status_change', 'unit', ?, ?, ?, ?)
+    `).run(req.user!.userId, unit.id, `${unit.call_sign} status: ${status || 'location update'}`, req.ip || 'unknown', localNow());
 
     const updated = db.prepare(`
       SELECT u.*, usr.full_name as officer_name

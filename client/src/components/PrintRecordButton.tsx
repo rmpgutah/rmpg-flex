@@ -99,7 +99,7 @@ export default function PrintRecordButton({
           const idPhoto = await fetchImageFromUrl(data.id_image_url, 'ID Photo');
           if (idPhoto) enriched.id_photo = idPhoto;
         }
-      } catch (err) {
+      } catch (err: any) {
         console.warn('[PrintRecordButton] Image fetch failed, proceeding without images:', err);
       }
     }
@@ -121,7 +121,7 @@ export default function PrintRecordButton({
           enriched.citations = history.citations || [];
           enriched.bolo_active = history.bolo_active || false;
         }
-      } catch (err) {
+      } catch (err: any) {
         console.warn('[PrintRecordButton] System history fetch failed, proceeding without history:', err);
       }
 
@@ -131,7 +131,7 @@ export default function PrintRecordButton({
         if (criminal && criminal.length > 0) {
           enriched.criminal_records = criminal;
         }
-      } catch (err) {
+      } catch (err: any) {
         console.warn('[PrintRecordButton] Criminal history fetch failed, proceeding without:', err);
       }
     }
@@ -146,7 +146,7 @@ export default function PrintRecordButton({
         if (trail?.points?.length > 0) {
           enriched.breadcrumb_trail = trail;
         }
-      } catch (err) {
+      } catch (err: any) {
         console.warn('[PrintRecordButton] Breadcrumb trail fetch failed, proceeding without GPS data:', err);
       }
     }
@@ -180,7 +180,7 @@ export default function PrintRecordButton({
       setLoading(true);
       const enrichedData = await enrichWithImages(recordData);
       await downloadRecordPdf(recordType, enrichedData, identifier);
-    } catch (err) {
+    } catch (err: any) {
       console.error('[PrintRecordButton] PDF generation failed:', err);
     } finally {
       setLoading(false);
@@ -197,7 +197,7 @@ export default function PrintRecordButton({
       const blobUrl = await generateRecordPdfBlobUrl(recordType, enrichedData);
       setPdfBlobUrl(blobUrl);
       setViewerOpen(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error('[PrintRecordButton] PDF preview generation failed:', err);
     } finally {
       setLoading(false);
@@ -213,7 +213,7 @@ export default function PrintRecordButton({
         setLoading(true);
         const enrichedData = await enrichWithImages(recordData, savedSignature);
         await downloadRecordPdf(recordType, enrichedData, identifier);
-      } catch (err) {
+      } catch (err: any) {
         console.error('[PrintRecordButton] Signed PDF generation failed:', err);
       } finally {
         setLoading(false);
@@ -243,7 +243,7 @@ export default function PrintRecordButton({
       setLoading(true);
       const enrichedData = await enrichWithImages(recordData, dataUrl);
       await downloadRecordPdf(recordType, enrichedData, identifier);
-    } catch (err) {
+    } catch (err: any) {
       console.error('[PrintRecordButton] Signed PDF generation failed:', err);
     } finally {
       setLoading(false);

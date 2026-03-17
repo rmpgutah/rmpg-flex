@@ -48,6 +48,10 @@ export function usePanicAudio() {
   // Guard against double-start (mic/timer leak)
   const isBroadcastingRef = useRef(false);
 
+  // Separate refs for response mode to prevent overwriting broadcast refs
+  const responseRecorderRef = useRef<MediaRecorder | null>(null);
+  const responseStreamRef = useRef<MediaStream | null>(null);
+
   // Stream players for incoming audio (separate for panic vs. response)
   const panicPlayerRef = useRef<StreamPlayer | null>(null);
   const responsePlayerRef = useRef<StreamPlayer | null>(null);
@@ -128,7 +132,7 @@ export function usePanicAudio() {
         stopBroadcastRef.current();
       }, BROADCAST_DURATION * 1000);
 
-    } catch (err) {
+    } catch (err: any) {
       // Clean up any partially-acquired resources (mic stream, timers)
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
@@ -201,14 +205,14 @@ export function usePanicAudio() {
           autoGainControl: true,
         },
       });
-      streamRef.current = stream;
+      responseStreamRef.current = stream;
 
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
         : 'audio/webm';
 
       const recorder = new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 16000 });
-      mediaRecorderRef.current = recorder;
+      responseRecorderRef.current = recorder;
 
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
@@ -231,7 +235,7 @@ export function usePanicAudio() {
 
       recorder.start(500);
       setState(prev => ({ ...prev, isResponding: true, error: null }));
-    } catch (err) {
+    } catch (err: any) {
       setState(prev => ({
         ...prev,
         error: err instanceof Error ? err.message : 'Failed to access microphone',
@@ -241,12 +245,12 @@ export function usePanicAudio() {
 
   // ─── Stop responding ────────────────────────────────────────
   const stopResponse = useCallback(() => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
+    if (responseRecorderRef.current && responseRecorderRef.current.state !== 'inactive') {
+      responseRecorderRef.current.stop();
     }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
+    if (responseStreamRef.current) {
+      responseStreamRef.current.getTracks().forEach(track => track.stop());
+      responseStreamRef.current = null;
     }
     mediaRecorderRef.current = null;
     setState(prev => ({ ...prev, isResponding: false }));

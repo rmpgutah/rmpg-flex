@@ -108,6 +108,14 @@ export function setActiveFormKey(key: string) { activeFormKey = key; }
 let activeCaseNumber = '';
 export function setActiveCaseNumber(cn: string) { activeCaseNumber = cn; }
 
+/** Reset all module-level PDF generation state. Call in finally blocks to prevent cross-contamination. */
+export function resetPdfGenerationState() {
+  generationTimestamp = '';
+  activeBranding = { ...DEFAULT_PDF_BRANDING };
+  activeFormKey = '';
+  activeCaseNumber = '';
+}
+
 /** Load seal + logo images for PDF embedding. Call before generating PDFs. */
 export async function loadPdfAssets(): Promise<void> {
   if (cachedSeal === null) {
@@ -3055,7 +3063,7 @@ export async function downloadPdfReport(reportType: PdfReportType, data: Inciden
     setActiveOfficerSig(undefined);
     const filename = `${data.incident_number || 'report'}_${reportType}.pdf`;
     doc.save(filename);
-  } catch (err) {
+  } catch (err: any) {
     setActiveOfficerSig(undefined);
     console.error('PDF generation failed:', err);
     throw new Error(`Failed to generate ${reportType} PDF: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -3085,7 +3093,7 @@ export async function generatePdfReportBlobUrl(reportType: PdfReportType, data: 
     setActiveOfficerSig(undefined);
     const blob = doc.output('blob');
     return URL.createObjectURL(blob);
-  } catch (err) {
+  } catch (err: any) {
     setActiveOfficerSig(undefined);
     console.error('PDF preview generation failed:', err);
     throw new Error(`Failed to generate ${reportType} PDF preview: ${err instanceof Error ? err.message : 'Unknown error'}`);

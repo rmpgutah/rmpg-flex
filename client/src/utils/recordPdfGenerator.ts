@@ -30,6 +30,7 @@ import {
   loadPdfAssets,
   setActiveFormKey,
   setActiveCaseNumber,
+  resetPdfGenerationState,
   addAttachmentsSection,
   addImageToPage,
 } from './pdfGenerator';
@@ -2814,11 +2815,13 @@ export async function downloadRecordPdf<T extends RecordPdfType>(
 
     const doc = generateRecordPdf(recordType, data);
     setActiveOfficerSignature(undefined); // clear after generation
+    resetPdfGenerationState();
     const id = identifier || 'record';
     const filename = `${id}_${recordType}.pdf`;
     doc.save(filename);
-  } catch (err) {
+  } catch (err: any) {
     setActiveOfficerSignature(undefined);
+    resetPdfGenerationState();
     console.error('Record PDF generation failed:', err);
     throw new Error(`Failed to generate ${recordType} PDF: ${err instanceof Error ? err.message : 'Unknown error'}`);
   }
@@ -2848,10 +2851,12 @@ export async function generateRecordPdfBlobUrl<T extends RecordPdfType>(
 
     const doc = generateRecordPdf(recordType, data);
     setActiveOfficerSignature(undefined); // clear after generation
+    resetPdfGenerationState();
     const blob = doc.output('blob');
     return URL.createObjectURL(blob);
-  } catch (err) {
+  } catch (err: any) {
     setActiveOfficerSignature(undefined);
+    resetPdfGenerationState();
     console.error('Record PDF preview generation failed:', err);
     throw new Error(`Failed to generate ${recordType} PDF preview: ${err instanceof Error ? err.message : 'Unknown error'}`);
   }

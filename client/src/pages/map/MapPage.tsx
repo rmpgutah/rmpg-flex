@@ -270,7 +270,7 @@ export default function MapPage() {
     try {
       const data = await apiFetch<Unit[]>('/dispatch/units');
       setUnits(data || []);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error fetching units:', err);
       setError('Failed to load units');
     }
@@ -280,7 +280,7 @@ export default function MapPage() {
     try {
       const data = await apiFetch<ActiveCall[]>('/dispatch/queue');
       setCalls(data || []);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error fetching calls:', err);
       setError('Failed to load active calls');
     }
@@ -290,7 +290,7 @@ export default function MapPage() {
     try {
       const data = await apiFetch<Property[]>('/records/properties');
       setProperties(data || []);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error fetching properties:', err);
       setError('Failed to load properties');
     }
@@ -1479,7 +1479,7 @@ export default function MapPage() {
       });
       // Refresh calls and units
       await Promise.all([fetchCalls(), fetchUnits()]);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to update call status from map:', err);
       addToast('Failed to update call status', 'error');
     }
@@ -1530,15 +1530,16 @@ export default function MapPage() {
           addressMarkerRef.current = null;
         }
 
-        // Create search result marker
+        // Create search result marker — uses textContent (not innerHTML) to prevent XSS
         const el = document.createElement('div');
         el.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;';
-        el.innerHTML = `
-          <div style="background:#3b82f6;color:#fff;font-size:9px;font-weight:900;padding:3px 8px;border:2px solid #fff;white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;max-width:200px;overflow:hidden;text-overflow:ellipsis;border-radius:2px;">
-            ${escapeHtml(description.split(',')[0])}
-          </div>
-          <div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid #3b82f6;"></div>
-        `;
+        const label = document.createElement('div');
+        label.style.cssText = "background:#3b82f6;color:#fff;font-size:9px;font-weight:900;padding:3px 8px;border:2px solid #fff;white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;max-width:200px;overflow:hidden;text-overflow:ellipsis;border-radius:2px;";
+        label.textContent = description.split(',')[0];
+        const arrow = document.createElement('div');
+        arrow.style.cssText = 'width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid #3b82f6;';
+        el.appendChild(label);
+        el.appendChild(arrow);
 
         addressMarkerRef.current = createMarker({
           map,

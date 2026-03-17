@@ -73,7 +73,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     }
 
     const parsedPage = parseInt(page as string, 10);
-    const pageNum = Math.max(1, isNaN(parsedPage) ? 1 : parsedPage);
+    const pageNum = Math.min(10000, Math.max(1, isNaN(parsedPage) ? 1 : parsedPage));
     const parsedPerPage = parseInt(per_page as string, 10);
     const perPageNum = Math.min(200, Math.max(1, isNaN(parsedPerPage) ? 25 : parsedPerPage));
     const offset = (pageNum - 1) * perPageNum;
@@ -485,6 +485,24 @@ router.get('/unified', requireRole('admin', 'manager', 'supervisor', 'officer', 
     const q = (req.query.q as string || '').trim();
     const limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 200);
     const offset = Math.max(0, Math.min(parseInt(req.query.offset as string, 10) || 0, 10000));
+
+    // Validate filter values against allowed sets
+    const VALID_WARRANT_STATUSES = ['all', 'active', 'served', 'recalled', 'quashed', 'expired', 'pending'];
+    const VALID_WARRANT_SOURCES = ['all', 'local', 'state', 'federal', 'ncic', 'manual'];
+    const VALID_WARRANT_TYPES = ['all', 'arrest', 'bench', 'search', 'civil', 'fugitive', 'other'];
+    const VALID_SEVERITIES = ['all', 'felony', 'misdemeanor', 'infraction'];
+    if (!VALID_WARRANT_STATUSES.includes(status)) {
+      res.status(400).json({ error: `Invalid status filter` }); return;
+    }
+    if (!VALID_WARRANT_SOURCES.includes(source)) {
+      res.status(400).json({ error: `Invalid source filter` }); return;
+    }
+    if (!VALID_WARRANT_TYPES.includes(type)) {
+      res.status(400).json({ error: `Invalid type filter` }); return;
+    }
+    if (!VALID_SEVERITIES.includes(severity)) {
+      res.status(400).json({ error: `Invalid severity filter` }); return;
+    }
 
     let whereClauses = ['w.archived_at IS NULL'];
     const params: any[] = [];

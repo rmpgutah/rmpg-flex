@@ -366,8 +366,8 @@ function extractWarrantsFromArrestRecords(): WarrantEntry[] {
         detail_url: '',
       });
     }
-  } catch (err) {
-    console.error('[Warrant Scraper] Arrest record extraction error:', (err as Error).message);
+  } catch (err: any) {
+    console.error('[Warrant Scraper] Arrest record extraction error:', err?.message || "Unknown error");
   }
 
   return entries;
@@ -716,8 +716,8 @@ function crossLinkWarrants(): void {
     if (linkedDob > 0 || linkedName > 0) {
       console.log(`[Warrant Scraper] Cross-linked ${linkedDob + linkedName} warrants (${linkedDob} DOB-verified, ${linkedName} name-only)`);
     }
-  } catch (err) {
-    console.error('[Warrant Scraper] Cross-link error:', (err as Error).message);
+  } catch (err: any) {
+    console.error('[Warrant Scraper] Cross-link error:', err?.message || "Unknown error");
   }
 }
 
@@ -811,8 +811,8 @@ async function syncSource(sourceKey: string): Promise<void> {
 
     console.log(`[Warrant Scraper] ${config.display_name}: ${result.records_found} found, ${result.inserted} new, ${result.updated} updated, ${result.cleared} cleared`);
 
-  } catch (err) {
-    const errMsg = (err as Error).message;
+  } catch (err: any) {
+    const errMsg = err?.message || "Unknown error";
     console.error(`[Warrant Scraper] ${config.display_name} error: ${errMsg}`);
 
     // Increment error counter
@@ -877,13 +877,13 @@ function scheduleSource(sourceKey: string): void {
 
   // Initial scrape
   syncSource(sourceKey).catch(err => {
-    console.error(`[Warrant Scraper] Initial scrape error for ${sourceKey}:`, (err as Error).message);
+    console.error(`[Warrant Scraper] Initial scrape error for ${sourceKey}:`, err?.message || "Unknown error");
   });
 
   // Schedule recurring
   const interval = setInterval(() => {
     syncSource(sourceKey).catch(err => {
-      console.error(`[Warrant Scraper] Scrape error for ${sourceKey}:`, (err as Error).message);
+      console.error(`[Warrant Scraper] Scrape error for ${sourceKey}:`, err?.message || "Unknown error");
     });
   }, intervalMs);
 

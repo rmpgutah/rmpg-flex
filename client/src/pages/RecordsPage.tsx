@@ -91,7 +91,7 @@ export default function RecordsPage() {
     try {
       const res = await apiFetch<{ data: Record<string, unknown>[]; pagination: unknown }>(`/records/persons?limit=100&archived=${showArchived}`);
       setPersons((Array.isArray(res?.data) ? res.data : []).map(mapDbPerson));
-    } catch (err) {
+    } catch (err: any) {
       if (!options?.silent) setError(err instanceof Error ? err.message : 'Failed to load persons');
     } finally {
       if (!options?.silent) setLoadingPersons(false);
@@ -103,7 +103,7 @@ export default function RecordsPage() {
     try {
       const res = await apiFetch<{ data: Record<string, unknown>[]; pagination: unknown }>(`/records/vehicles?limit=100&archived=${showArchived}`);
       setVehicles((Array.isArray(res?.data) ? res.data : []).map(mapDbVehicle));
-    } catch (err) {
+    } catch (err: any) {
       if (!options?.silent) setError(err instanceof Error ? err.message : 'Failed to load vehicles');
     } finally {
       if (!options?.silent) setLoadingVehicles(false);
@@ -115,7 +115,7 @@ export default function RecordsPage() {
     try {
       const res = await apiFetch<Record<string, unknown>[]>(`/records/properties?archived=${showArchived}`);
       setProperties((Array.isArray(res) ? res : []).map(mapDbProperty));
-    } catch (err) {
+    } catch (err: any) {
       if (!options?.silent) setError(err instanceof Error ? err.message : 'Failed to load properties');
     } finally {
       if (!options?.silent) setLoadingProperties(false);
@@ -192,7 +192,7 @@ export default function RecordsPage() {
       } else if (deleteTarget.type === 'evidence') {
         await fetchEvidence({ silent: true });
       }
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to delete record');
     } finally {
       setDeleting(false);
@@ -208,7 +208,7 @@ export default function RecordsPage() {
       else if (type === 'vehicles') { await fetchVehicles(); }
       else if (type === 'properties') { await fetchProperties(); }
       else if (type === 'evidence') { await fetchEvidence(); }
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to archive record');
     }
   };
@@ -220,7 +220,7 @@ export default function RecordsPage() {
       else if (type === 'vehicles') { await fetchVehicles(); }
       else if (type === 'properties') { await fetchProperties(); }
       else if (type === 'evidence') { await fetchEvidence(); }
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to unarchive record');
     }
   };

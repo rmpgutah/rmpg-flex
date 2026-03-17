@@ -87,7 +87,7 @@ export default function TrainingPage() {
       setRecords(recs || []);
       setRequirements(reqs || []);
       setOfficers((users || []).filter(u => u.status === 'active'));
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load training data:', err);
     } finally {
       if (mountedRef.current) setLoading(false);
@@ -108,7 +108,7 @@ export default function TrainingPage() {
       setShowRecordModal(false);
       setEditRecord(null);
       fetchData();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Save record error:', err);
     }
   };
@@ -118,7 +118,7 @@ export default function TrainingPage() {
     try {
       await apiFetch(`/personnel/training/${id}`, { method: 'DELETE' });
       fetchData();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Delete record error:', err);
     }
   };
@@ -134,7 +134,7 @@ export default function TrainingPage() {
       setShowRequirementModal(false);
       setEditRequirement(null);
       fetchData();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Save requirement error:', err);
     }
   };
@@ -144,7 +144,7 @@ export default function TrainingPage() {
     try {
       await apiFetch(`/personnel/training-requirements/${id}`, { method: 'DELETE' });
       fetchData();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Delete requirement error:', err);
     }
   };

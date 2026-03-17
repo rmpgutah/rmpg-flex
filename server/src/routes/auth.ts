@@ -186,9 +186,9 @@ function issueTokens(user: any, ip: string, userAgent: string, deviceFingerprint
   // Log the login activity
   const db = getDb();
   db.prepare(`
-    INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-    VALUES (?, 'user_login', 'user', ?, 'User logged in', ?)
-  `).run(user.id, user.id, ip);
+    INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+    VALUES (?, 'user_login', 'user', ?, 'User logged in', ?, ?)
+  `).run(user.id, user.id, ip, localNow());
 
   // ── Login IP anomaly detection ──────────────────────
   // Check if the user's last successful login was from a different IP within the last hour.
@@ -499,9 +499,9 @@ router.post('/login', authIpRateLimit, authRateLimit, async (req: Request, res: 
     // Log the login to activity log — must never block login
     try {
       db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'user_login', 'user', ?, 'User logged in', ?)
-      `).run(user.id, user.id, ip);
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+        VALUES (?, 'user_login', 'user', ?, 'User logged in', ?, ?)
+      `).run(user.id, user.id, ip, localNow());
     } catch { /* audit log failure must never prevent login */ }
 
     // Update login statistics
@@ -741,9 +741,9 @@ router.post('/logout', authenticateToken, (req: Request, res: Response) => {
     }
 
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'user_logout', 'user', ?, 'User logged out', ?)
-    `).run(req.user!.userId, req.user!.userId, req.ip || 'unknown');
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'user_logout', 'user', ?, 'User logged out', ?, ?)
+    `).run(req.user!.userId, req.user!.userId, req.ip || 'unknown', localNow());
 
     res.json({ message: 'Logged out successfully' });
   } catch (error: any) {
@@ -873,9 +873,9 @@ router.post('/logout-all', authenticateToken, (req: Request, res: Response) => {
 
     const ip = req.ip || 'unknown';
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'logout_all_sessions', 'user', ?, 'Revoked all active sessions', ?)
-    `).run(req.user!.userId, req.user!.userId, ip);
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'logout_all_sessions', 'user', ?, 'Revoked all active sessions', ?, ?)
+    `).run(req.user!.userId, req.user!.userId, ip, localNow());
 
     createSecurityNotification(
       req.user!.userId,
@@ -1009,7 +1009,7 @@ router.post('/change-password', passwordRateLimit, authenticateToken, async (req
     // Save to history
     addToPasswordHistory(user.id, user.password_hash);
 
-    const newHash = bcryptjs.hashSync(newPassword, 12);
+    const newHash = bcryptjs.hashSync(newPassword, config.security.bcryptRounds);
     const now = localNow();
 
     // Update password history: prepend old hash, keep last N
@@ -1019,17 +1019,17 @@ router.post('/change-password', passwordRateLimit, authenticateToken, async (req
 
     db.prepare(`
       UPDATE users SET password_hash = ?, must_change_password = 0, force_password_change = 0,
-        password_changed_at = ?, updated_at = ? WHERE id = ?
-    `).run(newHash, now, now, user.id);
+        password_changed_at = ?, updated_at = ?, password_history = ? WHERE id = ?
+    `).run(newHash, now, now, JSON.stringify(newHistory), user.id);
 
     // Set new password expiry
     try { setPasswordExpiry(user.id); } catch { /* ignore if column missing */ }
 
     // Log the password change
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'password_changed', 'user', ?, 'Password changed', ?)
-    `).run(user.id, user.id, ip);
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'password_changed', 'user', ?, 'Password changed', ?, ?)
+    `).run(user.id, user.id, ip, localNow());
 
     createSecurityNotification(
       user.id,
@@ -1492,9 +1492,9 @@ router.post('/verify-2fa', mfaRateLimit, (req: Request, res: Response) => {
 
     // Log activity
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'user_login_2fa', 'user', ?, '2FA login completed', ?)
-    `).run(user.id, user.id, ip);
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'user_login_2fa', 'user', ?, '2FA login completed', ?, ?)
+    `).run(user.id, user.id, ip, localNow());
 
     db.prepare(`
       UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login_at = ? WHERE id = ?
@@ -1567,9 +1567,9 @@ router.post('/unlock-account', authenticateToken, requireRole('admin'), (req: Re
     ).run(username);
 
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'account_unlocked', 'user', 0, ?, ?)
-    `).run(req.user!.userId, `Admin unlocked account: ${username}`, req.ip || 'unknown');
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'account_unlocked', 'user', 0, ?, ?, ?)
+    `).run(req.user!.userId, `Admin unlocked account: ${username}`, req.ip || 'unknown', localNow());
 
     res.json({
       success: true,
@@ -1683,9 +1683,9 @@ router.post('/totp/verify-setup', authenticateToken, mfaRateLimit, (req: Request
 
     // Log activity
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'totp_enabled', 'user', ?, 'Two-factor authentication enabled', ?)
-    `).run(user.id, user.id, req.ip || 'unknown');
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'totp_enabled', 'user', ?, 'Two-factor authentication enabled', ?, ?)
+    `).run(user.id, user.id, req.ip || 'unknown', localNow());
 
     res.json({ enabled: true, message: 'Two-factor authentication is now active.' });
   } catch (error: any) {
@@ -1729,9 +1729,9 @@ router.post('/totp/disable', authenticateToken, (req: Request, res: Response) =>
     `).run(localNow(), user.id);
 
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'totp_disabled', 'user', ?, 'Two-factor authentication disabled', ?)
-    `).run(user.id, user.id, req.ip || 'unknown');
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'totp_disabled', 'user', ?, 'Two-factor authentication disabled', ?, ?)
+    `).run(user.id, user.id, req.ip || 'unknown', localNow());
 
     res.json({ enabled: false, message: 'Two-factor authentication has been disabled.' });
   } catch (error: any) {
@@ -2418,7 +2418,7 @@ router.post('/login/change-password', passwordRateLimit, authenticateTempToken, 
     try { if (userPwHash) addToPasswordHistory(userId, userPwHash.password_hash); } catch { /* ignore */ }
 
     // Update password (cost factor 12 — consistent across all password operations)
-    const newHash = bcryptjs.hashSync(newPassword, 12);
+    const newHash = bcryptjs.hashSync(newPassword, config.security.bcryptRounds);
     db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0, force_password_change = 0, password_changed_at = ?, updated_at = ? WHERE id = ?')
       .run(newHash, localNow(), localNow(), userId);
 
@@ -2427,9 +2427,9 @@ router.post('/login/change-password', passwordRateLimit, authenticateTempToken, 
 
     // Log password change
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'password_changed', 'user', ?, 'Password changed during login', ?)
-    `).run(userId, userId, ip);
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'password_changed', 'user', ?, 'Password changed during login', ?, ?)
+    `).run(userId, userId, ip, localNow());
 
     createSecurityNotification(
       userId,

@@ -162,7 +162,7 @@ export function usePrivateCall() {
       // 200ms chunks — same as radio for consistent latency
       recorder.start(200);
       console.log('[PrivateCall] Audio stream started, mimeType:', mimeType);
-    } catch (err) {
+    } catch (err: any) {
       const message = err instanceof Error ? err.message : 'Microphone access denied';
       setError(
         message.includes('Permission denied')

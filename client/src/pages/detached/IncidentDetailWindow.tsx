@@ -23,18 +23,22 @@ export default function IncidentDetailWindow() {
 
   useEffect(() => {
     if (!id) return;
+    let cancelled = false;
     (async () => {
       try {
         const data = await apiFetch<any>(`/incidents/${id}`);
+        if (cancelled) return;
         setIncident(data);
         // Update window title
         document.title = `${data.incident_number} — RMPG Flex`;
       } catch (err: any) {
-        setError(err.message || 'Failed to load incident');
+        if (cancelled) return;
+        setError(err?.message || 'Failed to load incident');
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
+    return () => { cancelled = true; };
   }, [id]);
 
   const handlePdfExport = async (reportType: PdfReportType) => {

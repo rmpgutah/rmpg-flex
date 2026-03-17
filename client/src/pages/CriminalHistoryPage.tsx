@@ -58,7 +58,7 @@ export default function CriminalHistoryPage() {
       setPersons(data || []);
       setSelectedPerson(null);
       setHistory([]);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Person search error:', err);
       setPersons([]);
     }
@@ -123,7 +123,7 @@ export default function CriminalHistoryPage() {
 
       entries.sort((a, b) => (new Date(b.date || 0).getTime() || 0) - (new Date(a.date || 0).getTime() || 0));
       setHistory(entries);
-    } catch (err) {
+    } catch (err: any) {
       console.error('History fetch error:', err);
       setHistory([]);
     }

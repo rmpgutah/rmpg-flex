@@ -124,7 +124,7 @@ export function useShiftPlanning() {
       );
       setOfficers(activeOfficers);
       setUnits(unitData as UnitOption[]);
-    } catch (err) {
+    } catch (err: any) {
       console.error('[ShiftPlanning] Failed to fetch personnel:', err);
     }
   }, []);
@@ -313,7 +313,7 @@ export function useShiftPlanning() {
         method: 'POST',
         body: JSON.stringify(plan),
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error('[ShiftPlanning] Save to server failed:', err);
       throw err;
     }

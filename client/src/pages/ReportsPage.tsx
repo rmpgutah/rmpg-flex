@@ -303,7 +303,7 @@ export default function ReportsPage() {
         setIncidentsData(incidents);
         setResponseTimesData(responseTimes);
         setOfficerActivity(officers);
-      } catch (err) {
+      } catch (err: any) {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : 'Failed to load reports data');
         console.error('Error fetching reports:', err);

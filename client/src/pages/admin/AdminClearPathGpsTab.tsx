@@ -151,7 +151,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
       const data = await apiFetch<CpgStatus>('/clearpathgps/status');
       setStatus(data);
       setPollInterval(data.poll_interval_seconds || 30);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to fetch ClearPathGPS status:', err);
     } finally {
       setLoading(false);
@@ -227,7 +227,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
       setAccountId('');
       setShowPassword(false);
       await fetchStatus();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to save credentials');
     } finally {
       setSaving(false);
@@ -242,7 +242,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
       setDevices([]);
       setMappings([]);
       await fetchStatus();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to clear credentials');
     }
   };
@@ -254,7 +254,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
     try {
       const result = await apiFetch<{ success: boolean; deviceCount: number; error?: string }>('/clearpathgps/test-connection', { method: 'POST' });
       setTestResult(result);
-    } catch (err) {
+    } catch (err: any) {
       setTestResult({ success: false, error: err instanceof Error ? err.message : 'Connection test failed' });
     } finally {
       setTesting(false);
@@ -276,7 +276,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
           setTestResult({ success: false, error: 'No accounts found for this email/password' });
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       setTestResult({ success: false, error: err instanceof Error ? err.message : 'Account discovery failed' });
     } finally {
       setDiscovering(false);
@@ -293,7 +293,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
         body: JSON.stringify({ enabled: newEnabled, poll_interval_seconds: pollInterval }),
       });
       await fetchStatus();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to toggle integration');
     }
   };
@@ -308,7 +308,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
           body: JSON.stringify({ enabled: true, poll_interval_seconds: seconds }),
         });
         await fetchStatus();
-      } catch (err) {
+      } catch (err: any) {
         setError(err instanceof Error ? err.message : 'Failed to update poll interval');
       }
     }
@@ -320,7 +320,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
     try {
       const data = await apiFetch<{ devices: CpgDevice[] }>('/clearpathgps/devices');
       setDevices(data.devices || []);
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to fetch devices');
     } finally {
       setLoadingDevices(false);
@@ -341,7 +341,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
       });
       await fetchMappings();
       await fetchStatus();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to create mapping');
     }
   };
@@ -352,7 +352,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
       await apiFetch(`/clearpathgps/mappings/${mappingId}`, { method: 'DELETE' });
       await fetchMappings();
       await fetchStatus();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to remove mapping');
     }
   };
@@ -366,7 +366,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
         method: 'PUT',
         body: JSON.stringify({ history_backfill: newVal }),
       });
-    } catch (err) {
+    } catch (err: any) {
       setHistoryBackfill(!newVal); // revert
       setError(err instanceof Error ? err.message : 'Failed to update settings');
     }
@@ -383,7 +383,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
       });
       setMediaSyncEnabled(newVal);
       await fetchMediaStatus();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to toggle media sync');
     } finally {
       setSavingMedia(false);
@@ -400,7 +400,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
         body: JSON.stringify({ media_sync_enabled: mediaSyncEnabled, media_poll_interval_seconds: seconds }),
       });
       await fetchMediaStatus();
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to update media poll interval');
     } finally {
       setSavingMedia(false);
@@ -416,7 +416,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
       if (result.synced > 0) {
         setError(null);
       }
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Media sync failed');
     } finally {
       setSyncing(false);

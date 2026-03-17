@@ -415,7 +415,7 @@ export async function hashEvidenceAttachments(evidenceId: number): Promise<{
         now
       );
       hashed++;
-    } catch (err) {
+    } catch (err: any) {
       console.error(`[IPED] Hash error for attachment ${att.id}:`, err);
       errors++;
     }

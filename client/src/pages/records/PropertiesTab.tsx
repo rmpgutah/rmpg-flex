@@ -162,7 +162,7 @@ export function usePropertiesTab(props: PropertiesTabProps): PropertiesTabState 
       setPropertyModalOpen(false);
       setEditingProperty(undefined);
       await fetchProperties();
-    } catch (err) {
+    } catch (err: any) {
       const msg = err instanceof Error ? err.message : 'Failed to save property';
       setPropertySubmitError(msg);
       setError(msg);

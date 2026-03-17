@@ -311,7 +311,7 @@ export default function PersonFormModal({
           const token = localStorage.getItem('rmpg_token');
           finalForm.id_image_url = `/api/uploads/${results[0].file_id}${token ? `?token=${token}` : ''}`;
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('ID image upload failed:', err);
       } finally {
         setUploadingImage(false);

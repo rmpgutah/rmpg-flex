@@ -327,7 +327,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
             })
             .catch((err) => { console.warn('[useGpsTracking] fetch my-unit failed:', err); });
         }
-      } catch (err) {
+      } catch (err: any) {
         const errMsg = err instanceof Error ? err.message : 'Failed to send GPS position';
         console.warn(`[GPS] Batch send failed (${allPoints.length} pts):`, errMsg);
         // Re-enqueue failed points in front of any new arrivals

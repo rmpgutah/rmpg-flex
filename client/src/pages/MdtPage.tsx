@@ -30,6 +30,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useWebSocket } from '../context/WebSocketContext';
+import { useAuth } from '../context/AuthContext';
 import { formatIncidentType } from '../utils/caseNumbers';
 import { formatTimer, getStatusElapsed, isActiveStatus } from '../utils/dispatchTimers';
 import { mapDbCall } from './dispatch/utils/dispatchMappers';
@@ -94,7 +95,7 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
       });
       setComposeText('');
       fetchMessages();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Send message failed:', err);
     }
   };
@@ -232,6 +233,7 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
 // ── Component ──────────────────────────────────────────────
 
 export default function MdtPage() {
+  const { user } = useAuth();
   const isMobile = useIsMobile();
   const gps = useGpsTracking();
   const [myUnit, setMyUnit] = useState<Unit | null>(null);
@@ -269,7 +271,7 @@ export default function MdtPage() {
   const handleGenerateShiftReport = async () => {
     setGeneratingReport(true);
     try {
-      const userId = localStorage.getItem('rmpg_user_id') || '';
+      const userId = user?.id || '';
       const today = new Date().toISOString().slice(0, 10);
       const data = await apiFetch<any>(`/reports/shift-activity/${userId}?date=${today}`);
       // Generate a text-based report and download as PDF-like text file
@@ -327,7 +329,7 @@ export default function MdtPage() {
       a.download = `shift-report-${data.date}.txt`;
       a.click();
       URL.revokeObjectURL(url);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to generate shift report:', err);
       showError('Failed to generate shift report');
     }
@@ -344,13 +346,13 @@ export default function MdtPage() {
         body: JSON.stringify({
           ...fiData,
           location: fiData.location || (gps.latitude && gps.longitude ? `${gps.latitude.toFixed(5)}, ${gps.longitude.toFixed(5)}` : ''),
-          officer_id: localStorage.getItem('rmpg_user_id') || '',
+          officer_id: user?.id || '',
           call_id: selectedCall?.id || undefined,
         }),
       });
       setFiData({ subject_name: '', location: '', reason: '', narrative: '' });
       setShowFiForm(false);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to submit FI:', err);
       showError('Failed to submit field interview');
     }
@@ -398,7 +400,7 @@ export default function MdtPage() {
         return fresh || null;
       });
 
-    } catch (err) {
+    } catch (err: any) {
       console.error('MDT fetch error:', err);
       showError('Failed to load dispatch data');
     } finally {
@@ -436,7 +438,7 @@ export default function MdtPage() {
         body: JSON.stringify({ status: newStatus }),
       });
       fetchData();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Status change failed:', err);
       showError('Failed to change unit status');
     }
@@ -453,7 +455,7 @@ export default function MdtPage() {
       setMyCalls(prev => prev.map(c => c.id === callId ? updated : c));
       if (selectedCall?.id === callId) setSelectedCall(updated);
       fetchData();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Call status update failed:', err);
       showError('Failed to update call status');
     }
@@ -469,7 +471,7 @@ export default function MdtPage() {
         body: JSON.stringify({ unit_id: myUnit.id }),
       });
       fetchData();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Self-dispatch failed:', err);
       showError('Failed to self-dispatch');
     } finally {

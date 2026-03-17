@@ -383,7 +383,7 @@ export function useGeoJsonLayers({
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         geojson = await resp.json();
         geojsonCacheRef.current[cfg.id] = geojson;
-      } catch (err) {
+      } catch (err: any) {
         console.error(`[GeoJSON] Failed to load ${cfg.file}:`, err);
         return;
       }

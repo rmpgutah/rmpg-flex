@@ -215,6 +215,8 @@ export default function ArrestRecordsPage() {
   const [recordsPage, setRecordsPage] = useState(1);
   const [recordsLoading, setRecordsLoading] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<ArrestRecord | null>(null);
+  const selectedRecordRef = useRef(selectedRecord);
+  useEffect(() => { selectedRecordRef.current = selectedRecord; }, [selectedRecord]);
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -252,7 +254,7 @@ export default function ArrestRecordsPage() {
     try {
       const data = await apiFetch<any>('/jail-roster/statistics');
       setStats(data);
-    } catch (err) {
+    } catch (err: any) {
       const msg = err instanceof Error ? err.message : 'Failed to load statistics';
       setError(msg);
     } finally {
@@ -288,7 +290,7 @@ export default function ArrestRecordsPage() {
         setRecords(data.records || []);
         setRecordsTotal(data.total || 0);
       }
-    } catch (err) {
+    } catch (err: any) {
       const msg = err instanceof Error ? err.message : 'Failed to load records';
       setError(msg);
     } finally {
@@ -306,14 +308,15 @@ export default function ArrestRecordsPage() {
       const data = msg.data as any;
       if (data?.type === 'arrest_created' || data?.type === 'arrest_updated') {
         fetchRecords(recordsPage);
-        if (selectedRecord && data?.id === selectedRecord.id) {
-          apiFetch<ArrestRecord>(`/arrests/manual/${selectedRecord.id}`)
+        const sel = selectedRecordRef.current;
+        if (sel && data?.id === sel.id) {
+          apiFetch<ArrestRecord>(`/arrests/manual/${sel.id}`)
             .then(fresh => setSelectedRecord(fresh))
             .catch(() => { /* keep existing */ });
         }
       }
     });
-  }, [subscribe, recordsPage, selectedRecord, fetchRecords]);
+  }, [subscribe, recordsPage, fetchRecords]);
 
   // ── Person search (debounced) ───────────────────────────
 
@@ -356,7 +359,7 @@ export default function ArrestRecordsPage() {
           setSelectedRecord(fresh);
         } catch { /* keep existing */ }
       }
-    } catch (err) {
+    } catch (err: any) {
       const msg = err instanceof Error ? err.message : 'Failed to link person';
       setError(msg);
     } finally {
@@ -371,7 +374,7 @@ export default function ArrestRecordsPage() {
       if (selectedRecord?.id === arrestId) {
         setSelectedRecord(prev => prev ? { ...prev, linked_person: null, person_id: null } : null);
       }
-    } catch (err) {
+    } catch (err: any) {
       const msg = err instanceof Error ? err.message : 'Failed to unlink person';
       setError(msg);
     }
@@ -403,7 +406,7 @@ export default function ArrestRecordsPage() {
           setSelectedRecord(fresh);
         } catch { /* keep existing */ }
       }
-    } catch (err) {
+    } catch (err: any) {
       const msg = err instanceof Error ? err.message : 'Failed to save booking';
       setFormError(msg);
     } finally {
@@ -417,7 +420,7 @@ export default function ArrestRecordsPage() {
       setDeleteConfirm(null);
       if (selectedRecord?.id === id) setSelectedRecord(null);
       fetchRecords(recordsPage);
-    } catch (err) {
+    } catch (err: any) {
       const msg = err instanceof Error ? err.message : 'Failed to delete record';
       setError(msg);
     }

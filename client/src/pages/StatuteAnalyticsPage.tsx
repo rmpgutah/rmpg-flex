@@ -32,13 +32,14 @@ export default function StatuteAnalyticsPage() {
   const [search, setSearch] = useState('');
 
   const fetchData = useCallback(async () => {
+    setLoading(true);
     try {
       const data = await apiFetch<any>(`/reports/statute-analytics?days=${days}`);
       setTopStatutes(data.topStatutes || []);
       setByLevel(data.byLevel || []);
       setTrend(data.trend || []);
       setIncidentStatutes(data.incidentStatutes || []);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Statute analytics error:', err);
     }
     setLoading(false);

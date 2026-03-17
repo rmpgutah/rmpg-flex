@@ -636,8 +636,8 @@ export function scheduleOfacSync(): void {
         const status = getOfacSyncStatus();
         console.log(`[OFAC Sync] Data is current (${status.entriesCount} entries, last sync: ${status.lastSync})`);
       }
-    } catch (err) {
-      console.error('[OFAC Sync] Initial sync failed — will retry in 24h:', (err as Error).message);
+    } catch (err: any) {
+      console.error('[OFAC Sync] Initial sync failed — will retry in 24h:', err?.message || "Unknown error");
     }
   }, 15_000); // Wait 15s after server start to avoid blocking startup
 
@@ -646,8 +646,8 @@ export function scheduleOfacSync(): void {
     try {
       console.log('[OFAC Sync] Daily scheduled sync...');
       await syncOfacData();
-    } catch (err) {
-      console.error('[OFAC Sync] Scheduled sync failed:', (err as Error).message);
+    } catch (err: any) {
+      console.error('[OFAC Sync] Scheduled sync failed:', err?.message || "Unknown error");
     }
   }, SYNC_INTERVAL_MS);
   syncIntervalHandle.unref();

@@ -103,7 +103,7 @@ export default function LinkedRecordsSection({ entityType, entityId, onOpenLinkM
         `/records/links?type=${encodeURIComponent(entityType)}&id=${encodeURIComponent(entityId)}`,
       );
       setLinks(data || []);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load linked records:', err);
       setLinks([]);
     } finally {
@@ -121,7 +121,7 @@ export default function LinkedRecordsSection({ entityType, entityId, onOpenLinkM
       try {
         await apiFetch(`/records/links/${linkId}`, { method: 'DELETE' });
         await fetchLinks();
-      } catch (err) {
+      } catch (err: any) {
         console.error('Failed to delete link:', err);
       } finally {
         setDeletingId(null);

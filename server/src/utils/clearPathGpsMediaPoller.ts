@@ -635,7 +635,7 @@ async function downloadAndStore(
     });
 
     return videoId;
-  } catch (err) {
+  } catch (err: any) {
     // Clean up .tmp file on failure
     try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
     throw err;

@@ -453,7 +453,7 @@ export function useRadio() {
         channelBusy: false,
         error: null,
       }));
-    } catch (err) {
+    } catch (err: any) {
       // Clean up anything partially initialized
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());

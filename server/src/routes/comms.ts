@@ -46,6 +46,15 @@ router.post('/messages', requireRole('admin', 'manager', 'dispatcher', 'supervis
       return;
     }
 
+    // Verify recipient exists for direct messages
+    if (msgChannel === 'direct' && to_user_id) {
+      const recipient = db.prepare('SELECT id FROM users WHERE id = ?').get(to_user_id);
+      if (!recipient) {
+        res.status(404).json({ error: 'Recipient user not found' });
+        return;
+      }
+    }
+
     // Broadcast/dispatch require dispatcher+ role
     if (['broadcast', 'dispatch'].includes(msgChannel) && !['admin', 'manager', 'dispatcher', 'supervisor'].includes(req.user!.role)) {
       res.status(403).json({ error: 'Insufficient permissions for broadcast/dispatch messages' });
@@ -206,9 +215,9 @@ router.delete('/messages/:id', validateParamId, (req: Request, res: Response) =>
     }
 
     db.prepare('DELETE FROM messages WHERE id = ?').run(req.params.id);
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'message_deleted', 'message', ?, ?, ?)`).run(
-      req.user!.userId, req.params.id, `Deleted message #${req.params.id}`, req.ip || 'unknown'
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'message_deleted', 'message', ?, ?, ?, ?)`).run(
+      req.user!.userId, req.params.id, `Deleted message #${req.params.id}`, req.ip || 'unknown', localNow()
     );
     res.json({ success: true, id: req.params.id });
   } catch (error: any) {
@@ -443,9 +452,9 @@ router.post('/bolos', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     });
 
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'bolo_created', 'bolo', ?, ?, ?)
-    `).run(req.user!.userId, result.lastInsertRowid, `Created BOLO: ${title}`, req.ip || 'unknown');
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'bolo_created', 'bolo', ?, ?, ?, ?)
+    `).run(req.user!.userId, result.lastInsertRowid, `Created BOLO: ${title}`, req.ip || 'unknown', localNow());
 
     res.status(201).json(bolo);
   } catch (error: any) {
@@ -495,9 +504,9 @@ router.put('/bolos/:id', validateParamId, requireRole('admin', 'manager', 'super
 
     // Activity log
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'bolo_updated', 'bolo', ?, ?, ?)
-    `).run(req.user!.userId, req.params.id, `Updated BOLO: ${bolo.title}`, req.ip || 'unknown');
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'bolo_updated', 'bolo', ?, ?, ?, ?)
+    `).run(req.user!.userId, req.params.id, `Updated BOLO: ${bolo.title}`, req.ip || 'unknown', localNow());
 
     const updated = db.prepare(`
       SELECT b.*, u.full_name as issued_by_name
@@ -525,9 +534,9 @@ router.delete('/bolos/:id', validateParamId, requireRole('admin', 'manager', 'su
     db.prepare("UPDATE bolos SET status = 'cancelled', updated_at = ? WHERE id = ?").run(localNow(), bolo.id);
 
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'bolo_cancelled', 'bolo', ?, ?, ?)
-    `).run(req.user!.userId, bolo.id, `Cancelled BOLO: ${bolo.title}`, req.ip || 'unknown');
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'bolo_cancelled', 'bolo', ?, ?, ?, ?)
+    `).run(req.user!.userId, bolo.id, `Cancelled BOLO: ${bolo.title}`, req.ip || 'unknown', localNow());
 
     res.json({ message: 'BOLO cancelled' });
   } catch (error: any) {
@@ -547,9 +556,9 @@ router.post('/bolos/:id/archive', validateParamId, requireRole('admin', 'manager
     const now = localNow();
     db.prepare('UPDATE bolos SET archived_at = ? WHERE id = ?').run(now, bolo.id);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'bolo_archived', 'bolo', ?, ?, ?)`).run(
-      req.user!.userId, bolo.id, `Archived BOLO: ${bolo.title}`, req.ip || 'unknown');
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'bolo_archived', 'bolo', ?, ?, ?, ?)`).run(
+      req.user!.userId, bolo.id, `Archived BOLO: ${bolo.title}`, req.ip || 'unknown', localNow());
 
     const updated = db.prepare('SELECT b.*, u.full_name as issued_by_name FROM bolos b LEFT JOIN users u ON b.issued_by = u.id WHERE b.id = ?').get(bolo.id);
     res.json(updated);
@@ -569,9 +578,9 @@ router.post('/bolos/:id/unarchive', validateParamId, requireRole('admin', 'manag
 
     db.prepare('UPDATE bolos SET archived_at = NULL WHERE id = ?').run(bolo.id);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'bolo_unarchived', 'bolo', ?, ?, ?)`).run(
-      req.user!.userId, bolo.id, `Unarchived BOLO: ${bolo.title}`, req.ip || 'unknown');
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'bolo_unarchived', 'bolo', ?, ?, ?, ?)`).run(
+      req.user!.userId, bolo.id, `Unarchived BOLO: ${bolo.title}`, req.ip || 'unknown', localNow());
 
     const updated = db.prepare('SELECT b.*, u.full_name as issued_by_name FROM bolos b LEFT JOIN users u ON b.issued_by = u.id WHERE b.id = ?').get(bolo.id);
     res.json(updated);
@@ -747,7 +756,7 @@ router.get('/radio/audio/:id', validateParamId, requireRole('admin', 'manager', 
     });
     const stream = fs.createReadStream(filePath);
     stream.on('error', (err) => {
-      console.error('Audio stream error:', err);
+      console.error('Audio stream error:', err?.message || 'Unknown error');
       if (!res.headersSent) res.status(500).json({ error: 'Failed to stream audio' });
       else res.destroy();
     });

@@ -8,6 +8,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import { getDb } from '../models/database';
+import config from '../config';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { rateLimit } from '../middleware/rateLimiter';
 import { localNow, localToday } from '../utils/timeUtils';
@@ -109,11 +110,16 @@ router.use(authenticateToken);
 router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { role, status, archived } = req.query;
+    const { role, status, archived, search } = req.query;
 
     let whereClause = 'WHERE 1=1';
     const params: any[] = [];
 
+    if (search && typeof search === 'string' && search.trim()) {
+      const q = `%${search.trim()}%`;
+      whereClause += ' AND (u.full_name LIKE ? OR u.first_name LIKE ? OR u.last_name LIKE ? OR u.badge_number LIKE ?)';
+      params.push(q, q, q, q);
+    }
     if (role) {
       whereClause += ' AND u.role = ?';
       params.push(role);
@@ -314,7 +320,7 @@ router.post('/', requireRole('admin', 'manager'), personnelCreateRateLimit, (req
       return;
     }
 
-    const passwordHash = bcryptjs.hashSync(password, 12);
+    const passwordHash = bcryptjs.hashSync(password, config.security.bcryptRounds);
 
     // Derive first_name/last_name from full_name if not provided
     const nameParts = (full_name || '').split(' ');
@@ -359,9 +365,9 @@ router.post('/', requireRole('admin', 'manager'), personnelCreateRateLimit, (req
     `).get(result.lastInsertRowid);
 
     db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'user_created', 'user', ?, ?, ?)
-    `).run(req.user!.userId, result.lastInsertRowid, `Created user: ${username} (${role})`, req.ip || 'unknown');
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'user_created', 'user', ?, ?, ?, ?)
+    `).run(req.user!.userId, result.lastInsertRowid, `Created user: ${username} (${role})`, req.ip || 'unknown', localNow());
 
     res.status(201).json(user);
   } catch (error: any) {
@@ -409,6 +415,13 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Reque
       }
     }
 
+    // Validate status against allowed values before processing
+    const VALID_USER_STATUSES = ['active', 'inactive', 'terminated'] as const;
+    if (req.body.status && !VALID_USER_STATUSES.includes(req.body.status)) {
+      res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_USER_STATUSES.join(', ')}` });
+      return;
+    }
+
     // Build dynamic SET clause — only update fields explicitly provided in the body.
     // This allows clearing fields by sending empty string (stored as null).
     const bodyKeys = Object.keys(req.body);
@@ -435,7 +448,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Reque
     // ── Admin password reset (not in updatableFields — needs bcrypt) ──
     const passwordChanged = !!(req.body.password && typeof req.body.password === 'string' && req.body.password.trim());
     if (passwordChanged) {
-      const hash = bcryptjs.hashSync(req.body.password.trim(), 12);
+      const hash = bcryptjs.hashSync(req.body.password.trim(), config.security.bcryptRounds);
       setClauses.push('password_hash = ?');
       setValues.push(hash);
       setClauses.push('last_password_change = ?');
@@ -502,9 +515,9 @@ router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Re
       db.prepare('UPDATE units SET officer_id = NULL, status = \'off_duty\' WHERE officer_id = ?').run(req.params.id);
       // Log activity
       db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'user_terminated', 'user', ?, ?, ?)
-      `).run(req.user!.userId, req.params.id, `Terminated user: ${user.full_name || user.username}`, req.ip || 'unknown');
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+        VALUES (?, 'user_terminated', 'user', ?, ?, ?, ?)
+      `).run(req.user!.userId, req.params.id, `Terminated user: ${user.full_name || user.username}`, req.ip || 'unknown', localNow());
     });
     delTx();
 
@@ -532,9 +545,9 @@ router.post('/:id/archive', validateParamId, requireRole('admin', 'manager'), (r
     const now = localNow();
     db.prepare('UPDATE users SET archived_at = ? WHERE id = ?').run(now, user.id);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'user_archived', 'user', ?, ?, ?)`).run(
-      req.user!.userId, user.id, `Archived user: ${user.full_name}`, req.ip || 'unknown');
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'user_archived', 'user', ?, ?, ?, ?)`).run(
+      req.user!.userId, user.id, `Archived user: ${user.full_name}`, req.ip || 'unknown', localNow());
 
     const updated = db.prepare(`
       SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, status, archived_at, created_at, updated_at
@@ -557,9 +570,9 @@ router.post('/:id/unarchive', validateParamId, requireRole('admin', 'manager'), 
 
     db.prepare('UPDATE users SET archived_at = NULL WHERE id = ?').run(user.id);
 
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'user_unarchived', 'user', ?, ?, ?)`).run(
-      req.user!.userId, user.id, `Unarchived user: ${user.full_name}`, req.ip || 'unknown');
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'user_unarchived', 'user', ?, ?, ?, ?)`).run(
+      req.user!.userId, user.id, `Unarchived user: ${user.full_name}`, req.ip || 'unknown', localNow());
 
     const updated = db.prepare(`
       SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, status, archived_at, created_at, updated_at
@@ -653,7 +666,7 @@ router.get('/bodycam-videos/:videoId/stream', validateNumericParams('videoId'), 
       });
 
       const stream = fs.createReadStream(filePath, { start, end });
-      stream.once('error', (err) => { console.error('Bodycam stream error:', err); if (!res.headersSent) res.status(500).end(); else res.destroy(); });
+      stream.once('error', (err) => { console.error('Bodycam stream error:', err?.message || 'Unknown error'); if (!res.headersSent) res.status(500).end(); else res.destroy(); });
       res.on('error', () => { stream.destroy(); });
       stream.pipe(res);
     } else {
@@ -665,7 +678,7 @@ router.get('/bodycam-videos/:videoId/stream', validateNumericParams('videoId'), 
       });
 
       const stream = fs.createReadStream(filePath);
-      stream.once('error', (err) => { console.error('Bodycam stream error:', err); if (!res.headersSent) res.status(500).end(); else res.destroy(); });
+      stream.once('error', (err) => { console.error('Bodycam stream error:', err?.message || 'Unknown error'); if (!res.headersSent) res.status(500).end(); else res.destroy(); });
       res.on('error', () => { stream.destroy(); });
       stream.pipe(res);
     }
@@ -732,7 +745,7 @@ router.get('/bodycam-videos/:videoId/download', validateNumericParams('videoId')
       'Content-Disposition': `attachment; filename="BWC_${safeTitle}.mp4"`,
     });
     const dlStream = fs.createReadStream(filePath);
-    dlStream.on('error', (err) => { console.error('Bodycam stream error:', err); if (!res.headersSent) res.status(500).end(); else res.destroy(); });
+    dlStream.on('error', (err) => { console.error('Bodycam stream error:', err?.message || 'Unknown error'); if (!res.headersSent) res.status(500).end(); else res.destroy(); });
     dlStream.pipe(res);
   } catch (error: any) {
     console.error('Download bodycam video error:', error?.message || 'Unknown error');
@@ -869,9 +882,9 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       const officerName = (db.prepare('SELECT full_name FROM users WHERE id = ?').get(targetId) as any)?.full_name || targetId;
       db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'clock_in', 'time_entry', ?, ?, ?)
-      `).run(req.user!.userId, result.lastInsertRowid, isSelf ? 'Clocked in' : `Clocked in ${officerName}`, req.ip || 'unknown');
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+        VALUES (?, 'clock_in', 'time_entry', ?, ?, ?, ?)
+      `).run(req.user!.userId, result.lastInsertRowid, isSelf ? 'Clocked in' : `Clocked in ${officerName}`, req.ip || 'unknown', localNow());
 
       const entry = db.prepare(`
         SELECT t.*, u.full_name as officer_name, u.badge_number
@@ -934,9 +947,9 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
       const officerName = (db.prepare('SELECT full_name FROM users WHERE id = ?').get(targetId) as any)?.full_name || targetId;
       db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'clock_out', 'time_entry', ?, ?, ?)
-      `).run(req.user!.userId, activeEntry.id, isSelf ? `Clocked out. Total: ${totalHours}h` : `Clocked out ${officerName}. Total: ${totalHours}h`, req.ip || 'unknown');
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+        VALUES (?, 'clock_out', 'time_entry', ?, ?, ?, ?)
+      `).run(req.user!.userId, activeEntry.id, isSelf ? `Clocked out. Total: ${totalHours}h` : `Clocked out ${officerName}. Total: ${totalHours}h`, req.ip || 'unknown', localNow());
 
       const entry = db.prepare(`
         SELECT t.*, u.full_name as officer_name, u.badge_number
@@ -974,9 +987,9 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       db.prepare(`UPDATE time_entries SET status = 'on_break', break_start = ? WHERE id = ?`).run(now, activeEntry.id);
 
       db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'break_start', 'time_entry', ?, 'Started break', ?)
-      `).run(req.user!.userId, activeEntry.id, req.ip || 'unknown');
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+        VALUES (?, 'break_start', 'time_entry', ?, 'Started break', ?, ?)
+      `).run(req.user!.userId, activeEntry.id, req.ip || 'unknown', localNow());
 
       const entry = db.prepare(`
         SELECT t.*, u.full_name as officer_name, u.badge_number
@@ -1023,9 +1036,9 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       db.prepare(`UPDATE time_entries SET status = 'active', break_start = NULL, break_minutes = ? WHERE id = ?`).run(breakMins, breakEntry.id);
 
       db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'break_end', 'time_entry', ?, ?, ?)
-      `).run(req.user!.userId, breakEntry.id, `Ended break. Break: ${(isNaN(breakMins) ? 0 : breakMins).toFixed(0)}min`, req.ip || 'unknown');
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+        VALUES (?, 'break_end', 'time_entry', ?, ?, ?, ?)
+      `).run(req.user!.userId, breakEntry.id, `Ended break. Break: ${(isNaN(breakMins) ? 0 : breakMins).toFixed(0)}min`, req.ip || 'unknown', localNow());
 
       const entry = db.prepare(`
         SELECT t.*, u.full_name as officer_name, u.badge_number
@@ -1136,9 +1149,9 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       `).run(clock_in, clock_out || null, totalHours, newStatus, req.params.id);
 
       db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'time_entry_edited', 'time_entry', ?, ?, ?)
-      `).run(req.user!.userId, req.params.id, `Edited time entry for officer ${entry.officer_id}`, req.ip || 'unknown');
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+        VALUES (?, 'time_entry_edited', 'time_entry', ?, ?, ?, ?)
+      `).run(req.user!.userId, req.params.id, `Edited time entry for officer ${entry.officer_id}`, req.ip || 'unknown', localNow());
 
       const updated = db.prepare(`
         SELECT t.*, u.full_name as officer_name, u.badge_number
@@ -1167,9 +1180,9 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       db.prepare('DELETE FROM time_entries WHERE id = ?').run(req.params.id);
 
       db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'time_entry_deleted', 'time_entry', ?, ?, ?)
-      `).run(req.user!.userId, req.params.id, `Deleted time entry for officer ${entry.officer_id}`, req.ip || 'unknown');
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+        VALUES (?, 'time_entry_deleted', 'time_entry', ?, ?, ?, ?)
+      `).run(req.user!.userId, req.params.id, `Deleted time entry for officer ${entry.officer_id}`, req.ip || 'unknown', localNow());
 
       res.json({ success: true, id: req.params.id });
     } catch (error: any) {
@@ -1273,9 +1286,9 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       db.prepare('DELETE FROM credentials WHERE id = ?').run(req.params.id);
 
       db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'credential_deleted', 'credential', ?, ?, ?)
-      `).run(req.user!.userId, req.params.id, `Deleted credential: ${existing.credential_type} for officer ${existing.officer_id}`, req.ip || 'unknown');
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+        VALUES (?, 'credential_deleted', 'credential', ?, ?, ?, ?)
+      `).run(req.user!.userId, req.params.id, `Deleted credential: ${existing.credential_type} for officer ${existing.officer_id}`, req.ip || 'unknown', localNow());
 
       res.json({ message: 'Credential deleted' });
     } catch (error: any) {
@@ -2034,9 +2047,9 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       db.prepare('DELETE FROM officer_equipment WHERE id = ?').run(req.params.equipId);
 
       db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'equipment_deleted', 'equipment', ?, ?, ?)
-      `).run(req.user!.userId, req.params.equipId, `Deleted equipment: ${existing.equipment_type} for officer ${existing.officer_id}`, req.ip || 'unknown');
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+        VALUES (?, 'equipment_deleted', 'equipment', ?, ?, ?, ?)
+      `).run(req.user!.userId, req.params.equipId, `Deleted equipment: ${existing.equipment_type} for officer ${existing.officer_id}`, req.ip || 'unknown', localNow());
 
       res.json({ message: 'Equipment record deleted' });
     } catch (error: any) {
@@ -2230,8 +2243,16 @@ export function mountScheduleRoutes(parentRouter: Router): void {
 
   // ─── BULK OPERATIONS (must be BEFORE /:videoId param routes) ────
 
+  // Rate limiter for bodycam bulk ops — prevent mass deletion/modification abuse
+  const bodycamBulkRateLimit = rateLimit({
+    windowMs: 5 * 60 * 1000, // 5 minutes
+    maxRequests: 5,            // 5 bulk ops per 5 min per user (destructive operations)
+    keyGenerator: (req) => `bodycam-bulk:${req.user?.userId || req.ip || 'unknown'}`,
+    message: 'Too many bulk bodycam operations. Please try again later.',
+  });
+
   // DELETE /api/personnel/bodycam-videos/bulk - Bulk delete videos
-  parentRouter.delete('/personnel/bodycam-videos/bulk', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
+  parentRouter.delete('/personnel/bodycam-videos/bulk', authenticateToken, requireRole('admin'), bodycamBulkRateLimit, (req: Request, res: Response) => {
     try {
       const db = getDb();
       const { videoIds } = req.body;
@@ -2263,7 +2284,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
   });
 
   // PUT /api/personnel/bodycam-videos/bulk - Bulk update video metadata
-  parentRouter.put('/personnel/bodycam-videos/bulk', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
+  parentRouter.put('/personnel/bodycam-videos/bulk', authenticateToken, requireRole('admin'), bodycamBulkRateLimit, (req: Request, res: Response) => {
     try {
       const db = getDb();
       const { videoIds, classification, retention_status } = req.body;
@@ -2295,7 +2316,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
   });
 
   // DELETE /api/personnel/body-cameras/bulk - Bulk delete cameras + associated videos
-  parentRouter.delete('/personnel/body-cameras/bulk', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
+  parentRouter.delete('/personnel/body-cameras/bulk', authenticateToken, requireRole('admin'), bodycamBulkRateLimit, (req: Request, res: Response) => {
     try {
       const db = getDb();
       const { cameraIds } = req.body;
@@ -2831,7 +2852,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         });
 
         const stream = fs.createReadStream(filePath, { start, end });
-        stream.on('error', (err) => { console.error('Bodycam stream error:', err); res.destroy(); });
+        stream.on('error', (err) => { console.error('Bodycam stream error:', err?.message || 'Unknown error'); res.destroy(); });
         stream.pipe(res);
       } else {
         res.writeHead(200, {
@@ -2840,7 +2861,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         });
 
         const stream = fs.createReadStream(filePath);
-        stream.on('error', (err) => { console.error('Bodycam stream error:', err); res.destroy(); });
+        stream.on('error', (err) => { console.error('Bodycam stream error:', err?.message || 'Unknown error'); res.destroy(); });
         stream.pipe(res);
       }
     } catch (error: any) {

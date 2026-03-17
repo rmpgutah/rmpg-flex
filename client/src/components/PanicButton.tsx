@@ -86,6 +86,13 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
   const alarmRef = useRef<{ stop: () => void } | null>(null);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Clean up confirm timer on unmount
+  useEffect(() => {
+    return () => {
+      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+    };
+  }, []);
+
   // ─── Hardware Button Panic Trigger ────────────────────────────
   // Supports multiple activation methods:
   // 1. Volume Up held for 3 seconds
@@ -121,7 +128,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
       });
       // Start live mic broadcast for 15 seconds
       panicAudio.startBroadcast();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to send hardware panic alert:', err);
       addToast('⚠️ PANIC ALERT FAILED — Retry or radio dispatch!', 'error', 15000);
     } finally {
@@ -246,7 +253,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps = 
       });
       // Start live mic broadcast for 15 seconds
       panicAudio.startBroadcast();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to send panic alert:', err);
       addToast('⚠️ PANIC ALERT FAILED — Retry or radio dispatch!', 'error', 15000);
     } finally {

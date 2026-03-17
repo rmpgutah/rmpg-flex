@@ -192,8 +192,8 @@ function persistSearch(searchType: string, queryParams: Record<string, string>, 
       userId,
       localNow(),
     );
-  } catch (err) {
-    console.error('[SkipTracer] Failed to persist search:', err);
+  } catch (err: any) {
+    console.error('[SkipTracer] Failed to persist search:', err?.message || 'Unknown error');
   }
 }
 
