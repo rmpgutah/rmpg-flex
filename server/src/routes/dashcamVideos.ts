@@ -16,6 +16,7 @@ import { localNow } from '../utils/timeUtils';
 import { escapeLike } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
 import { broadcast } from '../utils/websocket';
+import { burnVideoWithProgress } from '../utils/videoOverlay';
 import { validateParamId, validateNumericParams } from '../middleware/sanitize';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -158,9 +159,15 @@ router.get('/:id', validateParamId, authenticateToken, requireRole('admin', 'man
 // ============================================================
 // POST /api/fleet/dashcam-videos — Upload a new dash cam video
 // ============================================================
-router.post('/', authenticateToken, requireRole('admin', 'manager', 'supervisor', 'officer'), upload.single('video'), (req: Request, res: Response) => {
+router.post('/', authenticateToken, requireRole('admin', 'manager', 'supervisor', 'officer'), upload.fields([{ name: 'video', maxCount: 1 }, { name: 'thumbnail', maxCount: 1 }]), (req: Request, res: Response) => {
   try {
-    if (!req.file) {
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+    const videoFile = files?.['video']?.[0];
+    const thumbnailFile = files?.['thumbnail']?.[0];
+
+    if (!videoFile) {
+      // Cleanup thumbnail if uploaded without video
+      if (thumbnailFile && fs.existsSync(thumbnailFile.path)) fs.unlinkSync(thumbnailFile.path);
       res.status(400).json({ error: 'No video file uploaded' });
       return;
     }
@@ -174,8 +181,9 @@ router.post('/', authenticateToken, requireRole('admin', 'manager', 'supervisor'
     } = req.body;
 
     if (!title) {
-      // Cleanup uploaded file
-      fs.unlinkSync(req.file.path);
+      // Cleanup uploaded files
+      fs.unlinkSync(videoFile.path);
+      if (thumbnailFile && fs.existsSync(thumbnailFile.path)) fs.unlinkSync(thumbnailFile.path);
       res.status(400).json({ error: 'Title is required' });
       return;
     }
@@ -193,16 +201,16 @@ router.post('/', authenticateToken, requireRole('admin', 'manager', 'supervisor'
       INSERT INTO dashcam_videos
         (vehicle_id, unit_id, title, file_path, file_size, duration_seconds, mime_type,
          recorded_at, case_number, classification, speed_mph, latitude, longitude, address,
-         notes, source, uploaded_by, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'upload', ?, ?, ?)
+         notes, source, uploaded_by, thumbnail_path, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'upload', ?, ?, ?, ?)
     `).run(
       resolvedVehicleId,
       unit_id || null,
       title,
-      req.file.filename,
-      req.file.size,
+      videoFile.filename,
+      videoFile.size,
       duration_seconds ? parseInt(String(duration_seconds), 10) : null,
-      req.file.mimetype || 'video/mp4',
+      videoFile.mimetype || 'video/mp4',
       recorded_at || null,
       case_number || null,
       classification || 'routine',
@@ -212,6 +220,7 @@ router.post('/', authenticateToken, requireRole('admin', 'manager', 'supervisor'
       address || null,
       notes || null,
       user?.username || 'system',
+      thumbnailFile ? thumbnailFile.filename : null,
       now, now,
     );
 
@@ -223,9 +232,11 @@ router.post('/', authenticateToken, requireRole('admin', 'manager', 'supervisor'
     res.json({ success: true, id });
   } catch (error: any) {
     console.error('Upload dashcam video error:', error?.message || 'Unknown error');
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+    const videoFile = files?.['video']?.[0];
+    const thumbnailFile = files?.['thumbnail']?.[0];
+    if (videoFile && fs.existsSync(videoFile.path)) fs.unlinkSync(videoFile.path);
+    if (thumbnailFile && fs.existsSync(thumbnailFile.path)) fs.unlinkSync(thumbnailFile.path);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -630,6 +641,277 @@ router.post('/webhook/clearpathgps', webhookUpload.single('video'), (req: Reques
     }
   } catch (error: any) {
     console.error('ClearPathGPS webhook error:', error?.message || 'Unknown error');
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// POST /api/fleet/dashcam-videos/:id/burn — Trigger HUD burn
+// ============================================================
+router.post('/:id/burn', validateParamId, authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(String(req.params.id), 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
+
+    const video = db.prepare(`
+      SELECT v.*, u.call_sign as unit_call_sign,
+        fv.vehicle_number, fv.year as vehicle_year, fv.make as vehicle_make, fv.model as vehicle_model
+      FROM dashcam_videos v
+      LEFT JOIN units u ON v.unit_id = u.id
+      LEFT JOIN fleet_vehicles fv ON v.vehicle_id = fv.id
+      WHERE v.id = ?
+    `).get(id) as any;
+
+    if (!video) {
+      res.status(404).json({ error: 'Video not found' });
+      return;
+    }
+
+    // Verify file exists on disk
+    const filePath = safeDashcamPath(video.file_path);
+    if (!filePath || !fs.existsSync(filePath)) {
+      res.status(404).json({ error: 'Video file not found on disk' });
+      return;
+    }
+
+    if (video.burn_status === 'processing') {
+      res.status(409).json({ error: 'Burn already in progress' });
+      return;
+    }
+
+    // Set initial burn status
+    db.prepare('UPDATE dashcam_videos SET burn_status = ?, burn_progress = 0, burn_error = NULL, updated_at = ? WHERE id = ?')
+      .run('processing', localNow(), id);
+
+    auditLog(req, 'dashcam_burn_started', 'dashcam_video', id, `Started HUD burn for: ${video.title}`);
+
+    // Build vehicle description
+    const vehParts = [video.vehicle_year, video.vehicle_make, video.vehicle_model].filter(Boolean);
+    const vehicleDescription = vehParts.length > 0 ? vehParts.join(' ') : undefined;
+
+    // Build output path — same dir, _burned suffix
+    const ext = path.extname(filePath);
+    const base = path.basename(filePath, ext);
+    const outputPath = path.join(path.dirname(filePath), `${base}_burned${ext || '.mp4'}`);
+
+    // Start burn in background (fire-and-forget)
+    (async () => {
+      try {
+        await burnVideoWithProgress(
+          filePath,
+          outputPath,
+          {
+            agencyName: 'Rocky Mountain Protective Group',
+            unitCallSign: video.unit_call_sign || undefined,
+            vehicleDescription,
+            caseNumber: video.case_number || undefined,
+            classification: video.classification || undefined,
+            recordedAt: video.recorded_at || undefined,
+            speed: video.speed_mph != null ? video.speed_mph : undefined,
+            latitude: video.latitude != null ? video.latitude : undefined,
+            longitude: video.longitude != null ? video.longitude : undefined,
+          },
+          (percent: number) => {
+            try {
+              db.prepare('UPDATE dashcam_videos SET burn_progress = ?, updated_at = ? WHERE id = ?')
+                .run(percent, localNow(), id);
+              broadcast('fleet', 'dashcam_burn_progress', { id, progress: percent });
+            } catch (e) { /* ignore DB errors during progress */ }
+          }
+        );
+
+        // Verify output
+        if (!fs.existsSync(outputPath)) {
+          throw new Error('Burned output file was not created');
+        }
+
+        const burnedFilename = path.basename(outputPath);
+        db.prepare('UPDATE dashcam_videos SET burn_status = ?, burn_progress = 100, burned_file_path = ?, burn_error = NULL, updated_at = ? WHERE id = ?')
+          .run('complete', burnedFilename, localNow(), id);
+        broadcast('fleet', 'dashcam_burn_progress', { id, progress: 100, status: 'complete' });
+        console.log(`[Burn] Video ${id} burn complete: ${burnedFilename}`);
+      } catch (err: any) {
+        const errorMsg = err.message?.slice(0, 500) || 'Unknown error';
+        console.error(`[Burn] Video ${id} burn failed:`, errorMsg);
+        try {
+          db.prepare('UPDATE dashcam_videos SET burn_status = ?, burn_error = ?, updated_at = ? WHERE id = ?')
+            .run('error', errorMsg, localNow(), id);
+          broadcast('fleet', 'dashcam_burn_progress', { id, progress: 0, status: 'error', error: errorMsg });
+        } catch { /* ignore */ }
+      }
+    })();
+
+    res.json({ success: true, message: 'Burn started' });
+  } catch (error: any) {
+    console.error('Burn dashcam video error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// GET /api/fleet/dashcam-videos/:id/download-burned — Download burned copy
+// ============================================================
+router.get('/:id/download-burned', validateParamId, (req: Request, res: Response, next) => {
+  if (!req.headers['authorization'] && typeof req.query.token === 'string' && req.query.token.length < 2048) {
+    req.headers['authorization'] = `Bearer ${req.query.token}`;
+  }
+  next();
+}, authenticateToken, (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const video = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
+    if (!video) {
+      res.status(404).json({ error: 'Video not found' });
+      return;
+    }
+
+    if (!video.burned_file_path) {
+      res.status(404).json({ error: 'No burned copy available' });
+      return;
+    }
+
+    const filePath = safeDashcamPath(video.burned_file_path);
+    if (!filePath || !fs.existsSync(filePath)) {
+      res.status(404).json({ error: 'Burned file not found on disk' });
+      return;
+    }
+
+    const stat = fs.statSync(filePath);
+    const fileSize = stat.size;
+    const range = req.headers.range;
+    const filename = `${video.title || 'dashcam'}_burned${path.extname(filePath)}`;
+
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.set('Content-Disposition', `attachment; filename="${filename.replace(/"/g, '_')}"`);
+    res.set('Referrer-Policy', 'no-referrer');
+
+    if (range) {
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+      if (isNaN(start) || isNaN(end) || start < 0 || end >= fileSize || start > end) {
+        res.writeHead(416, { 'Content-Range': `bytes */${fileSize}` });
+        res.end();
+        return;
+      }
+
+      const chunkSize = end - start + 1;
+      res.writeHead(206, {
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunkSize,
+        'Content-Type': video.mime_type || 'video/mp4',
+      });
+      const stream = fs.createReadStream(filePath, { start, end });
+      stream.on('error', (err) => { console.error('Burned stream error:', err?.message || 'Unknown error'); res.destroy(); });
+      stream.pipe(res);
+    } else {
+      res.writeHead(200, {
+        'Content-Length': fileSize,
+        'Content-Type': video.mime_type || 'video/mp4',
+      });
+      const stream = fs.createReadStream(filePath);
+      stream.on('error', (err) => { console.error('Burned stream error:', err?.message || 'Unknown error'); res.destroy(); });
+      stream.pipe(res);
+    }
+  } catch (error: any) {
+    console.error('Download burned video error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// GET /api/fleet/dashcam-videos/:id/thumbnail — Serve thumbnail
+// ============================================================
+router.get('/:id/thumbnail', validateParamId, (req: Request, res: Response, next) => {
+  if (!req.headers['authorization'] && typeof req.query.token === 'string' && req.query.token.length < 2048) {
+    req.headers['authorization'] = `Bearer ${req.query.token}`;
+  }
+  next();
+}, authenticateToken, (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const video = db.prepare('SELECT id, thumbnail_path FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
+    if (!video) {
+      res.status(404).json({ error: 'Video not found' });
+      return;
+    }
+
+    if (!video.thumbnail_path) {
+      res.status(404).json({ error: 'No thumbnail available' });
+      return;
+    }
+
+    const filePath = safeDashcamPath(video.thumbnail_path);
+    if (!filePath || !fs.existsSync(filePath)) {
+      res.status(404).json({ error: 'Thumbnail file not found on disk' });
+      return;
+    }
+
+    res.set('Content-Type', 'image/jpeg');
+    res.set('Cache-Control', 'private, max-age=3600');
+    res.set('X-Content-Type-Options', 'nosniff');
+    fs.createReadStream(filePath).pipe(res);
+  } catch (error: any) {
+    console.error('Get thumbnail error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// POST /api/fleet/dashcam-videos/:id/thumbnail — Upload thumbnail
+// ============================================================
+const thumbnailUpload = multer({
+  storage,
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2 MB max
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['image/jpeg', 'image/png'];
+    if (allowed.includes(file.mimetype) || file.originalname.match(/\.(jpg|jpeg|png)$/i)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only JPEG and PNG images are allowed'));
+    }
+  },
+});
+
+router.post('/:id/thumbnail', validateParamId, authenticateToken, requireRole('admin', 'manager', 'supervisor', 'officer'), thumbnailUpload.single('thumbnail'), (req: Request, res: Response) => {
+  try {
+    if (!req.file) {
+      res.status(400).json({ error: 'No thumbnail file uploaded' });
+      return;
+    }
+
+    const db = getDb();
+    const id = parseInt(String(req.params.id), 10);
+    if (isNaN(id)) { res.status(400).json({ error: 'Invalid video ID' }); return; }
+
+    const video = db.prepare('SELECT id, title FROM dashcam_videos WHERE id = ?').get(id) as any;
+    if (!video) {
+      // Cleanup uploaded file
+      fs.unlinkSync(req.file.path);
+      res.status(404).json({ error: 'Video not found' });
+      return;
+    }
+
+    // Rename to consistent pattern
+    const thumbFilename = `thumbnail_${id}_${Date.now()}.jpg`;
+    const thumbPath = path.join(DASHCAM_DIR, thumbFilename);
+    fs.renameSync(req.file.path, thumbPath);
+
+    db.prepare('UPDATE dashcam_videos SET thumbnail_path = ?, updated_at = ? WHERE id = ?')
+      .run(thumbFilename, localNow(), id);
+
+    auditLog(req, 'dashcam_thumbnail_uploaded', 'dashcam_video', id, `Uploaded thumbnail for: ${video.title}`);
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Upload thumbnail error:', error?.message || 'Unknown error');
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }
