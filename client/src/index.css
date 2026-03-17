@@ -10,12 +10,12 @@
 
 /* --- Theme Custom Properties ─────────────────────────────── */
 :root {
-  --surface-base: #141e2b;
-  --surface-raised: #1a2636;
-  --surface-sunken: #0d1520;
+  --surface-base: #0f1722;
+  --surface-raised: #1a2332;
+  --surface-sunken: #0a1019;
   --surface-overlay: #0a1018;
   --surface-deep: #060c14;
-  --border-default: #1e3048;
+  --border-default: #1c2d44;
   --border-subtle: #182840;
   --border-strong: #2a3e58;
   --text-primary: #e5e7eb;
@@ -26,9 +26,17 @@
   --toolbar-gradient-start: #1a5a9e;
   --toolbar-gradient-end: #2570b5;
   --grid-header-bg: #0f1a28;
-  --grid-row-alt: #121c2a;
+  --grid-row-alt: #111c2a;
   --field-label-color: #d4a017;
-  --border-panel: #1e3048;
+  --border-panel: #1c2d44;
+
+  /* Modern shadow system */
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+  --shadow-card-hover: 0 4px 12px rgba(0,0,0,0.4), 0 0 0 1px rgba(26,90,158,0.15);
+  --shadow-dropdown: 0 8px 24px rgba(0,0,0,0.5), 0 0 0 1px rgba(30,48,72,0.5);
+  --shadow-inset: inset 0 1px 2px rgba(0,0,0,0.2);
+  --transition-fast: all 0.1s ease;
+  --transition-default: all 0.15s ease;
 }
 
 /* --- Global Base Overrides --- */
@@ -37,7 +45,7 @@
     height: 100%;
   }
   html {
-    font-size: 13px;
+    font-size: 14px;
   }
   body {
     background: var(--surface-base);
