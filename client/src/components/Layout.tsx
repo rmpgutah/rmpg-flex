@@ -916,6 +916,10 @@ export default function Layout() {
           background: 'linear-gradient(180deg, #1e3048 0%, #1a2636 100%)',
           borderBottom: '1px solid #141e2b',
           flexShrink: 0,
+          // position + z-index ensures MenuBar dropdowns (z-9990) always
+          // float above the ModuleTileBar and page content below.
+          position: 'relative',
+          zIndex: 9999,
         }}
       >
         {/* Menu Bar — File | View | Tools | Help */}

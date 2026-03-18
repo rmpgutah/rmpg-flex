@@ -603,32 +603,38 @@ export default function DispatchPage() {
 
     // Listen for unit updates (status changes, new units, deletions)
     const unsubUnit = subscribe('unit_update', (msg: any) => {
-      const data = msg.data || msg;
-      if (data.action === 'unit_status_changed' && data.unit) {
-        setUnits((prev) => prev.map((u) => (String(u.id) === String(data.unit.id) ? { ...u, ...data.unit, id: String(data.unit.id) } : u)));
-      } else if (data.action === 'unit_created' && data.unit) {
-        setUnits((prev) => {
-          if (prev.some((u) => String(u.id) === String(data.unit.id))) return prev;
-          return [...prev, mapDbUnit(data.unit)];
-        });
-      } else if (data.action === 'unit_deleted' && data.unit_id) {
-        setUnits((prev) => prev.filter((u) => String(u.id) !== String(data.unit_id)));
-      }
+      try {
+        const data = msg.data || msg;
+        if (data.action === 'unit_status_changed' && data.unit) {
+          setUnits((prev) => prev.map((u) => (String(u.id) === String(data.unit.id) ? { ...u, ...data.unit, id: String(data.unit.id) } : u)));
+        } else if (data.action === 'unit_created' && data.unit) {
+          setUnits((prev) => {
+            if (prev.some((u) => String(u.id) === String(data.unit.id))) return prev;
+            return [...prev, mapDbUnit(data.unit)];
+          });
+        } else if (data.action === 'unit_deleted' && data.unit_id) {
+          setUnits((prev) => prev.filter((u) => String(u.id) !== String(data.unit_id)));
+        }
+      } catch { /* malformed unit update — ignore to preserve live dispatch view */ }
     });
 
     // Listen for panic alerts — play alarm tone + voice alert, switch to active tab
     const unsubPanic = subscribe('panic_alert', (msg: any) => {
-      const data = msg.data || msg;
-      setFilterTab('active');
-      announcePanicAlert(data.user_name || data.userName);
+      try {
+        const data = msg.data || msg;
+        setFilterTab('active');
+        announcePanicAlert(data.user_name || data.userName);
+      } catch { /* non-fatal — alert UI may not update but dispatch continues */ }
     });
 
     // Listen for warrant alerts on linked persons
     const unsubWarrant = subscribe('call:warrant_alert', (msg: any) => {
-      const data = msg.data || msg;
-      addToast(`⚠️ WARRANT ALERT: ${data.personName} — ${data.warrantCount} active warrant(s) on call`, 'error');
-      // Refresh data so warrant badges appear immediately
-      fetchData({ silent: true });
+      try {
+        const data = msg.data || msg;
+        addToast(`⚠️ WARRANT ALERT: ${data.personName} — ${data.warrantCount} active warrant(s) on call`, 'error');
+        // Refresh data so warrant badges appear immediately
+        fetchData({ silent: true });
+      } catch { /* non-fatal — warrant toast is advisory */ }
     });
 
     return () => { unsubDispatch(); unsubUnit(); unsubPanic(); unsubWarrant(); };
@@ -2113,7 +2119,7 @@ export default function DispatchPage() {
                     )}
 
                     {/* Visit History (mobile) */}
-                    {selectedCall.visit_history && selectedCall.visit_history.length > 0 && (
+                    {Array.isArray(selectedCall.visit_history) && selectedCall.visit_history.length > 0 && (
                       <div className="mt-3 pt-2 border-t border-rmpg-600">
                         <div className="field-label mb-1.5">Visit History</div>
                         <div className="space-y-1.5">
@@ -3699,7 +3705,7 @@ export default function DispatchPage() {
                 )}
 
                 {/* ── VISIT HISTORY TIMELINE — PSO calls, Info tab ─── */}
-                {detailTab === 'info' && !isEditing && selectedCall.incident_type === 'pso_client_request' && selectedCall.visit_history && selectedCall.visit_history.length > 0 && (
+                {detailTab === 'info' && !isEditing && selectedCall.incident_type === 'pso_client_request' && Array.isArray(selectedCall.visit_history) && selectedCall.visit_history.length > 0 && (
                   <div className="border-t border-rmpg-600 pt-3 mb-3">
                     <label className="field-label !flex items-center gap-1.5 mb-2">
                       <Clock className="w-3 h-3" /> Visit History

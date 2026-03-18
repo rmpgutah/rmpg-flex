@@ -18,7 +18,7 @@ import { initDatabase } from './models/database';
 import { initWebSocket, getConnectedUsers, getConnectedClientCount } from './utils/websocket';
 import { authenticateToken, requireRole } from './middleware/auth';
 import { securityHeaders } from './middleware/securityHeaders';
-import { sanitizeInput } from './middleware/sanitize';
+import { sanitizeInput, validateParamId } from './middleware/sanitize';
 import { apiRateLimit, webhookRateLimit, rateLimit } from './middleware/rateLimiter';
 import { liveBroadcast } from './middleware/liveBroadcast';
 import { startPatrolMonitor, stopPatrolMonitor } from './utils/patrolMonitor';
@@ -505,7 +505,7 @@ app.get('/api/presence', authenticateToken, requireRole('admin', 'manager', 'sup
 app.use(liveBroadcast);
 
 // ─── Redispatch (top-level to bypass nested router issues) ──
-app.post('/api/dispatch/calls/:id/redispatch', authenticateToken, (req, res) => {
+app.post('/api/dispatch/calls/:id/redispatch', authenticateToken, validateParamId, (req, res) => {
   // Top-level route — bypasses nested dispatch router matching issue
   try {
     const db = getDb();

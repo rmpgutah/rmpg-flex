@@ -183,12 +183,16 @@ function issueTokens(user: any, ip: string, userAgent: string, deviceFingerprint
   // Generate access token WITH sessionId so auth middleware can enforce IP binding
   const accessToken = generateAccessToken({ ...payload, sessionId });
 
-  // Log the login activity
   const db = getDb();
-  db.prepare(`
-    INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-    VALUES (?, 'user_login', 'user', ?, 'User logged in', ?)
-  `).run(user.id, user.id, ip);
+
+  // Log the login activity — wrapped in try/catch so DB contention during
+  // the hourly session-cleanup job (SQLITE_BUSY) never blocks the login response
+  try {
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'user_login', 'user', ?, 'User logged in', ?)
+    `).run(user.id, user.id, ip);
+  } catch { /* non-fatal — audit log failure must never prevent login */ }
 
   // ── Login IP anomaly detection ──────────────────────
   // Check if the user's last successful login was from a different IP within the last hour.
@@ -689,6 +693,11 @@ router.post('/refresh', refreshRateLimit, (req: Request, res: Response) => {
       sessionId: session.session_id,
     };
 
+    // Generate new tokens inside a transaction so concurrent refresh requests
+    // (e.g. mobile client retrying a network error) can't both pass the SELECT
+    // check and produce two valid refresh tokens for the same session.
+    // The UPDATE uses WHERE refresh_token_hash = ? (the current hash) so only
+    // the first writer succeeds; the second finds 0 rows updated and is discarded.
     const newAccessToken = generateAccessToken(payload);
     const newRefreshToken = generateRefreshToken(payload);
     const newTokenHash = crypto.createHash('sha256').update(newRefreshToken).digest('hex');
@@ -696,10 +705,19 @@ router.post('/refresh', refreshRateLimit, (req: Request, res: Response) => {
     const now = localNow();
     // Store previous token hash for reuse detection — if the OLD token is replayed
     // after rotation, it indicates token theft (see reuse detection above)
-    db.prepare(`
-      UPDATE sessions SET refresh_token_hash = ?, previous_token_hash = ?, last_used_at = ?
-      WHERE id = ?
-    `).run(newTokenHash, tokenHash, now, session.id);
+    const rotateToken = db.transaction(() => {
+      const updated = db.prepare(`
+        UPDATE sessions SET refresh_token_hash = ?, previous_token_hash = ?, last_used_at = ?
+        WHERE id = ? AND refresh_token_hash = ?
+      `).run(newTokenHash, tokenHash, now, session.id, tokenHash);
+      return updated.changes;
+    });
+    const rowsChanged = rotateToken();
+    if (rowsChanged === 0) {
+      // Another request already rotated this token (race condition) — reject cleanly
+      res.status(401).json({ error: 'Token already rotated', code: 'REFRESH_CONFLICT' });
+      return;
+    }
 
     // Audit log token refresh for security monitoring
     try {

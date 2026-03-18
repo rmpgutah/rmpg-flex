@@ -923,10 +923,10 @@ router.post('/calls/:id/persons', validateParamId, requireRole('admin', 'manager
             warrantCount: result.hitsFound,
           });
         } catch (err: any) {
-          console.error('[Dispatch Warrant Alert] Note creation error:', err.message);
+          console.error('[Dispatch Warrant Alert] Note creation error:', err instanceof Error ? err.message : String(err));
         }
       }
-    }).catch(err => console.error('[Warrant Check] Async check failed:', err.message));
+    }).catch(err => console.error('[Warrant Check] Async check failed:', err instanceof Error ? err.message : String(err)));
 
     broadcastDispatchUpdate({ action: 'call_person_linked', call_id: call.id, person: linked });
     res.status(201).json(linked);

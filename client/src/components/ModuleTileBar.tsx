@@ -109,6 +109,14 @@ export default function ModuleTileBar({
     }
   }, []);
 
+  // Close dropdown on route change — F-key navigation calls navigate() in
+  // Layout.tsx which doesn't know about this component's internal state.
+  // Without this, pressing F6 while Records dropdown is open leaves the
+  // dropdown floating over the Records page content.
+  useEffect(() => {
+    setOpenDropdown(null);
+  }, [location.pathname]);
+
   // Close dropdown on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -132,12 +140,15 @@ export default function ModuleTileBar({
 
   return (
     <div
-      className="flex items-center gap-1 px-3 shrink-0 relative"
+      className="flex items-center gap-1 px-3 shrink-0"
       style={{
         height: 58,
         background: 'linear-gradient(180deg, #0f1722 0%, #0d1520 100%)',
         borderBottom: '1px solid #1c2d44',
-        zIndex: 9000,
+        // No z-index here — creating a stacking context on the bar traps the
+        // dropdown's z-9999 at z=bar in the root context, letting page modals
+        // (toast, command palette) appear above the open dropdown.
+        position: 'relative',
       }}
     >
       {visibleItems.map((item) => {

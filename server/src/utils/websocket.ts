@@ -57,7 +57,7 @@ function safeSend(ws: WebSocket, data: string): boolean {
 const AUTH_TIMEOUT_MS = 8_000;
 
 // All channels every authenticated client auto-subscribes to
-const DEFAULT_CHANNELS = ['dispatch', 'alerts', 'records', 'personnel', 'fleet', 'incidents', 'citations', 'patrol', 'admin', 'presence', 'messages', 'email'];
+const DEFAULT_CHANNELS = ['dispatch', 'alerts', 'records', 'personnel', 'fleet', 'incidents', 'citations', 'patrol', 'admin', 'presence', 'messages', 'email', 'serve'];
 
 // ─── Radio State ────────────────────────────────────────────
 // Tracks which radio channel each client is on, and who is
@@ -207,7 +207,11 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
         if (!activeSession) {
           safeSend(client.ws, JSON.stringify({ type: 'session_revoked', message: 'Your session has been terminated' }));
           client.ws.close(4003, 'Session revoked');
-          clients.delete(clientId);
+          // Do NOT delete from clients here — the 'close' event handler performs
+          // the decrement of userConnectionCounts and full cleanup. Deleting early
+          // causes clients.get(clientId) to return undefined in the close handler,
+          // skipping the decrement and permanently drifting the counter upward,
+          // which eventually locks the officer out with "Too many active connections".
           continue;
         }
 
@@ -216,12 +220,12 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
         if (!user || user.status !== 'active') {
           safeSend(client.ws, JSON.stringify({ type: 'error', code: 'SESSION_REVOKED', message: 'Account deactivated' }));
           client.ws.close(4002, 'Account deactivated');
-          clients.delete(clientId);
+          // Let the 'close' event handler do the cleanup and counter decrement
         } else if (client.role && user.role !== client.role) {
           // Role changed — force reconnection so client picks up new permissions
           safeSend(client.ws, JSON.stringify({ type: 'error', code: 'ROLE_CHANGED', message: 'Your role has been updated. Please refresh.' }));
           client.ws.close(4003, 'Role changed');
-          clients.delete(clientId);
+          // Let the 'close' event handler do the cleanup and counter decrement
         }
       } catch { /* DB unavailable — leave connection intact until next check */ }
     }
@@ -441,13 +445,22 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
         ws.terminate();
         return;
       }
+      // Only ping sockets that are fully open — ping() throws synchronously on
+      // CLOSING/CLOSED sockets, which would abort the forEach and skip remaining clients
+      if (ws.readyState !== WebSocket.OPEN) return;
       (ws as any).__isAlive = false;
-      ws.ping();
+      try { ws.ping(); } catch { /* ignore — socket may have closed between readyState check and ping */ }
     });
   }, PING_INTERVAL_MS);
   pingInterval.unref();
 
   wss.on('close', () => clearInterval(pingInterval));
+
+  // Server-level error handler — prevents unhandled 'error' events on the wss
+  // EventEmitter from falling through to the process uncaughtException handler
+  wss.on('error', (err) => {
+    console.error('[WS] WebSocketServer error:', err.message);
+  });
 
   // Mark connections alive on pong
   wss.on('connection', (ws) => {
@@ -702,12 +715,21 @@ function handleClientMessage(clientId: string, message: any): void {
 // ─── Generic Broadcast / Send ─────────────────────────────────
 
 export function broadcast(channel: string, type: string, data: any): void {
-  const payload = JSON.stringify({
-    channel,
-    type,
-    data,
-    timestamp: new Date().toISOString(),
-  });
+  let payload: string;
+  try {
+    payload = JSON.stringify({
+      channel,
+      type,
+      data,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    // Circular references or non-serializable values in `data` would otherwise
+    // propagate back into the calling HTTP handler and return a 500 — while
+    // silently dropping the broadcast. Log it here and bail safely.
+    console.error(`[WS] broadcast() JSON.stringify failed for type="${type}" channel="${channel}":`, err?.message ?? err);
+    return;
+  }
 
   clients.forEach((client) => {
     if (client.authenticated && client.channels.has(channel)) {

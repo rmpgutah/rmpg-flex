@@ -391,25 +391,30 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     // Broadcast to dispatch channel
     broadcastDispatchUpdate({ action: 'call_created', call });
 
-    // Notify dispatch/supervisors of new call
-    createNotificationForRoles(
-      ['admin', 'manager', 'supervisor', 'dispatcher'],
-      'dispatch', `New Call: ${call.call_number}`,
-      `${call.incident_type} — ${call.location_address || 'No address'}`,
-      'call', call.id, 'normal', 'dispatch.call_created', req.user!.userId,
-    );
-
-    // P1 emergency: extra critical notification to all sworn + dispatch
-    if (call.priority === 'P1') {
-      createNotificationForRoles(
-        ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'],
-        'dispatch', `🚨 P1 EMERGENCY: ${call.call_number}`,
-        `${call.incident_type} — ${call.location_address || 'No address'}`,
-        'call', call.id, 'critical', 'dispatch.call_priority_p1', req.user!.userId,
-      );
-    }
-
     res.status(201).json(call);
+
+    // Notify after response — non-fatal: a notification failure must never block
+    // the 201 or cause an unhandled rejection in a completed handler.
+    try {
+      createNotificationForRoles(
+        ['admin', 'manager', 'supervisor', 'dispatcher'],
+        'dispatch', `New Call: ${call.call_number}`,
+        `${call.incident_type} — ${call.location_address || 'No address'}`,
+        'call', call.id, 'normal', 'dispatch.call_created', req.user!.userId,
+      );
+
+      // P1 emergency: extra critical notification to all sworn + dispatch
+      if (call.priority === 'P1') {
+        createNotificationForRoles(
+          ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'],
+          'dispatch', `🚨 P1 EMERGENCY: ${call.call_number}`,
+          `${call.incident_type} — ${call.location_address || 'No address'}`,
+          'call', call.id, 'critical', 'dispatch.call_priority_p1', req.user!.userId,
+        );
+      }
+    } catch (notifErr: any) {
+      console.error('[Call Create] Non-fatal notification error:', notifErr?.message ?? notifErr);
+    }
   } catch (error: any) {
     console.error('Create call error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
