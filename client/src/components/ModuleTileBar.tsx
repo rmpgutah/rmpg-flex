@@ -132,9 +132,9 @@ export default function ModuleTileBar({
 
   return (
     <div
-      className="flex items-center gap-[2px] px-2 shrink-0"
+      className="flex items-center gap-1 px-3 shrink-0"
       style={{
-        height: 54,
+        height: 58,
         background: 'linear-gradient(180deg, #0f1722 0%, #0d1520 100%)',
         borderBottom: '1px solid #1c2d44',
         overflowX: 'auto',
@@ -176,9 +176,10 @@ export default function ModuleTileBar({
               }}
               className="flex flex-col items-center justify-center relative select-none"
               style={{
-                width: 60,
-                height: 46,
-                borderRadius: 2,
+                minWidth: 72,
+                height: 50,
+                padding: '0 6px',
+                borderRadius: 3,
                 cursor: 'pointer',
                 transition: 'all 120ms ease',
                 background: active ? 'rgba(26,90,158,0.15)' : 'transparent',
@@ -200,15 +201,15 @@ export default function ModuleTileBar({
                 }
               }}
             >
-              <Icon size={16} />
+              <Icon size={18} />
               <span
-                className="flex items-center gap-[2px]"
+                className="flex items-center gap-[2px] whitespace-nowrap"
                 style={{
-                  fontSize: 9,
+                  fontSize: 10,
                   fontWeight: 700,
                   textTransform: 'uppercase',
-                  letterSpacing: '0.05em',
-                  marginTop: 2,
+                  letterSpacing: '0.04em',
+                  marginTop: 3,
                   lineHeight: 1,
                 }}
               >
