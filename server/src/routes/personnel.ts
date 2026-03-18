@@ -173,12 +173,30 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
 
 // GET /api/personnel/:id - Get user details
 // Restrict to sworn/dispatch/command roles — contract_manager must NOT see officer PII
-router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), validateParamId, (req: Request, res: Response, next) => {
+//
+// Sub-resource paths (body-cameras, bodycam-videos, etc.) are handled by
+// mountScheduleRoutes on the parent apiRouter. The bypass guard below must run
+// BEFORE validateParamId — otherwise validateParamId rejects those paths as
+// non-numeric IDs with a 400 "Invalid ID parameter" response, and those
+// requests never reach the apiRouter handlers.
+const _PERSONNEL_SUB_PATHS = new Set([
+  'schedules', 'time', 'credentials', 'training', 'training-requirements',
+  'deployments', 'coverage-gaps', 'analytics', 'activity', 'equipment',
+  'body-cameras', 'bodycam-videos',
+]);
+
+router.get('/:id',
+  (req: Request, _res: Response, next: NextFunction) => {
+    // Exit this router entirely for known sub-resource paths so the
+    // apiRouter's mountScheduleRoutes handlers can service them.
+    if (_PERSONNEL_SUB_PATHS.has(String(req.params.id))) return next('router');
+    next();
+  },
+  requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), validateParamId, (req: Request, res: Response, next) => {
   try {
-    // Check for route conflicts with sub-paths handled by mountScheduleRoutes
-    const subPaths = ['schedules', 'time', 'credentials', 'training', 'training-requirements', 'deployments', 'coverage-gaps', 'analytics', 'activity', 'equipment', 'body-cameras', 'bodycam-videos'];
-    if (subPaths.includes(String(req.params.id))) {
-      return next('route');
+    const subPaths = _PERSONNEL_SUB_PATHS;
+    if (subPaths.has(String(req.params.id))) {
+      return next('router');
     }
 
     // Validate ID parameter

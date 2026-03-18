@@ -621,7 +621,7 @@ export default function DashCamDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center" style={{ height: 'calc(100vh - 120px)' }}>
+      <div className="flex items-center justify-center h-full">
         <div className="flex items-center gap-2">
           <Loader2 className="w-5 h-5 animate-spin text-brand-400" />
           <span className="text-[11px] text-rmpg-400">Loading video...</span>
@@ -632,7 +632,7 @@ export default function DashCamDetailPage() {
 
   if (error || !video) {
     return (
-      <div className="flex items-center justify-center" style={{ height: 'calc(100vh - 120px)' }}>
+      <div className="flex items-center justify-center h-full">
         <div className="text-center">
           <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-2" />
           <p className="text-xs text-rmpg-400 mb-3">{error || 'Video not found'}</p>
@@ -648,7 +648,7 @@ export default function DashCamDetailPage() {
   // ── Render ────────────────────────────────────
 
   return (
-    <div id="hud-container" className="relative flex" style={{ height: 'calc(100vh - 120px)', background: '#000' }}>
+    <div id="hud-container" className="relative flex h-full" style={{ background: '#000' }}>
 
       {/* ── Video Area (fills available space) ── */}
       <div className="flex-1 flex flex-col min-w-0 relative">

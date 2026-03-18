@@ -343,7 +343,7 @@ function ScheduleSendModal({ onSchedule, onClose }: { onSchedule: (dateTime: str
   ];
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50">
       <div className="bg-surface-base border border-border-subtle rounded w-80 mx-4">
         <div className="px-4 py-2 border-b border-border-subtle flex items-center justify-between">
           <h3 className="text-sm font-semibold text-white flex items-center gap-2"><Clock className="w-4 h-4 text-brand-400" /> Schedule Send</h3>
@@ -1249,7 +1249,7 @@ function ContextMenu({
     position: 'fixed',
     left: Math.min(state.x, window.innerWidth - 200),
     top: Math.min(state.y, window.innerHeight - 350),
-    zIndex: 100,
+    zIndex: 9999,
   };
 
   return (
@@ -1944,7 +1944,7 @@ export default function EmailPage() {
 
       {/* ─── Folder context menu ─── */}
       {folderContextMenu && (
-        <div className="fixed z-[100]" style={{ left: folderContextMenu.x, top: folderContextMenu.y }}>
+        <div className="fixed z-[9999]" style={{ left: folderContextMenu.x, top: folderContextMenu.y }}>
           <div className="min-w-[140px] bg-surface-base border border-border-strong rounded shadow-xl py-1"
             ref={el => {
               if (el) {

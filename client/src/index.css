@@ -3355,5 +3355,5 @@ html.compact-mode .text-xs { font-size: 0.6875rem; }
   background-size: 40px 40px;
   animation: login-grid-drift 30s linear infinite;
   pointer-events: none;
-  z-index: 0;
+  z-index: -1;
 }

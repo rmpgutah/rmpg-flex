@@ -4063,7 +4063,7 @@ export default function DispatchPage() {
       {/* Right-Click Context Menu */}
       {contextMenu && (
         <div
-          className="fixed z-[100]"
+          className="fixed z-[9999]"
           style={{
             left: Math.min(contextMenu.x, window.innerWidth - 200),
             top: Math.min(contextMenu.y, window.innerHeight - 300),
