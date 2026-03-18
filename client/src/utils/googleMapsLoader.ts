@@ -117,7 +117,9 @@ function doScriptLoad(
   };
 
   const script = document.createElement('script');
-  script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,marker,visualization&callback=${callbackName}&v=weekly`;
+  // Pin to v=3.58 (stable raster) — 'weekly' auto-enables vector tiles
+  // which ignore JSON styles, causing black/unstyled map areas.
+  script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,marker,visualization&callback=${callbackName}&v=3.58`;
   script.async = true;
   script.defer = true;
   script.onerror = () => {

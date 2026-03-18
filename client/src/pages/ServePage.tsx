@@ -398,7 +398,7 @@ export default function ServePage() {
       const map = new google.maps.Map(mapContainerRef.current, {
         center,
         zoom: 11,
-        renderingType: (google.maps as any).RenderingType?.RASTER ?? undefined,
+        renderingType: 'RASTER' as any,
         styles: DARK_MAP_STYLE,
         disableDefaultUI: true,
         zoomControl: true,

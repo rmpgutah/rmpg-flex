@@ -126,7 +126,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       const map = new google.maps.Map(mapContainerRef.current, {
         center,
         zoom: MINI_ZOOM,
-        renderingType: (google.maps as any).RenderingType?.RASTER ?? undefined,
+        renderingType: 'RASTER' as any,
         styles: DARK_MAP_STYLE,
         disableDefaultUI: true,
         zoomControl: true,
