@@ -664,12 +664,13 @@ export default function WarrantsPage() {
   const fetchWatchHitsData = useCallback(async () => {
     setWatchLoading(true);
     try {
-      const [hits, active] = await Promise.all([
-        apiFetch<any[]>('/warrants/watch/log?event=warrant_found&limit=100'),
-        apiFetch<any[]>('/warrants/watch/active'),
+      const [hitsRes, activeRes] = await Promise.all([
+        apiFetch<any>('/warrants/watch/log?event=warrant_found&limit=100'),
+        apiFetch<any>('/warrants/watch/active'),
       ]);
-      setWatchHits(hits || []);
-      setWatchActive(active || []);
+      // Both endpoints return { data: [...] }, not plain arrays
+      setWatchHits(Array.isArray(hitsRes) ? hitsRes : (hitsRes?.data || []));
+      setWatchActive(Array.isArray(activeRes) ? activeRes : (activeRes?.data || []));
     } catch {}
     finally { setWatchLoading(false); }
   }, []);
