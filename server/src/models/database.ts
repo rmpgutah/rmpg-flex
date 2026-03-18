@@ -3200,6 +3200,28 @@ function migrateSchema(): void {
     )
   `);
 
+  // ── Expanded user preferences columns ───────────────────────────────────────
+  addCol('user_preferences', 'date_format', "TEXT DEFAULT 'MM/DD/YYYY'");
+  addCol('user_preferences', 'time_format', "TEXT DEFAULT '12h'");
+  addCol('user_preferences', 'timezone_override', 'TEXT');
+  addCol('user_preferences', 'status_sounds_enabled', 'INTEGER DEFAULT 1');
+  addCol('user_preferences', 'notification_sounds', 'INTEGER DEFAULT 1');
+  addCol('user_preferences', 'gps_track_display', "TEXT DEFAULT 'trail'");       // trail | none | dot
+  addCol('user_preferences', 'auto_geocode_calls', 'INTEGER DEFAULT 1');
+  addCol('user_preferences', 'default_landing_page', "TEXT DEFAULT '/'");
+  addCol('user_preferences', 'map_default_zoom', 'INTEGER DEFAULT 13');
+  addCol('user_preferences', 'show_weather_widget', 'INTEGER DEFAULT 1');
+  addCol('user_preferences', 'show_unit_status_bar', 'INTEGER DEFAULT 1');
+  addCol('user_preferences', 'sidebar_collapsed', 'INTEGER DEFAULT 0');
+  addCol('user_preferences', 'patrol_log_auto_open', 'INTEGER DEFAULT 0');
+  addCol('user_preferences', 'dispatch_audio_alerts', 'INTEGER DEFAULT 1');
+  addCol('user_preferences', 'highlight_own_unit', 'INTEGER DEFAULT 1');
+  addCol('user_preferences', 'show_call_timer', 'INTEGER DEFAULT 1');
+  addCol('user_preferences', 'show_bolo_banner', 'INTEGER DEFAULT 1');
+  addCol('user_preferences', 'map_traffic_overlay', 'INTEGER DEFAULT 0');
+  addCol('user_preferences', 'map_satellite_default', 'INTEGER DEFAULT 0');
+  addCol('user_preferences', 'warrant_auto_attach', 'INTEGER DEFAULT 1');        // auto-link warrants to calls
+
   // Radio audio recording — store audio file path alongside transcripts
   addCol('radio_transcripts', 'audio_file', 'TEXT');
   addCol('radio_transcripts', 'file_size', 'INTEGER');

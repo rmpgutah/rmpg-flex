@@ -176,6 +176,8 @@ export type AuditAction =
   | 'dashcam_deleted'
   | 'dashcam_linked'
   | 'dashcam_unlinked'
+  | 'dashcam_burn_started'
+  | 'dashcam_thumbnail_uploaded'
   // Email
   | 'SEND_EMAIL'
   | 'REPLY_EMAIL'
