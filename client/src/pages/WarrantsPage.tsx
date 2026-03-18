@@ -20,8 +20,6 @@ import {
   Radar,
   PlayCircle,
   History,
-  Globe,
-  Shield,
   FileText,
   Activity,
   ChevronRight,
@@ -157,25 +155,6 @@ interface UnifiedWarrant extends Warrant {
   source?: string | null;
 }
 
-// Coverage / Sources
-interface ScraperSource {
-  id: number;
-  source_key: string;
-  state: string;
-  county: string;
-  source_url: string;
-  parser_type: string;
-  enabled: number;
-  scrape_interval_minutes: number;
-  last_scraped_at: string | null;
-  last_error: string | null;
-  consecutive_failures: number;
-  active_warrants: number;
-  total_warrants: number;
-  auto_recovering: boolean;
-  backoff_attempt: number;
-}
-
 interface WatchRun {
   id: number;
   run_id: string;
@@ -239,12 +218,11 @@ const SEVERITY_COLORS: Record<string, string> = {
   civil: 'bg-purple-900/50 text-purple-400 border-purple-700/50',
 };
 
-type TabId = 'dashboard' | 'warrants' | 'sources';
+type TabId = 'dashboard' | 'warrants';
 
 const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: string }>; roleGated?: boolean }[] = [
   { id: 'dashboard', label: 'DASHBOARD', icon: Activity },
   { id: 'warrants', label: 'WARRANTS', icon: Gavel },
-  { id: 'sources', label: 'SOURCES', icon: Shield, roleGated: true },
 ];
 
 const FEED_RANGES = ['1H', '8H', '24H', '7D'] as const;
@@ -301,42 +279,6 @@ function relativeTime(dt: string): string {
 }
 
 // ============================================================
-// Sub-components
-// ============================================================
-
-function CoverageSourceCard({ source }: { source: ScraperSource }) {
-  const isRecent = source.last_scraped_at &&
-    (Date.now() - new Date(source.last_scraped_at.replace(' ', 'T')).getTime()) < 3 * 60 * 60 * 1000;
-  return (
-    <div className={`p-2 rounded-sm border ${
-      !source.enabled
-        ? 'border-rmpg-700/50 bg-rmpg-800/30'
-        : source.consecutive_failures > 0
-          ? 'border-amber-700/50 bg-amber-900/10'
-          : isRecent
-            ? 'border-green-700/50 bg-green-900/10'
-            : 'border-brand-600/30 bg-brand-900/10'
-    }`}>
-      <div className="flex items-center justify-between">
-        <span className="text-[10px] font-bold text-white">{source.county || source.source_key}</span>
-        <span className={`w-1.5 h-1.5 rounded-full ${
-          !source.enabled ? 'bg-rmpg-600' : isRecent ? 'bg-green-400' : source.consecutive_failures > 0 ? 'bg-amber-400' : 'bg-brand-400'
-        }`} />
-      </div>
-      <div className="flex items-center justify-between mt-1 text-[9px] text-rmpg-400">
-        <span>{source.active_warrants} active / {source.total_warrants} total</span>
-        <span>{source.scrape_interval_minutes}m</span>
-      </div>
-      {source.last_scraped_at && (
-        <div className="text-[8px] text-rmpg-500 mt-0.5">
-          Last: {formatDateTime(source.last_scraped_at)}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ============================================================
 // Component
 // ============================================================
 
@@ -373,7 +315,6 @@ export default function WarrantsPage() {
   const [error, setError] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [filterType, setFilterType] = useState<string>('');
-  const [filterSource, setFilterSource] = useState<string>('');
   const [filterSeverity, setFilterSeverity] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
@@ -425,11 +366,7 @@ export default function WarrantsPage() {
   const [personProfileLoading, setPersonProfileLoading] = useState(false);
   const [checkingPerson, setCheckingPerson] = useState(false);
 
-  // ============================================================
-  // SOURCES TAB STATE
-  // ============================================================
-  const [coverageSources, setCoverageSources] = useState<ScraperSource[]>([]);
-  const [coverageLoading, setCoverageLoading] = useState(false);
+  // Watch runs state
   const [watchRuns, setWatchRuns] = useState<WatchRun[]>([]);
   const [watchRunsLoading, setWatchRunsLoading] = useState(false);
   const scanPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -498,7 +435,6 @@ export default function WarrantsPage() {
       const params = new URLSearchParams();
       if (filterStatus) params.set('status', filterStatus);
       if (filterType) params.set('type', filterType);
-      if (filterSource) params.set('source', filterSource);
       if (filterSeverity) params.set('severity', filterSeverity);
       if (searchQuery) params.set('subject_name', searchQuery);
       params.set('archived', showArchived ? 'true' : 'false');
@@ -527,7 +463,7 @@ export default function WarrantsPage() {
     } finally {
       if (!options?.silent) setLoading(false);
     }
-  }, [filterStatus, filterType, filterSource, filterSeverity, searchQuery, showArchived, page]);
+  }, [filterStatus, filterType, filterSeverity, searchQuery, showArchived, page]);
 
   useEffect(() => {
     if (activeTab === 'warrants') fetchWarrants();
@@ -591,19 +527,6 @@ export default function WarrantsPage() {
     finally { setCheckingPerson(false); }
   }, []);
 
-  // ============================================================
-  // SOURCES TAB FETCHES
-  // ============================================================
-
-  const fetchCoverage = useCallback(async () => {
-    setCoverageLoading(true);
-    try {
-      const res = await apiFetch<{ data: ScraperSource[] }>('/warrants/scraped/status');
-      setCoverageSources(res.data || []);
-    } catch { /* silent */ }
-    finally { setCoverageLoading(false); }
-  }, []);
-
   const fetchWatchRuns = useCallback(async () => {
     setWatchRunsLoading(true);
     try {
@@ -616,10 +539,8 @@ export default function WarrantsPage() {
   }, []);
 
   useEffect(() => {
-    if (activeTab !== 'sources') return;
-    fetchCoverage();
     fetchWatchRuns();
-  }, [activeTab, fetchCoverage, fetchWatchRuns]);
+  }, [fetchWatchRuns]);
 
   const handleTriggerScan = useCallback(async () => {
     if (scanPollRef.current) clearInterval(scanPollRef.current);
@@ -851,23 +772,18 @@ export default function WarrantsPage() {
             {showArchived ? 'Showing Archived' : 'Archives'}
           </button>
         )}
-        {activeTab === 'sources' && isAdminOrManager && (
-          <>
-            <button
-              onClick={handleTriggerScan}
-              disabled={scanRunning}
-              className="toolbar-btn toolbar-btn-primary text-[9px]"
-              title="Run warrant scan now"
-            >
-              {scanRunning
-                ? <><Loader2 className="w-3 h-3 animate-spin" /> Scanning...</>
-                : <><PlayCircle className="w-3 h-3" /> Run Scan Now</>
-              }
-            </button>
-            <button onClick={() => { fetchCoverage(); fetchWatchRuns(); }} className="toolbar-btn text-[9px]" title="Refresh">
-              <RotateCcw className="w-3 h-3" />
-            </button>
-          </>
+        {isAdminOrManager && (
+          <button
+            onClick={handleTriggerScan}
+            disabled={scanRunning}
+            className="toolbar-btn toolbar-btn-primary text-[9px]"
+            title="Run warrant scan now"
+          >
+            {scanRunning
+              ? <><Loader2 className="w-3 h-3 animate-spin" /> Scanning...</>
+              : <><PlayCircle className="w-3 h-3" /> Run Scan Now</>
+            }
+          </button>
         )}
         <span className="toolbar-separator" />
         <ExportButton exportUrl="/warrants/export" exportFilename="warrants_export.csv" />
@@ -919,10 +835,10 @@ export default function WarrantsPage() {
           <span className="font-bold tabular-nums text-rmpg-300">{dashStats?.personsFlagged ?? '-'}</span>
         </div>
         <div className="flex items-center gap-1.5 px-3 py-1 border-r border-[#1e3048]">
-          <span className={`led-dot ${(dashStats?.sourcesOnline || 0) > 0 ? 'led-green' : 'led-off'}`} />
-          <span className="text-rmpg-400">SOURCES</span>
+          <span className={`led-dot ${(dashStats?.sourcesOnline || 0) > 0 ? 'led-green' : 'led-red'}`} />
+          <span className="text-rmpg-400">UTAH API</span>
           <span className={`font-bold tabular-nums ${(dashStats?.sourcesOnline || 0) > 0 ? 'text-green-400' : 'text-red-400'}`}>
-            {dashStats ? `${dashStats.sourcesOnline}/${dashStats.sourcesTotal}` : '-'}
+            {dashStats ? ((dashStats.sourcesOnline > 0) ? 'ONLINE' : 'BLOCKED') : '-'}
           </span>
         </div>
         <div className="flex items-center gap-1.5 px-3 py-1">
@@ -983,11 +899,11 @@ export default function WarrantsPage() {
                 </div>
                 <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Persons Flagged</div>
               </div>
-              <div className={`panel-inset p-3 rounded-sm text-center ${dashStats && dashStats.sourcesOnline < dashStats.sourcesTotal ? 'bg-red-900/10 border border-red-900/30' : 'bg-surface-sunken'}`}>
-                <div className={`text-2xl font-bold font-mono tabular-nums ${dashStats && dashStats.sourcesOnline >= dashStats.sourcesTotal ? 'text-green-400' : dashStats ? 'text-amber-400' : 'text-white'}`}>
-                  {dashStatsLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : dashStats ? `${dashStats.sourcesOnline}/${dashStats.sourcesTotal}` : '-'}
+              <div className={`panel-inset p-3 rounded-sm text-center ${dashStats && dashStats.sourcesOnline === 0 ? 'bg-red-900/10 border border-red-900/30' : 'bg-surface-sunken'}`}>
+                <div className={`text-2xl font-bold font-mono tabular-nums ${!dashStats ? 'text-white' : dashStats.sourcesOnline > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {dashStatsLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : dashStats ? (dashStats.sourcesOnline > 0 ? 'ONLINE' : 'BLOCKED') : '-'}
                 </div>
-                <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Sources Online</div>
+                <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Utah API</div>
               </div>
             </div>
 
@@ -1563,612 +1479,6 @@ export default function WarrantsPage() {
                 </div>
               </div>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* ================================================================
-          TAB 3: SOURCES (admin/manager only)
-         ================================================================ */}
-      {activeTab === 'sources' && isAdminOrManager && (
-        <div className="flex-1 overflow-auto">
-          <div className="p-4 space-y-4">
-            {/* Coverage Section */}
-            {coverageLoading ? (
-              <div className="flex items-center justify-center h-64 text-rmpg-400">
-                <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading coverage data...
-              </div>
-            ) : (() => {
-              const byState = new Map<string, ScraperSource[]>();
-              for (const src of coverageSources) {
-                const list = byState.get(src.state) || [];
-                list.push(src);
-                byState.set(src.state, list);
-              }
-
-              const totalSources = coverageSources.length;
-              const enabledSources = coverageSources.filter(s => s.enabled).length;
-              const statesWithSources = new Set(coverageSources.map(s => s.state).filter(s => s !== 'ALL'));
-              const totalActive = coverageSources.reduce((sum, s) => sum + s.active_warrants, 0);
-              const totalScraped = coverageSources.reduce((sum, s) => sum + s.total_warrants, 0);
-              const recentlyScraped = coverageSources.filter(s => {
-                if (!s.last_scraped_at) return false;
-                const ago = Date.now() - new Date(s.last_scraped_at.replace(' ', 'T')).getTime();
-                return ago < 3 * 60 * 60 * 1000;
-              }).length;
-
-              const federalSources = byState.get('US') || [];
-              const stateCodes = [...byState.keys()].filter(k => k !== 'US' && k !== 'ALL').sort();
-
-              return (
-                <>
-                  {/* Summary stats */}
-                  <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-5'} gap-3`}>
-                    {[
-                      { label: 'States Covered', value: statesWithSources.size, sub: 'of 50 + Federal' },
-                      { label: 'Total Sources', value: totalSources, sub: `${enabledSources} enabled` },
-                      { label: 'Recently Scraped', value: recentlyScraped, sub: 'within 3 hours' },
-                      { label: 'Active Warrants', value: totalActive.toLocaleString(), sub: 'across all sources' },
-                      { label: 'Total Indexed', value: totalScraped.toLocaleString(), sub: 'all-time records' },
-                    ].map((s, i) => (
-                      <div key={i} className="panel-inset bg-surface-sunken p-3 rounded-sm text-center">
-                        <div className="text-lg font-bold text-white font-mono">{s.value}</div>
-                        <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">{s.label}</div>
-                        <div className="text-[9px] text-rmpg-500 mt-0.5">{s.sub}</div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Federal sources */}
-                  {federalSources.length > 0 && (
-                    <div className="panel-inset bg-surface-sunken p-3 rounded-sm">
-                      <h3 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider flex items-center gap-2 mb-2">
-                        <Shield className="w-3.5 h-3.5 text-brand-400" />
-                        Federal Sources ({federalSources.length})
-                      </h3>
-                      <div className={`grid ${isMobile ? 'grid-cols-1' : 'grid-cols-2 xl:grid-cols-3'} gap-2`}>
-                        {federalSources.map(src => (
-                          <CoverageSourceCard key={src.source_key} source={src} />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* State grid */}
-                  <div className="panel-inset bg-surface-sunken p-3 rounded-sm">
-                    <h3 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider flex items-center gap-2 mb-2">
-                      <Globe className="w-3.5 h-3.5 text-brand-400" />
-                      State Coverage ({stateCodes.length} states)
-                    </h3>
-                    <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-3 lg:grid-cols-4 xl:grid-cols-5'} gap-2`}>
-                      {stateCodes.map(state => {
-                        const sources = byState.get(state) || [];
-                        const active = sources.reduce((sum, s) => sum + s.active_warrants, 0);
-                        const enabled = sources.filter(s => s.enabled).length;
-                        const hasErrors = sources.some(s => s.consecutive_failures > 0);
-                        const lastScraped = sources.map(s => s.last_scraped_at).filter(Boolean).sort().pop();
-                        const isRecent = lastScraped && (Date.now() - new Date(lastScraped.replace(' ', 'T')).getTime()) < 3 * 60 * 60 * 1000;
-
-                        return (
-                          <div
-                            key={state}
-                            className={`p-2 rounded-sm border text-center ${
-                              enabled === 0
-                                ? 'border-rmpg-700/50 bg-rmpg-800/30'
-                                : hasErrors
-                                  ? 'border-amber-700/50 bg-amber-900/10'
-                                  : isRecent
-                                    ? 'border-green-700/50 bg-green-900/10'
-                                    : 'border-brand-600/30 bg-brand-900/10'
-                            }`}
-                          >
-                            <div className="text-sm font-bold font-mono text-white">{state}</div>
-                            <div className="text-[10px] text-rmpg-300 mt-1">{sources.length} source{sources.length !== 1 ? 's' : ''}</div>
-                            {active > 0 && <div className="text-[9px] text-red-400 font-bold mt-0.5">{active} active</div>}
-                            <div className={`mt-1 inline-flex items-center gap-1 text-[8px] px-1.5 py-0.5 rounded ${
-                              enabled === 0
-                                ? 'bg-rmpg-700/50 text-rmpg-500'
-                                : isRecent
-                                  ? 'bg-green-900/50 text-green-400'
-                                  : hasErrors
-                                    ? 'bg-amber-900/50 text-amber-400'
-                                    : 'bg-brand-900/50 text-brand-300'
-                            }`}>
-                              <span className={`w-1.5 h-1.5 rounded-full ${
-                                enabled === 0 ? 'bg-rmpg-600' : isRecent ? 'bg-green-400' : hasErrors ? 'bg-amber-400' : 'bg-brand-400'
-                              }`} />
-                              {enabled === 0 ? 'DISABLED' : isRecent ? 'ACTIVE' : hasErrors ? 'ERRORS' : 'ENABLED'}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Detailed source list */}
-                  <details className="panel-inset bg-surface-sunken p-3 rounded-sm">
-                    <summary className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider cursor-pointer flex items-center gap-2">
-                      <FileText className="w-3.5 h-3.5 text-brand-400" />
-                      All Sources Detail ({totalSources})
-                    </summary>
-                    <div className="mt-3 overflow-x-auto">
-                      <table className="table-dark text-[10px] w-full">
-                        <thead>
-                          <tr>
-                            <th className="text-left px-2 py-1">Source</th>
-                            <th className="text-left px-2 py-1">State</th>
-                            <th className="text-left px-2 py-1">County</th>
-                            <th className="text-center px-2 py-1">Status</th>
-                            <th className="text-right px-2 py-1">Interval</th>
-                            <th className="text-right px-2 py-1">Active</th>
-                            <th className="text-right px-2 py-1">Total</th>
-                            <th className="text-left px-2 py-1">Last Scraped</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {coverageSources.map(src => (
-                            <tr key={src.source_key} className="border-t border-rmpg-800/50">
-                              <td className="px-2 py-1 font-mono text-rmpg-300">{src.source_key}</td>
-                              <td className="px-2 py-1">{src.state}</td>
-                              <td className="px-2 py-1 text-rmpg-400">{src.county || '-'}</td>
-                              <td className="px-2 py-1 text-center">
-                                {src.enabled ? (
-                                  src.consecutive_failures > 0 ? (
-                                    <span className="text-amber-400">{src.consecutive_failures} failures</span>
-                                  ) : (
-                                    <span className="text-green-400">Enabled</span>
-                                  )
-                                ) : (
-                                  <span className="text-rmpg-500">Disabled</span>
-                                )}
-                              </td>
-                              <td className="px-2 py-1 text-right text-rmpg-400">{src.scrape_interval_minutes}m</td>
-                              <td className="px-2 py-1 text-right font-mono">{src.active_warrants}</td>
-                              <td className="px-2 py-1 text-right font-mono text-rmpg-400">{src.total_warrants}</td>
-                              <td className="px-2 py-1 text-rmpg-400">
-                                {src.last_scraped_at ? formatDateTime(src.last_scraped_at) : 'Never'}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </details>
-                </>
-              );
-            })()}
-
-            {/* Scan History Section */}
-            <div className="panel-inset bg-surface-sunken p-3 rounded-sm">
-              <h3 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider flex items-center gap-2 mb-3">
-                <History className="w-3.5 h-3.5 text-brand-400" />
-                Scan History
-                <span className="text-rmpg-500 font-normal">({watchRuns.length} runs)</span>
-              </h3>
-
-              {watchRunsLoading ? (
-                <div className="flex items-center justify-center h-32 text-rmpg-400">
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading scan history...
-                </div>
-              ) : watchRuns.length === 0 ? (
-                <div className="text-center py-6">
-                  <Clock className="w-8 h-8 mx-auto mb-2 text-rmpg-500/40" />
-                  <p className="text-sm text-rmpg-400">No Scans Yet</p>
-                  <p className="text-[10px] text-rmpg-500 mt-1">Automated scans run at noon and midnight Mountain Time.</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {watchRuns.map((run) => (
-                    <div key={run.id} className="panel-beveled p-3 rounded-sm">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="font-mono text-xs text-rmpg-200 font-bold">{run.run_id}</span>
-                        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold rounded border ${
-                          run.status === 'completed' ? 'bg-green-900/50 text-green-400 border-green-700/50'
-                            : run.status === 'running' ? 'bg-blue-900/50 text-blue-400 border-blue-700/50'
-                            : 'bg-red-900/50 text-red-400 border-red-700/50'
-                        }`}>
-                          {run.status === 'running' && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
-                          <span className={`led-dot ${
-                            run.status === 'completed' ? 'led-green' : run.status === 'running' ? 'led-blue animate-led-pulse' : 'led-red'
-                          }`} />
-                          {run.status.toUpperCase()}
-                        </span>
-                        <span className="ml-auto text-[10px] text-rmpg-500 font-mono">
-                          {computeDuration(run.started_at, run.completed_at)}
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-4 gap-4 text-center">
-                        <div className="panel-beveled p-2">
-                          <div className="text-[9px] text-rmpg-500 uppercase">Persons</div>
-                          <div className="text-base font-bold font-mono text-white tabular-nums">{run.persons_checked}</div>
-                        </div>
-                        <div className="panel-beveled p-2">
-                          <div className="text-[9px] text-rmpg-500 uppercase">New Warrants</div>
-                          <div className={`text-base font-bold font-mono tabular-nums ${run.new_warrants_found > 0 ? 'text-red-400' : 'text-white'}`}>
-                            {run.new_warrants_found}
-                          </div>
-                        </div>
-                        <div className="panel-beveled p-2">
-                          <div className="text-[9px] text-rmpg-500 uppercase">Cleared</div>
-                          <div className={`text-base font-bold font-mono tabular-nums ${run.warrants_cleared > 0 ? 'text-green-400' : 'text-white'}`}>
-                            {run.warrants_cleared}
-                          </div>
-                        </div>
-                        <div className="panel-beveled p-2">
-                          <div className="text-[9px] text-rmpg-500 uppercase">Errors</div>
-                          <div className={`text-base font-bold font-mono tabular-nums ${run.errors > 0 ? 'text-amber-400' : 'text-white'}`}>
-                            {run.errors}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-2 text-[10px] text-rmpg-500 font-mono">
-                        Started: {formatDateTime(run.started_at)}
-                        {run.completed_at && ` \u2192 Completed: ${formatDateTime(run.completed_at)}`}
-                      </div>
-                      {run.error_message && (
-                        <div className="mt-1 text-[10px] text-red-400 bg-red-900/20 px-2 py-1 rounded-sm">{run.error_message}</div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ================================================================
-          PERSON PROFILE SLIDE-OUT
-         ================================================================ */}
-      {personProfileOpen && (
-        <div className="fixed inset-0 z-40 flex justify-end" onClick={() => setPersonProfileOpen(false)}>
-          <div className="absolute inset-0 bg-black/40" />
-          <div
-            className={`relative ${isMobile ? 'w-full' : 'w-[420px]'} h-full bg-surface-base border-l border-rmpg-600 shadow-2xl flex flex-col overflow-hidden`}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-600 bg-[var(--grid-header-bg)]">
-              <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                <User className="w-4 h-4 text-brand-400" /> Person Warrant Profile
-              </h2>
-              <button onClick={() => setPersonProfileOpen(false)} className="text-rmpg-400 hover:text-white">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {personProfileLoading ? (
-              <div className="flex-1 flex items-center justify-center text-rmpg-400">
-                <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading profile...
-              </div>
-            ) : personProfile ? (
-              <div className="flex-1 overflow-auto p-4 space-y-4">
-                {/* Person header */}
-                <div className="panel-beveled p-4 flex items-start gap-3">
-                  {personProfile.person.photo_url ? (
-                    <img src={personProfile.person.photo_url} alt="" className="w-16 h-16 rounded-sm object-cover border border-rmpg-600" />
-                  ) : (
-                    <div className="w-16 h-16 rounded-sm bg-rmpg-800 border border-rmpg-600 flex items-center justify-center">
-                      <User className="w-8 h-8 text-rmpg-500" />
-                    </div>
-                  )}
-                  <div>
-                    <h3 className="text-base font-bold text-white">
-                      {personProfile.person.first_name} {personProfile.person.last_name}
-                    </h3>
-                    {personProfile.person.dob && (
-                      <div className="text-xs text-rmpg-400 mt-0.5">DOB: {formatDate(personProfile.person.dob)}</div>
-                    )}
-                    {personProfile.person.flags && (
-                      <div className="mt-1">
-                        <WarrantBadge flags={personProfile.person.flags} size="md" />
-                      </div>
-                    )}
-                    {personProfile.lastChecked && (
-                      <div className="text-[10px] text-rmpg-500 mt-1">Last checked: {relativeTime(personProfile.lastChecked)}</div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Quick actions */}
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handleRunCheck(personProfile.person.id)}
-                    disabled={checkingPerson}
-                    className="toolbar-btn toolbar-btn-primary text-[9px] flex-1"
-                  >
-                    {checkingPerson ? <Loader2 className="w-3 h-3 animate-spin" /> : <Radar className="w-3 h-3" />}
-                    Run Check Now
-                  </button>
-                  <button
-                    onClick={() => {
-                      setPersonProfileOpen(false);
-                      setFormData(prev => ({
-                        ...prev,
-                        type: 'arrest',
-                        subject_person_id: String(personProfile.person.id),
-                      }));
-                      setSelectedPersonName(`${personProfile.person.first_name} ${personProfile.person.last_name}`);
-                      openNewForm();
-                      // Re-set person ID after openNewForm resets
-                      setTimeout(() => {
-                        setFormData(prev => ({
-                          ...prev,
-                          subject_person_id: String(personProfile.person.id),
-                        }));
-                        setSelectedPersonName(`${personProfile.person.first_name} ${personProfile.person.last_name}`);
-                      }, 0);
-                    }}
-                    className="toolbar-btn text-[9px] flex-1"
-                  >
-                    <Plus className="w-3 h-3" /> Create Manual Warrant
-                  </button>
-                </div>
-
-                {/* Warrants list */}
-                <div>
-                  <h4 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider flex items-center gap-2 mb-2">
-                    <Gavel className="w-3.5 h-3.5 text-brand-400" />
-                    Warrants ({personProfile.warrants.length})
-                  </h4>
-                  {personProfile.warrants.length === 0 ? (
-                    <div className="panel-inset bg-surface-sunken p-4 text-center text-xs text-rmpg-500">
-                      No warrants on file
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {personProfile.warrants.map(w => (
-                        <div key={w.id} className="panel-inset bg-surface-sunken p-3 rounded-sm">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-mono text-xs text-white font-bold">{w.warrant_number}</span>
-                            <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded border ${STATUS_COLORS[w.status] || ''}`}>
-                              {w.status.toUpperCase()}
-                            </span>
-                            <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded border ${TYPE_COLORS[w.type] || TYPE_COLORS.other}`}>
-                              {w.type.toUpperCase()}
-                            </span>
-                          </div>
-                          <div className="text-xs text-rmpg-300">{w.charge_description}</div>
-                          <div className="text-[10px] text-rmpg-500 mt-1">
-                            {formatDate(w.created_at)}
-                            {w.issuing_court && ` \u2022 ${w.issuing_court}`}
-                            {w.bail_amount ? ` \u2022 Bail: ${formatCurrency(w.bail_amount)}` : ''}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Scan history timeline */}
-                {personProfile.scanHistory && personProfile.scanHistory.length > 0 && (
-                  <div>
-                    <h4 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider flex items-center gap-2 mb-2">
-                      <History className="w-3.5 h-3.5 text-brand-400" />
-                      Scan History
-                    </h4>
-                    <div className="space-y-1">
-                      {personProfile.scanHistory.map(entry => (
-                        <div key={entry.id} className={`flex items-center gap-2 px-2 py-1.5 rounded-sm text-xs ${
-                          entry.event.includes('found') ? 'bg-red-900/10 border border-red-900/20' : 'bg-green-900/10 border border-green-900/20'
-                        }`}>
-                          {entry.event.includes('found')
-                            ? <AlertTriangle className="w-3 h-3 text-red-400 shrink-0" />
-                            : <CheckCircle className="w-3 h-3 text-green-400 shrink-0" />
-                          }
-                          <span className="text-rmpg-300 flex-1">{entry.details || entry.event}</span>
-                          <span className="text-[9px] text-rmpg-500 font-mono shrink-0">{relativeTime(entry.created_at)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="flex-1 flex items-center justify-center text-rmpg-500 text-sm">
-                Profile not available
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ================================================================
-          MODALS
-         ================================================================ */}
-
-      {/* FORM MODAL */}
-      {formOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-labelledby={warrantFormTitleId}>
-          <div className={`panel-beveled ${isMobile ? 'w-full h-full' : 'w-[550px] max-h-[85vh]'} overflow-auto bg-surface-base`}>
-            <div className="flex items-center justify-between p-4 border-b border-rmpg-600">
-              <h2 id={warrantFormTitleId} className="text-sm font-bold text-white">{editingWarrant ? 'Edit Warrant' : 'New Warrant'}</h2>
-              <button onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
-            </div>
-            <form onSubmit={handleSubmit} className="p-4 space-y-4">
-              {/* Type + Offense Level */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="field-label">Warrant Type *</label>
-                  <select className="select-dark text-xs w-full" value={formData.type} onChange={(e) => setFormData(prev => ({ ...prev, type: e.target.value }))}>
-                    {WARRANT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="field-label">Offense Level</label>
-                  <select className="select-dark text-xs w-full" value={formData.offense_level} onChange={(e) => setFormData(prev => ({ ...prev, offense_level: e.target.value }))}>
-                    <option value="">-- Select --</option>
-                    {OFFENSE_LEVELS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              {/* Subject person search */}
-              <div className="relative">
-                <label className="field-label">Subject Person</label>
-                {selectedPersonName && formData.subject_person_id ? (
-                  <div className="flex items-center gap-2 p-2 bg-rmpg-800 border border-rmpg-600 rounded text-xs">
-                    <User className="w-3 h-3 text-brand-400" />
-                    <span className="text-white font-bold">{selectedPersonName}</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setFormData(prev => ({ ...prev, subject_person_id: '' }));
-                        setSelectedPersonName('');
-                      }}
-                      className="ml-auto text-rmpg-400 hover:text-red-400"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <input
-                      type="text"
-                      className="input-dark text-xs w-full"
-                      placeholder="Search persons by name..."
-                      value={personSearch}
-                      onChange={(e) => { setPersonSearch(e.target.value); setShowPersonDropdown(true); }}
-                      onFocus={() => setShowPersonDropdown(true)}
-                    />
-                    {showPersonDropdown && personResults.length > 0 && (
-                      <div className="absolute z-10 w-full mt-1 max-h-40 overflow-auto bg-rmpg-800 border border-rmpg-600 rounded shadow-lg">
-                        {personResults.map((p) => (
-                          <button
-                            key={p.id}
-                            type="button"
-                            onClick={() => {
-                              setFormData(prev => ({ ...prev, subject_person_id: String(p.id) }));
-                              setSelectedPersonName(`${p.first_name} ${p.last_name}`);
-                              setShowPersonDropdown(false);
-                              setPersonSearch('');
-                            }}
-                            className="w-full text-left px-3 py-2 text-xs text-rmpg-200 hover:bg-rmpg-700 transition-colors flex items-center gap-2"
-                          >
-                            <User className="w-3 h-3 text-rmpg-400" />
-                            <span className="font-bold text-white">{p.first_name} {p.last_name}</span>
-                            {p.dob && <span className="text-rmpg-400 ml-auto">DOB: {p.dob}</span>}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {personSearchLoading && (
-                      <div className="absolute right-2 top-7"><Loader2 className="w-3 h-3 animate-spin text-rmpg-400" /></div>
-                    )}
-                  </>
-                )}
-              </div>
-
-              {/* Statute Lookup */}
-              <div>
-                <label className="field-label">Statute Reference</label>
-                <StatuteLookup
-                  value={formData.statute_citation || undefined}
-                  onSelect={(statute: StatuteResult) => {
-                    setFormData(prev => ({
-                      ...prev,
-                      statute_id: statute.id,
-                      statute_citation: statute.citation,
-                      charge_description: prev.charge_description || `${statute.citation} - ${statute.short_title}`,
-                    }));
-                  }}
-                  onClear={() => setFormData(prev => ({ ...prev, statute_id: null, statute_citation: '' }))}
-                  placeholder="Search statute (e.g. 76-5-102 or assault)..."
-                  showStateFilter
-                />
-              </div>
-
-              {/* Charge Description */}
-              <div>
-                <label className="field-label">Charge Description *</label>
-                <textarea
-                  className="input-dark text-xs w-full"
-                  rows={3}
-                  value={formData.charge_description}
-                  onChange={(e) => setFormData(prev => ({ ...prev, charge_description: e.target.value }))}
-                  placeholder="Enter charge description..."
-                  required
-                />
-                {formErrors.charge_description && (
-                  <p className="text-red-400 text-[10px] mt-0.5">{formErrors.charge_description}</p>
-                )}
-              </div>
-
-              {/* Court + Judge */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="field-label">Issuing Court</label>
-                  <input type="text" className="input-dark text-xs w-full" value={formData.issuing_court} onChange={(e) => setFormData(prev => ({ ...prev, issuing_court: e.target.value }))} placeholder="e.g. 3rd District Court" />
-                </div>
-                <div>
-                  <label className="field-label">Issuing Judge</label>
-                  <input type="text" className="input-dark text-xs w-full" value={formData.issuing_judge} onChange={(e) => setFormData(prev => ({ ...prev, issuing_judge: e.target.value }))} placeholder="e.g. Hon. Smith" />
-                </div>
-              </div>
-
-              {/* Bail + Expires */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="field-label">Bail Amount</label>
-                  <input type="number" step="0.01" className={`input-dark text-xs w-full ${formErrors.bail_amount ? '!border-red-500' : ''}`} value={formData.bail_amount} onChange={(e) => setFormData(prev => ({ ...prev, bail_amount: e.target.value }))} placeholder="0.00" />
-                  {formErrors.bail_amount && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.bail_amount}</p>}
-                </div>
-                <div>
-                  <label className="field-label">Expires</label>
-                  <input type="date" className="input-dark text-xs w-full" value={formData.expires_at} onChange={(e) => setFormData(prev => ({ ...prev, expires_at: e.target.value }))} />
-                </div>
-              </div>
-
-              {/* Notes */}
-              <div>
-                <label className="field-label">Notes</label>
-                <textarea className="input-dark text-xs w-full" rows={2} value={formData.notes} onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))} placeholder="Additional notes..." />
-              </div>
-
-              {/* Actions */}
-              <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-600">
-                <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn text-xs">Cancel</button>
-                <button type="submit" disabled={submitting} className="toolbar-btn toolbar-btn-primary text-xs">
-                  {submitting ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
-                  {editingWarrant ? 'Update Warrant' : 'Create Warrant'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* SERVE MODAL */}
-      {serveModalOpen && selectedWarrant && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-labelledby={serveTitleId}>
-          <div className={`panel-beveled ${isMobile ? 'w-full mx-4' : 'w-[400px]'} bg-surface-base`}>
-            <div className="flex items-center justify-between p-4 border-b border-rmpg-600">
-              <h2 id={serveTitleId} className="text-sm font-bold text-white">Serve Warrant</h2>
-              <button onClick={() => setServeModalOpen(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
-            </div>
-            <div className="p-4 space-y-4">
-              <p className="text-xs text-rmpg-300">
-                Mark warrant <span className="font-bold text-white font-mono">{selectedWarrant.warrant_number}</span> as served?
-              </p>
-              <div>
-                <label className="field-label">Location Served (optional)</label>
-                <input
-                  type="text"
-                  className="input-dark text-xs w-full"
-                  value={serveLocation}
-                  onChange={(e) => setServeLocation(e.target.value)}
-                  placeholder="e.g. 123 Main St, Salt Lake City"
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <button onClick={() => setServeModalOpen(false)} className="toolbar-btn text-xs">Cancel</button>
-                <button onClick={handleServe} disabled={serving} className="toolbar-btn toolbar-btn-primary text-xs">
-                  {serving ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <CheckCircle className="w-3 h-3 mr-1" />}
-                  Confirm Served
-                </button>
-              </div>
-            </div>
           </div>
         </div>
       )}
