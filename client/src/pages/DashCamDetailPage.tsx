@@ -556,9 +556,16 @@ export default function DashCamDetailPage() {
           togglePlayPause();
           break;
         case 'l':
-        case 'L':
-          skip(10);
+        case 'L': {
+          // L stacks playback speed (pro review pattern)
+          const speeds = [1, 1.5, 2];
+          const curIdx = speeds.indexOf(playbackRate);
+          const nextRate = curIdx < speeds.length - 1 ? speeds[curIdx + 1] : speeds[speeds.length - 1];
+          setPlaybackRate(nextRate);
+          if (videoRef.current) videoRef.current.playbackRate = nextRate;
+          if (videoRef.current?.paused) { videoRef.current.play(); setIsPlaying(true); }
           break;
+        }
         case 'f':
         case 'F':
           toggleFullscreen();
@@ -1082,7 +1089,7 @@ export default function DashCamDetailPage() {
             </a>
 
             {video.burned_file_path && (
-              <a href={`${apiBase}/fleet/dashcam-videos/${video.id}/burned?token=${encodeURIComponent(token)}`}
+              <a href={`${apiBase}/fleet/dashcam-videos/${video.id}/download-burned?token=${encodeURIComponent(token)}`}
                 download
                 className="toolbar-btn-primary text-[10px] w-full py-1.5 flex items-center justify-center gap-1.5 no-underline">
                 <Download className="w-3.5 h-3.5" /> Download Burned
