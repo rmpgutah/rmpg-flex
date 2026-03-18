@@ -3744,31 +3744,31 @@ function migrateSchema(): void {
 
       // ── Texas ──
       ['tx_harris_warrants', 'Harris County, TX Warrants', 'https://www.harriscountyso.org/Warrants/WarrantSearch', 'html', 'TX', 'tx_harris', 1, 120],
-      ['tx_dallas_warrants', 'Dallas County, TX Warrants', 'https://www.dallascounty.org/departments/sheriff/warrants.php', 'html', 'TX', 'tx_dallas', 1, 120],
+      ['tx_dallas_warrants', 'Dallas County, TX Warrants', 'https://www.dallascounty.org/departments/sheriff/warrants.php', 'html', 'TX', 'tx_dallas', 0, 120],
       ['tx_bexar_warrants', 'Bexar County, TX Warrants', 'https://www.bexar.org/3044/Warrants', 'html', 'TX', 'tx_bexar', 1, 120],
-      ['tx_tarrant_warrants', 'Tarrant County, TX Warrants', 'https://www.tarrantcounty.com/en/criminal-district-attorney/Most-Wanted.html', 'html', 'TX', 'tx_tarrant', 1, 120],
-      ['tx_travis_warrants', 'Travis County, TX Warrants', 'https://www.tcsheriff.org/warrants', 'html', 'TX', 'tx_travis', 1, 120],
-      ['tx_el_paso_warrants', 'El Paso County, TX Warrants', 'https://www.epcounty.com/sheriff/warrants.htm', 'html', 'TX', 'tx_el_paso', 1, 120],
+      ['tx_tarrant_warrants', 'Tarrant County, TX Warrants', 'https://www.tarrantcounty.com/en/criminal-district-attorney/Most-Wanted.html', 'html', 'TX', 'tx_tarrant', 0, 120],
+      ['tx_travis_warrants', 'Travis County, TX Warrants', 'https://www.tcsheriff.org/warrants', 'html', 'TX', 'tx_travis', 0, 120],
+      ['tx_el_paso_warrants', 'El Paso County, TX Warrants', 'https://www.epcounty.com/sheriff/warrants.htm', 'html', 'TX', 'tx_el_paso', 0, 120],
 
       // ── Vermont ──
-      ['vt_chittenden_warrants', 'Chittenden County, VT Warrants', 'https://www.burlingtonvt.gov/police/most-wanted', 'html', 'VT', 'vt_chittenden', 1, 120],
+      ['vt_chittenden_warrants', 'Chittenden County, VT Warrants', 'https://www.burlingtonvt.gov/police/most-wanted', 'html', 'VT', 'vt_chittenden', 0, 120],
 
       // ── Virginia ──
-      ['va_fairfax_warrants', 'Fairfax County, VA Warrants', 'https://www.fairfaxcounty.gov/police/wanted', 'html', 'VA', 'va_fairfax', 1, 120],
-      ['va_virginia_beach_warrants', 'Virginia Beach, VA Warrants', 'https://www.vbgov.com/government/departments/police/Pages/Most-Wanted.aspx', 'html', 'VA', 'va_virginia_beach', 1, 120],
+      ['va_fairfax_warrants', 'Fairfax County, VA Warrants', 'https://www.fairfaxcounty.gov/police/wanted', 'html', 'VA', 'va_fairfax', 0, 120],
+      ['va_virginia_beach_warrants', 'Virginia Beach, VA Warrants', 'https://www.vbgov.com/government/departments/police/Pages/Most-Wanted.aspx', 'html', 'VA', 'va_virginia_beach', 0, 120],
 
       // ── Washington ──
-      ['wa_king_warrants', 'King County, WA Warrants', 'https://kingcounty.gov/en/dept/sheriff/about/most-wanted', 'html', 'WA', 'wa_king', 1, 120],
-      ['wa_spokane_warrants', 'Spokane County, WA Warrants', 'https://www.spokanesheriff.org/warrants/', 'html', 'WA', 'wa_spokane', 1, 120],
-      ['wa_clark_warrants', 'Clark County, WA Warrants', 'https://clark.wa.gov/sheriff/warrants', 'html', 'WA', 'wa_clark', 1, 120],
-      ['wa_pierce_warrants', 'Pierce County, WA Warrants', 'https://www.piercecountywa.gov/1024/Most-Wanted', 'html', 'WA', 'wa_pierce', 1, 120],
+      ['wa_king_warrants', 'King County, WA Warrants', 'https://kingcounty.gov/en/dept/sheriff/about/most-wanted', 'html', 'WA', 'wa_king', 0, 120],
+      ['wa_spokane_warrants', 'Spokane County, WA Warrants', 'https://www.spokanesheriff.org/warrants/', 'html', 'WA', 'wa_spokane', 0, 120],
+      ['wa_clark_warrants', 'Clark County, WA Warrants', 'https://clark.wa.gov/sheriff/warrants', 'html', 'WA', 'wa_clark', 0, 120],
+      ['wa_pierce_warrants', 'Pierce County, WA Warrants', 'https://www.piercecountywa.gov/1024/Most-Wanted', 'html', 'WA', 'wa_pierce', 0, 120],
 
       // ── West Virginia ──
       ['wv_kanawha_warrants', 'Kanawha County, WV Warrants', 'https://www.kanawhasheriff.us/warrants/', 'html', 'WV', 'wv_kanawha', 1, 120],
 
       // ── Wisconsin ──
-      ['wi_milwaukee_warrants', 'Milwaukee County, WI Warrants', 'https://county.milwaukee.gov/EN/Sheriff/Warrants', 'html', 'WI', 'wi_milwaukee', 1, 120],
-      ['wi_dane_warrants', 'Dane County, WI Warrants', 'https://sheriff.countyofdane.com/warrants', 'html', 'WI', 'wi_dane', 1, 120],
+      ['wi_milwaukee_warrants', 'Milwaukee County, WI Warrants', 'https://county.milwaukee.gov/EN/Sheriff/Warrants', 'html', 'WI', 'wi_milwaukee', 0, 120],
+      ['wi_dane_warrants', 'Dane County, WI Warrants', 'https://sheriff.countyofdane.com/warrants', 'html', 'WI', 'wi_dane', 0, 120],
 
       // ── Arrest Record Extraction — extracts warrant-based bookings from existing arrest_records ──
       ['arrest_extract_all', 'Warrant Extraction (All Arrest Records)', null, 'arrest_extract', 'ALL', null, 1, 60],

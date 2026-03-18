@@ -336,7 +336,7 @@ router.post('/', requireRole(...WRITE_ROLES), (req: Request, res: Response) => {
       service_instructions ?? '', notes ?? '', now, now,
     );
 
-    const id = info.lastInsertRowid;
+    const id = Number(info.lastInsertRowid);
     const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(id);
     auditLog(req, 'CREATE', 'serve_queue', id, `Created serve job for ${recipient_name || 'unknown'}`);
     broadcast('serve', 'serve_created', job);
@@ -474,7 +474,7 @@ router.post('/:id/attempt', validateParamId, requireRole(...WRITE_ROLES), (req: 
     }
 
     // Atomic: insert attempt + update job status in one transaction
-    let attemptId: number | bigint;
+    let attemptId: number = 0;
     db.transaction(() => {
       const attemptInfo = db.prepare(`
         INSERT INTO serve_attempts (
@@ -488,7 +488,7 @@ router.post('/:id/attempt', validateParamId, requireRole(...WRITE_ROLES), (req: 
         notes ?? '', method ?? 'personal',
         photo_url ? JSON.stringify([photo_url]) : '[]', signature_url ?? null, now,
       );
-      attemptId = attemptInfo.lastInsertRowid;
+      attemptId = Number(attemptInfo.lastInsertRowid);
 
       db.prepare(`
         UPDATE serve_queue SET
