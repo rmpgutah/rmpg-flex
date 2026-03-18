@@ -1,45 +1,24 @@
 // ============================================================
-// RMPG Flex — Dash Camera Video Detail Page
-// Full-page video detail view with player, GPS speed timeline,
-// metadata panel, and action controls. Route: /dash-cameras/:id
+// RMPG Flex — Dash Camera Police HUD Video Player
+// Full-screen HUD overlay with GPS sync, speed timeline,
+// and expandable side panel. Route: /dash-cameras/:id
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  Camera, ArrowLeft, Edit2, Flame, Download, Maximize2,
+  Camera, Edit2, Flame, Download, Maximize2, Minimize2,
   Loader2, AlertTriangle, ChevronLeft, ChevronRight,
-  Car, MapPin, FileText, Link2, Clock, Gauge, Film,
-  HardDrive, Shield, ChevronDown, ChevronUp,
+  ChevronDown, ChevronUp, Info, SkipBack, SkipForward,
+  Play, Pause, Volume2, VolumeX, Map, Shield, FileText,
+  Link2, Car, User, Gauge,
 } from 'lucide-react';
 import type { DashCamVideo } from '../types';
-import PanelTitleBar from '../components/PanelTitleBar';
-import DashCamVideoPlayer from '../components/DashCamVideoPlayer';
 import DashCamVideoEditModal, { type DashCamVideoEditData } from '../components/DashCamVideoEditModal';
 import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
-
-// ── Color Constants ─────────────────────────────────────────
-
-const CLASSIFICATION_COLORS: Record<string, { border: string; text: string; bg: string }> = {
-  routine:    { border: 'border-green-600', text: 'text-green-400', bg: 'bg-green-900/40' },
-  evidence:   { border: 'border-amber-700/60', text: 'text-amber-400', bg: 'bg-amber-900/40' },
-  flagged:    { border: 'border-red-700/60', text: 'text-red-400', bg: 'bg-red-900/40' },
-  restricted: { border: 'border-purple-700/60', text: 'text-purple-400', bg: 'bg-purple-900/40' },
-};
-
-const CLASSIFICATION_BADGE: Record<string, string> = {
-  routine:    'bg-rmpg-700 text-rmpg-300 border-rmpg-600',
-  evidence:   'bg-amber-900/40 text-amber-400 border-amber-700/40',
-  flagged:    'bg-red-900/40 text-red-400 border-red-700/40',
-  restricted: 'bg-purple-900/40 text-purple-400 border-purple-700/40',
-};
-
-const SOURCE_COLORS: Record<string, string> = {
-  upload:       'bg-brand-500/20 text-brand-400 border-brand-500/30',
-  clearpathgps: 'bg-green-900/40 text-green-400 border-green-700/40',
-};
+import { DARK_MAP_STYLE } from '../utils/googleMapsLoader';
 
 // ── GPS Track Types ─────────────────────────────────────────
 
@@ -51,18 +30,93 @@ interface GpsPoint {
   timestamp: number;
 }
 
-// ── Helpers ─────────────────────────────────────────────────
+interface LiveTelemetry {
+  lat: number;
+  lng: number;
+  speedMph: number;
+  altitude: number;
+}
+
+// ── Constants ───────────────────────────────────────────────
 
 const KMH_TO_MPH = 0.621371;
+
+const CLASSIFICATION_BADGE: Record<string, string> = {
+  routine:    'hud-class-routine',
+  evidence:   'hud-class-evidence',
+  flagged:    'hud-class-flagged',
+  restricted: 'hud-class-restricted',
+};
+
+// ── Helpers ─────────────────────────────────────────────────
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+function interpolateTelemetry(track: GpsPoint[], sec: number): LiveTelemetry | null {
+  if (!track.length) return null;
+  const startMs = track[0].timestamp;
+  const target = startMs + sec * 1000;
+  if (target <= track[0].timestamp) {
+    const p = track[0];
+    return { lat: p.latitude, lng: p.longitude, speedMph: Math.round(p.speed * KMH_TO_MPH), altitude: Math.round(p.altitude) };
+  }
+  const last = track[track.length - 1];
+  if (target >= last.timestamp) {
+    return { lat: last.latitude, lng: last.longitude, speedMph: Math.round(last.speed * KMH_TO_MPH), altitude: Math.round(last.altitude) };
+  }
+  for (let i = 0; i < track.length - 1; i++) {
+    const a = track[i], b = track[i + 1];
+    if (target >= a.timestamp && target <= b.timestamp) {
+      const span = b.timestamp - a.timestamp;
+      const t = span > 0 ? (target - a.timestamp) / span : 0;
+      return {
+        lat: lerp(a.latitude, b.latitude, t),
+        lng: lerp(a.longitude, b.longitude, t),
+        speedMph: Math.round(lerp(a.speed, b.speed, t) * KMH_TO_MPH),
+        altitude: Math.round(lerp(a.altitude, b.altitude, t)),
+      };
+    }
+  }
+  return null;
+}
 
 function channelLabel(ch?: string): string {
   if (!ch) return '';
   return ch === 'outside' ? 'FRONT' : 'REAR';
 }
-function channelBg(ch?: string): string {
-  return ch === 'outside'
-    ? 'bg-blue-900/80 text-blue-300 border border-blue-600/50'
-    : 'bg-purple-900/80 text-purple-300 border border-purple-600/50';
+
+function channelClass(ch?: string): string {
+  return ch === 'outside' ? 'hud-channel-front' : 'hud-channel-rear';
+}
+
+function speedColorClass(mph: number): string {
+  if (mph > 65) return 'hud-speed-red';
+  if (mph > 45) return 'hud-speed-amber';
+  return 'hud-speed-green';
+}
+
+function formatDuration(sec?: number): string {
+  if (!sec && sec !== 0) return '-:--';
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.floor(sec % 60);
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function formatTimestamp(isoStr: string | undefined, offsetSec: number): string {
+  if (!isoStr) return '--:--:--';
+  const base = new Date(isoStr);
+  const d = new Date(base.getTime() + offsetSec * 1000);
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  const ss = String(d.getSeconds()).padStart(2, '0');
+  return `${mm}/${dd}/${yyyy} ${hh}:${min}:${ss} MT`;
 }
 
 function formatDate(d?: string): string {
@@ -71,15 +125,6 @@ function formatDate(d?: string): string {
     month: 'short', day: 'numeric', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });
-}
-
-function formatDuration(sec?: number): string {
-  if (!sec) return '-';
-  const h = Math.floor(sec / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  const s = sec % 60;
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  return `${m}:${String(s).padStart(2, '0')}`;
 }
 
 function formatSize(bytes: number): string {
@@ -98,25 +143,6 @@ function parseGpsTrack(raw?: string | null): GpsPoint[] | null {
   } catch { return null; }
 }
 
-// ── Collapsible Section ─────────────────────────────────────
-
-function Section({ title, icon: Icon, children, defaultOpen = true }: {
-  title: string; icon: React.ElementType; children: React.ReactNode; defaultOpen?: boolean;
-}) {
-  const [open, setOpen] = useState(defaultOpen);
-  return (
-    <section>
-      <button onClick={() => setOpen(!open)}
-        className="flex items-center gap-1 w-full text-left mb-1.5 group">
-        <Icon className="w-3 h-3 text-rmpg-500" />
-        <span className="text-[10px] font-bold text-rmpg-500 uppercase tracking-wider flex-1">{title}</span>
-        {open ? <ChevronUp className="w-3 h-3 text-rmpg-600" /> : <ChevronDown className="w-3 h-3 text-rmpg-600" />}
-      </button>
-      {open && children}
-    </section>
-  );
-}
-
 // ── Speed Timeline SVG ──────────────────────────────────────
 
 function SpeedTimeline({ track, duration, currentTime, onSeek }: {
@@ -129,14 +155,17 @@ function SpeedTimeline({ track, duration, currentTime, onSeek }: {
   const startMs = track[0].timestamp;
   const endMs = track[track.length - 1].timestamp;
   const totalMs = endMs - startMs || 1;
+  const h = 24;
 
-  const points = useMemo(() => {
+  const segments = useMemo(() => {
     return track.map((p, i) => {
       const x = ((p.timestamp - startMs) / totalMs) * 100;
-      const y = 48 - (speeds[i] / maxSpeed) * 40;
-      return `${x}%,${y}`;
-    }).join(' ');
-  }, [track, speeds, maxSpeed, startMs, totalMs]);
+      const y = h - (speeds[i] / maxSpeed) * (h - 4);
+      const mph = speeds[i];
+      const color = mph > 65 ? '#ef4444' : mph > 45 ? '#f59e0b' : '#22c55e';
+      return { x, y, color };
+    });
+  }, [track, speeds, maxSpeed, startMs, totalMs, h]);
 
   const progressX = duration > 0 ? (currentTime / duration) * 100 : 0;
 
@@ -145,33 +174,58 @@ function SpeedTimeline({ track, duration, currentTime, onSeek }: {
     if (!svg) return;
     const rect = svg.getBoundingClientRect();
     const pct = (e.clientX - rect.left) / rect.width;
-    onSeek(pct * duration);
+    onSeek(Math.max(0, Math.min(pct * duration, duration)));
   };
 
   return (
-    <svg ref={svgRef} viewBox="0 0 100 48" preserveAspectRatio="none"
-      className="w-full cursor-pointer" style={{ height: 48 }}
+    <svg ref={svgRef} viewBox={`0 0 100 ${h}`} preserveAspectRatio="none"
+      className="w-full cursor-pointer hud-timeline" style={{ height: h }}
       onClick={handleClick}>
-      {/* Speed zones */}
-      <rect x="0" y={48 - (60 / maxSpeed) * 40} width="100" height="1" fill="#fbbf24" opacity="0.15" />
-      <rect x="0" y={48 - (80 / maxSpeed) * 40} width="100" height="1" fill="#f87171" opacity="0.15" />
-      {/* Speed line */}
-      <polyline points={points} fill="none" stroke="#4ade80" strokeWidth="0.8" vectorEffect="non-scaling-stroke" />
-      {/* Colored segments for speeding */}
-      {track.map((p, i) => {
+      {/* Speed line segments (color-coded) */}
+      {segments.map((seg, i) => {
         if (i === 0) return null;
-        const mph = speeds[i];
-        if (mph <= 60) return null;
-        const x1 = ((track[i - 1].timestamp - startMs) / totalMs) * 100;
-        const x2 = ((p.timestamp - startMs) / totalMs) * 100;
-        const y1 = 48 - (speeds[i - 1] / maxSpeed) * 40;
-        const y2 = 48 - (mph / maxSpeed) * 40;
-        const color = mph > 80 ? '#f87171' : '#fbbf24';
-        return <line key={i} x1={`${x1}%`} y1={y1} x2={`${x2}%`} y2={y2} stroke={color} strokeWidth="0.8" vectorEffect="non-scaling-stroke" />;
+        const prev = segments[i - 1];
+        return (
+          <line key={i}
+            x1={`${prev.x}%`} y1={prev.y}
+            x2={`${seg.x}%`} y2={seg.y}
+            stroke={seg.color} strokeWidth="1.5"
+            vectorEffect="non-scaling-stroke"
+          />
+        );
       })}
-      {/* Playback position */}
-      <line x1={`${progressX}%`} y1="0" x2={`${progressX}%`} y2="48" stroke="#1a5a9e" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+      {/* Playhead */}
+      <line
+        x1={`${progressX}%`} y1="0"
+        x2={`${progressX}%`} y2={h}
+        stroke="#3b8ad4" strokeWidth="2"
+        vectorEffect="non-scaling-stroke"
+      />
     </svg>
+  );
+}
+
+// ── Collapsible Panel Section ───────────────────────────────
+
+function HudSection({ title, icon: Icon, children, defaultOpen = false, isOpen, onToggle }: {
+  title: string; icon: React.ElementType; children: React.ReactNode;
+  defaultOpen?: boolean; isOpen?: boolean; onToggle?: () => void;
+}) {
+  const [internalOpen, setInternalOpen] = useState(defaultOpen);
+  const open = isOpen !== undefined ? isOpen : internalOpen;
+  const toggle = onToggle || (() => setInternalOpen(!internalOpen));
+
+  return (
+    <div>
+      <button onClick={toggle} className="hud-section-header w-full">
+        <Icon className="w-3.5 h-3.5" style={{ flexShrink: 0 }} />
+        <span className="flex-1 text-left">{title}</span>
+        {open
+          ? <ChevronUp className="w-3 h-3 opacity-50" />
+          : <ChevronDown className="w-3 h-3 opacity-50" />}
+      </button>
+      {open && <div className="hud-section-content">{children}</div>}
+    </div>
   );
 }
 
@@ -183,24 +237,53 @@ export default function DashCamDetailPage() {
   const { addToast } = useToast();
   const { user } = useAuth();
   const canManage = ['admin', 'manager', 'supervisor'].includes(user?.role || '');
-  const videoRef = useRef<HTMLVideoElement>(null);
 
-  const [video, setVideo] = useState<DashCamVideo | null>(null);
+  // Refs
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const animFrameRef = useRef<number>(0);
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<google.maps.Map | null>(null);
+  const markerRef = useRef<google.maps.Marker | null>(null);
+  const polylineRef = useRef<google.maps.Polyline | null>(null);
+
+  // State
+  const [video, setVideo] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [volume, setVolume] = useState(1);
+  const [isMuted, setIsMuted] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState(1);
+  const [panelOpen, setPanelOpen] = useState(true);
   const [neighbors, setNeighbors] = useState<{ prev?: number; next?: number } | null>(null);
-  const [links, setLinks] = useState<any[]>([]);
-  const [showFullPlayer, setShowFullPlayer] = useState(false);
-  const [editingVideo, setEditingVideo] = useState<DashCamVideo | null>(null);
+  const [editingVideo, setEditingVideo] = useState<any>(null);
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [classifying, setClassifying] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [mapSectionOpen, setMapSectionOpen] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
+
+  // Section open states
+  const [sections, setSections] = useState({
+    officer: true,
+    vehicle: true,
+    speed: true,
+    gps: false,
+    incident: false,
+    evidence: false,
+    linked: false,
+  });
+
+  const toggleSection = (key: keyof typeof sections) => {
+    setSections(prev => ({ ...prev, [key]: !prev[key] }));
+    if (key === 'gps') setMapSectionOpen(!sections.gps);
+  };
 
   const apiBase = window.location.origin + '/api';
-  const getAuthHeaders = (): Record<string, string> => {
-    const token = localStorage.getItem('rmpg_token');
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  };
+  const token = localStorage.getItem('rmpg_token') || '';
+  const streamUrl = video ? `${apiBase}/fleet/dashcam-videos/${video.id}/stream?token=${encodeURIComponent(token)}` : '';
 
   // ── Data Fetching ────────────────────────────
 
@@ -209,7 +292,7 @@ export default function DashCamDetailPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiFetch<DashCamVideo>(`/fleet/dashcam-videos/${id}`);
+      const data = await apiFetch<any>(`/fleet/dashcam-videos/${id}`);
       setVideo(data);
     } catch (err: any) {
       setError(err?.message || 'Video not found');
@@ -226,25 +309,188 @@ export default function DashCamDetailPage() {
     } catch { setNeighbors(null); }
   }, [id]);
 
-  const fetchLinks = useCallback(async () => {
-    if (!id) return;
-    try {
-      const data = await apiFetch<any[]>(`/fleet/dashcam-videos/${id}/links`);
-      setLinks(Array.isArray(data) ? data : []);
-    } catch { setLinks([]); }
-  }, [id]);
+  useEffect(() => { fetchVideo(); fetchNeighbors(); }, [fetchVideo, fetchNeighbors]);
 
-  useEffect(() => { fetchVideo(); fetchNeighbors(); fetchLinks(); }, [fetchVideo, fetchNeighbors, fetchLinks]);
+  // ── GPS Track ────────────────────────────────
+
+  const gpsTrack = useMemo(() => parseGpsTrack(video?.cpg_gps_track), [video?.cpg_gps_track]);
+
+  const telemetry = useMemo(() => {
+    if (!gpsTrack) return null;
+    return interpolateTelemetry(gpsTrack, currentTime);
+  }, [gpsTrack, currentTime]);
+
+  // ── Video Event Handlers ─────────────────────
 
   useEffect(() => {
     const vid = videoRef.current;
     if (!vid) return;
-    const onTime = () => setCurrentTime(vid.currentTime);
-    vid.addEventListener('timeupdate', onTime);
-    return () => vid.removeEventListener('timeupdate', onTime);
+    const onPlay = () => setIsPlaying(true);
+    const onPause = () => setIsPlaying(false);
+    const onDurationChange = () => setDuration(vid.duration || 0);
+    const onEnded = () => setIsPlaying(false);
+    const onVolumeChange = () => {
+      setVolume(vid.volume);
+      setIsMuted(vid.muted);
+    };
+    vid.addEventListener('play', onPlay);
+    vid.addEventListener('pause', onPause);
+    vid.addEventListener('durationchange', onDurationChange);
+    vid.addEventListener('ended', onEnded);
+    vid.addEventListener('volumechange', onVolumeChange);
+    return () => {
+      vid.removeEventListener('play', onPlay);
+      vid.removeEventListener('pause', onPause);
+      vid.removeEventListener('durationchange', onDurationChange);
+      vid.removeEventListener('ended', onEnded);
+      vid.removeEventListener('volumechange', onVolumeChange);
+    };
   }, [video]);
 
-  // ── Actions ────────────────────────────────
+  // ── RAF Loop for Smooth GPS Sync ─────────────
+
+  useEffect(() => {
+    if (!isPlaying) return;
+    const tick = () => {
+      if (videoRef.current) {
+        setCurrentTime(videoRef.current.currentTime);
+      }
+      animFrameRef.current = requestAnimationFrame(tick);
+    };
+    animFrameRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(animFrameRef.current);
+  }, [isPlaying]);
+
+  // Also sync when paused (for seeking)
+  useEffect(() => {
+    const vid = videoRef.current;
+    if (!vid) return;
+    const onSeeked = () => setCurrentTime(vid.currentTime);
+    vid.addEventListener('seeked', onSeeked);
+    return () => vid.removeEventListener('seeked', onSeeked);
+  }, [video]);
+
+  // ── Google Map ───────────────────────────────
+
+  useEffect(() => {
+    if (!mapSectionOpen || !mapContainerRef.current || mapRef.current) return;
+    if (!window.google?.maps) return;
+
+    const center = telemetry
+      ? { lat: telemetry.lat, lng: telemetry.lng }
+      : video?.latitude && video?.longitude
+        ? { lat: video.latitude, lng: video.longitude }
+        : { lat: 40.76, lng: -111.89 };
+
+    const map = new google.maps.Map(mapContainerRef.current, {
+      center,
+      zoom: 15,
+      disableDefaultUI: true,
+      zoomControl: true,
+      styles: DARK_MAP_STYLE,
+      backgroundColor: '#0d1520',
+    });
+    mapRef.current = map;
+
+    // Marker
+    const marker = new google.maps.Marker({
+      position: center,
+      map,
+      icon: {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: 7,
+        fillColor: '#3b82f6',
+        fillOpacity: 1,
+        strokeColor: '#93c5fd',
+        strokeWeight: 2,
+      },
+    });
+    markerRef.current = marker;
+
+    // Route polyline from GPS track
+    if (gpsTrack && gpsTrack.length > 1) {
+      const path = gpsTrack.map(p => ({ lat: p.latitude, lng: p.longitude }));
+      const polyline = new google.maps.Polyline({
+        path,
+        strokeColor: '#3b82f6',
+        strokeOpacity: 0.5,
+        strokeWeight: 2,
+        map,
+      });
+      polylineRef.current = polyline;
+
+      // Fit bounds to track
+      const bounds = new google.maps.LatLngBounds();
+      path.forEach(p => bounds.extend(p));
+      map.fitBounds(bounds, 20);
+    }
+
+    setMapReady(true);
+  }, [mapSectionOpen, video, gpsTrack]);
+
+  // Update marker position during playback
+  useEffect(() => {
+    if (!mapReady || !markerRef.current || !telemetry) return;
+    const pos = { lat: telemetry.lat, lng: telemetry.lng };
+    markerRef.current.setPosition(pos);
+    if (isPlaying) {
+      mapRef.current?.panTo(pos);
+    }
+  }, [telemetry, mapReady, isPlaying]);
+
+  // ── Actions ──────────────────────────────────
+
+  const togglePlayPause = useCallback(() => {
+    const vid = videoRef.current;
+    if (!vid) return;
+    if (vid.paused) vid.play(); else vid.pause();
+  }, []);
+
+  const skip = useCallback((delta: number) => {
+    const vid = videoRef.current;
+    if (!vid) return;
+    vid.currentTime = Math.max(0, Math.min(vid.currentTime + delta, vid.duration || 0));
+  }, []);
+
+  const setSpeed = useCallback((rate: number) => {
+    const vid = videoRef.current;
+    if (vid) vid.playbackRate = rate;
+    setPlaybackRate(rate);
+  }, []);
+
+  const toggleMute = useCallback(() => {
+    const vid = videoRef.current;
+    if (vid) vid.muted = !vid.muted;
+  }, []);
+
+  const handleVolumeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const vid = videoRef.current;
+    const val = parseFloat(e.target.value);
+    if (vid) {
+      vid.volume = val;
+      vid.muted = val === 0;
+    }
+  }, []);
+
+  const handleSeek = useCallback((time: number) => {
+    if (videoRef.current) videoRef.current.currentTime = time;
+  }, []);
+
+  const toggleFullscreen = useCallback(() => {
+    const container = document.getElementById('hud-container');
+    if (!container) return;
+    if (!document.fullscreenElement) {
+      container.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
+    } else {
+      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
+    }
+  }, []);
+
+  useEffect(() => {
+    const onFsChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
+  }, []);
 
   const handleClassify = async (cls: string) => {
     if (!video) return;
@@ -253,7 +499,7 @@ export default function DashCamDetailPage() {
       await apiFetch(`/fleet/dashcam-videos/${video.id}`, {
         method: 'PUT', body: JSON.stringify({ classification: cls }),
       });
-      setVideo(prev => prev ? { ...prev, classification: cls as any } : null);
+      setVideo((prev: any) => prev ? { ...prev, classification: cls } : null);
       addToast(`Classified as ${cls}`, 'success');
     } catch { addToast('Failed to update classification', 'error'); }
     finally { setClassifying(false); }
@@ -281,29 +527,81 @@ export default function DashCamDetailPage() {
     finally { setEditSubmitting(false); }
   };
 
-  const handleSeek = (time: number) => {
-    if (videoRef.current) videoRef.current.currentTime = time;
-  };
+  // ── Keyboard Shortcuts ───────────────────────
 
-  // ── Derived ────────────────────────────────
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      // Don't capture when typing in inputs
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
-  const gpsTrack = useMemo(() => parseGpsTrack(video?.cpg_gps_track), [video?.cpg_gps_track]);
-  const token = localStorage.getItem('rmpg_token') || '';
-  const streamUrl = video ? `${apiBase}/fleet/dashcam-videos/${video.id}/stream?token=${encodeURIComponent(token)}` : '';
+      switch (e.key) {
+        case ' ':
+          e.preventDefault();
+          togglePlayPause();
+          break;
+        case 'ArrowLeft':
+          e.preventDefault();
+          skip(-10);
+          break;
+        case 'ArrowRight':
+          e.preventDefault();
+          skip(10);
+          break;
+        case 'j':
+        case 'J':
+          skip(-10);
+          break;
+        case 'k':
+        case 'K':
+          togglePlayPause();
+          break;
+        case 'l':
+        case 'L':
+          skip(10);
+          break;
+        case 'f':
+        case 'F':
+          toggleFullscreen();
+          break;
+        case 'i':
+        case 'I':
+          setPanelOpen(p => !p);
+          break;
+        case '1':
+          setSpeed(0.5);
+          break;
+        case '2':
+          setSpeed(1);
+          break;
+        case '3':
+          setSpeed(1.5);
+          break;
+        case '4':
+          setSpeed(2);
+          break;
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [togglePlayPause, skip, toggleFullscreen, setSpeed]);
+
+  // ── Derived Values ───────────────────────────
+
+  const liveSpeed = telemetry?.speedMph ?? null;
+  const speedClass = liveSpeed !== null ? speedColorClass(liveSpeed) : '';
   const vehDesc = video ? [video.vehicle_year, video.vehicle_make, video.vehicle_model].filter(Boolean).join(' ') : '';
-  const clsColors = CLASSIFICATION_COLORS[video?.classification || 'routine'] || CLASSIFICATION_COLORS.routine;
+  const links: any[] = video?.links || [];
+  const incidentLink = links.find((l: any) => l.entity_type === 'call');
+  const otherLinks = links.filter((l: any) => l.entity_type !== 'call');
 
-  // ── Loading / Error ────────────────────────
+  // ── Loading / Error ──────────────────────────
 
   if (loading) {
     return (
-      <div className="flex flex-col h-full">
-        <PanelTitleBar icon={Camera} title="MVR Video Detail" />
-        <div className="flex-1 flex items-center justify-center">
-          <div className="flex items-center gap-2">
-            <Loader2 className="w-5 h-5 animate-spin text-brand-400" />
-            <span className="text-[11px] text-rmpg-400">Loading video...</span>
-          </div>
+      <div className="flex items-center justify-center" style={{ height: 'calc(100vh - 120px)' }}>
+        <div className="flex items-center gap-2">
+          <Loader2 className="w-5 h-5 animate-spin text-brand-400" />
+          <span className="text-[11px] text-rmpg-400">Loading video...</span>
         </div>
       </div>
     );
@@ -311,323 +609,513 @@ export default function DashCamDetailPage() {
 
   if (error || !video) {
     return (
-      <div className="flex flex-col h-full">
-        <PanelTitleBar icon={Camera} title="MVR Video Detail">
-          <button onClick={() => navigate('/dash-cameras')} className="toolbar-btn text-[10px] px-3 py-1 flex items-center gap-1">
-            <ArrowLeft className="w-3 h-3" /> Back to Gallery
+      <div className="flex items-center justify-center" style={{ height: 'calc(100vh - 120px)' }}>
+        <div className="text-center">
+          <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-2" />
+          <p className="text-xs text-rmpg-400 mb-3">{error || 'Video not found'}</p>
+          <button onClick={() => navigate('/dash-cameras')}
+            className="toolbar-btn text-[10px] px-4 py-1.5 inline-flex items-center gap-1">
+            <ChevronLeft className="w-3 h-3" /> Back to Gallery
           </button>
-        </PanelTitleBar>
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-2" />
-            <p className="text-xs text-rmpg-400">{error || 'Video not found'}</p>
-          </div>
         </div>
       </div>
     );
   }
 
-  // ── Render ─────────────────────────────────
+  // ── Render ────────────────────────────────────
 
   return (
-    <div className="flex flex-col h-full">
-      {/* ── Title Bar ── */}
-      <PanelTitleBar icon={Camera} title="MVR Video Detail">
-        <button onClick={() => navigate('/dash-cameras')}
-          className="toolbar-btn text-[10px] px-3 py-1 flex items-center gap-1">
-          <ArrowLeft className="w-3 h-3" /> Gallery
-        </button>
-        <div className="h-4 w-px bg-rmpg-700" />
-        {canManage && (
-          <button onClick={() => setEditingVideo(video)}
-            className="toolbar-btn text-[10px] px-3 py-1 flex items-center gap-1">
-            <Edit2 className="w-3 h-3" /> Edit
-          </button>
-        )}
-        {canManage && (
-          <button onClick={handleBurn}
-            className="toolbar-btn text-[10px] px-3 py-1 flex items-center gap-1"
-            disabled={video.burn_status === 'processing' || video.burn_status === 'pending'}>
-            <Flame className="w-3 h-3" /> Burn HUD
-          </button>
-        )}
-        <a href={`${apiBase}/fleet/dashcam-videos/${video.id}/stream?token=${encodeURIComponent(token)}`}
-          download className="toolbar-btn text-[10px] px-3 py-1 flex items-center gap-1">
-          <Download className="w-3 h-3" /> Original
-        </a>
-        {video.burned_file_path && (
-          <a href={`${apiBase}/fleet/dashcam-videos/${video.id}/burned?token=${encodeURIComponent(token)}`}
-            download className="toolbar-btn-primary text-[10px] px-3 py-1 flex items-center gap-1">
-            <Download className="w-3 h-3" /> Burned
-          </a>
-        )}
-        <button onClick={() => setShowFullPlayer(true)}
-          className="toolbar-btn text-[10px] px-3 py-1 flex items-center gap-1">
-          <Maximize2 className="w-3 h-3" /> Full Screen
-        </button>
-      </PanelTitleBar>
+    <div id="hud-container" className="relative flex" style={{ height: 'calc(100vh - 120px)', background: '#000' }}>
 
-      {/* ── Content: Two-column layout ── */}
-      <div className="flex-1 flex min-h-0 overflow-hidden">
+      {/* ── Video Area (fills available space) ── */}
+      <div className="flex-1 flex flex-col min-w-0 relative">
 
-        {/* ── Left 2/3: Video Player Area ── */}
-        <div className="flex-[2] flex flex-col min-w-0 overflow-y-auto" style={{ background: '#0a0a0a' }}>
+        {/* Video wrapper with overlay bars */}
+        <div className="flex-1 relative overflow-hidden flex items-center justify-center bg-black">
+
           {/* Video element */}
-          <div className="relative bg-black flex-shrink-0">
-            <video
-              ref={videoRef} controls autoPlay key={video.id}
-              className="w-full" style={{ maxHeight: '70vh' }}
-              src={streamUrl}
-            />
-            {/* Camera channel overlay */}
+          <video
+            ref={videoRef}
+            key={video.id}
+            className="w-full h-full object-contain"
+            src={streamUrl}
+            autoPlay
+            playsInline
+            onClick={togglePlayPause}
+          />
+
+          {/* ── Top Overlay Bar ── */}
+          <div className="hud-bar hud-bar-top">
+            {/* REC indicator */}
+            <div className="flex items-center gap-1.5">
+              <span className={`hud-rec-dot ${!isPlaying ? 'paused' : ''}`} />
+              <span className="font-bold text-red-400 tracking-wider" style={{ fontSize: 10 }}>REC</span>
+            </div>
+
+            {/* Timestamp */}
+            <span className="text-rmpg-300" style={{ letterSpacing: '0.03em' }}>
+              {formatTimestamp(video.recorded_at, currentTime)}
+            </span>
+
+            <div className="flex-1" />
+
+            {/* Unit call sign */}
+            {video.unit_call_sign && (
+              <span className="text-blue-400 font-bold tracking-wide">
+                {video.unit_call_sign}
+              </span>
+            )}
+
+            {/* Speed */}
+            <span className={`font-bold ${liveSpeed !== null ? speedClass : 'text-rmpg-500'}`}>
+              {liveSpeed !== null ? `${liveSpeed} MPH` : '-- MPH'}
+            </span>
+
+            {/* Channel badge */}
             {video.cpg_channel && (
-              <span className={`absolute top-2 left-2 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider ${channelBg(video.cpg_channel)}`}>
+              <span className={channelClass(video.cpg_channel)}>
                 {channelLabel(video.cpg_channel)}
               </span>
             )}
-            {/* REC indicator */}
-            <div className="absolute top-2 right-2 flex items-center gap-1">
-              <span className="led-dot led-red animate-led-blink" style={{ width: 5, height: 5 }} />
-              <span className="font-mono text-[9px] text-red-400 font-bold tracking-wider">REC</span>
-            </div>
+
+            {/* Info panel toggle */}
+            <button onClick={() => setPanelOpen(p => !p)}
+              className="text-rmpg-400 hover:text-white transition-colors p-0.5" title="Toggle panel (I)">
+              <Info className="w-4 h-4" />
+            </button>
           </div>
 
-          {/* GPS Speed Timeline */}
-          {gpsTrack && gpsTrack.length > 1 && video.duration_seconds && (
-            <div className="flex-shrink-0 panel-inset" style={{ borderTop: '1px solid #141e2b' }}>
-              <div className="flex items-center justify-between px-2 py-0.5">
-                <span className="text-[8px] font-mono text-rmpg-500 uppercase tracking-wider flex items-center gap-1">
-                  <Gauge className="w-3 h-3" /> Speed Timeline
-                </span>
-                <span className="text-[8px] font-mono text-rmpg-600">
-                  {gpsTrack.length} GPS pts
-                </span>
-              </div>
-              <SpeedTimeline
-                track={gpsTrack}
-                duration={video.duration_seconds}
-                currentTime={currentTime}
-                onSeek={handleSeek}
-              />
-            </div>
-          )}
+          {/* ── Bottom Overlay Bar ── */}
+          <div className="hud-bar hud-bar-bottom">
+            {/* Case number */}
+            {video.case_number ? (
+              <span className="text-amber-400 font-bold tracking-wide">
+                CASE {video.case_number}
+              </span>
+            ) : (
+              <span className="text-rmpg-600 italic">NO CASE</span>
+            )}
+
+            {/* Classification badge */}
+            <span className={`font-bold uppercase tracking-wider ${CLASSIFICATION_BADGE[video.classification] || CLASSIFICATION_BADGE.routine}`}
+              style={{ fontSize: 9 }}>
+              {video.classification}
+            </span>
+
+            {/* Address */}
+            {video.address && (
+              <span className="text-rmpg-300 truncate max-w-[200px]" title={video.address}>
+                {video.address}
+              </span>
+            )}
+
+            <div className="flex-1" />
+
+            {/* GPS coordinates */}
+            {telemetry ? (
+              <span className="text-rmpg-400" style={{ fontSize: 9 }}>
+                {telemetry.lat.toFixed(4)}&deg;N {Math.abs(telemetry.lng).toFixed(4)}&deg;W
+              </span>
+            ) : video.latitude != null && video.longitude != null ? (
+              <span className="text-rmpg-500" style={{ fontSize: 9 }}>
+                {video.latitude.toFixed(4)}&deg;N {Math.abs(video.longitude).toFixed(4)}&deg;W
+              </span>
+            ) : null}
+          </div>
         </div>
 
-        {/* ── Right 1/3: Metadata Panel ── */}
-        <div className="flex-[1] flex flex-col min-w-[280px] max-w-[400px] overflow-y-auto border-l border-[#141e2b]"
-          style={{ background: '#0d1520' }}>
-          <div className="p-3 space-y-3">
+        {/* ── Speed Timeline ── */}
+        {gpsTrack && gpsTrack.length > 1 && duration > 0 && (
+          <SpeedTimeline
+            track={gpsTrack}
+            duration={duration}
+            currentTime={currentTime}
+            onSeek={handleSeek}
+          />
+        )}
 
-            {/* 1. Video Info */}
-            <Section title="Video Info" icon={Film}>
-              <div className="panel-inset p-2 space-y-2">
-                <h2 className="text-[13px] font-bold text-rmpg-100 leading-tight">{video.title}</h2>
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {/* Classification badge — clickable */}
-                  <div className="relative group">
-                    <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold border capitalize cursor-pointer ${
-                      CLASSIFICATION_BADGE[video.classification] || CLASSIFICATION_BADGE.routine
-                    }`}>
+        {/* ── Playback Controls ── */}
+        <div className="hud-controls">
+          {/* Prev video */}
+          <button onClick={() => neighbors?.prev && navigate(`/dash-cameras/${neighbors.prev}`)}
+            disabled={!neighbors?.prev} title="Previous video"
+            style={{ opacity: neighbors?.prev ? 1 : 0.3 }}>
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+
+          {/* Skip back */}
+          <button onClick={() => skip(-10)} title="Back 10s (Left arrow)">
+            <SkipBack className="w-4 h-4" />
+          </button>
+
+          {/* Play/Pause */}
+          <button onClick={togglePlayPause} title="Play/Pause (Space)">
+            {isPlaying
+              ? <Pause className="w-5 h-5" />
+              : <Play className="w-5 h-5" />}
+          </button>
+
+          {/* Skip forward */}
+          <button onClick={() => skip(10)} title="Forward 10s (Right arrow)">
+            <SkipForward className="w-4 h-4" />
+          </button>
+
+          {/* Next video */}
+          <button onClick={() => neighbors?.next && navigate(`/dash-cameras/${neighbors.next}`)}
+            disabled={!neighbors?.next} title="Next video"
+            style={{ opacity: neighbors?.next ? 1 : 0.3 }}>
+            <ChevronRight className="w-4 h-4" />
+          </button>
+
+          {/* Separator */}
+          <div className="w-px h-4 bg-white/10 mx-1" />
+
+          {/* Time display */}
+          <span className="text-[11px] font-mono text-rmpg-300 min-w-[80px]">
+            {formatDuration(currentTime)} / {formatDuration(duration)}
+          </span>
+
+          {/* Separator */}
+          <div className="w-px h-4 bg-white/10 mx-1" />
+
+          {/* Volume */}
+          <button onClick={toggleMute} title="Mute/Unmute">
+            {isMuted || volume === 0
+              ? <VolumeX className="w-4 h-4" />
+              : <Volume2 className="w-4 h-4" />}
+          </button>
+          <input type="range" min="0" max="1" step="0.05"
+            value={isMuted ? 0 : volume}
+            onChange={handleVolumeChange}
+            className="w-16 h-1 accent-brand-500 cursor-pointer"
+            style={{ accentColor: '#3b8ad4' }}
+          />
+
+          {/* Separator */}
+          <div className="w-px h-4 bg-white/10 mx-1" />
+
+          {/* Playback speed */}
+          {[0.5, 1, 1.5, 2].map(rate => (
+            <button key={rate}
+              onClick={() => setSpeed(rate)}
+              className={playbackRate === rate ? 'active' : ''}
+              title={`${rate}x speed`}>
+              {rate}x
+            </button>
+          ))}
+
+          <div className="flex-1" />
+
+          {/* Fullscreen */}
+          <button onClick={toggleFullscreen} title="Fullscreen (F)">
+            {isFullscreen
+              ? <Minimize2 className="w-4 h-4" />
+              : <Maximize2 className="w-4 h-4" />}
+          </button>
+        </div>
+      </div>
+
+      {/* ── Side Panel ── */}
+      <div className={`hud-panel ${panelOpen ? 'open' : ''}`}
+        style={{ position: panelOpen ? 'relative' : 'absolute', transform: panelOpen ? 'none' : undefined }}>
+        <div className="flex flex-col h-full">
+          <div className="flex-1 overflow-y-auto">
+
+            {/* 1. OFFICER & UNIT */}
+            <HudSection title="Officer & Unit" icon={User}
+              isOpen={sections.officer} onToggle={() => toggleSection('officer')}
+              defaultOpen>
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-y-1.5 gap-x-3">
+                  <div>
+                    <span className="text-[9px] text-rmpg-500 uppercase block">Officer</span>
+                    <span className="text-[11px] text-rmpg-100 font-medium">{video.officer_name || '--'}</span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] text-rmpg-500 uppercase block">Badge</span>
+                    <span className="text-[11px] text-rmpg-200 font-mono">{video.officer_badge || '--'}</span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] text-rmpg-500 uppercase block">Rank</span>
+                    <span className="text-[11px] text-rmpg-200 capitalize">{video.officer_rank || '--'}</span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] text-rmpg-500 uppercase block">Unit</span>
+                    <span className="text-[11px] text-brand-400 font-mono font-bold">{video.unit_call_sign || '--'}</span>
+                  </div>
+                </div>
+                {video.unit_status && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[9px] text-rmpg-500 uppercase">Status</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`w-2 h-2 rounded-full ${
+                        video.unit_status === 'available' ? 'bg-green-500' :
+                        video.unit_status === 'busy' ? 'bg-amber-500' :
+                        video.unit_status === 'out_of_service' ? 'bg-red-500' :
+                        'bg-rmpg-500'
+                      }`} />
+                      <span className="text-[10px] text-rmpg-200 capitalize font-mono">
+                        {(video.unit_status || '').replace(/_/g, ' ')}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </HudSection>
+
+            {/* 2. VEHICLE */}
+            <HudSection title="Vehicle" icon={Car}
+              isOpen={sections.vehicle} onToggle={() => toggleSection('vehicle')}
+              defaultOpen>
+              <div className="grid grid-cols-2 gap-y-1.5 gap-x-3">
+                <div>
+                  <span className="text-[9px] text-rmpg-500 uppercase block">Vehicle #</span>
+                  <span className="text-[11px] text-rmpg-200 font-mono">{video.vehicle_number ? `#${video.vehicle_number}` : '--'}</span>
+                </div>
+                <div>
+                  <span className="text-[9px] text-rmpg-500 uppercase block">Description</span>
+                  <span className="text-[11px] text-rmpg-200">{vehDesc || '--'}</span>
+                </div>
+                {video.vehicle_color && (
+                  <div>
+                    <span className="text-[9px] text-rmpg-500 uppercase block">Color</span>
+                    <span className="text-[11px] text-rmpg-200 capitalize">{video.vehicle_color}</span>
+                  </div>
+                )}
+                {video.vehicle_plate && (
+                  <div>
+                    <span className="text-[9px] text-rmpg-500 uppercase block">Plate</span>
+                    <span className="text-[11px] text-rmpg-200 font-mono">
+                      {video.vehicle_plate}
+                      {video.vehicle_plate_state && <span className="text-rmpg-500 ml-1">{video.vehicle_plate_state}</span>}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </HudSection>
+
+            {/* 3. SPEED */}
+            <HudSection title="Speed" icon={Gauge}
+              isOpen={sections.speed} onToggle={() => toggleSection('speed')}
+              defaultOpen>
+              <div className="text-center py-1">
+                <div className={`hud-speed-gauge ${liveSpeed !== null ? speedColorClass(liveSpeed) : 'text-rmpg-600'}`}>
+                  {liveSpeed !== null ? liveSpeed : '--'}
+                </div>
+                <div className={`hud-speed-unit ${liveSpeed !== null ? speedColorClass(liveSpeed) : 'text-rmpg-600'}`}>
+                  MPH
+                </div>
+                {telemetry?.altitude != null && (
+                  <div className="text-[9px] text-rmpg-500 font-mono mt-1">
+                    ALT {telemetry.altitude} ft
+                  </div>
+                )}
+              </div>
+            </HudSection>
+
+            {/* 4. GPS MAP */}
+            <HudSection title="GPS Map" icon={Map}
+              isOpen={sections.gps} onToggle={() => toggleSection('gps')}>
+              <div ref={mapContainerRef}
+                className="w-full rounded"
+                style={{ height: 200, background: '#0d1520' }}>
+                {!window.google?.maps && (
+                  <div className="flex items-center justify-center h-full">
+                    <span className="text-[9px] text-rmpg-500">Maps unavailable</span>
+                  </div>
+                )}
+              </div>
+              {telemetry && (
+                <div className="mt-2 text-[9px] text-rmpg-400 font-mono text-center">
+                  {telemetry.lat.toFixed(5)}, {telemetry.lng.toFixed(5)}
+                </div>
+              )}
+            </HudSection>
+
+            {/* 5. INCIDENT */}
+            <HudSection title="Incident" icon={Shield}
+              isOpen={sections.incident} onToggle={() => toggleSection('incident')}>
+              {incidentLink ? (
+                <div className="space-y-1.5">
+                  {incidentLink.priority && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] text-rmpg-500 uppercase">Priority</span>
+                      <span className={`text-[10px] font-mono font-bold ${
+                        incidentLink.priority === 1 ? 'text-red-400' :
+                        incidentLink.priority === 2 ? 'text-amber-400' :
+                        'text-green-400'
+                      }`}>
+                        P{incidentLink.priority}
+                      </span>
+                    </div>
+                  )}
+                  {incidentLink.incident_type && (
+                    <div>
+                      <span className="text-[9px] text-rmpg-500 uppercase block">Type</span>
+                      <span className="text-[11px] text-rmpg-200">{incidentLink.incident_type}</span>
+                    </div>
+                  )}
+                  {incidentLink.status && (
+                    <div>
+                      <span className="text-[9px] text-rmpg-500 uppercase block">Status</span>
+                      <span className="text-[11px] text-rmpg-200 capitalize">{incidentLink.status}</span>
+                    </div>
+                  )}
+                  {incidentLink.disposition && (
+                    <div>
+                      <span className="text-[9px] text-rmpg-500 uppercase block">Disposition</span>
+                      <span className="text-[11px] text-rmpg-200">{incidentLink.disposition}</span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-[10px] text-rmpg-500 italic">No linked incident</p>
+              )}
+            </HudSection>
+
+            {/* 6. EVIDENCE */}
+            <HudSection title="Evidence" icon={FileText}
+              isOpen={sections.evidence} onToggle={() => toggleSection('evidence')}>
+              <div className="space-y-1.5">
+                <div>
+                  <span className="text-[9px] text-rmpg-500 uppercase block">Case #</span>
+                  {video.case_number ? (
+                    <span className="text-[11px] text-amber-400 font-mono font-bold">{video.case_number}</span>
+                  ) : (
+                    <span className="text-[10px] text-rmpg-500 italic">None</span>
+                  )}
+                </div>
+                <div>
+                  <span className="text-[9px] text-rmpg-500 uppercase block">Classification</span>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className={`text-[10px] font-bold uppercase ${CLASSIFICATION_BADGE[video.classification] || ''}`}>
                       {video.classification}
                     </span>
                     {canManage && (
-                      <div className="hidden group-hover:flex absolute top-full left-0 z-20 mt-1 gap-1 p-1 panel-beveled">
+                      <div className="flex gap-0.5 ml-1">
                         {(['routine', 'evidence', 'flagged', 'restricted'] as const).map(cls => (
                           <button key={cls} onClick={() => handleClassify(cls)} disabled={classifying}
-                            className={`text-[8px] px-1.5 py-0.5 capitalize ${video.classification === cls ? 'toolbar-btn-primary' : 'toolbar-btn'}`}>
-                            {cls}
+                            className={`text-[8px] px-1 py-0.5 capitalize rounded-sm ${
+                              video.classification === cls
+                                ? 'bg-brand-500/30 text-brand-300'
+                                : 'text-rmpg-500 hover:text-rmpg-300 hover:bg-white/5'
+                            }`}>
+                            {cls.slice(0, 3)}
                           </button>
                         ))}
                       </div>
                     )}
                   </div>
-                  {/* Source badge */}
-                  <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold border ${
-                    SOURCE_COLORS[video.source || 'upload'] || SOURCE_COLORS.upload
-                  }`}>
-                    {video.source === 'clearpathgps' ? 'ClearPathGPS' : 'Upload'}
-                  </span>
                 </div>
-                <div className="grid grid-cols-2 gap-y-1.5 gap-x-3">
-                  <div>
-                    <span className="text-[9px] text-rmpg-500 uppercase block">File Size</span>
-                    <span className="text-[11px] text-rmpg-200 font-mono">{formatSize(video.file_size)}</span>
-                  </div>
-                  <div>
-                    <span className="text-[9px] text-rmpg-500 uppercase block">Duration</span>
-                    <span className="text-[11px] text-rmpg-200 font-mono">{formatDuration(video.duration_seconds)}</span>
-                  </div>
-                  <div>
-                    <span className="text-[9px] text-rmpg-500 uppercase block">Recorded</span>
-                    <span className="text-[11px] text-rmpg-200 font-mono">{formatDate(video.recorded_at)}</span>
-                  </div>
-                  <div>
-                    <span className="text-[9px] text-rmpg-500 uppercase block">Uploaded By</span>
-                    <span className="text-[11px] text-rmpg-200 font-mono">{video.uploaded_by || '-'}</span>
-                  </div>
-                </div>
-              </div>
-            </Section>
-
-            {/* 2. Vehicle & Unit */}
-            <Section title="Vehicle & Unit" icon={Car}>
-              <div className="panel-inset p-2 grid grid-cols-2 gap-y-1.5 gap-x-3">
                 <div>
-                  <span className="text-[9px] text-rmpg-500 uppercase block">Vehicle</span>
+                  <span className="text-[9px] text-rmpg-500 uppercase block">Source</span>
                   <span className="text-[11px] text-rmpg-200">
-                    {video.vehicle_number ? `#${video.vehicle_number}` : '--'}
-                    {vehDesc && ` ${vehDesc}`}
+                    {video.source === 'clearpathgps' ? 'ClearPathGPS' : video.uploaded_by || 'Upload'}
                   </span>
                 </div>
                 <div>
-                  <span className="text-[9px] text-rmpg-500 uppercase block">Unit</span>
-                  <span className="text-[11px] text-brand-400 font-mono font-bold">{video.unit_call_sign || '--'}</span>
+                  <span className="text-[9px] text-rmpg-500 uppercase block">Created</span>
+                  <span className="text-[10px] text-rmpg-300 font-mono">{formatDate(video.created_at)}</span>
                 </div>
-                {video.cpg_channel && (
-                  <div>
-                    <span className="text-[9px] text-rmpg-500 uppercase block">Camera</span>
-                    <span className={`text-[11px] font-mono font-bold ${video.cpg_channel === 'outside' ? 'text-blue-400' : 'text-purple-400'}`}>
-                      {channelLabel(video.cpg_channel)}
-                    </span>
-                  </div>
-                )}
-                {video.speed_mph != null && (
-                  <div>
-                    <span className="text-[9px] text-rmpg-500 uppercase block">Speed</span>
-                    <span className={`text-[11px] font-mono font-bold ${
-                      video.speed_mph > 80 ? 'text-red-400' : video.speed_mph > 60 ? 'text-amber-400' : 'text-green-400'
-                    }`}>
-                      {video.speed_mph} MPH
-                    </span>
-                  </div>
-                )}
-              </div>
-            </Section>
-
-            {/* 3. Location */}
-            {(video.address || video.latitude != null) && (
-              <Section title="Location" icon={MapPin}>
-                <div className="panel-inset p-2 space-y-1">
-                  {video.address && (
-                    <div className="text-[11px] text-rmpg-200">{video.address}</div>
-                  )}
-                  {video.latitude != null && video.longitude != null && (
-                    <div className="text-[10px] font-mono text-rmpg-400">
-                      {video.latitude.toFixed(5)}, {video.longitude.toFixed(5)}
-                    </div>
-                  )}
-                </div>
-              </Section>
-            )}
-
-            {/* 4. Evidence */}
-            <Section title="Evidence" icon={FileText}>
-              <div className="panel-inset p-2 space-y-1">
-                {video.case_number ? (
-                  <div>
-                    <span className="text-[9px] text-rmpg-500">Case #: </span>
-                    <span className="text-[11px] text-amber-400 font-mono font-bold">{video.case_number}</span>
-                  </div>
-                ) : (
-                  <div className="text-[10px] text-rmpg-500 italic">No case linked</div>
-                )}
-                <div>
-                  <span className="text-[9px] text-rmpg-500 uppercase block">Classification</span>
-                  <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold border capitalize ${
-                    CLASSIFICATION_BADGE[video.classification] || CLASSIFICATION_BADGE.routine
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] text-rmpg-500 uppercase">Burn</span>
+                  <span className={`text-[10px] font-mono font-bold capitalize ${
+                    video.burn_status === 'complete' ? 'text-green-400' :
+                    video.burn_status === 'error' ? 'text-red-400' :
+                    video.burn_status === 'processing' ? 'text-amber-400' :
+                    'text-rmpg-500'
                   }`}>
-                    {video.classification}
+                    {video.burn_status || 'none'}
                   </span>
                 </div>
                 {video.notes && (
                   <div>
                     <span className="text-[9px] text-rmpg-500 uppercase block">Notes</span>
-                    <span className="text-[11px] text-rmpg-300">{video.notes}</span>
+                    <span className="text-[10px] text-rmpg-300">{video.notes}</span>
                   </div>
                 )}
               </div>
-            </Section>
+            </HudSection>
 
-            {/* 5. Burn Status */}
-            <Section title="Burn Status" icon={Flame} defaultOpen={video.burn_status !== 'none'}>
-              <div className="panel-inset p-2 space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-[9px] text-rmpg-500 uppercase">Status:</span>
-                  <span className={`text-[10px] font-mono font-bold capitalize ${
-                    video.burn_status === 'complete' ? 'text-green-400' :
-                    video.burn_status === 'error' ? 'text-red-400' :
-                    video.burn_status === 'processing' ? 'text-amber-400' :
-                    'text-rmpg-400'
-                  }`}>
-                    {video.burn_status || 'none'}
-                  </span>
+            {/* 7. LINKED */}
+            <HudSection title="Linked Entities" icon={Link2}
+              isOpen={sections.linked} onToggle={() => toggleSection('linked')}>
+              {otherLinks.length > 0 ? (
+                <div className="space-y-1">
+                  {otherLinks.map((link: any, i: number) => (
+                    <button key={i}
+                      className="flex items-center gap-2 text-[10px] w-full text-left hover:bg-white/5 px-1 py-0.5 rounded-sm"
+                      onClick={() => {
+                        if (link.entity_type === 'warrant') navigate(`/warrants/${link.entity_id}`);
+                        else if (link.entity_type === 'citation') navigate(`/citations/${link.entity_id}`);
+                      }}>
+                      <span className="text-rmpg-500 uppercase font-mono text-[9px]">{link.entity_type}</span>
+                      <span className="text-rmpg-200 font-mono">#{link.entity_id}</span>
+                    </button>
+                  ))}
                 </div>
-                {(video.burn_status === 'processing' || video.burn_status === 'pending') && (
-                  <div className="h-1.5 bg-rmpg-800 rounded overflow-hidden">
-                    <div className="h-full bg-brand-500 transition-all" style={{ width: `${video.burn_progress || 0}%` }} />
-                  </div>
-                )}
-                {video.burn_error && (
-                  <p className="text-[9px] text-red-400 font-mono">{video.burn_error}</p>
-                )}
-                {video.burn_status === 'complete' && video.burned_file_path && (
-                  <a href={`${apiBase}/fleet/dashcam-videos/${video.id}/burned?token=${encodeURIComponent(token)}`}
-                    download className="toolbar-btn-primary text-[9px] px-3 py-1 inline-flex items-center gap-1">
-                    <Download className="w-3 h-3" /> Download Burned
-                  </a>
-                )}
-              </div>
-            </Section>
+              ) : (
+                <p className="text-[10px] text-rmpg-500 italic">No linked entities</p>
+              )}
+            </HudSection>
+          </div>
 
-            {/* 6. Linked Entities */}
-            <Section title="Linked Entities" icon={Link2}>
-              <div className="panel-inset p-2">
-                {links.length === 0 ? (
-                  <p className="text-[10px] text-rmpg-500 italic">No linked entities</p>
-                ) : (
-                  <div className="space-y-1">
-                    {links.map((link: any, i: number) => (
-                      <div key={i} className="flex items-center gap-2 text-[10px]">
-                        <span className="text-rmpg-500 uppercase font-mono text-[9px]">{link.entity_type || link.type}</span>
-                        <span className="text-rmpg-200 font-mono">#{link.entity_id || link.id}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </Section>
+          {/* ── Panel Bottom Actions ── */}
+          <div className="border-t border-[#1a2636] p-2 space-y-1.5" style={{ background: 'var(--surface-raised)' }}>
+            {/* File info */}
+            <div className="flex items-center justify-between text-[9px] text-rmpg-500 font-mono mb-1">
+              <span>{formatSize(video.file_size)}</span>
+              <span>{formatDuration(video.duration_seconds)}</span>
+            </div>
 
-            {/* 7. Navigation */}
+            {canManage && (
+              <button onClick={handleBurn}
+                disabled={video.burn_status === 'processing' || video.burn_status === 'pending'}
+                className="toolbar-btn text-[10px] w-full py-1.5 flex items-center justify-center gap-1.5 disabled:opacity-30">
+                <Flame className="w-3.5 h-3.5" /> Burn HUD Overlay
+              </button>
+            )}
+
+            <a href={streamUrl} download
+              className="toolbar-btn text-[10px] w-full py-1.5 flex items-center justify-center gap-1.5 no-underline">
+              <Download className="w-3.5 h-3.5" /> Download Original
+            </a>
+
+            {video.burned_file_path && (
+              <a href={`${apiBase}/fleet/dashcam-videos/${video.id}/burned?token=${encodeURIComponent(token)}`}
+                download
+                className="toolbar-btn-primary text-[10px] w-full py-1.5 flex items-center justify-center gap-1.5 no-underline">
+                <Download className="w-3.5 h-3.5" /> Download Burned
+              </a>
+            )}
+
+            {canManage && (
+              <button onClick={() => setEditingVideo(video)}
+                className="toolbar-btn text-[10px] w-full py-1.5 flex items-center justify-center gap-1.5">
+                <Edit2 className="w-3.5 h-3.5" /> Edit Details
+              </button>
+            )}
+
+            {/* Navigation */}
             {neighbors && (
-              <Section title="Navigation" icon={Clock}>
-                <div className="flex items-center gap-2">
-                  <button disabled={!neighbors.prev}
-                    onClick={() => neighbors.prev && navigate(`/dash-cameras/${neighbors.prev}`)}
-                    className="toolbar-btn text-[10px] px-3 py-1 flex items-center gap-1 flex-1 justify-center disabled:opacity-30">
-                    <ChevronLeft className="w-3 h-3" /> Previous
-                  </button>
-                  <button disabled={!neighbors.next}
-                    onClick={() => neighbors.next && navigate(`/dash-cameras/${neighbors.next}`)}
-                    className="toolbar-btn text-[10px] px-3 py-1 flex items-center gap-1 flex-1 justify-center disabled:opacity-30">
-                    Next <ChevronRight className="w-3 h-3" />
-                  </button>
-                </div>
-              </Section>
+              <div className="flex gap-1.5 pt-1">
+                <button disabled={!neighbors.prev}
+                  onClick={() => neighbors.prev && navigate(`/dash-cameras/${neighbors.prev}`)}
+                  className="toolbar-btn text-[10px] flex-1 py-1 flex items-center justify-center gap-1 disabled:opacity-30">
+                  <ChevronLeft className="w-3 h-3" /> Prev
+                </button>
+                <button disabled={!neighbors.next}
+                  onClick={() => neighbors.next && navigate(`/dash-cameras/${neighbors.next}`)}
+                  className="toolbar-btn text-[10px] flex-1 py-1 flex items-center justify-center gap-1 disabled:opacity-30">
+                  Next <ChevronRight className="w-3 h-3" />
+                </button>
+              </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* ── Modals ── */}
-      <DashCamVideoPlayer
-        isOpen={showFullPlayer}
-        onClose={() => setShowFullPlayer(false)}
-        video={video}
-        apiBase={apiBase}
-        getAuthHeaders={getAuthHeaders}
-        onEditVideo={canManage ? (v) => { setShowFullPlayer(false); setEditingVideo(v); } : undefined}
-      />
-
+      {/* ── Edit Modal ── */}
       <DashCamVideoEditModal
         isOpen={!!editingVideo}
         onClose={() => setEditingVideo(null)}
