@@ -117,9 +117,10 @@ function doScriptLoad(
   };
 
   const script = document.createElement('script');
-  // Pin to v=3.58 (stable raster) — 'weekly' auto-enables vector tiles
-  // which ignore JSON styles, causing black/unstyled map areas.
-  script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,marker,visualization&callback=${callbackName}&v=3.58`;
+  // Use v=quarterly (stable) WITHOUT 'marker' library — the 'marker' library
+  // forces AdvancedMarkerElement which requires vector tiles (WebGL) that
+  // ignore JSON styles, causing black/unstyled map areas.
+  script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,visualization&callback=${callbackName}&v=quarterly`;
   script.async = true;
   script.defer = true;
   script.onerror = () => {
