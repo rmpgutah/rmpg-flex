@@ -11,7 +11,7 @@
 /* --- Theme Custom Properties ─────────────────────────────── */
 :root {
   --surface-base: #0f1722;
-  --surface-raised: #1a2332;
+  --surface-raised: #141e2b;
   --surface-sunken: #0a1019;
   --surface-overlay: #0a1018;
   --surface-deep: #060c14;
@@ -25,8 +25,8 @@
   --brand-gold: #d4a017;
   --toolbar-gradient-start: #1a5a9e;
   --toolbar-gradient-end: #2570b5;
-  --grid-header-bg: #0f1a28;
-  --grid-row-alt: #111c2a;
+  --grid-header-bg: #0c1420;
+  --grid-row-alt: #0f1722;
   --field-label-color: #d4a017;
   --border-panel: #1c2d44;
 
@@ -660,8 +660,12 @@
   /* --- Modern Panel Borders (replaces beveled) --- */
   .panel-beveled {
     border: 1px solid var(--border-default);
-    box-shadow: var(--shadow-card);
-    transition: var(--transition-default);
+    box-shadow: var(--shadow-card), 0 0 10px rgba(26, 90, 158, 0.05);
+    transition: var(--transition-default), box-shadow 200ms ease;
+  }
+
+  .panel-beveled:hover {
+    box-shadow: var(--shadow-card), 0 0 15px rgba(26, 90, 158, 0.1);
   }
 
   .panel-inset {
@@ -3331,4 +3335,25 @@ html.compact-mode .text-xs { font-size: 0.6875rem; }
   background: #3b8ad4;
   z-index: 2;
   pointer-events: none;
+}
+
+/* ============================================================
+   APP-WIDE GRID BACKGROUND (login aesthetic)
+   ============================================================ */
+
+.app-grid-bg {
+  position: relative;
+}
+
+.app-grid-bg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(rgba(26, 90, 158, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(26, 90, 158, 0.025) 1px, transparent 1px);
+  background-size: 40px 40px;
+  animation: login-grid-drift 30s linear infinite;
+  pointer-events: none;
+  z-index: 0;
 }

@@ -39,9 +39,9 @@ export default {
       colors: {
         // ── Surface tokens (CSS variable backed) ──────────
         surface: {
-          base:    'var(--surface-base)',     // #141e2b
-          raised:  'var(--surface-raised)',   // #1a2636
-          sunken:  'var(--surface-sunken)',   // #0d1520
+          base:    'var(--surface-base)',     // #0f1722
+          raised:  'var(--surface-raised)',   // #141e2b
+          sunken:  'var(--surface-sunken)',   // #0a1019
           overlay: 'var(--surface-overlay)',  // #0a1018
           deep:    'var(--surface-deep)',     // #060c14
         },
