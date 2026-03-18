@@ -3129,3 +3129,206 @@ html.compact-mode .mb-4 { margin-bottom: 8px; }
 html.compact-mode .py-2 { padding-top: 4px; padding-bottom: 4px; }
 html.compact-mode .text-sm { font-size: 0.8125rem; }
 html.compact-mode .text-xs { font-size: 0.6875rem; }
+
+/* ============================================================
+   DASHCAM HUD OVERLAY
+   ============================================================ */
+
+/* REC indicator pulse */
+@keyframes hud-rec-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.hud-rec-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 6px #ef4444;
+  animation: hud-rec-pulse 1s ease-in-out infinite;
+}
+
+.hud-rec-dot.paused {
+  animation: none;
+  background: #6b7280;
+  box-shadow: none;
+}
+
+/* Overlay bars */
+.hud-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  z-index: 10;
+  transition: opacity 150ms ease;
+}
+
+.hud-bar-top {
+  top: 0;
+  height: 36px;
+  font-size: 11px;
+  gap: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.hud-bar-bottom {
+  bottom: 0;
+  height: 32px;
+  font-size: 10px;
+  gap: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Speed color classes */
+.hud-speed-green { color: #22c55e; }
+.hud-speed-amber { color: #f59e0b; }
+.hud-speed-red { color: #ef4444; }
+
+/* Channel badges */
+.hud-channel-front {
+  background: rgba(59, 130, 246, 0.25);
+  border: 1px solid rgba(59, 130, 246, 0.5);
+  color: #60a5fa;
+  padding: 1px 6px;
+  border-radius: 2px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.hud-channel-rear {
+  background: rgba(168, 85, 247, 0.25);
+  border: 1px solid rgba(168, 85, 247, 0.5);
+  color: #c084fc;
+  padding: 1px 6px;
+  border-radius: 2px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+/* Classification badges */
+.hud-class-routine { color: #6b7280; }
+.hud-class-evidence { color: #d4a017; }
+.hud-class-flagged { color: #ef4444; }
+.hud-class-restricted { color: #a855f7; }
+
+/* Side panel */
+.hud-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 280px;
+  background: var(--surface-base);
+  border-left: 1px solid var(--border-default);
+  overflow-y: auto;
+  transform: translateX(100%);
+  transition: transform 200ms ease;
+  z-index: 20;
+}
+
+.hud-panel.open {
+  transform: translateX(0);
+}
+
+/* Panel section headers */
+.hud-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border-default);
+  cursor: pointer;
+  user-select: none;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+}
+
+.hud-section-header:hover {
+  background: var(--surface-hover, rgba(255,255,255,0.04));
+}
+
+.hud-section-content {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.04));
+}
+
+/* Speed gauge */
+.hud-speed-gauge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 48px;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+  padding: 8px 0;
+}
+
+.hud-speed-unit {
+  font-size: 14px;
+  font-weight: 600;
+  opacity: 0.6;
+  margin-top: 2px;
+}
+
+/* Playback controls */
+.hud-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  background: rgba(0, 0, 0, 0.8);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.hud-controls button {
+  background: none;
+  border: none;
+  color: #d0d8e0;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 2px;
+  font-size: 11px;
+  font-family: inherit;
+  transition: background 100ms ease, color 100ms ease;
+}
+
+.hud-controls button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.hud-controls button.active {
+  background: rgba(59, 138, 212, 0.3);
+  color: #3b8ad4;
+}
+
+/* Speed timeline */
+.hud-timeline {
+  position: relative;
+  height: 24px;
+  background: rgba(0, 0, 0, 0.7);
+  cursor: pointer;
+}
+
+.hud-timeline-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #3b8ad4;
+  z-index: 2;
+  pointer-events: none;
+}

@@ -137,11 +137,19 @@ router.get('/:id', validateParamId, authenticateToken, requireRole('admin', 'man
         COALESCE(fv.make, fv_unit.make) as vehicle_make,
         COALESCE(fv.model, fv_unit.model) as vehicle_model,
         COALESCE(fv.year, fv_unit.year) as vehicle_year,
-        u.call_sign as unit_call_sign
+        COALESCE(fv.color, fv_unit.color) as vehicle_color,
+        COALESCE(fv.plate_number, fv_unit.plate_number) as vehicle_plate,
+        COALESCE(fv.plate_state, fv_unit.plate_state) as vehicle_plate_state,
+        u.call_sign as unit_call_sign,
+        u.status as unit_status,
+        usr.full_name as officer_name,
+        usr.badge_number as officer_badge,
+        usr.rank as officer_rank
       FROM dashcam_videos v
       LEFT JOIN fleet_vehicles fv ON v.vehicle_id = fv.id
       LEFT JOIN units u ON v.unit_id = u.id
       LEFT JOIN fleet_vehicles fv_unit ON fv_unit.assigned_unit_id = v.unit_id AND v.vehicle_id IS NULL
+      LEFT JOIN users usr ON u.officer_id = usr.id
       WHERE v.id = ?
     `).get(req.params.id);
 
