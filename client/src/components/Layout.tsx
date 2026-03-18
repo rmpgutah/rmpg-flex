@@ -55,6 +55,7 @@ import RmpgLogo from './RmpgLogo';
 import StatusBar from './StatusBar';
 import MenuBar from './MenuBar';
 import Sidebar from './Sidebar';
+import ModuleTileBar from './ModuleTileBar';
 import ErrorBoundary from './ErrorBoundary';
 import NotificationCenter from './NotificationCenter';
 import PanicButton from './PanicButton';
@@ -948,29 +949,28 @@ export default function Layout() {
       />
 
       {/* ============================================================ */}
-      {/* MAIN CONTENT AREA — Sidebar + Page Content                   */}
+      {/* MODULE TILE BAR — Spillman Flex module launcher ribbon        */}
       {/* ============================================================ */}
-      <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* Sidebar Navigation — Desktop only */}
-        {!isMobile && (
-          <Sidebar
-            items={TOOLBAR_NAV}
-            isAdmin={isAdmin}
-            isClientViewer={isClientViewer}
-            isContractManager={isContractManager}
-            activeCallCount={activeCallCount}
-            emailUnreadCount={emailUnreadCount}
-            activeBOLOs={activeBOLOs}
-          />
-        )}
+      {!isMobile && (
+        <ModuleTileBar
+          items={TOOLBAR_NAV}
+          isAdmin={isAdmin}
+          isClientViewer={isClientViewer}
+          isContractManager={isContractManager}
+          activeCallCount={activeCallCount}
+          emailUnreadCount={emailUnreadCount}
+          activeBOLOs={activeBOLOs}
+        />
+      )}
 
-        {/* Page Content (recessed panel) */}
-        <main className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter" key={location.pathname} style={{ background: '#1a2636' }}>
-          <ErrorBoundary>
-            <Outlet />
-          </ErrorBoundary>
-        </main>
-      </div>
+      {/* ============================================================ */}
+      {/* MAIN CONTENT AREA — Full width (no sidebar)                  */}
+      {/* ============================================================ */}
+      <main className="flex-1 overflow-auto min-h-0 panel-inset app-grid-bg animate-page-enter" key={location.pathname}>
+        <ErrorBoundary>
+          <Outlet />
+        </ErrorBoundary>
+      </main>
 
       {/* Mobile Bottom Navigation */}
       {isMobile && (
