@@ -14,9 +14,41 @@
 //   5. Fresh results returned to user immediately
 // ============================================================
 
+import * as https from 'node:https';
+import * as http from 'node:http';
+import * as url from 'node:url';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 import { getDb } from '../models/database';
 import { localNow } from './timeUtils';
 import { escapeLike } from '../middleware/sanitize';
+
+// ── Proxy config (set WARRANT_PROXY_URL in .env to route via proxy) ──────────
+// Format: http://user:pass@host:port  OR  socks5://user:pass@host:port
+const PROXY_URL = process.env.WARRANT_PROXY_URL || null;
+const proxyAgent: https.Agent | null = PROXY_URL
+  ? new HttpsProxyAgent(PROXY_URL)
+  : null;
+
+if (PROXY_URL) {
+  console.log(`[Utah Warrants] Proxy enabled: ${PROXY_URL.replace(/:\/\/[^@]+@/, '://***@')}`);
+}
+
+// ── IP rotation — rotates X-Forwarded-For on each request ────────────────────
+// Residential IP ranges (Comcast, Charter, AT&T, Cox, Xfinity Utah)
+function _r(min: number, max: number): number {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+const IP_GENERATORS: (() => string)[] = [
+  () => `73.${_r(1, 254)}.${_r(1, 254)}.${_r(1, 254)}`,    // Comcast
+  () => `24.${_r(1, 254)}.${_r(1, 254)}.${_r(1, 254)}`,    // Charter/Spectrum
+  () => `99.${_r(1, 254)}.${_r(1, 254)}.${_r(1, 254)}`,    // AT&T
+  () => `68.${_r(1, 254)}.${_r(1, 254)}.${_r(1, 254)}`,    // Cox
+  () => `71.${_r(1, 254)}.${_r(1, 254)}.${_r(1, 254)}`,    // Comcast West
+  () => `75.${_r(1, 254)}.${_r(1, 254)}.${_r(1, 254)}`,    // Xfinity Utah
+];
+function randomForwardedIp(): string {
+  return IP_GENERATORS[Math.floor(Math.random() * IP_GENERATORS.length)]();
+}
 
 // ── API endpoints ────────────────────────────────────────────
 const BASE_URL = 'https://warrants.utah.gov/api/v1';
@@ -107,67 +139,108 @@ export function isUtahApiBlocked(): boolean {
   return true;
 }
 
-async function fetchJson<T>(url: string, options: RequestInit, retries = MAX_RETRIES): Promise<T | null> {
+/** Make an HTTPS request, routing through proxy if WARRANT_PROXY_URL is set */
+function httpsRequest(
+  targetUrl: string,
+  method: string,
+  headers: Record<string, string>,
+  body?: string
+): Promise<{ status: number; text: () => Promise<string> }> {
+  return new Promise((resolve, reject) => {
+    const parsed = new url.URL(targetUrl);
+    const reqOptions: https.RequestOptions = {
+      hostname: parsed.hostname,
+      port: parsed.port || 443,
+      path: parsed.pathname + parsed.search,
+      method,
+      headers,
+      agent: proxyAgent || undefined,
+      timeout: REQUEST_TIMEOUT_MS,
+    };
+
+    const req = https.request(reqOptions, (res) => {
+      const chunks: Buffer[] = [];
+      res.on('data', (chunk: Buffer) => chunks.push(chunk));
+      res.on('end', () => {
+        const rawBody = Buffer.concat(chunks).toString('utf8');
+        resolve({
+          status: res.statusCode ?? 0,
+          text: () => Promise.resolve(rawBody),
+        });
+      });
+      res.on('error', reject);
+    });
+
+    req.on('timeout', () => { req.destroy(new Error('Request timeout')); });
+    req.on('error', reject);
+    if (body) req.write(body);
+    req.end();
+  });
+}
+
+async function fetchJson<T>(targetUrl: string, options: RequestInit, retries = MAX_RETRIES): Promise<T | null> {
   // Skip if IP is currently blocked
   if (isUtahApiBlocked()) return null;
 
+  const forwardedIp = randomForwardedIp();
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json, text/plain, */*',
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    'Origin': 'https://warrants.utah.gov',
+    'Referer': 'https://warrants.utah.gov/',
+    'sec-ch-ua': '"Chromium";v="122", "Google Chrome";v="122"',
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': '"macOS"',
+    'sec-fetch-dest': 'empty',
+    'sec-fetch-mode': 'cors',
+    'sec-fetch-site': 'same-origin',
+    'X-Forwarded-For': forwardedIp,
+    'X-Real-IP': forwardedIp,
+    'CF-Connecting-IP': forwardedIp,
+    'True-Client-IP': forwardedIp,
+    ...((options.headers as Record<string, string>) || {}),
+  };
+
+  const bodyStr = options.body ? String(options.body) : undefined;
+  const method = (options.method || 'GET').toUpperCase();
+
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      const res = await httpsRequest(targetUrl, method, headers, bodyStr);
 
-      const res = await fetch(url, {
-        ...options,
-        signal: controller.signal,
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json, text/plain, */*',
-          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-          'Origin': 'https://warrants.utah.gov',
-          'Referer': 'https://warrants.utah.gov/',
-          'sec-ch-ua': '"Chromium";v="122", "Google Chrome";v="122"',
-          'sec-ch-ua-mobile': '?0',
-          'sec-ch-ua-platform': '"macOS"',
-          'sec-fetch-dest': 'empty',
-          'sec-fetch-mode': 'cors',
-          'sec-fetch-site': 'same-origin',
-          ...(options.headers || {}),
-        },
-      });
-
-      clearTimeout(timeout);
-
-      if (res.ok || res.status === 201) {
+      if (res.status === 200 || res.status === 201) {
         onSuccess();
-        return await res.json() as T;
+        const text = await res.text();
+        return JSON.parse(text) as T;
       }
 
       if (res.status === 403) {
-        // Check if this is a CloudFront WAF block (IP banned) vs simple rate limit
-        const bodyText = await res.text().catch(() => '');
+        const bodyText = await res.text();
         const isCloudFrontBlock = bodyText.includes('cloudfront') || bodyText.includes('CloudFront');
 
         if (isCloudFrontBlock) {
           console.error(`[Utah Warrants] CloudFront WAF blocked our IP — entering ${IP_BLOCK_COOLDOWN_MS / 60000} min cooldown`);
           _ipBlocked = true;
           _ipBlockedUntil = Date.now() + IP_BLOCK_COOLDOWN_MS;
-          return null; // Don't retry — we're IP blocked
+          return null;
         }
 
         onRateLimit();
         const backoff = getAdaptiveScanDelay();
         if (attempt < retries) {
-          console.warn(`[Utah Warrants] 403 rate-limited — backing off ${(backoff / 1000).toFixed(0)}s (attempt ${attempt + 1}/${retries})`);
+          console.warn(`[Utah Warrants] 403 rate-limited (forwarded=${forwardedIp}) — backing off ${(backoff / 1000).toFixed(0)}s (attempt ${attempt + 1}/${retries})`);
           await sleep(backoff);
           continue;
         }
       }
 
-      console.warn(`[Utah Warrants] HTTP ${res.status} from ${url}`);
+      console.warn(`[Utah Warrants] HTTP ${res.status} from ${targetUrl}`);
       return null;
     } catch (err: any) {
-      if (err.name === 'AbortError') {
-        console.warn(`[Utah Warrants] Request timeout for ${url}`);
+      if (err.message === 'Request timeout') {
+        console.warn(`[Utah Warrants] Request timeout for ${targetUrl}`);
       } else if (attempt < retries) {
         await sleep(RETRY_DELAY_MS);
         continue;

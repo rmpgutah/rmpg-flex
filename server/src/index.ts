@@ -28,7 +28,7 @@ import { scheduleGeocodeSweep } from './utils/geocode';
 import { scheduleOfacSync, searchOfacLocal, stopOfacSync } from './utils/ofacScraper';
 import { scheduleUtahWarrantSync, stopUtahWarrantSync } from './utils/utahWarrantScraper';
 import { runUniversalWarrantScan } from './utils/universalWarrantScanner';
-import { scheduleWarrantScraper, stopWarrantScraper } from './utils/multiStateWarrantScraper';
+// multiStateWarrantScraper removed — Utah only
 import { scheduleCourtRecordsScan, stopCourtRecordsScan } from './utils/courtRecordsScraper';
 import { scheduleArrestSync, stopArrestSync } from './utils/arrestScraper';
 import { scheduleJailRosterSync, stopJailRosterSync } from './utils/jailRosterScraper';
@@ -955,9 +955,6 @@ try {
       }, 4 * 60 * 60 * 1000); // every 4 hours (reduced from 1h to respect Utah API limits)
     }, 2 * 60 * 1000); // 2-minute startup delay
 
-    // Start multi-state warrant scraper (county sheriff warrant pages + arrest record extraction)
-    scheduleWarrantScraper();
-
     // Start court records scraper (Utah XChange + surrounding states, every 2 hours)
     scheduleCourtRecordsScan();
 
@@ -1036,7 +1033,6 @@ function gracefulShutdown(signal: string) {
   try { stopCallAgingMonitor(); } catch (e) { console.error('[Shutdown] stopCallAgingMonitor:', e); }
   try { stopOfacSync(); } catch (e) { console.error('[Shutdown] stopOfacSync:', e); }
   try { stopUtahWarrantSync(); } catch (e) { console.error('[Shutdown] stopUtahWarrantSync:', e); }
-  try { stopWarrantScraper(); } catch (e) { console.error('[Shutdown] stopWarrantScraper:', e); }
   try { stopCourtRecordsScan(); } catch (e) { console.error('[Shutdown] stopCourtRecordsScan:', e); }
   try { stopArrestSync(); } catch (e) { console.error('[Shutdown] stopArrestSync:', e); }
   try { stopJailRosterSync(); } catch (e) { console.error('[Shutdown] stopJailRosterSync:', e); }

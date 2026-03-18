@@ -398,7 +398,8 @@ router.post('/login', authIpRateLimit, authRateLimit, async (req: Request, res: 
     } catch { /* table may not exist yet */ }
 
     const has2FA = hasVerifiedTotp || (user.totp_enabled === 1 && user.totp_setup_required !== 1);
-    const needs2FASetup = !has2FA;
+    // 2FA setup is voluntary — never block login to force enrollment
+    const needs2FASetup = false;
 
     // Auto-fix stale totp_setup_required flag if user already has verified TOTP
     if (hasVerifiedTotp && user.totp_setup_required === 1) {
