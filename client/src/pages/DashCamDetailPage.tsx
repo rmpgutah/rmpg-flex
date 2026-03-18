@@ -150,6 +150,7 @@ function SpeedTimeline({ track, duration, currentTime, onSeek }: {
   onSeek: (time: number) => void;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
+  if (!track.length) return null;
   const speeds = useMemo(() => track.map(p => Math.round(p.speed * KMH_TO_MPH)), [track]);
   const maxSpeed = useMemo(() => Math.max(...speeds, 1), [speeds]);
   const startMs = track[0].timestamp;
@@ -277,8 +278,11 @@ export default function DashCamDetailPage() {
   });
 
   const toggleSection = (key: keyof typeof sections) => {
-    setSections(prev => ({ ...prev, [key]: !prev[key] }));
-    if (key === 'gps') setMapSectionOpen(!sections.gps);
+    setSections(prev => {
+      const next = { ...prev, [key]: !prev[key] };
+      if (key === 'gps') setMapSectionOpen(next.gps);
+      return next;
+    });
   };
 
   const apiBase = window.location.origin + '/api';
@@ -427,6 +431,17 @@ export default function DashCamDetailPage() {
 
     setMapReady(true);
   }, [mapSectionOpen, video, gpsTrack]);
+
+  // Cleanup Google Maps on unmount to prevent memory leak
+  useEffect(() => {
+    return () => {
+      markerRef.current?.setMap(null);
+      polylineRef.current?.setMap(null);
+      markerRef.current = null;
+      polylineRef.current = null;
+      mapRef.current = null;
+    };
+  }, []);
 
   // Update marker position during playback
   useEffect(() => {
