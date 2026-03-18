@@ -269,63 +269,50 @@ export default function MenuBar({
         label: 'New',
         icon: Plus,
         items: [
-          { type: 'action', label: 'Call for Service', icon: Phone, shortcut: 'N', action: () => { navigate('/dispatch'); setTimeout(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n' })), 100); } },
-          { type: 'action', label: 'Incident Report', icon: FileText, action: () => { navigate('/incidents'); setTimeout(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n' })), 100); } },
-          { type: 'separator' },
+          { type: 'action', label: 'Call for Service', icon: Phone, shortcut: 'N', action: () => { navigate('/dispatch'); setTimeout(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n' })), 150); } },
+          { type: 'action', label: 'Incident Report', icon: FileText, action: () => { navigate('/incidents'); setTimeout(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n' })), 150); } },
           { type: 'action', label: 'Field Interview', icon: Clipboard, action: () => navigate('/field-interviews') },
           { type: 'action', label: 'Citation', icon: FileWarning, action: () => navigate('/citations') },
-          { type: 'action', label: 'Warrant', icon: Gavel, action: () => window.open('/warrants', '_blank', 'noopener,noreferrer') },
+          { type: 'action', label: 'Warrant', icon: Gavel, action: () => navigate('/warrants') },
           { type: 'action', label: 'Trespass Order', icon: ShieldAlert, action: () => navigate('/trespass-orders') },
           { type: 'action', label: 'Service Job', icon: Briefcase, action: () => navigate('/serve') },
           { type: 'separator' },
           { type: 'action', label: 'BOLO Alert', icon: AlertTriangle, action: () => navigate('/communications') },
-          { type: 'action', label: 'Message', icon: MessageSquare, action: () => navigate('/communications') },
+          { type: 'action', label: 'Internal Message', icon: MessageSquare, action: () => navigate('/communications') },
         ],
       },
       { type: 'separator' },
       {
         type: 'submenu',
         label: 'Open Module',
-        icon: Globe,
+        icon: FolderOpen,
         items: [
-          { type: 'action', label: 'Dashboard', icon: LayoutDashboard, action: () => navigate('/') },
-          { type: 'action', label: 'Dispatch', icon: Radio, action: () => navigate('/dispatch') },
-          { type: 'action', label: 'Map', icon: Map, action: () => navigate('/map') },
-          { type: 'action', label: 'MDT Terminal', icon: Terminal, action: () => navigate('/mdt') },
+          { type: 'action', label: 'Dashboard', icon: LayoutDashboard, shortcut: 'F1', action: () => navigate('/') },
+          { type: 'action', label: 'Dispatch', icon: Radio, shortcut: 'F2', action: () => navigate('/dispatch') },
+          { type: 'action', label: 'Map', icon: Map, shortcut: 'F3', action: () => navigate('/map') },
+          { type: 'action', label: 'MDT Terminal', icon: Terminal, shortcut: 'F12', action: () => navigate('/mdt') },
           { type: 'separator' },
           { type: 'action', label: 'Incidents', icon: FileText, action: () => navigate('/incidents') },
           { type: 'action', label: 'Records', icon: Database, action: () => navigate('/records') },
-          { type: 'action', label: 'Warrants', icon: Gavel, action: () => window.open('/warrants', '_blank', 'noopener,noreferrer') },
+          { type: 'action', label: 'Cases', icon: Briefcase, action: () => navigate('/cases') },
+          { type: 'action', label: 'Warrants', icon: Gavel, action: () => navigate('/warrants') },
           { type: 'action', label: 'Citations', icon: FileWarning, action: () => navigate('/citations') },
           { type: 'action', label: 'Evidence & Property', icon: Package, action: () => navigate('/evidence') },
           { type: 'separator' },
-          { type: 'action', label: 'Case Management', icon: Briefcase, action: () => navigate('/cases') },
-          { type: 'action', label: 'Criminal History', icon: FileSearch, action: () => navigate('/criminal-history') },
-          { type: 'action', label: 'Offender Registry', icon: UserCheck, action: () => navigate('/offender-registry') },
-          { type: 'action', label: 'Sex Offender Registry', icon: ShieldAlert, action: () => navigate('/sex-offender-registry') },
-          { type: 'separator' },
           { type: 'action', label: 'Personnel', icon: Users, action: () => navigate('/personnel') },
           { type: 'action', label: 'Fleet', icon: Car, action: () => navigate('/fleet') },
-          { type: 'action', label: 'Body Cameras', icon: Video, action: () => navigate('/body-cameras') },
-          { type: 'action', label: 'Dash Cameras', icon: Video, action: () => navigate('/dash-cameras') },
           { type: 'action', label: 'Shift Plans', icon: CalendarDays, action: () => navigate('/shift-plans') },
           { type: 'separator' },
           { type: 'action', label: 'Communications', icon: MessageSquare, action: () => navigate('/communications') },
-          { type: 'action', label: 'Radio', icon: Radio, action: () => navigate('/radio') },
-          { type: 'action', label: 'Patrol', icon: QrCode, action: () => navigate('/patrol') },
-          { type: 'separator' },
+          { type: 'action', label: 'Email', icon: MessageSquare, action: () => navigate('/email') },
           { type: 'action', label: 'Reports', icon: BarChart3, action: () => navigate('/reports') },
-          { type: 'action', label: 'Daily Activity', icon: Clipboard, action: () => navigate('/dar') },
-          { type: 'action', label: 'Crime Analysis', icon: Microscope, action: () => navigate('/crime-analysis') },
           { type: 'separator' },
           { type: 'action', label: 'Audit Trail', icon: ScrollText, action: () => navigate('/audit'), adminOnly: true },
           { type: 'action', label: 'Administration', icon: Settings, action: () => navigate('/admin'), adminOnly: true },
         ],
       },
       { type: 'separator' },
-      { type: 'action', label: 'Export Current View...', icon: Download, shortcut: 'Ctrl+E', action: () => printWithLightMaps() },
-      { type: 'action', label: 'Print Current View...', icon: Printer, shortcut: 'Ctrl+P', action: () => printWithLightMaps() },
-      { type: 'separator' },
+      { type: 'action', label: 'Export / Print View', icon: Printer, shortcut: 'Ctrl+P', action: () => printWithLightMaps() },
       { type: 'action', label: 'Refresh Data', icon: RefreshCw, shortcut: 'F5', action: onRefreshData },
       { type: 'separator' },
       { type: 'action', label: 'Sign Out', icon: LogOut, action: onLogout },
@@ -341,18 +328,22 @@ export default function MenuBar({
         label: 'Navigate To',
         icon: Globe,
         items: [
-          { type: 'action', label: 'Dashboard', icon: LayoutDashboard, shortcut: 'Alt+1', action: () => navigate('/') },
-          { type: 'action', label: 'Dispatch', icon: Radio, shortcut: 'Alt+2', action: () => navigate('/dispatch') },
-          { type: 'action', label: 'Map', icon: Map, shortcut: 'Alt+3', action: () => navigate('/map') },
-          { type: 'action', label: 'Records', icon: Database, shortcut: 'Alt+4', action: () => navigate('/records') },
-          { type: 'action', label: 'Personnel', icon: Users, shortcut: 'Alt+5', action: () => navigate('/personnel') },
-          { type: 'action', label: 'Comms', icon: MessageSquare, shortcut: 'Alt+6', action: () => navigate('/communications') },
-          { type: 'action', label: 'Reports', icon: BarChart3, shortcut: 'Alt+7', action: () => navigate('/reports') },
-          { type: 'action', label: 'MDT', icon: Terminal, shortcut: 'Alt+8', action: () => navigate('/mdt') },
+          { type: 'action', label: 'Dashboard', icon: LayoutDashboard, shortcut: 'F1', action: () => navigate('/') },
+          { type: 'action', label: 'Dispatch Board', icon: Radio, shortcut: 'F2', action: () => navigate('/dispatch') },
+          { type: 'action', label: 'Live Map', icon: Map, shortcut: 'F3', action: () => navigate('/map') },
+          { type: 'action', label: 'Incidents', icon: FileText, shortcut: 'F4', action: () => navigate('/incidents') },
+          { type: 'action', label: 'Records', icon: Database, shortcut: 'F5', action: () => navigate('/records') },
+          { type: 'action', label: 'Personnel', icon: Users, shortcut: 'F6', action: () => navigate('/personnel') },
+          { type: 'action', label: 'Communications', icon: MessageSquare, shortcut: 'F7', action: () => navigate('/communications') },
+          { type: 'action', label: 'Reports', icon: BarChart3, shortcut: 'F8', action: () => navigate('/reports') },
+          { type: 'action', label: 'Patrol', icon: QrCode, shortcut: 'F9', action: () => navigate('/patrol') },
+          { type: 'action', label: 'Fleet', icon: Car, shortcut: 'F10', action: () => navigate('/fleet') },
+          { type: 'action', label: 'Admin', icon: Settings, shortcut: 'F11', action: () => navigate('/admin'), adminOnly: true },
+          { type: 'action', label: 'MDT Terminal', icon: Terminal, shortcut: 'F12', action: () => navigate('/mdt') },
         ],
       },
       { type: 'separator' },
-      { type: 'toggle', label: 'Fullscreen Mode', icon: isFullscreen ? Minimize2 : Maximize2, shortcut: 'F11', checked: isFullscreen, action: toggleFullscreen },
+      { type: 'toggle', label: 'Fullscreen', icon: isFullscreen ? Minimize2 : Maximize2, shortcut: 'F11', checked: isFullscreen, action: toggleFullscreen },
       { type: 'toggle', label: 'Compact Mode', icon: Monitor, checked: compactMode, action: toggleCompactMode },
       { type: 'separator' },
       {
@@ -365,12 +356,13 @@ export default function MenuBar({
       },
       {
         type: 'submenu',
-        label: 'Alerts & Notifications',
+        label: 'Alerts & Sound',
         icon: Bell,
         items: [
           { type: 'toggle', label: 'Desktop Notifications', icon: notificationsEnabled ? Bell : BellOff, checked: notificationsEnabled, action: toggleNotifications },
           { type: 'toggle', label: 'Sound Effects', icon: soundEnabled ? Volume2 : VolumeX, checked: soundEnabled, action: toggleSound },
           { type: 'toggle', label: 'Voice Alerts', icon: voiceAlertsEnabled ? Mic : MicOff, checked: voiceAlertsEnabled, action: toggleVoiceAlerts },
+          { type: 'separator' },
           { type: 'action', label: 'Test Voice Alerts', icon: Sparkles, action: () => demoAllVoiceAlerts() },
         ],
       },
@@ -391,13 +383,17 @@ export default function MenuBar({
         label: 'Dispatch & Field',
         icon: Radio,
         items: [
-          { type: 'action', label: 'New Call for Service', icon: Phone, shortcut: 'N', action: () => { navigate('/dispatch'); setTimeout(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n' })), 100); } },
+          { type: 'action', label: 'New Call for Service', icon: Phone, shortcut: 'N', action: () => { navigate('/dispatch'); setTimeout(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n' })), 150); } },
           { type: 'action', label: 'Active Calls Board', icon: ClipboardList, action: () => navigate('/dispatch') },
+          { type: 'action', label: 'Live Map', icon: Map, action: () => navigate('/map') },
           { type: 'action', label: 'MDT Terminal', icon: Terminal, action: () => navigate('/mdt') },
           { type: 'separator' },
           { type: 'action', label: 'Patrol Scanner', icon: QrCode, action: () => navigate('/patrol') },
           { type: 'action', label: 'Shift Planning', icon: CalendarDays, action: () => navigate('/shift-plans') },
           { type: 'action', label: 'Daily Activity Reports', icon: Clipboard, action: () => navigate('/dar') },
+          { type: 'separator' },
+          { type: 'action', label: 'Body Cameras', icon: Video, action: () => navigate('/body-cameras') },
+          { type: 'action', label: 'Dash Cameras', icon: Video, action: () => navigate('/dash-cameras') },
         ],
       },
       {
@@ -405,16 +401,18 @@ export default function MenuBar({
         label: 'Records & Lookup',
         icon: Database,
         items: [
-          { type: 'action', label: 'Person Search', icon: Users, action: () => navigate('/records') },
-          { type: 'action', label: 'Vehicle Search', icon: Car, action: () => navigate('/records') },
+          { type: 'action', label: 'Person / Vehicle Search', icon: Users, action: () => navigate('/records') },
           { type: 'action', label: 'Incident Lookup', icon: FileText, action: () => navigate('/incidents') },
+          { type: 'action', label: 'Criminal History', icon: FileSearch, action: () => navigate('/criminal-history') },
           { type: 'action', label: 'Arrest Records', icon: Shield, action: () => navigate('/arrest-records') },
           { type: 'separator' },
-          { type: 'action', label: 'Arrest Records', icon: Scale, action: () => navigate('/arrest-records') },
-          { type: 'action', label: 'Criminal History', icon: FileSearch, action: () => navigate('/criminal-history') },
-          { type: 'action', label: 'Warrant Check', icon: Gavel, action: () => window.open('/warrants', '_blank', 'noopener,noreferrer') },
+          { type: 'action', label: 'Warrant Check', icon: Gavel, action: () => navigate('/warrants') },
+          { type: 'action', label: 'DL / ID Search', icon: FileSearch, action: () => navigate('/dl-search') },
+          { type: 'action', label: 'Skip Tracer', icon: UserCheck, action: () => navigate('/skip-tracer') },
+          { type: 'separator' },
           { type: 'action', label: 'Offender Registry', icon: UserCheck, action: () => navigate('/offender-registry') },
           { type: 'action', label: 'Sex Offender Registry', icon: ShieldAlert, action: () => navigate('/sex-offender-registry') },
+          { type: 'action', label: 'Jail Roster', icon: Database, action: () => navigate('/arrest-records') },
         ],
       },
       {
@@ -424,9 +422,10 @@ export default function MenuBar({
         items: [
           { type: 'action', label: 'Case Management', icon: Briefcase, action: () => navigate('/cases') },
           { type: 'action', label: 'Evidence & Property', icon: Package, action: () => navigate('/evidence') },
+          { type: 'action', label: 'Citations', icon: FileWarning, action: () => navigate('/citations') },
+          { type: 'action', label: 'Trespass Orders', icon: ShieldAlert, action: () => navigate('/trespass-orders') },
           { type: 'action', label: 'Code Enforcement', icon: Scale, action: () => navigate('/code-enforcement') },
           { type: 'action', label: 'Court Tracker', icon: Gavel, action: () => navigate('/court') },
-          { type: 'action', label: 'Trespass Orders', icon: ShieldAlert, action: () => navigate('/trespass-orders') },
           { type: 'action', label: 'Process Server', icon: Briefcase, action: () => navigate('/serve') },
         ],
       },
@@ -435,11 +434,12 @@ export default function MenuBar({
         label: 'Communications',
         icon: MessageSquare,
         items: [
-          { type: 'action', label: 'Send Message', icon: MessageSquare, action: () => navigate('/communications') },
-          { type: 'action', label: 'Issue BOLO', icon: AlertTriangle, action: () => navigate('/communications') },
-          { type: 'action', label: 'View Active BOLOs', icon: Eye, action: () => navigate('/communications') },
-          { type: 'separator' },
+          { type: 'action', label: 'Dispatch Comms', icon: MessageSquare, action: () => navigate('/communications') },
+          { type: 'action', label: 'Email', icon: MessageSquare, action: () => navigate('/email') },
           { type: 'action', label: 'Radio Console', icon: Radio, action: () => navigate('/radio') },
+          { type: 'separator' },
+          { type: 'action', label: 'Issue BOLO', icon: AlertTriangle, action: () => navigate('/communications') },
+          { type: 'action', label: 'Active BOLOs', icon: Eye, action: () => navigate('/communications') },
         ],
       },
       {
@@ -450,25 +450,34 @@ export default function MenuBar({
           { type: 'action', label: 'Crime Analysis', icon: Microscope, action: () => navigate('/crime-analysis') },
           { type: 'action', label: 'Statute Analytics', icon: Scale, action: () => navigate('/statute-analytics') },
           { type: 'action', label: 'Custom Report Builder', icon: PenTool, action: () => navigate('/reports/custom') },
-          { type: 'separator' },
           { type: 'action', label: 'Reports Dashboard', icon: BarChart3, action: () => navigate('/reports') },
+          { type: 'separator' },
+          { type: 'action', label: 'Digital Forensics (IPED)', icon: HardDrive, action: () => navigate('/admin?tab=iped') },
+          { type: 'action', label: 'Forensic Lab', icon: Microscope, action: () => navigate('/forensics') },
+          { type: 'action', label: 'Audit Log', icon: ScrollText, action: () => navigate('/audit') },
         ],
       },
       { type: 'separator' },
-      { type: 'action', label: 'Overwatch', icon: Briefcase, action: () => navigate('/crm') },
+      { type: 'action', label: 'Contract Management (CRM)', icon: Briefcase, action: () => navigate('/crm') },
       {
         type: 'submenu',
         label: 'Administration',
         icon: Settings,
         adminOnly: true,
         items: [
-          { type: 'action', label: 'User Management', icon: Users, action: () => navigate('/admin') },
-          { type: 'action', label: 'System Configuration', icon: Settings, action: () => navigate('/admin') },
-          { type: 'action', label: 'Security Policy', icon: ShieldAlert, action: () => navigate('/admin') },
-          { type: 'action', label: 'Branding & Reports', icon: Palette, action: () => navigate('/admin') },
+          { type: 'action', label: 'User Management', icon: Users, action: () => navigate('/admin?tab=users') },
+          { type: 'action', label: 'System Configuration', icon: Settings, action: () => navigate('/admin?tab=system') },
+          { type: 'action', label: 'Security Policy', icon: ShieldAlert, action: () => navigate('/admin?tab=security') },
+          { type: 'action', label: 'Active Sessions', icon: Activity, action: () => navigate('/admin?tab=sessions') },
+          { type: 'action', label: 'Branding & Reports', icon: Palette, action: () => navigate('/admin?tab=branding') },
           { type: 'separator' },
-          { type: 'action', label: 'Audit Trail', icon: ScrollText, action: () => navigate('/audit') },
-          { type: 'action', label: 'Training Management', icon: GraduationCap, action: () => navigate('/training') },
+          { type: 'action', label: 'ClearPath GPS', icon: MapPin, action: () => navigate('/admin?tab=clearpathgps') },
+          { type: 'action', label: 'Arrest Data Sync', icon: Database, action: () => navigate('/admin?tab=arrests') },
+          { type: 'action', label: 'IPED Forensics', icon: HardDrive, action: () => navigate('/admin?tab=iped') },
+          { type: 'action', label: 'Skip Tracer Config', icon: UserCheck, action: () => navigate('/admin?tab=skiptracer') },
+          { type: 'separator' },
+          { type: 'action', label: 'Training Management', icon: GraduationCap, action: () => navigate('/admin?tab=training') },
+          { type: 'action', label: 'System Health', icon: HeartPulse, action: () => navigate('/admin?tab=health') },
         ],
       },
     ],
@@ -479,7 +488,7 @@ export default function MenuBar({
     label: 'Help',
     items: [
       { type: 'action', label: 'Keyboard Shortcuts', icon: Keyboard, shortcut: '?', action: onShowShortcuts },
-      { type: 'action', label: 'User Preferences', icon: Settings, action: () => navigate('/admin?tab=preferences') },
+      { type: 'action', label: 'User Preferences', icon: Settings, action: () => navigate('/admin?tab=users') },
       { type: 'separator' },
       {
         type: 'submenu',
@@ -491,7 +500,7 @@ export default function MenuBar({
           { type: 'action', label: 'Statute Analytics', icon: BarChart3, action: () => navigate('/statute-analytics') },
           { type: 'separator' },
           { type: 'action', label: 'Priority & Disposition Codes', icon: Zap, action: () => navigate('/admin?tab=system') },
-          { type: 'action', label: 'Incident Type Config', icon: FileText, action: () => navigate('/admin?tab=system') },
+          { type: 'action', label: 'Incident Type Configuration', icon: FileText, action: () => navigate('/admin?tab=system') },
           { type: 'action', label: 'Radio Channel Plan', icon: Radio, action: () => navigate('/radio') },
         ],
       },
@@ -508,7 +517,7 @@ export default function MenuBar({
       },
       {
         type: 'submenu',
-        label: 'Integrations',
+        label: 'External Integrations',
         icon: Globe,
         items: [
           { type: 'action', label: 'Utah Warrant Database', icon: AlertTriangle, action: () => navigate('/warrants') },
@@ -517,8 +526,10 @@ export default function MenuBar({
           { type: 'action', label: 'Arrest Records', icon: Database, action: () => navigate('/arrest-records') },
           { type: 'action', label: 'Sex Offender Registry', icon: ShieldAlert, action: () => navigate('/sex-offender-registry') },
           { type: 'separator' },
-          { type: 'action', label: 'ClearPath GPS Portal', icon: MapPin, action: () => window.open('https://portal.clearpathgps.com/web/', '_blank') },
-          { type: 'action', label: 'ServeManager Portal', icon: Briefcase, action: () => window.open('https://www.servemanager.com', '_blank') },
+          { type: 'action', label: 'ClearPath GPS Portal ↗', icon: MapPin, action: () => window.open('https://portal.clearpathgps.com/web/', '_blank') },
+          { type: 'action', label: 'ServeManager Portal ↗', icon: Briefcase, action: () => window.open('https://www.servemanager.com', '_blank') },
+          { type: 'action', label: 'Utah Courts ↗', icon: Gavel, action: () => window.open('https://www.utcourts.gov/', '_blank') },
+          { type: 'action', label: 'Utah Warrants ↗', icon: AlertTriangle, action: () => window.open('https://warrants.utah.gov/', '_blank') },
         ],
       },
       { type: 'separator' },
@@ -527,19 +538,20 @@ export default function MenuBar({
         label: 'System Status',
         icon: isConnected ? Wifi : WifiOff,
         items: [
-          { type: 'action', label: `WebSocket: ${isConnected ? 'CONNECTED' : 'OFFLINE'}`, icon: isConnected ? Wifi : WifiOff, disabled: true, action: () => {} },
-          { type: 'action', label: 'Server: RMPG-FLEX-01', icon: Server, disabled: true, action: () => {} },
-          { type: 'action', label: `Page: ${currentPage}`, icon: Globe, disabled: true, action: () => {} },
+          { type: 'action', label: `WebSocket: ${isConnected ? '● CONNECTED' : '○ OFFLINE'}`, icon: isConnected ? Wifi : WifiOff, disabled: true, action: () => {} },
+          { type: 'action', label: 'Server: RMPG-FLEX-01  (SLC, UT)', icon: Server, disabled: true, action: () => {} },
+          { type: 'action', label: `Current Page: ${currentPage}`, icon: Globe, disabled: true, action: () => {} },
           { type: 'separator' },
-          { type: 'action', label: 'Reconnect', icon: RefreshCw, action: () => window.location.reload() },
+          { type: 'action', label: 'Force Reconnect', icon: RefreshCw, action: () => window.location.reload() },
           { type: 'action', label: 'System Health Dashboard', icon: HeartPulse, action: () => navigate('/admin?tab=health'), adminOnly: true },
           { type: 'action', label: 'Security Dashboard', icon: Shield, action: () => navigate('/admin?tab=security'), adminOnly: true },
+          { type: 'action', label: 'Active Sessions', icon: Activity, action: () => navigate('/admin?tab=sessions'), adminOnly: true },
         ],
       },
       { type: 'separator' },
       { type: 'action', label: 'Report a Problem', icon: Bug, action: () => navigate('/admin?tab=health') },
       { type: 'action', label: 'About RMPG Flex', icon: Info, action: () => navigate('/admin?tab=system') },
-      { type: 'action', label: 'Version 5.5.0', icon: Shield, disabled: true, action: () => {} },
+      { type: 'action', label: 'Version 5.5.0  (Mountain Time)', icon: Shield, disabled: true, action: () => {} },
     ],
   };
 
@@ -566,7 +578,6 @@ export default function MenuBar({
       return <div key={`sep-${index}`} className="menu-separator" />;
     }
 
-    // Check admin-only
     if ('adminOnly' in item && item.adminOnly && !isAdmin) return null;
 
     const Icon = item.icon;
@@ -584,12 +595,12 @@ export default function MenuBar({
           onMouseLeave={() => setActiveSubmenu(null)}
         >
           <div className={`menu-item ${isDisabled ? 'menu-item-disabled' : ''}`}>
-            <span className="menu-item-icon">{Icon && <Icon style={{ width: 11, height: 11 }} />}</span>
+            <span className="menu-item-icon">{Icon && <Icon style={{ width: 12, height: 12 }} />}</span>
             <span className="menu-item-label">{item.label}</span>
-            <span className="menu-item-arrow"><ChevronRight style={{ width: 10, height: 10 }} /></span>
+            <ChevronRight style={{ width: 10, height: 10, marginLeft: 'auto', opacity: 0.5 }} />
           </div>
           {isSubmenuOpen && (
-            <div className="menu-dropdown menu-submenu">
+            <div className="menu-dropdown menu-submenu" style={{ minWidth: 240 }}>
               {item.items.map((sub, si) => renderMenuItem(sub, si, depth + 1))}
             </div>
           )}
@@ -605,15 +616,16 @@ export default function MenuBar({
           onClick={() => !isDisabled && handleAction(item.action)}
           disabled={isDisabled}
         >
-          <span className="menu-item-icon">{Icon && <Icon style={{ width: 11, height: 11 }} />}</span>
+          <span className="menu-item-icon">{Icon && <Icon style={{ width: 12, height: 12 }} />}</span>
           <span className="menu-item-label">{item.label}</span>
-          <span className="menu-item-check">{item.checked ? '✓' : ''}</span>
           {item.shortcut && <span className="menu-item-shortcut">{item.shortcut}</span>}
+          <span style={{ marginLeft: item.shortcut ? 4 : 'auto', color: item.checked ? '#22c55e' : '#374151', fontSize: 11 }}>
+            {item.checked ? '✓' : '○'}
+          </span>
         </button>
       );
     }
 
-    // Regular action
     return (
       <button
         key={`action-${index}`}
@@ -621,9 +633,11 @@ export default function MenuBar({
         onClick={() => !isDisabled && handleAction(item.action)}
         disabled={isDisabled}
       >
-        <span className="menu-item-icon">{Icon && <Icon style={{ width: 11, height: 11 }} />}</span>
+        <span className="menu-item-icon">{Icon && <Icon style={{ width: 12, height: 12 }} />}</span>
         <span className="menu-item-label">{item.label}</span>
-        {item.shortcut && <span className="menu-item-shortcut">{item.shortcut}</span>}
+        {item.shortcut && (
+          <span className="menu-item-shortcut">{item.shortcut}</span>
+        )}
       </button>
     );
   };
@@ -641,7 +655,7 @@ export default function MenuBar({
               {menu.label}
             </button>
             {openMenu === menu.label && (
-              <div className="menu-dropdown menu-dropdown-root">
+              <div className="menu-dropdown menu-dropdown-root" style={{ minWidth: 240 }}>
                 {menu.items.map((item, i) => renderMenuItem(item, i))}
               </div>
             )}
