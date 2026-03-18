@@ -398,12 +398,14 @@ export default function ServePage() {
       const map = new google.maps.Map(mapContainerRef.current, {
         center,
         zoom: 11,
+        renderingType: (google.maps as any).RenderingType?.RASTER ?? undefined,
         styles: DARK_MAP_STYLE,
         disableDefaultUI: true,
         zoomControl: true,
         mapTypeControl: false,
         streetViewControl: false,
         fullscreenControl: false,
+        backgroundColor: '#0a1220',
       });
 
       mapRef.current = map;

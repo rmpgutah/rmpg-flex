@@ -389,10 +389,11 @@ export default function DashCamDetailPage() {
     const map = new google.maps.Map(mapContainerRef.current, {
       center,
       zoom: 15,
+      renderingType: (google.maps as any).RenderingType?.RASTER ?? undefined,
       disableDefaultUI: true,
       zoomControl: true,
       styles: DARK_MAP_STYLE,
-      backgroundColor: '#0d1520',
+      backgroundColor: '#0a1220',
     });
     mapRef.current = map;
 

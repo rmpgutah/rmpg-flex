@@ -376,20 +376,23 @@ export const DARK_MAP_STYLE: google.maps.MapTypeStyle[] = [
   { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#1a3050' }] },
 ];
 
-/** Night Navigation style — high-contrast roads on near-black, optimized for driving */
+/** Night Navigation style — high-contrast roads on dark navy, optimized for driving */
 export const NIGHT_NAV_STYLE: google.maps.MapTypeStyle[] = [
-  { elementType: 'geometry', stylers: [{ color: '#0a0e14' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#000000' }] },
+  // Base: deep navy (slightly lighter than DARK_MAP_STYLE for road contrast)
+  { elementType: 'geometry', stylers: [{ color: '#0c1525' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#060c18' }] },
   { elementType: 'labels.text.fill', stylers: [{ color: '#6b8aaa' }] },
   { featureType: 'administrative', elementType: 'geometry', stylers: [{ visibility: 'off' }] },
   { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#7caccc' }] },
   { featureType: 'administrative.province', elementType: 'geometry.stroke', stylers: [{ color: '#1a3050' }] },
   { featureType: 'administrative.land_parcel', stylers: [{ visibility: 'off' }] },
   { featureType: 'administrative.neighborhood', elementType: 'labels.text.fill', stylers: [{ color: '#4a6a8a' }] },
-  { featureType: 'landscape', elementType: 'geometry', stylers: [{ color: '#0c1018' }] },
-  { featureType: 'landscape.man_made', elementType: 'geometry', stylers: [{ color: '#0e1420' }] },
+  // Landscape: dark navy
+  { featureType: 'landscape', elementType: 'geometry', stylers: [{ color: '#0e1828' }] },
+  { featureType: 'landscape.man_made', elementType: 'geometry', stylers: [{ color: '#101c2c' }] },
   { featureType: 'poi', stylers: [{ visibility: 'off' }] },
-  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#0a1a0a' }, { visibility: 'simplified' }] },
+  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#0c1c1c' }, { visibility: 'simplified' }] },
+  // Roads: brighter blue for driving visibility
   { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#1e3048' }] },
   { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#2a4060' }] },
   { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#5a8ab0' }] },
@@ -398,7 +401,8 @@ export const NIGHT_NAV_STYLE: google.maps.MapTypeStyle[] = [
   { featureType: 'road.highway', elementType: 'labels.text.fill', stylers: [{ color: '#7ab0e0' }] },
   { featureType: 'road.arterial', elementType: 'geometry', stylers: [{ color: '#1a2e44' }] },
   { featureType: 'transit', stylers: [{ visibility: 'off' }] },
-  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#061020' }] },
+  // Water: deepest navy
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#081222' }] },
   { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#1a3050' }] },
 ];
 

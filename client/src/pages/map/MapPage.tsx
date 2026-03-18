@@ -462,7 +462,10 @@ export default function MapPage() {
         disableDefaultUI: true,
         zoomControl: false,
         styles: DARK_MAP_STYLE,
-        backgroundColor: '#060c14',
+        backgroundColor: '#0a1220',
+        // Force raster rendering — vector tiles (WebGL) ignore JSON styles,
+        // causing inconsistent dark/light splits at different zoom levels.
+        renderingType: (google.maps as any).RenderingType?.RASTER ?? undefined,
         // 'greedy' allows single-finger pan on mobile/tablet — critical for
         // in-vehicle use where two-finger gestures are awkward while driving.
         gestureHandling: 'greedy',

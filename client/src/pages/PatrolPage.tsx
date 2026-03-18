@@ -98,10 +98,11 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
       const map = new google.maps.Map(mapRef.current, {
         center: { lat: 40.76, lng: -111.89 },
         zoom: 12,
+        renderingType: (google.maps as any).RenderingType?.RASTER ?? undefined,
         styles: DARK_MAP_STYLE,
         disableDefaultUI: true,
         zoomControl: true,
-        backgroundColor: '#060c14',
+        backgroundColor: '#0a1220',
         gestureHandling: 'greedy',
       });
       mapInstanceRef.current = map;
