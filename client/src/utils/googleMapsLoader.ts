@@ -345,27 +345,35 @@ export function addOfflineTileLayer(map: google.maps.Map): () => void {
 
 /** Dark map style matching RMPG Flex theme */
 export const DARK_MAP_STYLE: google.maps.MapTypeStyle[] = [
-  { elementType: 'geometry', stylers: [{ color: '#060c14' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#000000' }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: '#555555' }] },
+  // Base: deep navy blue (matches app shell --surface-deep)
+  { elementType: 'geometry', stylers: [{ color: '#0a1220' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#060c16' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#4a6a8a' }] },
+  // Admin boundaries
   { featureType: 'administrative', elementType: 'geometry', stylers: [{ visibility: 'off' }] },
-  { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#5a6e80' }] },
-  { featureType: 'administrative.province', elementType: 'geometry.stroke', stylers: [{ color: '#162236' }] },
+  { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#5a7e9e' }] },
+  { featureType: 'administrative.province', elementType: 'geometry.stroke', stylers: [{ color: '#1a3050' }] },
   { featureType: 'administrative.land_parcel', stylers: [{ visibility: 'off' }] },
   { featureType: 'administrative.neighborhood', stylers: [{ visibility: 'off' }] },
-  { featureType: 'landscape', elementType: 'geometry', stylers: [{ color: '#0e0e0e' }] },
-  { featureType: 'landscape.man_made', elementType: 'geometry', stylers: [{ color: '#0a1018' }] },
-  { featureType: 'landscape.natural', elementType: 'geometry', stylers: [{ color: '#0c0c0c' }] },
+  // Landscape: dark steel-blue
+  { featureType: 'landscape', elementType: 'geometry', stylers: [{ color: '#0d1825' }] },
+  { featureType: 'landscape.man_made', elementType: 'geometry', stylers: [{ color: '#0f1a28' }] },
+  { featureType: 'landscape.natural', elementType: 'geometry', stylers: [{ color: '#0b1520' }] },
+  // POIs off
   { featureType: 'poi', stylers: [{ visibility: 'off' }] },
-  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#0d120d' }, { visibility: 'simplified' }] },
-  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#141e2b' }] },
-  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#222222' }] },
-  { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#444444' }] },
-  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#242424' }] },
-  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#162236' }] },
+  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#0d1a1a' }, { visibility: 'simplified' }] },
+  // Roads: slightly lighter navy
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#152438' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#1a2d45' }] },
+  { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#3a5a78' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#1a3050' }] },
+  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#1e3858' }] },
+  { featureType: 'road.highway', elementType: 'labels.text.fill', stylers: [{ color: '#4a7aa0' }] },
+  // Transit off
   { featureType: 'transit', stylers: [{ visibility: 'off' }] },
-  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#060c14' }] },
-  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#1a2a3a' }] },
+  // Water: deepest navy
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#070e1a' }] },
+  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#1a3050' }] },
 ];
 
 /** Night Navigation style — high-contrast roads on near-black, optimized for driving */

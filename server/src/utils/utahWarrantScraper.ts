@@ -563,12 +563,14 @@ async function _runWarrantWatchScanImpl(): Promise<{
           }
         }
 
-        // Check for CLEARED warrants (previously active but no longer returned)
+        // Check for CLEARED warrants — only if we got results that matched this person's name.
+        // If the API returned zero name-matched results, the warrant may still be active
+        // but not returned due to API inconsistency — do NOT clear in that case.
         const previouslyKnown = warrantsByPerson.get(person.id);
-        if (previouslyKnown) {
+        if (previouslyKnown && foundWarrantIds.size > 0) {
+          // We found at least one warrant for this person — safe to check for clears
           for (const prevWarrantId of previouslyKnown) {
             if (!foundWarrantIds.has(prevWarrantId)) {
-              // Warrant was cleared / no longer active
               insertLog.run(
                 person.id, personName, 'warrant_cleared',
                 prevWarrantId, null,
@@ -579,6 +581,9 @@ async function _runWarrantWatchScanImpl(): Promise<{
               console.log(`[Warrant Watch] 🟢 CLEARED: ${personName} — warrant ${prevWarrantId} no longer active`);
             }
           }
+        } else if (previouslyKnown && foundWarrantIds.size === 0 && results.length > 0) {
+          // API returned results but none matched this person's name — possible name mismatch, skip clearing
+          console.log(`[Warrant Watch] ⚠️  SKIP CLEAR: ${personName} — API returned ${results.length} results but none matched name, keeping ${previouslyKnown.size} existing warrants`);
         }
 
         // Adaptive throttle — slows down when 403s are detected
@@ -619,8 +624,8 @@ async function _runWarrantWatchScanImpl(): Promise<{
 // Runs warrant watch scan every hour for maximum officer safety.
 // Also cleans up stale cache entries every 6 hours.
 
-/** Scan interval — every 4 hours (reduced from 1h to respect Utah API limits) */
-const SCAN_INTERVAL_MS = 4 * 60 * 60 * 1000;
+/** Scan interval — every 6 hours (reduced from 4h to respect Utah API limits) */
+const SCAN_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 /** Startup delay before first scan — 90 seconds (let other services start first) */
 const SCAN_STARTUP_DELAY_MS = 90_000;
@@ -631,7 +636,7 @@ let cleanupIntervalHandle: ReturnType<typeof setInterval> | null = null;
 
 export function scheduleUtahWarrantSync(): void {
   console.log('[Utah Warrants] Live search mode active — queries warrants.utah.gov on demand');
-  console.log('[Warrant Watch] Automated bulk scan enabled — runs every hour for officer safety');
+  console.log('[Warrant Watch] Automated bulk scan enabled — runs every 6 hours');
 
   // Initial scan after startup delay
   startupTimer = setTimeout(async () => {
@@ -640,7 +645,7 @@ export function scheduleUtahWarrantSync(): void {
 
     // Then schedule hourly recurring scans
     scanInterval = setInterval(() => {
-      console.log('[Warrant Watch] Starting hourly warrant scan...');
+      console.log('[Warrant Watch] Starting 6-hour warrant scan...');
       runWarrantWatchScan().catch(err => console.error('[Warrant Watch] Scan error:', err.message || err));
     }, SCAN_INTERVAL_MS);
 

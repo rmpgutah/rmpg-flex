@@ -132,13 +132,12 @@ export default function ModuleTileBar({
 
   return (
     <div
-      className="flex items-center gap-1 px-3 shrink-0"
+      className="flex items-center gap-1 px-3 shrink-0 relative"
       style={{
         height: 58,
         background: 'linear-gradient(180deg, #0f1722 0%, #0d1520 100%)',
         borderBottom: '1px solid #1c2d44',
-        overflowX: 'auto',
-        scrollbarWidth: 'none',
+        zIndex: 50,
       }}
     >
       {visibleItems.map((item) => {
