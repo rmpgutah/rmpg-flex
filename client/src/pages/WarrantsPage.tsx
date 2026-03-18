@@ -1744,9 +1744,9 @@ export default function WarrantsPage() {
               </table>
             </div>
           ) : utahSearchQuery && !utahSearching ? (
-            <EmptyState icon={Search} message="No results found" subtitle="Try a different name or check spelling" />
+            <EmptyState icon={Search} title="No results found" description="Try a different name or check spelling" />
           ) : !utahSearchQuery ? (
-            <EmptyState icon={Globe} message="Search Utah State Warrants" subtitle="Enter a first and last name to search warrants.utah.gov" />
+            <EmptyState icon={Globe} title="Search Utah State Warrants" description="Enter a first and last name to search warrants.utah.gov" />
           ) : null}
         </div>
       )}
@@ -1802,7 +1802,7 @@ export default function WarrantsPage() {
             {watchLoading ? (
               <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-rmpg-400" /></div>
             ) : watchHits.length === 0 ? (
-              <EmptyState icon={Radar} message="No warrant hits from automated scans" subtitle="The system checks all persons against warrants.utah.gov every 6 hours" />
+              <EmptyState icon={Radar} title="No warrant hits from automated scans" description="The system checks all persons against warrants.utah.gov every 6 hours" />
             ) : (
               <div className="overflow-x-auto">
                 <table className="table-dark w-full">
