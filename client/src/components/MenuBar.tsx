@@ -517,7 +517,7 @@ export default function MenuBar({
           { type: 'action', label: 'Arrest Records', icon: Database, action: () => navigate('/arrest-records') },
           { type: 'action', label: 'Sex Offender Registry', icon: ShieldAlert, action: () => navigate('/sex-offender-registry') },
           { type: 'separator' },
-          { type: 'action', label: 'ClearPath GPS Portal', icon: MapPin, action: () => window.open('https://www.clearpath.com', '_blank') },
+          { type: 'action', label: 'ClearPath GPS Portal', icon: MapPin, action: () => window.open('https://portal.clearpathgps.com/web/', '_blank') },
           { type: 'action', label: 'ServeManager Portal', icon: Briefcase, action: () => window.open('https://www.servemanager.com', '_blank') },
         ],
       },

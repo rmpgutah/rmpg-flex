@@ -3,7 +3,7 @@ import {
   Navigation, Key, Eye, EyeOff, Loader2, CheckCircle2, XCircle,
   Trash2, Zap, AlertTriangle, ToggleLeft, ToggleRight, Link2, Unlink,
   Radio, Clock, Truck, Search, Camera, History, RefreshCw, Video,
-  HardDrive, Download,
+  HardDrive, Download, ExternalLink,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 
@@ -461,6 +461,26 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
             NOT CONFIGURED
           </span>
         )}
+        <div className="ml-auto flex items-center gap-2">
+          <a
+            href="https://portal.clearpathgps.com/web/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1 bg-[#1a3a5c] hover:bg-[#1e4570] text-brand-200 border border-brand-700"
+          >
+            <ExternalLink className="w-3 h-3" />
+            Open ClearPath Portal
+          </a>
+          <a
+            href="https://www.clearpathgps.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="toolbar-btn text-[10px] flex items-center gap-1 px-2 py-1 text-rmpg-400 hover:text-rmpg-200"
+          >
+            <ExternalLink className="w-3 h-3" />
+            clearpathgps.com
+          </a>
+        </div>
       </div>
 
       {/* ═══ Section 1: Credentials ═══ */}
