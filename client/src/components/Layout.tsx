@@ -146,14 +146,14 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/forensics', icon: Microscope, label: 'Forensic Lab' },
     { path: '/cases', icon: Briefcase, label: 'Case Management' },
   ]},
-  { path: '/warrants', icon: AlertTriangle, label: 'Enforce', group: 'records', shortcut: 'F7', newWindow: true, children: [
-    { path: '/warrants', icon: AlertTriangle, label: 'Warrants', newWindow: true },
-    { path: '/citations', icon: FileWarning, label: 'Citations', newWindow: true },
-    { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders', newWindow: true },
-    { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement', newWindow: true },
-    { path: '/court', icon: Gavel, label: 'Court Tracker', newWindow: true },
-    { path: '/offender-registry', icon: UserX, label: 'Offender Registry', newWindow: true },
-    { path: '/serve', icon: Briefcase, label: 'Process Server', newWindow: true },
+  { path: '/warrants', icon: AlertTriangle, label: 'Enforce', group: 'records', shortcut: 'F7', children: [
+    { path: '/warrants', icon: AlertTriangle, label: 'Warrants' },
+    { path: '/citations', icon: FileWarning, label: 'Citations' },
+    { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders' },
+    { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement' },
+    { path: '/court', icon: Gavel, label: 'Court Tracker' },
+    { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
+    { path: '/serve', icon: Briefcase, label: 'Process Server' },
   ]},
   { path: '/personnel', icon: Users, label: 'Personnel', group: 'records', shortcut: 'F8', children: [
     { path: '/personnel', icon: Users, label: 'Personnel' },
