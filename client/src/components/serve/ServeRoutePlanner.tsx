@@ -237,6 +237,7 @@ export default function ServeRoutePlanner({
         mapTypeControl: false,
         streetViewControl: false,
         fullscreenControl: false,
+        renderingType: 'RASTER' as any,
       });
 
       mapRef.current = map;

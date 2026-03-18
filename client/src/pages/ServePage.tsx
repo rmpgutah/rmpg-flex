@@ -404,6 +404,7 @@ export default function ServePage() {
         mapTypeControl: false,
         streetViewControl: false,
         fullscreenControl: false,
+        renderingType: 'RASTER' as any,
       });
 
       mapRef.current = map;

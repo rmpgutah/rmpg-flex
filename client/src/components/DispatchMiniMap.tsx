@@ -131,6 +131,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
         zoomControl: true,
         zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_TOP },
         gestureHandling: 'cooperative',
+        renderingType: 'RASTER' as any,
       });
       mapRef.current = map;
       registerMapInstance(map);

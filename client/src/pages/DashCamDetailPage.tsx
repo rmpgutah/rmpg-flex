@@ -393,6 +393,7 @@ export default function DashCamDetailPage() {
       zoomControl: true,
       styles: DARK_MAP_STYLE,
       backgroundColor: '#0d1520',
+      renderingType: 'RASTER' as any,
     });
     mapRef.current = map;
 
