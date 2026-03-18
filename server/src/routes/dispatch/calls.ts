@@ -687,7 +687,19 @@ router.put('/calls/:id', validateParamId, requireRole('admin', 'manager', 'super
     const updates: string[] = [];
     const params: any[] = [];
     const addField = (col: string, val: any) => {
-      if (val !== undefined) { updates.push(`${col} = ?`); params.push(val === '' ? null : val); }
+      if (val === undefined) return;
+      // better-sqlite3 only accepts scalars (string | number | bigint | Buffer | null).
+      // If the frontend ever sends a field as a plain object or array — e.g. notes as
+      // [] instead of "[]", or pso_service_windows as {} instead of "{}" — the driver
+      // throws TypeError: Binding value cannot be an object, blocking all call edits.
+      // Coerce objects/arrays to their JSON string representation here so the bound
+      // value is always a scalar, matching how structured fields are stored in the DB.
+      let coerced: any = val === '' ? null : val;
+      if (coerced !== null && typeof coerced === 'object') {
+        coerced = JSON.stringify(coerced);
+      }
+      updates.push(`${col} = ?`);
+      params.push(coerced);
     };
 
     addField('incident_type', incident_type);
