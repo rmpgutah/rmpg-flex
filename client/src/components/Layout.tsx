@@ -275,15 +275,22 @@ export default function Layout() {
   const [setupLastName, setSetupLastName] = useState('');
   const [setupSaving, setSetupSaving] = useState(false);
   const [setupError, setSetupError] = useState('');
-  const nameSetupDone = useRef(false);
+  const nameSetupDone = useRef(
+    () => {
+      try { return localStorage.getItem('rmpg_name_setup_done') === '1'; } catch { return false; }
+    }
+  );
 
   useEffect(() => {
-    if (!user || nameSetupDone.current) return;
+    if (!user || nameSetupDone.current()) return;
+    // Only prompt if user genuinely has no name set (first login)
     if (!user.first_name?.trim() || !user.last_name?.trim()) {
       setNameSetupOpen(true);
       setSetupFirstName(user.first_name || '');
       setSetupLastName(user.last_name || '');
     } else {
+      // User has a name — mark as done so we never prompt again
+      try { localStorage.setItem('rmpg_name_setup_done', '1'); } catch {}
       setNameSetupOpen(false);
     }
   }, [user]);
@@ -302,8 +309,8 @@ export default function Layout() {
         method: 'PUT',
         body: JSON.stringify({ first_name: fn, last_name: ln }),
       });
-      // Mark as done BEFORE refreshUser to prevent the useEffect from re-opening
-      nameSetupDone.current = true;
+      // Mark as done persistently — never prompt again after first save
+      try { localStorage.setItem('rmpg_name_setup_done', '1'); } catch {}
       setNameSetupOpen(false);
       // Fire-and-forget — don't await so the modal closes immediately
       refreshUser();

@@ -279,12 +279,18 @@ router.get('/', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Request, res: R
     const date = req.query.date as string || localToday();
     const status = req.query.status as string | undefined;
 
-    let sql = 'SELECT * FROM serve_queue WHERE officer_id = ? AND serve_date = ?';
+    // Show all pending/in_progress jobs regardless of date (they shouldn't disappear),
+    // plus any jobs matching the selected date. This ensures active PSO calls
+    // always appear even if their serve_date is in the past.
+    let sql = `SELECT * FROM serve_queue WHERE officer_id = ? AND (
+      serve_date = ? OR status IN ('pending', 'in_progress')
+    )`;
     const params: any[] = [officerId, date];
 
-    if (status) {
-      sql += ' AND status = ?';
-      params.push(status);
+    if (status && status !== 'all') {
+      sql = 'SELECT * FROM serve_queue WHERE officer_id = ? AND status = ?';
+      params.length = 0;
+      params.push(officerId, status);
     }
 
     sql += ' ORDER BY sort_order ASC, priority DESC, deadline ASC';
