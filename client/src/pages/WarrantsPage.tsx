@@ -239,11 +239,13 @@ const SEVERITY_COLORS: Record<string, string> = {
   civil: 'bg-purple-900/50 text-purple-400 border-purple-700/50',
 };
 
-type TabId = 'dashboard' | 'warrants' | 'sources';
+type TabId = 'dashboard' | 'warrants' | 'utah_search' | 'watch_hits' | 'sources';
 
 const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: string }>; roleGated?: boolean }[] = [
   { id: 'dashboard', label: 'DASHBOARD', icon: Activity },
   { id: 'warrants', label: 'WARRANTS', icon: Gavel },
+  { id: 'utah_search', label: 'UT SEARCH', icon: Globe },
+  { id: 'watch_hits', label: 'WATCH HITS', icon: Radar },
   { id: 'sources', label: 'SOURCES', icon: Shield, roleGated: true },
 ];
 
@@ -436,6 +438,22 @@ export default function WarrantsPage() {
   const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [scanRunning, setScanRunning] = useState(false);
 
+  // ============================================================
+  // UTAH SEARCH TAB STATE
+  // ============================================================
+  const [utahSearchQuery, setUtahSearchQuery] = useState('');
+  const [utahSearchResults, setUtahSearchResults] = useState<any[]>([]);
+  const [utahSearching, setUtahSearching] = useState(false);
+  const [utahSource, setUtahSource] = useState<'live' | 'cache' | ''>('');
+  const [utahSyncStatus, setUtahSyncStatus] = useState<any>(null);
+
+  // ============================================================
+  // WATCH HITS TAB STATE
+  // ============================================================
+  const [watchHits, setWatchHits] = useState<any[]>([]);
+  const [watchActive, setWatchActive] = useState<any[]>([]);
+  const [watchLoading, setWatchLoading] = useState(false);
+
   // Cleanup scan poll/timeout on unmount to prevent memory leaks
   useEffect(() => () => {
     if (scanPollRef.current) clearInterval(scanPollRef.current);
@@ -620,6 +638,49 @@ export default function WarrantsPage() {
     fetchCoverage();
     fetchWatchRuns();
   }, [activeTab, fetchCoverage, fetchWatchRuns]);
+
+  // ============================================================
+  // UTAH SEARCH FETCHES
+  // ============================================================
+
+  const searchUtah = useCallback(async () => {
+    if (!utahSearchQuery.trim()) return;
+    setUtahSearching(true);
+    try {
+      const res = await apiFetch<any>(`/warrants/utah?search=${encodeURIComponent(utahSearchQuery.trim())}`);
+      setUtahSearchResults(res.data || []);
+      setUtahSource(res.source || '');
+    } catch { setUtahSearchResults([]); }
+    finally { setUtahSearching(false); }
+  }, [utahSearchQuery]);
+
+  const fetchUtahSyncStatus = useCallback(async () => {
+    try {
+      const res = await apiFetch<any>('/warrants/utah/sync-status');
+      setUtahSyncStatus(res);
+    } catch {}
+  }, []);
+
+  const fetchWatchHitsData = useCallback(async () => {
+    setWatchLoading(true);
+    try {
+      const [hits, active] = await Promise.all([
+        apiFetch<any[]>('/warrants/watch/log?event=warrant_found&limit=100'),
+        apiFetch<any[]>('/warrants/watch/active'),
+      ]);
+      setWatchHits(hits || []);
+      setWatchActive(active || []);
+    } catch {}
+    finally { setWatchLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'utah_search') fetchUtahSyncStatus();
+  }, [activeTab, fetchUtahSyncStatus]);
+
+  useEffect(() => {
+    if (activeTab === 'watch_hits') fetchWatchHitsData();
+  }, [activeTab, fetchWatchHitsData]);
 
   const handleTriggerScan = useCallback(async () => {
     if (scanPollRef.current) clearInterval(scanPollRef.current);
@@ -891,6 +952,11 @@ export default function WarrantsPage() {
               {tab.id === 'dashboard' && dashStats && dashStats.activeWarrants > 0 && (
                 <span className="ml-1 px-1 rounded bg-red-600 text-white text-[8px] font-bold leading-tight">
                   {dashStats.activeWarrants}
+                </span>
+              )}
+              {tab.id === 'watch_hits' && watchActive.length > 0 && (
+                <span className="ml-1 px-1 rounded bg-red-600 text-white text-[8px] font-bold leading-tight">
+                  {watchActive.length}
                 </span>
               )}
             </button>
@@ -1563,6 +1629,231 @@ export default function WarrantsPage() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================
+          TAB: UTAH SEARCH
+         ================================================================ */}
+      {activeTab === 'utah_search' && (
+        <div className="p-4 space-y-4">
+          {/* Search bar */}
+          <div className="flex gap-2">
+            <input
+              type="text"
+              className="input-dark flex-1"
+              placeholder="Enter first and last name (e.g. John Smith)..."
+              value={utahSearchQuery}
+              onChange={e => setUtahSearchQuery(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && searchUtah()}
+            />
+            <button onClick={searchUtah} disabled={utahSearching || !utahSearchQuery.trim()} className="toolbar-btn-primary px-4">
+              {utahSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+              <span className="ml-1">{utahSearching ? 'Searching...' : 'Search Utah'}</span>
+            </button>
+          </div>
+
+          {/* Sync status */}
+          {utahSyncStatus && (
+            <div className="flex items-center gap-3 text-[10px] font-mono text-rmpg-400">
+              <span className={`led-dot ${utahSyncStatus.apiAvailable ? 'led-green' : 'led-red'}`} />
+              <span>warrants.utah.gov: {utahSyncStatus.apiAvailable ? 'ONLINE' : 'OFFLINE'}</span>
+              {utahSyncStatus.lastSyncAt && <span>Last sync: {formatDateTime(utahSyncStatus.lastSyncAt)}</span>}
+              {utahSyncStatus.ipBlocked && <span className="text-red-400">IP BLOCKED (cooldown)</span>}
+            </div>
+          )}
+
+          {/* Source indicator */}
+          {utahSource && (
+            <div className="text-[10px] text-rmpg-400">
+              Results from: <span className={utahSource === 'live' ? 'text-green-400' : 'text-amber-400'}>{utahSource === 'live' ? 'LIVE API' : 'LOCAL CACHE'}</span>
+              <span className="ml-2">({utahSearchResults.length} results)</span>
+            </div>
+          )}
+
+          {/* Results table */}
+          {utahSearchResults.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="table-dark w-full">
+                <thead>
+                  <tr>
+                    <th className="text-left">Name</th>
+                    <th className="text-left">Warrant ID</th>
+                    <th className="text-left">Court</th>
+                    <th className="text-left">Charges</th>
+                    <th className="text-left">Issue Date</th>
+                    <th className="text-left">City</th>
+                    <th className="text-center">Age</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {utahSearchResults.map((r: any, i: number) => {
+                    const charges = (() => {
+                      try { return JSON.parse(r.charges || '[]'); } catch { return [r.charges || '']; }
+                    })();
+                    return (
+                      <tr key={r.utah_warrant_id || i}>
+                        <td className="font-bold text-white">{r.first_name} {r.middle_name || ''} {r.last_name}</td>
+                        <td className="font-mono text-[10px]">{r.utah_warrant_id}</td>
+                        <td className="text-[11px]">{r.court_name}</td>
+                        <td>
+                          {charges.map((c: string, ci: number) => (
+                            <span key={ci} className="inline-block bg-red-900/30 text-red-300 text-[10px] px-1.5 py-0.5 rounded mr-1 mb-0.5 border border-red-800/30">
+                              {c}
+                            </span>
+                          ))}
+                        </td>
+                        <td className="text-[11px] font-mono">{r.issue_date}</td>
+                        <td className="text-[11px]">{r.city}</td>
+                        <td className="text-center font-mono">{r.age ?? '-'}</td>
+                        <td>
+                          <button
+                            className="toolbar-btn text-[10px]"
+                            title="Create local warrant record from this Utah result"
+                            onClick={async () => {
+                              try {
+                                await apiFetch('/warrants', {
+                                  method: 'POST',
+                                  body: JSON.stringify({
+                                    type: 'arrest',
+                                    status: 'active',
+                                    issuing_court: r.court_name,
+                                    charge_description: charges.join('; '),
+                                    offense_level: 'unknown',
+                                    source: 'utah_api',
+                                    external_warrant_id: `utah:${r.utah_warrant_id}`,
+                                    external_source_key: 'ut_state',
+                                    notes: `Utah State Warrant ${r.utah_warrant_id} — Case ${r.case_id || 'N/A'}`,
+                                  }),
+                                });
+                                fetchWarrants();
+                              } catch (err: any) {
+                                setError(err?.message || 'Failed to create warrant');
+                              }
+                            }}
+                          >
+                            <Plus className="w-3 h-3" /> Add
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : utahSearchQuery && !utahSearching ? (
+            <EmptyState icon={Search} message="No results found" subtitle="Try a different name or check spelling" />
+          ) : !utahSearchQuery ? (
+            <EmptyState icon={Globe} message="Search Utah State Warrants" subtitle="Enter a first and last name to search warrants.utah.gov" />
+          ) : null}
+        </div>
+      )}
+
+      {/* ================================================================
+          TAB: WATCH HITS
+         ================================================================ */}
+      {activeTab === 'watch_hits' && (
+        <div className="p-4 space-y-4">
+          {/* Active persons with warrants */}
+          {watchActive.length > 0 && (
+            <div>
+              <h3 className="section-header mb-2">
+                <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
+                ACTIVE WARRANT ALERTS ({watchActive.length})
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                {watchActive.map((person: any) => (
+                  <div key={person.person_id || person.id} className="panel-beveled bg-surface-base p-3 border-l-3 border-l-red-500">
+                    <div className="flex items-center gap-2 mb-1">
+                      <User className="w-3.5 h-3.5 text-red-400" />
+                      <span className="font-bold text-white text-sm">{person.person_name || `${person.first_name || ''} ${person.last_name || ''}`}</span>
+                    </div>
+                    <div className="text-[10px] text-rmpg-400 space-y-0.5">
+                      {person.warrant_count && <div>Warrants: <span className="text-red-400 font-bold">{person.warrant_count}</span></div>}
+                      {person.last_checked && <div>Last checked: {formatDateTime(person.last_checked)}</div>}
+                      {person.court_name && <div>Court: {person.court_name}</div>}
+                      {person.charges && <div>Charges: <span className="text-amber-400">{person.charges}</span></div>}
+                    </div>
+                    <button
+                      className="toolbar-btn text-[9px] mt-2 w-full justify-center"
+                      onClick={async () => {
+                        try {
+                          await apiFetch(`/warrants/check/${person.person_id || person.id}`, { method: 'POST' });
+                          fetchWatchHitsData();
+                        } catch (err: any) { setError(err?.message || 'Check failed'); }
+                      }}
+                    >
+                      <Radar className="w-3 h-3" /> Re-check Now
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Recent scan hits log */}
+          <div>
+            <h3 className="section-header mb-2">
+              <History className="w-3.5 h-3.5" />
+              RECENT SCAN HITS
+            </h3>
+            {watchLoading ? (
+              <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-rmpg-400" /></div>
+            ) : watchHits.length === 0 ? (
+              <EmptyState icon={Radar} message="No warrant hits from automated scans" subtitle="The system checks all persons against warrants.utah.gov every 6 hours" />
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="table-dark w-full">
+                  <thead>
+                    <tr>
+                      <th className="text-left">Person</th>
+                      <th className="text-left">Event</th>
+                      <th className="text-left">Warrant ID</th>
+                      <th className="text-left">Court</th>
+                      <th className="text-left">Charges</th>
+                      <th className="text-left">Found At</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {watchHits.map((hit: any, i: number) => {
+                      const charges = (() => {
+                        try { return JSON.parse(hit.charges || '[]'); } catch { return [hit.charges || '']; }
+                      })();
+                      return (
+                        <tr key={hit.id || i}>
+                          <td className="font-bold text-white">{hit.person_name}</td>
+                          <td>
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                              hit.event === 'warrant_found' ? 'bg-red-900/30 text-red-400 border border-red-800/30' : 'bg-green-900/30 text-green-400 border border-green-800/30'
+                            }`}>
+                              {hit.event === 'warrant_found' ? 'FOUND' : 'CLEARED'}
+                            </span>
+                          </td>
+                          <td className="font-mono text-[10px]">{hit.utah_warrant_id || '-'}</td>
+                          <td className="text-[11px]">{hit.court_name || '-'}</td>
+                          <td>
+                            {charges.filter(Boolean).map((c: string, ci: number) => (
+                              <span key={ci} className="inline-block bg-red-900/20 text-red-300 text-[10px] px-1 py-0.5 rounded mr-1 mb-0.5">
+                                {c}
+                              </span>
+                            ))}
+                          </td>
+                          <td className="text-[11px] font-mono">{formatDateTime(hit.created_at)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-center">
+            <button onClick={fetchWatchHitsData} className="toolbar-btn text-[10px]">
+              <RotateCcw className="w-3 h-3" /> Refresh
+            </button>
           </div>
         </div>
       )}
