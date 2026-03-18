@@ -36,7 +36,7 @@ const DEFAULTS = {
   compact_mode: 0,
   date_format: 'MM/DD/YYYY',
   time_format: '12h',
-  timezone_override: null as null | string,
+  // timezone is mandatory America/Denver — not user-configurable
   default_landing_page: '/',
   sidebar_collapsed: 0,
   show_unit_status_bar: 1,

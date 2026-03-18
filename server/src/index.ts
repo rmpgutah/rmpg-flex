@@ -1,6 +1,8 @@
-// Set timezone BEFORE any Date operations — uses system setting or env var
-// This ensures all new Date() calls and SQLite datetime('now','localtime') use local time
-process.env.TZ = process.env.SERVER_TIMEZONE || 'America/Denver';
+// ── MANDATORY TIMEZONE: America/Denver (Mountain Time) ─────────────────────
+// Must be set BEFORE any Date operations. Locks all new Date(), SQLite
+// datetime('now','localtime'), and Intl formatting to Mountain Standard/Daylight
+// Time regardless of the VPS OS timezone setting.
+process.env.TZ = 'America/Denver';
 
 import express from 'express';
 import cors from 'cors';

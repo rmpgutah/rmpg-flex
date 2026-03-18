@@ -3203,7 +3203,7 @@ function migrateSchema(): void {
   // ── Expanded user preferences columns ───────────────────────────────────────
   addCol('user_preferences', 'date_format', "TEXT DEFAULT 'MM/DD/YYYY'");
   addCol('user_preferences', 'time_format', "TEXT DEFAULT '12h'");
-  addCol('user_preferences', 'timezone_override', 'TEXT');
+  // timezone_override intentionally omitted — America/Denver is mandatory
   addCol('user_preferences', 'status_sounds_enabled', 'INTEGER DEFAULT 1');
   addCol('user_preferences', 'notification_sounds', 'INTEGER DEFAULT 1');
   addCol('user_preferences', 'gps_track_display', "TEXT DEFAULT 'trail'");       // trail | none | dot

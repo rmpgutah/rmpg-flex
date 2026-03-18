@@ -84,7 +84,7 @@ export default function StatusBar({
             )}
             {gpsLastSent && (
               <span style={{ color: '#505050', marginLeft: 4 }}>
-                {new Date(gpsLastSent).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                {new Date(gpsLastSent).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'America/Denver' })}
               </span>
             )}
           </>
@@ -103,18 +103,20 @@ export default function StatusBar({
       {/* Battery */}
       <BatteryIndicator />
 
-      {/* Timestamp (right-aligned) */}
+      {/* Timestamp — always Mountain Time (America/Denver) */}
       <div className="status-bar-section">
         <span style={{ color: '#22c55e' }}>
-          {now.toLocaleTimeString('en-US', { hour12: false })}
+          {now.toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/Denver' })}
         </span>
         <span style={{ color: '#5a6e80', marginLeft: 8 }}>
           {now.toLocaleDateString('en-US', {
             weekday: 'short',
             month: 'short',
             day: 'numeric',
+            timeZone: 'America/Denver',
           })}
         </span>
+        <span style={{ color: '#3a4e5e', marginLeft: 6, fontSize: '9px' }}>MT</span>
       </div>
     </div>
   );
