@@ -24,6 +24,7 @@ import { startDailyReportScheduler, stopDailyReportScheduler } from './utils/dai
 import { startClearPathGpsPoller, stopClearPathGpsPoller } from './utils/clearPathGpsPoller';
 import { startClearPathGpsMediaPoller, stopClearPathGpsMediaPoller } from './utils/clearPathGpsMediaPoller';
 import { startEmailPoller, stopEmailPoller } from './utils/emailPoller';
+import { scheduleGeocodeSweep } from './utils/geocode';
 import { scheduleOfacSync, searchOfacLocal, stopOfacSync } from './utils/ofacScraper';
 import { scheduleUtahWarrantSync, stopUtahWarrantSync } from './utils/utahWarrantScraper';
 import { runUniversalWarrantScan } from './utils/universalWarrantScanner';
@@ -931,6 +932,9 @@ try {
 
     // Schedule jail roster sync
     scheduleJailRosterSync();
+
+    // Start geocode sweep — batch-geocodes calls missing lat/lng every 30 minutes
+    scheduleGeocodeSweep();
 
     // Start OFAC SDN data sync (downloads from U.S. Treasury, syncs daily)
     scheduleOfacSync();

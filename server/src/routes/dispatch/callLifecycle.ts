@@ -358,6 +358,17 @@ router.post('/calls/:id/generate-incident', validateParamId, requireRole('admin'
       }
     }
 
+    // Auto-link vehicles from call to incident
+    const callVehicles = db.prepare('SELECT vehicle_id, role FROM call_vehicles WHERE call_id = ?').all(call.id) as any[];
+    if (callVehicles.length > 0) {
+      const insertVehicle = db.prepare(
+        'INSERT OR IGNORE INTO incident_vehicles (incident_id, vehicle_id, role, added_by) VALUES (?, ?, ?, ?)'
+      );
+      for (const cv of callVehicles) {
+        insertVehicle.run(result.lastInsertRowid, cv.vehicle_id, cv.role || 'involved', req.user!.userId);
+      }
+    }
+
     const incident = db.prepare(`
       SELECT i.*, o.full_name as officer_name, o.badge_number, c.call_number
       FROM incidents i

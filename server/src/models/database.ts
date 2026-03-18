@@ -3135,6 +3135,7 @@ function migrateSchema(): void {
 
   // ── Section/Zone/Beat columns for record types ──────────
   // Citations
+  addCol('citations', 'call_id', 'INTEGER REFERENCES calls_for_service(id)');
   addCol('citations', 'section_id', 'TEXT');
   addCol('citations', 'zone_id', 'TEXT');
   addCol('citations', 'beat_id', 'TEXT');
