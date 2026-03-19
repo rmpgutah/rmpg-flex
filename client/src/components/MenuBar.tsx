@@ -78,6 +78,7 @@ import {
   Mic,
   MicOff,
   Video,
+  DollarSign,
 } from 'lucide-react';
 import { setVoiceAlertsEnabled, getVoiceAlertsEnabled, demoAllVoiceAlerts } from '../utils/voiceAlerts';
 import { apiFetch } from '../hooks/useApi';
@@ -303,6 +304,7 @@ export default function MenuBar({
           { type: 'action', label: 'Criminal History', icon: FileSearch, action: () => navigate('/criminal-history') },
           { type: 'action', label: 'Offender Registry', icon: UserCheck, action: () => navigate('/offender-registry') },
           { type: 'action', label: 'Sex Offender Registry', icon: ShieldAlert, action: () => navigate('/sex-offender-registry') },
+          { type: 'action', label: 'Colorado DOC Search', icon: Database, action: () => navigate('/colorado-doc') },
           { type: 'separator' },
           { type: 'action', label: 'Personnel', icon: Users, action: () => navigate('/personnel') },
           { type: 'action', label: 'Fleet', icon: Car, action: () => navigate('/fleet') },
@@ -317,6 +319,8 @@ export default function MenuBar({
           { type: 'action', label: 'Reports', icon: BarChart3, action: () => navigate('/reports') },
           { type: 'action', label: 'Daily Activity', icon: Clipboard, action: () => navigate('/dar') },
           { type: 'action', label: 'Crime Analysis', icon: Microscope, action: () => navigate('/crime-analysis') },
+          { type: 'separator' },
+          { type: 'action', label: 'Invoices', icon: DollarSign, action: () => navigate('/invoices') },
           { type: 'separator' },
           { type: 'action', label: 'Audit Trail', icon: ScrollText, action: () => navigate('/audit'), adminOnly: true },
           { type: 'action', label: 'Administration', icon: Settings, action: () => navigate('/admin'), adminOnly: true },
@@ -415,6 +419,7 @@ export default function MenuBar({
           { type: 'action', label: 'Warrant Check', icon: Gavel, action: () => window.open('/warrants', '_blank', 'noopener,noreferrer') },
           { type: 'action', label: 'Offender Registry', icon: UserCheck, action: () => navigate('/offender-registry') },
           { type: 'action', label: 'Sex Offender Registry', icon: ShieldAlert, action: () => navigate('/sex-offender-registry') },
+          { type: 'action', label: 'Colorado DOC Search', icon: Database, action: () => navigate('/colorado-doc') },
         ],
       },
       {

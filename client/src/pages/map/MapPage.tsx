@@ -62,6 +62,7 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import { useMapRouting } from '../../hooks/useMapRouting';
 import MobileBottomSheet from '../../components/mobile/MobileBottomSheet';
 import OfflineMapFallback from '../../components/OfflineMapFallback';
+import GpsBreadcrumbPanel from './GpsBreadcrumbPanel';
 import type { MapUnit as Unit, ActiveCall, MapProperty as Property, MapStyleId } from './utils/mapConstants';
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, MAP_STYLE_LABELS, MAP_STYLE_DESCRIPTIONS, getIncidentCategory, isLightMapStyle, isSatelliteStyle } from './utils/mapConstants';
 import { buildUnitMarkerContent, buildIncidentMarkerContent, buildPropertyMarkerContent, buildSelfPositionMarker, getOverlayMarkerClass, injectKeyframes, type OverlayMarker } from './utils/mapMarkerBuilders';
@@ -164,6 +165,9 @@ export default function MapPage() {
 
   // Layers panel (left) collapsed/expanded
   const [layersPanelOpen, setLayersPanelOpen] = useState(true);
+
+  // GPS History panel
+  const [historyPanelOpen, setHistoryPanelOpen] = useState(false);
 
   // Sidebar state
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -1631,6 +1635,16 @@ export default function MapPage() {
         <div className={`absolute left-2 z-10 pointer-events-none opacity-40 ${isMobile ? 'top-14' : 'top-2'}`}>
           <RmpgLogo height={20} iconOnly />
         </div>
+
+        {/* GPS History Playback Panel */}
+        {!isMobile && (
+          <GpsBreadcrumbPanel
+            map={mapInstanceRef.current}
+            mapLoaded={mapLoaded}
+            isOpen={historyPanelOpen}
+            onToggle={() => setHistoryPanelOpen(!historyPanelOpen)}
+          />
+        )}
 
         {/* Offline fallback: Leaflet map with cached tiles when Google Maps fails
             due to connectivity (not API key errors). Shows GPS, unit positions, calls. */}

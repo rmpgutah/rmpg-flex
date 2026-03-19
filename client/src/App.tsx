@@ -56,6 +56,8 @@ import EmailPage from './pages/EmailPage';
 import CrmPage from './pages/CrmPage';
 import ServePage from './pages/ServePage';
 import IpedPage from './pages/IpedPage';
+import ColoradoDocPage from './pages/ColoradoDocPage';
+import InvoicesPage from './pages/InvoicesPage';
 import IncidentDetailWindow from './pages/detached/IncidentDetailWindow';
 import RecordDetailWindow from './pages/detached/RecordDetailWindow';
 const ForgotPasswordPage = React.lazy(() => import('./pages/ForgotPasswordPage'));
@@ -213,6 +215,8 @@ function AppRoutes() {
           <Route path="/crm" element={<CrmPage />} />
           <Route path="/serve" element={<ServePage />} />
           <Route path="/digital-forensics" element={<IpedPage />} />
+          <Route path="/colorado-doc" element={<ColoradoDocPage />} />
+          <Route path="/invoices" element={<InvoicesPage />} />
           <Route path="/admin" element={<AdminPage />} />
         </Route>
 

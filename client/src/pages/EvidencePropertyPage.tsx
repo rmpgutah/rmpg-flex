@@ -6,14 +6,16 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Package, Search, Plus, ChevronDown, MapPin, Clock, User,
   ArrowRightLeft, CheckCircle, AlertTriangle, X, Save, Loader2,
   Box, Warehouse, Tag, FileText, Archive, Video,
   PackageOpen, PackagePlus, RefreshCw, FlaskConical, Trash2,
-  Play, Shield, Camera,
+  Play, Shield, Camera, Download,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
+import { exportToCsv } from '../utils/csvExport';
 import StatusBadge from '../components/StatusBadge';
 import VideoPlayer from '../components/VideoPlayer';
 import { apiFetch } from '../hooks/useApi';
@@ -97,6 +99,9 @@ export default function EvidencePropertyPage() {
   });
   const [newEvidenceSubmitting, setNewEvidenceSubmitting] = useState(false);
 
+  // URL search params (auto-open new evidence from incidents page)
+  const [searchParams, setSearchParams] = useSearchParams();
+
   // Detail tab
   const [detailTab, setDetailTab] = useState<DetailTab>('info');
 
@@ -155,6 +160,29 @@ export default function EvidencePropertyPage() {
     apiFetch<{ data: any[] }>('/cases?limit=500').then(r => setCaseOptions(r.data || [])).catch(() => {});
   }, []);
   useLiveSync('records', () => { fetchItems({ silent: true }); fetchStats(); });
+
+  // ---------- Auto-open new evidence from URL params (incidents page link) ----------
+  useEffect(() => {
+    const isNew = searchParams.get('new');
+    if (isNew !== 'true') return;
+    // Grab params before clearing
+    const incidentId = searchParams.get('incident_id') || '';
+    const location = searchParams.get('location') || '';
+    // Clear params immediately so it doesn't re-trigger
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('new');
+      next.delete('incident_id');
+      next.delete('location');
+      return next;
+    }, { replace: true });
+    setNewEvidence({
+      description: '', evidence_type: 'other', category: '', storage_location: location,
+      serial_number: '', brand: '', model: '', estimated_value: '',
+      collected_date: '', notes: '', incident_id: incidentId,
+    });
+    setNewEvidenceOpen(true);
+  }, [searchParams]);
 
   // When detail tab switches to BWC, fetch videos
   useEffect(() => {
@@ -281,6 +309,31 @@ export default function EvidencePropertyPage() {
       {/* ── Left Panel: Evidence List ── */}
       <div className={`flex flex-col ${isMobile ? 'h-1/2' : 'w-[420px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Evidence / Property Room" icon={Package}>
+          <button
+            onClick={() => exportToCsv('evidence_export.csv', items, [
+              { key: 'evidence_number', label: 'Evidence #' },
+              { key: 'status', label: 'Status' },
+              { key: 'description', label: 'Description' },
+              { key: 'evidence_type', label: 'Type' },
+              { key: 'category', label: 'Category' },
+              { key: 'serial_number', label: 'Serial #' },
+              { key: 'brand', label: 'Brand' },
+              { key: 'model', label: 'Model' },
+              { key: 'estimated_value', label: 'Est. Value' },
+              { key: 'storage_location', label: 'Storage Location' },
+              { key: 'collected_by_name', label: 'Collected By' },
+              { key: 'collected_date', label: 'Collected Date' },
+              { key: 'incident_number', label: 'Incident #' },
+              { key: 'linked_case_number', label: 'Linked Case' },
+              { key: 'notes', label: 'Notes' },
+              { key: 'created_at', label: 'Created' },
+            ])}
+            className="toolbar-btn"
+            title="Export CSV"
+            disabled={items.length === 0}
+          >
+            <Download style={{ width: 11, height: 11 }} /> CSV
+          </button>
           <button
             onClick={() => setNewEvidenceOpen(true)}
             className="toolbar-btn toolbar-btn-primary"
