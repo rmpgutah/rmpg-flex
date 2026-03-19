@@ -426,8 +426,12 @@ export default function MenuBar({
           { type: 'action', label: 'Evidence & Property', icon: Package, action: () => navigate('/evidence') },
           { type: 'action', label: 'Code Enforcement', icon: Scale, action: () => navigate('/code-enforcement') },
           { type: 'action', label: 'Court Tracker', icon: Gavel, action: () => navigate('/court') },
+          { type: 'action', label: 'Court Records', icon: Gavel, action: () => navigate('/court-records') },
           { type: 'action', label: 'Trespass Orders', icon: ShieldAlert, action: () => navigate('/trespass-orders') },
           { type: 'action', label: 'Process Server', icon: Briefcase, action: () => navigate('/serve') },
+          { type: 'separator' },
+          { type: 'action', label: 'Digital Forensics', icon: HardDrive, action: () => navigate('/digital-forensics') },
+          { type: 'action', label: 'Forensic Lab', icon: Microscope, action: () => navigate('/forensics-lab') },
         ],
       },
       {

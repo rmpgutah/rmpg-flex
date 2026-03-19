@@ -6,9 +6,13 @@
 import React, { useState, useEffect } from 'react';
 import RmpgLogo from './RmpgLogo';
 import BatteryIndicator from './BatteryIndicator';
+import SyncQueuePanel from './SyncQueuePanel';
 
 const APP_VERSION: string =
   typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0';
+
+// Access window.electron safely (only present in Electron desktop app)
+const electron = typeof window !== 'undefined' ? (window as any).electron : null;
 
 interface StatusBarProps {
   isConnected: boolean;
@@ -32,9 +36,25 @@ export default function StatusBar({
   gpsLastSent,
 }: StatusBarProps) {
   const [now, setNow] = useState(new Date());
+  const [syncPending, setSyncPending] = useState(0);
+  const [showSyncPanel, setShowSyncPanel] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Poll Electron sync queue status every 10 seconds
+  useEffect(() => {
+    if (!electron?.getSyncStatus) return;
+    const poll = () => {
+      const status = electron.getSyncStatus();
+      if (status && typeof status.pending === 'number') {
+        setSyncPending(status.pending);
+      }
+    };
+    poll();
+    const interval = setInterval(poll, 10_000);
     return () => clearInterval(interval);
   }, []);
 
@@ -92,6 +112,36 @@ export default function StatusBar({
           <span style={{ color: '#505050' }}>GPS: OFF</span>
         )}
       </div>
+
+      {/* Sync Queue (Electron desktop only) */}
+      {!!electron?.getSyncStatus && (
+        <div className="status-bar-section relative">
+          <div
+            className="flex items-center gap-1 cursor-pointer hover:opacity-80 transition-opacity"
+            onClick={() => setShowSyncPanel((v) => !v)}
+            title="Click to view sync queue"
+          >
+            {syncPending > 0 ? (
+              <>
+                <span className="led-dot led-yellow animate-led-blink" />
+                <span style={{ color: '#d4a017', textShadow: '0 0 6px rgba(212, 160, 23, 0.3)' }}>
+                  SYNC: {syncPending} PENDING
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="led-dot led-green" />
+                <span style={{ color: '#22c55e', textShadow: '0 0 6px rgba(34, 197, 94, 0.3)' }}>
+                  SYNCED
+                </span>
+              </>
+            )}
+          </div>
+          {showSyncPanel && (
+            <SyncQueuePanel onClose={() => setShowSyncPanel(false)} />
+          )}
+        </div>
+      )}
 
       {/* Operator */}
       <div className="status-bar-section">

@@ -382,6 +382,14 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispa
     const created = db.prepare('SELECT * FROM citations WHERE id = ?').get(result.lastInsertRowid);
     if (!created) { res.status(500).json({ error: 'Failed to retrieve created citation' }); return; }
 
+    // Auto warrant check: look up active warrants for the cited person
+    let activeWarrants: any[] = [];
+    if (person_id) {
+      activeWarrants = db.prepare(
+        `SELECT * FROM warrants WHERE person_id = ? AND status = 'active'`
+      ).all(person_id) as any[];
+    }
+
     // Notify supervisors of citation issued
     createNotificationForRoles(
       ['admin', 'manager', 'supervisor'],
@@ -390,7 +398,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispa
       'citation', Number(result.lastInsertRowid), 'normal', 'citation.issued', req.user!.userId,
     );
 
-    res.status(201).json({ data: created });
+    res.status(201).json({ data: { ...(created as any), activeWarrants } });
   } catch (error: any) {
     console.error('Create citation error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
   Plus,
@@ -217,6 +217,10 @@ export default function IncidentsPage() {
   // Clients list for client selector
   const [clientsList, setClientsList] = useState<{ id: string; name: string }[]>([]);
 
+  // ---------- URL search params (prefill from call) ----------
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [formPrefillData, setFormPrefillData] = useState<(Partial<IncidentFormData> & { call_id?: string | number }) | undefined>(undefined);
+
   // ---------- modal / dialog state ----------
   const [showFormModal, setShowFormModal] = useState(false);
   const [formDefaultType, setFormDefaultType] = useState<string>('');
@@ -289,6 +293,34 @@ export default function IncidentsPage() {
       .then((data) => setClientsList((Array.isArray(data) ? data : []).filter((c: any) => c.status === 'active').map((c: any) => ({ id: String(c.id), name: c.name }))))
       .catch((err) => { console.warn('[IncidentsPage] fetch clients list failed:', err); });
   }, [fetchIncidents]);
+
+  // ---------- Prefill from dispatch call (URL param) ----------
+  useEffect(() => {
+    const callId = searchParams.get('prefill_call_id');
+    if (!callId) return;
+    // Clear the param immediately so it doesn't re-trigger
+    setSearchParams((prev) => { const next = new URLSearchParams(prev); next.delete('prefill_call_id'); return next; }, { replace: true });
+    (async () => {
+      try {
+        const call = await apiFetch<any>(`/dispatch/calls/${callId}`);
+        if (!call) return;
+        const descParts = [call.description, call.notes].filter(Boolean);
+        setFormPrefillData({
+          call_id: call.id,
+          incident_type: call.call_type || '',
+          priority: call.priority || 'P3',
+          location_address: call.location_address || '',
+          narrative: descParts.join('\n\n') || '',
+          client_id: call.client_id ? String(call.client_id) : '',
+        });
+        setEditingIncident(undefined);
+        setShowFormModal(true);
+      } catch (err) {
+        console.warn('[IncidentsPage] Failed to fetch call for prefill:', err);
+        addToast('Could not load call data for prefill', 'error');
+      }
+    })();
+  }, [searchParams]);
 
   // Live sync — auto-refresh when any device modifies incidents (silent to avoid unmounting UI)
   const silentRefreshIncidents = useCallback(() => fetchIncidents({ silent: true }), [fetchIncidents]);
@@ -1439,9 +1471,17 @@ export default function IncidentsPage() {
           defaultOpen
           actions={
             ['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status) ? (
-              <button onClick={() => setShowEvidenceModal(true)} className="toolbar-btn toolbar-btn-primary">
-                <Plus className="w-3 h-3" /> Add
-              </button>
+              <div className="flex items-center gap-1">
+                <button onClick={() => setShowEvidenceModal(true)} className="toolbar-btn toolbar-btn-primary">
+                  <Plus className="w-3 h-3" /> Add
+                </button>
+                <button
+                  onClick={() => navigate(`/evidence?new=true&incident_id=${selectedIncident.id}&location=${encodeURIComponent(selectedIncident.location || '')}`)}
+                  className="toolbar-btn"
+                >
+                  <ExternalLink className="w-3 h-3" /> Log Evidence
+                </button>
+              </div>
             ) : undefined
           }
         >
@@ -1772,6 +1812,7 @@ export default function IncidentsPage() {
           setShowFormModal(false);
           setEditingIncident(undefined);
           setFormDefaultType('');
+          setFormPrefillData(undefined);
         }}
         onSubmit={editingIncident ? handleUpdate : handleCreate}
         isSubmitting={isSubmitting}
@@ -1779,6 +1820,7 @@ export default function IncidentsPage() {
         dispositionCodes={dispositionCodes}
         clients={clientsList}
         defaultType={formDefaultType}
+        prefillData={formPrefillData}
       />
 
       {/* Delete Confirmation Dialog */}

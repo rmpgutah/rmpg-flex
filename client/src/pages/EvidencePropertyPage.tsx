@@ -105,6 +105,10 @@ export default function EvidencePropertyPage() {
   const [bwcLoading, setBwcLoading] = useState(false);
   const [playingVideo, setPlayingVideo] = useState<BodyCamVideo | null>(null);
 
+  // Cases for linking
+  const [caseOptions, setCaseOptions] = useState<any[]>([]);
+  const [linkingCase, setLinkingCase] = useState(false);
+
   // ─── Fetchers ──────────────────────────────────────
   const fetchItems = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
@@ -147,6 +151,9 @@ export default function EvidencePropertyPage() {
 
   useEffect(() => { fetchItems(); }, [fetchItems]);
   useEffect(() => { fetchStats(); fetchLocations(); }, [fetchStats, fetchLocations]);
+  useEffect(() => {
+    apiFetch<{ data: any[] }>('/cases?limit=500').then(r => setCaseOptions(r.data || [])).catch(() => {});
+  }, []);
   useLiveSync('records', () => { fetchItems({ silent: true }); fetchStats(); });
 
   // When detail tab switches to BWC, fetch videos
@@ -208,6 +215,22 @@ export default function EvidencePropertyPage() {
     } catch (err: any) {
       addToast(err?.message || 'Failed to create evidence', 'error');
     } finally { setNewEvidenceSubmitting(false); }
+  };
+
+  const handleLinkCase = async (caseId: string) => {
+    if (!selected) return;
+    setLinkingCase(true);
+    try {
+      const res = await apiFetch<any>(`/records/evidence/${selected.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ case_id: caseId ? parseInt(caseId, 10) : null }),
+      });
+      setSelected(res);
+      addToast(caseId ? 'Evidence linked to case' : 'Case link removed', 'success');
+      fetchItems({ silent: true });
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to link case', 'error');
+    } finally { setLinkingCase(false); }
   };
 
   let chainOfCustody: any[] = [];
@@ -494,6 +517,30 @@ export default function EvidencePropertyPage() {
                         </div>
                       ))}
                     </div>
+                  </div>
+
+                  {/* Link to Case */}
+                  <div className="panel-inset p-3">
+                    <div className="text-[9px] font-mono text-rmpg-500 uppercase mb-2 tracking-wider">Linked Case</div>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={selected.case_id || ''}
+                        onChange={e => handleLinkCase(e.target.value)}
+                        disabled={linkingCase}
+                        className="select-dark flex-1 text-xs"
+                      >
+                        <option value="">— No linked case —</option>
+                        {caseOptions.map((c: any) => (
+                          <option key={c.id} value={c.id}>{c.case_number} — {c.title}</option>
+                        ))}
+                      </select>
+                      {linkingCase && <Loader2 className="w-3 h-3 animate-spin text-rmpg-500" />}
+                    </div>
+                    {selected.linked_case_number && (
+                      <div className="mt-1.5 text-[10px] text-brand-400">
+                        Currently linked: {selected.linked_case_number} — {selected.linked_case_title}
+                      </div>
+                    )}
                   </div>
 
                   {/* Notes */}

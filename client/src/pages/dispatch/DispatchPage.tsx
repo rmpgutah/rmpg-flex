@@ -2779,6 +2779,38 @@ export default function DispatchPage() {
                         </p>
                       </div>
                     )}
+                    {!isEditing && !selectedCall.disposition && selectedCall.status !== 'cleared' && selectedCall.status !== 'closed' && (
+                      <div>
+                        <label className="field-label">Disposition:</label>
+                        <select
+                          className="select-dark text-xs mt-0.5"
+                          value=""
+                          onChange={async (e) => {
+                            const newDisp = e.target.value;
+                            if (!newDisp) return;
+                            try {
+                              const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, {
+                                method: 'PUT',
+                                body: JSON.stringify({ disposition: newDisp }),
+                              });
+                              const updatedCall = mapDbCall(result);
+                              setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? updatedCall : c));
+                              setSelectedCall(updatedCall);
+                              addToast(`Disposition set to ${newDisp}`, 'success');
+                            } catch (err: any) {
+                              addToast(err?.message || 'Failed to set disposition', 'error');
+                            }
+                          }}
+                        >
+                          <option value="">— Set Disposition —</option>
+                          {dispositionCodes.map((d) => (
+                            <option key={d.code} value={d.code}>
+                              {d.code} — {d.description}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                   </div>
 
                   {/* Right Column: Caller, Timeline, Units */}
@@ -3836,6 +3868,26 @@ export default function DispatchPage() {
                   </div>
                 )}
               </div>
+
+              {/* Quick Actions — Create Incident / Citation from call */}
+              {!isEditing && (
+                <div className="px-3 pb-2 flex items-center gap-2">
+                  <button
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium bg-[#1a2636] text-brand-300 border border-[#1e3048] rounded hover:bg-[#243447] transition-colors"
+                    onClick={() => navigate(`/incidents?prefill_call_id=${selectedCall.id}`)}
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    Create Incident
+                  </button>
+                  <button
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium bg-[#1a2636] text-amber-300 border border-[#1e3048] rounded hover:bg-[#243447] transition-colors"
+                    onClick={() => navigate(`/citations?prefill_call_id=${selectedCall.id}`)}
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    Create Citation
+                  </button>
+                </div>
+              )}
 
               {/* Disposition Prompt — shown when Clear is clicked */}
               {dispositionPromptCallId === selectedCall.id && (
