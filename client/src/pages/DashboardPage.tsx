@@ -313,20 +313,15 @@ export default function DashboardPage() {
 
   return (
     <div className="p-4 space-y-4 animate-fade-in app-grid-bg">
-      {/* Dashboard Title Bar */}
-      <PanelTitleBar title={isMobile ? 'C&C Dashboard' : 'Command & Control Dashboard'}>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5">
-            <span className={`led-dot ${stats.active_calls > 0 ? 'led-green animate-led-pulse' : 'led-green'}`} />
-            <span className="text-[10px] font-mono font-bold text-green-500">OPERATIONAL</span>
-          </div>
-          <PrintButton />
-          <div className="hidden md:flex items-center gap-1.5 px-2 py-1 panel-inset text-[9px] font-mono text-rmpg-600">
-            <span className="led-dot led-green" />
-            <span>{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
-          </div>
+      {/* Dashboard status strip — compact, no duplicate title bar */}
+      <div className="flex items-center justify-between px-3 py-1.5" style={{ background: '#0d1520', borderBottom: '1px solid #1e3048' }}>
+        <div className="flex items-center gap-2">
+          <span className={`led-dot ${stats.active_calls > 0 ? 'led-green animate-led-pulse' : 'led-green'}`} />
+          <span className="text-[10px] font-mono font-bold text-green-500 uppercase">Operational</span>
+          <span className="text-[9px] font-mono text-rmpg-600">{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
         </div>
-      </PanelTitleBar>
+        <PrintButton />
+      </div>
 
       {/* Error Banner */}
       {error && (
