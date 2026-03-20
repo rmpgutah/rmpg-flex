@@ -453,8 +453,7 @@ router.post('/hash-sets/upload', requireRole('admin'), (req: Request, res: Respo
       return res.status(400).json({ error: 'content, setName, and category required' });
     }
 
-    const fs = require('fs');
-    const path = require('path');
+    // fs and path already imported at top of file
     const hashSetsDir = path.join(__dirname, '..', '..', 'hash-sets');
     if (!fs.existsSync(hashSetsDir)) fs.mkdirSync(hashSetsDir, { recursive: true });
 
@@ -478,8 +477,7 @@ router.post('/hash-sets/upload', requireRole('admin'), (req: Request, res: Respo
 // ── GET /hash-sets/available — List hash set files on disk ──────────
 router.get('/hash-sets/available', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
-    const fs = require('fs');
-    const path = require('path');
+    // fs and path already imported at top of file
     const hashSetsDir = path.join(__dirname, '..', '..', 'hash-sets');
     if (!fs.existsSync(hashSetsDir)) {
       return res.json({ data: [] });
