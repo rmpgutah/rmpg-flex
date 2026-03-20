@@ -108,6 +108,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/sex-offender-registry': 'Sex Offender Registry',
   '/reports': 'Reports',
   '/forensics': 'Connection Analysis',
+  '/forensic-lab': 'Forensic Lab',
   '/audit': 'Audit Log',
   '/crm': 'Overwatch',
   '/training': 'Training Management',
@@ -144,7 +145,8 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/dl-search', icon: CreditCard, label: 'DL Search' },
     { path: '/skip-tracer', icon: Search, label: 'Skip Tracer' },
     { path: '/evidence', icon: Package, label: 'Evidence / Property' },
-    { path: '/forensics', icon: Microscope, label: 'Forensic Lab' },
+    { path: '/forensic-lab', icon: Microscope, label: 'Forensic Lab' },
+    { path: '/forensics', icon: Network, label: 'Connections' },
     { path: '/cases', icon: Briefcase, label: 'Case Management' },
   ]},
   { path: '/warrants', icon: AlertTriangle, label: 'Enforce', group: 'records', shortcut: 'F7', children: [

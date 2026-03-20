@@ -50,7 +50,7 @@ import DashCamDetailPage from './pages/DashCamDetailPage';
 import TrainingDocsPage from './pages/TrainingDocsPage';
 import TrainingPage from './pages/TrainingPage';
 import ForensicsPage from './pages/ForensicsPage';
-import ForensicsLabPage from './pages/ForensicsLabPage';
+import ForensicLabPage from './pages/ForensicLabPage';
 import SkipTracerPage from './pages/SkipTracerPage';
 import ArrestRecordsPage from './pages/ArrestRecordsPage';
 import EmailPage from './pages/EmailPage';
@@ -210,7 +210,7 @@ function AppRoutes() {
           <Route path="/training" element={<TrainingPage />} />
           <Route path="/training-docs" element={<TrainingDocsPage />} />
           <Route path="/forensics" element={<ForensicsPage />} />
-          <Route path="/forensics-lab" element={<ForensicsLabPage />} />
+          <Route path="/forensic-lab" element={<ForensicLabPage />} />
           <Route path="/skip-tracer" element={<SkipTracerPage />} />
           <Route path="/arrest-records" element={<ArrestRecordsPage />} />
           <Route path="/email" element={<EmailPage />} />

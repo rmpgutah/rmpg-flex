@@ -101,6 +101,7 @@ const NAV_GROUPS: NavGroup[] = [
       { path: '/criminal-history', icon: Search, label: 'Criminal History' },
       { path: '/evidence', icon: Package, label: 'Evidence / Property' },
       { path: '/cases', icon: Briefcase, label: 'Cases' },
+      { path: '/forensic-lab', icon: Search, label: 'Forensic Lab' },
     ],
   },
   {
