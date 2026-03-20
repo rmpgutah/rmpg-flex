@@ -243,12 +243,15 @@ export default function ForensicLabPage() {
     try {
       const detail = await apiFetch<ForensicCase>(`/forensic-lab/${id}`);
       setSelectedCase(detail);
-      fetchCaseLinks(id);
-      fetchHashes(id);
+      // Fetch links and hashes in parallel
+      apiFetch<any[]>(`/forensic-lab/${id}/links`).then(l => setCaseLinks(l || [])).catch(() => setCaseLinks([]));
+      apiFetch<{ hashes: any[]; stats: any }>(`/forensic-lab/${id}/hashes`)
+        .then(d => { setHashes(d.hashes || []); setHashStats(d.stats || null); })
+        .catch(() => { setHashes([]); setHashStats(null); });
     } catch (err) {
       console.error('Fetch case detail error:', err);
     }
-  }, [fetchCaseLinks, fetchHashes]);
+  }, []);
 
   // ── Wizard Submit ──────────────────────────────────────
 
