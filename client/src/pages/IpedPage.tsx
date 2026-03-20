@@ -1852,16 +1852,37 @@ d41d8cd98f00b204e9800998ecf8427e,suspicious_file.exe
                   <div className="flex-1 border-t border-[#1e3048]" />
                 </div>
 
-                {/* Manual path entry */}
+                {/* Server file path dropdown */}
                 <div>
                   <label className="text-[10px] text-slate-500 block mb-0.5">Server File Path</label>
-                  <input
-                    type="text"
+                  <select
                     value={importData.filePath === '__upload__' ? '' : importData.filePath}
-                    onChange={(e) => { setImportData(d => ({ ...d, filePath: e.target.value })); setSelectedAvailableSet(''); (window as any).__hashSetUploadContent = undefined; }}
-                    placeholder="/opt/rmpg-flex/server/hash-sets/custom.md5"
-                    className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-3 py-1.5 focus:outline-none focus:border-brand-blue/50 font-mono placeholder-slate-600"
-                  />
+                    onChange={(e) => {
+                      const path = e.target.value;
+                      setSelectedAvailableSet('');
+                      (window as any).__hashSetUploadContent = undefined;
+                      if (path) {
+                        const set = availableHashSets.find((s: any) => s.filePath === path);
+                        setImportData(d => ({
+                          ...d,
+                          filePath: path,
+                          setName: set?.displayName || d.setName,
+                          category: set?.category || d.category,
+                          hashType: set?.hashType || d.hashType,
+                        }));
+                      } else {
+                        setImportData(d => ({ ...d, filePath: '' }));
+                      }
+                    }}
+                    className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-3 py-1.5 focus:outline-none focus:border-brand-blue/50 font-mono"
+                  >
+                    <option value="">-- Select a file from server --</option>
+                    {availableHashSets.map((s: any) => (
+                      <option key={s.filePath} value={s.filePath}>
+                        {s.fileName} ({s.hashCount} hashes, {s.category})
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* Name / Category / Type */}
