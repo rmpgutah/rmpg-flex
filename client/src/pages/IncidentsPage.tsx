@@ -207,7 +207,7 @@ export default function IncidentsPage() {
     if (!custodyTransfer) return;
     setCustodySubmitting(true);
     try {
-      await apiFetch(`/api/records/evidence/${custodyTransfer.evidenceId}/chain-action`, {
+      await apiFetch(`/records/evidence/${custodyTransfer.evidenceId}/chain-action`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -224,7 +224,7 @@ export default function IncidentsPage() {
       setCustodyNotes('');
       // Refresh evidence for the selected incident
       if (selectedIncident) {
-        const evData = await apiFetch<any>(`/api/records/evidence?incident_id=${selectedIncident.id}`);
+        const evData = await apiFetch<any>(`/records/evidence?incident_id=${selectedIncident.id}`);
         setDetailEvidence(evData?.data || evData || []);
       }
     } catch {
