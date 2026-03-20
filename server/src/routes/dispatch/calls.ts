@@ -561,6 +561,20 @@ router.get('/calls/:id', validateParamId, requireRole('admin', 'manager', 'super
     // Surface the first linked incident number on the call object for display
     const firstIncidentNumber = (incidents as any[]).length > 0 ? (incidents as any[])[0].incident_number : null;
 
+    // Fetch dispatch chain (parent/child calls) for PSO re-dispatch tracking
+    let parentCall: any = null;
+    let childCalls: any[] = [];
+    if (call.parent_call_id) {
+      parentCall = db.prepare(`
+        SELECT id, call_number, status, pso_attempt_number, created_at, closed_at, disposition
+        FROM calls_for_service WHERE id = ?
+      `).get(call.parent_call_id) || null;
+    }
+    childCalls = db.prepare(`
+      SELECT id, call_number, status, pso_attempt_number, created_at, closed_at, disposition
+      FROM calls_for_service WHERE parent_call_id = ? ORDER BY created_at ASC
+    `).all(call.id) as any[];
+
     res.json({
       ...call,
       incident_number: call.incident_number || firstIncidentNumber,
@@ -568,6 +582,8 @@ router.get('/calls/:id', validateParamId, requireRole('admin', 'manager', 'super
       related_incidents: incidents,
       activity,
       visit_history,
+      parentCall,
+      childCalls,
     });
   } catch (error: any) {
     console.error('Get call error:', error?.message || 'Unknown error');

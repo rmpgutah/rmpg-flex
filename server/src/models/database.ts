@@ -4090,6 +4090,7 @@ function migrateSchema(): void {
   // ── PSO Service Window Compliance Tracking ──
   // Tracks which required time windows have been covered by service attempts
   addCol('calls_for_service', 'pso_service_windows', 'TEXT'); // JSON: { early_morning: bool, daytime: bool, evening: bool, weekend: bool }
+  addCol('calls_for_service', 'parent_call_id', 'INTEGER REFERENCES calls_for_service(id)'); // Links re-dispatched PSO calls to their parent
   addCol('call_visit_history', 'time_window', 'TEXT');  // early_morning | daytime | evening
   addCol('call_visit_history', 'is_weekend', 'INTEGER DEFAULT 0');
 
