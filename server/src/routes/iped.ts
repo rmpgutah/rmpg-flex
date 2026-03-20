@@ -445,6 +445,36 @@ router.post('/hash-sets/import', requireRole('admin'), (req: Request, res: Respo
   }
 });
 
+// ── POST /hash-sets/upload — Upload a hash set file directly ────────
+router.post('/hash-sets/upload', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const { content, setName, category, hashType, fileName } = req.body;
+    if (!content || !setName || !category) {
+      return res.status(400).json({ error: 'content, setName, and category required' });
+    }
+
+    const fs = require('fs');
+    const path = require('path');
+    const hashSetsDir = path.join(__dirname, '..', '..', 'hash-sets');
+    if (!fs.existsSync(hashSetsDir)) fs.mkdirSync(hashSetsDir, { recursive: true });
+
+    // Save the file to disk
+    const safeName = (fileName || `${setName.replace(/[^a-zA-Z0-9_-]/g, '_')}.${hashType || 'md5'}`)
+      .replace(/[^a-zA-Z0-9._-]/g, '_');
+    const filePath = path.join(hashSetsDir, safeName);
+    const header = `# Source: User Upload\n# Category: ${category}\n# Hash Type: ${hashType || 'md5'}\n# Description: Uploaded hash set: ${setName}\n# Last Updated: ${new Date().toISOString().split('T')[0]}\n#\n`;
+    fs.writeFileSync(filePath, header + content, 'utf-8');
+
+    // Import into database
+    const count = importHashSet(filePath, setName, category, hashType || 'md5');
+    auditLog(req, 'iped_hashset_uploaded', 'iped_hashset', setName, `Uploaded and imported ${count} hashes into set "${setName}" (${category})`);
+    res.json({ success: true, imported: count, setName, category, filePath });
+  } catch (err: any) {
+    console.error('IPED error:', err?.message || err);
+    res.status(500).json({ error: err?.message || 'Internal server error' });
+  }
+});
+
 // ── GET /hash-sets/available — List hash set files on disk ──────────
 router.get('/hash-sets/available', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {

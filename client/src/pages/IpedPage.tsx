@@ -323,20 +323,51 @@ export default function IpedPage() {
   };
 
   const handleImportHashSet = async () => {
-    if (!importData.filePath.trim() || !importData.setName.trim()) {
-      addToast('File path and set name are required', 'error');
+    if (!importData.setName.trim()) {
+      addToast('Set name is required', 'error');
+      return;
+    }
+    if (!importData.filePath.trim()) {
+      addToast('Select a hash set, upload a file, or enter a path', 'error');
       return;
     }
     setImportSubmitting(true);
     try {
-      const data = await apiFetch<any>('/iped/hash-sets/import', {
-        method: 'POST',
-        body: JSON.stringify(importData),
-      });
+      let data: any;
+      if (importData.filePath === '__upload__') {
+        // Upload content directly to server
+        const content = (window as any).__hashSetUploadContent;
+        if (!content) {
+          addToast('No file content loaded. Please re-upload or paste hashes.', 'error');
+          setImportSubmitting(false);
+          return;
+        }
+        data = await apiFetch<any>('/iped/hash-sets/upload', {
+          method: 'POST',
+          body: JSON.stringify({
+            content,
+            setName: importData.setName,
+            category: importData.category,
+            hashType: importData.hashType,
+            fileName: (window as any).__hashSetUploadFileName,
+          }),
+        });
+        // Clean up
+        delete (window as any).__hashSetUploadContent;
+        delete (window as any).__hashSetUploadFileName;
+      } else {
+        // Import from server file path
+        data = await apiFetch<any>('/iped/hash-sets/import', {
+          method: 'POST',
+          body: JSON.stringify(importData),
+        });
+      }
       addToast(`Imported ${data.imported} hashes into "${importData.setName}"`, 'success');
       setShowImportHashSet(false);
       setImportData({ filePath: '', setName: '', category: 'known_bad', hashType: 'md5' });
+      setSelectedAvailableSet('');
       fetchHashSets();
+      fetchStatus();
     } catch (err: any) {
       addToast(err.message || 'Failed to import hash set', 'error');
     } finally {
@@ -737,6 +768,57 @@ d41d8cd98f00b204e9800998ecf8427e,suspicious_file.exe
       {/* ── Main Content (scrollable) ─────────────────────── */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
 
+        {/* ── First-Time Onboarding Banner ─────────────── */}
+        {stats.totalJobs === 0 && stats.totalHashes === 0 && hashSets.length === 0 && !hashSetsLoading && (
+          <div className="card-glass rounded-lg p-4 border border-brand-blue/20 bg-gradient-to-r from-brand-blue/5 to-transparent">
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-brand-blue/10 border border-brand-blue/20 flex-shrink-0">
+                <Shield size={20} className="text-brand-blue" />
+              </div>
+              <div className="flex-1 space-y-2">
+                <h2 className="text-sm font-bold text-white">Welcome to Digital Forensics</h2>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  This module automatically hashes evidence files, detects known threats, verifies evidence integrity for court, and provides forensic analysis tools. Get started in 3 steps:
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2">
+                  <button
+                    onClick={() => {
+                      setShowImportHashSet(true);
+                      setSelectedAvailableSet('');
+                      setImportData({ filePath: '', setName: '', category: 'known_bad', hashType: 'md5' });
+                      apiFetch('/iped/hash-sets/available').then((res: any) => setAvailableHashSets(res?.data || [])).catch(() => setAvailableHashSets([]));
+                    }}
+                    className="flex items-center gap-2 p-3 rounded bg-[#141e2b] border border-[#1e3048] hover:border-brand-blue/40 hover:bg-brand-blue/5 transition-all text-left group"
+                  >
+                    <span className="text-[10px] font-bold text-brand-blue bg-brand-blue/10 rounded-full w-5 h-5 flex items-center justify-center flex-shrink-0">1</span>
+                    <div>
+                      <span className="text-[11px] font-semibold text-white group-hover:text-brand-blue transition-colors block">Import Hash Sets</span>
+                      <span className="text-[9px] text-slate-500">Load 11 pre-built sets with 215 hashes</span>
+                    </div>
+                  </button>
+                  <div className="flex items-center gap-2 p-3 rounded bg-[#141e2b] border border-[#1e3048] text-left">
+                    <span className="text-[10px] font-bold text-slate-500 bg-[#0d1520] rounded-full w-5 h-5 flex items-center justify-center flex-shrink-0">2</span>
+                    <div>
+                      <span className="text-[11px] font-semibold text-slate-400 block">Upload Evidence</span>
+                      <span className="text-[9px] text-slate-600">Files auto-hashed & checked on upload</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 p-3 rounded bg-[#141e2b] border border-[#1e3048] text-left">
+                    <span className="text-[10px] font-bold text-slate-500 bg-[#0d1520] rounded-full w-5 h-5 flex items-center justify-center flex-shrink-0">3</span>
+                    <div>
+                      <span className="text-[11px] font-semibold text-slate-400 block">Review & Verify</span>
+                      <span className="text-[9px] text-slate-600">Disposition flagged files, verify integrity</span>
+                    </div>
+                  </div>
+                </div>
+                <p className="text-[9px] text-slate-600 mt-1">
+                  Click the <HelpCircle size={9} className="inline text-slate-500" /> button in the header for the full user guide.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ── Stats Cards ────────────────────────────────── */}
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
           <StatCard label="Total Jobs" value={stats.totalJobs} icon={Database} color="text-slate-300" />
@@ -839,7 +921,44 @@ d41d8cd98f00b204e9800998ecf8427e,suspicious_file.exe
                 <Loader2 size={16} className="animate-spin text-slate-500" />
               </div>
             ) : hashSets.length === 0 ? (
-              <p className="text-xs text-slate-500 text-center py-3">No hash sets loaded. Import one to begin.</p>
+              <div className="p-4 space-y-3">
+                <div className="text-center space-y-2">
+                  <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-brand-blue/10 border border-brand-blue/20">
+                    <Database size={18} className="text-brand-blue" />
+                  </div>
+                  <h3 className="text-sm font-bold text-white">No Hash Sets Loaded</h3>
+                  <p className="text-[11px] text-slate-400 max-w-sm mx-auto">
+                    Hash sets are databases of known file fingerprints used to identify threats in evidence. Import sets to enable automatic detection.
+                  </p>
+                </div>
+                <div className="bg-[#0d1520] border border-[#1e3048] rounded p-3 space-y-2">
+                  <span className="text-[10px] font-bold text-brand-blue uppercase">Getting Started</span>
+                  <div className="space-y-1.5">
+                    <div className="flex items-start gap-2">
+                      <span className="text-[10px] font-bold text-brand-blue bg-brand-blue/10 rounded-full w-4 h-4 flex items-center justify-center flex-shrink-0 mt-0.5">1</span>
+                      <span className="text-[10px] text-slate-300">Click <span className="text-brand-blue font-semibold">Import Hash Set</span> above</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="text-[10px] font-bold text-brand-blue bg-brand-blue/10 rounded-full w-4 h-4 flex items-center justify-center flex-shrink-0 mt-0.5">2</span>
+                      <span className="text-[10px] text-slate-300">Click <span className="text-emerald-400 font-semibold">IMPORT ALL 11 SETS</span> for instant setup (215 hashes)</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="text-[10px] font-bold text-brand-blue bg-brand-blue/10 rounded-full w-4 h-4 flex items-center justify-center flex-shrink-0 mt-0.5">3</span>
+                      <span className="text-[10px] text-slate-300">Upload evidence — files are automatically hashed and checked</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-[9px]">
+                  <div className="bg-red-900/10 border border-red-800/20 rounded p-2">
+                    <span className="text-red-400 font-bold block">KNOWN BAD</span>
+                    <span className="text-slate-500">Malware, drugs, weapons, fraud, stalkerware, contraband, trafficking, cybercrime</span>
+                  </div>
+                  <div className="bg-green-900/10 border border-green-800/20 rounded p-2">
+                    <span className="text-green-400 font-bold block">KNOWN GOOD</span>
+                    <span className="text-slate-500">OS files, Office apps, browsers, media — safely exclude from analysis</span>
+                  </div>
+                </div>
+              </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
                 {hashSets.map((hs) => (
@@ -1632,24 +1751,121 @@ d41d8cd98f00b204e9800998ecf8427e,suspicious_file.exe
                 </>
               )}
 
-              {/* ── Manual Entry Section ───────────────────── */}
-              <div className="border-t border-[#1e3048] pt-3">
-                <div className="flex items-center gap-1.5 mb-2">
-                  <FileText size={11} className="text-slate-400" />
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Custom Import</span>
-                  <span className="text-[9px] text-slate-600 ml-1">Enter a file path or customize selected set</span>
+              {/* ── Upload / Paste / Manual Section ──────────── */}
+              <div className="border-t border-[#1e3048] pt-3 space-y-3">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Upload size={11} className="text-slate-400" />
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Upload or Create Custom Hash Set</span>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="col-span-2">
-                    <label className="text-[10px] text-slate-500 block mb-0.5">File Path</label>
-                    <input
-                      type="text"
-                      value={importData.filePath}
-                      onChange={(e) => { setImportData(d => ({ ...d, filePath: e.target.value })); setSelectedAvailableSet(''); }}
-                      placeholder="/opt/rmpg-flex/server/hash-sets/custom.md5"
-                      className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-3 py-1.5 focus:outline-none focus:border-brand-blue/50 font-mono placeholder-slate-600"
-                    />
-                  </div>
+
+                {/* Drag & drop / file picker / paste zone */}
+                <div
+                  className="relative border-2 border-dashed border-[#1e3048] hover:border-brand-blue/40 rounded p-3 text-center transition-colors cursor-pointer group"
+                  onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-brand-blue/60', 'bg-brand-blue/5'); }}
+                  onDragLeave={(e) => { e.currentTarget.classList.remove('border-brand-blue/60', 'bg-brand-blue/5'); }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.currentTarget.classList.remove('border-brand-blue/60', 'bg-brand-blue/5');
+                    const file = e.dataTransfer.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      const text = reader.result as string;
+                      const lines = text.split('\n').filter(l => l.trim() && !l.startsWith('#'));
+                      setImportData(d => ({
+                        ...d,
+                        filePath: '__upload__',
+                        setName: d.setName || file.name.replace(/\.\w+$/, '').replace(/[-_]/g, ' '),
+                        hashType: file.name.endsWith('.sha256') ? 'sha256' : file.name.endsWith('.sha1') ? 'sha1' : 'md5',
+                      }));
+                      setSelectedAvailableSet('');
+                      // Store content for upload
+                      (window as any).__hashSetUploadContent = text;
+                      (window as any).__hashSetUploadFileName = file.name;
+                      addToast(`Loaded ${lines.length} hashes from ${file.name}`, 'success');
+                    };
+                    reader.readAsText(file);
+                  }}
+                  onClick={() => {
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    input.accept = '.md5,.sha256,.sha1,.csv,.txt';
+                    input.onchange = () => {
+                      const file = input.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        const text = reader.result as string;
+                        const lines = text.split('\n').filter(l => l.trim() && !l.startsWith('#'));
+                        setImportData(d => ({
+                          ...d,
+                          filePath: '__upload__',
+                          setName: d.setName || file.name.replace(/\.\w+$/, '').replace(/[-_]/g, ' '),
+                          hashType: file.name.endsWith('.sha256') ? 'sha256' : file.name.endsWith('.sha1') ? 'sha1' : 'md5',
+                        }));
+                        setSelectedAvailableSet('');
+                        (window as any).__hashSetUploadContent = text;
+                        (window as any).__hashSetUploadFileName = file.name;
+                        addToast(`Loaded ${lines.length} hashes from ${file.name}`, 'success');
+                      };
+                      reader.readAsText(file);
+                    };
+                    input.click();
+                  }}
+                >
+                  <Upload size={16} className="mx-auto text-slate-500 group-hover:text-brand-blue transition-colors mb-1" />
+                  <p className="text-[10px] text-slate-400 group-hover:text-slate-300">
+                    <span className="text-brand-blue font-semibold">Click to browse</span> or drag & drop a hash set file
+                  </p>
+                  <p className="text-[9px] text-slate-600 mt-0.5">Accepts .md5, .sha256, .sha1, .csv, .txt — one hash per line</p>
+                  {importData.filePath === '__upload__' && (
+                    <div className="mt-2 flex items-center justify-center gap-1.5 text-[10px] text-emerald-400">
+                      <CheckCircle size={10} />
+                      <span>File loaded: {(window as any).__hashSetUploadFileName}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Paste hashes directly */}
+                <div>
+                  <label className="text-[10px] text-slate-500 block mb-0.5">Or paste hashes directly (one per line)</label>
+                  <textarea
+                    rows={3}
+                    placeholder={"d41d8cd98f00b204e9800998ecf8427e,file1.exe\n44d88612fea8a8f36de82e1278abb02f,file2.dll\n3395856ce81f2b7382dee72602f798b6"}
+                    className="w-full text-[10px] bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-3 py-2 focus:outline-none focus:border-brand-blue/50 font-mono placeholder-slate-600 resize-none"
+                    onChange={(e) => {
+                      const text = e.target.value;
+                      if (text.trim()) {
+                        (window as any).__hashSetUploadContent = text;
+                        (window as any).__hashSetUploadFileName = 'pasted-hashes.md5';
+                        setImportData(d => ({ ...d, filePath: '__upload__' }));
+                        setSelectedAvailableSet('');
+                      }
+                    }}
+                  />
+                </div>
+
+                {/* Divider */}
+                <div className="flex items-center gap-2 text-[9px] text-slate-600">
+                  <div className="flex-1 border-t border-[#1e3048]" />
+                  <span>or enter server file path</span>
+                  <div className="flex-1 border-t border-[#1e3048]" />
+                </div>
+
+                {/* Manual path entry */}
+                <div>
+                  <label className="text-[10px] text-slate-500 block mb-0.5">Server File Path</label>
+                  <input
+                    type="text"
+                    value={importData.filePath === '__upload__' ? '' : importData.filePath}
+                    onChange={(e) => { setImportData(d => ({ ...d, filePath: e.target.value })); setSelectedAvailableSet(''); (window as any).__hashSetUploadContent = undefined; }}
+                    placeholder="/opt/rmpg-flex/server/hash-sets/custom.md5"
+                    className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-3 py-1.5 focus:outline-none focus:border-brand-blue/50 font-mono placeholder-slate-600"
+                  />
+                </div>
+
+                {/* Name / Category / Type */}
+                <div className="grid grid-cols-3 gap-2">
                   <div>
                     <label className="text-[10px] text-slate-500 block mb-0.5">Set Name</label>
                     <input
@@ -1660,31 +1876,29 @@ d41d8cd98f00b204e9800998ecf8427e,suspicious_file.exe
                       className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-3 py-1.5 focus:outline-none focus:border-brand-blue/50 placeholder-slate-600"
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-[10px] text-slate-500 block mb-0.5">Category</label>
-                      <select
-                        value={importData.category}
-                        onChange={(e) => setImportData(d => ({ ...d, category: e.target.value }))}
-                        className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-3 py-1.5 focus:outline-none focus:border-brand-blue/50"
-                      >
-                        <option value="known_bad">Known Bad</option>
-                        <option value="known_good">Known Good</option>
-                        <option value="custom">Custom</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-slate-500 block mb-0.5">Hash Type</label>
-                      <select
-                        value={importData.hashType}
-                        onChange={(e) => setImportData(d => ({ ...d, hashType: e.target.value }))}
-                        className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-3 py-1.5 focus:outline-none focus:border-brand-blue/50"
-                      >
-                        <option value="md5">MD5</option>
-                        <option value="sha1">SHA-1</option>
-                        <option value="sha256">SHA-256</option>
-                      </select>
-                    </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500 block mb-0.5">Category</label>
+                    <select
+                      value={importData.category}
+                      onChange={(e) => setImportData(d => ({ ...d, category: e.target.value }))}
+                      className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-3 py-1.5 focus:outline-none focus:border-brand-blue/50"
+                    >
+                      <option value="known_bad">Known Bad</option>
+                      <option value="known_good">Known Good</option>
+                      <option value="custom">Custom</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500 block mb-0.5">Hash Type</label>
+                    <select
+                      value={importData.hashType}
+                      onChange={(e) => setImportData(d => ({ ...d, hashType: e.target.value }))}
+                      className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-3 py-1.5 focus:outline-none focus:border-brand-blue/50"
+                    >
+                      <option value="md5">MD5</option>
+                      <option value="sha1">SHA-1</option>
+                      <option value="sha256">SHA-256</option>
+                    </select>
                   </div>
                 </div>
               </div>
