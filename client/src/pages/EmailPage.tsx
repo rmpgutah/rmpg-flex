@@ -1716,10 +1716,23 @@ export default function EmailPage() {
   if (status && !status.configured) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="text-center space-y-3 max-w-md">
-          <WifiOff className="w-12 h-12 text-rmpg-500 mx-auto" />
+        <div className="text-center space-y-4 max-w-md panel-beveled bg-surface-base p-8">
+          <div className="w-16 h-16 mx-auto rounded-full bg-red-500/10 flex items-center justify-center">
+            <WifiOff className="w-8 h-8 text-red-400/60" />
+          </div>
           <h2 className="text-sm font-semibold text-white">Email Not Configured</h2>
-          <p className="text-xs text-rmpg-400">Microsoft email integration needs to be set up by an administrator. Go to Admin → Integrations → Microsoft Email to configure.</p>
+          <p className="text-xs text-rmpg-400 leading-relaxed">
+            Microsoft 365 email integration needs to be set up by an administrator.
+          </p>
+          <div className="panel-beveled bg-surface-sunken p-3 text-left space-y-1.5 text-[10px] text-rmpg-400">
+            <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1">Setup Steps</div>
+            <div className="flex items-center gap-2"><span className="w-4 h-4 rounded-full bg-brand-500/20 text-brand-400 text-[8px] font-bold flex items-center justify-center flex-shrink-0">1</span> Go to Admin → Integrations</div>
+            <div className="flex items-center gap-2"><span className="w-4 h-4 rounded-full bg-brand-500/20 text-brand-400 text-[8px] font-bold flex items-center justify-center flex-shrink-0">2</span> Enter Microsoft Azure App credentials</div>
+            <div className="flex items-center gap-2"><span className="w-4 h-4 rounded-full bg-brand-500/20 text-brand-400 text-[8px] font-bold flex items-center justify-center flex-shrink-0">3</span> Complete OAuth authorization</div>
+          </div>
+          <a href="/admin?tab=integrations" className="btn-primary text-xs px-4 py-1.5 inline-flex items-center gap-1.5">
+            Go to Admin Settings
+          </a>
         </div>
       </div>
     );
@@ -1728,10 +1741,18 @@ export default function EmailPage() {
   if (status && !status.authorized) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="text-center space-y-3 max-w-md">
-          <AlertTriangle className="w-12 h-12 text-yellow-400/60 mx-auto" />
+        <div className="text-center space-y-4 max-w-md panel-beveled bg-surface-base p-8">
+          <div className="w-16 h-16 mx-auto rounded-full bg-amber-500/10 flex items-center justify-center">
+            <AlertTriangle className="w-8 h-8 text-amber-400/60" />
+          </div>
           <h2 className="text-sm font-semibold text-white">Authorization Required</h2>
-          <p className="text-xs text-rmpg-400">An administrator needs to authorize the Microsoft email connection. Go to Admin → Integrations → Microsoft Email to complete authorization.</p>
+          <p className="text-xs text-rmpg-400 leading-relaxed">
+            Microsoft email credentials are configured, but OAuth authorization hasn't been completed yet.
+            An administrator needs to sign in with the Microsoft 365 account.
+          </p>
+          <a href="/admin?tab=integrations" className="btn-primary text-xs px-4 py-1.5 inline-flex items-center gap-1.5">
+            Complete Authorization
+          </a>
         </div>
       </div>
     );
@@ -1953,7 +1974,24 @@ export default function EmailPage() {
 
       {/* ─── Message List Panel ─── */}
       <div className={`flex-shrink-0 border-r border-border-subtle flex flex-col ${mobileView === 'detail' ? 'hidden md:flex' : 'flex'} md:flex`}
-        style={{ width: listWidth, minWidth: 240 }}>
+        style={{ width: typeof window !== 'undefined' && window.innerWidth < 768 ? '100%' : listWidth, minWidth: 240 }}>
+
+        {/* Mobile folder selector */}
+        <div className="md:hidden flex items-center gap-1.5 px-2 py-1.5 border-b border-border-subtle bg-surface-base">
+          <select
+            value={selectedFolder}
+            onChange={e => handleSelectFolder(e.target.value)}
+            className="flex-1 text-xs bg-[#0d1520] border border-[#1e3048] rounded px-2 py-1.5 text-white focus:border-brand-500 focus:outline-none"
+          >
+            {sortedFolders.map(f => {
+              const key = getFolderKey(f);
+              return <option key={f.id} value={key}>{f.displayName}{f.unreadItemCount > 0 ? ` (${f.unreadItemCount})` : ''}</option>;
+            })}
+          </select>
+          <button onClick={() => setComposing('new')} className="p-2 bg-brand-500 rounded text-white" title="Compose">
+            <Plus className="w-4 h-4" />
+          </button>
+        </div>
 
         {/* Snackbar */}
         {snackbar && (
@@ -2188,10 +2226,22 @@ export default function EmailPage() {
           </>
         ) : (
           <div className="flex items-center justify-center h-full">
-            <div className="text-center space-y-2">
-              <Mail className="w-10 h-10 text-rmpg-600 mx-auto" />
-              <p className="text-xs text-rmpg-500">Select an email to read</p>
-              <p className="text-[9px] text-rmpg-600">Ctrl+N to compose • ↑↓ to navigate • Right-click for options</p>
+            <div className="text-center space-y-3 max-w-xs">
+              <div className="w-16 h-16 mx-auto rounded-full bg-brand-500/10 flex items-center justify-center">
+                <Mail className="w-8 h-8 text-brand-500/40" />
+              </div>
+              <div>
+                <p className="text-sm text-rmpg-400 font-medium">Select an email to read</p>
+                <p className="text-[10px] text-rmpg-600 mt-1">Click any message in the list, or compose a new one</p>
+              </div>
+              <button onClick={() => setComposing('new')} className="btn-primary text-xs px-4 py-1.5 inline-flex items-center gap-1.5">
+                <Plus className="w-3.5 h-3.5" /> Compose New
+              </button>
+              <div className="text-[9px] text-rmpg-600 space-y-0.5 pt-2">
+                <div className="font-mono">Ctrl+N <span className="text-rmpg-500">Compose</span> • Ctrl+R <span className="text-rmpg-500">Reply</span></div>
+                <div className="font-mono">Ctrl+F <span className="text-rmpg-500">Forward</span> • ↑↓ <span className="text-rmpg-500">Navigate</span></div>
+                <div className="font-mono">Del <span className="text-rmpg-500">Delete</span> • Right-click <span className="text-rmpg-500">More</span></div>
+              </div>
             </div>
           </div>
         )}
