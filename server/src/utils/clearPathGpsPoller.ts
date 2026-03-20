@@ -201,8 +201,9 @@ async function pollFleetPositions(force = false): Promise<void> {
 
   const insertDashcamEvent = db.prepare(`
     INSERT OR IGNORE INTO dashcam_events (cpg_device_id, unit_id, dashcam_id, event_type, event_timestamp,
-      latitude, longitude, heading, speed_mph, address, status_code, status_code_text, video_available)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      latitude, longitude, heading, speed_mph, address, status_code, status_code_text, video_available,
+      cpg_raw_data, video_url)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const backfillEnabled = getConfigValue('clearpathgps_history_backfill') !== 'false';
@@ -226,7 +227,7 @@ async function pollFleetPositions(force = false): Promise<void> {
       const lng = parseLng(ed);
       if (!lat || !lng || lat === 0 || lng === 0) continue;
 
-      updateUnit.run(lat, lng, mapping.unit_id);
+      updateUnit.run(lat, lng, now, mapping.unit_id);
 
       const unit = getUnitFull.get(mapping.unit_id) as any;
       if (!unit) continue;
