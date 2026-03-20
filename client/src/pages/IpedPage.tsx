@@ -380,7 +380,7 @@ export default function IpedPage() {
                           {hs.category === 'known_bad' ? 'Known Bad' : hs.category}
                         </span>
                         <span className="text-[10px] text-slate-500">{hs.count.toLocaleString()} hashes</span>
-                        <span className="text-[10px] text-slate-600">{hs.hashType.toUpperCase()}</span>
+                        <span className="text-[10px] text-slate-600">{(hs.hashType || 'MD5').toUpperCase()}</span>
                       </div>
                     </div>
                     <button
