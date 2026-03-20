@@ -421,6 +421,8 @@ export default function MenuBar({
           { type: 'action', label: 'Offender Registry', icon: UserCheck, action: () => navigate('/offender-registry') },
           { type: 'action', label: 'Sex Offender Registry', icon: ShieldAlert, action: () => navigate('/sex-offender-registry') },
           { type: 'action', label: 'Colorado DOC Search', icon: Database, action: () => navigate('/colorado-doc') },
+          { type: 'separator' },
+          { type: 'action', label: 'Skip Tracer V2', icon: Search, action: () => navigate('/skiptracer-v2') },
         ],
       },
       {

@@ -52,6 +52,7 @@ import TrainingPage from './pages/TrainingPage';
 import ForensicsPage from './pages/ForensicsPage';
 import ForensicLabPage from './pages/ForensicLabPage';
 import SkipTracerPage from './pages/SkipTracerPage';
+import SkipTracerV2Page from './pages/skiptracer/SkipTracerV2Page';
 import ArrestRecordsPage from './pages/ArrestRecordsPage';
 import EmailPage from './pages/EmailPage';
 import CrmPage from './pages/CrmPage';
@@ -212,6 +213,7 @@ function AppRoutes() {
           <Route path="/forensics" element={<ForensicsPage />} />
           <Route path="/forensic-lab" element={<ForensicLabPage />} />
           <Route path="/skip-tracer" element={<SkipTracerPage />} />
+          <Route path="/skiptracer-v2" element={<SkipTracerV2Page />} />
           <Route path="/arrest-records" element={<ArrestRecordsPage />} />
           <Route path="/email" element={<EmailPage />} />
           <Route path="/crm" element={<CrmPage />} />
