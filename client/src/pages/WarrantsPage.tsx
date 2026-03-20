@@ -2274,7 +2274,7 @@ export default function WarrantsPage() {
 
       {/* FORM MODAL */}
       {formOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-labelledby={warrantFormTitleId}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-labelledby={warrantFormTitleId}>
           <div className={`panel-beveled ${isMobile ? 'w-full h-full' : 'w-[550px] max-h-[85vh]'} overflow-auto bg-surface-base`}>
             <div className="flex items-center justify-between p-4 border-b border-rmpg-600">
               <h2 id={warrantFormTitleId} className="text-sm font-bold text-white">{editingWarrant ? 'Edit Warrant' : 'New Warrant'}</h2>
@@ -2435,7 +2435,7 @@ export default function WarrantsPage() {
 
       {/* SERVE MODAL */}
       {serveModalOpen && selectedWarrant && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-labelledby={serveTitleId}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-labelledby={serveTitleId}>
           <div className={`panel-beveled ${isMobile ? 'w-full mx-4' : 'w-[400px]'} bg-surface-base`}>
             <div className="flex items-center justify-between p-4 border-b border-rmpg-600">
               <h2 id={serveTitleId} className="text-sm font-bold text-white">Serve Warrant</h2>

@@ -816,7 +816,7 @@ export default function SexOffenderRegistryPage() {
 
       {/* ── Link Person Modal ──────────────────────────────── */}
       {showLinkPerson && selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowLinkPerson(false)}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" onClick={() => setShowLinkPerson(false)}>
           <div
             className="bg-surface-raised border border-rmpg-600 shadow-xl w-[440px] max-w-[95vw]"
             style={{ borderRadius: 2 }}
@@ -961,7 +961,7 @@ function RecordFormModal({
   const set = (key: string, val: any) => setForm((f: any) => ({ ...f, [key]: val }));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" onClick={onClose}>
       <div
         className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-sm shadow-2xl"
         style={{ background: '#141e2b', border: '1px solid #2a3e58' }}
@@ -1125,7 +1125,7 @@ function ImportModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" onClick={onClose}>
       <div
         className="w-full max-w-xl max-h-[70vh] overflow-y-auto rounded-sm shadow-2xl"
         style={{ background: '#141e2b', border: '1px solid #2a3e58' }}

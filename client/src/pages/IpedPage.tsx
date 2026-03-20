@@ -701,7 +701,7 @@ export default function IpedPage() {
 
       {/* ── New Job Modal ────────────────────────────────── */}
       {showNewJob && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowNewJob(false)}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" onClick={() => setShowNewJob(false)}>
           <div className="card-glass rounded-lg w-full max-w-md mx-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e3048]">
               <div className="flex items-center gap-2">
@@ -798,7 +798,7 @@ export default function IpedPage() {
 
       {/* ── Import Hash Set Modal ────────────────────────── */}
       {showImportHashSet && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowImportHashSet(false)}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" onClick={() => setShowImportHashSet(false)}>
           <div className="card-glass rounded-lg w-full max-w-md mx-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e3048]">
               <div className="flex items-center gap-2">

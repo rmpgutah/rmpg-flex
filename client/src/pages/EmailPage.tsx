@@ -1041,7 +1041,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onKeyDown={handleKeyDown}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" onKeyDown={handleKeyDown}>
       <div className="bg-surface-base border border-border-subtle rounded w-full max-w-2xl mx-4 flex flex-col max-h-[80vh]">
         <div className="flex items-center justify-between px-4 py-2 border-b border-border-subtle">
           <h3 className="text-sm font-semibold text-white flex items-center gap-2">

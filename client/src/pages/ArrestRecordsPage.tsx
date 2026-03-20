@@ -930,7 +930,7 @@ export default function ArrestRecordsPage() {
 
       {/* Delete Confirmation */}
       {deleteConfirm !== null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center">
           <div className="absolute inset-0 bg-black/60" onClick={() => setDeleteConfirm(null)} />
           <div className="relative w-full max-w-sm mx-4 bg-surface-base border border-rmpg-600 shadow-2xl animate-fade-in">
             <div

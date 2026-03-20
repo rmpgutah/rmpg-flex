@@ -251,13 +251,18 @@ export default function ServePage() {
       dueDiligenceComplete?: boolean;
       attemptNumber?: number;
       jobStatus?: string;
+      newCallId?: number;
+      newCallNumber?: string;
     }>(`/api/process-server/${attemptJob.id}/attempt`, {
       method: 'POST',
       body: JSON.stringify(data),
     });
     refreshJobs();
+    if (result.newCallId && result.newCallNumber) {
+      addToast(`Auto-dispatch created: Call #${result.newCallNumber}`, 'success');
+    }
     return result;
-  }, [attemptJob, refreshJobs]);
+  }, [attemptJob, refreshJobs, addToast]);
 
   const handleRouteOptimized = useCallback(async (
     orderedJobIds: number[],

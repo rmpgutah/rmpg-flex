@@ -383,7 +383,7 @@ export default function DailyActivityReportsPage() {
 
       {/* ── New DAR Modal ── */}
       {createFormOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title="New Daily Activity Report" icon={Plus}>
               <button onClick={() => setCreateFormOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>

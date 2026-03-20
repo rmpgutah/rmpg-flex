@@ -499,7 +499,7 @@ export default function FieldInterviewsPage() {
 
       {/* Form Modal */}
       {formOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setFormOpen(false)}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" onClick={() => setFormOpen(false)}>
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700" style={{ background: '#141e2b' }}>
               <span className="text-xs font-bold text-white uppercase">{editingFi ? 'Edit' : 'New'} Field Interview</span>

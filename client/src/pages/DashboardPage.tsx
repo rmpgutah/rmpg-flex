@@ -552,7 +552,7 @@ export default function DashboardPage() {
           <div className="border-t border-rmpg-700 px-3 py-2 space-y-1.5">
             <h4 className="text-[10px] font-bold text-rmpg-500 uppercase tracking-wider">Quick Actions</h4>
             <div className="grid grid-cols-2 gap-1.5">
-              <button className={`toolbar-btn toolbar-btn-primary justify-center action-card ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/dispatch')}>
+              <button className={`toolbar-btn toolbar-btn-primary justify-center action-card ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/dispatch?new_call=true')}>
                 <Plus style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> New Call
               </button>
               <button className={`toolbar-btn justify-center action-card ${isMobile ? 'text-xs min-h-[48px]' : 'text-[10px]'}`} onClick={() => navigate('/incidents')}>

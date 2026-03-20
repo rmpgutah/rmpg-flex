@@ -1225,7 +1225,7 @@ router.get('/vehicles/:id/incidents', validateParamId, requireRole('admin', 'man
 router.get('/evidence', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { page = '1', limit = '50', per_page, archived, search, status, type, case_id } = req.query;
+    const { page = '1', limit = '50', per_page, archived, search, status, type, case_id, incident_id } = req.query;
     const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
     const limitNum = Math.min(200, Math.max(1, parseInt((per_page || limit) as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
@@ -1243,6 +1243,11 @@ router.get('/evidence', requireRole('admin', 'manager', 'supervisor', 'officer',
     if (case_id) {
       whereClause += ' AND e.case_id = ?';
       params.push(parseInt(case_id as string, 10));
+    }
+    // Incident ID filter
+    if (incident_id) {
+      whereClause += ' AND e.incident_id = ?';
+      params.push(parseInt(incident_id as string, 10));
     }
     // Status filter
     if (status) {

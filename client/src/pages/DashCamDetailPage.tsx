@@ -1069,8 +1069,8 @@ export default function DashCamDetailPage() {
                     <button key={i}
                       className="flex items-center gap-2 text-[10px] w-full text-left hover:bg-white/5 px-1 py-0.5 rounded-sm"
                       onClick={() => {
-                        if (link.entity_type === 'warrant') navigate(`/warrants/${link.entity_id}`);
-                        else if (link.entity_type === 'citation') navigate(`/citations/${link.entity_id}`);
+                        if (link.entity_type === 'warrant') navigate(`/warrants?select=${link.entity_id}`);
+                        else if (link.entity_type === 'citation') navigate(`/citations?select=${link.entity_id}`);
                       }}>
                       <span className="text-rmpg-500 uppercase font-mono text-[9px]">{link.entity_type}</span>
                       <span className="text-rmpg-200 font-mono">#{link.entity_id}</span>

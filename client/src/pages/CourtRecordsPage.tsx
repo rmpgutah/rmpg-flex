@@ -540,7 +540,7 @@ export default function CourtRecordsPage() {
 
       {/* ── Create Court Event Modal ── */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowCreateModal(false)}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" onClick={() => setShowCreateModal(false)}>
           <div
             className="bg-[#141e2b] border border-[#1e3048] w-full max-w-lg mx-4 shadow-2xl animate-fadeIn"
             onClick={e => e.stopPropagation()}
@@ -704,7 +704,7 @@ export default function CourtRecordsPage() {
 
       {/* ── Outcome Modal ── */}
       {showOutcomeModal !== null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowOutcomeModal(null)}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" onClick={() => setShowOutcomeModal(null)}>
           <div
             className="bg-[#141e2b] border border-[#1e3048] w-full max-w-md mx-4 shadow-2xl animate-fadeIn"
             onClick={e => e.stopPropagation()}

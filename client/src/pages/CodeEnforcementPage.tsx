@@ -445,7 +445,7 @@ export default function CodeEnforcementPage() {
 
       {/* ── New Violation Modal ── */}
       {vFormOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60">
           <div className="panel-surface w-full max-w-lg mx-4">
             <PanelTitleBar title="New Code Violation" icon={Plus}>
               <button onClick={() => setVFormOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
@@ -525,7 +525,7 @@ export default function CodeEnforcementPage() {
 
       {/* ── New Tow Modal ── */}
       {tFormOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60">
           <div className="panel-surface w-full max-w-lg mx-4">
             <PanelTitleBar title="New Tow Order" icon={Truck}>
               <button onClick={() => setTFormOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>

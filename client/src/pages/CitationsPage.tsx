@@ -295,8 +295,20 @@ export default function CitationsPage() {
   const silentRefreshCitations = useCallback(() => fetchCitations({ silent: true }), [fetchCitations]);
   useLiveSync('citations', silentRefreshCitations);
 
-  // ---------- Prefill from dispatch call (URL param) ----------
+  // ---------- Prefill from dispatch call / open create from MDT (URL params) ----------
   useEffect(() => {
+    const newFlag = searchParams.get('new');
+    if (newFlag === 'true') {
+      setSearchParams((prev) => { const next = new URLSearchParams(prev); next.delete('new'); return next; }, { replace: true });
+      setForm({ ...EMPTY_FORM, violation_date: localToday(), violation_time: new Date().toTimeString().slice(0, 5), issuing_officer_name: (user as any)?.full_name || (user as any)?.username || '', badge_number: (user as any)?.badge_number || '' });
+      setPersonSearch('');
+      setSaveError('');
+      setSaveSuccess(false);
+      clearFormErrors();
+      setMode('create');
+      setSelectedCitation(null);
+      return;
+    }
     const callId = searchParams.get('prefill_call_id');
     if (!callId) return;
     // Clear the param immediately so it doesn't re-trigger
@@ -500,8 +512,11 @@ export default function CitationsPage() {
       };
 
       if (mode === 'create') {
-        const res = await apiFetch<{ data: Citation }>('/citations', { method: 'POST', body: JSON.stringify(payload) });
+        const res = await apiFetch<{ data: Citation & { activeWarrants?: any[] } }>('/citations', { method: 'POST', body: JSON.stringify(payload) });
         setSelectedCitation(res.data);
+        if ((res.data as any).activeWarrants?.length > 0) {
+          alert(`WARNING: This person has ${(res.data as any).activeWarrants.length} active warrant(s)!`);
+        }
         setSaveSuccess(true);
         if (saveSuccessTimer.current) clearTimeout(saveSuccessTimer.current);
         saveSuccessTimer.current = setTimeout(() => {

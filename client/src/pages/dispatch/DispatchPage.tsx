@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useId, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus,
   Filter,
@@ -94,6 +94,7 @@ import VehicleFormModal, { type VehicleFormData } from '../../components/Vehicle
 export default function DispatchPage() {
   const unitModalTitleId = useId();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { addToast } = useToast();
   const { subscribe } = useWebSocket();
   const isMobile = useIsMobile();
@@ -152,6 +153,14 @@ export default function DispatchPage() {
   const [isCreatingRecord, setIsCreatingRecord] = useState(false);
   const [serveLink, setServeLink] = useState<any>(null);
   const [sendingToServe, setSendingToServe] = useState(false);
+
+  // Open NewCallModal when navigated with ?new_call=true (e.g. from Dashboard)
+  useEffect(() => {
+    if (searchParams.get('new_call') === 'true') {
+      setShowNewCallModal(true);
+      setSearchParams((prev) => { prev.delete('new_call'); return prev; }, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   // Clean up search timers and abort controllers on unmount
   useEffect(() => {
@@ -322,6 +331,8 @@ export default function DispatchPage() {
 
   // ── Refs for unmount auto-save (avoids stale closures in cleanup) ──
   const callDetailRef = useRef<HTMLDivElement>(null);
+  const prevSelectedCallIdRef = useRef<number | null>(null);
+  const pendingWsCallRef = useRef<CallForService | null>(null); // queued WS update while editing
   const isEditingRef = useRef(isEditing);
   const editDataRef = useRef(editData);
   const selectedCallRef = useRef(selectedCall);
@@ -580,12 +591,20 @@ export default function DispatchPage() {
       } else if (data.action === 'call_updated' && data.call) {
         const mapped = mapDbCall(data.call);
         setCalls((prev) => prev.map((c) => (c.id === mapped.id ? mapped : c)));
-        // Update selected call if it's the one being viewed
-        setSelectedCall((prev) => (prev?.id === mapped.id ? mapped : prev));
+        // Don't replace selectedCall while user is editing — queue for after save
+        if (isEditingRef.current && selectedCallRef.current?.id === mapped.id) {
+          pendingWsCallRef.current = mapped;
+        } else {
+          setSelectedCall((prev) => (prev?.id === mapped.id ? mapped : prev));
+        }
       } else if (data.action === 'call_status_changed' && data.call) {
         const mapped = mapDbCall(data.call);
         setCalls((prev) => prev.map((c) => (c.id === mapped.id ? mapped : c)));
-        setSelectedCall((prev) => (prev?.id === mapped.id ? mapped : prev));
+        if (isEditingRef.current && selectedCallRef.current?.id === mapped.id) {
+          pendingWsCallRef.current = mapped;
+        } else {
+          setSelectedCall((prev) => (prev?.id === mapped.id ? mapped : prev));
+        }
         // Voice alert: announce dispatch event when call dispatched
         if (mapped.status === 'dispatched') {
           announceDispatchEvent(mapped);
@@ -774,7 +793,14 @@ export default function DispatchPage() {
 
   // Fetch linked incidents and activity when a call is selected
   useEffect(() => {
-    if (!selectedCall) { setLinkedIncidents([]); setActivityEntries([]); setCallWarnings([]); setServeLink(null); return; }
+    if (!selectedCall) {
+      prevSelectedCallIdRef.current = null;
+      setLinkedIncidents([]); setActivityEntries([]); setCallWarnings([]); setServeLink(null);
+      return;
+    }
+    // Only reset editing state when switching to a DIFFERENT call, not on same-call WS refreshes
+    if (selectedCall.id === prevSelectedCallIdRef.current) return;
+    prevSelectedCallIdRef.current = selectedCall.id;
     let cancelled = false;
     setIsEditing(false);
     setShowAttachUnitDropdown(false);
@@ -1508,6 +1534,12 @@ export default function DispatchPage() {
   const cancelEditing = () => {
     setIsEditing(false);
     setEditData({});
+    // Apply any queued WS update that arrived while editing
+    if (pendingWsCallRef.current) {
+      const pending = pendingWsCallRef.current;
+      pendingWsCallRef.current = null;
+      setSelectedCall((prev) => (prev?.id === pending.id ? pending : prev));
+    }
   };
 
   const saveEditing = async () => {
@@ -1585,6 +1617,7 @@ export default function DispatchPage() {
       setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? updatedCall : c));
       setSelectedCall(updatedCall);
       setIsEditing(false);
+      pendingWsCallRef.current = null; // save result is fresher than any queued WS update
       addToast(`Call ${updatedCall.call_number} saved`, 'success');
     } catch (err: any) {
       console.error('Failed to save edits:', err);
@@ -4081,7 +4114,7 @@ export default function DispatchPage() {
                         <div
                           key={inc.id || inc.incident_number}
                           className="flex items-center gap-3 px-2 py-1.5 hover:bg-rmpg-700/50 cursor-pointer transition-colors"
-                          onClick={() => navigate(`/incidents/${inc.id}`)}
+                          onClick={() => navigate(`/incidents?select=${inc.id}`)}
                         >
                           <span className="font-mono text-green-400 text-xs font-bold">{inc.incident_number}</span>
                           <span className="text-xs text-rmpg-200 truncate">{formatIncidentType(inc.type || inc.incident_type || '--')}</span>
@@ -4288,7 +4321,7 @@ export default function DispatchPage() {
 
       {/* Quick Template Dialog — minimal address-only dispatch */}
       {quickTemplateData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" style={{ background: 'rgba(0,0,0,0.6)' }} onKeyDown={(e) => { if (e.key === 'Escape') setQuickTemplateData(null); }}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center" role="dialog" aria-modal="true" style={{ background: 'rgba(0,0,0,0.6)' }} onKeyDown={(e) => { if (e.key === 'Escape') setQuickTemplateData(null); }}>
           <form
             className="panel-beveled bg-surface-raised"
             style={{ width: '440px', border: '1px solid #3a5070' }}
@@ -4419,7 +4452,7 @@ export default function DispatchPage() {
 
       {/* Create / Edit Unit Modal */}
       {showCreateUnitModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={unitModalTitleId} style={{ background: 'rgba(0,0,0,0.6)' }}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={unitModalTitleId} style={{ background: 'rgba(0,0,0,0.6)' }}>
           <div className="panel-beveled bg-surface-raised" style={{ width: '420px', border: '1px solid #3a5070' }}>
             <div className="panel-title-bar">
               <div className="flex items-center gap-2">

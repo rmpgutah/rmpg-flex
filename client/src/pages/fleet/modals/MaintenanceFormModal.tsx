@@ -45,7 +45,7 @@ export default function MaintenanceFormModal({ isOpen, mode = 'create', form, on
     onChange({ ...form, [field]: value });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} style={{ background: 'rgba(0,0,0,0.6)' }}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} style={{ background: 'rgba(0,0,0,0.6)' }}>
       <div className="panel-beveled w-[480px] max-h-[80vh] flex flex-col" style={{ background: '#1a2636' }}>
         <PanelTitleBar title={mode === 'edit' ? 'EDIT MAINTENANCE' : 'LOG MAINTENANCE'} icon={Wrench} id={titleId}>
           <button className="toolbar-btn text-[9px]" onClick={onClose}>X</button>

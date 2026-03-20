@@ -114,6 +114,15 @@ const PAGE_TITLES: Record<string, string> = {
   '/training-docs': 'Training Documents',
   '/serve': 'Process Server',
   '/admin': 'Admin',
+  '/body-cameras': 'Body Cameras',
+  '/dash-cameras': 'Dash Cameras',
+  '/skip-tracer': 'Skip Tracer',
+  '/arrest-records': 'Arrest Records',
+  '/forensics-lab': 'Forensic Lab',
+  '/digital-forensics': 'Digital Forensics',
+  '/colorado-doc': 'Colorado DOC Search',
+  '/invoices': 'Invoices',
+  '/court-records': 'Court Records',
 };
 
 // Nav items — items with `children` render a dropdown menu in the toolbar
@@ -662,7 +671,7 @@ export default function Layout() {
       {/* ============================================================ */}
       {!isMobile && (
         <div
-          className="flex items-center relative scan-line"
+          className="flex items-center relative"
           style={{
             height: '52px',
             paddingLeft: isMacElectron ? '78px' : '12px',

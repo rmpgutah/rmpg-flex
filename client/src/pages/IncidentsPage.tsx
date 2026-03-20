@@ -328,7 +328,18 @@ export default function IncidentsPage() {
       try {
         const call = await apiFetch<any>(`/dispatch/calls/${callId}`);
         if (!call) return;
-        const descParts = [call.description, call.notes].filter(Boolean);
+        let notesText = '';
+        if (call.notes) {
+          try {
+            const parsed = JSON.parse(call.notes);
+            if (Array.isArray(parsed)) {
+              notesText = parsed.map((n: any) => n.text || n.content || '').filter(Boolean).join('\n');
+            } else {
+              notesText = call.notes;
+            }
+          } catch { notesText = call.notes || ''; }
+        }
+        const descParts = [call.description, notesText].filter(Boolean);
         setFormPrefillData({
           call_id: call.id,
           incident_type: call.call_type || '',
@@ -2002,7 +2013,7 @@ export default function IncidentsPage() {
 
       {/* Custody Transfer Modal */}
       {custodyTransfer && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setCustodyTransfer(null)}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" onClick={() => setCustodyTransfer(null)}>
           <div
             className="bg-surface-raised border border-rmpg-600 shadow-xl w-[400px] max-w-[95vw]"
             style={{ borderRadius: 2 }}

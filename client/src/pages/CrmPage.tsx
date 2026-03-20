@@ -424,7 +424,7 @@ export default function CrmPage() {
 
       {/* ── Task Modal ────────────────────────────────── */}
       {showTaskModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowTaskModal(false)}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" onClick={() => setShowTaskModal(false)}>
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-lg shadow-xl" onClick={e => e.stopPropagation()}>
             <div className="panel-title-bar flex items-center justify-between">
               <span className="text-xs font-bold text-white">{editingTask ? 'Edit Task' : 'New Task'}</span>
@@ -494,7 +494,7 @@ export default function CrmPage() {
 
       {/* ── Activity Log Modal ────────────────────────── */}
       {showActivityModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowActivityModal(false)}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" onClick={() => setShowActivityModal(false)}>
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
             <div className="panel-title-bar flex items-center justify-between">
               <span className="text-xs font-bold text-white">Log Activity</span>

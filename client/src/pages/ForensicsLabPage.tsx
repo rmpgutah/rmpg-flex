@@ -1052,7 +1052,7 @@ export default function ForensicsLabPage() {
   // ── Create Case Modal ──────────────────────────────────────
 
   const createModal = showCreate && (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.6)' }}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.6)' }}>
       <div
         className="w-full max-w-lg rounded-sm overflow-hidden"
         style={{ background: '#141e2b', border: '1px solid #1e3048' }}

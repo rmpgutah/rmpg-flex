@@ -1150,7 +1150,7 @@ export default function AdminSystemTab({
     if (!deletingUnitId) return null;
     const unitName = adminUnits.find((u) => u.id === deletingUnitId)?.call_sign || '';
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60">
         <div className="bg-rmpg-800 border border-rmpg-600 p-6 max-w-md w-full mx-4">
           <h3 className="text-sm font-bold text-white mb-2">Delete Dispatch Unit</h3>
           <p className="text-xs text-rmpg-300 mb-4">

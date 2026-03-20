@@ -180,9 +180,9 @@ export default function EvidencePropertyPage() {
       return next;
     }, { replace: true });
     setNewEvidence({
-      description: '', evidence_type: 'other', category: '', storage_location: location,
+      description: '', evidence_type: 'other', category: '', storage_location: '',
       serial_number: '', brand: '', model: '', estimated_value: '',
-      collected_date: '', notes: '', incident_id: incidentId,
+      collected_date: '', notes: location ? `Collection location: ${location}` : '', incident_id: incidentId,
     });
     setNewEvidenceOpen(true);
   }, [searchParams]);
@@ -740,7 +740,7 @@ export default function EvidencePropertyPage() {
 
       {/* ── Chain of Custody Action Modal ── */}
       {chainModalOpen && selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setChainModalOpen(false)}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70" onClick={() => setChainModalOpen(false)}>
           <div className="bg-surface-base border border-rmpg-700 rounded-lg shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700 bg-surface-raised">
               <div className="flex items-center gap-2">
@@ -802,7 +802,7 @@ export default function EvidencePropertyPage() {
 
       {/* ── New Evidence Modal ── */}
       {newEvidenceOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setNewEvidenceOpen(false)}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70" onClick={() => setNewEvidenceOpen(false)}>
           <div className="bg-surface-base border border-rmpg-700 rounded-lg shadow-xl w-full max-w-lg mx-4 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700 bg-surface-raised">
               <div className="flex items-center gap-2">
