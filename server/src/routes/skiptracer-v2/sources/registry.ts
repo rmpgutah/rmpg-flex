@@ -7,34 +7,52 @@
 import type { DataSource } from '../types';
 
 // --- Import source adapters ---
+import RapidApiSource from './rapidapi';
+import LocalDbSource from './localDb';
 import OfacSource from './ofac';
+import ArrestsSource from './arrests';
+import MicrobiltSource from './microbilt';
+import CourtListenerSource from './courtListener';
+import FbiWantedSource from './fbiWanted';
+import FccUlsSource from './fccUls';
+import OpenCorporatesSource from './openCorporates';
 import UtahCourtsSource from './utahCourts';
 import SlcAssessorSource from './slcAssessor';
 import NsopwSource from './nsopw';
 import UtahBusinessSource from './utahBusiness';
 import UtahDoplSource from './utahDOPL';
+import UsernameSearchSource from './usernameSearch';
 
 /** All registered data source adapters */
-const allSources: DataSource[] = [
+const sources: DataSource[] = [
+  new RapidApiSource(),
+  new LocalDbSource(),
   new OfacSource(),
+  new ArrestsSource(),
+  new MicrobiltSource(),
+  new CourtListenerSource(),
+  new FbiWantedSource(),
+  new FccUlsSource(),
+  new OpenCorporatesSource(),
   new UtahCourtsSource(),
   new SlcAssessorSource(),
   new NsopwSource(),
   new UtahBusinessSource(),
   new UtahDoplSource(),
+  new UsernameSearchSource(),
 ];
 
 /** Return every registered source (enabled or not). */
 export function getAllSources(): DataSource[] {
-  return allSources;
+  return sources;
 }
 
 /** Return only sources that are both enabled and configured. */
 export function getEnabledSources(): DataSource[] {
-  return allSources.filter(s => s.isEnabled() && s.isConfigured());
+  return sources.filter(s => s.isEnabled() && s.isConfigured());
 }
 
-/** Register a new source adapter. Called by each adapter module on import. */
-export function registerSource(source: DataSource): void {
-  allSources.push(source);
+/** Find a source by its unique name identifier. */
+export function getSourceByName(name: string): DataSource | undefined {
+  return sources.find(s => s.name === name);
 }
