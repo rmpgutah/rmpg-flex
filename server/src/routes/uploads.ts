@@ -12,10 +12,11 @@ import { validateParamId } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
 import config from '../config';
 
-// Rate limiter for file uploads — prevent abuse/DoS via large uploads
+// Rate limiter for file uploads — allows chunked parallel uploads (4-6 workers × many chunks)
+// A 3GB file = ~300 chunks, uploaded 6-at-a-time = ~300 requests per upload session
 const uploadRateLimit = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutes
-  maxRequests: 30,           // 30 uploads per 5 minutes per user
+  maxRequests: 600,          // 600 uploads per 5 minutes per user (supports chunked parallel)
   keyGenerator: (req) => `upload:${req.user?.userId || req.ip || 'unknown'}`,
   message: 'Too many file uploads. Please try again later.',
 });
@@ -165,7 +166,7 @@ function verifyMagicBytes(filePath: string, ext: string): boolean {
   }
 }
 
-const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
+const MAX_FILE_SIZE = 3 * 1024 * 1024 * 1024; // 3GB
 
 // Configure multer storage
 const storage = multer.diskStorage({
@@ -298,10 +299,11 @@ function authenticateTokenOrQuery(req: Request, res: Response, next: NextFunctio
   }
 }
 
-// Rate limiter for file downloads — prevent bulk data exfiltration via file enumeration
+// Rate limiter for file downloads — allows Range requests, thumbnails, and bulk access
+// Officers may access 50+ thumbnails + download several large files in quick succession
 const downloadRateLimit = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutes
-  maxRequests: 100,          // 100 downloads per 5 minutes per user/IP
+  maxRequests: 500,          // 500 downloads per 5 minutes per user/IP
   keyGenerator: (req) => `download:${req.user?.userId || req.ip || 'unknown'}`,
   message: 'Too many file download requests. Please try again later.',
 });
@@ -379,7 +381,54 @@ router.get('/sign/:fileId', authenticateToken, (req: Request, res: Response) => 
 // File-serving routes use flexible auth (header OR query param)
 // This allows <img src="...">, <iframe src="...">, and <a href="..."> to work
 
-// ─── GET /api/uploads/:fileId ─── Serve/inline a file ───
+/** Shared Range-aware streaming file server.
+ *  Supports HTTP 206 Partial Content for resumable downloads and video seeking. */
+function serveFileWithRange(
+  req: Request, res: Response,
+  filePath: string, mimeType: string, disposition: 'inline' | 'attachment', originalName: string,
+): void {
+  const stat = fs.statSync(filePath);
+  const fileSize = stat.size;
+  const range = req.headers.range;
+
+  setFileSecurityHeaders(res);
+  res.set('Accept-Ranges', 'bytes');
+  res.set('Cache-Control', 'private, max-age=300');
+
+  if (range) {
+    const parts = range.replace(/bytes=/, '').split('-');
+    const start = parseInt(parts[0], 10);
+    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+    if (isNaN(start) || isNaN(end) || start < 0 || end >= fileSize || start > end) {
+      res.writeHead(416, { 'Content-Range': `bytes */${fileSize}` });
+      res.end();
+      return;
+    }
+
+    const chunkSize = end - start + 1;
+    res.writeHead(206, {
+      'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+      'Content-Length': chunkSize,
+      'Content-Type': mimeType,
+      'Content-Disposition': safeContentDisposition(disposition, originalName),
+    });
+    const stream = fs.createReadStream(filePath, { start, end, highWaterMark: 1024 * 1024 });
+    stream.on('error', (err) => { console.error('File stream error:', err?.message); res.destroy(); });
+    stream.pipe(res);
+  } else {
+    res.writeHead(200, {
+      'Content-Length': fileSize,
+      'Content-Type': mimeType,
+      'Content-Disposition': safeContentDisposition(disposition, originalName),
+    });
+    const stream = fs.createReadStream(filePath, { highWaterMark: 1024 * 1024 });
+    stream.on('error', (err) => { console.error('File stream error:', err?.message); res.destroy(); });
+    stream.pipe(res);
+  }
+}
+
+// ─── GET /api/uploads/:fileId ─── Serve/inline a file (Range-aware) ───
 router.get('/:fileId', downloadRateLimit, authenticateTokenOrQuery, (req: Request, res: Response) => {
   try {
     const db = getDb();
@@ -397,28 +446,18 @@ router.get('/:fileId', downloadRateLimit, authenticateTokenOrQuery, (req: Reques
       return;
     }
 
-    // Validate stored MIME type is still in the allowed list — defense against
-    // DB tampering where an attacker modifies the mime_type to bypass Content-Type restrictions
     const serveMime = ALLOWED_TYPES.has(attachment.mime_type)
       ? attachment.mime_type
-      : 'application/octet-stream'; // Fall back to binary download if MIME was tampered
+      : 'application/octet-stream';
 
-    // Set appropriate headers + security hardening for served files
-    setFileSecurityHeaders(res);
-    res.set('Content-Type', serveMime);
-    res.set('Content-Disposition', safeContentDisposition('inline', attachment.original_name));
-    res.set('Content-Length', String(attachment.file_size));
-    // Allow browser caching for 5 minutes
-    res.set('Cache-Control', 'private, max-age=300');
-
-    res.sendFile(filePath);
+    serveFileWithRange(req, res, filePath, serveMime, 'inline', attachment.original_name);
   } catch (error: any) {
     console.error('Download error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Download failed' });
   }
 });
 
-// ─── GET /api/uploads/:fileId/download ─── Force download ───
+// ─── GET /api/uploads/:fileId/download ─── Force download (Range-aware) ───
 router.get('/:fileId/download', downloadRateLimit, authenticateTokenOrQuery, (req: Request, res: Response) => {
   try {
     const db = getDb();
@@ -436,17 +475,14 @@ router.get('/:fileId/download', downloadRateLimit, authenticateTokenOrQuery, (re
       return;
     }
 
-    setFileSecurityHeaders(res);
-    res.set('Content-Type', 'application/octet-stream');
-    res.set('Content-Disposition', safeContentDisposition('attachment', attachment.original_name));
-    res.sendFile(filePath);
+    serveFileWithRange(req, res, filePath, 'application/octet-stream', 'attachment', attachment.original_name);
   } catch (error: any) {
     console.error('Download error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Download failed' });
   }
 });
 
-// ─── GET /api/uploads/:fileId/thumbnail ─── Serve image thumbnail (same as inline but with aggressive caching) ───
+// ─── GET /api/uploads/:fileId/thumbnail ─── Serve image thumbnail (Range-aware, aggressive caching) ───
 router.get('/:fileId/thumbnail', authenticateTokenOrQuery, (req: Request, res: Response) => {
   try {
     const db = getDb();
@@ -457,7 +493,6 @@ router.get('/:fileId/thumbnail', authenticateTokenOrQuery, (req: Request, res: R
       return;
     }
 
-    // Only serve images as thumbnails
     if (!attachment.mime_type.startsWith('image/')) {
       res.status(400).json({ error: 'Not an image' });
       return;
@@ -470,13 +505,9 @@ router.get('/:fileId/thumbnail', authenticateTokenOrQuery, (req: Request, res: R
       return;
     }
 
-    setFileSecurityHeaders(res);
-    res.set('Content-Type', attachment.mime_type);
-    res.set('Content-Disposition', safeContentDisposition('inline', attachment.original_name));
-    res.set('Content-Length', String(attachment.file_size));
-    res.set('Cache-Control', 'private, max-age=600');
-
-    res.sendFile(filePath);
+    // Use longer cache for thumbnails (10 min) and stream with Range support
+    res.set('Cache-Control', 'private, max-age=600, immutable');
+    serveFileWithRange(req, res, filePath, attachment.mime_type, 'inline', attachment.original_name);
   } catch (error: any) {
     console.error('Thumbnail error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Thumbnail failed' });
@@ -494,6 +525,258 @@ const ALLOWED_ENTITY_TYPES = new Set([
   'company_document', 'evidence', 'training', 'attachment', 'crm_lead',
   'crm_proposal', 'connection', 'offender', 'property',
 ]);
+
+// ─── Chunked Upload System ──────────────────────────────
+// For files > CHUNK_THRESHOLD (50MB), the client splits the file into chunks
+// and uploads them in parallel. This provides:
+// 1. Resumability — failed chunks can be retried without re-uploading the whole file
+// 2. Parallelism — multiple chunks upload simultaneously for faster throughput
+// 3. Memory efficiency — server writes chunks to disk incrementally
+
+const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks
+const CHUNK_DIR = path.join(UPLOAD_DIR, '.chunks');
+if (!fs.existsSync(CHUNK_DIR)) fs.mkdirSync(CHUNK_DIR, { recursive: true });
+
+// Track active chunked uploads in memory (cleaned up on finalize or timeout)
+const activeChunkedUploads = new Map<string, {
+  userId: number;
+  originalName: string;
+  mimeType: string;
+  totalSize: number;
+  totalChunks: number;
+  receivedChunks: Set<number>;
+  entityType?: string;
+  entityId?: number;
+  createdAt: number;
+}>();
+
+// Clean up stale chunked uploads every 30 minutes
+setInterval(() => {
+  const cutoff = Date.now() - 2 * 60 * 60 * 1000; // 2 hours
+  for (const [uploadId, info] of activeChunkedUploads) {
+    if (info.createdAt < cutoff) {
+      activeChunkedUploads.delete(uploadId);
+      const chunkDir = path.join(CHUNK_DIR, uploadId);
+      try { fs.rmSync(chunkDir, { recursive: true, force: true }); } catch { /* ignore */ }
+    }
+  }
+}, 30 * 60 * 1000);
+
+// Multer for single chunk uploads (raw binary)
+const chunkStorage = multer.diskStorage({
+  destination: (req, _file, cb) => {
+    const uploadId = req.params.uploadId;
+    const dir = path.join(CHUNK_DIR, uploadId);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, _file, cb) => {
+    const chunkIndex = req.params.chunkIndex;
+    cb(null, `chunk-${chunkIndex}`);
+  },
+});
+const chunkUpload = multer({ storage: chunkStorage, limits: { fileSize: CHUNK_SIZE + 1024 } });
+
+// POST /api/uploads/chunked/init — Initialize a chunked upload session
+router.post('/chunked/init', uploadRateLimit, (req: Request, res: Response) => {
+  try {
+    const { fileName, fileSize, mimeType, totalChunks, entityType, entityId } = req.body;
+
+    if (!fileName || !fileSize || !totalChunks) {
+      res.status(400).json({ error: 'fileName, fileSize, and totalChunks are required' });
+      return;
+    }
+
+    if (fileSize > MAX_FILE_SIZE) {
+      res.status(400).json({ error: `File too large. Maximum size is ${Math.round(MAX_FILE_SIZE / (1024 * 1024 * 1024))} GB` });
+      return;
+    }
+
+    // Validate entity_type
+    if (entityType && !ALLOWED_ENTITY_TYPES.has(entityType)) {
+      res.status(400).json({ error: 'Invalid entity_type' });
+      return;
+    }
+
+    // Check for blocked extensions
+    const ext = path.extname(fileName).toLowerCase();
+    if (BLOCKED_EXTENSIONS.has(ext)) {
+      res.status(400).json({ error: `File type "${ext}" is not allowed for security reasons` });
+      return;
+    }
+
+    // Validate MIME type
+    if (mimeType && !ALLOWED_TYPES.has(mimeType)) {
+      res.status(400).json({ error: `File type ${mimeType} is not allowed` });
+      return;
+    }
+
+    const uploadId = crypto.randomUUID();
+    activeChunkedUploads.set(uploadId, {
+      userId: req.user!.userId,
+      originalName: fileName,
+      mimeType: mimeType || 'application/octet-stream',
+      totalSize: fileSize,
+      totalChunks,
+      receivedChunks: new Set(),
+      entityType: entityType || undefined,
+      entityId: entityId ? parseInt(entityId, 10) : undefined,
+      createdAt: Date.now(),
+    });
+
+    // Create chunk directory
+    const dir = path.join(CHUNK_DIR, uploadId);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+    res.status(201).json({ uploadId, chunkSize: CHUNK_SIZE });
+  } catch (error: any) {
+    console.error('Chunked init error:', error?.message);
+    res.status(500).json({ error: 'Failed to initialize upload' });
+  }
+});
+
+// POST /api/uploads/chunked/:uploadId/:chunkIndex — Upload a single chunk
+router.post('/chunked/:uploadId/:chunkIndex', uploadRateLimit, chunkUpload.single('chunk'), (req: Request, res: Response) => {
+  try {
+    const { uploadId, chunkIndex } = req.params;
+    const info = activeChunkedUploads.get(uploadId);
+
+    if (!info) {
+      res.status(404).json({ error: 'Upload session not found or expired' });
+      return;
+    }
+
+    if (info.userId !== req.user!.userId) {
+      res.status(403).json({ error: 'Not authorized for this upload session' });
+      return;
+    }
+
+    const idx = parseInt(chunkIndex, 10);
+    if (isNaN(idx) || idx < 0 || idx >= info.totalChunks) {
+      res.status(400).json({ error: 'Invalid chunk index' });
+      return;
+    }
+
+    info.receivedChunks.add(idx);
+
+    res.json({
+      received: idx,
+      total: info.totalChunks,
+      remaining: info.totalChunks - info.receivedChunks.size,
+    });
+  } catch (error: any) {
+    console.error('Chunk upload error:', error?.message);
+    res.status(500).json({ error: 'Chunk upload failed' });
+  }
+});
+
+// POST /api/uploads/chunked/:uploadId/finalize — Reassemble chunks into final file
+router.post('/chunked/:uploadId/finalize', (req: Request, res: Response) => {
+  try {
+    const { uploadId } = req.params;
+    const info = activeChunkedUploads.get(uploadId);
+
+    if (!info) {
+      res.status(404).json({ error: 'Upload session not found or expired' });
+      return;
+    }
+
+    if (info.userId !== req.user!.userId) {
+      res.status(403).json({ error: 'Not authorized for this upload session' });
+      return;
+    }
+
+    // Verify all chunks received
+    if (info.receivedChunks.size !== info.totalChunks) {
+      const missing = [];
+      for (let i = 0; i < info.totalChunks; i++) {
+        if (!info.receivedChunks.has(i)) missing.push(i);
+      }
+      res.status(400).json({ error: 'Missing chunks', missing, received: info.receivedChunks.size, total: info.totalChunks });
+      return;
+    }
+
+    // Create destination directory (year/month)
+    const now = new Date();
+    const destDir = path.join(UPLOAD_DIR, `${now.getFullYear()}`, String(now.getMonth() + 1).padStart(2, '0'));
+    if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+
+    const ext = path.extname(info.originalName).toLowerCase();
+    const finalName = `${crypto.randomUUID()}${ext}`;
+    const finalPath = path.join(destDir, finalName);
+
+    // Reassemble chunks into final file
+    const chunkDir = path.join(CHUNK_DIR, uploadId);
+    const writeStream = fs.createWriteStream(finalPath);
+
+    for (let i = 0; i < info.totalChunks; i++) {
+      const chunkPath = path.join(chunkDir, `chunk-${i}`);
+      const data = fs.readFileSync(chunkPath);
+      writeStream.write(data);
+    }
+    writeStream.end();
+
+    writeStream.on('finish', () => {
+      // Verify magic bytes on the reassembled file
+      if (!verifyMagicBytes(finalPath, ext)) {
+        try { fs.unlinkSync(finalPath); } catch { /* ignore */ }
+        try { fs.rmSync(chunkDir, { recursive: true, force: true }); } catch { /* ignore */ }
+        activeChunkedUploads.delete(uploadId);
+        console.warn(`[Upload] BLOCKED — magic byte mismatch for chunked upload ${info.originalName} from user ${info.userId}`);
+        res.status(400).json({ error: `File content does not match its file type` });
+        return;
+      }
+
+      // Get actual file size
+      const actualSize = fs.statSync(finalPath).size;
+
+      // Insert into attachments
+      const db = getDb();
+      const fileId = crypto.randomUUID();
+      const relativePath = path.relative(UPLOAD_DIR, finalPath);
+
+      db.prepare(`
+        INSERT INTO attachments (
+          file_id, original_name, stored_name, file_path, mime_type, file_size,
+          entity_type, entity_id, uploaded_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        fileId, info.originalName, finalName, relativePath,
+        info.mimeType, actualSize,
+        info.entityType || null, info.entityId || null, info.userId,
+      );
+
+      const attachment = db.prepare('SELECT * FROM attachments WHERE file_id = ?').get(fileId);
+
+      // Log the upload
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'file_uploaded', ?, ?, ?, ?)
+      `).run(
+        info.userId,
+        info.entityType || 'attachment',
+        info.entityId || null,
+        `Uploaded (chunked): ${info.originalName} (${info.totalChunks} chunks)`,
+        req.ip || 'unknown',
+      );
+
+      // Clean up chunks
+      try { fs.rmSync(chunkDir, { recursive: true, force: true }); } catch { /* ignore */ }
+      activeChunkedUploads.delete(uploadId);
+
+      res.status(201).json(attachment);
+    });
+
+    writeStream.on('error', (err) => {
+      console.error('Chunk reassembly error:', err?.message);
+      try { fs.unlinkSync(finalPath); } catch { /* ignore */ }
+      res.status(500).json({ error: 'Failed to reassemble file' });
+    });
+  } catch (error: any) {
+    console.error('Finalize error:', error?.message);
+    res.status(500).json({ error: 'Finalize failed' });
+  }
+});
 
 // ─── POST /api/uploads ─── Upload one or more files ───
 router.post('/', uploadRateLimit, upload.array('files', 10), (req: Request, res: Response) => {

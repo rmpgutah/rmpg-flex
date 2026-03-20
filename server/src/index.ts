@@ -4,6 +4,7 @@ process.env.TZ = process.env.SERVER_TIMEZONE || 'America/Denver';
 
 import express from 'express';
 import cors from 'cors';
+import compression from 'compression';
 import path from 'path';
 import fs from 'fs';
 import http from 'http';
@@ -326,6 +327,27 @@ app.post('/api/webhook/github', webhookRateLimit, express.raw({ type: 'applicati
   });
   child.unref();
 });
+
+// ─── Response Compression (gzip/brotli) ─────────────────
+// Compresses JSON, HTML, CSS, JS, and text responses.
+// Skips binary files (images, videos, PDFs) that are already compressed.
+app.use(compression({
+  level: 6,
+  threshold: 1024, // Only compress responses > 1KB
+  filter: (req, res) => {
+    // Skip compression for file downloads (already compressed or binary)
+    const contentType = res.getHeader('Content-Type');
+    if (typeof contentType === 'string') {
+      if (contentType.startsWith('image/') ||
+          contentType.startsWith('video/') ||
+          contentType.startsWith('audio/') ||
+          contentType === 'application/octet-stream') {
+        return false;
+      }
+    }
+    return compression.filter(req, res);
+  },
+}));
 
 // JSON body parser with prototype pollution protection at parse level
 // The reviver rejects __proto__ keys before they reach application code

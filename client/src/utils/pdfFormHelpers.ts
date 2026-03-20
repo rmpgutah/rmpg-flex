@@ -9,6 +9,7 @@ import jsPDF from 'jspdf';
 import {
   COLOR, FONT, BORDER, SPACING, LAYOUT,
   getGridStartX, getGridContentWidth,
+  getBaselineOffset,
   type RGBColor,
 } from './pdfTokens';
 
@@ -132,8 +133,8 @@ export function drawFormCell(
 
     // Center value text baseline in the value area
     const fontSize = cell.valueFontSize || FONT.SIZE_FORM_CELL_VALUE;
-    const textH = fontSize * 0.35;  // Approximate cap height in mm
-    const valueY = valueAreaTop + (valueAreaH + textH) / 2;
+    const baseOff = getBaselineOffset(fontSize);
+    const valueY = valueAreaTop + valueAreaH / 2 + baseOff;
     const maxW = w - 2 * pad;
 
     if (cell.align === 'center') {
@@ -443,7 +444,7 @@ export function drawFormSection(
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_SECTION_TITLE);
     doc.setTextColor(...COLOR.TEXT_INVERTED);
-    const textY = curY + bannerH / 2 + FONT.SIZE_SECTION_TITLE * 0.14;
+    const textY = curY + bannerH / 2 + getBaselineOffset(FONT.SIZE_SECTION_TITLE);
     doc.text(config.sideTab.label.toUpperCase(), gridX + SPACING.CONTENT_INSET + 1, textY);
     curY += bannerH;
   }

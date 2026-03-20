@@ -814,7 +814,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.setTextColor(190, 190, 195);
       doc.text(f.label, fx, barY + 3.5);
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7);
+      doc.setFontSize(FONT.SIZE_REPORT_TYPE);
       doc.setTextColor(255, 255, 255);
       // Clip text to fit within column width
       const val = f.value || '—';
@@ -828,7 +828,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.setTextColor(140, 140, 140);
       doc.text('CONTRACT ID', LAYOUT.PAGE_MARGIN + 3, barY + 12);
       doc.setFont('courier', 'bold');
-      doc.setFontSize(8);
+      doc.setFontSize(FONT.SIZE_SECTION_TITLE);
       doc.setTextColor(255, 255, 255);
       doc.text(data.contract_id || '', LAYOUT.PAGE_MARGIN + 3, barY + 16);
     }
@@ -1298,7 +1298,7 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
 
     if (step > 1) {
-      doc.setFontSize(5);
+      doc.setFontSize(FONT.SIZE_SMALL_META);
       doc.setTextColor(...COLOR.TEXT_TERTIARY);
       doc.text(`Showing ${sampled.length} of ${trail.points.length} breadcrumb points (sampled every ${step} points)`, lx, y + 1);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);

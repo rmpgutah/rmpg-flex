@@ -9,7 +9,7 @@
 import jsPDF from 'jspdf';
 import { loadLogoDarkBase64, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
 import { fetchPdfBranding, DEFAULT_PDF_BRANDING } from './pdfGenerator';
-import { COLOR, FONT, BORDER, SPACING, LAYOUT } from './pdfTokens';
+import { COLOR, FONT, BORDER, SPACING, LAYOUT, getBaselineOffset } from './pdfTokens';
 
 // ── Types matching the server patrol-tracking response ──────
 
@@ -162,13 +162,13 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
 
       const textX = logoB64 ? margin + 14 : margin;
       doc.setTextColor(255, 255, 255);
-      doc.setFontSize(9);
+      doc.setFontSize(FONT.SIZE_CASE_NUMBER);
       doc.setFont('helvetica', 'bold');
       doc.text(branding.report_header_text, textX, 6);
-      doc.setFontSize(6.5);
+      doc.setFontSize(FONT.SIZE_SUBHEADER);
       doc.setFont('helvetica', 'normal');
       doc.text('PATROL DIVISION', textX, 10);
-      doc.setFontSize(7);
+      doc.setFontSize(FONT.SIZE_UNIT_STATS);
       doc.text(`PATROL TRACKING REPORT  |  ${formNum}  |  ${FORM_REVISION}`, pageW - margin, 9, { align: 'right' });
 
       // Accent strip
@@ -197,9 +197,9 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     doc.setFillColor(55, 60, 72);
     doc.rect(margin, yPos, contentW, barH, 'F');
     doc.setTextColor(255, 255, 255);
-    doc.setFontSize(9);
+    doc.setFontSize(FONT.SIZE_CASE_NUMBER);
     doc.setFont('helvetica', 'bold');
-    doc.text(title.toUpperCase(), margin + SPACING.CONTENT_INSET, yPos + barH / 2 + 1.2);
+    doc.text(title.toUpperCase(), margin + SPACING.CONTENT_INSET, yPos + barH / 2 + getBaselineOffset(FONT.SIZE_CASE_NUMBER));
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     yPos += barH + 3;
@@ -213,11 +213,11 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     doc.setLineWidth(BORDER.TABLE_ROW * 3);
     doc.line(margin, yPos + 5, margin + contentW, yPos + 5);
     doc.setTextColor(255, 255, 255);
-    doc.setFontSize(6);
+    doc.setFontSize(FONT.SIZE_CHART_LEGEND);
     doc.setFont('helvetica', 'bold');
     let xOff = margin;
     for (const col of cols) {
-      doc.text(col.label, xOff + 1, yPos + 3.5);
+      doc.text(col.label, xOff + 1, yPos + 2.5 + getBaselineOffset(FONT.SIZE_CHART_LEGEND));
       xOff += col.w;
     }
     doc.setFont('helvetica', 'normal');
@@ -260,22 +260,22 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   // Bold centered agency name
   const titleY = logoB64 ? 42 : 18;
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  doc.setFontSize(18);
+  doc.setFontSize(FONT.SIZE_COVER_TITLE);
   doc.setFont('helvetica', 'bold');
   doc.text(branding.report_header_text, pageW / 2, titleY, { align: 'center' });
 
-  doc.setFontSize(10);
+  doc.setFontSize(FONT.SIZE_COVER_SUBTITLE);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
   doc.text(branding.report_subheader_text, pageW / 2, titleY + 6, { align: 'center' });
 
   // Bold report title
-  doc.setFontSize(14);
+  doc.setFontSize(FONT.SIZE_BANNER);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(...primaryRgb);
   doc.text('PATROL TRACKING REPORT', pageW / 2, titleY + 14, { align: 'center' });
 
-  doc.setFontSize(7);
+  doc.setFontSize(FONT.SIZE_UNIT_STATS);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...COLOR.TEXT_MUTED);
   doc.text(`${formNum}  |  ${FORM_REVISION}`, pageW / 2, titleY + 19, { align: 'center' });
@@ -294,7 +294,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
 
   // Report metadata
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  doc.setFontSize(9);
+  doc.setFontSize(FONT.SIZE_CASE_NUMBER);
   doc.setFont('helvetica', 'normal');
 
   const startLabel = data.query.startDate
@@ -335,14 +335,14 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     doc.setLineWidth(0.2);
     doc.line(margin, yPos + 6, margin + contentW, yPos + 6);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    doc.setFontSize(8);
+    doc.setFontSize(FONT.SIZE_UNIT_HEADER);
     doc.setFont('helvetica', 'bold');
     doc.text(`${trail.call_sign}  —  ${trail.officer_name}  (Badge: ${trail.badge_number || 'N/A'})`, margin + 5, yPos + 4.2);
     yPos += 8;
 
     // Stats grid
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
-    doc.setFontSize(7);
+    doc.setFontSize(FONT.SIZE_UNIT_STATS);
     doc.setFont('helvetica', 'normal');
 
     const stats = trail.stats;
@@ -501,7 +501,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
 
       drawColumnHeaders(rCols);
 
-      doc.setFontSize(6);
+      doc.setFontSize(FONT.SIZE_CHART_LEGEND);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
       for (let si = 0; si < trail.response_segments.length; si++) {
@@ -553,7 +553,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
 
       drawColumnHeaders(zCols);
 
-      doc.setFontSize(6);
+      doc.setFontSize(FONT.SIZE_CHART_LEGEND);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
       // Sort by time spent descending

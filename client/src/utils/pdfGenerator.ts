@@ -18,6 +18,7 @@ import {
   getContentWidth, getHalfWidth, getFullFieldWidth,
   getLeftX, getRightColumnX, getHalfFieldWidth, getThirdWidth, getQuarterWidth,
   getGridStartX, getGridContentWidth,
+  getBaselineOffset, getLineHeight,
 } from './pdfTokens';
 import {
   drawFormSection, drawFormGrid, drawFormCell, drawFormRow,
@@ -335,8 +336,8 @@ export function openAutoSection(doc: jsPDF, title: string, y: number): { content
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SECTION_TITLE);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
-  // Vertically centered in header bar: baseline ≈ midpoint + half ascent
-  const sectionTextY = y + SPACING.SECTION_HEADER_H / 2 + FONT.SIZE_SECTION_TITLE * 0.14;
+  // Vertically centered in header bar using baseline offset
+  const sectionTextY = y + SPACING.SECTION_HEADER_H / 2 + getBaselineOffset(FONT.SIZE_SECTION_TITLE);
   doc.text(title.toUpperCase(), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, sectionTextY);
 
   // Reset text color to primary (black) — prevents white text leaking into content
@@ -415,18 +416,18 @@ export function addBoxedSection(doc: jsPDF, title: string, y: number, _height: n
 export function addFieldPair(doc: jsPDF, label: string, value: string, x: number, y: number, width: number): number {
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
-  const labelH = 3;          // Height reserved for floating label above box
-  const baseBoxH = 7;        // Minimum value box height
-  const innerPad = 1.5;      // Horizontal padding inside box
+  const labelH = SPACING.FIELD_LABEL_H;
+  const baseBoxH = SPACING.FIELD_ROW_HEIGHT;
+  const innerPad = SPACING.FIELD_INNER_PAD;
   const maxW = width - 2 * innerPad;
-  const lineStep = 3.5;      // Y-step per extra line of value text
-  const maxLines = 4;        // Cap at 4 lines
+  const lineStep = getLineHeight(FONT.SIZE_FIELD_VALUE);
+  const maxLines = 4;
 
-  // Floating label above the box
+  // Floating label above the box — baseline-aware vertical positioning
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_FIELD_LABEL);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
-  doc.text(label.toUpperCase(), x + innerPad, y + 2);
+  doc.text(label.toUpperCase(), x + innerPad, y + labelH / 2 + getBaselineOffset(FONT.SIZE_FIELD_LABEL));
 
   // Determine value text and line count — Courier for values
   doc.setFont('courier', 'normal');
@@ -449,12 +450,12 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   doc.setLineWidth(BORDER.FIELD);
   doc.rect(x, boxY, width, boxH);
 
-  // Value text — vertically centered in box
+  // Value text — vertically centered in box using baseline offset
   const valColor = isEmpty ? COLOR.TEXT_TERTIARY : COLOR.TEXT_PRIMARY;
   doc.setTextColor(valColor[0], valColor[1], valColor[2]);
 
   const textBlockH = lines.length * lineStep;
-  const textStartY = boxY + (boxH - textBlockH) / 2 + lineStep * 0.72;
+  const textStartY = boxY + (boxH - textBlockH) / 2 + getBaselineOffset(FONT.SIZE_FIELD_VALUE) + lineStep * 0.5;
   let lineY = textStartY;
   for (const line of lines) {
     doc.text(line, x + innerPad, lineY);
@@ -464,7 +465,7 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   // Reset text color
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
-  return y + labelH + boxH + 1; // label + box + gap between rows
+  return y + labelH + boxH + SPACING.FIELD_GAP;
 }
 
 /**
@@ -576,7 +577,7 @@ export function addFlagBadges(
 
     // Draw text (white on colored bg)
     doc.setTextColor(255, 255, 255);
-    const textY = curY + pillH / 2 + fontSize * 0.14;
+    const textY = curY + pillH / 2 + getBaselineOffset(fontSize);
     doc.text(text, curX + pillPadX, textY);
 
     curX += pillW + pillGapX;
@@ -604,22 +605,24 @@ export function addCautionBlock(
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
 
-  const innerPad = 2;
-  const maxW = width - innerPad * 2;
+  const innerPad = SPACING.TABLE_CELL_PAD;
+  const accentW = 2;
+  const textInset = innerPad + accentW;
+  const maxW = width - textInset - innerPad;
   doc.setFont('courier', 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   const allLines = doc.splitTextToSize(cautionText, maxW);
   const lines = allLines.slice(0, 6);
   if (allLines.length > 6) lines[5] = lines[5].length > 3 ? lines[5].slice(0, -3) + '...' : '...';
-  const lineH = 3.5;
-  const boxH = Math.max(8, lines.length * lineH + 4);
+  const lineH = getLineHeight(FONT.SIZE_FIELD_VALUE);
+  const boxH = Math.max(8, lines.length * lineH + SPACING.CAUTION_TEXT_Y + SPACING.MD);
 
   // Amber warning background
   doc.setFillColor(255, 248, 230);
   doc.rect(x, y, width, boxH, 'F');
   // Orange left accent bar
   doc.setFillColor(200, 80, 10);
-  doc.rect(x, y, 2, boxH, 'F');
+  doc.rect(x, y, accentW, boxH, 'F');
   // Border
   doc.setDrawColor(200, 160, 80);
   doc.setLineWidth(0.3);
@@ -629,21 +632,21 @@ export function addCautionBlock(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_FIELD_LABEL);
   doc.setTextColor(180, 60, 0);
-  doc.text('⚠ CAUTION / OFFICER SAFETY', x + innerPad + 2, y + 3);
+  doc.text('\u26A0 CAUTION / OFFICER SAFETY', x + textInset, y + SPACING.CAUTION_LABEL_Y);
 
   // Text content
   doc.setFont('courier', 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   doc.setTextColor(80, 40, 0);
-  let textY = y + 6;
+  let textY = y + SPACING.CAUTION_TEXT_Y;
   for (const line of lines) {
-    doc.text(line, x + innerPad + 2, textY);
+    doc.text(line, x + textInset, textY);
     textY += lineH;
   }
 
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
-  return y + boxH + 1.5;
+  return y + boxH + SPACING.MD;
 }
 
 // ── Active Officer Signature (set per-generation, cleared after) ─
@@ -703,7 +706,7 @@ export function addSignatureBlock(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_FIELD_LABEL);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
-  const roleTextY = y + roleBarH / 2 + FONT.SIZE_FIELD_LABEL * 0.14;
+  const roleTextY = y + roleBarH / 2 + getBaselineOffset(FONT.SIZE_FIELD_LABEL);
   doc.text(roleLabel.toUpperCase(), x + SPACING.CONTENT_INSET, roleTextY);
 
   // ── Signature area ──
@@ -747,9 +750,10 @@ export function addSignatureBlock(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
-  doc.text('PRINTED NAME', x + SPACING.MD, row2Y + 2.2);
-  doc.text('BADGE NUMBER', x + colW + SPACING.MD, row2Y + 2.2);
-  doc.text('DATE', x + colW * 2 + SPACING.MD, row2Y + 2.2);
+  const sigLabelY = row2Y + SPACING.SM + getBaselineOffset(FONT.SIZE_SIGNATURE_LABEL) + 0.5;
+  doc.text('PRINTED NAME', x + SPACING.MD, sigLabelY);
+  doc.text('BADGE NUMBER', x + colW + SPACING.MD, sigLabelY);
+  doc.text('DATE', x + colW * 2 + SPACING.MD, sigLabelY);
 
   // Values — auto-fill from sigData
   const hasSigData = sigData?.printedName || sigData?.badgeNumber || sigData?.date;
@@ -892,8 +896,8 @@ export function addWrappedText(doc: jsPDF, text: string, x: number, y: number, m
   doc.setFont('courier', 'normal');
   doc.setFontSize(fontSize);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  const lineH = fontSize * 0.42 + 1.2;
-  const paragraphGap = SPACING.MD;
+  const lineH = getLineHeight(fontSize);
+  const paragraphGap = SPACING.PARAGRAPH_GAP;
 
   const paragraphs = text.split(/\n\n+/);
 
@@ -910,15 +914,20 @@ export function addWrappedText(doc: jsPDF, text: string, x: number, y: number, m
       const isLastLine = li === lines.length - 1;
 
       if (!isLastLine && line.trim().length > 0) {
-        // Justify: distribute extra space between words
+        // Justify: distribute extra space between words (with cap to prevent rivers)
         const words = line.split(/\s+/).filter(w => w.length > 0);
         if (words.length > 1) {
           const textWidth = doc.getTextWidth(words.join(''));
           const extraSpace = (maxWidth - textWidth) / (words.length - 1);
-          let cx = x;
-          for (let wi = 0; wi < words.length; wi++) {
-            doc.text(words[wi], cx, y);
-            cx += doc.getTextWidth(words[wi]) + (wi < words.length - 1 ? extraSpace : 0);
+          // If gap would be too wide, fall back to left-aligned
+          if (extraSpace > FONT.MAX_JUSTIFY_GAP) {
+            doc.text(line, x, y);
+          } else {
+            let cx = x;
+            for (let wi = 0; wi < words.length; wi++) {
+              doc.text(words[wi], cx, y);
+              cx += doc.getTextWidth(words[wi]) + (wi < words.length - 1 ? extraSpace : 0);
+            }
           }
         } else {
           doc.text(line, x, y);
@@ -942,8 +951,8 @@ export function addWrappedText(doc: jsPDF, text: string, x: number, y: number, m
  */
 export function addFormattedText(doc: jsPDF, text: string, x: number, y: number, maxWidth: number, fontSize: number = FONT.SIZE_FIELD_VALUE, onPageBreak?: (newY: number) => number): number {
   if (!text) return y;
-  const lineH = fontSize * 0.42 + 1.2;
-  const paragraphGap = SPACING.MD;
+  const lineH = getLineHeight(fontSize);
+  const paragraphGap = SPACING.PARAGRAPH_GAP;
   let lastPage = doc.getNumberOfPages();
   const stripMarkers = (s: string) => s.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1').replace(/__(.+?)__/g, '$1');
   const hasMarkers = (s: string) => /(\*\*|__|\*[^*])/.test(s);
@@ -1002,8 +1011,8 @@ export function addFormattedText(doc: jsPDF, text: string, x: number, y: number,
             doc.setFont('courier', 'normal'); doc.setFontSize(fontSize); doc.setTextColor(...COLOR.TEXT_PRIMARY);
             const textWidth = doc.getTextWidth(words.join(''));
             const extraSpace = (maxWidth - textWidth) / (words.length - 1);
-            // Cap justification: if extra space per gap exceeds 3mm, left-align instead
-            if (extraSpace <= 3) {
+            // Cap justification: if extra space per gap exceeds max, left-align instead
+            if (extraSpace <= FONT.MAX_JUSTIFY_GAP) {
               let cx = x;
               for (let wi = 0; wi < words.length; wi++) {
                 doc.text(words[wi], cx, y);
@@ -1078,8 +1087,8 @@ export function addNarrativeSection(
   const lx = getLeftX();
   const ffw = getFullFieldWidth(doc);
   const fontSize = FONT.SIZE_FIELD_VALUE;
-  const lineH = fontSize * 0.42 + 1.2;
-  const paragraphGap = SPACING.MD;
+  const lineH = getLineHeight(fontSize);
+  const paragraphGap = SPACING.PARAGRAPH_GAP;
 
   // Estimate total height by splitting text into lines (strip formatting markers for measurement)
   doc.setFont('courier', 'normal');
@@ -1120,7 +1129,7 @@ export function addNarrativeSection(
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_SECTION_TITLE);
     doc.setTextColor(...COLOR.TEXT_INVERTED);
-    const textYpos = newY + SPACING.SECTION_HEADER_H / 2 + FONT.SIZE_SECTION_TITLE * 0.14;
+    const textYpos = newY + SPACING.SECTION_HEADER_H / 2 + getBaselineOffset(FONT.SIZE_SECTION_TITLE);
     doc.text(contTitle, LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, textYpos);
     const contentStartY = newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD;
     // Draw fresh background tint for remaining text on this page
@@ -1324,7 +1333,7 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
     doc.line(LAYOUT.PAGE_MARGIN, contY + contH, LAYOUT.PAGE_MARGIN + cw, contY + contH);
 
     // Text vertically centered in continuation header
-    const contTextY = contY + contH / 2 + FONT.SIZE_FIELD_LABEL * 0.14;
+    const contTextY = contY + contH / 2 + getBaselineOffset(FONT.SIZE_FIELD_LABEL);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
     doc.setTextColor(...COLOR.TEXT_INVERTED);
@@ -1372,9 +1381,9 @@ export function addTableWithShading(
   const cw = getContentWidth(doc);
   const pageW = doc.internal.pageSize.getWidth();
   const minRowH = 6;
-  const cellLineH = 3.8;      // Line height within table cells
-  const cellPad = 2;           // Padding inside cells
-  const maxCellLines = 5;     // Cap per cell to prevent runaway heights
+  const cellLineH = SPACING.TABLE_CELL_LINE_H;
+  const cellPad = SPACING.TABLE_CELL_PAD;
+  const maxCellLines = 5;
 
   // Pre-compute column widths from position deltas
   const colWidths: number[] = [];
@@ -1399,8 +1408,8 @@ export function addTableWithShading(
     doc.setFontSize(FONT.SIZE_TABLE_HEADER);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(...COLOR.TEXT_INVERTED);
-    const capH = FONT.SIZE_TABLE_HEADER * 0.35;  // approximate cap-height in mm
-    const textY = atY + (headerRowH + capH) / 2;
+    const baseOff = getBaselineOffset(FONT.SIZE_TABLE_HEADER);
+    const textY = atY + headerRowH / 2 + baseOff;
     for (const h of headers) {
       doc.text(h.label, h.x, textY);
     }
@@ -1466,7 +1475,7 @@ export function addTableWithShading(
     // Render cell text — vertically centered within row
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     const textBlockH = maxLines * cellLineH;
-    const textStartY = y + (rowH - textBlockH) / 2 + cellLineH * 0.7; // center block + baseline offset
+    const textStartY = y + (rowH - textBlockH) / 2 + getBaselineOffset(FONT.SIZE_TABLE_BODY) + cellLineH * 0.5;
     for (let c = 0; c < cellLines.length; c++) {
       const lines = cellLines[c];
       let cellY = textStartY;
@@ -2563,19 +2572,23 @@ function generateDailyActivityReport(doc: jsPDF, data: IncidentData) {
 
   // Activity Log
   { const sec = openAutoSection(doc, 'Activity Log', y); y = sec.contentY;
+    const actRowH = SPACING.ACTIVITY_ROW_H;
+    const hdrH = actRowH + SPACING.TABLE_CELL_PAD;
+    const hdrLabelY = y + hdrH / 2 + getBaselineOffset(FONT.SIZE_TABLE_HEADER);
+
     doc.setFillColor(...COLOR.BG_TABLE_HDR);
-    doc.rect(LAYOUT.PAGE_MARGIN + 1, y - 2, cw - 2, 7, 'F');
+    doc.rect(LAYOUT.PAGE_MARGIN + 1, y - SPACING.TABLE_CELL_PAD, cw - 2, hdrH, 'F');
     doc.setDrawColor(...COLOR.BORDER_TABLE);
     doc.setLineWidth(BORDER.TABLE_ROW * 3);
-    doc.line(LAYOUT.PAGE_MARGIN + 1, y + 5, LAYOUT.PAGE_MARGIN + cw - 1, y + 5);
+    doc.line(LAYOUT.PAGE_MARGIN + 1, y + actRowH, LAYOUT.PAGE_MARGIN + cw - 1, y + actRowH);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_TABLE_HEADER);
     doc.setTextColor(...COLOR.TEXT_INVERTED);
-    doc.text('TIME', lx, y + 2);
-    doc.text('ACTIVITY / LOCATION', LAYOUT.PAGE_MARGIN + 25, y + 2);
-    doc.text('NOTES', LAYOUT.PAGE_MARGIN + 100, y + 2);
+    doc.text('TIME', lx, hdrLabelY);
+    doc.text('ACTIVITY / LOCATION', LAYOUT.PAGE_MARGIN + 25, hdrLabelY);
+    doc.text('NOTES', LAYOUT.PAGE_MARGIN + 100, hdrLabelY);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    y += 7;
+    y += hdrH;
 
     const tableTopY = y;
     doc.setFont('helvetica', 'normal');
@@ -2583,18 +2596,18 @@ function generateDailyActivityReport(doc: jsPDF, data: IncidentData) {
     for (let i = 0; i < 6; i++) {
       if (i % 2 === 0) {
         doc.setFillColor(...COLOR.BG_ZEBRA);
-        doc.rect(LAYOUT.PAGE_MARGIN + 1, y - 1, cw - 2, 7, 'F');
+        doc.rect(LAYOUT.PAGE_MARGIN + 1, y - SPACING.SM, cw - 2, hdrH, 'F');
       }
       doc.setDrawColor(...COLOR.BORDER_TABLE);
       doc.setLineWidth(BORDER.TABLE_ROW);
-      doc.line(lx, y + 5, pageWidth - LAYOUT.PAGE_MARGIN - SPACING.MD, y + 5);
-      y += 7;
+      doc.line(lx, y + actRowH, pageWidth - LAYOUT.PAGE_MARGIN - SPACING.MD, y + actRowH);
+      y += hdrH;
     }
 
     doc.setDrawColor(...COLOR.BORDER_COLUMN);
     doc.setLineWidth(BORDER.TABLE_COLUMN);
-    doc.line(LAYOUT.PAGE_MARGIN + 23, tableTopY, LAYOUT.PAGE_MARGIN + 23, y - 2);
-    doc.line(LAYOUT.PAGE_MARGIN + 98, tableTopY, LAYOUT.PAGE_MARGIN + 98, y - 2);
+    doc.line(LAYOUT.PAGE_MARGIN + 23, tableTopY, LAYOUT.PAGE_MARGIN + 23, y - SPACING.TABLE_CELL_PAD);
+    doc.line(LAYOUT.PAGE_MARGIN + 98, tableTopY, LAYOUT.PAGE_MARGIN + 98, y - SPACING.TABLE_CELL_PAD);
 
     doc.setDrawColor(...COLOR.TEXT_PRIMARY);
     y += SPACING.MD;

@@ -73,6 +73,14 @@ export const FONT = {
   SIZE_FORM_CELL_LABEL:   6,     // Form cell label (same as field label)
   SIZE_FORM_CELL_VALUE:   8.5,   // Form cell value (same as field value)
   SIZE_SIDEBAR_TAB:       7,     // Sidebar tab rotated text
+  SIZE_COVER_TITLE:       18,    // Large cover page title (patrol tracking)
+  SIZE_COVER_SUBTITLE:    10,    // Cover page subtitle
+  SIZE_UNIT_HEADER:       8,     // Patrol unit card header
+  SIZE_UNIT_STATS:        7,     // Unit statistics text
+  SIZE_CHART_LEGEND:      6,     // Chart/legend small text
+
+  BASELINE_FACTOR:        0.35,  // Cap-height / font-size ratio for vertical centering
+  MAX_JUSTIFY_GAP:        3,     // Max extra inter-word space (mm) before reverting to left-align
 } as const;
 
 // ── Border / Line Width Tokens ───────────────────────────────
@@ -118,6 +126,21 @@ export const SPACING = {
   SIGNATURE_ROLE_H:   4,     // Role label header bar height
   SIGNATURE_SUB_GAP:  4,     // Gap between sig line and sub-fields
 
+  FIELD_LABEL_H:      3,     // Height reserved for floating label above field box
+  FIELD_INNER_PAD:    1.5,   // Horizontal padding inside field boxes
+  FIELD_GAP:          1,     // Gap between consecutive field rows
+  TABLE_CELL_PAD:     2,     // Padding inside table cells
+  TABLE_CELL_LINE_H:  3.8,   // Line height within table cells
+  PARAGRAPH_GAP:      1.5,   // Gap between paragraphs in wrapped/formatted text
+
+  LABEL_IN_BAR:       2,     // Label text Y-offset inside colored bars
+  TEXT_IN_BANNER:      7,     // Centered text Y-offset in warning/notice banners
+  NOTARY_LABEL_Y:     3,     // Label Y-offset in notary/signature line sections
+  ACTIVITY_ROW_H:     5,     // Activity log row height (header + data rows)
+  CAUTION_LABEL_Y:    3,     // Warning label offset from caution block top
+  CAUTION_TEXT_Y:      6,     // Warning text offset from caution block top
+  UNDERLINE_OFFSET:   0.8,   // Decorative underline below text
+
   FORM_CELL_PAD:      0.8,   // Padding inside form cells
   FORM_CELL_LABEL_H:  2.5,   // Form cell label strip height
   FORM_CELL_H:        7.5,   // Form cell total height (label + value + padding)
@@ -138,6 +161,18 @@ export const LAYOUT = {
   DIAGRAM_GRID_STEP: 10,     // Grid spacing in accident diagram
   SIDEBAR_TAB_W:     18,     // Sidebar tab width
 } as const;
+
+// ── Text Metric Helpers ─────────────────────────────────────
+
+/** Baseline offset for vertical centering: how far below the midpoint the text baseline sits */
+export function getBaselineOffset(fontSize: number): number {
+  return fontSize * FONT.BASELINE_FACTOR;
+}
+
+/** Line height for a given font size (consistent formula used across all text rendering) */
+export function getLineHeight(fontSize: number): number {
+  return fontSize * 0.42 + 1.2;
+}
 
 // ── Computed Layout Helpers ──────────────────────────────────
 

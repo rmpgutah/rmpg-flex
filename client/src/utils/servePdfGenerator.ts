@@ -27,7 +27,7 @@ import {
   LAYOUT, SPACING, FONT, COLOR, BORDER,
   getContentWidth, getFullFieldWidth,
   getLeftX, getRightColumnX, getHalfFieldWidth,
-  getProportionalColumns,
+  getProportionalColumns, getBaselineOffset,
 } from './pdfTokens';
 
 // ── Data Interfaces ──────────────────────────────────────────
@@ -129,7 +129,7 @@ function addNotarySection(doc: jsPDF, y: number): number {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SECTION_TITLE);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
-  doc.text('NOTARY PUBLIC', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, y + barH / 2 + FONT.SIZE_SECTION_TITLE * 0.14);
+  doc.text('NOTARY PUBLIC', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, y + barH / 2 + getBaselineOffset(FONT.SIZE_SECTION_TITLE));
 
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   let ny = y + barH + SPACING.LG + 2;
@@ -147,7 +147,7 @@ function addNotarySection(doc: jsPDF, y: number): number {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
-  doc.text('NOTARY NAME', lineX1, ny + 3);
+  doc.text('NOTARY NAME', lineX1, ny + SPACING.NOTARY_LABEL_Y);
   ny += lineGap;
 
   // Commission # line
@@ -156,7 +156,7 @@ function addNotarySection(doc: jsPDF, y: number): number {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
-  doc.text('COMMISSION NUMBER / EXPIRATION', lineX1, ny + 3);
+  doc.text('COMMISSION NUMBER / EXPIRATION', lineX1, ny + SPACING.NOTARY_LABEL_Y);
   ny += lineGap;
 
   // Date line
@@ -165,7 +165,7 @@ function addNotarySection(doc: jsPDF, y: number): number {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
-  doc.text('DATE', lineX1, ny + 3);
+  doc.text('DATE', lineX1, ny + SPACING.NOTARY_LABEL_Y);
 
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   return y + boxH + SPACING.SECTION_GAP;

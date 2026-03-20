@@ -383,7 +383,7 @@ export async function apiFetch<T>(
   return res.json();
 }
 
-// Upload files via FormData (multipart)
+// Upload files via FormData (multipart) — no progress tracking
 export async function apiUploadFiles(
   files: File[],
   entityType?: string,
@@ -416,6 +416,321 @@ export async function apiUploadFiles(
   }
 
   return res.json();
+}
+
+// ─── Progress-tracked upload (XHR-based for onprogress events) ────
+export interface UploadProgressInfo {
+  /** Bytes sent so far */
+  loaded: number;
+  /** Total bytes to send */
+  total: number;
+  /** 0-100 percentage */
+  percent: number;
+}
+
+// Files above this threshold use chunked upload with parallel workers
+const CHUNK_THRESHOLD = 50 * 1024 * 1024; // 50MB
+const CHUNK_SIZE = 10 * 1024 * 1024;      // 10MB chunks
+const PARALLEL_WORKERS = 6;               // Upload 6 chunks at a time
+
+function getAuthToken(): string | null {
+  try { return localStorage.getItem('rmpg_token'); } catch { return null; }
+}
+
+function getAuthHeaders(): Record<string, string> {
+  const token = getAuthToken();
+  const headers: Record<string, string> = { 'X-Requested-With': 'XMLHttpRequest' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  return headers;
+}
+
+/** Upload a single chunk via XHR with progress tracking */
+function uploadChunk(
+  uploadId: string,
+  chunkIndex: number,
+  blob: Blob,
+  onProgress?: (chunkBytes: number) => void,
+): { promise: Promise<void>; abort: () => void } {
+  const xhr = new XMLHttpRequest();
+  let lastLoaded = 0;
+
+  const promise = new Promise<void>((resolve, reject) => {
+    xhr.open('POST', `/api/uploads/chunked/${uploadId}/${chunkIndex}`);
+    xhr.timeout = 300000; // 5 min per chunk
+
+    const headers = getAuthHeaders();
+    for (const [k, v] of Object.entries(headers)) xhr.setRequestHeader(k, v);
+
+    xhr.upload.onprogress = (ev) => {
+      if (ev.lengthComputable && onProgress) {
+        const delta = ev.loaded - lastLoaded;
+        lastLoaded = ev.loaded;
+        onProgress(delta);
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        // Report any remaining bytes not yet reported by onprogress
+        if (onProgress) {
+          const remaining = blob.size - lastLoaded;
+          if (remaining > 0) onProgress(remaining);
+        }
+        resolve();
+      } else {
+        let msg = `Chunk ${chunkIndex} failed (HTTP ${xhr.status})`;
+        try { const r = JSON.parse(xhr.responseText); if (r.error) msg = r.error; } catch { /* */ }
+        reject(new Error(msg));
+      }
+    };
+
+    xhr.onerror = () => reject(new Error(`Network error on chunk ${chunkIndex}`));
+    xhr.ontimeout = () => reject(new Error(`Chunk ${chunkIndex} timed out`));
+
+    const formData = new FormData();
+    formData.append('chunk', blob, `chunk-${chunkIndex}`);
+    xhr.send(formData);
+  });
+
+  return { promise, abort: () => xhr.abort() };
+}
+
+/**
+ * Upload a single file with real-time progress tracking.
+ * Automatically uses chunked parallel upload for files > 50MB.
+ */
+export function apiUploadFileWithProgress(
+  file: File,
+  entityType?: string,
+  entityId?: string | number,
+  onProgress?: (info: UploadProgressInfo) => void,
+): { promise: Promise<any>; abort: () => void } {
+  // ── Small files: single XHR ──
+  if (file.size <= CHUNK_THRESHOLD) {
+    return uploadSmallFile(file, entityType, entityId, onProgress);
+  }
+
+  // ── Large files: chunked parallel upload ──
+  let aborted = false;
+  const activeXhrs: Array<{ abort: () => void }> = [];
+
+  const promise = (async () => {
+    const token = getAuthToken();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest',
+    };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    // 1. Initialize chunked upload session
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    const initRes = await fetch('/api/uploads/chunked/init', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        fileName: file.name,
+        fileSize: file.size,
+        mimeType: file.type,
+        totalChunks,
+        entityType,
+        entityId: entityId ? String(entityId) : undefined,
+      }),
+    });
+
+    if (!initRes.ok) {
+      const err = await initRes.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to initialize upload');
+    }
+
+    const { uploadId } = await initRes.json();
+    let totalLoaded = 0;
+
+    // 2. Upload chunks in parallel (PARALLEL_WORKERS at a time)
+    const chunkQueue: number[] = [];
+    for (let i = 0; i < totalChunks; i++) chunkQueue.push(i);
+
+    const uploadNextChunk = async (): Promise<void> => {
+      while (chunkQueue.length > 0 && !aborted) {
+        const idx = chunkQueue.shift()!;
+        const start = idx * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, file.size);
+        const blob = file.slice(start, end);
+
+        const { promise: chunkPromise, abort: chunkAbort } = uploadChunk(
+          uploadId, idx, blob,
+          (deltaBytes) => {
+            totalLoaded += deltaBytes;
+            if (onProgress) {
+              onProgress({
+                loaded: Math.min(totalLoaded, file.size),
+                total: file.size,
+                percent: Math.round((Math.min(totalLoaded, file.size) / file.size) * 100),
+              });
+            }
+          },
+        );
+
+        activeXhrs.push({ abort: chunkAbort });
+
+        try {
+          await chunkPromise;
+        } catch (err) {
+          if (aborted) return;
+          // Retry once on failure
+          chunkQueue.unshift(idx);
+          totalLoaded -= (end - start); // Roll back progress
+          const { promise: retry, abort: retryAbort } = uploadChunk(
+            uploadId, idx, blob,
+            (deltaBytes) => {
+              totalLoaded += deltaBytes;
+              if (onProgress) {
+                onProgress({
+                  loaded: Math.min(totalLoaded, file.size),
+                  total: file.size,
+                  percent: Math.round((Math.min(totalLoaded, file.size) / file.size) * 100),
+                });
+              }
+            },
+          );
+          activeXhrs.push({ abort: retryAbort });
+          await retry; // If retry fails, let it throw
+          chunkQueue.shift(); // Remove the re-queued chunk
+        }
+      }
+    };
+
+    // Launch parallel workers
+    const workers: Promise<void>[] = [];
+    for (let w = 0; w < PARALLEL_WORKERS; w++) {
+      workers.push(uploadNextChunk());
+    }
+    await Promise.all(workers);
+
+    if (aborted) throw new Error('Upload cancelled');
+
+    // 3. Finalize — reassemble on server
+    const finalRes = await fetch(`/api/uploads/chunked/${uploadId}/finalize`, {
+      method: 'POST',
+      headers,
+    });
+
+    if (!finalRes.ok) {
+      const err = await finalRes.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to finalize upload');
+    }
+
+    return finalRes.json();
+  })();
+
+  return {
+    promise,
+    abort: () => {
+      aborted = true;
+      activeXhrs.forEach((x) => { try { x.abort(); } catch { /* */ } });
+    },
+  };
+}
+
+/** Small file upload (single XHR, < 50MB) */
+function uploadSmallFile(
+  file: File,
+  entityType?: string,
+  entityId?: string | number,
+  onProgress?: (info: UploadProgressInfo) => void,
+): { promise: Promise<any>; abort: () => void } {
+  const xhr = new XMLHttpRequest();
+  const token = getAuthToken();
+
+  const formData = new FormData();
+  formData.append('files', file);
+  if (entityType) formData.append('entity_type', entityType);
+  if (entityId) formData.append('entity_id', String(entityId));
+
+  const promise = new Promise<any>((resolve, reject) => {
+    xhr.open('POST', '/api/uploads');
+    xhr.timeout = 1800000;
+
+    xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+
+    xhr.upload.onprogress = (ev) => {
+      if (ev.lengthComputable && onProgress) {
+        onProgress({
+          loaded: ev.loaded,
+          total: ev.total,
+          percent: Math.round((ev.loaded / ev.total) * 100),
+        });
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try { resolve(JSON.parse(xhr.responseText)); }
+        catch { resolve([]); }
+      } else {
+        let msg = `Upload failed (HTTP ${xhr.status})`;
+        try { const r = JSON.parse(xhr.responseText); if (r.error) msg = r.error; } catch { /* */ }
+        reject(new Error(msg));
+      }
+    };
+
+    xhr.onerror = () => reject(new Error('Network error during upload'));
+    xhr.ontimeout = () => reject(new Error('Upload timed out'));
+    xhr.send(formData);
+  });
+
+  return { promise, abort: () => xhr.abort() };
+}
+
+/**
+ * Download a file with progress tracking.
+ * Returns progress info as the file downloads, then triggers browser download.
+ */
+export function apiDownloadFileWithProgress(
+  url: string,
+  fileName: string,
+  onProgress?: (info: UploadProgressInfo) => void,
+): { promise: Promise<void>; abort: () => void } {
+  const xhr = new XMLHttpRequest();
+
+  const promise = new Promise<void>((resolve, reject) => {
+    xhr.open('GET', url);
+    xhr.responseType = 'blob';
+    xhr.timeout = 1800000; // 30 min for large downloads
+
+    xhr.onprogress = (ev) => {
+      if (ev.lengthComputable && onProgress) {
+        onProgress({
+          loaded: ev.loaded,
+          total: ev.total,
+          percent: Math.round((ev.loaded / ev.total) * 100),
+        });
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        const blob = xhr.response as Blob;
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(blobUrl);
+        resolve();
+      } else {
+        reject(new Error(`Download failed (HTTP ${xhr.status})`));
+      }
+    };
+
+    xhr.onerror = () => reject(new Error('Network error during download'));
+    xhr.ontimeout = () => reject(new Error('Download timed out'));
+    xhr.send();
+  });
+
+  return { promise, abort: () => xhr.abort() };
 }
 
 // Fetch attachments for an entity
