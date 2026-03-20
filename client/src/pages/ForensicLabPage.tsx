@@ -12,7 +12,7 @@ import {
   Loader2, Eye, ArrowRight, Beaker, Hash, Link2, Activity,
   Fingerprint, Cpu, FlaskConical, Camera, Shield, Network,
   HelpCircle, ChevronLeft, Package, Upload, Trash2, RefreshCw,
-  Info,
+  Info, Edit3, Send, Unlink,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import FormModal from '../components/FormModal';
@@ -187,7 +187,7 @@ export default function ForensicLabPage() {
   const [filterStatus, setFilterStatus] = useState('');
   const [filterType, setFilterType] = useState('');
   const [selectedCase, setSelectedCase] = useState<ForensicCase | null>(null);
-  const [detailTab, setDetailTab] = useState<'overview' | 'exhibits' | 'analyses' | 'timeline' | 'hashes'>('overview');
+  const [detailTab, setDetailTab] = useState<'overview' | 'exhibits' | 'analyses' | 'timeline' | 'hashes' | 'links'>('overview');
   const [wizardStep, setWizardStep] = useState(0);
   const [wizardData, setWizardData] = useState<WizardData>(EMPTY_WIZARD);
   const [submitting, setSubmitting] = useState(false);
@@ -198,6 +198,20 @@ export default function ForensicLabPage() {
   // Exhibit modal
   const [showExhibitModal, setShowExhibitModal] = useState(false);
   const [exhibitForm, setExhibitForm] = useState({ description: '', item_type: '', condition_received: '', examination_requested: '' });
+  // Edit case modal
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editForm, setEditForm] = useState({ synopsis: '', findings: '', conclusion: '', notes: '', due_date: '' });
+  // Timeline note
+  const [timelineNote, setTimelineNote] = useState('');
+  const [addingNote, setAddingNote] = useState(false);
+  // Link search
+  const [linkSearchTerm, setLinkSearchTerm] = useState('');
+  const [linkSearchResults, setLinkSearchResults] = useState<any[]>([]);
+  const [linkSearching, setLinkSearching] = useState(false);
+  const [caseLinks, setCaseLinks] = useState<any[]>([]);
+  // Hashes
+  const [hashes, setHashes] = useState<any[]>([]);
+  const [hashStats, setHashStats] = useState<{ total: number; flagged: number; matched: number } | null>(null);
 
   // ── Fetch ──────────────────────────────────────────────
 
@@ -229,6 +243,11 @@ export default function ForensicLabPage() {
     try {
       const detail = await apiFetch<ForensicCase>(`/forensic-lab/${id}`);
       setSelectedCase(detail);
+      // Fetch links and hashes in parallel
+      apiFetch<any[]>(`/forensic-lab/${id}/links`).then(l => setCaseLinks(l || [])).catch(() => setCaseLinks([]));
+      apiFetch<{ hashes: any[]; stats: any }>(`/forensic-lab/${id}/hashes`)
+        .then(d => { setHashes(d.hashes || []); setHashStats(d.stats || null); })
+        .catch(() => { setHashes([]); setHashStats(null); });
     } catch (err) {
       console.error('Fetch case detail error:', err);
     }
@@ -311,6 +330,165 @@ export default function ForensicLabPage() {
       console.error('Add exhibit error:', err);
     }
   };
+
+  // ── Update Case Status ──────────────────────────────────
+
+  const handleStatusChange = async (newStatus: string) => {
+    if (!selectedCase) return;
+    try {
+      await apiFetch(`/forensic-lab/${selectedCase.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      fetchCaseDetail(selectedCase.id);
+      fetchCases();
+    } catch (err) {
+      console.error('Update status error:', err);
+    }
+  };
+
+  // ── Edit Case Fields ───────────────────────────────────
+
+  const openEditModal = () => {
+    if (!selectedCase) return;
+    setEditForm({
+      synopsis: selectedCase.synopsis || '',
+      findings: selectedCase.findings || '',
+      conclusion: selectedCase.conclusion || '',
+      notes: selectedCase.notes || '',
+      due_date: selectedCase.due_date?.slice(0, 10) || '',
+    });
+    setShowEditModal(true);
+  };
+
+  const handleEditSubmit = async () => {
+    if (!selectedCase) return;
+    try {
+      await apiFetch(`/forensic-lab/${selectedCase.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editForm),
+      });
+      setShowEditModal(false);
+      fetchCaseDetail(selectedCase.id);
+      fetchCases();
+    } catch (err) {
+      console.error('Edit case error:', err);
+    }
+  };
+
+  // ── Update Analysis Status ─────────────────────────────
+
+  const handleAnalysisStatusChange = async (analysisId: number, newStatus: string, extras?: { results?: string; conclusion?: string }) => {
+    if (!selectedCase) return;
+    try {
+      await apiFetch(`/forensic-lab/${selectedCase.id}/analyses/${analysisId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus, ...extras }),
+      });
+      fetchCaseDetail(selectedCase.id);
+    } catch (err) {
+      console.error('Update analysis error:', err);
+    }
+  };
+
+  // ── Update Exhibit Status ──────────────────────────────
+
+  const handleExhibitStatusChange = async (exhibitId: number, newStatus: string, extras?: { results?: string }) => {
+    if (!selectedCase) return;
+    try {
+      await apiFetch(`/forensic-lab/${selectedCase.id}/exhibits/${exhibitId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus, ...extras }),
+      });
+      fetchCaseDetail(selectedCase.id);
+    } catch (err) {
+      console.error('Update exhibit error:', err);
+    }
+  };
+
+  // ── Timeline Note ──────────────────────────────────────
+
+  const handleAddTimelineNote = async () => {
+    if (!selectedCase || !timelineNote.trim()) return;
+    setAddingNote(true);
+    try {
+      await apiFetch(`/forensic-lab/${selectedCase.id}/timeline`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'note', description: timelineNote }),
+      });
+      setTimelineNote('');
+      fetchCaseDetail(selectedCase.id);
+    } catch (err) {
+      console.error('Add note error:', err);
+    } finally {
+      setAddingNote(false);
+    }
+  };
+
+  // ── Entity Link Search & Link ──────────────────────────
+
+  const handleLinkSearch = async () => {
+    if (!selectedCase || !linkSearchTerm.trim()) return;
+    setLinkSearching(true);
+    try {
+      const results = await apiFetch<any[]>(`/forensic-lab/${selectedCase.id}/links/search?q=${encodeURIComponent(linkSearchTerm)}`);
+      setLinkSearchResults(results || []);
+    } catch (err) {
+      console.error('Link search error:', err);
+      setLinkSearchResults([]);
+    } finally {
+      setLinkSearching(false);
+    }
+  };
+
+  const handleLinkEntity = async (entityType: string, entityId: number, relationship: string = 'related') => {
+    if (!selectedCase) return;
+    try {
+      await apiFetch(`/forensic-lab/${selectedCase.id}/links`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entity_type: entityType, entity_id: entityId, relationship }),
+      });
+      setLinkSearchResults([]);
+      setLinkSearchTerm('');
+      fetchCaseLinks(selectedCase.id);
+      fetchCaseDetail(selectedCase.id);
+    } catch (err) {
+      console.error('Link entity error:', err);
+    }
+  };
+
+  const handleUnlinkEntity = async (linkId: number) => {
+    if (!selectedCase) return;
+    try {
+      await apiFetch(`/forensic-lab/${selectedCase.id}/links/${linkId}`, { method: 'DELETE' });
+      fetchCaseLinks(selectedCase.id);
+    } catch (err) {
+      console.error('Unlink error:', err);
+    }
+  };
+
+  const fetchCaseLinks = useCallback(async (id: number) => {
+    try {
+      const links = await apiFetch<any[]>(`/forensic-lab/${id}/links`);
+      setCaseLinks(links || []);
+    } catch { setCaseLinks([]); }
+  }, []);
+
+  // ── Hashes ─────────────────────────────────────────────
+
+  const fetchHashes = useCallback(async (id: number) => {
+    try {
+      const data = await apiFetch<{ hashes: any[]; stats: { total: number; flagged: number; matched: number } }>(`/forensic-lab/${id}/hashes`);
+      setHashes(data.hashes || []);
+      setHashStats(data.stats || null);
+    } catch { setHashes([]); setHashStats(null); }
+  }, []);
 
   // ── Helpers ────────────────────────────────────────────
 
@@ -397,9 +575,9 @@ export default function ForensicLabPage() {
 
         {/* Detail Tabs */}
         <div className="flex items-center border-b border-[#1e3048] bg-[#0d1520]">
-          {(['overview', 'exhibits', 'analyses', 'timeline', 'hashes'] as const).map(tab => {
-            const icons = { overview: Eye, exhibits: Package, analyses: Beaker, timeline: Activity, hashes: Hash };
-            const labels = { overview: 'Overview', exhibits: `Exhibits (${selectedCase.exhibits?.length || 0})`, analyses: `Analyses (${selectedCase.analyses?.length || 0})`, timeline: 'Timeline', hashes: 'Hashes' };
+          {(['overview', 'exhibits', 'analyses', 'timeline', 'links', 'hashes'] as const).map(tab => {
+            const icons = { overview: Eye, exhibits: Package, analyses: Beaker, timeline: Activity, links: Link2, hashes: Hash };
+            const labels = { overview: 'Overview', exhibits: `Exhibits (${selectedCase.exhibits?.length || 0})`, analyses: `Analyses (${selectedCase.analyses?.length || 0})`, timeline: 'Timeline', links: `Links (${caseLinks.length})`, hashes: 'Hashes' };
             const Icon = icons[tab];
             return (
               <button
@@ -423,6 +601,26 @@ export default function ForensicLabPage() {
           {/* Overview Tab */}
           {detailTab === 'overview' && (
             <>
+              {/* Quick Actions */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <select
+                  value={selectedCase.status}
+                  onChange={e => handleStatusChange(e.target.value)}
+                  className="px-2 py-1 text-[10px] bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none font-bold"
+                  style={{ color: sc.color }}
+                >
+                  {Object.entries(STATUS_CONFIG).map(([k, v]) => (
+                    <option key={k} value={k}>{v.label}</option>
+                  ))}
+                </select>
+                <button onClick={openEditModal} className="toolbar-btn text-[10px]">
+                  <Edit3 size={10} /> Edit Details
+                </button>
+                <button onClick={() => navigate(`/forensics?type=case&id=${selectedCase.id}`)} className="toolbar-btn text-[10px]">
+                  <Network size={10} /> View Connections
+                </button>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="panel-beveled bg-surface-sunken p-3 space-y-2">
                   <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Case Details</div>
@@ -450,6 +648,14 @@ export default function ForensicLabPage() {
                     <div className="text-center">
                       <div className="text-xl font-bold font-mono text-amber-400">{selectedCase.analyses?.length || 0}</div>
                       <div className="text-[9px] text-rmpg-500 uppercase">Analyses</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xl font-bold font-mono text-purple-400">{caseLinks.length}</div>
+                      <div className="text-[9px] text-rmpg-500 uppercase">Links</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xl font-bold font-mono text-cyan-400">{hashes.length}</div>
+                      <div className="text-[9px] text-rmpg-500 uppercase">Hashes</div>
                     </div>
                   </div>
                 </div>
@@ -519,6 +725,22 @@ export default function ForensicLabPage() {
                                 <span className="text-green-400 font-bold uppercase text-[9px]">Results: </span>{ex.results}
                               </div>
                             )}
+                            {/* Status actions */}
+                            <div className="flex items-center gap-1.5 mt-2">
+                              {ex.status === 'received' && (
+                                <button onClick={() => handleExhibitStatusChange(ex.id, 'examining')} className="text-[9px] px-2 py-0.5 bg-amber-900/20 text-amber-400 border border-amber-700/40 rounded hover:bg-amber-900/40 transition-colors">
+                                  Begin Examination
+                                </button>
+                              )}
+                              {ex.status === 'examining' && (
+                                <button onClick={() => {
+                                  const result = prompt('Enter examination results:');
+                                  if (result) handleExhibitStatusChange(ex.id, 'complete', { results: result });
+                                }} className="text-[9px] px-2 py-0.5 bg-green-900/20 text-green-400 border border-green-700/40 rounded hover:bg-green-900/40 transition-colors">
+                                  Mark Complete
+                                </button>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -570,6 +792,23 @@ export default function ForensicLabPage() {
                           {an.started_at && <span>Started: {formatDate(an.started_at)}</span>}
                           {an.completed_at && <span>Completed: {formatDate(an.completed_at)}</span>}
                         </div>
+                        {/* Status actions */}
+                        <div className="flex items-center gap-1.5 mt-2">
+                          {an.status === 'pending' && (
+                            <button onClick={() => handleAnalysisStatusChange(an.id, 'in_progress')} className="text-[9px] px-2 py-0.5 bg-amber-900/20 text-amber-400 border border-amber-700/40 rounded hover:bg-amber-900/40 transition-colors">
+                              Start Analysis
+                            </button>
+                          )}
+                          {an.status === 'in_progress' && (
+                            <button onClick={() => {
+                              const results = prompt('Enter analysis results:');
+                              const conclusion = prompt('Enter conclusion:');
+                              if (results) handleAnalysisStatusChange(an.id, 'complete', { results, conclusion: conclusion || undefined });
+                            }} className="text-[9px] px-2 py-0.5 bg-green-900/20 text-green-400 border border-green-700/40 rounded hover:bg-green-900/40 transition-colors">
+                              Complete Analysis
+                            </button>
+                          )}
+                        </div>
                       </div>
                     );
                   })}
@@ -581,6 +820,28 @@ export default function ForensicLabPage() {
           {/* Timeline Tab */}
           {detailTab === 'timeline' && (
             <>
+              {/* Add Note */}
+              <div className="panel-beveled bg-surface-sunken p-3">
+                <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-2">Add Note</div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={timelineNote}
+                    onChange={e => setTimelineNote(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleAddTimelineNote()}
+                    className="flex-1 px-3 py-1.5 text-xs bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                    placeholder="Add a note, observation, or update..."
+                  />
+                  <button
+                    onClick={handleAddTimelineNote}
+                    disabled={!timelineNote.trim() || addingNote}
+                    className="toolbar-btn toolbar-btn-primary text-[10px] px-3 disabled:opacity-40"
+                  >
+                    {addingNote ? <Loader2 size={10} className="animate-spin" /> : <Send size={10} />} Add
+                  </button>
+                </div>
+              </div>
+
               <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Activity Log</div>
               {(!selectedCase.timeline || selectedCase.timeline.length === 0) ? (
                 <div className="panel-beveled bg-surface-sunken p-6 text-center">
@@ -611,14 +872,125 @@ export default function ForensicLabPage() {
 
           {/* Hashes Tab */}
           {detailTab === 'hashes' && (
-            <div className="panel-beveled bg-surface-sunken p-6 text-center">
-              <Hash size={24} className="text-rmpg-600 mx-auto mb-2" />
-              <p className="text-xs text-rmpg-400">Digital evidence hash tracking</p>
-              <p className="text-[10px] text-rmpg-500 mt-1 italic">
-                Compute MD5, SHA-1, SHA-256, and PhotoDNA hashes for digital evidence files.
-                Hashes are used to verify evidence integrity and flag known contraband.
-              </p>
-            </div>
+            <>
+              {hashStats && (
+                <div className="grid grid-cols-3 gap-2 mb-3">
+                  <div className="panel-beveled bg-surface-sunken p-2 text-center">
+                    <div className="text-lg font-bold font-mono text-brand-400">{hashStats.total}</div>
+                    <div className="text-[8px] text-rmpg-500 uppercase">Total Hashes</div>
+                  </div>
+                  <div className="panel-beveled bg-surface-sunken p-2 text-center">
+                    <div className={`text-lg font-bold font-mono ${hashStats.flagged > 0 ? 'text-red-400' : 'text-green-400'}`}>{hashStats.flagged}</div>
+                    <div className="text-[8px] text-rmpg-500 uppercase">Flagged</div>
+                  </div>
+                  <div className="panel-beveled bg-surface-sunken p-2 text-center">
+                    <div className={`text-lg font-bold font-mono ${hashStats.matched > 0 ? 'text-amber-400' : 'text-green-400'}`}>{hashStats.matched}</div>
+                    <div className="text-[8px] text-rmpg-500 uppercase">DB Matches</div>
+                  </div>
+                </div>
+              )}
+              {hashes.length === 0 ? (
+                <div className="panel-beveled bg-surface-sunken p-6 text-center">
+                  <Hash size={24} className="text-rmpg-600 mx-auto mb-2" />
+                  <p className="text-xs text-rmpg-400">No hashes computed yet</p>
+                  <p className="text-[10px] text-rmpg-500 mt-1 italic">
+                    Compute MD5, SHA-1, SHA-256, and PhotoDNA hashes for digital evidence files.
+                    Hashes verify evidence integrity and flag known contraband.
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[10px]">
+                    <thead>
+                      <tr className="border-b border-rmpg-600">
+                        <th className="px-2 py-1.5 text-left text-rmpg-400 font-bold uppercase">File</th>
+                        <th className="px-2 py-1.5 text-left text-rmpg-400 font-bold uppercase">SHA-256</th>
+                        <th className="px-2 py-1.5 text-left text-rmpg-400 font-bold uppercase">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {hashes.map((h: any) => (
+                        <tr key={h.id} className="border-b border-rmpg-700/30 hover:bg-rmpg-800/30">
+                          <td className="px-2 py-1.5 text-rmpg-200 font-mono truncate max-w-[200px]">{h.file_name || '—'}</td>
+                          <td className="px-2 py-1.5 text-rmpg-300 font-mono truncate max-w-[200px]">{h.sha256?.slice(0, 16)}...</td>
+                          <td className="px-2 py-1.5">
+                            {h.flagged ? (
+                              <span className="text-red-400 font-bold flex items-center gap-1"><AlertTriangle size={10} /> FLAGGED</span>
+                            ) : h.hash_set_match ? (
+                              <span className="text-amber-400 font-bold">MATCH</span>
+                            ) : (
+                              <span className="text-green-400">Clean</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Links Tab */}
+          {detailTab === 'links' && (
+            <>
+              {/* Link Search */}
+              <div className="panel-beveled bg-surface-sunken p-3">
+                <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-2">Link Entity to Case</div>
+                <div className="p-2 bg-blue-900/10 border border-blue-800/30 rounded text-[10px] text-blue-300 mb-2">
+                  <Info size={10} className="inline mr-1" />
+                  Search for persons, incidents, evidence, or cases to link to this forensic case.
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={linkSearchTerm}
+                    onChange={e => setLinkSearchTerm(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleLinkSearch()}
+                    className="flex-1 px-3 py-1.5 text-xs bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                    placeholder="Search by name, case number, evidence ID..."
+                  />
+                  <button onClick={handleLinkSearch} disabled={linkSearching || !linkSearchTerm.trim()} className="toolbar-btn toolbar-btn-primary text-[10px] px-3 disabled:opacity-40">
+                    {linkSearching ? <Loader2 size={10} className="animate-spin" /> : <Search size={10} />} Search
+                  </button>
+                </div>
+                {linkSearchResults.length > 0 && (
+                  <div className="mt-2 space-y-1 max-h-[200px] overflow-y-auto">
+                    {linkSearchResults.map((r: any, i: number) => (
+                      <div key={`${r.type}-${r.id}-${i}`} className="flex items-center gap-2 p-2 bg-surface-base rounded border border-[#1e3048] hover:border-brand-500/50 transition-colors">
+                        <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-brand-900/20 text-brand-400">{r.type}</span>
+                        <span className="text-xs text-rmpg-200 flex-1 truncate">{r.label || r.name || r.title || `#${r.id}`}</span>
+                        <button onClick={() => handleLinkEntity(r.type, r.id)} className="text-[9px] px-2 py-0.5 bg-green-900/20 text-green-400 border border-green-700/40 rounded hover:bg-green-900/40 transition-colors">
+                          <Link2 size={10} className="inline mr-1" />Link
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Current Links */}
+              <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mt-3">Linked Entities</div>
+              {caseLinks.length === 0 ? (
+                <div className="panel-beveled bg-surface-sunken p-6 text-center">
+                  <Link2 size={24} className="text-rmpg-600 mx-auto mb-2" />
+                  <p className="text-xs text-rmpg-400">No entities linked to this case yet</p>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {caseLinks.map((link: any) => (
+                    <div key={link.id} className="flex items-center gap-2 p-2 panel-beveled bg-surface-sunken">
+                      <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-purple-900/20 text-purple-400">{link.entity_type}</span>
+                      <span className="text-xs text-rmpg-200 flex-1">{link.entity_label || `${link.entity_type} #${link.entity_id}`}</span>
+                      <span className="text-[9px] text-rmpg-500">{link.relationship}</span>
+                      <button onClick={() => handleUnlinkEntity(link.id)} className="text-rmpg-500 hover:text-red-400 transition-colors" title="Remove link">
+                        <Unlink size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -730,6 +1102,68 @@ export default function ForensicLabPage() {
                     <option key={t.value} value={t.label}>{t.label} — {t.desc}</option>
                   ))}
                 </select>
+              </div>
+            </div>
+          </FormModal>
+        )}
+
+        {/* Edit Case Modal */}
+        {showEditModal && (
+          <FormModal
+            isOpen={showEditModal}
+            onClose={() => setShowEditModal(false)}
+            onSubmit={handleEditSubmit}
+            title="Edit Case Details"
+            icon={Edit3}
+            submitLabel="Save"
+            maxWidth="max-w-lg"
+            isDirty={true}
+          >
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[11px] text-rmpg-400 mb-1">Synopsis</label>
+                <textarea
+                  value={editForm.synopsis}
+                  onChange={e => setEditForm(f => ({ ...f, synopsis: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none h-20"
+                  placeholder="Case synopsis..."
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] text-rmpg-400 mb-1">Findings</label>
+                <textarea
+                  value={editForm.findings}
+                  onChange={e => setEditForm(f => ({ ...f, findings: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none h-20"
+                  placeholder="Examination findings..."
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] text-rmpg-400 mb-1">Conclusion</label>
+                <textarea
+                  value={editForm.conclusion}
+                  onChange={e => setEditForm(f => ({ ...f, conclusion: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none h-20"
+                  placeholder="Final conclusion..."
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] text-rmpg-400 mb-1">Due Date</label>
+                <input
+                  type="date"
+                  value={editForm.due_date}
+                  onChange={e => setEditForm(f => ({ ...f, due_date: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] text-rmpg-400 mb-1">Notes</label>
+                <textarea
+                  value={editForm.notes}
+                  onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm bg-[#0d1520] border border-[#1e3048] rounded text-white focus:border-brand-500 focus:outline-none h-16"
+                  placeholder="Internal notes..."
+                />
               </div>
             </div>
           </FormModal>
