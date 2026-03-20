@@ -1,8 +1,9 @@
 // ============================================================
-// ClearPathGPS Integration Routes
+// ClearPathGPS Integration Routes — v3.0 API
 // ============================================================
 // Admin endpoints for configuring credentials, managing
-// device-to-unit mappings, and controlling the GPS poller.
+// device-to-unit mappings, controlling the GPS poller,
+// and accessing v3.0 Media/Geozone/Driver endpoints.
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
@@ -22,12 +23,27 @@ import {
   testConnection,
   getDevices,
   getDeviceHistory,
+  getDeviceLatest,
   discoverAccounts,
+  getMediaList,
+  getMediaDetail,
+  downloadMedia,
+  cpgStreamTo,
+  requestMedia,
+  pingCamera,
+  getGeozones,
+  getDrivers,
+  getStatusCodes,
+  getDeviceGroups,
+  search,
+  toEpochSeconds,
 } from '../utils/clearPathGpsClient';
 import {
   startClearPathGpsPoller,
   stopClearPathGpsPoller,
   restartClearPathGpsPoller,
+  forcePoll,
+  fullSync,
 } from '../utils/clearPathGpsPoller';
 import {
   startClearPathGpsMediaPoller,
@@ -67,6 +83,7 @@ router.get('/status', requireRole('admin', 'manager'), (_req: Request, res: Resp
     res.json({
       configured,
       enabled,
+      api_version: '3.0',
       poll_interval_seconds: parseInt(pollInterval, 10),
       active_mappings: mappingCount,
       last_sync: lastSync,
@@ -135,6 +152,58 @@ router.post('/test-connection', requireRole('admin', 'manager'), async (_req: Re
     res.json(result);
   } catch (error: any) {
     res.status(502).json({ success: false, deviceCount: 0, error: 'Connection test failed' });
+  }
+});
+
+// ============================================================
+// POST /api/clearpathgps/poll-now — force immediate position poll
+// ============================================================
+router.post('/poll-now', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+  try {
+    console.log(`[ClearPathGPS] Manual poll triggered by user ${req.user!.userId}`);
+    await forcePoll();
+
+    const db = getDb();
+    const recentBreadcrumbs = (db.prepare(
+      "SELECT COUNT(*) as cnt FROM gps_breadcrumbs WHERE gps_source = 'clearpathgps' AND recorded_at >= datetime('now', '-2 minutes')"
+    ).get() as any)?.cnt || 0;
+    const mappedUnits = (db.prepare(
+      "SELECT COUNT(*) as cnt FROM units WHERE gps_source = 'clearpathgps'"
+    ).get() as any)?.cnt || 0;
+
+    db.prepare(
+      "INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'clearpathgps_manual_poll', 'integration', 0, ?, ?)"
+    ).run(req.user!.userId, `Manual poll: ${mappedUnits} units, ${recentBreadcrumbs} breadcrumbs`, req.ip || 'unknown');
+
+    res.json({ success: true, units_updated: mappedUnits, breadcrumbs: recentBreadcrumbs });
+  } catch (error: any) {
+    console.error('ClearPathGPS manual poll error:', error);
+    res.status(500).json({ success: false, error: error.message || 'Poll failed' });
+  }
+});
+
+// ============================================================
+// POST /api/clearpathgps/full-sync — mandatory comprehensive data pull
+// ============================================================
+router.post('/full-sync', requireRole('admin'), async (req: Request, res: Response) => {
+  try {
+    console.log(`[ClearPathGPS] Full sync triggered by user ${req.user!.userId}`);
+
+    const result = await fullSync();
+
+    const db = getDb();
+    db.prepare(
+      "INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'clearpathgps_full_sync', 'integration', 0, ?, ?)"
+    ).run(
+      req.user!.userId,
+      `Full sync: API ${result.apiVersion}, ${result.devices.count} devices, ${result.fleetPositions.breadcrumbsInserted} breadcrumbs, ${result.deviceHistory.totalPoints} history pts, ${result.media.videoUrls} videos, ${result.geozones.count} geozones, ${result.drivers.count} drivers — ${(result.duration_ms / 1000).toFixed(1)}s`,
+      req.ip || 'unknown'
+    );
+
+    res.json(result);
+  } catch (error: any) {
+    console.error('ClearPathGPS full sync error:', error);
+    res.status(500).json({ error: error.message || 'Full sync failed' });
   }
 });
 
@@ -357,7 +426,8 @@ router.put('/settings', requireRole('admin'), (req: Request, res: Response) => {
 });
 
 // ============================================================
-// GET /api/clearpathgps/history/:deviceId — fetch device history from API
+// GET /api/clearpathgps/history/:deviceId — fetch device history (v3.0)
+// Accepts from/to as ISO strings or epoch seconds
 // ============================================================
 router.get('/history/:deviceId', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
   try {
@@ -366,20 +436,45 @@ router.get('/history/:deviceId', requireRole('admin', 'manager'), async (req: Re
       return;
     }
 
-    const deviceId = req.params.deviceId as string;
-    const from = req.query.from as string;
-    const to = req.query.to as string;
+    const { deviceId } = req.params;
+    const fromRaw = req.query.from as string;
+    const toRaw = req.query.to as string;
 
-    if (!from || !to) {
-      res.status(400).json({ error: 'from and to query parameters are required (ISO date strings)' });
+    if (!fromRaw || !toRaw) {
+      res.status(400).json({ error: 'from and to query parameters are required (ISO date strings or epoch seconds)' });
       return;
     }
 
-    const events = await getDeviceHistory(deviceId, String(from), String(to));
+    // Accept both ISO strings and epoch integers
+    const from = /^\d+$/.test(fromRaw) ? Number(fromRaw) : fromRaw;
+    const to = /^\d+$/.test(toRaw) ? Number(toRaw) : toRaw;
+
+    const events = await getDeviceHistory(deviceId, from, to);
     res.json({ events, count: events.length });
   } catch (error: any) {
     console.error('ClearPathGPS fetch history error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to fetch device history' });
+  }
+});
+
+// ============================================================
+// GET /api/clearpathgps/device/:deviceId/latest — latest event for one device
+// ============================================================
+router.get('/device/:deviceId/latest', requireRole('admin', 'manager', 'supervisor'), async (req: Request, res: Response) => {
+  try {
+    if (!isConfigured()) {
+      res.status(400).json({ error: 'ClearPathGPS not configured' });
+      return;
+    }
+
+    const event = await getDeviceLatest(req.params.deviceId);
+    if (!event) {
+      res.status(404).json({ error: 'No events found for device' });
+      return;
+    }
+    res.json(event);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to fetch device latest' });
   }
 });
 
@@ -614,6 +709,174 @@ router.post('/media-sync-now', requireRole('admin'), async (req: Request, res: R
   } catch (error: any) {
     console.error('ClearPathGPS media sync-now error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// v3.0 Media Endpoints
+// ============================================================
+
+// GET /api/clearpathgps/media/:deviceId — list media events
+router.get('/media/:deviceId', requireRole('admin', 'manager', 'supervisor', 'officer'), async (req: Request, res: Response) => {
+  try {
+    if (!isConfigured()) { res.status(400).json({ error: 'ClearPathGPS not configured' }); return; }
+
+    const { deviceId } = req.params;
+    const fromRaw = req.query.from as string;
+    const toRaw = req.query.to as string;
+    const mediaType = req.query.mediaType as 'image' | 'video' | undefined;
+    const eventType = req.query.eventType as string | undefined;
+    const page = req.query.page ? parseInt(req.query.page as string, 10) : undefined;
+    const pageSize = req.query.pageSize ? parseInt(req.query.pageSize as string, 10) : undefined;
+
+    // Default: last 24 hours
+    const now = Math.floor(Date.now() / 1000);
+    const from = fromRaw ? (/^\d+$/.test(fromRaw) ? Number(fromRaw) : toEpochSeconds(fromRaw)) : now - 86400;
+    const to = toRaw ? (/^\d+$/.test(toRaw) ? Number(toRaw) : toEpochSeconds(toRaw)) : now;
+
+    const result = await getMediaList(deviceId, from, to, { mediaType, eventType, page, pageSize });
+    res.json(result);
+  } catch (error: any) {
+    console.error('ClearPathGPS media list error:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch media list' });
+  }
+});
+
+// GET /api/clearpathgps/media/:deviceId/detail — get media for specific timestamp
+router.get('/media/:deviceId/detail', requireRole('admin', 'manager', 'supervisor', 'officer'), async (req: Request, res: Response) => {
+  try {
+    if (!isConfigured()) { res.status(400).json({ error: 'ClearPathGPS not configured' }); return; }
+
+    const timestamp = parseInt(req.query.timestamp as string, 10);
+    if (isNaN(timestamp)) { res.status(400).json({ error: 'timestamp query parameter required (epoch)' }); return; }
+
+    const result = await getMediaDetail(req.params.deviceId, timestamp);
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to fetch media detail' });
+  }
+});
+
+// GET /api/clearpathgps/media/:deviceId/download — stream media download (no buffering)
+router.get('/media/:deviceId/download', requireRole('admin', 'manager', 'supervisor', 'officer'), async (req: Request, res: Response) => {
+  try {
+    if (!isConfigured()) { res.status(400).json({ error: 'ClearPathGPS not configured' }); return; }
+
+    const timestamp = parseInt(req.query.timestamp as string, 10);
+    if (isNaN(timestamp)) { res.status(400).json({ error: 'timestamp query parameter required (epoch)' }); return; }
+
+    // Stream directly from ClearPathGPS → client (no memory buffering)
+    await cpgStreamTo(
+      `/media/download/${encodeURIComponent(req.params.deviceId)}?timestamp=${timestamp}`,
+      res
+    );
+  } catch (error: any) {
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message || 'Failed to download media' });
+    }
+  }
+});
+
+// POST /api/clearpathgps/media/:deviceId/request — request new recording
+router.post('/media/:deviceId/request', requireRole('admin', 'manager', 'supervisor'), async (req: Request, res: Response) => {
+  try {
+    if (!isConfigured()) { res.status(400).json({ error: 'ClearPathGPS not configured' }); return; }
+
+    const body = req.body || { insideCam: true, outsideCam: true, insideType: 'video', outsideType: 'video' };
+    if (!body.timestamp) body.timestamp = Math.floor(Date.now() / 1000);
+
+    const result = await requestMedia(req.params.deviceId, body);
+    res.json({ message: 'Media request sent', result });
+  } catch (error: any) {
+    // 424 means camera unavailable
+    const status = error.message?.includes('424') ? 424 : 500;
+    res.status(status).json({ error: error.message || 'Failed to request media' });
+  }
+});
+
+// GET /api/clearpathgps/media/:deviceId/ping — check camera status
+router.get('/media/:deviceId/ping', requireRole('admin', 'manager', 'supervisor', 'officer'), async (req: Request, res: Response) => {
+  try {
+    if (!isConfigured()) { res.status(400).json({ error: 'ClearPathGPS not configured' }); return; }
+
+    const result = await pingCamera(req.params.deviceId);
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to ping camera' });
+  }
+});
+
+// ============================================================
+// v3.0 Geozone Endpoints
+// ============================================================
+
+// GET /api/clearpathgps/geozones — list all geozones
+router.get('/geozones', requireRole('admin', 'manager', 'supervisor'), async (_req: Request, res: Response) => {
+  try {
+    if (!isConfigured()) { res.status(400).json({ error: 'ClearPathGPS not configured' }); return; }
+    const geozones = await getGeozones();
+    res.json({ geozones });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to fetch geozones' });
+  }
+});
+
+// ============================================================
+// v3.0 Driver Endpoints
+// ============================================================
+
+// GET /api/clearpathgps/drivers — list all drivers
+router.get('/drivers', requireRole('admin', 'manager', 'supervisor'), async (_req: Request, res: Response) => {
+  try {
+    if (!isConfigured()) { res.status(400).json({ error: 'ClearPathGPS not configured' }); return; }
+    const drivers = await getDrivers();
+    res.json({ drivers });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to fetch drivers' });
+  }
+});
+
+// ============================================================
+// v3.0 Device Groups
+// ============================================================
+
+// GET /api/clearpathgps/groups — list device groups
+router.get('/groups', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+  try {
+    if (!isConfigured()) { res.status(400).json({ error: 'ClearPathGPS not configured' }); return; }
+    const withDevices = req.query.withDevices === 'true';
+    const groups = await getDeviceGroups(withDevices);
+    res.json({ groups });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to fetch groups' });
+  }
+});
+
+// ============================================================
+// v3.0 Status Codes + Search
+// ============================================================
+
+// GET /api/clearpathgps/status-codes — list all event status codes
+router.get('/status-codes', requireRole('admin', 'manager'), async (_req: Request, res: Response) => {
+  try {
+    if (!isConfigured()) { res.status(400).json({ error: 'ClearPathGPS not configured' }); return; }
+    const codes = await getStatusCodes();
+    res.json(codes);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to fetch status codes' });
+  }
+});
+
+// GET /api/clearpathgps/search — search devices, groups, geozones, drivers
+router.get('/search', requireRole('admin', 'manager', 'supervisor'), async (req: Request, res: Response) => {
+  try {
+    if (!isConfigured()) { res.status(400).json({ error: 'ClearPathGPS not configured' }); return; }
+    const q = req.query.q as string;
+    if (!q || q.length < 3) { res.status(400).json({ error: 'Search query must be at least 3 characters' }); return; }
+    const results = await search(q);
+    res.json({ results });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Search failed' });
   }
 });
 

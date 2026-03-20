@@ -16,6 +16,7 @@ import { initDatabase } from './models/database';
 import { initWebSocket, getConnectedUsers, getConnectedClientCount } from './utils/websocket';
 import { authenticateToken, requireRole } from './middleware/auth';
 import { securityHeaders } from './middleware/securityHeaders';
+import compression from 'compression';
 import { sanitizeInput } from './middleware/sanitize';
 import { apiRateLimit, webhookRateLimit, rateLimit } from './middleware/rateLimiter';
 import { liveBroadcast } from './middleware/liveBroadcast';
@@ -240,6 +241,7 @@ app.use(cors({
   exposedHeaders: ['X-Request-ID', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'Retry-After'],
   maxAge: 600, // 10 minutes — browser caches preflight results
 }));
+app.use(compression({ level: 6, threshold: 1024 })); // gzip responses > 1KB
 
 // ─── GitHub Webhook (must come BEFORE express.json() for raw body HMAC) ──
 app.post('/api/webhook/github', webhookRateLimit, express.raw({ type: 'application/json', limit: '256kb' }), (req, res) => {

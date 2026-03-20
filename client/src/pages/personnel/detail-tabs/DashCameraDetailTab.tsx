@@ -1,24 +1,75 @@
 // ============================================================
 // RMPG Flex — Officer Dash Camera Detail Tab
-// Per-officer view of ClearPathGPS device mapping and events.
-// Read-only — data synced from ClearPathGPS.
+// Per-officer view of ClearPathGPS device mapping, events,
+// and dashcam video library (v3.0 API with media endpoints).
 // ============================================================
 
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   Car, Cpu, Zap, AlertTriangle, MapPin, Gauge,
-  Video, Clock, Loader2, ExternalLink,
+  Video, Clock, Loader2, ExternalLink, Play, Trash2, Film, Upload, Pencil,
+  Camera, Wifi, WifiOff, VideoIcon,
 } from 'lucide-react';
-import type { DashcamEvent, CpgDeviceMapping } from '../../../types';
-import { DASHCAM_EVENT_COLORS } from '../utils/personnelConstants';
+import type { DashcamEvent, CpgDeviceMapping, DashCamVideo } from '../../../types';
+import {
+  DASHCAM_EVENT_COLORS,
+  VIDEO_CLASSIFICATION_COLORS,
+} from '../utils/personnelConstants';
+import { apiFetch } from '../../../hooks/useApi';
 
 interface Props {
   events: DashcamEvent[];
   deviceMapping: CpgDeviceMapping | null;
   loading: boolean;
+  videos?: DashCamVideo[];
+  onPlayVideo?: (video: DashCamVideo) => void;
+  onDeleteVideo?: (video: DashCamVideo) => void;
+  onUploadVideo?: () => void;
+  onEditVideo?: (video: DashCamVideo) => void;
 }
 
-export default function DashCameraDetailTab({ events, deviceMapping, loading }: Props) {
+export default function DashCameraDetailTab({
+  events, deviceMapping, loading,
+  videos = [], onPlayVideo, onDeleteVideo, onUploadVideo, onEditVideo,
+}: Props) {
+  const [cameraStatus, setCameraStatus] = useState<'unknown' | 'online' | 'offline' | 'checking'>('unknown');
+  const [requestingVideo, setRequestingVideo] = useState(false);
+  const [videoRequestMsg, setVideoRequestMsg] = useState<string | null>(null);
+
+  const handlePingCamera = useCallback(async () => {
+    if (!deviceMapping?.cpg_device_id) return;
+    setCameraStatus('checking');
+    try {
+      const result = await apiFetch(`/clearpathgps/media/${deviceMapping.cpg_device_id}/ping`) as { status: string };
+      setCameraStatus(result.status === 'online' || result.status === 'OK' ? 'online' : 'offline');
+    } catch {
+      setCameraStatus('offline');
+    }
+  }, [deviceMapping?.cpg_device_id]);
+
+  const handleRequestVideo = useCallback(async () => {
+    if (!deviceMapping?.cpg_device_id) return;
+    setRequestingVideo(true);
+    setVideoRequestMsg(null);
+    try {
+      await apiFetch(`/clearpathgps/media/${deviceMapping.cpg_device_id}/request`, {
+        method: 'POST',
+        body: JSON.stringify({
+          insideCam: true,
+          outsideCam: true,
+          insideType: 'video',
+          outsideType: 'video',
+        }),
+      });
+      setVideoRequestMsg('Video request sent to camera');
+    } catch (err: any) {
+      setVideoRequestMsg(err.message?.includes('424') ? 'Camera unavailable' : 'Request failed');
+    } finally {
+      setRequestingVideo(false);
+      setTimeout(() => setVideoRequestMsg(null), 5000);
+    }
+  }, [deviceMapping?.cpg_device_id]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -80,8 +131,54 @@ export default function DashCameraDetailTab({ events, deviceMapping, loading }: 
               }`}>
                 {deviceMapping.is_active ? 'ACTIVE' : 'INACTIVE'}
               </span>
+              {/* Camera status indicator */}
+              <button
+                onClick={handlePingCamera}
+                className="toolbar-btn text-[9px] px-1.5 py-0.5 flex items-center gap-1"
+                title="Ping camera"
+              >
+                {cameraStatus === 'checking' ? (
+                  <Loader2 className="w-2.5 h-2.5 animate-spin text-brand-400" />
+                ) : cameraStatus === 'online' ? (
+                  <Wifi className="w-2.5 h-2.5 text-green-400" />
+                ) : cameraStatus === 'offline' ? (
+                  <WifiOff className="w-2.5 h-2.5 text-red-400" />
+                ) : (
+                  <Wifi className="w-2.5 h-2.5 text-rmpg-500" />
+                )}
+                {cameraStatus === 'online' ? 'CAM ONLINE' : cameraStatus === 'offline' ? 'CAM OFFLINE' : 'PING CAM'}
+              </button>
+            </div>
+            <div className="flex items-center gap-1.5">
+              {/* Request Video button */}
+              <button
+                onClick={handleRequestVideo}
+                disabled={requestingVideo}
+                className="toolbar-btn text-[9px] px-2 py-0.5 flex items-center gap-1 text-purple-400 hover:text-purple-300"
+                title="Request new video recording from camera"
+              >
+                {requestingVideo ? (
+                  <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                ) : (
+                  <VideoIcon className="w-2.5 h-2.5" />
+                )}
+                Request Video
+              </button>
+              <span className="text-[8px] text-rmpg-500 font-mono uppercase bg-surface-base px-1.5 py-0.5 border border-rmpg-700">
+                ClearPathGPS v3.0
+              </span>
             </div>
           </div>
+
+          {/* Video request feedback */}
+          {videoRequestMsg && (
+            <div className={`text-[9px] px-2 py-1 mb-2 font-semibold ${
+              videoRequestMsg.includes('sent') ? 'text-green-400 bg-green-900/20 border border-green-700/30' :
+              'text-amber-400 bg-amber-900/20 border border-amber-700/30'
+            }`}>
+              {videoRequestMsg}
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-1">
             <div>
