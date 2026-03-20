@@ -55,7 +55,6 @@ import RmpgLogo from './RmpgLogo';
 import StatusBar from './StatusBar';
 import MenuBar from './MenuBar';
 import Sidebar from './Sidebar';
-import ModuleTileBar from './ModuleTileBar';
 import ErrorBoundary from './ErrorBoundary';
 import NotificationCenter from './NotificationCenter';
 import PanicButton from './PanicButton';
@@ -1170,21 +1169,6 @@ export default function Layout() {
         connectionType={gps.connectionType}
         positionSource={gps.positionSource}
       />
-
-      {/* ============================================================ */}
-      {/* MODULE TILE BAR — Spillman Flex module launcher ribbon        */}
-      {/* ============================================================ */}
-      {!isMobile && (
-        <ModuleTileBar
-          items={TOOLBAR_NAV}
-          isAdmin={isAdmin}
-          isClientViewer={isClientViewer}
-          isContractManager={isContractManager}
-          activeCallCount={activeCallCount}
-          emailUnreadCount={emailUnreadCount}
-          activeBOLOs={activeBOLOs}
-        />
-      )}
 
       {/* ============================================================ */}
       {/* MAIN CONTENT AREA — Full width (no sidebar)                  */}
