@@ -143,11 +143,10 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/field-interviews', icon: ClipboardList, label: 'Field Interviews' },
     { path: '/criminal-history', icon: Search, label: 'Criminal History' },
     { path: '/dl-search', icon: CreditCard, label: 'DL Search' },
-    { path: '/skip-tracer', icon: Search, label: 'Skip Tracer' },
-    { path: '/skiptracer-v2', icon: Search, label: 'Skip Tracer V2' },
+    { path: '/skiptracer-v2', icon: Search, label: 'Skip Tracer' },
     { path: '/evidence', icon: Package, label: 'Evidence / Property' },
     { path: '/forensic-lab', icon: Microscope, label: 'Forensic Lab' },
-    { path: '/forensics', icon: Network, label: 'Connections' },
+    { path: '/forensics', icon: Network, label: 'Connection Analysis' },
     { path: '/cases', icon: Briefcase, label: 'Case Management' },
   ]},
   { path: '/warrants', icon: AlertTriangle, label: 'Enforce', group: 'records', shortcut: 'F7', children: [
@@ -181,7 +180,6 @@ const TOOLBAR_NAV: NavItem[] = [
   ]},
   { path: '/crm', icon: Briefcase, label: 'Overwatch', group: 'analysis' },
   { path: '/training', icon: GraduationCap, label: 'Training', group: 'analysis' },
-  { path: '/forensics', icon: Network, label: 'Connections', group: 'analysis', adminOnly: true },
   { path: '/audit', icon: ScrollText, label: 'Audit', group: 'system', shortcut: 'F11', adminOnly: true },
   { path: '/admin', icon: Settings, label: 'Admin', group: 'system', shortcut: 'F12', adminOnly: true },
 ];

@@ -261,7 +261,7 @@ export default function MenuBar({
   // Menu Definitions
   // ============================================================
 
-  // ── FILE MENU ──────────────────────────────────────────────
+  // ── FILE MENU (Create + Session) ───────────────────────────
   const fileMenu: MenuDefinition = {
     label: 'File',
     items: [
@@ -284,50 +284,6 @@ export default function MenuBar({
         ],
       },
       { type: 'separator' },
-      {
-        type: 'submenu',
-        label: 'Open Module',
-        icon: Globe,
-        items: [
-          { type: 'action', label: 'Dashboard', icon: LayoutDashboard, action: () => navigate('/') },
-          { type: 'action', label: 'Dispatch', icon: Radio, action: () => navigate('/dispatch') },
-          { type: 'action', label: 'Map', icon: Map, action: () => navigate('/map') },
-          { type: 'action', label: 'MDT Terminal', icon: Terminal, action: () => navigate('/mdt') },
-          { type: 'separator' },
-          { type: 'action', label: 'Incidents', icon: FileText, action: () => navigate('/incidents') },
-          { type: 'action', label: 'Records', icon: Database, action: () => navigate('/records') },
-          { type: 'action', label: 'Warrants', icon: Gavel, action: () => window.open('/warrants', '_blank', 'noopener,noreferrer') },
-          { type: 'action', label: 'Citations', icon: FileWarning, action: () => navigate('/citations') },
-          { type: 'action', label: 'Evidence & Property', icon: Package, action: () => navigate('/evidence') },
-          { type: 'separator' },
-          { type: 'action', label: 'Case Management', icon: Briefcase, action: () => navigate('/cases') },
-          { type: 'action', label: 'Criminal History', icon: FileSearch, action: () => navigate('/criminal-history') },
-          { type: 'action', label: 'Offender Registry', icon: UserCheck, action: () => navigate('/offender-registry') },
-          { type: 'action', label: 'Sex Offender Registry', icon: ShieldAlert, action: () => navigate('/sex-offender-registry') },
-          { type: 'action', label: 'Colorado DOC Search', icon: Database, action: () => navigate('/colorado-doc') },
-          { type: 'separator' },
-          { type: 'action', label: 'Personnel', icon: Users, action: () => navigate('/personnel') },
-          { type: 'action', label: 'Fleet', icon: Car, action: () => navigate('/fleet') },
-          { type: 'action', label: 'Body Cameras', icon: Video, action: () => navigate('/body-cameras') },
-          { type: 'action', label: 'Dash Cameras', icon: Video, action: () => navigate('/dash-cameras') },
-          { type: 'action', label: 'Shift Plans', icon: CalendarDays, action: () => navigate('/shift-plans') },
-          { type: 'separator' },
-          { type: 'action', label: 'Communications', icon: MessageSquare, action: () => navigate('/communications') },
-          { type: 'action', label: 'Radio', icon: Radio, action: () => navigate('/radio') },
-          { type: 'action', label: 'Patrol', icon: QrCode, action: () => navigate('/patrol') },
-          { type: 'separator' },
-          { type: 'action', label: 'Reports', icon: BarChart3, action: () => navigate('/reports') },
-          { type: 'action', label: 'Daily Activity', icon: Clipboard, action: () => navigate('/dar') },
-          { type: 'action', label: 'Crime Analysis', icon: Microscope, action: () => navigate('/crime-analysis') },
-          { type: 'action', label: 'Forensic Lab', icon: Microscope, action: () => navigate('/forensic-lab') },
-          { type: 'separator' },
-          { type: 'action', label: 'Invoices', icon: DollarSign, action: () => navigate('/invoices') },
-          { type: 'separator' },
-          { type: 'action', label: 'Audit Trail', icon: ScrollText, action: () => navigate('/audit'), adminOnly: true },
-          { type: 'action', label: 'Administration', icon: Settings, action: () => navigate('/admin'), adminOnly: true },
-        ],
-      },
-      { type: 'separator' },
       { type: 'action', label: 'Export Current View...', icon: Download, shortcut: 'Ctrl+E', action: () => printWithLightMaps() },
       { type: 'action', label: 'Print Current View...', icon: Printer, shortcut: 'Ctrl+P', action: () => printWithLightMaps() },
       { type: 'separator' },
@@ -337,26 +293,10 @@ export default function MenuBar({
     ],
   };
 
-  // ── VIEW MENU ─────────────────────────────────────────────
+  // ── VIEW MENU (Display + Preferences) ─────────────────────
   const viewMenu: MenuDefinition = {
     label: 'View',
     items: [
-      {
-        type: 'submenu',
-        label: 'Navigate To',
-        icon: Globe,
-        items: [
-          { type: 'action', label: 'Dashboard', icon: LayoutDashboard, shortcut: 'Alt+1', action: () => navigate('/') },
-          { type: 'action', label: 'Dispatch', icon: Radio, shortcut: 'Alt+2', action: () => navigate('/dispatch') },
-          { type: 'action', label: 'Map', icon: Map, shortcut: 'Alt+3', action: () => navigate('/map') },
-          { type: 'action', label: 'Records', icon: Database, shortcut: 'Alt+4', action: () => navigate('/records') },
-          { type: 'action', label: 'Personnel', icon: Users, shortcut: 'Alt+5', action: () => navigate('/personnel') },
-          { type: 'action', label: 'Comms', icon: MessageSquare, shortcut: 'Alt+6', action: () => navigate('/communications') },
-          { type: 'action', label: 'Reports', icon: BarChart3, shortcut: 'Alt+7', action: () => navigate('/reports') },
-          { type: 'action', label: 'MDT', icon: Terminal, shortcut: 'Alt+8', action: () => navigate('/mdt') },
-        ],
-      },
-      { type: 'separator' },
       { type: 'toggle', label: 'Fullscreen Mode', icon: isFullscreen ? Minimize2 : Maximize2, shortcut: 'F11', checked: isFullscreen, action: toggleFullscreen },
       { type: 'toggle', label: 'Compact Mode', icon: Monitor, checked: compactMode, action: toggleCompactMode },
       { type: 'separator' },
@@ -379,111 +319,15 @@ export default function MenuBar({
           { type: 'action', label: 'Test Voice Alerts', icon: Sparkles, action: () => demoAllVoiceAlerts() },
         ],
       },
-      { type: 'separator' },
-      { type: 'action', label: 'Refresh Data', icon: RefreshCw, shortcut: 'F5', action: onRefreshData },
     ],
   };
 
-  // ── TOOLS MENU ────────────────────────────────────────────
+  // ── TOOLS MENU (Search + Utilities only — no navigation) ──
   const toolsMenu: MenuDefinition = {
     label: 'Tools',
     items: [
       { type: 'action', label: 'Global Search', icon: Search, shortcut: 'Ctrl+K', action: onSearch },
       { type: 'action', label: 'NCIC Query Terminal', icon: Terminal, action: () => navigate('/ncic') },
-      { type: 'separator' },
-      {
-        type: 'submenu',
-        label: 'Dispatch & Field',
-        icon: Radio,
-        items: [
-          { type: 'action', label: 'New Call for Service', icon: Phone, shortcut: 'N', action: () => { navigate('/dispatch'); setTimeout(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n' })), 100); } },
-          { type: 'action', label: 'Active Calls Board', icon: ClipboardList, action: () => navigate('/dispatch') },
-          { type: 'action', label: 'MDT Terminal', icon: Terminal, action: () => navigate('/mdt') },
-          { type: 'separator' },
-          { type: 'action', label: 'Patrol Scanner', icon: QrCode, action: () => navigate('/patrol') },
-          { type: 'action', label: 'Shift Planning', icon: CalendarDays, action: () => navigate('/shift-plans') },
-          { type: 'action', label: 'Daily Activity Reports', icon: Clipboard, action: () => navigate('/dar') },
-        ],
-      },
-      {
-        type: 'submenu',
-        label: 'Records & Lookup',
-        icon: Database,
-        items: [
-          { type: 'action', label: 'Person Search', icon: Users, action: () => navigate('/records') },
-          { type: 'action', label: 'Vehicle Search', icon: Car, action: () => navigate('/records') },
-          { type: 'action', label: 'Incident Lookup', icon: FileText, action: () => navigate('/incidents') },
-          { type: 'action', label: 'Arrest Records', icon: Shield, action: () => navigate('/arrest-records') },
-          { type: 'separator' },
-          { type: 'action', label: 'Arrest Records', icon: Scale, action: () => navigate('/arrest-records') },
-          { type: 'action', label: 'Criminal History', icon: FileSearch, action: () => navigate('/criminal-history') },
-          { type: 'action', label: 'Warrant Check', icon: Gavel, action: () => window.open('/warrants', '_blank', 'noopener,noreferrer') },
-          { type: 'action', label: 'Offender Registry', icon: UserCheck, action: () => navigate('/offender-registry') },
-          { type: 'action', label: 'Sex Offender Registry', icon: ShieldAlert, action: () => navigate('/sex-offender-registry') },
-          { type: 'action', label: 'Colorado DOC Search', icon: Database, action: () => navigate('/colorado-doc') },
-          { type: 'separator' },
-          { type: 'action', label: 'Skip Tracer V2', icon: Search, action: () => navigate('/skiptracer-v2') },
-        ],
-      },
-      {
-        type: 'submenu',
-        label: 'Enforcement',
-        icon: Shield,
-        items: [
-          { type: 'action', label: 'Case Management', icon: Briefcase, action: () => navigate('/cases') },
-          { type: 'action', label: 'Evidence & Property', icon: Package, action: () => navigate('/evidence') },
-          { type: 'action', label: 'Code Enforcement', icon: Scale, action: () => navigate('/code-enforcement') },
-          { type: 'action', label: 'Court Tracker', icon: Gavel, action: () => navigate('/court') },
-          { type: 'action', label: 'Court Records', icon: Gavel, action: () => navigate('/court-records') },
-          { type: 'action', label: 'Trespass Orders', icon: ShieldAlert, action: () => navigate('/trespass-orders') },
-          { type: 'action', label: 'Process Server', icon: Briefcase, action: () => navigate('/serve') },
-          { type: 'separator' },
-          { type: 'action', label: 'Digital Forensics', icon: HardDrive, action: () => navigate('/digital-forensics') },
-          { type: 'action', label: 'Forensic Lab', icon: Microscope, action: () => navigate('/forensics-lab') },
-        ],
-      },
-      {
-        type: 'submenu',
-        label: 'Communications',
-        icon: MessageSquare,
-        items: [
-          { type: 'action', label: 'Send Message', icon: MessageSquare, action: () => navigate('/communications') },
-          { type: 'action', label: 'Issue BOLO', icon: AlertTriangle, action: () => navigate('/communications') },
-          { type: 'action', label: 'View Active BOLOs', icon: Eye, action: () => navigate('/communications') },
-          { type: 'separator' },
-          { type: 'action', label: 'Radio Console', icon: Radio, action: () => navigate('/radio') },
-        ],
-      },
-      {
-        type: 'submenu',
-        label: 'Analysis & Reports',
-        icon: BarChart3,
-        items: [
-          { type: 'action', label: 'Crime Analysis', icon: Microscope, action: () => navigate('/crime-analysis') },
-          { type: 'action', label: 'Forensic Lab', icon: Microscope, action: () => navigate('/forensic-lab') },
-          { type: 'action', label: 'Statute Analytics', icon: Scale, action: () => navigate('/statute-analytics') },
-          { type: 'action', label: 'Custom Report Builder', icon: PenTool, action: () => navigate('/reports/custom') },
-          { type: 'separator' },
-          { type: 'action', label: 'Reports Dashboard', icon: BarChart3, action: () => navigate('/reports') },
-        ],
-      },
-      { type: 'separator' },
-      { type: 'action', label: 'Overwatch', icon: Briefcase, action: () => navigate('/crm') },
-      {
-        type: 'submenu',
-        label: 'Administration',
-        icon: Settings,
-        adminOnly: true,
-        items: [
-          { type: 'action', label: 'User Management', icon: Users, action: () => navigate('/admin') },
-          { type: 'action', label: 'System Configuration', icon: Settings, action: () => navigate('/admin') },
-          { type: 'action', label: 'Security Policy', icon: ShieldAlert, action: () => navigate('/admin') },
-          { type: 'action', label: 'Branding & Reports', icon: Palette, action: () => navigate('/admin') },
-          { type: 'separator' },
-          { type: 'action', label: 'Audit Trail', icon: ScrollText, action: () => navigate('/audit') },
-          { type: 'action', label: 'Training Management', icon: GraduationCap, action: () => navigate('/training') },
-        ],
-      },
     ],
   };
 
