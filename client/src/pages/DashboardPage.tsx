@@ -30,7 +30,6 @@ import type { DashboardStats, ActivityLogEntry, BOLO } from '../types';
 import StatsCard from '../components/StatsCard';
 import ActivityFeed from '../components/ActivityFeed';
 import PanelTitleBar from '../components/PanelTitleBar';
-import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
 import { StatsCardSkeleton, CardSkeleton } from '../components/Skeleton';
 import { apiFetch } from '../hooks/useApi';
@@ -314,40 +313,20 @@ export default function DashboardPage() {
 
   return (
     <div className="p-4 space-y-4 animate-fade-in app-grid-bg">
-      {/* Portal Header — RMPG Logo + System Title */}
-      <div className="panel-beveled bg-surface-base overflow-hidden relative">
-        {/* Scan-line overlay */}
-        <div className="dash-scan-line" />
-        <div className={`flex items-center gap-4 ${isMobile ? 'px-3 py-2' : 'px-4 py-3'} relative`}>
-          {/* Blue accent line */}
-          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #0e3359, #1a5a9e 30%, #1a5a9e 70%, #0e3359)' }} />
-          {!isMobile && <RmpgLogo height={68} />}
-          {isMobile && <RmpgLogo height={36} iconOnly />}
-          <div className="flex-1">
-            <div className="flex items-center gap-3">
-              <h1 className={`${isMobile ? 'text-xs' : 'text-sm'} font-bold tracking-wider uppercase text-rmpg-200`}>
-                {isMobile ? 'C&C Dashboard' : 'Command & Control Dashboard'}
-              </h1>
-              <div className="hidden sm:flex items-center gap-1.5">
-                <span className={`led-dot ${stats.active_calls > 0 ? 'led-green animate-led-pulse' : 'led-green'}`} />
-                <span className="text-[10px] font-mono font-bold text-green-500">OPERATIONAL</span>
-              </div>
-            </div>
-            {!isMobile && (
-              <p className="text-[10px] tracking-wide mt-0.5 text-rmpg-600">
-                Rocky Mountain Protective Group, LLC &mdash; Resolving today&rsquo;s concerns, to ensure tomorrow&rsquo;s solutions.
-              </p>
-            )}
+      {/* Dashboard Title Bar */}
+      <PanelTitleBar title={isMobile ? 'C&C Dashboard' : 'Command & Control Dashboard'}>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <span className={`led-dot ${stats.active_calls > 0 ? 'led-green animate-led-pulse' : 'led-green'}`} />
+            <span className="text-[10px] font-mono font-bold text-green-500">OPERATIONAL</span>
           </div>
-          <div className="hidden md:flex items-center gap-3 text-[9px] font-mono text-rmpg-600">
-            <PrintButton />
-            <div className="flex items-center gap-1.5 px-2 py-1 panel-inset">
-              <span className="led-dot led-green" />
-              <span>{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
-            </div>
+          <PrintButton />
+          <div className="hidden md:flex items-center gap-1.5 px-2 py-1 panel-inset text-[9px] font-mono text-rmpg-600">
+            <span className="led-dot led-green" />
+            <span>{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
           </div>
         </div>
-      </div>
+      </PanelTitleBar>
 
       {/* Error Banner */}
       {error && (
