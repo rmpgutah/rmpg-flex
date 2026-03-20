@@ -1513,166 +1513,196 @@ d41d8cd98f00b204e9800998ecf8427e,suspicious_file.exe
       {/* ── Import Hash Set Modal ────────────────────────── */}
       {showImportHashSet && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" onClick={() => setShowImportHashSet(false)}>
-          <div className="card-glass rounded-lg w-full max-w-md mx-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="card-glass rounded-lg w-full max-w-2xl mx-4 shadow-2xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e3048]">
               <div className="flex items-center gap-2">
                 <Upload size={14} className="text-brand-blue" />
                 <span className="text-sm font-bold text-white">Import Hash Set</span>
+                <span className="text-[10px] text-slate-500">Select a set below or enter a custom path</span>
               </div>
               <button onClick={() => setShowImportHashSet(false)} className="p-1 rounded text-slate-500 hover:text-white hover:bg-[#1a2636] transition-colors">
                 <X size={14} />
               </button>
             </div>
-            <div className="p-4 space-y-3">
-              {/* Quick-select from available sets */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {/* ── Quick Import: Visual Card Grid ─────────── */}
               {availableHashSets.length > 0 && (
-                <div>
-                  <label className="text-[10px] text-slate-500 uppercase block mb-1">Select Hash Set</label>
-                  <select
-                    value={selectedAvailableSet}
-                    onChange={(e) => {
-                      const fileName = e.target.value;
-                      setSelectedAvailableSet(fileName);
-                      if (fileName) {
-                        const set = availableHashSets.find((s: any) => s.fileName === fileName);
-                        if (set) {
-                          setImportData({
-                            filePath: set.filePath,
-                            setName: set.displayName,
-                            category: set.category,
-                            hashType: set.hashType,
+                <>
+                  {/* Import All banner */}
+                  <button
+                    onClick={async () => {
+                      if (!window.confirm(`Import all ${availableHashSets.length} hash sets? This loads ${availableHashSets.reduce((s: number, h: any) => s + h.hashCount, 0)} total hashes.`)) return;
+                      setImportSubmitting(true);
+                      let imported = 0;
+                      for (const set of availableHashSets) {
+                        try {
+                          await apiFetch('/iped/hash-sets/import', {
+                            method: 'POST',
+                            body: JSON.stringify({ filePath: set.filePath, setName: set.displayName, category: set.category, hashType: set.hashType }),
                           });
-                        }
-                      } else {
-                        setImportData({ filePath: '', setName: '', category: 'known_bad', hashType: 'md5' });
+                          imported++;
+                        } catch { /* skip failed */ }
                       }
+                      setImportSubmitting(false);
+                      addToast(`Imported ${imported} of ${availableHashSets.length} hash sets`, 'success');
+                      setShowImportHashSet(false);
+                      fetchHashSets();
+                      fetchStatus();
                     }}
-                    className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-3 py-2 focus:outline-none focus:border-brand-blue/50"
+                    disabled={importSubmitting}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold rounded bg-gradient-to-r from-emerald-600/20 to-brand-blue/20 text-emerald-400 border border-emerald-600/30 hover:from-emerald-600/30 hover:to-brand-blue/30 disabled:opacity-50 transition-all"
                   >
-                    <option value="">-- Select a hash set to import --</option>
-                    {availableHashSets.filter((s: any) => s.category === 'known_bad').length > 0 && (
-                      <optgroup label="Known Bad (Threat Detection)">
-                        {availableHashSets.filter((s: any) => s.category === 'known_bad').map((s: any) => (
-                          <option key={s.fileName} value={s.fileName}>
-                            {s.displayName} ({s.hashCount} hashes, {s.hashType.toUpperCase()})
-                          </option>
+                    {importSubmitting ? <Loader2 size={14} className="animate-spin" /> : <Database size={14} />}
+                    IMPORT ALL {availableHashSets.length} SETS ({availableHashSets.reduce((s: number, h: any) => s + h.hashCount, 0)} hashes)
+                  </button>
+
+                  {/* Known Bad section */}
+                  {availableHashSets.filter((s: any) => s.category === 'known_bad').length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <AlertTriangle size={11} className="text-red-400" />
+                        <span className="text-[10px] font-bold text-red-400 uppercase tracking-wider">Known Bad — Threat Detection</span>
+                        <span className="text-[9px] text-slate-600 ml-1">Flags evidence matching these hashes</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {availableHashSets.filter((s: any) => s.category === 'known_bad').map((set: any) => (
+                          <button
+                            key={set.fileName}
+                            onClick={() => {
+                              setSelectedAvailableSet(set.fileName);
+                              setImportData({ filePath: set.filePath, setName: set.displayName, category: set.category, hashType: set.hashType });
+                            }}
+                            className={`text-left rounded p-2.5 border transition-all ${
+                              selectedAvailableSet === set.fileName
+                                ? 'bg-red-900/20 border-red-600/40 ring-1 ring-red-500/30'
+                                : 'bg-[#141e2b] border-[#1e3048] hover:border-red-800/40 hover:bg-red-900/10'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] font-semibold text-white">{set.displayName}</span>
+                              {selectedAvailableSet === set.fileName && <CheckCircle size={12} className="text-red-400" />}
+                            </div>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-900/30 text-red-400 border border-red-800/20 font-mono">{set.hashType.toUpperCase()}</span>
+                              <span className="text-[9px] text-slate-500">{set.hashCount} hashes</span>
+                            </div>
+                            {set.description && <p className="text-[9px] text-slate-500 mt-1 leading-relaxed line-clamp-2">{set.description}</p>}
+                          </button>
                         ))}
-                      </optgroup>
-                    )}
-                    {availableHashSets.filter((s: any) => s.category === 'known_good').length > 0 && (
-                      <optgroup label="Known Good (Exclusion)">
-                        {availableHashSets.filter((s: any) => s.category === 'known_good').map((s: any) => (
-                          <option key={s.fileName} value={s.fileName}>
-                            {s.displayName} ({s.hashCount} hashes, {s.hashType.toUpperCase()})
-                          </option>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Known Good section */}
+                  {availableHashSets.filter((s: any) => s.category === 'known_good').length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <CheckCircle size={11} className="text-green-400" />
+                        <span className="text-[10px] font-bold text-green-400 uppercase tracking-wider">Known Good — Safe Exclusion</span>
+                        <span className="text-[9px] text-slate-600 ml-1">Excludes common OS/app files from analysis</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {availableHashSets.filter((s: any) => s.category === 'known_good').map((set: any) => (
+                          <button
+                            key={set.fileName}
+                            onClick={() => {
+                              setSelectedAvailableSet(set.fileName);
+                              setImportData({ filePath: set.filePath, setName: set.displayName, category: set.category, hashType: set.hashType });
+                            }}
+                            className={`text-left rounded p-2.5 border transition-all ${
+                              selectedAvailableSet === set.fileName
+                                ? 'bg-green-900/20 border-green-600/40 ring-1 ring-green-500/30'
+                                : 'bg-[#141e2b] border-[#1e3048] hover:border-green-800/40 hover:bg-green-900/10'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] font-semibold text-white">{set.displayName}</span>
+                              {selectedAvailableSet === set.fileName && <CheckCircle size={12} className="text-green-400" />}
+                            </div>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-green-900/30 text-green-400 border border-green-800/20 font-mono">{set.hashType.toUpperCase()}</span>
+                              <span className="text-[9px] text-slate-500">{set.hashCount} hashes</span>
+                            </div>
+                            {set.description && <p className="text-[9px] text-slate-500 mt-1 leading-relaxed line-clamp-2">{set.description}</p>}
+                          </button>
                         ))}
-                      </optgroup>
-                    )}
-                    {availableHashSets.filter((s: any) => s.category === 'custom').length > 0 && (
-                      <optgroup label="Custom">
-                        {availableHashSets.filter((s: any) => s.category === 'custom').map((s: any) => (
-                          <option key={s.fileName} value={s.fileName}>
-                            {s.displayName} ({s.hashCount} hashes, {s.hashType.toUpperCase()})
-                          </option>
-                        ))}
-                      </optgroup>
-                    )}
-                  </select>
-                  {selectedAvailableSet && (() => {
-                    const s = availableHashSets.find((x: any) => x.fileName === selectedAvailableSet);
-                    return s?.description ? (
-                      <p className="text-[10px] text-slate-500 mt-1 italic">{s.description}</p>
-                    ) : null;
-                  })()}
-                </div>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
-              {/* Divider */}
-              {availableHashSets.length > 0 && (
-                <div className="flex items-center gap-2 text-[10px] text-slate-600">
-                  <div className="flex-1 border-t border-[#1e3048]" />
-                  <span>or enter manually</span>
-                  <div className="flex-1 border-t border-[#1e3048]" />
+
+              {/* ── Manual Entry Section ───────────────────── */}
+              <div className="border-t border-[#1e3048] pt-3">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <FileText size={11} className="text-slate-400" />
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Custom Import</span>
+                  <span className="text-[9px] text-slate-600 ml-1">Enter a file path or customize selected set</span>
                 </div>
-              )}
-              <div>
-                <label className="text-[10px] text-slate-500 uppercase block mb-1">File Path {!selectedAvailableSet && '*'}</label>
-                <input
-                  type="text"
-                  value={importData.filePath}
-                  onChange={(e) => {
-                    setImportData(d => ({ ...d, filePath: e.target.value }));
-                    setSelectedAvailableSet('');
-                  }}
-                  placeholder="/path/to/hashset.txt"
-                  className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-3 py-2 focus:outline-none focus:border-brand-blue/50 font-mono placeholder-slate-600"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] text-slate-500 uppercase block mb-1">Set Name {!selectedAvailableSet && '*'}</label>
-                <input
-                  type="text"
-                  value={importData.setName}
-                  onChange={(e) => setImportData(d => ({ ...d, setName: e.target.value }))}
-                  placeholder="NSRL Known Bad"
-                  className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-3 py-2 focus:outline-none focus:border-brand-blue/50 placeholder-slate-600"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[10px] text-slate-500 uppercase block mb-1">Category</label>
-                  <select
-                    value={importData.category}
-                    onChange={(e) => setImportData(d => ({ ...d, category: e.target.value }))}
-                    className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-3 py-2 focus:outline-none focus:border-brand-blue/50"
-                  >
-                    <option value="known_bad">Known Bad</option>
-                    <option value="known_good">Known Good</option>
-                    <option value="custom">Custom</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[10px] text-slate-500 uppercase block mb-1">Hash Type</label>
-                  <select
-                    value={importData.hashType}
-                    onChange={(e) => setImportData(d => ({ ...d, hashType: e.target.value }))}
-                    className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-3 py-2 focus:outline-none focus:border-brand-blue/50"
-                  >
-                    <option value="md5">MD5</option>
-                    <option value="sha1">SHA-1</option>
-                    <option value="sha256">SHA-256</option>
-                  </select>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="col-span-2">
+                    <label className="text-[10px] text-slate-500 block mb-0.5">File Path</label>
+                    <input
+                      type="text"
+                      value={importData.filePath}
+                      onChange={(e) => { setImportData(d => ({ ...d, filePath: e.target.value })); setSelectedAvailableSet(''); }}
+                      placeholder="/opt/rmpg-flex/server/hash-sets/custom.md5"
+                      className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-3 py-1.5 focus:outline-none focus:border-brand-blue/50 font-mono placeholder-slate-600"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500 block mb-0.5">Set Name</label>
+                    <input
+                      type="text"
+                      value={importData.setName}
+                      onChange={(e) => setImportData(d => ({ ...d, setName: e.target.value }))}
+                      placeholder="My Custom Set"
+                      className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-3 py-1.5 focus:outline-none focus:border-brand-blue/50 placeholder-slate-600"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] text-slate-500 block mb-0.5">Category</label>
+                      <select
+                        value={importData.category}
+                        onChange={(e) => setImportData(d => ({ ...d, category: e.target.value }))}
+                        className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-3 py-1.5 focus:outline-none focus:border-brand-blue/50"
+                      >
+                        <option value="known_bad">Known Bad</option>
+                        <option value="known_good">Known Good</option>
+                        <option value="custom">Custom</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-slate-500 block mb-0.5">Hash Type</label>
+                      <select
+                        value={importData.hashType}
+                        onChange={(e) => setImportData(d => ({ ...d, hashType: e.target.value }))}
+                        className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-3 py-1.5 focus:outline-none focus:border-brand-blue/50"
+                      >
+                        <option value="md5">MD5</option>
+                        <option value="sha1">SHA-1</option>
+                        <option value="sha256">SHA-256</option>
+                      </select>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
+            {/* Footer */}
             <div className="flex items-center justify-between px-4 py-3 border-t border-[#1e3048]">
-              {availableHashSets.length > 0 ? (
-                <button
-                  onClick={async () => {
-                    if (!window.confirm(`Import all ${availableHashSets.length} hash sets?`)) return;
-                    setImportSubmitting(true);
-                    let imported = 0;
-                    for (const set of availableHashSets) {
-                      try {
-                        await apiFetch('/iped/hash-sets/import', {
-                          method: 'POST',
-                          body: JSON.stringify({ filePath: set.filePath, setName: set.displayName, category: set.category, hashType: set.hashType }),
-                        });
-                        imported++;
-                      } catch { /* skip failed */ }
-                    }
-                    setImportSubmitting(false);
-                    addToast(`Imported ${imported} of ${availableHashSets.length} hash sets`, 'success');
-                    setShowImportHashSet(false);
-                    fetchHashSets();
-                    fetchStatus();
-                  }}
-                  disabled={importSubmitting}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-emerald-600/20 text-emerald-400 border border-emerald-600/30 hover:bg-emerald-600/30 disabled:opacity-50 transition-colors"
-                >
-                  {importSubmitting ? <Loader2 size={12} className="animate-spin" /> : <Database size={12} />}
-                  Import All ({availableHashSets.length})
-                </button>
-              ) : <div />}
+              {selectedAvailableSet ? (
+                <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
+                  <CheckCircle size={10} className="text-brand-blue" />
+                  <span>Selected: <span className="text-white font-semibold">{importData.setName}</span></span>
+                </div>
+              ) : importData.filePath ? (
+                <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-mono truncate max-w-[250px]">
+                  <FileText size={10} /> {importData.filePath}
+                </div>
+              ) : (
+                <span className="text-[10px] text-slate-600">Select a set above or enter a path</span>
+              )}
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setShowImportHashSet(false)}
@@ -1682,11 +1712,11 @@ d41d8cd98f00b204e9800998ecf8427e,suspicious_file.exe
                 </button>
                 <button
                   onClick={handleImportHashSet}
-                  disabled={importSubmitting}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-brand-blue text-white hover:bg-brand-blue/80 disabled:opacity-50 transition-colors"
+                  disabled={importSubmitting || (!importData.filePath && !selectedAvailableSet)}
+                  className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold rounded bg-brand-blue text-white hover:bg-brand-blue/80 disabled:opacity-40 transition-colors"
                 >
                   {importSubmitting ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-                  Import
+                  Import Selected
                 </button>
               </div>
             </div>
