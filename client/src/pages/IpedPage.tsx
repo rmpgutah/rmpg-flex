@@ -121,6 +121,9 @@ export default function IpedPage() {
   // Help panel
   const [showHelp, setShowHelp] = useState(false);
 
+  // Tab navigation
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'hashsets' | 'jobs' | 'review' | 'search'>('dashboard');
+
   // Dashboard stats
   const [stats, setStats] = useState<StatusStats>({
     totalJobs: 0, runningJobs: 0, completedJobs: 0, failedJobs: 0,
@@ -472,34 +475,63 @@ export default function IpedPage() {
   return (
     <div className="app-grid-bg h-full flex flex-col overflow-hidden">
       {/* ── Header ─────────────────────────────────────────── */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-[#1e3048]">
-        <div className="flex items-center gap-2">
-          <HardDrive size={16} className="text-brand-blue" />
-          <h1 className="text-sm font-bold text-white tracking-wide uppercase">Digital Forensics</h1>
-          <span className="text-[10px] text-slate-500 ml-1">IPED</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowHelp(!showHelp)}
-            className={`p-1.5 rounded transition-colors ${showHelp ? 'bg-brand-blue/20 text-brand-blue' : 'hover:bg-[#1a2636] text-slate-400 hover:text-white'}`}
-            title="Help & Instructions"
-          >
-            <HelpCircle size={14} />
-          </button>
-          <button
-            onClick={() => { fetchStatus(); fetchJobs(); fetchHashSets(); fetchReviewStats(); fetchFlaggedHashes(); fetchUsageHistory(); }}
-            className="p-1.5 rounded hover:bg-[#1a2636] text-slate-400 hover:text-white transition-colors"
-            title="Refresh all"
-          >
-            <RefreshCw size={14} />
-          </button>
-          <button
-            onClick={() => setShowNewJob(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-brand-blue/20 text-brand-blue border border-brand-blue/30 hover:bg-brand-blue/30 transition-colors"
-          >
-            <Plus size={13} />
+      <div className="border-b border-[#1e3048]">
+        <div className="flex items-center justify-between px-4 py-2">
+          <div className="flex items-center gap-2">
+            <HardDrive size={16} className="text-brand-blue" />
+            <h1 className="text-sm font-bold text-white tracking-wide uppercase">Digital Forensics</h1>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowHelp(!showHelp)}
+              className={`p-1.5 rounded transition-colors ${showHelp ? 'bg-brand-blue/20 text-brand-blue' : 'hover:bg-[#1a2636] text-slate-400 hover:text-white'}`}
+              title="Help & Instructions"
+            >
+              <HelpCircle size={14} />
+            </button>
+            <button
+              onClick={() => { fetchStatus(); fetchJobs(); fetchHashSets(); fetchReviewStats(); fetchFlaggedHashes(); fetchUsageHistory(); }}
+              className="p-1.5 rounded hover:bg-[#1a2636] text-slate-400 hover:text-white transition-colors"
+              title="Refresh all"
+            >
+              <RefreshCw size={14} />
+            </button>
+            <button
+              onClick={() => setShowNewJob(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-brand-blue/20 text-brand-blue border border-brand-blue/30 hover:bg-brand-blue/30 transition-colors"
+            >
+              <Plus size={13} />
             New Job
           </button>
+        </div>
+        </div>
+        {/* ── Tab Navigation ──────────────────────────────── */}
+        <div className="flex items-center gap-0.5 px-4 pt-1.5 -mb-px">
+          {([
+            { id: 'dashboard' as const, label: 'Dashboard', icon: Activity, badge: undefined },
+            { id: 'hashsets' as const, label: 'Hash Sets', icon: Database, badge: hashSets.length || undefined },
+            { id: 'jobs' as const, label: 'Jobs', icon: Server, badge: stats.runningJobs || undefined },
+            { id: 'review' as const, label: 'Review', icon: Shield, badge: (reviewStats?.pending || 0) > 0 ? reviewStats.pending : undefined },
+            { id: 'search' as const, label: 'Search', icon: Search, badge: undefined },
+          ]).map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded-t border-x border-t transition-colors ${
+                activeTab === tab.id
+                  ? 'bg-[#141e2b] border-[#1e3048] text-white'
+                  : 'bg-transparent border-transparent text-slate-500 hover:text-slate-300 hover:bg-[#141e2b]/50'
+              }`}
+            >
+              <tab.icon size={12} />
+              {tab.label}
+              {tab.badge != null && (
+                <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
+                  tab.id === 'review' ? 'bg-red-900/40 text-red-400' : 'bg-brand-blue/20 text-brand-blue'
+                }`}>{tab.badge}</span>
+              )}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -768,6 +800,8 @@ d41d8cd98f00b204e9800998ecf8427e,suspicious_file.exe
       {/* ── Main Content (scrollable) ─────────────────────── */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
 
+        {/* ════════ DASHBOARD TAB ════════ */}
+        {activeTab === 'dashboard' && (<>
         {/* ── First-Time Onboarding Banner ─────────────── */}
         {stats.totalJobs === 0 && stats.totalHashes === 0 && hashSets.length === 0 && !hashSetsLoading && (
           <div className="card-glass rounded-lg p-4 border border-brand-blue/20 bg-gradient-to-r from-brand-blue/5 to-transparent">
@@ -892,6 +926,10 @@ d41d8cd98f00b204e9800998ecf8427e,suspicious_file.exe
           </div>
         )}
 
+        </>)}
+
+        {/* ════════ HASH SETS TAB ════════ */}
+        {activeTab === 'hashsets' && (<>
         {/* ── Hash Sets Panel ────────────────────────────── */}
         <div className="card-glass rounded">
           <div className="flex items-center justify-between px-3 py-2 border-b border-[#1e3048]">
@@ -987,6 +1025,10 @@ d41d8cd98f00b204e9800998ecf8427e,suspicious_file.exe
           </div>
         </div>
 
+        </>)}
+
+        {/* ════════ JOBS TAB ════════ */}
+        {activeTab === 'jobs' && (<>
         {/* ── Job Queue ──────────────────────────────────── */}
         <div className="card-glass rounded flex-1 flex flex-col min-h-0">
           <div className="flex items-center justify-between px-3 py-2 border-b border-[#1e3048]">
@@ -1287,6 +1329,10 @@ d41d8cd98f00b204e9800998ecf8427e,suspicious_file.exe
             </div>
           </div>
         )}
+        </>)}
+
+        {/* ════════ REVIEW TAB ════════ */}
+        {activeTab === 'review' && (<>
         {/* ── Hash Review Queue (Phase 3) ─────────────────── */}
         <div className="card-glass rounded">
           <PanelTitleBar title="HASH REVIEW QUEUE" icon={Shield} statusLed={flaggedHashes.length > 0 ? 'amber' : 'off'}>
@@ -1366,6 +1412,10 @@ d41d8cd98f00b204e9800998ecf8427e,suspicious_file.exe
           </div>
         </div>
 
+        </>)}
+
+        {/* ════════ SEARCH TAB ════════ */}
+        {activeTab === 'search' && (<>
         {/* ── Hash Search Panel (Phase 6) ──────────────────── */}
         <div className="card-glass rounded">
           <PanelTitleBar title="HASH SEARCH" icon={Search} />
@@ -1530,6 +1580,7 @@ d41d8cd98f00b204e9800998ecf8427e,suspicious_file.exe
             )}
           </div>
         </div>
+        </>)}
       </div>
 
       {/* ── New Job Modal ────────────────────────────────── */}
