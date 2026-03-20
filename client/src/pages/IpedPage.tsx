@@ -970,7 +970,7 @@ d41d8cd98f00b204e9800998ecf8427e,suspicious_file.exe
                           {hs.category === 'known_bad' ? 'Known Bad' : hs.category}
                         </span>
                         <span className="text-[10px] text-slate-500">{hs.count.toLocaleString()} hashes</span>
-                        <span className="text-[10px] text-slate-600">{hs.hashType.toUpperCase()}</span>
+                        <span className="text-[10px] text-slate-600">{hs.hashType?.toUpperCase() || 'MD5'}</span>
                       </div>
                     </div>
                     <button
@@ -1702,7 +1702,7 @@ d41d8cd98f00b204e9800998ecf8427e,suspicious_file.exe
                               {selectedAvailableSet === set.fileName && <CheckCircle size={12} className="text-red-400" />}
                             </div>
                             <div className="flex items-center gap-2 mt-1">
-                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-900/30 text-red-400 border border-red-800/20 font-mono">{set.hashType.toUpperCase()}</span>
+                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-900/30 text-red-400 border border-red-800/20 font-mono">{set.hashType?.toUpperCase() || 'MD5'}</span>
                               <span className="text-[9px] text-slate-500">{set.hashCount} hashes</span>
                             </div>
                             {set.description && <p className="text-[9px] text-slate-500 mt-1 leading-relaxed line-clamp-2">{set.description}</p>}
@@ -1739,7 +1739,7 @@ d41d8cd98f00b204e9800998ecf8427e,suspicious_file.exe
                               {selectedAvailableSet === set.fileName && <CheckCircle size={12} className="text-green-400" />}
                             </div>
                             <div className="flex items-center gap-2 mt-1">
-                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-green-900/30 text-green-400 border border-green-800/20 font-mono">{set.hashType.toUpperCase()}</span>
+                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-green-900/30 text-green-400 border border-green-800/20 font-mono">{set.hashType?.toUpperCase() || 'MD5'}</span>
                               <span className="text-[9px] text-slate-500">{set.hashCount} hashes</span>
                             </div>
                             {set.description && <p className="text-[9px] text-slate-500 mt-1 leading-relaxed line-clamp-2">{set.description}</p>}
