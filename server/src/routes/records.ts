@@ -1269,7 +1269,8 @@ router.get('/evidence', requireRole('admin', 'manager', 'supervisor', 'officer',
     const countRow = db.prepare(`SELECT COUNT(*) as total FROM evidence e ${whereClause}`).get(...params) as any;
 
     const evidence = db.prepare(`
-      SELECT e.*, i.incident_number, u.full_name as collected_by_name,
+      SELECT e.*, e.hash_count, e.flagged_hash_count, e.iped_processed, e.iped_last_job_id,
+             i.incident_number, u.full_name as collected_by_name,
              c.case_number as linked_case_number, c.title as linked_case_title
       FROM evidence e
       LEFT JOIN incidents i ON e.incident_id = i.id

@@ -10,10 +10,12 @@ import {
   HardDrive, Search, Plus, Loader2, X, RefreshCw,
   Play, Square, CheckCircle, AlertTriangle, Clock, Hash,
   Database, Trash2, Upload, Download, FileText, Eye,
-  ChevronDown, Activity, Server, Shield,
+  ChevronDown, Activity, Server, Shield, Copy, Zap,
+  BarChart3, Filter,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
+import PanelTitleBar from '../components/PanelTitleBar';
 
 // ── Types ───────────────────────────────────────────────────
 
@@ -153,6 +155,25 @@ export default function IpedPage() {
   });
   const [importSubmitting, setImportSubmitting] = useState(false);
 
+  // Review queue (Phase 3)
+  const [flaggedHashes, setFlaggedHashes] = useState<any[]>([]);
+  const [reviewStats, setReviewStats] = useState<any>(null);
+  const [reviewNotes, setReviewNotes] = useState<Record<number, string>>({});
+
+  // Hash search (Phase 6)
+  const [searchHash, setSearchHash] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchFilters, setSearchFilters] = useState({ flagged: '', reviewStatus: '', hashSet: '' });
+  const [searchLoading, setSearchLoading] = useState(false);
+
+  // Duplicate detection (Phase 7)
+  const [duplicates, setDuplicates] = useState<any[]>([]);
+  const [dupScanning, setDupScanning] = useState(false);
+
+  // Dashboard enhancements (Phase 8)
+  const [usageHistory, setUsageHistory] = useState<any[]>([]);
+  const [queueDepth, setQueueDepth] = useState(0);
+
   // ── Fetch Functions ───────────────────────────────────────
 
   const fetchStatus = useCallback(async () => {
@@ -207,11 +228,37 @@ export default function IpedPage() {
     }
   }, [addToast]);
 
+  const fetchReviewStats = useCallback(async () => {
+    try {
+      const data = await apiFetch<any>('/iped/hash/review-stats');
+      setReviewStats(data);
+    } catch { /* best-effort */ }
+  }, []);
+
+  const fetchFlaggedHashes = useCallback(async () => {
+    try {
+      const data = await apiFetch<any>('/iped/hash/flagged');
+      setFlaggedHashes(data.data || []);
+    } catch { /* best-effort */ }
+  }, []);
+
+  const fetchUsageHistory = useCallback(async () => {
+    try {
+      const data = await apiFetch<any>('/iped/usage');
+      setUsageHistory(data.history || []);
+      setQueueDepth(data.queueDepth || 0);
+    } catch { /* best-effort */ }
+  }, []);
+
   // ── Effects ───────────────────────────────────────────────
 
   useEffect(() => { fetchStatus(); }, [fetchStatus]);
   useEffect(() => { fetchJobs(); }, [fetchJobs]);
   useEffect(() => { fetchHashSets(); }, [fetchHashSets]);
+
+  useEffect(() => { fetchReviewStats(); }, [fetchReviewStats]);
+  useEffect(() => { fetchFlaggedHashes(); }, [fetchFlaggedHashes]);
+  useEffect(() => { fetchUsageHistory(); }, [fetchUsageHistory]);
 
   // Polling for running jobs
   useEffect(() => {
@@ -303,7 +350,86 @@ export default function IpedPage() {
     }
   };
 
+  // ── Review Queue Actions ─────────────────────────────────
+
+  const handleReview = async (id: number, reviewStatus: string) => {
+    try {
+      await apiFetch(`/iped/hash/results/${id}/review`, {
+        method: 'PUT',
+        body: JSON.stringify({ review_status: reviewStatus, notes: reviewNotes[id] || '' }),
+      });
+      addToast(`Marked as ${reviewStatus}`, 'success');
+      setFlaggedHashes(prev => prev.filter(h => h.id !== id));
+      setReviewNotes(prev => { const n = { ...prev }; delete n[id]; return n; });
+      fetchReviewStats();
+    } catch (err: any) {
+      addToast(err.message || 'Review failed', 'error');
+    }
+  };
+
+  // ── Hash Search Actions ─────────────────────────────────
+
+  const handleHashSearch = async () => {
+    setSearchLoading(true);
+    try {
+      const qs = new URLSearchParams();
+      if (searchHash.trim()) qs.set('hash', searchHash.trim());
+      if (searchFilters.flagged) qs.set('flagged', searchFilters.flagged);
+      if (searchFilters.reviewStatus) qs.set('reviewStatus', searchFilters.reviewStatus);
+      if (searchFilters.hashSet) qs.set('hashSet', searchFilters.hashSet);
+      const data = await apiFetch<any>(`/iped/hash/search?${qs}`);
+      setSearchResults(data.data || data.results || []);
+    } catch (err: any) {
+      addToast(err.message || 'Search failed', 'error');
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  const handleExportCSV = async () => {
+    try {
+      const qs = new URLSearchParams();
+      if (searchHash.trim()) qs.set('hash', searchHash.trim());
+      if (searchFilters.flagged) qs.set('flagged', searchFilters.flagged);
+      if (searchFilters.reviewStatus) qs.set('reviewStatus', searchFilters.reviewStatus);
+      if (searchFilters.hashSet) qs.set('hashSet', searchFilters.hashSet);
+      const resp = await apiFetch<Blob>(`/iped/hash/export?${qs}`, { rawResponse: true } as any);
+      const blob = resp instanceof Blob ? resp : new Blob([JSON.stringify(resp)], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `hash-export-${Date.now()}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      addToast('Export downloaded', 'success');
+    } catch (err: any) {
+      addToast(err.message || 'Export failed', 'error');
+    }
+  };
+
+  // ── Duplicate Detection Actions ─────────────────────────
+
+  const handleScanDuplicates = async () => {
+    setDupScanning(true);
+    try {
+      const data = await apiFetch<any>('/iped/hash/duplicates');
+      setDuplicates(data.clusters || data.data || []);
+    } catch (err: any) {
+      addToast(err.message || 'Duplicate scan failed', 'error');
+    } finally {
+      setDupScanning(false);
+    }
+  };
+
   const totalPages = Math.ceil(jobsTotal / 20) || 1;
+
+  // ── Dashboard helpers ───────────────────────────────────
+
+  const runningJob = jobs.find(j => j.status === 'running');
+  const processingSpeed = runningJob && runningJob.items_processed && runningJob.started_at
+    ? Math.round(runningJob.items_processed / Math.max(1, (Date.now() - new Date(runningJob.started_at).getTime()) / 1000))
+    : null;
+  const historyMax = Math.max(1, ...usageHistory.map((d: any) => (d.completed || 0) + (d.failed || 0)));
 
   // ── Render ────────────────────────────────────────────────
 
@@ -318,7 +444,7 @@ export default function IpedPage() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => { fetchStatus(); fetchJobs(); fetchHashSets(); }}
+            onClick={() => { fetchStatus(); fetchJobs(); fetchHashSets(); fetchReviewStats(); fetchFlaggedHashes(); fetchUsageHistory(); }}
             className="p-1.5 rounded hover:bg-[#1a2636] text-slate-400 hover:text-white transition-colors"
             title="Refresh all"
           >
@@ -338,14 +464,77 @@ export default function IpedPage() {
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
 
         {/* ── Stats Cards ────────────────────────────────── */}
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
           <StatCard label="Total Jobs" value={stats.totalJobs} icon={Database} color="text-slate-300" />
-          <StatCard label="Running" value={stats.runningJobs} icon={Activity} color="text-amber-400" pulse={stats.runningJobs > 0} />
+          {/* Running card with mini progress bar */}
+          <div className="card-glass rounded px-3 py-2.5 flex items-center gap-3">
+            <div className="p-1.5 rounded bg-[#0d1520] text-amber-400">
+              <Activity size={14} className={stats.runningJobs > 0 ? 'animate-pulse' : ''} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-lg font-bold text-white leading-none">{stats.runningJobs}</p>
+              <p className="text-[10px] text-slate-500 uppercase tracking-wide mt-0.5">Running</p>
+              {runningJob && runningJob.progress_percent != null && (
+                <div className="w-full h-1 bg-[#0d1520] rounded-full overflow-hidden mt-1">
+                  <div className="h-full bg-amber-500 rounded-full transition-all" style={{ width: `${runningJob.progress_percent}%` }} />
+                </div>
+              )}
+              {processingSpeed != null && processingSpeed > 0 && (
+                <p className="text-[9px] text-amber-400/70 mt-0.5">{processingSpeed} files/sec</p>
+              )}
+            </div>
+          </div>
           <StatCard label="Completed" value={stats.completedJobs} icon={CheckCircle} color="text-green-400" />
           <StatCard label="Failed" value={stats.failedJobs} icon={AlertTriangle} color="text-red-400" />
           <StatCard label="Total Hashes" value={stats.totalHashes} icon={Hash} color="text-blue-400" />
           <StatCard label="Flagged" value={stats.flaggedHashes} icon={Shield} color="text-red-400" />
+          <StatCard label="Queue Depth" value={queueDepth} icon={Clock} color="text-blue-300" />
+          {/* Pending Review card */}
+          <div className="card-glass rounded px-3 py-2.5 flex items-center gap-3">
+            <div className={`p-1.5 rounded bg-[#0d1520] ${(reviewStats?.pending || 0) > 0 ? 'text-red-400' : 'text-amber-400'}`}>
+              <Eye size={14} />
+            </div>
+            <div>
+              <p className="text-lg font-bold text-white leading-none">{reviewStats?.pending || 0}</p>
+              <p className="text-[10px] text-slate-500 uppercase tracking-wide mt-0.5">Pending Review</p>
+            </div>
+          </div>
         </div>
+
+        {/* ── 30-Day History Chart ─────────────────────────── */}
+        {usageHistory.length > 0 && (
+          <div className="card-glass rounded">
+            <PanelTitleBar title="30-DAY HISTORY" icon={BarChart3} />
+            <div className="p-3">
+              <div className="flex items-end gap-[2px] h-20">
+                {usageHistory.map((day: any, i: number) => {
+                  const completed = day.completed || 0;
+                  const failed = day.failed || 0;
+                  const total = completed + failed;
+                  const height = Math.max(2, (total / historyMax) * 100);
+                  const failedHeight = total > 0 ? (failed / total) * height : 0;
+                  const completedHeight = height - failedHeight;
+                  return (
+                    <div key={i} className="flex-1 flex flex-col justify-end items-stretch" title={`${day.date || ''}: ${completed} completed, ${failed} failed`}>
+                      {failedHeight > 0 && (
+                        <div className="bg-red-500/70 rounded-t-sm" style={{ height: `${failedHeight}%` }} />
+                      )}
+                      <div className="bg-green-500/70 rounded-t-sm" style={{ height: `${completedHeight}%` }} />
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex justify-between mt-1">
+                {usageHistory.filter((_: any, i: number) => {
+                  const step = Math.max(1, Math.floor(usageHistory.length / 7));
+                  return i % step === 0 || i === usageHistory.length - 1;
+                }).slice(0, 7).map((day: any, i: number) => (
+                  <span key={i} className="text-[8px] text-slate-600">{day.date ? new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}</span>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Hash Sets Panel ────────────────────────────── */}
         <div className="card-glass rounded">
@@ -698,6 +887,249 @@ export default function IpedPage() {
             </div>
           </div>
         )}
+        {/* ── Hash Review Queue (Phase 3) ─────────────────── */}
+        <div className="card-glass rounded">
+          <PanelTitleBar title="HASH REVIEW QUEUE" icon={Shield} statusLed={flaggedHashes.length > 0 ? 'amber' : 'off'}>
+            <span className="text-[10px] text-slate-500">({flaggedHashes.length} pending)</span>
+          </PanelTitleBar>
+          <div className="p-3">
+            {flaggedHashes.length === 0 ? (
+              <p className="text-xs text-slate-500 text-center py-4">No hashes pending review.</p>
+            ) : (
+              <div className="overflow-auto max-h-64 border border-[#1e3048] rounded">
+                <table className="w-full text-[10px]">
+                  <thead>
+                    <tr className="text-slate-500 uppercase border-b border-[#1e3048] bg-[#0d1520]">
+                      <th className="text-left px-2 py-1.5">File</th>
+                      <th className="text-left px-2 py-1.5">Evidence #</th>
+                      <th className="text-left px-2 py-1.5">MD5</th>
+                      <th className="text-left px-2 py-1.5 hidden lg:table-cell">SHA-256</th>
+                      <th className="text-left px-2 py-1.5">Matched Set</th>
+                      <th className="text-left px-2 py-1.5">Category</th>
+                      <th className="text-left px-2 py-1.5">Notes</th>
+                      <th className="text-right px-2 py-1.5">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {flaggedHashes.map((h: any) => (
+                      <tr key={h.id} className="border-b border-[#1e3048]/30 hover:bg-[#1a2636]/40">
+                        <td className="px-2 py-1.5 text-slate-300 truncate max-w-[120px]">{h.attachment_name || h.file_name || '--'}</td>
+                        <td className="px-2 py-1.5 text-slate-400 font-mono">{h.evidence_id || '--'}</td>
+                        <td className="px-2 py-1.5 text-slate-500 font-mono truncate max-w-[100px]" title={h.md5}>{h.md5?.slice(0, 12)}...</td>
+                        <td className="px-2 py-1.5 text-slate-500 font-mono truncate max-w-[120px] hidden lg:table-cell" title={h.sha256}>{h.sha256?.slice(0, 16)}...</td>
+                        <td className="px-2 py-1.5 text-slate-400">{h.matched_set || h.flag_reason || '--'}</td>
+                        <td className="px-2 py-1.5">
+                          <span className={`px-1.5 py-0.5 rounded text-[9px] ${h.category === 'known_bad' ? 'bg-red-900/40 text-red-400' : 'bg-slate-800 text-slate-400'}`}>
+                            {h.category || 'unknown'}
+                          </span>
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input
+                            type="text"
+                            placeholder="Notes..."
+                            value={reviewNotes[h.id] || ''}
+                            onChange={(e) => setReviewNotes(prev => ({ ...prev, [h.id]: e.target.value }))}
+                            className="w-20 text-[9px] bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-1.5 py-0.5 focus:outline-none focus:border-brand-blue/50"
+                          />
+                        </td>
+                        <td className="px-2 py-1.5 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => handleReview(h.id, 'confirmed_threat')}
+                              className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-red-900/30 text-red-400 border border-red-800/40 hover:bg-red-900/50 transition-colors"
+                              title="Confirm as threat"
+                            >
+                              Threat
+                            </button>
+                            <button
+                              onClick={() => handleReview(h.id, 'false_positive')}
+                              className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-green-900/30 text-green-400 border border-green-800/40 hover:bg-green-900/50 transition-colors"
+                              title="Mark as false positive"
+                            >
+                              False Positive
+                            </button>
+                            <button
+                              onClick={() => handleReview(h.id, 'needs_analysis')}
+                              className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-amber-900/30 text-amber-400 border border-amber-800/40 hover:bg-amber-900/50 transition-colors"
+                              title="Needs further analysis"
+                            >
+                              Analyze
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ── Hash Search Panel (Phase 6) ──────────────────── */}
+        <div className="card-glass rounded">
+          <PanelTitleBar title="HASH SEARCH" icon={Search} />
+          <div className="p-3 space-y-3">
+            {/* Search controls */}
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="flex-1 min-w-[200px]">
+                <label className="text-[10px] text-slate-500 uppercase block mb-1">Hash Value</label>
+                <input
+                  type="text"
+                  value={searchHash}
+                  onChange={(e) => setSearchHash(e.target.value)}
+                  placeholder="Paste MD5 or SHA-256..."
+                  className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-3 py-1.5 focus:outline-none focus:border-brand-blue/50 font-mono placeholder-slate-600"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-slate-500 uppercase block mb-1">Flagged</label>
+                <select
+                  value={searchFilters.flagged}
+                  onChange={(e) => setSearchFilters(f => ({ ...f, flagged: e.target.value }))}
+                  className="text-[10px] bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-2 py-1.5 focus:outline-none focus:border-brand-blue/50"
+                >
+                  <option value="">All</option>
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] text-slate-500 uppercase block mb-1">Review Status</label>
+                <select
+                  value={searchFilters.reviewStatus}
+                  onChange={(e) => setSearchFilters(f => ({ ...f, reviewStatus: e.target.value }))}
+                  className="text-[10px] bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-2 py-1.5 focus:outline-none focus:border-brand-blue/50"
+                >
+                  <option value="">All</option>
+                  <option value="pending">Pending</option>
+                  <option value="confirmed_threat">Confirmed</option>
+                  <option value="false_positive">False Positive</option>
+                  <option value="needs_analysis">Needs Analysis</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] text-slate-500 uppercase block mb-1">Hash Set</label>
+                <select
+                  value={searchFilters.hashSet}
+                  onChange={(e) => setSearchFilters(f => ({ ...f, hashSet: e.target.value }))}
+                  className="text-[10px] bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-2 py-1.5 focus:outline-none focus:border-brand-blue/50"
+                >
+                  <option value="">All Sets</option>
+                  {hashSets.map(hs => (
+                    <option key={hs.name} value={hs.name}>{hs.name}</option>
+                  ))}
+                </select>
+              </div>
+              <button
+                onClick={handleHashSearch}
+                disabled={searchLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-brand-blue/20 text-brand-blue border border-brand-blue/30 hover:bg-brand-blue/30 transition-colors disabled:opacity-50"
+              >
+                {searchLoading ? <Loader2 size={11} className="animate-spin" /> : <Search size={11} />}
+                Search
+              </button>
+              <button
+                onClick={handleExportCSV}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-[#1a2636] text-slate-300 border border-[#1e3048] hover:text-white transition-colors"
+              >
+                <Download size={11} />
+                Export CSV
+              </button>
+            </div>
+
+            {/* Search results */}
+            {searchResults.length > 0 && (
+              <div className="overflow-auto max-h-56 border border-[#1e3048] rounded">
+                <table className="w-full text-[10px]">
+                  <thead>
+                    <tr className="text-slate-500 uppercase border-b border-[#1e3048] bg-[#0d1520]">
+                      <th className="text-left px-2 py-1.5">File</th>
+                      <th className="text-left px-2 py-1.5">Evidence #</th>
+                      <th className="text-left px-2 py-1.5">MD5</th>
+                      <th className="text-left px-2 py-1.5 hidden lg:table-cell">SHA-256</th>
+                      <th className="text-center px-2 py-1.5">Flagged</th>
+                      <th className="text-left px-2 py-1.5">Review Status</th>
+                      <th className="text-left px-2 py-1.5">Set Name</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {searchResults.map((r: any, i: number) => (
+                      <tr key={r.id || i} className="border-b border-[#1e3048]/30 hover:bg-[#1a2636]/40">
+                        <td className="px-2 py-1.5 text-slate-300 truncate max-w-[120px]">{r.attachment_name || r.file_name || '--'}</td>
+                        <td className="px-2 py-1.5 text-slate-400 font-mono">{r.evidence_id || '--'}</td>
+                        <td className="px-2 py-1.5 text-slate-500 font-mono truncate max-w-[100px]" title={r.md5}>{r.md5}</td>
+                        <td className="px-2 py-1.5 text-slate-500 font-mono truncate max-w-[120px] hidden lg:table-cell" title={r.sha256}>{r.sha256}</td>
+                        <td className="px-2 py-1.5 text-center">
+                          {r.flagged ? <span className="text-red-400">YES</span> : <span className="text-slate-600">--</span>}
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <span className={`px-1.5 py-0.5 rounded text-[9px] ${
+                            r.review_status === 'confirmed_threat' ? 'bg-red-900/40 text-red-400' :
+                            r.review_status === 'false_positive' ? 'bg-green-900/40 text-green-400' :
+                            r.review_status === 'needs_analysis' ? 'bg-amber-900/40 text-amber-400' :
+                            'bg-slate-800 text-slate-400'
+                          }`}>
+                            {r.review_status || 'pending'}
+                          </span>
+                        </td>
+                        <td className="px-2 py-1.5 text-slate-400">{r.set_name || '--'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {searchResults.length === 0 && !searchLoading && (
+              <p className="text-xs text-slate-500 text-center py-2">Enter a hash or apply filters and click Search.</p>
+            )}
+          </div>
+        </div>
+
+        {/* ── Duplicate Detection Panel (Phase 7) ──────────── */}
+        <div className="card-glass rounded">
+          <PanelTitleBar title="DUPLICATE DETECTION" icon={Copy}>
+            <button
+              onClick={handleScanDuplicates}
+              disabled={dupScanning}
+              className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded bg-brand-blue/10 text-brand-blue border border-brand-blue/20 hover:bg-brand-blue/20 transition-colors disabled:opacity-50"
+            >
+              {dupScanning ? <Loader2 size={10} className="animate-spin" /> : <Zap size={10} />}
+              Scan for Duplicates
+            </button>
+          </PanelTitleBar>
+          <div className="p-3">
+            {dupScanning ? (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 size={16} className="animate-spin text-slate-500 mr-2" />
+                <span className="text-xs text-slate-400">Scanning for duplicates...</span>
+              </div>
+            ) : duplicates.length === 0 ? (
+              <p className="text-xs text-slate-500 text-center py-4">No duplicates found across evidence.</p>
+            ) : (
+              <div className="space-y-2 max-h-64 overflow-auto">
+                {duplicates.map((cluster: any, ci: number) => (
+                  <div key={ci} className="bg-[#0d1520] border border-[#1e3048] rounded p-2">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <Hash size={10} className="text-amber-400" />
+                      <span className="text-[10px] text-amber-400 font-mono truncate" title={cluster.hash}>{cluster.hash}</span>
+                      <span className="text-[9px] text-slate-500">({cluster.files?.length || 0} files)</span>
+                    </div>
+                    <div className="space-y-1 ml-4">
+                      {(cluster.files || []).map((f: any, fi: number) => (
+                        <div key={fi} className="flex items-center gap-3 text-[10px]">
+                          <span className="text-slate-300 truncate max-w-[200px]">{f.name || f.file_name || f.attachment_name || '--'}</span>
+                          <span className="text-slate-500 font-mono">Ev #{f.evidence_id || '--'}</span>
+                          <span className="text-slate-600">{f.created_at ? formatDate(f.created_at) : '--'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* ── New Job Modal ────────────────────────────────── */}

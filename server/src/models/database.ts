@@ -1840,6 +1840,16 @@ function migrateSchema(): void {
   addCol('evidence', 'notes', 'TEXT');
   addCol('evidence', 'updated_at', 'TEXT');
 
+  // ── EVIDENCE — IPED digital forensics columns ──────────
+  addCol('evidence', 'iped_processed', 'INTEGER DEFAULT 0');
+  addCol('evidence', 'iped_last_job_id', 'INTEGER');
+  addCol('evidence', 'hash_count', 'INTEGER DEFAULT 0');
+  addCol('evidence', 'flagged_hash_count', 'INTEGER DEFAULT 0');
+
+  // ── DIGITAL EVIDENCE HASHES — review workflow columns ──
+  addCol('digital_evidence_hashes', 'review_status', "TEXT DEFAULT 'pending'");
+  addCol('digital_evidence_hashes', 'review_notes', 'TEXT');
+
   // ── PROPERTIES — new detail fields ─────────────────────
   addCol('properties', 'city', 'TEXT');
   addCol('properties', 'state', 'TEXT');

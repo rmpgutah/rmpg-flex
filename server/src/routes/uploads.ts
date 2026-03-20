@@ -10,6 +10,8 @@ import { authenticateToken, requireRole, type JwtPayload } from '../middleware/a
 import { rateLimit } from '../middleware/rateLimiter';
 import { validateParamId } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
+import { autoHashAttachment } from '../utils/ipedManager';
+import { broadcast } from '../utils/websocket';
 import config from '../config';
 
 // Rate limiter for file uploads — prevent abuse/DoS via large uploads
@@ -639,6 +641,29 @@ router.post('/', uploadRateLimit, upload.array('files', 10), (req: Request, res:
     );
 
     res.status(201).json(results);
+
+    // Auto-hash evidence attachments in the background (non-blocking)
+    if (entity_type === 'evidence' && entity_id) {
+      const evidenceId = parseInt(entity_id, 10);
+      setImmediate(async () => {
+        for (const att of results) {
+          try {
+            const fullPath = path.resolve(UPLOAD_DIR, att.file_path);
+            const result = await autoHashAttachment(att.id, evidenceId, fullPath);
+            if (result.flagged && result.matchInfo) {
+              broadcast('hash_alert', {
+                evidenceId,
+                fileName: att.original_name,
+                setName: result.matchInfo.setName,
+                category: result.matchInfo.setCategory,
+              });
+            }
+          } catch (hashErr: any) {
+            console.error(`[AutoHash] Failed to hash attachment ${att.id}:`, hashErr?.message || hashErr);
+          }
+        }
+      });
+    }
   } catch (error: any) {
     console.error('Upload error:', error?.message || 'Unknown error');
     if (error.message?.includes('not allowed')) {
