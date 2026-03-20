@@ -106,7 +106,7 @@ export default function DocumentViewer({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex flex-col bg-black/90" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-[9999] flex flex-col bg-black/90" role="dialog" aria-modal="true">
       {/* Toolbar */}
       <div className="flex items-center justify-between px-4 py-2 bg-surface-base border-b border-rmpg-600 flex-shrink-0">
         <div className="flex items-center gap-3">
