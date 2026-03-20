@@ -9,7 +9,7 @@ import {
   FolderPlus, Edit3, Trash, PanelLeftClose, PanelLeftOpen, Image,
   Clock, FileStack, Users, Printer, Bell, BellOff,
   Link2, Unlink, CalendarClock, Filter, SlidersHorizontal,
-  ExternalLink, Shield, Hash,
+  ExternalLink, Shield, Hash, Upload,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useWebSocket } from '../context/WebSocketContext';
