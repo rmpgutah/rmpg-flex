@@ -173,7 +173,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
 
 // GET /api/personnel/:id - Get user details
 // Restrict to sworn/dispatch/command roles — contract_manager must NOT see officer PII
-router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), validateParamId, (req: Request, res: Response, next) => {
+router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response, next) => {
   try {
     // Check for route conflicts with sub-paths handled by mountScheduleRoutes
     const subPaths = ['schedules', 'time', 'credentials', 'training', 'training-requirements', 'deployments', 'coverage-gaps', 'analytics', 'activity', 'equipment', 'body-cameras', 'bodycam-videos'];
@@ -181,9 +181,9 @@ router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dis
       return next('route');
     }
 
-    // Validate ID parameter
+    // Validate ID parameter (manual check after subPaths filter)
     const id = parseInt(String(req.params.id), 10);
-    if (isNaN(id)) {
+    if (isNaN(id) || id < 1) {
       res.status(400).json({ error: 'Invalid user ID' });
       return;
     }
