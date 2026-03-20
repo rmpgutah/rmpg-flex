@@ -950,7 +950,7 @@ export default function Layout() {
       {/* ============================================================ */}
       {/* MAIN CONTENT AREA — Full width (no sidebar)                  */}
       {/* ============================================================ */}
-      <main className="flex-1 overflow-auto min-h-0 panel-inset app-grid-bg animate-page-enter" key={location.pathname}>
+      <main className="flex-1 overflow-auto min-h-0 panel-inset app-grid-bg animate-page-enter relative z-0" key={location.pathname}>
         <ErrorBoundary>
           <Outlet />
         </ErrorBoundary>
