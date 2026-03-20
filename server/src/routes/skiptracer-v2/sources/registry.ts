@@ -1,13 +1,28 @@
 // ============================================================
-// Skip Tracer v2 — Source Registry (stub)
+// Skip Tracer v2 — Source Registry
 // ============================================================
-// Will be populated as individual source adapters are built.
-// For now exports empty arrays so the orchestrator compiles.
+// Central registry of all data source adapters. Each source
+// is instantiated once and shared across all searches.
 
 import type { DataSource } from '../types';
 
+// --- Import source adapters ---
+import OfacSource from './ofac';
+import UtahCourtsSource from './utahCourts';
+import SlcAssessorSource from './slcAssessor';
+import NsopwSource from './nsopw';
+import UtahBusinessSource from './utahBusiness';
+import UtahDoplSource from './utahDOPL';
+
 /** All registered data source adapters */
-const allSources: DataSource[] = [];
+const allSources: DataSource[] = [
+  new OfacSource(),
+  new UtahCourtsSource(),
+  new SlcAssessorSource(),
+  new NsopwSource(),
+  new UtahBusinessSource(),
+  new UtahDoplSource(),
+];
 
 /** Return every registered source (enabled or not). */
 export function getAllSources(): DataSource[] {
