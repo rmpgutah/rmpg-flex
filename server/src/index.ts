@@ -13,6 +13,7 @@ import config from './config';
 import { initDatabase } from './models/database';
 import { initWebSocket, getConnectedUsers, getConnectedClientCount } from './utils/websocket';
 import { securityHeaders } from './middleware/securityHeaders';
+import compression from 'compression';
 import { sanitizeInput } from './middleware/sanitize';
 import { apiRateLimit } from './middleware/rateLimiter';
 import { liveBroadcast } from './middleware/liveBroadcast';
@@ -96,8 +97,9 @@ app.use(cors({
   origin: config.corsOrigins,
   credentials: true,
 }));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(compression({ level: 6, threshold: 1024 })); // gzip responses > 1KB
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(sanitizeInput);
 
 // Apply rate limiting to API routes

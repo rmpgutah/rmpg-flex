@@ -1,5 +1,5 @@
 // ============================================================
-// RMPG Flex — Personnel: Dash Camera Tab (Traccar GPS Integration)
+// RMPG Flex — Personnel: Dash Camera Tab (ClearPathGPS v3.0 Integration)
 // Sub-tabs: Devices | Events | Video Library
 // Video Library shows locally stored dashcam footage (manual uploads
 // and GPS-synced clips). Devices & Events remain read-only.
