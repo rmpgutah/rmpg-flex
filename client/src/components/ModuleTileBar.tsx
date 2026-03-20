@@ -137,7 +137,7 @@ export default function ModuleTileBar({
         height: 58,
         background: 'linear-gradient(180deg, #0f1722 0%, #0d1520 100%)',
         borderBottom: '1px solid #1c2d44',
-        zIndex: 9000,
+        zIndex: 40,
       }}
     >
       {visibleItems.map((item) => {
@@ -247,7 +247,7 @@ export default function ModuleTileBar({
                   position: 'absolute',
                   top: '100%',
                   left: 0,
-                  zIndex: 9999,
+                  zIndex: 50,
                   minWidth: 180,
                   background: 'var(--surface-raised, #141e2b)',
                   border: '1px solid var(--border-default, #1c2d44)',
