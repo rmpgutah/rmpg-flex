@@ -459,7 +459,7 @@ export default function Layout() {
   useEffect(() => {
     const unsub1 = subscribe('dispatch_update', () => fetchHeaderStats());
     const unsub2 = subscribe('bolo_alert', () => fetchHeaderStats());
-    const unsub3 = subscribe('email:new_messages' as any, () => {
+    const unsub3 = subscribe('email:new_messages', () => {
       apiFetch<{ count: number }>('/email/unread-count')
         .then(r => setEmailUnreadCount(r.count || 0))
         .catch((err) => { console.warn('[Layout] fetch email unread count failed:', err); });

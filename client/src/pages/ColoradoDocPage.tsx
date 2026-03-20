@@ -80,7 +80,7 @@ export default function ColoradoDocPage() {
       const params = new URLSearchParams({ lastName: lastName.trim() });
       if (firstName.trim()) params.set('firstName', firstName.trim());
       const resp = await apiFetch<{ data: CdocOffender[]; total: number }>(
-        `/api/colorado-doc/search?${params.toString()}`
+        `/colorado-doc/search?${params.toString()}`
       );
       setResults(resp.data || []);
     } catch (err: any) {
@@ -103,7 +103,7 @@ export default function ColoradoDocPage() {
     setResults([]);
     try {
       const offender = await apiFetch<CdocOffender>(
-        `/api/colorado-doc/offender/${encodeURIComponent(docNumber.trim())}`
+        `/colorado-doc/offender/${encodeURIComponent(docNumber.trim())}`
       );
       setResults([offender]);
       setSelected(offender);
