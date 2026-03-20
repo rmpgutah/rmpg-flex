@@ -660,7 +660,7 @@ export default function Layout() {
       {/* ============================================================ */}
       {!isMobile && (
         <div
-          className="flex items-center justify-between relative scan-line"
+          className="flex items-center relative scan-line"
           style={{
             height: '52px',
             paddingLeft: isMacElectron ? '78px' : '12px',
@@ -700,7 +700,7 @@ export default function Layout() {
           </div>
 
           {/* Right — Status indicators + PANIC + Profile */}
-          <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          <div className="flex items-center gap-2 ml-auto" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
             {/* Status indicators — compact inline */}
             <div className="hidden lg:flex items-center gap-1.5">
               {/* Active Calls */}
