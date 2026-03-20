@@ -20,8 +20,15 @@ import type { SearchQuery, UnifiedSearchResult, DossierProfile } from './types';
 const router = Router();
 router.use(authenticateToken);
 
-// Ensure tables exist on first load
-ensureSkipTracerV2Tables();
+// Lazy table init — called on first request, not at import time
+let tablesInitialized = false;
+function ensureTables() {
+  if (!tablesInitialized) {
+    ensureSkipTracerV2Tables();
+    tablesInitialized = true;
+  }
+}
+router.use((_req, _res, next) => { ensureTables(); next(); });
 
 // ============================================================
 // Query Type Detection

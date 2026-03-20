@@ -23,36 +23,43 @@ import UtahBusinessSource from './utahBusiness';
 import UtahDoplSource from './utahDOPL';
 import UsernameSearchSource from './usernameSearch';
 
-/** All registered data source adapters */
-const sources: DataSource[] = [
-  new RapidApiSource(),
-  new LocalDbSource(),
-  new OfacSource(),
-  new ArrestsSource(),
-  new MicrobiltSource(),
-  new CourtListenerSource(),
-  new FbiWantedSource(),
-  new FccUlsSource(),
-  new OpenCorporatesSource(),
-  new UtahCourtsSource(),
-  new SlcAssessorSource(),
-  new NsopwSource(),
-  new UtahBusinessSource(),
-  new UtahDoplSource(),
-  new UsernameSearchSource(),
-];
+/** Lazy-initialized sources (avoids calling getDb() before initDatabase()) */
+let sources: DataSource[] | null = null;
+
+function ensureSources(): DataSource[] {
+  if (!sources) {
+    sources = [
+      new RapidApiSource(),
+      new LocalDbSource(),
+      new OfacSource(),
+      new ArrestsSource(),
+      new MicrobiltSource(),
+      new CourtListenerSource(),
+      new FbiWantedSource(),
+      new FccUlsSource(),
+      new OpenCorporatesSource(),
+      new UtahCourtsSource(),
+      new SlcAssessorSource(),
+      new NsopwSource(),
+      new UtahBusinessSource(),
+      new UtahDoplSource(),
+      new UsernameSearchSource(),
+    ];
+  }
+  return sources;
+}
 
 /** Return every registered source (enabled or not). */
 export function getAllSources(): DataSource[] {
-  return sources;
+  return ensureSources();
 }
 
 /** Return only sources that are both enabled and configured. */
 export function getEnabledSources(): DataSource[] {
-  return sources.filter(s => s.isEnabled() && s.isConfigured());
+  return ensureSources().filter(s => s.isEnabled() && s.isConfigured());
 }
 
 /** Find a source by its unique name identifier. */
 export function getSourceByName(name: string): DataSource | undefined {
-  return sources.find(s => s.name === name);
+  return ensureSources().find(s => s.name === name);
 }
