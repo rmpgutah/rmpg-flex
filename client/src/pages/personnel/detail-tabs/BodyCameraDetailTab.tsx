@@ -98,15 +98,15 @@ export default function BodyCameraDetailTab({
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <div className="stat-pod panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-blue-500 summary-card-shimmer" style={{ '--pod-glow': 'rgba(59, 130, 246, 0.12)' } as React.CSSProperties}>
           <p className="text-lg font-bold text-blue-400 font-mono stat-value">{cameras.filter(c => c.status === 'assigned').length}</p>
-          <p className="field-label">Assigned</p>
+          <p className="field-label stat-label">Assigned</p>
         </div>
         <div className="stat-pod panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-rmpg-500 summary-card-shimmer" style={{ '--pod-glow': 'rgba(148, 163, 184, 0.08)' } as React.CSSProperties}>
           <p className="text-lg font-bold text-rmpg-200 font-mono stat-value">{cameras.length}</p>
-          <p className="field-label">Total Cameras</p>
+          <p className="field-label stat-label">Total Cameras</p>
         </div>
         <div className="stat-pod panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-purple-500 summary-card-shimmer" style={{ '--pod-glow': 'rgba(147, 51, 234, 0.12)' } as React.CSSProperties}>
           <p className="text-lg font-bold text-purple-400 font-mono stat-value">{videos.length}</p>
-          <p className="field-label">Videos</p>
+          <p className="field-label stat-label">Videos</p>
         </div>
       </div>
 
@@ -221,7 +221,7 @@ export default function BodyCameraDetailTab({
               </table>
             </div>
           ) : (
-            <div className="panel-beveled p-8 text-center bg-surface-base">
+            <div className="empty-state-container panel-beveled p-8 text-center bg-surface-base">
               <Camera className="w-8 h-8 text-rmpg-600 mx-auto mb-2 empty-state-icon" />
               <p className="text-xs text-rmpg-400">No cameras assigned</p>
               <p className="text-[10px] text-rmpg-600 mt-1">Click &quot;Assign Camera&quot; to get started.</p>
@@ -307,7 +307,7 @@ export default function BodyCameraDetailTab({
               </table>
             </div>
           ) : (
-            <div className="panel-beveled p-6 text-center bg-surface-base">
+            <div className="empty-state-container panel-beveled p-6 text-center bg-surface-base">
               <Video className="w-6 h-6 text-rmpg-600 mx-auto mb-2 empty-state-icon" />
               <p className="text-xs text-rmpg-400">No video footage uploaded</p>
               {cameras.length === 0 && (

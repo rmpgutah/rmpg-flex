@@ -878,7 +878,7 @@ export default function PersonnelPage() {
   // ----------------------------------------------------------
 
   const rosterList = (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col h-full min-h-0 overflow-hidden">
       {/* Search + New Officer */}
       <div className="p-3 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)' }}>
         <div className="flex items-center gap-2">
@@ -914,8 +914,8 @@ export default function PersonnelPage() {
       </div>
 
       {/* Officer List */}
-      <div className="flex-1 overflow-auto py-1">
-        {filteredOfficers.map((officer, idx) => {
+      <div className="flex-1 overflow-auto min-h-0">
+        {filteredOfficers.map((officer) => {
           const officerCreds = credentials.filter(c => c.officer_id === officer.id);
           const hasExpired = officerCreds.some(c => c.status === 'expired');
           const hasExpiring = officerCreds.some(c => c.status === 'expiring_soon');
@@ -925,55 +925,56 @@ export default function PersonnelPage() {
             <div
               key={officer.id}
               onClick={() => { setSelectedOfficer(officer); setDetailTab('profile'); }}
-              className={`officer-card panel-beveled mb-1 mx-2 p-3 cursor-pointer ${
-                isSelected ? 'officer-selected' : 'bg-surface-base'
-              } ${isOnDuty ? 'duty-card-active' : ''}`}
-              style={{ '--card-accent': isSelected ? 'var(--brand-blue)' : isOnDuty ? '#22c55e' : 'transparent', animationDelay: `${idx * 20}ms` } as React.CSSProperties}
+              className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer border-b border-rmpg-700/50 border-l-[3px] transition-all duration-150 ${
+                isSelected
+                  ? 'bg-brand-900/20 border-l-brand-500'
+                  : isOnDuty
+                    ? 'bg-surface-base border-l-green-600/60 hover:bg-brand-900/10'
+                    : 'bg-surface-base border-l-transparent hover:bg-brand-900/10'
+              }`}
             >
-              <div className="flex items-center gap-3">
-                <OfficerAvatar officer={officer} size="md" />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-rmpg-100 truncate">
-                      {officer.last_name}, {officer.first_name}
-                    </span>
-                    <span className={`badge-pill ${ROLE_COLORS[officer.role] || ROLE_COLORS.officer}`}>
-                      {toDisplayLabel(officer.role)}
-                    </span>
-                    {hasExpired && <span className="led-dot led-red" title="Expired credential" />}
-                    {!hasExpired && hasExpiring && <span className="led-dot led-amber" title="Expiring credential" />}
-                  </div>
-                  <div className="flex items-center gap-2.5 mt-0.5 text-[10px] text-rmpg-400">
-                    {officer.rank && <span className="text-rmpg-300">{officer.rank}</span>}
-                    {officer.rank && officer.department && <span className="text-rmpg-600">·</span>}
-                    {officer.department && <span>{officer.department}</span>}
-                    {officer.badge_number && (
-                      <span className="font-mono text-rmpg-500 bg-rmpg-800/50 px-1 py-0.5 text-[9px]">#{officer.badge_number}</span>
-                    )}
-                  </div>
-                  <CredentialProgressBar credentials={officerCreds} />
+              <OfficerAvatar officer={officer} size="md" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-rmpg-100 truncate">
+                    {officer.last_name}, {officer.first_name}
+                  </span>
+                  <span className={`badge-pill ${ROLE_COLORS[officer.role] || ROLE_COLORS.officer}`}>
+                    {toDisplayLabel(officer.role)}
+                  </span>
+                  {hasExpired && <span className="led-dot led-red" title="Expired credential" />}
+                  {!hasExpired && hasExpiring && <span className="led-dot led-amber" title="Expiring credential" />}
                 </div>
-                <div className="text-right flex-shrink-0">
-                  <div className="flex items-center gap-1.5 justify-end">
-                    <span className={isOnDuty ? 'led-dot led-green' : 'led-dot led-off'} />
-                    <span className={`text-[10px] font-bold uppercase tracking-wider ${
-                      isOnDuty ? 'text-green-400' : 'text-rmpg-500'
-                    }`}>
-                      {isOnDuty ? 'ON DUTY' : 'OFF'}
-                    </span>
-                  </div>
-                  {officer.shift_preference && (
-                    <div className="text-[9px] text-rmpg-500 mt-0.5 font-mono">{officer.shift_preference}</div>
+                <div className="flex items-center gap-2 mt-0.5 text-[10px] text-rmpg-400">
+                  {officer.rank && <span className="text-rmpg-300">{officer.rank}</span>}
+                  {officer.rank && officer.department && <span className="text-rmpg-600">&middot;</span>}
+                  {officer.department && <span>{officer.department}</span>}
+                  {officer.badge_number && (
+                    <span className="font-mono text-rmpg-500 bg-rmpg-800/50 px-1 py-0.5 text-[9px]">#{officer.badge_number}</span>
                   )}
                 </div>
+                <CredentialProgressBar credentials={officerCreds} />
+              </div>
+              <div className="text-right flex-shrink-0">
+                <div className="flex items-center gap-1.5 justify-end">
+                  <span className={isOnDuty ? 'led-dot led-green led-breathing' : 'led-dot led-off'} />
+                  <span className={`text-[10px] font-bold uppercase tracking-wider ${
+                    isOnDuty ? 'text-green-400' : 'text-rmpg-500'
+                  }`}>
+                    {isOnDuty ? 'ON DUTY' : 'OFF'}
+                  </span>
+                </div>
+                {officer.shift_preference && (
+                  <div className="text-[9px] text-rmpg-500 mt-0.5 font-mono">{officer.shift_preference}</div>
+                )}
               </div>
             </div>
           );
         })}
         {filteredOfficers.length === 0 && (
-          <div className="record-empty-state mx-2 mt-4">
-            <div className="empty-state-icon w-14 h-14 mb-3 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
-              <Users className="w-7 h-7 text-rmpg-600" />
+          <div className="empty-state-container mx-2 mt-4">
+            <div className="empty-state-icon">
+              <Users className="w-6 h-6" />
             </div>
             <p className="text-sm text-rmpg-400 font-medium">{searchQuery ? 'No matching personnel' : 'No personnel records'}</p>
             <p className="text-[10px] text-rmpg-600 mt-1">{searchQuery ? 'Try adjusting your search terms' : 'Create a new officer to get started'}</p>
@@ -1063,29 +1064,30 @@ export default function PersonnelPage() {
         <PrintButton />
       </PanelTitleBar>
 
-      {/* Stats Bar — ambient-glow stat pods */}
-      <div className={`${isMobile ? 'px-3 overflow-x-auto' : 'px-4'} py-2 border-b border-rmpg-600 flex items-center gap-2`} style={{ background: 'linear-gradient(180deg, var(--surface-sunken) 0%, var(--surface-base) 100%)' }}>
+      {/* Stats Bar */}
+      <div className={`${isMobile ? 'px-3 overflow-x-auto' : 'px-4'} py-2 border-b border-rmpg-600 flex items-center gap-2.5`} style={{ background: '#0d1520' }}>
         {[
-          { label: 'On Duty', value: onDutyCount, led: 'led-green', color: 'text-green-400', glow: 'rgba(34,197,94,0.12)' },
-          { label: 'Off Duty', value: offDutyCount, led: 'led-off', color: 'text-rmpg-200', glow: 'rgba(107,114,128,0.08)' },
-          { label: 'Clocked In', value: clockedInCount, icon: Clock, color: 'text-brand-400', glow: 'rgba(26,90,158,0.12)' },
-          { label: 'Hours', value: totalHoursThisPeriod.toFixed(1), icon: BarChart3, color: 'text-white', glow: 'rgba(255,255,255,0.06)' },
-          { label: 'Total', value: officers.length, icon: Users, color: 'text-white', glow: 'rgba(255,255,255,0.06)' },
+          { label: 'On Duty', value: onDutyCount, borderColor: 'border-l-green-500', icon: null, led: 'led-green led-breathing', color: 'text-green-400' },
+          { label: 'Off Duty', value: offDutyCount, borderColor: 'border-l-rmpg-600', icon: null, led: 'led-off', color: 'text-rmpg-300' },
+          { label: 'Clocked In', value: clockedInCount, borderColor: 'border-l-brand-500', icon: Clock, led: null, color: 'text-brand-400' },
+          { label: 'Period Hours', value: totalHoursThisPeriod.toFixed(1), borderColor: 'border-l-blue-500', icon: BarChart3, led: null, color: 'text-blue-400' },
+          { label: 'Total Personnel', value: officers.length, borderColor: 'border-l-rmpg-500', icon: Users, led: null, color: 'text-rmpg-200' },
         ].map((s) => (
-          <div
-            key={s.label}
-            className="stat-pod flex items-center gap-1.5 px-3 py-1.5 panel-beveled bg-surface-base text-[10px] font-mono"
-            style={{ '--pod-glow': s.glow } as React.CSSProperties}
-          >
-            {'led' in s && s.led ? <span className={`led-dot ${s.led}`} /> : s.icon ? <s.icon className={`w-3 h-3 stat-icon ${s.color}`} /> : null}
-            <span className="text-rmpg-400 uppercase tracking-wider">{s.label}</span>
-            <span className={`stat-value font-bold text-base ml-0.5 ${s.color}`}>{s.value}</span>
+          <div key={s.label} className={`panel-beveled bg-surface-sunken p-2 border-l-[3px] ${s.borderColor} min-w-[90px]`}>
+            <div className="flex items-center gap-1.5 mb-0.5">
+              {s.led ? <span className={`led-dot ${s.led}`} /> : s.icon ? <s.icon className="w-3 h-3 text-rmpg-500" /> : null}
+              <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">{s.label}</span>
+            </div>
+            <div className={`text-lg font-bold font-mono ${s.color}`}>{s.value}</div>
           </div>
         ))}
         {expiringCreds > 0 && (
-          <div className="stat-pod flex items-center gap-1.5 ml-auto px-3 py-1.5 panel-beveled border-l-2 border-l-amber-500 text-[10px]" style={{ '--pod-glow': 'rgba(245,158,11,0.15)' } as React.CSSProperties}>
-            <AlertTriangle className="w-3 h-3 text-amber-400 stat-icon" />
-            <span className="text-amber-400 font-bold font-mono">{expiringCreds} credential alert{expiringCreds !== 1 ? 's' : ''}</span>
+          <div className="panel-beveled bg-surface-sunken p-2 border-l-[3px] border-l-amber-500 ml-auto">
+            <div className="flex items-center gap-1.5 mb-0.5">
+              <AlertTriangle className="w-3 h-3 text-amber-400" />
+              <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">Alerts</span>
+            </div>
+            <div className="text-lg font-bold font-mono text-amber-400">{expiringCreds}</div>
           </div>
         )}
       </div>
@@ -1122,8 +1124,8 @@ export default function PersonnelPage() {
         })}
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto flex">
+      {/* Content — each tab owns its own scroll container */}
+      <div className="flex-1 overflow-hidden flex min-h-0">
         {/* Loading state */}
         {loading && (
           <div className="flex items-center justify-center flex-1">

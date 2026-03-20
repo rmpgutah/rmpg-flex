@@ -100,7 +100,7 @@ export default function ActivityDetailTab({ activity }: Props) {
           </div>
         </div>
       ) : (
-        <div className="panel-beveled p-8 text-center bg-surface-base">
+        <div className="empty-state-container panel-beveled p-8 text-center bg-surface-base">
           <Activity className="w-8 h-8 text-rmpg-600 mx-auto mb-2 empty-state-icon" />
           <p className="text-xs text-rmpg-400">No recent activity</p>
           <p className="text-[10px] text-rmpg-600 mt-1">Activity will appear here as events are logged.</p>

@@ -79,7 +79,7 @@ export default function TimeLogDetailTab({
       {/* Clock action bar */}
       <div className={`stat-pod panel-inset p-2.5 flex items-center justify-between ${isActive ? 'clock-active-ring' : ''}`} style={{ '--pod-glow': isActive ? 'rgba(34, 197, 94, 0.15)' : 'rgba(26, 90, 158, 0.08)' } as React.CSSProperties}>
         <div className="flex items-center gap-2">
-          <span className={isOnBreak ? 'led-dot led-amber' : isClockedIn ? 'led-dot led-green' : 'led-dot led-off'} />
+          <span className={isOnBreak ? 'led-dot led-amber led-breathing' : isClockedIn ? 'led-dot led-green led-breathing' : 'led-dot led-off'} />
           <span className={`text-[10px] font-bold uppercase tracking-wider ${isOnBreak ? 'text-amber-400' : isClockedIn ? 'text-green-400' : 'text-rmpg-500'}`}>
             {isOnBreak ? 'On Break' : isClockedIn ? 'Clocked In' : 'Off Duty'}
           </span>
@@ -125,25 +125,25 @@ export default function TimeLogDetailTab({
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
         <div className="stat-pod panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-rmpg-500 summary-card-shimmer" style={{ '--pod-glow': 'rgba(148, 163, 184, 0.1)' } as React.CSSProperties}>
           <p className="text-lg font-bold text-rmpg-100 font-mono stat-value">{totalEntries}</p>
-          <p className="field-label">Entries</p>
+          <p className="field-label stat-label">Entries</p>
         </div>
         <div className="stat-pod panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-brand-400 summary-card-shimmer" style={{ '--pod-glow': 'rgba(26, 90, 158, 0.12)' } as React.CSSProperties}>
           <p className="text-lg font-bold text-brand-400 font-mono stat-value">{totalHours.toFixed(1)}</p>
-          <p className="field-label">Hours</p>
+          <p className="field-label stat-label">Hours</p>
         </div>
         <div className="stat-pod panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-blue-500 summary-card-shimmer" style={{ '--pod-glow': 'rgba(59, 130, 246, 0.12)' } as React.CSSProperties}>
           <p className="text-lg font-bold text-rmpg-100 font-mono stat-value">{avgPerEntry.toFixed(1)}</p>
-          <p className="field-label">Avg/Entry</p>
+          <p className="field-label stat-label">Avg/Entry</p>
         </div>
         <div className="stat-pod panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-amber-500 summary-card-shimmer" style={{ '--pod-glow': 'rgba(245, 158, 11, 0.12)' } as React.CSSProperties}>
           <p className="text-lg font-bold text-amber-400 font-mono stat-value">{totalBreakMins.toFixed(0)}</p>
-          <p className="field-label">Break Min</p>
+          <p className="field-label stat-label">Break Min</p>
         </div>
         <div className="stat-pod panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-green-500 summary-card-shimmer" style={{ '--pod-glow': isOnBreak ? 'rgba(245, 158, 11, 0.12)' : isClockedIn ? 'rgba(34, 197, 94, 0.12)' : 'rgba(148, 163, 184, 0.08)' } as React.CSSProperties}>
           <p className={`text-lg font-bold font-mono stat-value ${isOnBreak ? 'text-amber-400' : isClockedIn ? 'text-green-400' : 'text-rmpg-400'}`}>
             {isOnBreak ? 'BRK' : isClockedIn ? 'IN' : 'OUT'}
           </p>
-          <p className="field-label">Status</p>
+          <p className="field-label stat-label">Status</p>
         </div>
       </div>
 
@@ -179,13 +179,13 @@ export default function TimeLogDetailTab({
                       <div className="flex items-center gap-1.5 text-xs">
                         {entry.status === 'on_break' ? (
                           <>
-                            <span className="led-dot led-amber" />
+                            <span className="led-dot led-amber led-breathing" />
                             <Coffee className="w-3 h-3 text-amber-400" />
                             <span className="text-amber-400 animate-pulse font-semibold">On Break</span>
                           </>
                         ) : (
                           <>
-                            <span className="led-dot led-green" />
+                            <span className="led-dot led-green led-breathing" />
                             <LogOut className="w-3 h-3 text-rmpg-500" />
                             <span className="text-green-400 animate-pulse font-semibold">Active</span>
                           </>
@@ -241,7 +241,7 @@ export default function TimeLogDetailTab({
           })}
         </div>
       ) : (
-        <div className="panel-beveled p-8 text-center bg-surface-base">
+        <div className="empty-state-container panel-beveled p-8 text-center bg-surface-base">
           <Clock className="w-8 h-8 text-rmpg-600 mx-auto mb-2 empty-state-icon" />
           <p className="text-xs text-rmpg-400">No time entries on file</p>
           <p className="text-[10px] text-rmpg-600 mt-1">Use the clock controls above to start tracking time.</p>

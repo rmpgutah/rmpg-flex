@@ -142,26 +142,30 @@ export default function DashCameraTab({
   // ── Render ───────────────────────────────────────────────
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3">
-      {/* ── Section Header ── */}
-      <div className="section-header">
-        <Car className="w-4 h-4 section-icon" />
-        <h2>Dash Cameras</h2>
-        <span className="text-[8px] text-rmpg-500 font-mono uppercase bg-surface-sunken px-1.5 py-0.5 border border-rmpg-700 ml-1">
-          ClearPathGPS
-        </span>
-        <div className="flex items-center gap-1.5 ml-auto">
-          <RmpgLogo height={20} iconOnly />
-          <PrintButton />
-          <ExportButton exportUrl="/clearpathgps/dashcam-events/export?format=csv" exportFilename="dashcam-events.csv" />
-          {onRefresh && (
-            <button onClick={onRefresh} disabled={loading} className="toolbar-btn text-[10px] px-3 py-1.5 flex items-center gap-1.5">
-              {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-              Refresh
-            </button>
-          )}
+    <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+      {/* Fixed Header */}
+      <div className="flex-shrink-0 px-4 py-2.5 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)' }}>
+        <div className="flex items-center">
+          <Car className="w-4 h-4 text-brand-400" />
+          <span className="text-xs font-bold text-rmpg-200 uppercase tracking-wider ml-2">Dash Cameras</span>
+          <span className="text-[8px] text-rmpg-500 font-mono uppercase bg-surface-sunken px-1.5 py-0.5 border border-rmpg-700 ml-1">
+            ClearPathGPS
+          </span>
+          <div className="flex items-center gap-1.5 ml-auto">
+            <RmpgLogo height={20} iconOnly />
+            <PrintButton />
+            <ExportButton exportUrl="/clearpathgps/dashcam-events/export?format=csv" exportFilename="dashcam-events.csv" />
+            {onRefresh && (
+              <button onClick={onRefresh} disabled={loading} className="toolbar-btn text-[10px] px-3 py-1.5 flex items-center gap-1.5">
+                {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                Refresh
+              </button>
+            )}
+          </div>
         </div>
       </div>
+      {/* Scrollable Content */}
+      <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-3">
 
       {/* ── Impact Alert Banner ── */}
       {stats.impacts > 0 && (
@@ -182,7 +186,7 @@ export default function DashCameraTab({
             style={{ '--pod-glow': card.podGlow } as React.CSSProperties}
           >
             <div className={`stat-value text-sm font-bold font-mono ${card.color}`}>{card.value}</div>
-            <div className="text-[7px] text-rmpg-500 uppercase">{card.label}</div>
+            <div className="stat-label text-[7px] text-rmpg-500 uppercase">{card.label}</div>
           </div>
         ))}
       </div>
@@ -276,11 +280,13 @@ export default function DashCameraTab({
               {filteredDevices.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="text-center py-8">
+                    <div className="empty-state-container">
                     <div className="empty-state-icon w-12 h-12 mx-auto mb-2 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-base">
                       <Cpu className="w-6 h-6 text-rmpg-600" />
                     </div>
                     <p className="text-[10px] text-rmpg-500">No ClearPathGPS devices mapped.</p>
                     <p className="text-[9px] text-rmpg-600 mt-0.5">Devices are auto-discovered when ClearPathGPS credentials are configured.</p>
+                    </div>
                   </td>
                 </tr>
               ) : (
@@ -316,7 +322,7 @@ export default function DashCameraTab({
                     <td>
                       <div className="flex items-center gap-1.5">
                         <span className={statusLedClass(dev.is_active)} />
-                        <span className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold ${
+                        <span className={`badge-pill inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold ${
                           dev.is_active
                             ? 'bg-green-900/50 text-green-400 border border-green-700/50'
                             : 'bg-rmpg-700 text-rmpg-400 border border-rmpg-600'
@@ -374,11 +380,13 @@ export default function DashCameraTab({
                 {filteredEvents.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="text-center py-8">
+                      <div className="empty-state-container">
                       <div className="empty-state-icon w-12 h-12 mx-auto mb-2 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-base">
                         <Zap className="w-6 h-6 text-rmpg-600" />
                       </div>
                       <p className="text-[10px] text-rmpg-500">No dashcam events recorded.</p>
                       <p className="text-[9px] text-rmpg-600 mt-0.5">Events are automatically synced from ClearPathGPS.</p>
+                      </div>
                     </td>
                   </tr>
                 ) : (
@@ -394,7 +402,7 @@ export default function DashCameraTab({
                         </span>
                       </td>
                       <td>
-                        <span className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold ${
+                        <span className={`badge-pill inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold ${
                           DASHCAM_EVENT_COLORS[evt.event_type] || 'bg-rmpg-700 text-rmpg-300 border border-rmpg-600'
                         }`}>
                           {eventLabel(evt.event_type)}
@@ -464,6 +472,7 @@ export default function DashCameraTab({
           )}
         </>
       )}
+      </div>
     </div>
   );
 }

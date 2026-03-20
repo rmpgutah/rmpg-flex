@@ -46,21 +46,21 @@ export default function TrainingTab({ training, requirements, officers, loading,
     switch (status) {
       case 'completed':
         return (
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase bg-green-900/50 text-green-400 border border-green-700/50">
+          <span className="badge-pill inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase bg-green-900/50 text-green-400 border border-green-700/50">
             <CheckCircle className="w-2.5 h-2.5" />
             Completed
           </span>
         );
       case 'in_progress':
         return (
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase bg-blue-900/50 text-blue-400 border border-blue-700/50">
+          <span className="badge-pill inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase bg-blue-900/50 text-blue-400 border border-blue-700/50">
             <Clock className="w-2.5 h-2.5" />
             In Progress
           </span>
         );
       case 'scheduled':
         return (
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase bg-amber-900/50 text-amber-400 border border-amber-700/50">
+          <span className="badge-pill inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase bg-amber-900/50 text-amber-400 border border-amber-700/50">
             <BookOpen className="w-2.5 h-2.5" />
             Scheduled
           </span>
@@ -68,7 +68,7 @@ export default function TrainingTab({ training, requirements, officers, loading,
       case 'overdue':
       case 'expired':
         return (
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase bg-red-900/50 text-red-400 border border-red-700/50">
+          <span className="badge-pill inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase bg-red-900/50 text-red-400 border border-red-700/50">
             <AlertTriangle className="w-2.5 h-2.5" />
             {status === 'overdue' ? 'Overdue' : 'Expired'}
           </span>
@@ -88,7 +88,17 @@ export default function TrainingTab({ training, requirements, officers, loading,
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+    <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+      {/* Fixed Header */}
+      <div className="flex-shrink-0 px-4 py-2.5 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)' }}>
+        <div className="flex items-center">
+          <GraduationCap className="section-icon w-4 h-4" />
+          <h3 className="text-sm font-bold text-rmpg-200 uppercase tracking-wider ml-2">Training Records</h3>
+        </div>
+      </div>
+
+      {/* Scrollable Content */}
+      <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-3">
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
         <div
@@ -133,11 +143,16 @@ export default function TrainingTab({ training, requirements, officers, loading,
         </div>
       </div>
 
-      {/* Section Header */}
-      <div className="section-header">
-        <GraduationCap className="section-icon w-4 h-4" />
-        <h3>Training Records</h3>
-      </div>
+      {/* Overdue Alert */}
+      {overdue > 0 && (
+        <div className="alert-banner alert-banner-critical panel-beveled p-3 flex items-center gap-3" style={{ '--alert-color': '#ef4444' } as React.CSSProperties}>
+          <span className="led-dot led-red flex-shrink-0" />
+          <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" />
+          <span className="text-xs text-red-400 font-semibold">
+            {overdue} training record{overdue !== 1 ? 's' : ''} overdue or expired
+          </span>
+        </div>
+      )}
 
       {/* Category Filter Bar */}
       <div className="flex items-center gap-2">
@@ -203,7 +218,7 @@ export default function TrainingTab({ training, requirements, officers, loading,
                   <td className="py-1.5 px-2 text-rmpg-100">{record.officer_name}</td>
                   <td className="py-1.5 px-2 text-rmpg-100 font-medium">{record.course_name}</td>
                   <td className="py-1.5 px-2">
-                    <span className={`inline-block px-1.5 py-0.5 text-[9px] font-bold uppercase ${
+                    <span className={`badge-pill inline-block px-1.5 py-0.5 text-[9px] font-bold uppercase ${
                       TRAINING_CATEGORY_COLORS[record.category] || TRAINING_CATEGORY_COLORS.other
                     }`}>
                       {record.category.replace(/_/g, ' ')}
@@ -220,6 +235,7 @@ export default function TrainingTab({ training, requirements, officers, loading,
           </table>
         </div>
       )}
+      </div>
     </div>
   );
 }

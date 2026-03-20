@@ -62,13 +62,17 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
   ];
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3">
-      {/* Section Header */}
-      <div className="section-header">
-        <Clock className="w-4 h-4 section-icon" />
-        <h2>Time & Attendance</h2>
+    <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+      {/* Fixed Header */}
+      <div className="flex-shrink-0 px-4 py-2.5 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)' }}>
+        <div className="flex items-center">
+          <Clock className="w-4 h-4 section-icon" />
+          <h2 className="text-sm font-bold text-rmpg-200 uppercase tracking-wider ml-2">Time & Attendance</h2>
+        </div>
       </div>
 
+      {/* Scrollable Content */}
+      <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-3">
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
         {SUMMARY_CARDS.map((card) => (
@@ -98,7 +102,7 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
                 key={te.id}
                 className="panel-beveled p-2 border border-green-800/30 flex items-center gap-2"
               >
-                <span className="clock-active-ring w-2 h-2 rounded-full bg-green-400 shrink-0" />
+                <span className="clock-active-ring w-2 h-2 rounded-full bg-green-400 led-breathing shrink-0" />
                 <div className="flex-1 min-w-0">
                   <div className="text-[10px] text-rmpg-200 font-medium truncate">{te.officer_name}</div>
                   <div className="text-[9px] text-green-400 font-mono">
@@ -134,7 +138,7 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
             {timeEntries.length === 0 ? (
               <tr>
                 <td colSpan={(onEditTimeEntry || onDeleteTimeEntry) ? 7 : 6} className="text-center py-10">
-                  <div className="flex flex-col items-center gap-2">
+                  <div className="empty-state-container flex flex-col items-center gap-2">
                     <div className="empty-state-icon w-12 h-12 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
                       <Clock className="w-5 h-5 text-rmpg-600" />
                     </div>
@@ -148,8 +152,8 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
                 <tr key={te.id} className="group">
                   <td>
                     <div className="flex items-center gap-1.5">
-                      {te.status === 'clocked_in' && <span className="led-dot led-green" />}
-                      {te.status === 'on_break' && <span className="led-dot led-amber" />}
+                      {te.status === 'clocked_in' && <span className="led-dot led-green led-breathing" />}
+                      {te.status === 'on_break' && <span className="led-dot led-amber led-breathing" />}
                       {te.status === 'clocked_out' && <span className="led-dot led-off" />}
                       {te.status === 'edited' && <span className="led-dot led-blue" />}
                       <span className="text-xs text-rmpg-200">{te.officer_name}</span>
@@ -175,24 +179,24 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
                   </td>
                   <td>
                     {te.status === 'clocked_in' && (
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold bg-green-900/50 text-green-400 border border-green-700/50">
-                        <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                      <span className="badge-pill inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold bg-green-900/50 text-green-400 border border-green-700/50">
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-400 led-breathing" />
                         Active
                       </span>
                     )}
                     {te.status === 'on_break' && (
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold bg-amber-900/50 text-amber-400 border border-amber-700/50">
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                      <span className="badge-pill inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold bg-amber-900/50 text-amber-400 border border-amber-700/50">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 led-breathing" />
                         Break
                       </span>
                     )}
                     {te.status === 'clocked_out' && (
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold bg-rmpg-700 text-rmpg-400 border border-rmpg-600">
+                      <span className="badge-pill inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold bg-rmpg-700 text-rmpg-400 border border-rmpg-600">
                         Clocked Out
                       </span>
                     )}
                     {te.status === 'edited' && (
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold bg-blue-900/50 text-blue-400 border border-blue-700/50">
+                      <span className="badge-pill inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold bg-blue-900/50 text-blue-400 border border-blue-700/50">
                         Edited
                       </span>
                     )}
@@ -250,6 +254,7 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
           confirmVariant="danger"
         />
       )}
+      </div>
     </div>
   );
 }

@@ -221,7 +221,7 @@ export default function PersonnelDetailPanel({
   return (
     <div ref={personnelDetailRef} className="flex-1 flex flex-col overflow-hidden detail-panel-enter">
       {/* Detail Header */}
-      <div className="profile-section panel-beveled mx-2 mt-2 p-4" style={{ background: 'linear-gradient(135deg, var(--surface-raised) 0%, var(--surface-base) 100%)' }}>
+      <div className="profile-section panel-beveled mx-2 mt-2 p-4 bg-surface-raised">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-4">
             <OfficerAvatar officer={officer} size="lg" />
@@ -340,17 +340,17 @@ export default function PersonnelDetailPanel({
       </div>
 
       {/* Quick Stats Row */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 px-4 py-2 border-b border-rmpg-700" style={{ background: 'linear-gradient(180deg, var(--surface-sunken) 0%, var(--surface-base) 100%)' }}>
+      <div className="flex items-stretch gap-2 px-4 py-2 border-b border-rmpg-700" style={{ background: '#0d1520' }}>
         {[
-          { label: 'Status', value: officer.status === 'on_duty' ? 'ON DUTY' : 'OFF DUTY', color: officer.status === 'on_duty' ? 'text-green-400' : 'text-rmpg-400', border: officer.status === 'on_duty' ? 'border-t-green-500' : 'border-t-rmpg-600', glow: officer.status === 'on_duty' ? 'rgba(34,197,94,0.12)' : 'rgba(107,114,128,0.06)' },
-          { label: 'Service', value: calcYearsOfService(officer.hire_date), color: 'text-white', border: 'border-t-blue-500', glow: 'rgba(59,130,246,0.12)' },
-          { label: 'Hours (Period)', value: officerTotalHours.toFixed(1), color: 'text-brand-400', border: 'border-t-brand-500', glow: 'rgba(26,90,158,0.12)' },
-          { label: 'Credentials', value: `${officerCreds.length} Active`, color: officerCreds.some(c => c.status === 'expired') ? 'text-red-400' : hasCredAlert ? 'text-amber-400' : 'text-green-400', border: officerCreds.some(c => c.status === 'expired') ? 'border-t-red-500' : hasCredAlert ? 'border-t-amber-500' : 'border-t-green-500', glow: hasCredAlert ? 'rgba(245,158,11,0.12)' : 'rgba(34,197,94,0.12)' },
-          { label: 'Schedules', value: String(officerSchedules.length), color: 'text-purple-400', border: 'border-t-purple-500', glow: 'rgba(147,51,234,0.12)' },
-        ].map((stat, i) => (
-          <div key={stat.label} className={`stat-pod summary-card-shimmer cascade-item panel-beveled p-2 text-center border-t-2 ${stat.border}`} style={{ '--pod-glow': stat.glow, animationDelay: `${i * 40}ms` } as React.CSSProperties}>
-            <p className="field-label">{stat.label}</p>
-            <p className={`text-base font-bold font-mono stat-value ${stat.color}`}>{stat.value}</p>
+          { label: 'Status', value: officer.status === 'on_duty' ? 'ON DUTY' : 'OFF DUTY', color: officer.status === 'on_duty' ? 'text-green-400' : 'text-rmpg-400', borderColor: officer.status === 'on_duty' ? 'border-l-green-500' : 'border-l-rmpg-600' },
+          { label: 'Service', value: calcYearsOfService(officer.hire_date), color: 'text-blue-400', borderColor: 'border-l-blue-500' },
+          { label: 'Hours', value: officerTotalHours.toFixed(1), color: 'text-brand-400', borderColor: 'border-l-brand-500' },
+          { label: 'Credentials', value: `${officerCreds.length}`, color: officerCreds.some(c => c.status === 'expired') ? 'text-red-400' : hasCredAlert ? 'text-amber-400' : 'text-green-400', borderColor: officerCreds.some(c => c.status === 'expired') ? 'border-l-red-500' : hasCredAlert ? 'border-l-amber-500' : 'border-l-green-500' },
+          { label: 'Schedules', value: String(officerSchedules.length), color: 'text-purple-400', borderColor: 'border-l-purple-500' },
+        ].map((stat) => (
+          <div key={stat.label} className={`panel-beveled bg-surface-sunken p-2 border-l-[3px] ${stat.borderColor} flex-1 min-w-0`}>
+            <p className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide mb-0.5">{stat.label}</p>
+            <p className={`text-base font-bold font-mono ${stat.color}`}>{stat.value}</p>
           </div>
         ))}
       </div>

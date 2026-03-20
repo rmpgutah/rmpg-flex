@@ -176,7 +176,7 @@ export default function DeploymentDetailTab({ deployments, loading, onAddDeploym
 
       {/* Empty State */}
       {deployments.length === 0 && (
-        <div className="text-center py-12">
+        <div className="empty-state-container text-center py-12">
           <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center" style={{ background: '#0d1520' }}>
             <MapPinned className="w-7 h-7 text-rmpg-600 empty-state-icon" />
           </div>

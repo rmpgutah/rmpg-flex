@@ -85,15 +85,15 @@ export default function EquipmentDetailTab({
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <div className="stat-pod panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-green-500 summary-card-shimmer" style={{ '--pod-glow': 'rgba(34, 197, 94, 0.12)' } as React.CSSProperties}>
           <p className="text-lg font-bold text-green-400 font-mono stat-value">{issuedCount}</p>
-          <p className="field-label">Issued</p>
+          <p className="field-label stat-label">Issued</p>
         </div>
         <div className="stat-pod panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-rmpg-500 summary-card-shimmer" style={{ '--pod-glow': 'rgba(148, 163, 184, 0.08)' } as React.CSSProperties}>
           <p className="text-lg font-bold text-rmpg-200 font-mono stat-value">{equipment.length}</p>
-          <p className="field-label">Total Items</p>
+          <p className="field-label stat-label">Total Items</p>
         </div>
         <div className="stat-pod panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-red-500 summary-card-shimmer" style={{ '--pod-glow': 'rgba(239, 68, 68, 0.12)' } as React.CSSProperties}>
           <p className="text-lg font-bold text-red-400 font-mono stat-value">{alertCount}</p>
-          <p className="field-label">Alerts</p>
+          <p className="field-label stat-label">Alerts</p>
         </div>
       </div>
 
@@ -181,7 +181,7 @@ export default function EquipmentDetailTab({
           </table>
         </div>
       ) : (
-        <div className="panel-beveled p-8 text-center bg-surface-base">
+        <div className="empty-state-container panel-beveled p-8 text-center bg-surface-base">
           <Box className="w-8 h-8 text-rmpg-600 mx-auto mb-2 empty-state-icon" />
           <p className="text-xs text-rmpg-400">No equipment issued</p>
           <p className="text-[10px] text-rmpg-600 mt-1">Click &quot;Issue Equipment&quot; to assign gear.</p>

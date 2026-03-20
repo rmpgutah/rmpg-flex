@@ -1319,6 +1319,242 @@
     background: linear-gradient(180deg, #dc2626 0%, #991b1b 100%);
   }
 
+  .toolbar-btn-success {
+    background: rgba(22, 101, 52, 0.7);
+    border-color: rgba(34, 197, 94, 0.5);
+    color: #ffffff;
+  }
+  .toolbar-btn-success:hover {
+    background: rgba(34, 197, 94, 0.8);
+    box-shadow: 0 0 8px rgba(22, 101, 52, 0.3);
+  }
+
+  /* --- Stat Pod (Summary Metric Card) --- */
+  .stat-pod {
+    position: relative;
+    text-align: center;
+    padding: 10px 8px;
+    border-top-width: 2px;
+    border-top-style: solid;
+    transition: box-shadow 0.25s ease, transform 0.2s ease;
+  }
+  .stat-pod:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px var(--pod-glow, rgba(26, 90, 158, 0.12));
+  }
+  .stat-pod .stat-value {
+    font-family: var(--font-mono);
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .stat-pod .stat-label {
+    font-size: 7px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  /* --- Badge Pill (Inline Status/Category Label) --- */
+  .badge-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 1px 6px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    border-width: 1px;
+    border-style: solid;
+  }
+
+  /* --- Sub-Tabs (Horizontal Tab Buttons) --- */
+  .sub-tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+    white-space: nowrap;
+  }
+  .sub-tab:hover {
+    color: var(--text-secondary);
+  }
+  .sub-tab-active {
+    border-bottom-color: var(--tab-color, var(--brand-blue));
+    color: var(--tab-color, var(--brand-blue));
+  }
+  .sub-tab .sub-tab-count {
+    font-size: 8px;
+    padding: 0 5px;
+    background: rgba(26, 90, 158, 0.2);
+    border: 1px solid rgba(26, 90, 158, 0.3);
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+  }
+  .sub-tab-active .sub-tab-count {
+    background: rgba(26, 90, 158, 0.35);
+    border-color: rgba(59, 138, 212, 0.5);
+    color: #ffffff;
+  }
+
+  /* --- Alert Banners --- */
+  .alert-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-left: 3px solid var(--alert-color, var(--brand-blue));
+    background: color-mix(in srgb, var(--alert-color, var(--brand-blue)) 8%, var(--surface-base));
+    border: 1px solid color-mix(in srgb, var(--alert-color, var(--brand-blue)) 25%, transparent);
+    border-left-width: 3px;
+    font-size: 11px;
+    animation: alertSlideIn 0.3s ease-out;
+  }
+  .alert-banner-critical {
+    --alert-color: #ef4444;
+  }
+  .alert-banner-critical .led-dot {
+    animation: ledPulse 1.5s ease-in-out infinite;
+  }
+  .alert-banner-warning {
+    --alert-color: #f59e0b;
+  }
+  .alert-banner-info {
+    --alert-color: #3b82f6;
+  }
+  @keyframes alertSlideIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* --- Empty State --- */
+  .empty-state-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 16px;
+    text-align: center;
+  }
+  .empty-state-icon {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    border: 1px solid var(--border-subtle);
+    background: var(--surface-base);
+    margin-bottom: 10px;
+    color: var(--text-muted);
+  }
+
+  /* --- Personnel Table (extends table-dark) --- */
+  .personnel-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--surface-sunken);
+  }
+  .personnel-table th {
+    font-size: 9px;
+    padding: 6px 10px;
+    white-space: nowrap;
+  }
+  .personnel-table td {
+    font-size: 11px;
+    padding: 5px 10px;
+  }
+
+  /* Row states */
+  .row-alert {
+    background: rgba(239, 68, 68, 0.06) !important;
+    border-left: 2px solid rgba(239, 68, 68, 0.4);
+  }
+  .row-alert:hover {
+    background: rgba(239, 68, 68, 0.1) !important;
+  }
+  .row-highlight {
+    background: rgba(26, 90, 158, 0.06) !important;
+    border-left: 2px solid rgba(26, 90, 158, 0.4);
+  }
+
+  /* --- Search Input Glow --- */
+  .search-glow:focus {
+    box-shadow: 0 0 0 1px rgba(26, 90, 158, 0.5), 0 0 12px rgba(26, 90, 158, 0.15);
+    border-color: rgba(59, 138, 212, 0.5);
+    outline: none;
+  }
+
+  /* --- Summary Card Shimmer (initial load animation) --- */
+  .summary-card-shimmer {
+    position: relative;
+    overflow: hidden;
+  }
+  .summary-card-shimmer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      105deg,
+      transparent 30%,
+      rgba(255, 255, 255, 0.03) 45%,
+      transparent 60%
+    );
+    background-size: 200% 100%;
+    animation: shimmerSweep 2.5s ease-in-out 0.3s 1;
+    pointer-events: none;
+  }
+  @keyframes shimmerSweep {
+    from { background-position: 200% 0; }
+    to { background-position: -200% 0; }
+  }
+
+  /* --- Cascade Animation (staggered entry) --- */
+  .cascade-item {
+    animation: cascadeFadeIn 0.35s ease-out backwards;
+  }
+  .cascade-item:nth-child(1) { animation-delay: 0.03s; }
+  .cascade-item:nth-child(2) { animation-delay: 0.06s; }
+  .cascade-item:nth-child(3) { animation-delay: 0.09s; }
+  .cascade-item:nth-child(4) { animation-delay: 0.12s; }
+  .cascade-item:nth-child(5) { animation-delay: 0.15s; }
+  .cascade-item:nth-child(6) { animation-delay: 0.18s; }
+  .cascade-item:nth-child(7) { animation-delay: 0.21s; }
+  .cascade-item:nth-child(8) { animation-delay: 0.24s; }
+  .cascade-item:nth-child(9) { animation-delay: 0.27s; }
+  .cascade-item:nth-child(10) { animation-delay: 0.30s; }
+  @keyframes cascadeFadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* --- LED Breathing (on-duty pulse) --- */
+  @keyframes ledBreathing {
+    0%, 100% { box-shadow: 0 0 3px currentColor; opacity: 1; }
+    50% { box-shadow: 0 0 8px currentColor, 0 0 12px currentColor; opacity: 0.85; }
+  }
+  .led-breathing {
+    animation: ledBreathing 2s ease-in-out infinite;
+  }
+
+  /* --- Progress Bar (animated fill) --- */
+  .progress-bar-animated .progress-fill {
+    transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
   /* Context menu items (right-click menus) */
   .context-menu-item {
     display: flex;

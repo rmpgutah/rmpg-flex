@@ -143,7 +143,7 @@ export default function ScheduleDetailTab({
           })}
         </div>
       ) : (
-        <div className="panel-beveled p-8 text-center bg-surface-base">
+        <div className="empty-state-container panel-beveled p-8 text-center bg-surface-base">
           <Calendar className="w-8 h-8 text-rmpg-600 mx-auto mb-2 empty-state-icon" />
           <p className="text-xs text-rmpg-400">No schedules on file</p>
           <p className="text-[10px] text-rmpg-600 mt-1">Click &quot;Add Schedule&quot; to create one.</p>

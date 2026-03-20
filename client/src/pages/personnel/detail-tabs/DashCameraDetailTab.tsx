@@ -196,7 +196,7 @@ export default function DashCameraDetailTab({
           </div>
         </div>
       ) : (
-        <div className="panel-beveled p-6 text-center bg-surface-base">
+        <div className="empty-state-container panel-beveled p-6 text-center bg-surface-base">
           <Car className="w-8 h-8 text-rmpg-600 mx-auto mb-2 empty-state-icon" />
           <p className="text-xs text-rmpg-400">No dash camera mapped to this officer's unit</p>
           <p className="text-[9px] text-rmpg-600 mt-0.5">Devices are auto-mapped when ClearPathGPS is configured.</p>
@@ -207,19 +207,19 @@ export default function DashCameraDetailTab({
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <div className="stat-pod panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-rmpg-500 summary-card-shimmer" style={{ '--pod-glow': 'rgba(148, 163, 184, 0.08)' } as React.CSSProperties}>
           <p className="text-lg font-bold text-rmpg-200 font-mono stat-value">{events.length}</p>
-          <p className="field-label">Total Events</p>
+          <p className="field-label stat-label">Total Events</p>
         </div>
         <div className="stat-pod panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-red-500 summary-card-shimmer" style={{ '--pod-glow': 'rgba(239, 68, 68, 0.12)' } as React.CSSProperties}>
           <p className="text-lg font-bold text-red-400 font-mono stat-value">{hardBrakes}</p>
-          <p className="field-label">Hard Brakes</p>
+          <p className="field-label stat-label">Hard Brakes</p>
         </div>
         <div className="stat-pod panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-amber-500 summary-card-shimmer" style={{ '--pod-glow': 'rgba(245, 158, 11, 0.12)' } as React.CSSProperties}>
           <p className="text-lg font-bold text-amber-400 font-mono stat-value">{speeding}</p>
-          <p className="field-label">Speeding</p>
+          <p className="field-label stat-label">Speeding</p>
         </div>
         <div className="stat-pod panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-purple-500 summary-card-shimmer" style={{ '--pod-glow': 'rgba(147, 51, 234, 0.12)' } as React.CSSProperties}>
           <p className="text-lg font-bold text-purple-400 font-mono stat-value">{videoClips}</p>
-          <p className="field-label">Video Clips</p>
+          <p className="field-label stat-label">Video Clips</p>
         </div>
       </div>
 
@@ -338,7 +338,7 @@ export default function DashCameraDetailTab({
           </table>
         </div>
       ) : (
-        <div className="panel-beveled p-6 text-center bg-surface-base">
+        <div className="empty-state-container panel-beveled p-6 text-center bg-surface-base">
           <Zap className="w-6 h-6 text-rmpg-600 mx-auto mb-2 empty-state-icon" />
           <p className="text-xs text-rmpg-400">No dashcam events recorded</p>
           <p className="text-[9px] text-rmpg-600 mt-0.5">Events are automatically synced from ClearPathGPS.</p>

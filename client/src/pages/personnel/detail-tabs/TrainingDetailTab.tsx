@@ -121,21 +121,21 @@ export default function TrainingDetailTab({ training, loading, onAddTraining, of
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <div className="stat-pod panel-beveled p-2.5 text-center border-t-2 border-t-green-500 summary-card-shimmer" style={{ background: '#0a1a0a', '--pod-glow': 'rgba(34, 197, 94, 0.12)' } as React.CSSProperties}>
           <p className="text-lg font-bold font-mono text-green-400 stat-value">{completed}</p>
-          <p className="field-label text-green-400/70">Completed</p>
+          <p className="field-label stat-label text-green-400/70">Completed</p>
         </div>
         <div className="stat-pod panel-beveled p-2.5 text-center border-t-2 border-t-blue-500 summary-card-shimmer" style={{ background: '#0a0f1a', '--pod-glow': 'rgba(59, 130, 246, 0.12)' } as React.CSSProperties}>
           <p className="text-lg font-bold font-mono text-blue-400 stat-value">{inProgress}</p>
-          <p className="field-label text-blue-400/70">In Progress</p>
+          <p className="field-label stat-label text-blue-400/70">In Progress</p>
         </div>
         <div className="stat-pod panel-beveled p-2.5 text-center bg-surface-base border-t-2 border-t-brand-400 summary-card-shimmer" style={{ '--pod-glow': 'rgba(26, 90, 158, 0.12)' } as React.CSSProperties}>
           <p className="text-lg font-bold font-mono text-brand-400 stat-value">{totalHours}</p>
-          <p className="field-label text-brand-400/70">Hours Total</p>
+          <p className="field-label stat-label text-brand-400/70">Hours Total</p>
         </div>
       </div>
 
       {/* Training Cards */}
       {training.length === 0 ? (
-        <div className="text-center py-12">
+        <div className="empty-state-container text-center py-12">
           <div className="w-14 h-14 mx-auto mb-3 rounded-full border border-rmpg-700 flex items-center justify-center" style={{ background: '#0d1520' }}>
             <GraduationCap className="w-7 h-7 text-rmpg-600 empty-state-icon" />
           </div>

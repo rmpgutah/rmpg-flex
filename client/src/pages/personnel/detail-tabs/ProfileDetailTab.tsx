@@ -66,7 +66,7 @@ export default function ProfileDetailTab({ officer, credentials }: Props) {
           OPR IDENTIFIER BANNER
           ═══════════════════════════════════════════════════════════ */}
       <div
-        className="profile-section panel-beveled px-3 py-2.5 border-l-2 flex items-center gap-4"
+        className="profile-section alert-banner alert-banner-info panel-beveled px-3 py-2.5 border-l-2 flex items-center gap-4 cascade-item"
         style={{
           borderLeftColor: '#d4a017',
           background: 'linear-gradient(135deg, rgba(212,160,23,0.06) 0%, var(--surface-sunken) 60%)',
@@ -87,7 +87,7 @@ export default function ProfileDetailTab({ officer, credentials }: Props) {
           DENSE 3-COLUMN LAYOUT (Spillman Personnel style)
           Left: Photo + Identity | Center: Employment | Right: Contact
           ═══════════════════════════════════════════════════════════ */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
 
         {/* ── LEFT COLUMN: Photo + Core Identity + Medical ── */}
         <div className="profile-section panel-beveled p-3 bg-surface-base cascade-item space-y-3">
@@ -98,7 +98,7 @@ export default function ProfileDetailTab({ officer, credentials }: Props) {
 
           {/* Identity section header */}
           <h3
-            className="flex items-center gap-1.5 pb-1 mb-2 text-[10px] font-bold uppercase tracking-wider"
+            className="section-header flex items-center gap-1.5 pb-1 mb-2 text-[10px] font-bold uppercase tracking-wider"
             style={{ borderBottom: '1px solid var(--border-subtle)', color: 'var(--brand-blue)' }}
           >
             <User className="w-3 h-3" />
@@ -115,7 +115,7 @@ export default function ProfileDetailTab({ officer, credentials }: Props) {
 
           {/* Medical section */}
           <h3
-            className="flex items-center gap-1.5 pb-1 mb-2 pt-1 text-[10px] font-bold uppercase tracking-wider"
+            className="section-header flex items-center gap-1.5 pb-1 mb-2 pt-1 text-[10px] font-bold uppercase tracking-wider"
             style={{ borderBottom: '1px solid var(--border-subtle)', color: 'var(--brand-blue)' }}
           >
             <Heart className="w-3 h-3" />
@@ -131,7 +131,7 @@ export default function ProfileDetailTab({ officer, credentials }: Props) {
         {/* ── CENTER COLUMN: Employment + DL + Credentials ── */}
         <div className="profile-section panel-beveled p-3 bg-surface-base cascade-item space-y-3">
           <h3
-            className="flex items-center gap-1.5 pb-1 mb-2 text-[10px] font-bold uppercase tracking-wider"
+            className="section-header flex items-center gap-1.5 pb-1 mb-2 text-[10px] font-bold uppercase tracking-wider"
             style={{ borderBottom: '1px solid var(--border-subtle)', color: 'var(--brand-blue)' }}
           >
             <Briefcase className="w-3 h-3" />
@@ -149,7 +149,7 @@ export default function ProfileDetailTab({ officer, credentials }: Props) {
 
           {/* Driver's License */}
           <h3
-            className="flex items-center gap-1.5 pb-1 mb-2 pt-1 text-[10px] font-bold uppercase tracking-wider"
+            className="section-header flex items-center gap-1.5 pb-1 mb-2 pt-1 text-[10px] font-bold uppercase tracking-wider"
             style={{ borderBottom: '1px solid var(--border-subtle)', color: 'var(--brand-blue)' }}
           >
             <Car className="w-3 h-3" />
@@ -163,7 +163,7 @@ export default function ProfileDetailTab({ officer, credentials }: Props) {
 
           {/* Credential Summary */}
           <h3
-            className="flex items-center gap-1.5 pb-1 mb-2 pt-1 text-[10px] font-bold uppercase tracking-wider"
+            className="section-header flex items-center gap-1.5 pb-1 mb-2 pt-1 text-[10px] font-bold uppercase tracking-wider"
             style={{ borderBottom: '1px solid var(--border-subtle)', color: 'var(--brand-blue)' }}
           >
             <Award className="w-3 h-3" />
@@ -187,14 +187,14 @@ export default function ProfileDetailTab({ officer, credentials }: Props) {
               })}
             </div>
           ) : (
-            <p className="text-[10px] text-rmpg-400 italic">None on file</p>
+            <p className="empty-state-container text-[10px] text-rmpg-400 italic">None on file</p>
           )}
         </div>
 
         {/* ── RIGHT COLUMN: Contact + Emergency + Files ── */}
         <div className="profile-section panel-beveled p-3 bg-surface-base cascade-item space-y-3">
           <h3
-            className="flex items-center gap-1.5 pb-1 mb-2 text-[10px] font-bold uppercase tracking-wider"
+            className="section-header flex items-center gap-1.5 pb-1 mb-2 text-[10px] font-bold uppercase tracking-wider"
             style={{ borderBottom: '1px solid var(--border-subtle)', color: 'var(--brand-blue)' }}
           >
             <Phone className="w-3 h-3" />
@@ -211,7 +211,7 @@ export default function ProfileDetailTab({ officer, credentials }: Props) {
 
           {/* Emergency Contact */}
           <h3
-            className="flex items-center gap-1.5 pb-1 mb-2 pt-1 text-[10px] font-bold uppercase tracking-wider"
+            className="section-header flex items-center gap-1.5 pb-1 mb-2 pt-1 text-[10px] font-bold uppercase tracking-wider"
             style={{ borderBottom: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}
           >
             <AlertTriangle className="w-3 h-3" />
@@ -224,12 +224,12 @@ export default function ProfileDetailTab({ officer, credentials }: Props) {
               <Field label="Relationship" value={officer.emergency_contact_relationship} />
             </div>
           ) : (
-            <p className="text-[10px] text-rmpg-500 italic">Not on file</p>
+            <p className="empty-state-container text-[10px] text-rmpg-500 italic">Not on file</p>
           )}
 
           {/* Personnel Files */}
           <h3
-            className="flex items-center gap-1.5 pb-1 mb-2 pt-1 text-[10px] font-bold uppercase tracking-wider"
+            className="section-header flex items-center gap-1.5 pb-1 mb-2 pt-1 text-[10px] font-bold uppercase tracking-wider"
             style={{ borderBottom: '1px solid var(--border-subtle)', color: 'var(--brand-blue)' }}
           >
             <Paperclip className="w-3 h-3" />

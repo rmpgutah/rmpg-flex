@@ -89,22 +89,26 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
   ];
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3">
-      {/* Section Header */}
-      <div className="section-header flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Package className="w-4 h-4 section-icon" />
-          <h2>EQUIPMENT</h2>
+    <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+      {/* Fixed Header */}
+      <div className="flex-shrink-0 px-4 py-2.5 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)' }}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Package className="w-4 h-4 section-icon" />
+            <h2 className="text-sm font-bold text-rmpg-200 uppercase tracking-wider">EQUIPMENT</h2>
+          </div>
+          <button onClick={onAddEquipment} className="toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
+            <Plus className="w-3 h-3" />
+            Issue Equipment
+          </button>
         </div>
-        <button onClick={onAddEquipment} className="toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
-          <Plus className="w-3 h-3" />
-          Issue Equipment
-        </button>
       </div>
 
+      {/* Scrollable Content */}
+      <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-3">
       {/* Alert Banner */}
       {alertCount > 0 && (
-        <div className="alert-banner panel-beveled p-3 flex items-center gap-3 border border-red-700/40 border-l-2 border-l-red-500 bg-[#1a0a0a]">
+        <div className="alert-banner alert-banner-critical panel-beveled p-3 flex items-center gap-3 border border-red-700/40 border-l-2 border-l-red-500 bg-[#1a0a0a]">
           <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" />
           <div className="flex-1">
             <span className="text-xs text-red-400 font-semibold">
@@ -123,7 +127,7 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
             style={{ '--pod-glow': card.glow } as React.CSSProperties}
           >
             <div className={`stat-value text-sm font-bold font-mono ${card.color}`}>{card.value}</div>
-            <div className="text-[7px] text-rmpg-500 uppercase tracking-wide mt-0.5">{card.label}</div>
+            <div className="stat-label text-[7px] text-rmpg-500 uppercase tracking-wide mt-0.5">{card.label}</div>
           </div>
         ))}
       </div>
@@ -163,7 +167,7 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
             {filtered.length === 0 ? (
               <tr>
                 <td colSpan={9} className="text-center py-10">
-                  <div className="flex flex-col items-center gap-2">
+                  <div className="empty-state-container flex flex-col items-center gap-2">
                     <div className="empty-state-icon w-12 h-12 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken">
                       <Box className="w-5 h-5 text-rmpg-600" />
                     </div>
@@ -196,7 +200,7 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
                     <span className="text-xs font-mono text-rmpg-400">{eq.asset_tag || '-'}</span>
                   </td>
                   <td>
-                    <span className={`text-xs font-medium capitalize ${EQUIPMENT_CONDITION_COLORS[eq.condition] || 'text-rmpg-400'}`}>
+                    <span className={`badge-pill text-xs font-medium capitalize ${EQUIPMENT_CONDITION_COLORS[eq.condition] || 'text-rmpg-400'}`}>
                       {eq.condition}
                     </span>
                   </td>
@@ -236,6 +240,7 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
             )}
           </tbody>
         </table>
+      </div>
       </div>
     </div>
   );

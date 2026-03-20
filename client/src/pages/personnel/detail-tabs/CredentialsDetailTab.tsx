@@ -65,15 +65,15 @@ export default function CredentialsDetailTab({
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <div className="stat-pod panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-green-500 summary-card-shimmer" style={{ '--pod-glow': 'rgba(34, 197, 94, 0.12)' } as React.CSSProperties}>
           <p className="text-lg font-bold text-green-400 font-mono stat-value">{validCount}</p>
-          <p className="field-label">Valid</p>
+          <p className="field-label stat-label">Valid</p>
         </div>
         <div className="stat-pod panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-amber-500 summary-card-shimmer" style={{ '--pod-glow': 'rgba(245, 158, 11, 0.12)' } as React.CSSProperties}>
           <p className="text-lg font-bold text-amber-400 font-mono stat-value">{expiringCount}</p>
-          <p className="field-label">Expiring</p>
+          <p className="field-label stat-label">Expiring</p>
         </div>
         <div className="stat-pod panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-red-500 summary-card-shimmer" style={{ '--pod-glow': 'rgba(239, 68, 68, 0.12)' } as React.CSSProperties}>
           <p className="text-lg font-bold text-red-400 font-mono stat-value">{expiredCount}</p>
-          <p className="field-label">Expired</p>
+          <p className="field-label stat-label">Expired</p>
         </div>
       </div>
 
@@ -160,7 +160,7 @@ export default function CredentialsDetailTab({
           })}
         </div>
       ) : (
-        <div className="panel-beveled p-8 text-center bg-surface-base">
+        <div className="empty-state-container panel-beveled p-8 text-center bg-surface-base">
           <Award className="w-8 h-8 text-rmpg-600 mx-auto mb-2 empty-state-icon" />
           <p className="text-xs text-rmpg-400">No credentials on file</p>
           <p className="text-[10px] text-rmpg-600 mt-1">Click &quot;Add Credential&quot; to create one.</p>

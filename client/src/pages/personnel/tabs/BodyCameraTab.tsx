@@ -213,31 +213,35 @@ export default function BodyCameraTab({
   // ── Render ───────────────────────────────────────────────
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3">
-      {/* ── Section Header ── */}
-      <div className="section-header flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Video className="w-4 h-4 section-icon" />
-          <h2>Body Cameras</h2>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <RmpgLogo height={20} iconOnly />
-          <PrintButton />
-          <ExportButton exportUrl={subTab === 'cameras' ? '/personnel/body-cameras/export?format=csv' : '/personnel/bodycam-videos/export?format=csv'} exportFilename={subTab === 'cameras' ? 'body-cameras.csv' : 'bodycam-videos.csv'} />
-          {canManage && onUploadVideo && (
-            <button onClick={onUploadVideo} className="toolbar-btn text-[10px] px-3 py-1.5 flex items-center gap-1.5">
-              <Upload className="w-3 h-3" />
-              Upload Video
-            </button>
-          )}
-          {canManage && (
-            <button onClick={onAddCamera} className="toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
-              <Plus className="w-3 h-3" />
-              Assign Camera
-            </button>
-          )}
+    <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+      {/* Fixed Header */}
+      <div className="flex-shrink-0 px-4 py-2.5 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)' }}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Video className="w-4 h-4 text-brand-400" />
+            <span className="text-xs font-bold text-rmpg-200 uppercase tracking-wider">Body Cameras</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <RmpgLogo height={20} iconOnly />
+            <PrintButton />
+            <ExportButton exportUrl={subTab === 'cameras' ? '/personnel/body-cameras/export?format=csv' : '/personnel/bodycam-videos/export?format=csv'} exportFilename={subTab === 'cameras' ? 'body-cameras.csv' : 'bodycam-videos.csv'} />
+            {canManage && onUploadVideo && (
+              <button onClick={onUploadVideo} className="toolbar-btn text-[10px] px-3 py-1.5 flex items-center gap-1.5">
+                <Upload className="w-3 h-3" />
+                Upload Video
+              </button>
+            )}
+            {canManage && (
+              <button onClick={onAddCamera} className="toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
+                <Plus className="w-3 h-3" />
+                Assign Camera
+              </button>
+            )}
+          </div>
         </div>
       </div>
+      {/* Scrollable Content */}
+      <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-3">
 
       {/* ── Alert Banner ── */}
       {stats.lostRetired > 0 && (
@@ -258,7 +262,7 @@ export default function BodyCameraTab({
             style={{ '--pod-glow': card.color.includes('blue') ? 'rgba(59,130,246,0.12)' : card.color.includes('green') ? 'rgba(34,197,94,0.12)' : card.color.includes('amber') ? 'rgba(245,158,11,0.12)' : card.color.includes('red') ? 'rgba(239,68,68,0.12)' : card.color.includes('purple') ? 'rgba(168,85,247,0.12)' : 'rgba(26,90,158,0.12)' } as React.CSSProperties}
           >
             <div className={`stat-value text-sm font-bold font-mono ${card.color}`}>{card.value}</div>
-            <div className="text-[7px] text-rmpg-500 uppercase">{card.label}</div>
+            <div className="stat-label text-[7px] text-rmpg-500 uppercase">{card.label}</div>
           </div>
         ))}
       </div>
@@ -447,11 +451,13 @@ export default function BodyCameraTab({
               {filteredCameras.length === 0 ? (
                 <tr>
                   <td colSpan={canManage ? 10 : 8} className="text-center py-8">
+                    <div className="empty-state-container">
                     <div className="empty-state-icon w-16 h-16 mx-auto mb-3 rounded-full border border-rmpg-700/50 flex items-center justify-center bg-surface-sunken">
                       <Camera className="w-7 h-7 text-rmpg-600" />
                     </div>
                     <p className="text-[11px] text-rmpg-500 font-medium">No body cameras found</p>
                     <p className="text-[9px] text-rmpg-600 mt-1">Assign cameras to track officer body-worn devices.</p>
+                    </div>
                   </td>
                 </tr>
               ) : (
@@ -572,11 +578,13 @@ export default function BodyCameraTab({
                 {filteredVideos.length === 0 ? (
                   <tr>
                     <td colSpan={canManage ? 11 : 10} className="text-center py-8">
+                      <div className="empty-state-container">
                       <div className="empty-state-icon w-16 h-16 mx-auto mb-3 rounded-full border border-rmpg-700/50 flex items-center justify-center bg-surface-sunken">
                         <Film className="w-7 h-7 text-rmpg-600" />
                       </div>
                       <p className="text-[11px] text-rmpg-500 font-medium">No video footage found</p>
                       <p className="text-[9px] text-rmpg-600 mt-1">Videos are uploaded from individual officer detail views.</p>
+                      </div>
                     </td>
                   </tr>
                 ) : (
@@ -672,6 +680,7 @@ export default function BodyCameraTab({
           </div>
         </>
       )}
+      </div>
     </div>
   );
 }
