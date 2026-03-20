@@ -143,7 +143,7 @@ export default function FormModal({
 
       {/* ── Discard Confirmation Overlay ──────────────────── */}
       {showDiscardConfirm && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center">
           <div className="absolute inset-0 bg-black/50" onClick={handleCancelDiscard} />
           <div className="relative w-full max-w-sm mx-4 bg-surface-base border border-rmpg-600 shadow-2xl animate-fade-in">
             <div
