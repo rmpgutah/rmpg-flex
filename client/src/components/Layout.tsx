@@ -674,8 +674,8 @@ export default function Layout() {
           {/* Blue accent at very top */}
           <div className="absolute top-0 left-0 right-0 h-px card-accent" style={{ zIndex: 1 }} />
 
-          {/* Left — Logo + FLEX branding */}
-          <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          {/* Left — Logo + FLEX branding + Page title */}
+          <div className="flex items-center gap-3" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
             <div onClick={() => navigate('/')} className="cursor-pointer flex items-center gap-2" title="Rocky Mountain Protective Group — Dashboard">
               <RmpgLogo height={44} />
               <div className="flex flex-col">
@@ -683,44 +683,20 @@ export default function Layout() {
                 <span className="text-[10px] font-bold tracking-[0.2em] leading-none" style={{ color: '#3b8ad4' }}>FLEX</span>
               </div>
             </div>
-            {/* Back/Forward + Page title */}
-            <div className="flex items-center gap-1.5">
-              <div className="w-px h-6" style={{ background: '#2a3e58' }} />
+            <div className="w-px h-6" style={{ background: '#2a3e58' }} />
+            <span className="text-[11px] font-mono font-bold tracking-wider text-rmpg-400">
+              {pageTitle.toUpperCase()}
+            </span>
+            {POPOUT_PAGES[location.pathname] && (
               <button
-                type="button"
-                onClick={handleNavBack}
-                disabled={!canGoBack}
+                onClick={() => openPageWindow(location.pathname)}
                 className="toolbar-btn"
-                title="Back (Alt+←)"
-                style={{ padding: '2px 3px', opacity: canGoBack ? 1 : 0.3 }}
+                title="Open in new window"
+                style={{ padding: '2px 4px' }}
               >
-                <ChevronLeft style={{ width: 14, height: 14 }} />
+                <ExternalLink className="w-3 h-3" style={{ color: '#5a6e80' }} />
               </button>
-              <button
-                type="button"
-                onClick={handleNavForward}
-                disabled={!canGoForward}
-                className="toolbar-btn"
-                title="Forward (Alt+→)"
-                style={{ padding: '2px 3px', opacity: canGoForward ? 1 : 0.3 }}
-              >
-                <ChevronRight style={{ width: 14, height: 14 }} />
-              </button>
-              <span className="text-[11px] font-mono font-bold tracking-wider text-rmpg-400">
-                {pageTitle.toUpperCase()}
-              </span>
-              {/* Pop-out button — opens current page in a new window */}
-              {POPOUT_PAGES[location.pathname] && (
-                <button
-                  onClick={() => openPageWindow(location.pathname)}
-                  className="toolbar-btn ml-1"
-                  title="Open in new window"
-                  style={{ padding: '2px 4px' }}
-                >
-                  <ExternalLink className="w-3 h-3" style={{ color: '#5a6e80' }} />
-                </button>
-              )}
-            </div>
+            )}
           </div>
 
           {/* Right — Status indicators + PANIC + Profile */}
