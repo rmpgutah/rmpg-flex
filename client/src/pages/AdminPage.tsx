@@ -668,7 +668,7 @@ export default function AdminPage() {
   // ============================================================
 
   return (
-    <div className="flex flex-col h-full animate-fade-in">
+    <div className="flex flex-col h-full animate-fade-in app-grid-bg">
       {/* Portal Header */}
       {!isMobile && (
         <div className="panel-beveled bg-surface-base overflow-hidden">
@@ -762,7 +762,7 @@ export default function AdminPage() {
         )}
 
         {/* Content */}
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto card-glass">
         {activeTab === 'users' && (
           <AdminUsersTab
             users={users}

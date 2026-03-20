@@ -16,7 +16,7 @@ import {
   verifyRefreshToken,
   JwtPayload,
 } from '../middleware/auth';
-import { authRateLimit, authIpRateLimit, mfaRateLimit, refreshRateLimit, passwordRateLimit, rateLimit } from '../middleware/rateLimiter';
+import { authRateLimit, authIpRateLimit, mfaRateLimit, refreshRateLimit, passwordRateLimit, forgotPasswordRateLimit, rateLimit } from '../middleware/rateLimiter';
 
 // Rate limiter for profile updates — prevent automated enumeration/modification
 const profileRateLimit = rateLimit({
@@ -39,7 +39,7 @@ import {
   decryptSecret as legacyDecryptSecret,
 } from '../utils/totp';
 import { createNotification, createNotificationForRoles } from './notifications';
-import { sendNotificationEmail } from '../utils/emailSender';
+import { sendNotificationEmail, sendEmail } from '../utils/emailSender';
 import {
   isDeviceTrusted,
   trustDevice,
@@ -107,6 +107,9 @@ function isLockedOut(username: string): { locked: boolean; minutesRemaining: num
 }
 
 // ─── Helper: Log login attempt ────────────────────────
+let _lastCleanupAt = 0;
+const CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+
 function logLoginAttempt(
   username: string,
   ip: string,
@@ -121,6 +124,15 @@ function logLoginAttempt(
     INSERT INTO login_attempts (username, ip_address, success, failure_reason, user_agent, device_fingerprint)
     VALUES (?, ?, ?, ?, ?, ?)
   `).run(username, ip, success ? 1 : 0, reason || null, userAgent || null, fpHash);
+
+  // Periodic cleanup — purge login_attempts older than 30 days to prevent table bloat
+  const now = Date.now();
+  if (now - _lastCleanupAt > CLEANUP_INTERVAL_MS) {
+    _lastCleanupAt = now;
+    try {
+      db.prepare("DELETE FROM login_attempts WHERE created_at < datetime('now', '-30 days')").run();
+    } catch { /* non-critical cleanup */ }
+  }
 }
 
 // ─── Helper: Create session ───────────────────────────
@@ -145,6 +157,9 @@ function createSession(
   // Use transaction to prevent race condition: two concurrent logins could both
   // read session count, each decide to evict, then both insert — exceeding max
   const insertSession = db.transaction(() => {
+    // Clean up expired sessions first (prevents stale session buildup)
+    db.prepare("UPDATE sessions SET is_active = 0 WHERE is_active = 1 AND expires_at < datetime('now')").run();
+
     const activeSessions = db.prepare(`
       SELECT id FROM sessions WHERE user_id = ? AND is_active = 1
       ORDER BY last_used_at ASC
@@ -180,15 +195,21 @@ function issueTokens(user: any, ip: string, userAgent: string, deviceFingerprint
 
   const refreshToken = generateRefreshToken(payload);
   const sessionId = createSession(user.id, refreshToken, ip, userAgent, deviceFingerprint);
-  // Generate access token WITH sessionId so auth middleware can enforce IP binding
+  // Include sessionId in the access token so session binding works in auth middleware
   const accessToken = generateAccessToken({ ...payload, sessionId });
 
-  // Log the login activity
   const db = getDb();
+
+  // Log the login activity
   db.prepare(`
     INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
     VALUES (?, 'user_login', 'user', ?, 'User logged in', ?)
   `).run(user.id, user.id, ip);
+
+  // Update login statistics
+  db.prepare(`
+    UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login_at = ? WHERE id = ?
+  `).run(localNow(), user.id);
 
   // ── Login IP anomaly detection ──────────────────────
   // Check if the user's last successful login was from a different IP within the last hour.
@@ -230,12 +251,16 @@ function issueTokens(user: any, ip: string, userAgent: string, deviceFingerprint
     user: {
       id: user.id,
       username: user.username,
-      fullName: user.full_name,
+      first_name: user.first_name,
+      last_name: user.last_name,
+      full_name: user.full_name,
       email: user.email,
       role: user.role,
-      badgeNumber: user.badge_number,
+      badge_number: user.badge_number,
       phone: user.phone,
-      avatarUrl: user.avatar_url,
+      avatar_url: user.avatar_url,
+      profile_image: user.profile_image || null,
+      status: user.status,
     },
   };
 }
@@ -281,8 +306,9 @@ router.post('/login', authIpRateLimit, authRateLimit, async (req: Request, res: 
     const db = getDb();
     const user = db.prepare(`
       SELECT id, username, password_hash, first_name, last_name, full_name, email, role,
-             badge_number, phone, status, avatar_url, profile_image, must_change_password,
-             force_password_change, password_expires_at, password_changed_at
+             badge_number, phone, status, avatar_url, profile_image,
+             must_change_password, force_password_change, password_expires_at, password_changed_at,
+             password_expiry_exempt, totp_enabled, totp_setup_required
       FROM users WHERE username = ?
     `).get(username) as any;
 
@@ -492,79 +518,9 @@ router.post('/login', authIpRateLimit, authRateLimit, async (req: Request, res: 
     }
 
     // ── No 2FA — issue full tokens ──────────────────────
-    const refreshToken = generateRefreshToken(payload);
-    const sessionId = createSession(user.id, refreshToken, ip, userAgent);
-    const accessToken = generateAccessToken({ ...payload, sessionId });
-
-    // Log the login to activity log — must never block login
-    try {
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'user_login', 'user', ?, 'User logged in', ?)
-      `).run(user.id, user.id, ip);
-    } catch { /* audit log failure must never prevent login */ }
-
-    // Update login statistics
-    try {
-      db.prepare(`
-        UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login_at = ? WHERE id = ?
-      `).run(localNow(), user.id);
-    } catch { /* stats failure must never prevent login */ }
-
-    // Login notification — alert user if logging in from a new IP
-    try {
-      const previousLogins = db.prepare(`
-        SELECT DISTINCT ip_address FROM login_attempts
-        WHERE username = ? AND success = 1 AND ip_address != ?
-        ORDER BY created_at DESC LIMIT 20
-      `).all(username, ip) as { ip_address: string }[];
-
-      if (previousLogins.length > 0) {
-        const knownIps = new Set(previousLogins.map(l => l.ip_address));
-        if (!knownIps.has(ip)) {
-          createNotification(
-            user.id,
-            'login_alert',
-            'New Login Detected',
-            `Login from new IP address: ${ip} — ${(userAgent || '').substring(0, 60)}`,
-            'user',
-            user.id,
-            'high',
-            'auth.new_ip_login',
-          );
-          // Email alert for new IP login
-          sendNotificationEmail(
-            user.id,
-            'New Login From Unrecognized IP',
-            `A login to your RMPG Flex account was detected from a new IP address: ${ip}\n\nDevice: ${(userAgent || '').substring(0, 80)}\nTime: ${localNow()}\n\nIf this was not you, contact your administrator immediately.`
-          ).catch(() => { /* email failure should never block login */ });
-        }
-      }
-    } catch { /* notification failure should never block login */ }
-
-    res.json({
-      token: accessToken,
-      refreshToken,
-      sessionId,
-      expiresIn: config.jwt.accessExpiry,
-      user: {
-        id: user.id,
-        username: user.username,
-        first_name: user.first_name,
-        last_name: user.last_name,
-        full_name: user.full_name,
-        email: user.email,
-        role: user.role,
-        badge_number: user.badge_number,
-        phone: user.phone,
-        avatar_url: user.avatar_url,
-        profile_image: user.profile_image || null,
-        status: user.status,
-        must_change_password: !!user.must_change_password,
-        totp_enabled: false,
-        requires_2fa_setup: false,
-      },
-    });
+    logLoginAttempt(username, ip, true, undefined, userAgent, deviceFingerprint);
+    const tokens = issueTokens(user, ip, userAgent, deviceFingerprint);
+    res.json(tokens);
   } catch (error: any) {
     console.error('Login error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -761,7 +717,9 @@ router.get('/me', authenticateToken, (req: Request, res: Response) => {
     const db = getDb();
     const user = db.prepare(`
       SELECT id, username, first_name, last_name, full_name, email, role,
-             badge_number, phone, status, avatar_url, profile_image, created_at, must_change_password, totp_enabled
+             badge_number, phone, status, avatar_url, profile_image, created_at,
+             must_change_password, force_password_change, totp_enabled, password_expires_at, password_changed_at,
+             password_expiry_exempt
       FROM users WHERE id = ?
     `).get(req.user!.userId) as any;
 
@@ -790,7 +748,7 @@ router.get('/me', authenticateToken, (req: Request, res: Response) => {
       profile_image: user.profile_image || null,
       created_at: user.created_at,
       createdAt: user.created_at,
-      must_change_password: !!user.must_change_password,
+      must_change_password: !!(user.must_change_password || user.force_password_change),
       totp_enabled: !!user.totp_enabled,
       totpEnabled: user.totp_enabled === 1,
       requires_2fa_setup: requires2faSetup,
@@ -1047,15 +1005,19 @@ router.post('/change-password', passwordRateLimit, authenticateToken, async (req
       `Your RMPG Flex password was changed.\n\nIP: ${ip}\nDevice: ${parseDeviceName(userAgent)}\nTime: ${localNow()}\n\nAll active sessions have been terminated. If this was not you, contact your administrator immediately.`
     ).catch(() => { /* email failure should never block response */ });
 
-    // Invalidate all sessions AND trusted devices — password change should
-    // force full re-authentication on every device to prevent stolen tokens
-    // from being used after a password compromise
-    db.prepare('UPDATE sessions SET is_active = 0 WHERE user_id = ?').run(user.id);
+    // Invalidate OTHER sessions (keep the current session so the user isn't forced to re-login)
+    // Also clear trusted devices to force full re-authentication on other devices
+    const currentSessionId = req.user?.sessionId;
+    if (currentSessionId) {
+      db.prepare('UPDATE sessions SET is_active = 0 WHERE user_id = ? AND session_id != ?').run(user.id, currentSessionId);
+    } else {
+      db.prepare('UPDATE sessions SET is_active = 0 WHERE user_id = ?').run(user.id);
+    }
     try {
       db.prepare('DELETE FROM trusted_devices WHERE user_id = ?').run(user.id);
     } catch { /* trusted_devices table may not exist */ }
 
-    res.json({ message: 'Password changed successfully. Please log in again.' });
+    res.json({ message: 'Password changed successfully.' });
   } catch (error: any) {
     console.error('Change password error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
@@ -1313,9 +1275,11 @@ router.post('/verify-2fa', mfaRateLimit, (req: Request, res: Response) => {
     }
 
     const db = getDb();
-    const user = db.prepare(
-      'SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, avatar_url, profile_image, status, must_change_password FROM users WHERE id = ?'
-    ).get(decoded.userId) as any;
+    const user = db.prepare(`
+      SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, avatar_url, profile_image, status,
+             must_change_password, force_password_change, password_expires_at, password_changed_at, password_expiry_exempt
+      FROM users WHERE id = ?
+    `).get(decoded.userId) as any;
 
     if (!user) {
       res.status(401).json({ error: 'Invalid verification session' });
@@ -1464,9 +1428,9 @@ router.post('/verify-2fa', mfaRateLimit, (req: Request, res: Response) => {
     }
 
     // ── Check if password change is required before issuing final tokens ──
-    const pwUser = db.prepare('SELECT password_changed_at FROM users WHERE id = ?').get(user.id) as any;
-    let _pwExp = false; try { _pwExp = isPasswordExpired(pwUser?.password_changed_at); } catch { /* fail open */ }
-    const needsPasswordChange = user.must_change_password === 1 || _pwExp;
+    const needsPasswordChange = user.force_password_change === 1
+      || user.must_change_password === 1
+      || isPasswordExpired(user);
 
     const payload: Omit<JwtPayload, 'type'> = {
       userId: user.id,
@@ -1889,12 +1853,11 @@ router.post('/2fa/setup/verify', authenticateAnyToken, mfaRateLimit, (req: Reque
     if (req.user!.type === 'mfa_pending') {
       const user = db.prepare(`
         SELECT id, username, full_name, email, role, badge_number, phone, avatar_url,
-               force_password_change, password_expires_at, password_changed_at
+               force_password_change, must_change_password, password_expires_at, password_changed_at, password_expiry_exempt
         FROM users WHERE id = ?
       `).get(userId) as any;
 
-      let _pwExpired = false; try { _pwExpired = isPasswordExpired(user.password_changed_at); } catch { /* fail open */ }
-      const needsPasswordChange = user.force_password_change === 1 || _pwExpired;
+      const needsPasswordChange = user.force_password_change === 1 || user.must_change_password === 1 || isPasswordExpired(user);
       if (needsPasswordChange) {
         const tempToken = generateTempToken(
           { userId: user.id, username: user.username, role: user.role, fullName: user.full_name },
@@ -2134,7 +2097,7 @@ router.post('/login/verify-2fa', authenticateTempToken, mfaRateLimit, (req: Requ
     // Check if password change is still pending
     const user = db.prepare(`
       SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, avatar_url,
-             force_password_change, password_expires_at, password_changed_at, status, must_change_password
+             force_password_change, password_expires_at, password_changed_at, password_expiry_exempt, status, must_change_password
       FROM users WHERE id = ?
     `).get(userId) as any;
 
@@ -2143,8 +2106,7 @@ router.post('/login/verify-2fa', authenticateTempToken, mfaRateLimit, (req: Requ
       return;
     }
 
-    let _pwExpired = false; try { _pwExpired = isPasswordExpired(user.password_changed_at); } catch { /* fail open */ }
-      const needsPasswordChange = user.force_password_change === 1 || _pwExpired;
+    const needsPasswordChange = user.force_password_change === 1 || user.must_change_password === 1 || isPasswordExpired(user);
     if (needsPasswordChange) {
       const tempToken = generateTempToken(
         { userId: user.id, username: user.username, role: user.role, fullName: user.full_name },
@@ -2287,7 +2249,7 @@ router.post('/login/verify-backup-code', authenticateTempToken, mfaRateLimit, (r
     // Check password change requirement
     const user = db.prepare(`
       SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, avatar_url,
-             force_password_change, password_expires_at, password_changed_at, status, must_change_password
+             force_password_change, password_expires_at, password_changed_at, password_expiry_exempt, status, must_change_password
       FROM users WHERE id = ?
     `).get(userId) as any;
 
@@ -2296,8 +2258,7 @@ router.post('/login/verify-backup-code', authenticateTempToken, mfaRateLimit, (r
       return;
     }
 
-    let _pwExpired = false; try { _pwExpired = isPasswordExpired(user.password_changed_at); } catch { /* fail open */ }
-      const needsPasswordChange = user.force_password_change === 1 || _pwExpired;
+    const needsPasswordChange = user.force_password_change === 1 || user.must_change_password === 1 || isPasswordExpired(user);
     if (needsPasswordChange) {
       const tempToken = generateTempToken(
         { userId: user.id, username: user.username, role: user.role, fullName: user.full_name },
@@ -2476,6 +2437,211 @@ router.post('/login/change-password', passwordRateLimit, authenticateTempToken, 
     });
   } catch (error: any) {
     console.error('Login password change error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// FORGOT PASSWORD — request reset email (public, rate-limited)
+// ════════════════════════════════════════════════════════════
+
+router.post('/forgot-password', forgotPasswordRateLimit, async (req: Request, res: Response) => {
+  const { email } = req.body;
+  // Always return the same response to prevent account enumeration
+  const genericResponse = { message: 'If an account with that email exists, a reset link has been sent.' };
+
+  if (!email || typeof email !== 'string') {
+    return res.json(genericResponse);
+  }
+
+  try {
+    const db = getDb();
+    const user = db.prepare(
+      "SELECT id, username, email, first_name, status FROM users WHERE LOWER(email) = LOWER(?) AND status != 'terminated'"
+    ).get(email.trim()) as any;
+
+    if (!user) {
+      // No user found — return generic response (don't reveal)
+      return res.json(genericResponse);
+    }
+
+    // Invalidate any existing unused reset tokens for this user
+    db.prepare(
+      "UPDATE password_reset_tokens SET used_at = ? WHERE user_id = ? AND used_at IS NULL"
+    ).run(localNow(), user.id);
+
+    // Generate a secure token
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour
+
+    db.prepare(
+      "INSERT INTO password_reset_tokens (user_id, token_hash, expires_at, ip_address) VALUES (?, ?, ?, ?)"
+    ).run(user.id, tokenHash, expiresAt, req.ip || 'unknown');
+
+    // Build reset URL
+    const baseUrl = config.isProduction
+      ? `https://${config.primaryDomain}`
+      : `${req.protocol}://${req.get('host')}`;
+    const resetUrl = `${baseUrl}/reset-password?token=${rawToken}`;
+
+    // Send email
+    const emailSent = await sendEmail({
+      to: user.email,
+      subject: 'RMPG Flex — Password Reset Request',
+      html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 520px; margin: 0 auto; background: #0d1520; border: 1px solid #1e3048; padding: 32px;">
+          <div style="text-align: center; margin-bottom: 24px;">
+            <h1 style="color: #e5e7eb; font-size: 20px; margin: 0;">Password Reset</h1>
+            <p style="color: #6b7280; font-size: 12px; margin-top: 4px;">RMPG Flex — Rocky Mountain Protective Group</p>
+          </div>
+          <p style="color: #9ca3af; font-size: 14px; line-height: 1.6;">
+            Hello <strong style="color: #e5e7eb;">${user.first_name || user.username}</strong>,
+          </p>
+          <p style="color: #9ca3af; font-size: 14px; line-height: 1.6;">
+            We received a request to reset your password. Click the button below to set a new password:
+          </p>
+          <div style="text-align: center; margin: 28px 0;">
+            <a href="${resetUrl}" style="display: inline-block; padding: 12px 28px; background: #1a5a9e; color: #ffffff; text-decoration: none; font-weight: bold; font-size: 14px; border: 1px solid #2570b5;">
+              Reset Password
+            </a>
+          </div>
+          <p style="color: #6b7280; font-size: 12px; line-height: 1.5;">
+            This link expires in <strong>1 hour</strong>. If you didn't request this reset, you can safely ignore this email.
+          </p>
+          <p style="color: #6b7280; font-size: 11px; margin-top: 20px; padding-top: 16px; border-top: 1px solid #1e3048;">
+            If the button doesn't work, copy this URL:<br />
+            <span style="color: #1a5a9e; word-break: break-all;">${resetUrl}</span>
+          </p>
+        </div>
+      `,
+    });
+
+    if (!emailSent) {
+      console.warn('[ForgotPassword] Email send failed for user:', user.username);
+    }
+
+    // Audit log
+    try {
+      db.prepare(
+        "INSERT INTO activity_log (user_id, action, description, ip_address, timestamp) VALUES (?, ?, ?, ?, ?)"
+      ).run(user.id, 'password_reset_requested', `Password reset requested for ${user.email}`, req.ip || 'unknown', localNow());
+    } catch { /* audit log failure should not block response */ }
+
+    res.json(genericResponse);
+  } catch (error: any) {
+    console.error('Forgot password error:', error?.message || 'Unknown error');
+    res.json(genericResponse); // Still return generic response on error
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// VALIDATE RESET TOKEN — check if token is valid (public)
+// ════════════════════════════════════════════════════════════
+
+router.get('/reset-password/validate', async (req: Request, res: Response) => {
+  const { token } = req.query;
+  if (!token || typeof token !== 'string') {
+    return res.status(400).json({ valid: false, error: 'Missing token' });
+  }
+
+  try {
+    const db = getDb();
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const record = db.prepare(
+      "SELECT id, user_id, expires_at, used_at FROM password_reset_tokens WHERE token_hash = ?"
+    ).get(tokenHash) as any;
+
+    if (!record) {
+      return res.json({ valid: false, error: 'Invalid or expired reset link' });
+    }
+    if (record.used_at) {
+      return res.json({ valid: false, error: 'This reset link has already been used' });
+    }
+    if (new Date(record.expires_at) < new Date()) {
+      return res.json({ valid: false, error: 'This reset link has expired' });
+    }
+
+    // Get username for display
+    const user = db.prepare("SELECT username FROM users WHERE id = ?").get(record.user_id) as any;
+
+    res.json({ valid: true, username: user?.username || '' });
+  } catch (error: any) {
+    console.error('Validate reset token error:', error?.message || 'Unknown error');
+    res.status(500).json({ valid: false, error: 'Internal server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// RESET PASSWORD — set new password with token (public, rate-limited)
+// ════════════════════════════════════════════════════════════
+
+router.post('/reset-password', passwordRateLimit, async (req: Request, res: Response) => {
+  const { token, password } = req.body;
+
+  if (!token || !password) {
+    return res.status(400).json({ error: 'Token and password are required' });
+  }
+
+  try {
+    const db = getDb();
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const record = db.prepare(
+      "SELECT id, user_id, expires_at, used_at FROM password_reset_tokens WHERE token_hash = ?"
+    ).get(tokenHash) as any;
+
+    if (!record || record.used_at) {
+      return res.status(400).json({ error: 'Invalid or expired reset link' });
+    }
+    if (new Date(record.expires_at) < new Date()) {
+      return res.status(400).json({ error: 'This reset link has expired' });
+    }
+
+    // Validate password against policy
+    const policyResult = validatePassword(password);
+    if (!policyResult.valid) {
+      return res.status(400).json({ error: policyResult.errors.join('. ') });
+    }
+
+    // Check password history
+    const inHistory = isPasswordInHistory(record.user_id, password);
+    if (inHistory) {
+      return res.status(400).json({ error: 'Cannot reuse a recent password. Please choose a different password.' });
+    }
+
+    // Hash and update
+    const hash = bcryptjs.hashSync(password, 12);
+    const now = localNow();
+
+    db.prepare(
+      "UPDATE users SET password_hash = ?, force_password_change = 0, must_change_password = 0, password_changed_at = ?, last_password_change = ? WHERE id = ?"
+    ).run(hash, now, now, record.user_id);
+
+    // Mark token as used
+    db.prepare(
+      "UPDATE password_reset_tokens SET used_at = ? WHERE id = ?"
+    ).run(now, record.id);
+
+    // Add to password history
+    addToPasswordHistory(record.user_id, hash);
+
+    // Set password expiry
+    setPasswordExpiry(record.user_id);
+
+    // Invalidate all existing sessions for security
+    db.prepare("DELETE FROM sessions WHERE user_id = ?").run(record.user_id);
+
+    // Audit log
+    const user = db.prepare("SELECT username FROM users WHERE id = ?").get(record.user_id) as any;
+    try {
+      db.prepare(
+        "INSERT INTO activity_log (user_id, action, description, ip_address, timestamp) VALUES (?, ?, ?, ?, ?)"
+      ).run(record.user_id, 'password_reset_completed', `Password reset via email link for ${user?.username}`, req.ip || 'unknown', now);
+    } catch { /* audit log failure should not block response */ }
+
+    res.json({ success: true, message: 'Password has been reset. You can now log in.' });
+  } catch (error: any) {
+    console.error('Reset password error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -66,10 +66,10 @@ export default function CredentialsTab({ credentials, onAddCredential, onEditCre
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      {/* Section Header */}
+      <div className="section-header flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Award className="w-4 h-4 text-brand-400" />
+          <Award className="w-4 h-4 section-icon" />
           <h2 className="text-sm font-bold text-rmpg-200 uppercase tracking-wider">Credentials</h2>
         </div>
         <button onClick={onAddCredential} className="toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
@@ -80,7 +80,7 @@ export default function CredentialsTab({ credentials, onAddCredential, onEditCre
 
       {/* Alert Banner */}
       {alertCount > 0 && (
-        <div className="panel-beveled p-3 flex items-center gap-3 border border-amber-700/40 border-l-2 border-l-amber-500 bg-[#1a1400]">
+        <div className="alert-banner panel-beveled p-3 flex items-center gap-3 border border-amber-700/40 bg-[#1a1400]" style={{ '--alert-color': '#f59e0b' } as React.CSSProperties}>
           <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
           <div className="flex-1">
             <span className="text-xs text-amber-400 font-semibold">
@@ -99,19 +99,20 @@ export default function CredentialsTab({ credentials, onAddCredential, onEditCre
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        {SUMMARY_CARDS.map((card) => (
+        {SUMMARY_CARDS.map((card, i) => (
           <div
             key={card.label}
-            className={`panel-beveled p-2.5 text-center border border-t-2 ${card.border} ${card.bgClass} ${card.topBorder}`}
+            className={`stat-pod summary-card-shimmer cascade-item panel-beveled p-2.5 text-center border border-t-2 ${card.border} ${card.bgClass} ${card.topBorder}`}
+            style={{ '--pod-glow': card.color.includes('green') ? 'rgba(34,197,94,0.12)' : card.color.includes('amber') ? 'rgba(245,158,11,0.12)' : card.color.includes('red') ? 'rgba(239,68,68,0.12)' : 'rgba(26,90,158,0.12)' } as React.CSSProperties}
           >
-            <div className={`text-sm font-bold font-mono ${card.color}`}>{card.value}</div>
+            <div className={`stat-value text-sm font-bold font-mono ${card.color}`}>{card.value}</div>
             <div className="text-[7px] text-rmpg-500 uppercase">{card.label}</div>
           </div>
         ))}
       </div>
 
       {/* Credentials Table */}
-      <div className="panel-beveled overflow-x-auto bg-surface-sunken">
+      <div className="personnel-table panel-beveled overflow-x-auto bg-surface-sunken">
         <table className="table-dark w-full">
           <thead className="sticky top-0 z-10">
             <tr>
@@ -129,21 +130,24 @@ export default function CredentialsTab({ credentials, onAddCredential, onEditCre
             {credentials.length === 0 ? (
               <tr>
                 <td colSpan={8} className="text-center py-8">
-                  <div className="w-12 h-12 mx-auto mb-2 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-base">
-                    <ShieldAlert className="w-6 h-6 text-rmpg-600" />
+                  <div className="empty-state-icon w-16 h-16 mx-auto mb-3 rounded-full border border-rmpg-700/50 flex items-center justify-center bg-surface-sunken">
+                    <ShieldAlert className="w-7 h-7 text-rmpg-600" />
                   </div>
-                  <p className="text-[10px] text-rmpg-500">No credentials found.</p>
-                  <p className="text-[9px] text-rmpg-600 mt-0.5">Add credentials to track officer certifications and licenses.</p>
+                  <p className="text-[11px] text-rmpg-500 font-medium">No credentials found</p>
+                  <p className="text-[9px] text-rmpg-600 mt-1">Add credentials to track officer certifications and licenses.</p>
                 </td>
               </tr>
             ) : (
               credentials.map((cred) => (
                 <tr
                   key={cred.id}
-                  className={cred.status === 'expired' ? 'bg-red-900/10' : ''}
+                  className={`group ${cred.status === 'expired' ? 'row-alert' : ''}`}
                 >
                   <td>
-                    <span className="text-xs text-rmpg-200">{cred.officer_name}</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className={statusLedClass(cred.status)} />
+                      <span className="text-xs text-rmpg-200">{cred.officer_name}</span>
+                    </div>
                   </td>
                   <td>
                     <span className="text-xs text-rmpg-300 font-medium">{toDisplayLabel(cred.type)}</span>
@@ -163,7 +167,7 @@ export default function CredentialsTab({ credentials, onAddCredential, onEditCre
                   <td>
                     <div className="flex items-center gap-1.5">
                       <span className={statusLedClass(cred.status)} />
-                      <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold ${
+                      <span className={`badge-pill ${
                         CREDENTIAL_STATUS_COLORS[cred.status] || 'bg-rmpg-700 text-rmpg-400 border border-rmpg-600'
                       }`}>
                         <StatusIcon status={cred.status} />
@@ -172,7 +176,7 @@ export default function CredentialsTab({ credentials, onAddCredential, onEditCre
                     </div>
                   </td>
                   <td className="text-center">
-                    <div className="flex items-center justify-center gap-1">
+                    <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
                       <button
                         onClick={() => onEditCredential(cred)}
                         className="toolbar-btn p-1"

@@ -893,8 +893,10 @@ export default function WarrantsPage() {
   // ============================================================
 
   return (
-    <div className="absolute inset-0 flex flex-col overflow-hidden bg-surface-deep">
-      {/* ---- TITLE BAR ---- */}
+    <div className="absolute inset-0 flex flex-col overflow-hidden bg-surface-deep app-grid-bg">
+      {/* ══════════════════════════════════════════════════════════
+          TITLE BAR
+         ══════════════════════════════════════════════════════════ */}
       <PanelTitleBar title="WARRANTS" icon={AlertTriangle}>
         <RmpgLogo height={16} iconOnly />
         <span className="toolbar-separator" />
@@ -1432,7 +1434,7 @@ export default function WarrantsPage() {
             {selectedWarrant ? (
               <div className="flex-1 overflow-auto p-4 space-y-4">
                 {/* Header */}
-                <div className="panel-beveled p-4">
+                <div className="panel-beveled card-glass p-4">
                   <div className="flex items-start justify-between mb-3">
                     <div>
                       <h2 className="text-lg font-bold text-white font-mono">{selectedWarrant.warrant_number}</h2>

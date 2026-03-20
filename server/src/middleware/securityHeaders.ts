@@ -53,10 +53,15 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
     'deferred-fetch=()',                   // Block deferred fetch API
   ].join(', '));
 
-  // Cross-Origin isolation headers — prevent cross-origin attacks
-  res.set('Cross-Origin-Opener-Policy', 'same-origin');
-  res.set('Cross-Origin-Resource-Policy', 'same-origin');
-  res.set('Cross-Origin-Embedder-Policy', 'credentialless');
+  // Cross-Origin headers
+  // NOTE: Cross-Origin-Resource-Policy CANNOT be 'same-origin' because Google Maps
+  // loads tiles, scripts, fonts, and images from *.googleapis.com / *.gstatic.com
+  // which are cross-origin. 'same-origin' silently blocks those resources, causing
+  // blank maps. 'cross-origin' allows the required third-party resources to load.
+  // Cross-Origin-Opener-Policy uses 'same-origin-allow-popups' so Google Maps
+  // OAuth popups (if triggered) and window.open() from map links work correctly.
+  res.set('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+  res.set('Cross-Origin-Resource-Policy', 'cross-origin');
   res.set('X-Permitted-Cross-Domain-Policies', 'none');
 
   // Prevent DNS prefetching — stops browsers from resolving domains in page content

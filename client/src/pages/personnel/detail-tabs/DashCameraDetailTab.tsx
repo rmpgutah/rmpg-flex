@@ -58,19 +58,22 @@ export default function DashCameraDetailTab({ events, deviceMapping, loading }: 
 
   return (
     <div className="space-y-4">
-      {/* Device Section */}
-      <h3 className="field-label text-brand-400 flex items-center gap-1.5">
-        <Cpu className="w-3 h-3" />
-        ClearPathGPS Device
-      </h3>
+      {/* Device Section Header */}
+      <div className="section-header">
+        <Cpu className="w-3.5 h-3.5 section-icon" />
+        <h3>ClearPathGPS Device</h3>
+        <span className="badge-pill text-[8px] px-1.5 py-0.5 bg-surface-base text-rmpg-500 border border-rmpg-700 font-mono uppercase ml-auto">
+          ClearPathGPS
+        </span>
+      </div>
 
       {deviceMapping ? (
-        <div className="panel-beveled p-3 bg-surface-base border-t-2 border-t-brand-500">
+        <div className="cascade-item panel-beveled p-3 bg-surface-base border-t-2 border-t-brand-500">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <span className={deviceMapping.is_active ? 'led-dot led-green' : 'led-dot led-off'} />
               <h4 className="text-xs font-semibold text-rmpg-100">{deviceMapping.cpg_display_name}</h4>
-              <span className={`text-[9px] px-1.5 py-0.5 font-bold ${
+              <span className={`badge-pill text-[9px] px-1.5 py-0.5 font-bold ${
                 deviceMapping.is_active
                   ? 'bg-green-900/50 text-green-400 border border-green-700/50'
                   : 'bg-rmpg-700 text-rmpg-400 border border-rmpg-600'
@@ -78,9 +81,6 @@ export default function DashCameraDetailTab({ events, deviceMapping, loading }: 
                 {deviceMapping.is_active ? 'ACTIVE' : 'INACTIVE'}
               </span>
             </div>
-            <span className="text-[8px] text-rmpg-500 font-mono uppercase bg-surface-base px-1.5 py-0.5 border border-rmpg-700">
-              ClearPathGPS
-            </span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-1">
@@ -100,7 +100,7 @@ export default function DashCameraDetailTab({ events, deviceMapping, loading }: 
         </div>
       ) : (
         <div className="panel-beveled p-6 text-center bg-surface-base">
-          <Car className="w-8 h-8 text-rmpg-600 mx-auto mb-2" />
+          <Car className="w-8 h-8 text-rmpg-600 mx-auto mb-2 empty-state-icon" />
           <p className="text-xs text-rmpg-400">No dash camera mapped to this officer's unit</p>
           <p className="text-[9px] text-rmpg-600 mt-0.5">Devices are auto-mapped when ClearPathGPS is configured.</p>
         </div>
@@ -108,27 +108,28 @@ export default function DashCameraDetailTab({ events, deviceMapping, loading }: 
 
       {/* Stats Row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <div className="panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-rmpg-500">
-          <p className="text-lg font-bold text-rmpg-200 font-mono">{events.length}</p>
+        <div className="stat-pod panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-rmpg-500 summary-card-shimmer" style={{ '--pod-glow': 'rgba(148, 163, 184, 0.08)' } as React.CSSProperties}>
+          <p className="text-lg font-bold text-rmpg-200 font-mono stat-value">{events.length}</p>
           <p className="field-label">Total Events</p>
         </div>
-        <div className="panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-red-500">
-          <p className="text-lg font-bold text-red-400 font-mono">{hardBrakes}</p>
+        <div className="stat-pod panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-red-500 summary-card-shimmer" style={{ '--pod-glow': 'rgba(239, 68, 68, 0.12)' } as React.CSSProperties}>
+          <p className="text-lg font-bold text-red-400 font-mono stat-value">{hardBrakes}</p>
           <p className="field-label">Hard Brakes</p>
         </div>
-        <div className="panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-amber-500">
-          <p className="text-lg font-bold text-amber-400 font-mono">{speeding}</p>
+        <div className="stat-pod panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-amber-500 summary-card-shimmer" style={{ '--pod-glow': 'rgba(245, 158, 11, 0.12)' } as React.CSSProperties}>
+          <p className="text-lg font-bold text-amber-400 font-mono stat-value">{speeding}</p>
           <p className="field-label">Speeding</p>
         </div>
-        <div className="panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-purple-500">
-          <p className="text-lg font-bold text-purple-400 font-mono">{videoClips}</p>
+        <div className="stat-pod panel-beveled p-2 text-center bg-surface-base border-t-2 border-t-purple-500 summary-card-shimmer" style={{ '--pod-glow': 'rgba(147, 51, 234, 0.12)' } as React.CSSProperties}>
+          <p className="text-lg font-bold text-purple-400 font-mono stat-value">{videoClips}</p>
           <p className="field-label">Video Clips</p>
         </div>
       </div>
 
       {/* Impact alert */}
       {impacts > 0 && (
-        <div className="panel-beveled p-2.5 flex items-center gap-2 border border-red-700/40 border-l-2 border-l-red-500 bg-[#1a0a0a]">
+        <div className="alert-banner alert-banner-critical panel-beveled p-2.5 flex items-center gap-2 border border-red-700/40 border-l-2 border-l-red-500 bg-[#1a0a0a]">
+          <span className="led-dot led-red" />
           <AlertTriangle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
           <span className="text-[10px] text-red-400 font-semibold">
             {impacts} impact event{impacts !== 1 ? 's' : ''} — review immediately
@@ -155,17 +156,14 @@ export default function DashCameraDetailTab({ events, deviceMapping, loading }: 
         </div>
       )}
 
-      {/* Events List */}
-      <div className="flex items-center gap-2 mt-2 mb-1">
-        <span className="field-label text-brand-400 whitespace-nowrap flex items-center gap-1.5">
-          <Zap className="w-3 h-3" />
-          Dashcam Events
-        </span>
-        <div className="flex-1 h-px bg-rmpg-700" />
+      {/* Events List Header */}
+      <div className="section-header">
+        <Zap className="w-3.5 h-3.5 section-icon" />
+        <h3>Dashcam Events</h3>
       </div>
 
       {events.length > 0 ? (
-        <div className="panel-beveled overflow-x-auto bg-surface-sunken">
+        <div className="personnel-table panel-beveled overflow-x-auto bg-surface-sunken">
           <table className="table-dark w-full">
             <thead>
               <tr>
@@ -182,7 +180,7 @@ export default function DashCameraDetailTab({ events, deviceMapping, loading }: 
                 <tr
                   key={evt.id}
                   className={
-                    evt.event_type === 'impact' ? 'bg-red-900/10' :
+                    evt.event_type === 'impact' ? 'row-alert' :
                     evt.event_type === 'speeding' ? 'bg-amber-900/5' : ''
                   }
                 >
@@ -193,7 +191,7 @@ export default function DashCameraDetailTab({ events, deviceMapping, loading }: 
                     </span>
                   </td>
                   <td>
-                    <span className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold ${
+                    <span className={`badge-pill inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold ${
                       DASHCAM_EVENT_COLORS[evt.event_type] || 'bg-rmpg-700 text-rmpg-300 border border-rmpg-600'
                     }`}>
                       {eventLabel(evt.event_type)}
@@ -229,7 +227,7 @@ export default function DashCameraDetailTab({ events, deviceMapping, loading }: 
                   </td>
                   <td className="text-center">
                     {evt.video_available ? (
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-purple-900/50 text-purple-400 border border-purple-700/50 text-[9px] font-bold" title="Video clip available in ClearPathGPS portal">
+                      <span className="badge-pill inline-flex items-center gap-1 px-1.5 py-0.5 bg-purple-900/50 text-purple-400 border border-purple-700/50 text-[9px] font-bold" title="Video clip available in ClearPathGPS portal">
                         <Video className="w-2.5 h-2.5" />
                         CLIP
                       </span>
@@ -244,7 +242,7 @@ export default function DashCameraDetailTab({ events, deviceMapping, loading }: 
         </div>
       ) : (
         <div className="panel-beveled p-6 text-center bg-surface-base">
-          <Zap className="w-6 h-6 text-rmpg-600 mx-auto mb-2" />
+          <Zap className="w-6 h-6 text-rmpg-600 mx-auto mb-2 empty-state-icon" />
           <p className="text-xs text-rmpg-400">No dashcam events recorded</p>
           <p className="text-[9px] text-rmpg-600 mt-0.5">Events are automatically synced from ClearPathGPS.</p>
         </div>

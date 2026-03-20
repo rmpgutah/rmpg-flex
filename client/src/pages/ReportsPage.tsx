@@ -359,7 +359,7 @@ export default function ReportsPage() {
   };
 
   return (
-    <div className={`${isMobile ? 'p-3 space-y-3' : 'p-6 space-y-6'} animate-fade-in overflow-auto`}>
+    <div className={`${isMobile ? 'p-3 space-y-3' : 'p-6 space-y-6'} animate-fade-in overflow-auto app-grid-bg`}>
       {/* Portal Header */}
       {!isMobile && (
         <div className="panel-beveled bg-surface-base overflow-hidden">

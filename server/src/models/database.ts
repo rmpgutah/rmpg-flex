@@ -1307,6 +1307,19 @@ function createTables(): void {
     CREATE INDEX IF NOT EXISTS idx_deh_sha256 ON digital_evidence_hashes(sha256);
     CREATE INDEX IF NOT EXISTS idx_deh_photodna ON digital_evidence_hashes(photodna_hash);
     CREATE INDEX IF NOT EXISTS idx_deh_flagged ON digital_evidence_hashes(flagged);
+
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      token_hash TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      used_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      ip_address TEXT,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_prt_user ON password_reset_tokens(user_id);
+    CREATE INDEX IF NOT EXISTS idx_prt_expires ON password_reset_tokens(expires_at);
   `);
 }
 
@@ -1717,6 +1730,7 @@ function migrateSchema(): void {
   // ── USERS — Password history & expiry ─────────────────
   addCol('users', 'password_history', 'TEXT');             // JSON array of previous bcrypt hashes
   addCol('users', 'password_changed_at', 'TEXT');          // ISO timestamp of last password change
+  addCol('users', 'password_expiry_exempt', 'INTEGER DEFAULT 0'); // Exempt from scheduled password rotation
 
   // ── LOGIN_ATTEMPTS / SESSIONS — Device fingerprinting ──
   addCol('login_attempts', 'user_agent', 'TEXT');

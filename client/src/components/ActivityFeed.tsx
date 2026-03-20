@@ -71,20 +71,27 @@ export default React.memo(function ActivityFeed({
     <div className="overflow-y-auto" style={{ maxHeight }}>
       {entries.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12 text-rmpg-400">
-          <Shield className="w-8 h-8 mb-2" />
+          <Shield className="w-8 h-8 mb-2 opacity-40" />
           <p className="text-sm">No recent activity</p>
+          <p className="text-[9px] text-rmpg-500 mt-1">Events will appear here in real-time</p>
         </div>
       ) : (
-        <div className="space-y-0">
-          {entries.map((entry) => {
+        <div className="space-y-0 animate-stagger-in">
+          {entries.map((entry, index) => {
             const config = ACTION_CONFIG[entry.action] || ACTION_CONFIG.system;
             const Icon = config.icon;
+            const isRecent = index === 0;
             return (
               <div
                 key={entry.id}
-                className="flex items-start gap-2 px-2 py-1 hover:bg-rmpg-800/50 border-b border-rmpg-700/50 transition-colors"
+                className={`flex items-start gap-2 px-2 py-1.5 hover:bg-rmpg-800/50 border-b border-rmpg-700/50 transition-colors group ${isRecent ? 'bg-brand-900/5' : ''}`}
               >
-                <Icon className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${config.color}`} />
+                <div className="relative flex-shrink-0 mt-0.5">
+                  <Icon className={`w-3.5 h-3.5 ${config.color}`} />
+                  {isRecent && (
+                    <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-green-400 animate-led-pulse" />
+                  )}
+                </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs text-rmpg-200 leading-relaxed">
                     {entry.user_name && (
@@ -93,7 +100,7 @@ export default React.memo(function ActivityFeed({
                     {entry.description}
                   </p>
                 </div>
-                <span className="text-[9px] font-mono text-green-400/70 whitespace-nowrap flex-shrink-0">
+                <span className="text-[9px] font-mono text-green-400/70 whitespace-nowrap flex-shrink-0 group-hover:text-green-400/90 transition-colors">
                   {formatTime(entry.timestamp, showDate)}
                 </span>
               </div>

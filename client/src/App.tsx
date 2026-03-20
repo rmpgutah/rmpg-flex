@@ -38,6 +38,7 @@ import CaseManagementPage from './pages/CaseManagementPage';
 import CrimeAnalysisPage from './pages/CrimeAnalysisPage';
 import CodeEnforcementPage from './pages/CodeEnforcementPage';
 import CourtTrackerPage from './pages/CourtTrackerPage';
+import CourtRecordsPage from './pages/CourtRecordsPage';
 import DailyActivityReportsPage from './pages/DailyActivityReportsPage';
 import OffenderRegistryPage from './pages/OffenderRegistryPage';
 import SexOffenderRegistryPage from './pages/SexOffenderRegistryPage';
@@ -49,13 +50,19 @@ import DashCamDetailPage from './pages/DashCamDetailPage';
 import TrainingDocsPage from './pages/TrainingDocsPage';
 import TrainingPage from './pages/TrainingPage';
 import ForensicsPage from './pages/ForensicsPage';
+import ForensicsLabPage from './pages/ForensicsLabPage';
 import SkipTracerPage from './pages/SkipTracerPage';
 import ArrestRecordsPage from './pages/ArrestRecordsPage';
 import EmailPage from './pages/EmailPage';
 import CrmPage from './pages/CrmPage';
 import ServePage from './pages/ServePage';
+import IpedPage from './pages/IpedPage';
+import ColoradoDocPage from './pages/ColoradoDocPage';
+import InvoicesPage from './pages/InvoicesPage';
 import IncidentDetailWindow from './pages/detached/IncidentDetailWindow';
 import RecordDetailWindow from './pages/detached/RecordDetailWindow';
+const ForgotPasswordPage = React.lazy(() => import('./pages/ForgotPasswordPage'));
+const ResetPasswordPage = React.lazy(() => import('./pages/ResetPasswordPage'));
 
 
 /** Branded loading splash — matches login page design language */
@@ -150,6 +157,8 @@ function AppRoutes() {
           path="/login"
           element={isAuthenticated ? <Navigate to={window.location.hostname === 'crm.rmpgutah.us' ? '/crm' : '/'} replace /> : <LoginPage />}
         />
+        <Route path="/forgot-password" element={<React.Suspense fallback={<LoadingSplash message="Loading" />}><ForgotPasswordPage /></React.Suspense>} />
+        <Route path="/reset-password" element={<React.Suspense fallback={<LoadingSplash message="Loading" />}><ResetPasswordPage /></React.Suspense>} />
 
         {/* Detached windows — no Layout wrapper */}
         <Route path="/detached/incident/:id" element={<ProtectedRoute><IncidentDetailWindow /></ProtectedRoute>} />
@@ -191,6 +200,7 @@ function AppRoutes() {
           <Route path="/crime-analysis" element={<CrimeAnalysisPage />} />
           <Route path="/code-enforcement" element={<CodeEnforcementPage />} />
           <Route path="/court" element={<CourtTrackerPage />} />
+          <Route path="/court-records" element={<CourtRecordsPage />} />
           <Route path="/dar" element={<DailyActivityReportsPage />} />
           <Route path="/offender-registry" element={<OffenderRegistryPage />} />
           <Route path="/sex-offender-registry" element={<SexOffenderRegistryPage />} />
@@ -200,11 +210,15 @@ function AppRoutes() {
           <Route path="/training" element={<TrainingPage />} />
           <Route path="/training-docs" element={<TrainingDocsPage />} />
           <Route path="/forensics" element={<ForensicsPage />} />
+          <Route path="/forensics-lab" element={<ForensicsLabPage />} />
           <Route path="/skip-tracer" element={<SkipTracerPage />} />
           <Route path="/arrest-records" element={<ArrestRecordsPage />} />
           <Route path="/email" element={<EmailPage />} />
           <Route path="/crm" element={<CrmPage />} />
           <Route path="/serve" element={<ServePage />} />
+          <Route path="/digital-forensics" element={<IpedPage />} />
+          <Route path="/colorado-doc" element={<ColoradoDocPage />} />
+          <Route path="/invoices" element={<InvoicesPage />} />
           <Route path="/admin" element={<AdminPage />} />
         </Route>
 

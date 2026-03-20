@@ -5,6 +5,7 @@ import { validateParamId } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
 import { createSecurityNotification, parseDeviceName } from '../utils/deviceFingerprint';
 import { sendNotificationEmail } from '../utils/emailSender';
+import { setPasswordExpiry } from '../utils/passwordExpiry';
 import { rateLimit } from '../middleware/rateLimiter';
 
 const router = Router();
@@ -978,6 +979,73 @@ router.get('/security/overview', requireRole('admin'), (_req: Request, res: Resp
 
 
 // (Duplicate force-password-change handler removed — consolidated into the handler above)
+
+
+// ═══════════════════════════════════════════════════════
+// POST /api/admin/users/:id/reset-password — Admin sets a new password for a user
+// ═══════════════════════════════════════════════════════
+router.post('/users/:id/reset-password', requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const bcryptjs = require('bcryptjs');
+    const db = getDb();
+    const userId = parseInt(req.params.id as string, 10);
+    if (isNaN(userId)) { res.status(400).json({ error: 'Invalid user ID' }); return; }
+    const { password } = req.body;
+    if (!password || typeof password !== 'string' || password.trim().length < 8) {
+      res.status(400).json({ error: 'Password must be at least 8 characters' });
+      return;
+    }
+    const ip = String(req.ip || 'unknown');
+
+    const user = db.prepare('SELECT id, username, full_name, password_expiry_exempt FROM users WHERE id = ?').get(userId) as any;
+    if (!user) { res.status(404).json({ error: 'User not found' }); return; }
+
+    const hash = bcryptjs.hashSync(password.trim(), 12);
+
+    // Exempt users (e.g., admin/chzamo5000) get their password set without
+    // being forced to change it again on next login. Non-exempt users must
+    // change it to maintain security.
+    const forceChange = user.password_expiry_exempt ? 0 : 1;
+    db.prepare(`
+      UPDATE users SET password_hash = ?, must_change_password = ?, force_password_change = ?,
+        last_password_change = ?, password_changed_at = ?, updated_at = ?
+      WHERE id = ?
+    `).run(hash, forceChange, forceChange, localNow(), localNow(), localNow(), userId);
+
+    // Set proper password expiry (respects exemption — exempt users get NULL expiry)
+    try { setPasswordExpiry(userId); } catch { /* column may not exist */ }
+
+    // Invalidate all existing sessions
+    db.prepare('UPDATE sessions SET is_active = 0 WHERE user_id = ?').run(userId);
+
+    // Clear any login lockout for this user
+    db.prepare('DELETE FROM login_attempts WHERE username = ? AND success = 0').run(user.username);
+
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'admin_password_reset', 'user', ?, ?, ?)
+    `).run(req.user!.userId, userId, `Admin reset password for ${user.username}`, ip);
+
+    const changeMsg = forceChange
+      ? `Password reset for ${user.full_name}. They must change it on next login.`
+      : `Password reset for ${user.full_name} (exempt from mandatory change).`;
+
+    if (forceChange) {
+      createSecurityNotification(
+        userId,
+        'password_expiring',
+        'Password reset by administrator',
+        'An administrator has reset your password. You will be required to set a new password on your next login.',
+        ip
+      );
+    }
+
+    res.json({ message: changeMsg });
+  } catch (error: any) {
+    console.error('Admin password reset error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 
 // ═══════════════════════════════════════════════════════

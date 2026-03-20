@@ -557,29 +557,30 @@ router.get('/calls/:id/warnings', validateParamId, requireRole('admin', 'manager
       `).all(call.id) as any[];
 
       for (const person of linkedPersons) {
+        const personName = `${person.first_name || ''} ${person.last_name || ''}`.trim() || 'Unknown';
         if (person.caution_flags) {
-          const flags = person.caution_flags.split(',').map((f: string) => f.trim()).filter(Boolean);
+          const flags = String(person.caution_flags).split(',').map((f: string) => f.trim()).filter(Boolean);
           for (const flag of flags) {
             warnings.push({
               type: 'CAUTION',
               label: flag.toUpperCase(),
               severity: 'high',
-              source: `${person.first_name} ${person.last_name}`
+              source: personName
             });
           }
         }
         if (person.is_sex_offender) {
-          warnings.push({ type: 'SEX_OFFENDER', label: 'SEX OFFENDER', severity: 'critical', source: `${person.first_name} ${person.last_name}` });
+          warnings.push({ type: 'SEX_OFFENDER', label: 'SEX OFFENDER', severity: 'critical', source: personName });
         }
         if (person.gang_affiliation) {
-          warnings.push({ type: 'GANG', label: 'GANG AFFILIATED', severity: 'critical', source: `${person.first_name} ${person.last_name}` });
+          warnings.push({ type: 'GANG', label: 'GANG AFFILIATED', severity: 'critical', source: personName });
         }
         if (person.probation_parole) {
-          warnings.push({ type: 'PROBATION', label: 'ON PROBATION/PAROLE', severity: 'high', source: `${person.first_name} ${person.last_name}` });
+          warnings.push({ type: 'PROBATION', label: 'ON PROBATION/PAROLE', severity: 'high', source: personName });
         }
         // Pre-Trial Supervision
-        if (person.probation_parole && person.probation_parole.toLowerCase().includes('pre-trial')) {
-          warnings.push({ type: 'PTS', label: 'PRE-TRIAL SUPERVISION', severity: 'high', source: `${person.first_name} ${person.last_name}` });
+        if (person.probation_parole && String(person.probation_parole).toLowerCase().includes('pre-trial')) {
+          warnings.push({ type: 'PTS', label: 'PRE-TRIAL SUPERVISION', severity: 'high', source: personName });
         }
       }
     } catch { /* linked persons table may not exist */ }
@@ -602,7 +603,7 @@ router.get('/calls/:id/warnings', validateParamId, requireRole('admin', 'manager
       for (const warrant of activeWarrants) {
         warnings.push({
           type: 'WARRANT',
-          label: `ACTIVE WARRANT: ${warrant.charge_description || warrant.type}`.toUpperCase(),
+          label: `ACTIVE WARRANT: ${warrant.charge_description || warrant.type || 'UNKNOWN'}`.toUpperCase(),
           severity: 'critical',
           source: `${warrant.first_name || ''} ${warrant.last_name || ''}`.trim() || warrant.warrant_number
         });

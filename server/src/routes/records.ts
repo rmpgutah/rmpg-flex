@@ -12,6 +12,9 @@ import { exportRateLimit } from '../middleware/rateLimiter';
 
 const router = Router();
 
+// ─── Migration: add case_id to evidence table if missing ───
+try { getDb().prepare('ALTER TABLE evidence ADD COLUMN case_id INTEGER').run(); } catch { /* column already exists */ }
+
 /**
  * Screen a person against the OFAC consolidated sanctions list.
  * Updates watchlist_match and watchlist_checked_at on the person record.
@@ -1222,7 +1225,7 @@ router.get('/vehicles/:id/incidents', validateParamId, requireRole('admin', 'man
 router.get('/evidence', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { page = '1', limit = '50', per_page, archived, search, status, type } = req.query;
+    const { page = '1', limit = '50', per_page, archived, search, status, type, case_id } = req.query;
     const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
     const limitNum = Math.min(200, Math.max(1, parseInt((per_page || limit) as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
@@ -1236,30 +1239,37 @@ router.get('/evidence', requireRole('admin', 'manager', 'supervisor', 'officer',
     } else if (archived !== 'all') {
       whereClause += ' AND e.archived_at IS NULL';
     }
-
-    if (search) {
-      whereClause += " AND (e.description LIKE ? ESCAPE '\\' OR e.evidence_number LIKE ? ESCAPE '\\' OR e.serial_number LIKE ? ESCAPE '\\' OR e.storage_location LIKE ? ESCAPE '\\')";
-      const s = `%${escapeLike(String(search))}%`;
-      params.push(s, s, s, s);
+    // Case ID filter
+    if (case_id) {
+      whereClause += ' AND e.case_id = ?';
+      params.push(parseInt(case_id as string, 10));
     }
-
+    // Status filter
     if (status) {
       whereClause += ' AND e.status = ?';
-      params.push(status);
+      params.push(status as string);
     }
-
+    // Type filter
     if (type) {
       whereClause += ' AND e.evidence_type = ?';
-      params.push(type);
+      params.push(type as string);
+    }
+    // Search filter
+    if (search) {
+      whereClause += ' AND (e.evidence_number LIKE ? OR e.description LIKE ? OR e.serial_number LIKE ?)';
+      const term = `%${search}%`;
+      params.push(term, term, term);
     }
 
     const countRow = db.prepare(`SELECT COUNT(*) as total FROM evidence e ${whereClause}`).get(...params) as any;
 
     const evidence = db.prepare(`
-      SELECT e.*, i.incident_number, u.full_name as collected_by_name
+      SELECT e.*, i.incident_number, u.full_name as collected_by_name,
+             c.case_number as linked_case_number, c.title as linked_case_title
       FROM evidence e
       LEFT JOIN incidents i ON e.incident_id = i.id
       LEFT JOIN users u ON e.collected_by = u.id
+      LEFT JOIN cases c ON e.case_id = c.id
       ${whereClause}
       ORDER BY e.created_at DESC
       LIMIT ? OFFSET ?
@@ -1297,7 +1307,7 @@ router.put('/evidence/:id', validateParamId, requireRole('admin', 'manager', 'su
 
     const eFieldMap: Record<string, (v: any) => any> = {
       description: v => v ?? null, evidence_type: v => v ?? null,
-      incident_id: v => v ?? null,
+      incident_id: v => v ?? null, case_id: v => v ?? null,
       storage_location: v => v ?? null, collected_date: v => v ?? null,
       category: v => v ?? null, packaging_type: v => v ?? null,
       serial_number: v => v ?? null, brand: v => v ?? null, model: v => v ?? null,
@@ -1325,10 +1335,12 @@ router.put('/evidence/:id', validateParamId, requireRole('admin', 'manager', 'su
     auditLog(req, 'evidence_updated', 'evidence', String(req.params.id), `Updated evidence #${req.params.id}`);
 
     const updated = db.prepare(`
-      SELECT e.*, i.incident_number, u.full_name as collected_by_name
+      SELECT e.*, i.incident_number, u.full_name as collected_by_name,
+             c.case_number as linked_case_number, c.title as linked_case_title
       FROM evidence e
       LEFT JOIN incidents i ON e.incident_id = i.id
       LEFT JOIN users u ON e.collected_by = u.id
+      LEFT JOIN cases c ON e.case_id = c.id
       WHERE e.id = ?
     `).get(req.params.id);
     res.json(updated);
@@ -1708,10 +1720,12 @@ router.post('/evidence', requireRole('admin', 'manager', 'supervisor', 'officer'
     auditLog(req, 'evidence_created', 'evidence', Number(result.lastInsertRowid), `Created evidence #${result.lastInsertRowid}: ${evidenceNumber}`);
 
     const created = db.prepare(`
-      SELECT e.*, i.incident_number, u.full_name as collected_by_name
+      SELECT e.*, i.incident_number, u.full_name as collected_by_name,
+             c.case_number as linked_case_number, c.title as linked_case_title
       FROM evidence e
       LEFT JOIN incidents i ON e.incident_id = i.id
       LEFT JOIN users u ON e.collected_by = u.id
+      LEFT JOIN cases c ON e.case_id = c.id
       WHERE e.id = ?
     `).get(result.lastInsertRowid);
     res.status(201).json(created);

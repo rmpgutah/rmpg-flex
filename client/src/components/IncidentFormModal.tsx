@@ -23,6 +23,8 @@ interface IncidentFormModalProps {
   dispositionCodes?: {code: string; description: string; color?: string}[];
   clients?: { id: string; name: string }[];
   defaultType?: string;
+  /** Partial form data to pre-fill when creating (e.g. from a dispatch call) */
+  prefillData?: Partial<IncidentFormData> & { call_id?: string | number };
 }
 
 export interface IncidentFormData {
@@ -82,6 +84,8 @@ export interface IncidentFormData {
   longitude: number | null;
   // Client linkage
   client_id: string;
+  // Linked call (set when creating from dispatch call)
+  call_id?: string | number;
   contract_id: string;
   // PSO / Process Service
   pso_service_type: string;
@@ -263,6 +267,7 @@ export default function IncidentFormModal({
   dispositionCodes = [],
   clients = [],
   defaultType = '',
+  prefillData,
 }: IncidentFormModalProps) {
   const [formData, setFormData] = useState<IncidentFormData>(EMPTY_FORM);
   const { isDirty, snapshot } = useFormDirty(formData, isOpen);
@@ -372,13 +377,15 @@ export default function IncidentFormModal({
         const initial: IncidentFormData = {
           ...EMPTY_FORM,
           ...(defaultType ? { incident_type: defaultType as IncidentType, priority: 'P1' as CallPriority } : {}),
+          ...(prefillData ? Object.fromEntries(Object.entries(prefillData).filter(([_, v]) => v !== undefined && v !== '')) : {}),
         };
         setFormData(initial);
         snapshot(initial);
       }
-      setActiveSection(defaultType && USE_OF_FORCE_TYPES.includes(defaultType) ? 'use_of_force' : 'basic');
+      const typeForSection = prefillData?.incident_type || defaultType;
+      setActiveSection(typeForSection && USE_OF_FORCE_TYPES.includes(typeForSection) ? 'use_of_force' : 'basic');
     }
-  }, [isOpen, editingIncident, defaultType]);
+  }, [isOpen, editingIncident, defaultType, prefillData]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
