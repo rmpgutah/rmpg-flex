@@ -229,7 +229,7 @@ export default React.memo(function ServeJobCard({
                 {linkedCall.parentCall && (
                   <button
                     className="w-full text-left text-[10px] px-1.5 py-0.5 rounded hover:bg-rmpg-700/40 transition-colors flex items-center gap-1.5"
-                    onClick={(e) => { e.stopPropagation(); window.open(`/dispatch?call=${linkedCall.parentCall.call_number}`, '_blank'); }}
+                    onClick={(e) => { e.stopPropagation(); window.open(`/dispatch?call=${linkedCall.parentCall!.call_number}`, '_blank'); }}
                   >
                     <span className="font-bold text-amber-300 text-[8px]">PARENT</span>
                     <span className="font-mono text-blue-400">{linkedCall.parentCall.call_number}</span>

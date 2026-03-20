@@ -2152,7 +2152,7 @@ export default function DispatchPage() {
                                 const parent = (selectedCall as any).parentCall;
                                 const found = calls.find(c => c.id === parent.id);
                                 if (found) setSelectedCall(found);
-                                else apiFetch(`/api/dispatch/calls/${parent.id}`).then(r => r.ok ? r.json() : null).then(d => { if (d) setSelectedCall(mapDbCall(d)); });
+                                else apiFetch(`/api/dispatch/calls/${parent.id}`).then((d: any) => { if (d) setSelectedCall(mapDbCall(d)); }).catch(() => {});
                               }}
                             >
                               <span className="font-bold text-amber-300">PARENT:</span> <span className="font-mono text-blue-400">{(selectedCall as any).parentCall.call_number}</span> <span className="text-rmpg-300">{((selectedCall as any).parentCall.status || '').toUpperCase()}</span>
@@ -2165,7 +2165,7 @@ export default function DispatchPage() {
                               onClick={() => {
                                 const found = calls.find(c => c.id === child.id);
                                 if (found) setSelectedCall(found);
-                                else apiFetch(`/api/dispatch/calls/${child.id}`).then(r => r.ok ? r.json() : null).then(d => { if (d) setSelectedCall(mapDbCall(d)); });
+                                else apiFetch(`/api/dispatch/calls/${child.id}`).then((d: any) => { if (d) setSelectedCall(mapDbCall(d)); }).catch(() => {});
                               }}
                             >
                               <span className="font-bold text-cyan-300">FOLLOW-UP:</span> <span className="font-mono text-blue-400">{child.call_number}</span> <span className="text-rmpg-300">{(child.status || '').toUpperCase()}</span>
@@ -3848,9 +3848,9 @@ export default function DispatchPage() {
                               if (found) {
                                 setSelectedCall(found);
                               } else {
-                                apiFetch(`/api/dispatch/calls/${parent.id}`).then(r => r.ok ? r.json() : null).then(data => {
+                                apiFetch(`/api/dispatch/calls/${parent.id}`).then((data: any) => {
                                   if (data) setSelectedCall(mapDbCall(data));
-                                });
+                                }).catch(() => {});
                               }
                             }}
                           >
@@ -3878,9 +3878,9 @@ export default function DispatchPage() {
                             if (found) {
                               setSelectedCall(found);
                             } else {
-                              apiFetch(`/api/dispatch/calls/${child.id}`).then(r => r.ok ? r.json() : null).then(data => {
+                              apiFetch(`/api/dispatch/calls/${child.id}`).then((data: any) => {
                                 if (data) setSelectedCall(mapDbCall(data));
-                              });
+                              }).catch(() => {});
                             }
                           }}
                         >
