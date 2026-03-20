@@ -1808,6 +1808,9 @@ function migrateSchema(): void {
   addCol('units', 'updated_at', "TEXT DEFAULT (datetime('now','localtime'))");
   addCol('units', 'gps_source', "TEXT DEFAULT 'browser'");
 
+  // ── EVIDENCE — case linkage ─────────────────────────────
+  addCol('evidence', 'case_id', 'INTEGER');
+
   // ── EVIDENCE — new chain-of-custody fields ────────────
   addCol('evidence', 'evidence_number', 'TEXT');
   addCol('evidence', 'location_found', 'TEXT');

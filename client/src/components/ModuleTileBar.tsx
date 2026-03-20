@@ -50,7 +50,7 @@ export default function ModuleTileBar({
   isContractManager,
   activeCallCount,
   emailUnreadCount,
-  activeBOLOs: _activeBOLOs,
+  activeBOLOs,
 }: ModuleTileBarProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -73,7 +73,7 @@ export default function ModuleTileBar({
   const handleNavigate = useCallback(
     (path: string, newWindow?: boolean, externalUrl?: string) => {
       if (externalUrl) {
-        const token = localStorage.getItem('accessToken') || '';
+        const token = localStorage.getItem('rmpg_token') || '';
         const sep = externalUrl.includes('?') ? '&' : '?';
         window.open(`${externalUrl}${sep}token=${encodeURIComponent(token)}`, '_blank');
         return;
@@ -123,7 +123,10 @@ export default function ModuleTileBar({
   // --- Badge helper ---
   const badgeFor = (item: NavItem): number | null => {
     if (item.path === '/' && activeCallCount > 0) return activeCallCount;
-    if (item.path === '/communications' && emailUnreadCount > 0) return emailUnreadCount;
+    if (item.path === '/communications') {
+      const total = (emailUnreadCount || 0) + (activeBOLOs || 0);
+      if (total > 0) return total;
+    }
     return null;
   };
 
