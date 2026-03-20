@@ -11,6 +11,7 @@ import { validateParamId } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
 import { broadcast, broadcastDispatchUpdate } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
+import { generateCallNumber, generateCaseNumber } from '../utils/caseNumbers';
 import config from '../config';
 
 const router = Router();
@@ -576,7 +577,189 @@ router.post('/:id/attempt', validateParamId, requireRole(...WRITE_ROLES), (req: 
       // Sync failure must never prevent the attempt from being recorded
     }
 
-    res.status(201).json({ attempt, job: updatedJob, dueDiligenceComplete });
+    // ── Auto-create new dispatch call for failed PSO serve attempts ──
+    // When a serve attempt fails (not served/posted) and retries remain,
+    // automatically create a new dispatch call and close the old one.
+    let newCallId: number | null = null;
+    let newCallNumber: string | null = null;
+    try {
+      const RETRYABLE_RESULTS = ['no_answer', 'refused', 'wrong_address', 'moved', 'other'];
+      const currentResult = result || 'no_answer';
+      const updatedJobForAutoDispatch = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(req.params.id) as any;
+
+      if (
+        RETRYABLE_RESULTS.includes(currentResult) &&
+        attemptNumber < (job.max_attempts || 3) &&
+        updatedJobForAutoDispatch?.call_id
+      ) {
+        const originalCall = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(updatedJobForAutoDispatch.call_id) as any;
+
+        if (originalCall && originalCall.incident_type === 'pso_client_request') {
+          const autoDispatchTx = db.transaction(() => {
+            const newCallNum = generateCallNumber(db);
+            const newCaseNumber = generateCaseNumber(db, 'general');
+            const newAttemptNum = (originalCall.pso_attempt_number || 1) + 1;
+
+            // Create new dispatch call copying all PSO fields from original
+            const insertResult = db.prepare(`
+              INSERT INTO calls_for_service (
+                call_number, case_number, incident_type, priority, status,
+                caller_name, caller_phone, caller_relationship, caller_address,
+                location_address, property_id, latitude, longitude,
+                description, source, dispatcher_id,
+                cross_street, location_building, location_floor, location_room,
+                zone_beat, section_id, zone_id, beat_id, dispatch_code,
+                section_name, zone_name, beat_name, beat_descriptor,
+                contract_id, client_id,
+                pso_service_type, pso_authorization, pso_requestor_name,
+                pso_requestor_phone, pso_requestor_email, pso_billing_code,
+                pso_attempt_number, pso_service_windows,
+                process_service_type, process_served_to, process_served_address,
+                parent_call_id, notes, created_at
+              ) VALUES (
+                ?, ?, ?, ?, 'pending',
+                ?, ?, ?, ?,
+                ?, ?, ?, ?,
+                ?, ?, ?,
+                ?, ?, ?, ?,
+                ?, ?, ?, ?, ?,
+                ?, ?, ?, ?,
+                ?, ?,
+                ?, ?, ?,
+                ?, ?, ?,
+                ?, ?,
+                ?, ?, ?,
+                ?, ?, ?
+              )
+            `).run(
+              newCallNum, newCaseNumber, originalCall.incident_type, originalCall.priority,
+              originalCall.caller_name, originalCall.caller_phone, originalCall.caller_relationship, originalCall.caller_address,
+              originalCall.location_address, originalCall.property_id, originalCall.latitude, originalCall.longitude,
+              originalCall.description, originalCall.source || 'auto_redispatch', req.user!.userId,
+              originalCall.cross_street, originalCall.location_building, originalCall.location_floor, originalCall.location_room,
+              originalCall.zone_beat, originalCall.section_id, originalCall.zone_id, originalCall.beat_id, originalCall.dispatch_code,
+              originalCall.section_name, originalCall.zone_name, originalCall.beat_name, originalCall.beat_descriptor,
+              originalCall.contract_id, originalCall.client_id,
+              originalCall.pso_service_type, originalCall.pso_authorization, originalCall.pso_requestor_name,
+              originalCall.pso_requestor_phone, originalCall.pso_requestor_email, originalCall.pso_billing_code,
+              newAttemptNum, originalCall.pso_service_windows,
+              originalCall.process_service_type, originalCall.process_served_to, originalCall.process_served_address,
+              originalCall.id,
+              JSON.stringify([{
+                id: String(Date.now()),
+                author: 'System',
+                text: `Auto-created from failed serve attempt #${attemptNumber} on call ${originalCall.call_number}. Result: ${currentResult}`,
+                timestamp: now,
+                created_at: now,
+              }]),
+              now,
+            );
+
+            const newId = Number(insertResult.lastInsertRowid);
+
+            // Create a corresponding case record
+            db.prepare(`
+              INSERT INTO cases (case_number, title, case_type, status, priority, summary, linked_calls, created_by, created_at, updated_at, opened_date)
+              VALUES (?, ?, 'general', 'open', 'normal', ?, ?, ?, ?, ?, ?)
+            `).run(
+              newCaseNumber,
+              `PSO RE-DISPATCH — ${originalCall.location_address || 'Unknown location'}`,
+              `Auto re-dispatch from ${originalCall.call_number} after failed attempt #${attemptNumber}`,
+              JSON.stringify([newId]),
+              req.user!.userId, now, now, localToday(),
+            );
+
+            // Back-link case_id
+            const caseRow = db.prepare('SELECT id FROM cases WHERE case_number = ?').get(newCaseNumber) as any;
+            if (caseRow) {
+              db.prepare('UPDATE calls_for_service SET case_id = ? WHERE id = ?').run(caseRow.id, newId);
+            }
+
+            // Close the original dispatch call
+            const oldNotes: any[] = [];
+            try {
+              const parsed = JSON.parse(originalCall.notes || '[]');
+              if (Array.isArray(parsed)) oldNotes.push(...parsed);
+            } catch { /* ignore */ }
+            oldNotes.push({
+              id: String(Date.now() + 1),
+              author: 'System',
+              text: `Closed — new dispatch ${newCallNum} created for next attempt`,
+              timestamp: now,
+              created_at: now,
+            });
+
+            db.prepare(`
+              UPDATE calls_for_service SET
+                status = 'closed',
+                closed_at = ?,
+                disposition = ?,
+                notes = ?,
+                updated_at = ?
+              WHERE id = ?
+            `).run(now, `Re-dispatched - ${currentResult}`, JSON.stringify(oldNotes), now, originalCall.id);
+
+            // Record in call_visit_history for the closed call
+            const currentAttempt = originalCall.pso_attempt_number || 1;
+            let assignedCallSigns: string[] = [];
+            try {
+              const parsedIds = JSON.parse(originalCall.assigned_unit_ids || '[]');
+              const unitIds = (Array.isArray(parsedIds) ? parsedIds : []).filter((uid: any) => typeof uid === 'number' && !isNaN(uid));
+              if (unitIds.length) {
+                const units = db.prepare(`SELECT call_sign FROM units WHERE id IN (${unitIds.map(() => '?').join(',')})`).all(...unitIds) as any[];
+                assignedCallSigns = units.map((u: any) => u.call_sign).filter(Boolean);
+              }
+            } catch { /* ignore */ }
+
+            db.prepare(`
+              INSERT INTO call_visit_history
+                (call_id, visit_number, status, dispatched_at, enroute_at, onscene_at, cleared_at, closed_at,
+                 assigned_units, responding_vehicle_id, starting_mileage, ending_mileage, disposition, note, created_by, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+              originalCall.id, currentAttempt, 'closed',
+              originalCall.dispatched_at, originalCall.enroute_at, originalCall.onscene_at, originalCall.cleared_at, now,
+              JSON.stringify(assignedCallSigns), originalCall.responding_vehicle_id || null,
+              originalCall.starting_mileage ?? null, originalCall.ending_mileage ?? null,
+              `Re-dispatched - ${currentResult}`, `Auto-closed: new dispatch ${newCallNum} created`, req.user?.fullName || 'System', now,
+            );
+
+            // Activity logs
+            db.prepare(`
+              INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+              VALUES (?, 'call_created', 'call', ?, ?, ?)
+            `).run(req.user!.userId, newId, `Auto re-dispatch ${newCallNum} from ${originalCall.call_number} (attempt #${attemptNumber} result: ${currentResult})`, req.ip || 'unknown');
+
+            db.prepare(`
+              INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+              VALUES (?, 'call_closed', 'call', ?, ?, ?)
+            `).run(req.user!.userId, originalCall.id, `Auto-closed: re-dispatched as ${newCallNum}`, req.ip || 'unknown');
+
+            // Update serve_queue to point to the new call
+            db.prepare('UPDATE serve_queue SET call_id = ?, updated_at = ? WHERE id = ?').run(newId, now, req.params.id);
+
+            return { newId, newCallNum };
+          });
+
+          const result2 = autoDispatchTx();
+          newCallId = result2.newId;
+          newCallNumber = result2.newCallNum;
+
+          // Broadcast both events (outside transaction)
+          const closedCall = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(originalCall.id);
+          const newCall = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(newCallId);
+          broadcastDispatchUpdate({ action: 'call_updated', call: closedCall });
+          broadcastDispatchUpdate({ action: 'call_created', call: newCall });
+
+          console.log(`[Serve] Auto re-dispatch: ${originalCall.call_number} → ${newCallNumber} (attempt #${attemptNumber} result: ${currentResult})`);
+        }
+      }
+    } catch (autoDispatchErr) {
+      console.error('[Serve] Auto re-dispatch failed:', (autoDispatchErr as Error)?.message);
+      // Auto-dispatch failure must never prevent the attempt from being recorded
+    }
+
+    res.status(201).json({ attempt, job: updatedJob, dueDiligenceComplete, newCallId, newCallNumber });
   } catch (err: any) {
     console.error('[SERVE] Attempt error:', err);
     res.status(500).json({ error: 'Failed to record attempt' });

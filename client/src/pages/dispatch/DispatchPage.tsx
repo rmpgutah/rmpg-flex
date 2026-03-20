@@ -2140,6 +2140,41 @@ export default function DispatchPage() {
                       </div>
                     )}
 
+                    {/* Dispatch Chain (mobile) */}
+                    {selectedCall.incident_type === 'pso_client_request' && ((selectedCall as any).parentCall || ((selectedCall as any).childCalls && (selectedCall as any).childCalls.length > 0)) && (
+                      <div className="mt-3 pt-2 border-t border-rmpg-600">
+                        <div className="field-label mb-1.5">Dispatch Chain</div>
+                        <div className="space-y-1">
+                          {(selectedCall as any).parentCall && (
+                            <button
+                              className="w-full text-left bg-rmpg-800/60 border border-rmpg-600/50 rounded px-2 py-1 text-[10px]"
+                              onClick={() => {
+                                const parent = (selectedCall as any).parentCall;
+                                const found = calls.find(c => c.id === parent.id);
+                                if (found) setSelectedCall(found);
+                                else apiFetch(`/api/dispatch/calls/${parent.id}`).then(r => r.ok ? r.json() : null).then(d => { if (d) setSelectedCall(mapDbCall(d)); });
+                              }}
+                            >
+                              <span className="font-bold text-amber-300">PARENT:</span> <span className="font-mono text-blue-400">{(selectedCall as any).parentCall.call_number}</span> <span className="text-rmpg-300">{((selectedCall as any).parentCall.status || '').toUpperCase()}</span>
+                            </button>
+                          )}
+                          {((selectedCall as any).childCalls || []).map((child: any) => (
+                            <button
+                              key={child.id}
+                              className="w-full text-left bg-rmpg-800/60 border border-rmpg-600/50 rounded px-2 py-1 text-[10px]"
+                              onClick={() => {
+                                const found = calls.find(c => c.id === child.id);
+                                if (found) setSelectedCall(found);
+                                else apiFetch(`/api/dispatch/calls/${child.id}`).then(r => r.ok ? r.json() : null).then(d => { if (d) setSelectedCall(mapDbCall(d)); });
+                              }}
+                            >
+                              <span className="font-bold text-cyan-300">FOLLOW-UP:</span> <span className="font-mono text-blue-400">{child.call_number}</span> <span className="text-rmpg-300">{(child.status || '').toUpperCase()}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     {/* PSO Service Window Compliance Checklist (mobile) */}
                     {(() => {
                       const w = typeof selectedCall.pso_service_windows === 'string'
@@ -3787,6 +3822,82 @@ export default function DispatchPage() {
                           </div>
                         );
                       })}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── DISPATCH CHAIN — PSO auto re-dispatch links, Info tab ─── */}
+                {detailTab === 'info' && !isEditing && selectedCall.incident_type === 'pso_client_request' && ((selectedCall as any).parentCall || ((selectedCall as any).childCalls && (selectedCall as any).childCalls.length > 0)) && (
+                  <div className="border-t border-rmpg-600 pt-3 mb-3">
+                    <label className="field-label !flex items-center gap-1.5 mb-2">
+                      <Link className="w-3 h-3" /> Dispatch Chain
+                      <span className="ml-1 px-1.5 py-0.5 text-[8px] font-bold rounded" style={{ background: '#d4a01720', border: '1px solid #d4a01740', color: '#d4a017' }}>
+                        RE-DISPATCH HISTORY
+                      </span>
+                    </label>
+                    <div className="space-y-1">
+                      {/* Parent call */}
+                      {(selectedCall as any).parentCall && (() => {
+                        const parent = (selectedCall as any).parentCall;
+                        return (
+                          <button
+                            key={`parent-${parent.id}`}
+                            className="w-full text-left bg-rmpg-800/60 border border-rmpg-600/50 rounded px-2.5 py-1.5 hover:bg-rmpg-700/60 transition-colors"
+                            onClick={() => {
+                              const found = calls.find(c => c.id === parent.id);
+                              if (found) {
+                                setSelectedCall(found);
+                              } else {
+                                apiFetch(`/api/dispatch/calls/${parent.id}`).then(r => r.ok ? r.json() : null).then(data => {
+                                  if (data) setSelectedCall(mapDbCall(data));
+                                });
+                              }
+                            }}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="text-[8px] font-bold px-1 py-0 rounded bg-amber-900/30 border border-amber-700/40 text-amber-300">PARENT</span>
+                              <span className="text-[10px] font-mono text-blue-400">{parent.call_number}</span>
+                              <span className="text-[9px] text-rmpg-400">Attempt #{parent.pso_attempt_number || 1}</span>
+                              <span className={`text-[8px] font-bold px-1 py-0 rounded ${
+                                parent.status === 'closed' ? 'bg-blue-900/40 border border-blue-700/50 text-blue-400'
+                                : parent.status === 'pending' ? 'bg-yellow-900/40 border border-yellow-700/50 text-yellow-400'
+                                : 'bg-rmpg-700 border border-rmpg-500 text-rmpg-300'
+                              }`}>{(parent.status || '').toUpperCase()}</span>
+                              {parent.disposition && <span className="text-[9px] text-rmpg-400 truncate">{parent.disposition}</span>}
+                            </div>
+                          </button>
+                        );
+                      })()}
+                      {/* Child calls */}
+                      {((selectedCall as any).childCalls || []).map((child: any) => (
+                        <button
+                          key={`child-${child.id}`}
+                          className="w-full text-left bg-rmpg-800/60 border border-rmpg-600/50 rounded px-2.5 py-1.5 hover:bg-rmpg-700/60 transition-colors"
+                          onClick={() => {
+                            const found = calls.find(c => c.id === child.id);
+                            if (found) {
+                              setSelectedCall(found);
+                            } else {
+                              apiFetch(`/api/dispatch/calls/${child.id}`).then(r => r.ok ? r.json() : null).then(data => {
+                                if (data) setSelectedCall(mapDbCall(data));
+                              });
+                            }
+                          }}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-[8px] font-bold px-1 py-0 rounded bg-cyan-900/30 border border-cyan-700/40 text-cyan-300">FOLLOW-UP</span>
+                            <span className="text-[10px] font-mono text-blue-400">{child.call_number}</span>
+                            <span className="text-[9px] text-rmpg-400">Attempt #{child.pso_attempt_number || 1}</span>
+                            <span className={`text-[8px] font-bold px-1 py-0 rounded ${
+                              child.status === 'closed' ? 'bg-blue-900/40 border border-blue-700/50 text-blue-400'
+                              : child.status === 'pending' ? 'bg-yellow-900/40 border border-yellow-700/50 text-yellow-400'
+                              : child.status === 'dispatched' ? 'bg-green-900/40 border border-green-700/50 text-green-400'
+                              : 'bg-rmpg-700 border border-rmpg-500 text-rmpg-300'
+                            }`}>{(child.status || '').toUpperCase()}</span>
+                            {child.disposition && <span className="text-[9px] text-rmpg-400 truncate">{child.disposition}</span>}
+                          </div>
+                        </button>
+                      ))}
                     </div>
                   </div>
                 )}
