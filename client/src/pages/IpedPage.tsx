@@ -11,7 +11,7 @@ import {
   Play, Square, CheckCircle, AlertTriangle, Clock, Hash,
   Database, Trash2, Upload, Download, FileText, Eye,
   ChevronDown, Activity, Server, Shield, Copy, Zap,
-  BarChart3, Filter,
+  BarChart3, Filter, HelpCircle, BookOpen, ChevronRight,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
@@ -117,6 +117,9 @@ function formatDate(d: string | null): string {
 
 export default function IpedPage() {
   const { addToast } = useToast();
+
+  // Help panel
+  const [showHelp, setShowHelp] = useState(false);
 
   // Dashboard stats
   const [stats, setStats] = useState<StatusStats>({
@@ -446,6 +449,13 @@ export default function IpedPage() {
         </div>
         <div className="flex items-center gap-2">
           <button
+            onClick={() => setShowHelp(!showHelp)}
+            className={`p-1.5 rounded transition-colors ${showHelp ? 'bg-brand-blue/20 text-brand-blue' : 'hover:bg-[#1a2636] text-slate-400 hover:text-white'}`}
+            title="Help & Instructions"
+          >
+            <HelpCircle size={14} />
+          </button>
+          <button
             onClick={() => { fetchStatus(); fetchJobs(); fetchHashSets(); fetchReviewStats(); fetchFlaggedHashes(); fetchUsageHistory(); }}
             className="p-1.5 rounded hover:bg-[#1a2636] text-slate-400 hover:text-white transition-colors"
             title="Refresh all"
@@ -461,6 +471,268 @@ export default function IpedPage() {
           </button>
         </div>
       </div>
+
+      {/* ── Help & Instructions Panel ────────────────────── */}
+      {showHelp && (
+        <div className="border-b border-[#1e3048] bg-[#0d1520] overflow-y-auto" style={{ maxHeight: '60vh' }}>
+          <div className="p-4 space-y-4 max-w-4xl">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <BookOpen size={16} className="text-brand-blue" />
+                <h2 className="text-sm font-bold text-white">Digital Forensics — User Guide</h2>
+              </div>
+              <button onClick={() => setShowHelp(false)} className="p-1 rounded text-slate-500 hover:text-white hover:bg-[#1a2636]">
+                <X size={14} />
+              </button>
+            </div>
+
+            {/* Section 1: Overview */}
+            <div className="card-glass rounded p-3 space-y-2">
+              <h3 className="text-xs font-bold text-brand-blue uppercase flex items-center gap-1.5">
+                <ChevronRight size={12} /> Overview
+              </h3>
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                The Digital Forensics module provides cryptographic hashing, hash set matching, integrity verification, and evidence analysis capabilities. It integrates with the Evidence module to automatically hash uploaded files and alert officers when known-bad files are detected.
+              </p>
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                <div className="bg-[#141e2b] rounded p-2 border border-[#1e3048]">
+                  <span className="text-[10px] text-brand-blue font-bold block">HASH ALGORITHMS</span>
+                  <span className="text-[10px] text-slate-400">MD5, SHA-1, SHA-256, SHA-512</span>
+                </div>
+                <div className="bg-[#141e2b] rounded p-2 border border-[#1e3048]">
+                  <span className="text-[10px] text-brand-blue font-bold block">AUTO-HASH</span>
+                  <span className="text-[10px] text-slate-400">Evidence uploads hashed automatically</span>
+                </div>
+                <div className="bg-[#141e2b] rounded p-2 border border-[#1e3048]">
+                  <span className="text-[10px] text-brand-blue font-bold block">HASH SETS</span>
+                  <span className="text-[10px] text-slate-400">Known-bad & known-good file databases</span>
+                </div>
+                <div className="bg-[#141e2b] rounded p-2 border border-[#1e3048]">
+                  <span className="text-[10px] text-brand-blue font-bold block">CHAIN OF CUSTODY</span>
+                  <span className="text-[10px] text-slate-400">Integrity verification with audit trail</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Section 2: Hash Sets */}
+            <div className="card-glass rounded p-3 space-y-2">
+              <h3 className="text-xs font-bold text-brand-blue uppercase flex items-center gap-1.5">
+                <ChevronRight size={12} /> Hash Sets — What They Are
+              </h3>
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                Hash sets are databases of known file fingerprints (hashes). When evidence is uploaded, each file&apos;s hash is computed and checked against loaded hash sets. There are two categories:
+              </p>
+              <div className="space-y-1.5 mt-2">
+                <div className="flex items-start gap-2 bg-red-900/10 border border-red-800/20 rounded p-2">
+                  <AlertTriangle size={12} className="text-red-400 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <span className="text-[10px] font-bold text-red-400 block">KNOWN BAD</span>
+                    <span className="text-[10px] text-slate-400">Files identified as malware, contraband, illegal content, fraud tools, weapons manufacturing guides, stalkerware, etc. A match triggers an immediate alert and flags the evidence for supervisor review. Sources: NSRL, ProjectVIC, NCMEC, VirusTotal, FBI HashKeeper, DEA, ATF.</span>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2 bg-green-900/10 border border-green-800/20 rounded p-2">
+                  <CheckCircle size={12} className="text-green-400 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <span className="text-[10px] font-bold text-green-400 block">KNOWN GOOD</span>
+                    <span className="text-[10px] text-slate-400">Common operating system files, applications, and media that can be safely excluded from analysis. Matching files are NOT threats — they are standard software. Sources: NIST NSRL Reference Data Set.</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Section 3: Importing Hash Sets */}
+            <div className="card-glass rounded p-3 space-y-2">
+              <h3 className="text-xs font-bold text-brand-blue uppercase flex items-center gap-1.5">
+                <ChevronRight size={12} /> Importing Hash Sets — Step by Step
+              </h3>
+              <div className="space-y-2">
+                <div className="flex items-start gap-2">
+                  <span className="text-[10px] font-bold text-brand-blue bg-brand-blue/10 rounded px-1.5 py-0.5 flex-shrink-0">1</span>
+                  <span className="text-[10px] text-slate-300">Click the <span className="text-brand-blue font-semibold">Import Hash Set</span> button in the Hash Sets panel below.</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="text-[10px] font-bold text-brand-blue bg-brand-blue/10 rounded px-1.5 py-0.5 flex-shrink-0">2</span>
+                  <span className="text-[10px] text-slate-300">Use the <span className="text-brand-blue font-semibold">dropdown menu</span> to select from pre-built hash sets. The system ships with 11 sets covering malware, drugs, weapons, fraud, cybercrime, stalkerware, contraband, exploitation, OS files, office apps, and media files.</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="text-[10px] font-bold text-brand-blue bg-brand-blue/10 rounded px-1.5 py-0.5 flex-shrink-0">3</span>
+                  <span className="text-[10px] text-slate-300">Selecting a set auto-fills the name, category, and hash type. You can adjust these before importing.</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="text-[10px] font-bold text-brand-blue bg-brand-blue/10 rounded px-1.5 py-0.5 flex-shrink-0">4</span>
+                  <span className="text-[10px] text-slate-300">Click <span className="text-brand-blue font-semibold">Import</span> to load the selected set, or click <span className="text-emerald-400 font-semibold">Import All</span> to bulk-import every available set at once.</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="text-[10px] font-bold text-brand-blue bg-brand-blue/10 rounded px-1.5 py-0.5 flex-shrink-0">5</span>
+                  <span className="text-[10px] text-slate-300">For custom hash sets: enter the file path manually (e.g., <code className="font-mono text-slate-400 bg-[#0d1520] px-1 rounded">/opt/rmpg-flex/server/hash-sets/custom.md5</code>). The file format is one hash per line, with optional <code className="font-mono text-slate-400 bg-[#0d1520] px-1 rounded">hash,filename</code> CSV pairs. Lines starting with <code className="font-mono text-slate-400 bg-[#0d1520] px-1 rounded">#</code> are treated as comments.</span>
+                </div>
+              </div>
+              <div className="bg-[#141e2b] rounded p-2 border border-[#1e3048] mt-2">
+                <span className="text-[10px] text-slate-500 font-mono block">Example hash set file format:</span>
+                <pre className="text-[10px] text-slate-400 font-mono mt-1 leading-relaxed">{`# Comment line (ignored)
+# Category: known_bad
+d41d8cd98f00b204e9800998ecf8427e,suspicious_file.exe
+44d88612fea8a8f36de82e1278abb02f,malware_sample.dll
+3395856ce81f2b7382dee72602f798b6`}</pre>
+              </div>
+            </div>
+
+            {/* Section 4: Auto-Hash on Upload */}
+            <div className="card-glass rounded p-3 space-y-2">
+              <h3 className="text-xs font-bold text-brand-blue uppercase flex items-center gap-1.5">
+                <ChevronRight size={12} /> Auto-Hash on Evidence Upload
+              </h3>
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                When evidence attachments are uploaded, the system <span className="text-white font-semibold">automatically computes MD5, SHA-1, SHA-256, and SHA-512 hashes</span> for each file. These hashes are immediately checked against all loaded hash sets.
+              </p>
+              <div className="space-y-1.5 mt-2">
+                <div className="flex items-start gap-2 bg-[#141e2b] rounded p-2 border border-[#1e3048]">
+                  <Shield size={12} className="text-green-400 mt-0.5 flex-shrink-0" />
+                  <span className="text-[10px] text-slate-400"><span className="text-green-400 font-bold">NO MATCH</span> — File is clean. Hash is stored for chain of custody. Evidence shows a green dot in the list.</span>
+                </div>
+                <div className="flex items-start gap-2 bg-[#141e2b] rounded p-2 border border-[#1e3048]">
+                  <AlertTriangle size={12} className="text-red-400 mt-0.5 flex-shrink-0" />
+                  <span className="text-[10px] text-slate-400"><span className="text-red-400 font-bold">KNOWN BAD MATCH</span> — File matches a threat hash set. A real-time WebSocket alert is broadcast to all connected officers. Evidence shows a red dot. The hash is added to the Review Queue for supervisor disposition.</span>
+                </div>
+                <div className="flex items-start gap-2 bg-[#141e2b] rounded p-2 border border-[#1e3048]">
+                  <CheckCircle size={12} className="text-blue-400 mt-0.5 flex-shrink-0" />
+                  <span className="text-[10px] text-slate-400"><span className="text-blue-400 font-bold">KNOWN GOOD MATCH</span> — File is a known OS/application file. Can be safely excluded from forensic analysis to focus on relevant evidence.</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Section 5: Review Workflow */}
+            <div className="card-glass rounded p-3 space-y-2">
+              <h3 className="text-xs font-bold text-brand-blue uppercase flex items-center gap-1.5">
+                <ChevronRight size={12} /> Review Workflow — Handling Flagged Hashes
+              </h3>
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                When a file is flagged (matches a known-bad hash set), it appears in the <span className="text-white font-semibold">Hash Review Queue</span> below. Supervisors must review each flagged hash and assign a disposition:
+              </p>
+              <div className="grid grid-cols-3 gap-2 mt-2">
+                <div className="bg-red-900/10 border border-red-800/20 rounded p-2 text-center">
+                  <span className="text-[10px] font-bold text-red-400 block">CONFIRMED THREAT</span>
+                  <span className="text-[9px] text-slate-500">File is verified as malicious/illegal. Preserved as evidence.</span>
+                </div>
+                <div className="bg-green-900/10 border border-green-800/20 rounded p-2 text-center">
+                  <span className="text-[10px] font-bold text-green-400 block">FALSE POSITIVE</span>
+                  <span className="text-[9px] text-slate-500">Hash matched but file is benign. Cleared from review.</span>
+                </div>
+                <div className="bg-amber-900/10 border border-amber-800/20 rounded p-2 text-center">
+                  <span className="text-[10px] font-bold text-amber-400 block">NEEDS ANALYSIS</span>
+                  <span className="text-[9px] text-slate-500">Requires deeper investigation. Assigned for follow-up.</span>
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-500 mt-2">
+                All review actions are audit-logged with the reviewer&apos;s name, timestamp, and notes. This creates a court-admissible chain of custody for digital evidence.
+              </p>
+            </div>
+
+            {/* Section 6: Integrity Verification */}
+            <div className="card-glass rounded p-3 space-y-2">
+              <h3 className="text-xs font-bold text-brand-blue uppercase flex items-center gap-1.5">
+                <ChevronRight size={12} /> Integrity Verification — Tamper Detection
+              </h3>
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                From the <span className="text-white font-semibold">Evidence &gt; Digital Forensics</span> tab, click <span className="text-brand-blue font-semibold">Verify Integrity</span> to re-hash all files and compare against the original stored hashes. This proves evidence has not been altered since collection.
+              </p>
+              <div className="space-y-1.5 mt-2">
+                <div className="flex items-start gap-2 bg-[#141e2b] rounded p-2 border border-[#1e3048]">
+                  <CheckCircle size={12} className="text-green-400 mt-0.5 flex-shrink-0" />
+                  <span className="text-[10px] text-slate-400"><span className="text-green-400 font-bold">VERIFIED</span> — All hashes match. Evidence integrity confirmed. Green banner displayed.</span>
+                </div>
+                <div className="flex items-start gap-2 bg-[#141e2b] rounded p-2 border border-[#1e3048]">
+                  <AlertTriangle size={12} className="text-red-400 mt-0.5 flex-shrink-0" />
+                  <span className="text-[10px] text-slate-400"><span className="text-red-400 font-bold">INTEGRITY ALERT</span> — Hash mismatch detected! Evidence may have been tampered with. Red alert displayed with original vs. current hash comparison. Automatically audit-logged and flagged.</span>
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-500 mt-2">
+                Run verification before presenting evidence in court to establish an unbroken chain of custody. Every verification attempt is recorded in the audit log.
+              </p>
+            </div>
+
+            {/* Section 7: Search & Export */}
+            <div className="card-glass rounded p-3 space-y-2">
+              <h3 className="text-xs font-bold text-brand-blue uppercase flex items-center gap-1.5">
+                <ChevronRight size={12} /> Search & Export for Court
+              </h3>
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                Use the <span className="text-white font-semibold">Hash Search</span> panel to find files by hash value across all evidence. Paste a full or partial MD5/SHA-256 hash to locate matching files. Filter by flagged status, review disposition, hash set, and date range.
+              </p>
+              <p className="text-[11px] text-slate-300 leading-relaxed mt-1">
+                Click <span className="text-brand-blue font-semibold">Export CSV</span> to generate a court-ready report containing evidence numbers, file names, all hash values, flagged status, review disposition, reviewer name, and timestamps. The CSV includes a UTF-8 BOM for proper Excel rendering.
+              </p>
+            </div>
+
+            {/* Section 8: Duplicate Detection */}
+            <div className="card-glass rounded p-3 space-y-2">
+              <h3 className="text-xs font-bold text-brand-blue uppercase flex items-center gap-1.5">
+                <ChevronRight size={12} /> Duplicate Detection
+              </h3>
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                The <span className="text-white font-semibold">Duplicate Detection</span> panel scans all evidence for files with identical MD5 hashes. This reveals when the same file appears across multiple evidence items — useful for linking cases, identifying copied contraband, or finding redundant evidence.
+              </p>
+              <p className="text-[10px] text-slate-500 mt-1">
+                Results are grouped by hash cluster showing all matching files with their evidence IDs and timestamps.
+              </p>
+            </div>
+
+            {/* Section 9: Available Hash Sets */}
+            <div className="card-glass rounded p-3 space-y-2">
+              <h3 className="text-xs font-bold text-brand-blue uppercase flex items-center gap-1.5">
+                <ChevronRight size={12} /> Pre-Built Hash Sets Reference
+              </h3>
+              <div className="overflow-x-auto mt-1">
+                <table className="w-full text-[10px]">
+                  <thead>
+                    <tr className="text-slate-500 uppercase">
+                      <th className="text-left py-1 pr-3">Set Name</th>
+                      <th className="text-left py-1 pr-3">Category</th>
+                      <th className="text-left py-1 pr-3">Type</th>
+                      <th className="text-left py-1">Contents</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-slate-400">
+                    <tr className="border-t border-[#1e3048]/50"><td className="py-1 pr-3 text-red-400">Malware & Exploit Tools</td><td className="pr-3"><span className="text-red-400">Known Bad</span></td><td className="pr-3">MD5</td><td>Ransomware, RATs, keyloggers, crypto miners</td></tr>
+                    <tr className="border-t border-[#1e3048]/50"><td className="py-1 pr-3 text-red-400">Drug Manufacturing</td><td className="pr-3"><span className="text-red-400">Known Bad</span></td><td className="pr-3">MD5</td><td>Synth guides, dealer tools, darknet software</td></tr>
+                    <tr className="border-t border-[#1e3048]/50"><td className="py-1 pr-3 text-red-400">Weapons & Explosives</td><td className="pr-3"><span className="text-red-400">Known Bad</span></td><td className="pr-3">MD5</td><td>Ghost gun STLs, explosive manuals, trafficking</td></tr>
+                    <tr className="border-t border-[#1e3048]/50"><td className="py-1 pr-3 text-red-400">Contraband Media</td><td className="pr-3"><span className="text-red-400">Known Bad</span></td><td className="pr-3">SHA-256</td><td>NCMEC/ProjectVIC reference IDs</td></tr>
+                    <tr className="border-t border-[#1e3048]/50"><td className="py-1 pr-3 text-red-400">Financial Fraud</td><td className="pr-3"><span className="text-red-400">Known Bad</span></td><td className="pr-3">MD5</td><td>CC skimmers, check fraud, identity theft tools</td></tr>
+                    <tr className="border-t border-[#1e3048]/50"><td className="py-1 pr-3 text-red-400">Cybercrime Tools</td><td className="pr-3"><span className="text-red-400">Known Bad</span></td><td className="pr-3">MD5</td><td>DDoS kits, exploits, ransomware builders</td></tr>
+                    <tr className="border-t border-[#1e3048]/50"><td className="py-1 pr-3 text-red-400">Human Trafficking</td><td className="pr-3"><span className="text-red-400">Known Bad</span></td><td className="pr-3">SHA-256</td><td>DHS/HSI Blue Campaign reference hashes</td></tr>
+                    <tr className="border-t border-[#1e3048]/50"><td className="py-1 pr-3 text-red-400">Stalkerware</td><td className="pr-3"><span className="text-red-400">Known Bad</span></td><td className="pr-3">MD5</td><td>Spyphone apps, GPS trackers, hidden cameras</td></tr>
+                    <tr className="border-t border-[#1e3048]/50"><td className="py-1 pr-3 text-green-400">OS System Files</td><td className="pr-3"><span className="text-green-400">Known Good</span></td><td className="pr-3">MD5</td><td>Windows, macOS, Linux system binaries</td></tr>
+                    <tr className="border-t border-[#1e3048]/50"><td className="py-1 pr-3 text-green-400">Office & Applications</td><td className="pr-3"><span className="text-green-400">Known Good</span></td><td className="pr-3">MD5</td><td>MS Office, Adobe, browsers, utilities</td></tr>
+                    <tr className="border-t border-[#1e3048]/50"><td className="py-1 pr-3 text-green-400">Common Media</td><td className="pr-3"><span className="text-green-400">Known Good</span></td><td className="pr-3">MD5</td><td>Default wallpapers, sounds, stock photos</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-[10px] text-slate-500 mt-2">
+                These are example/reference hashes for system testing. For production use, replace with actual databases from NIST NSRL, ProjectVIC/NCMEC (via ICAC task force), VirusTotal Intelligence, or FBI HashKeeper. Contact your agency&apos;s ICAC representative for access to law enforcement hash sets.
+              </p>
+            </div>
+
+            {/* Section 10: IPED Processing */}
+            <div className="card-glass rounded p-3 space-y-2">
+              <h3 className="text-xs font-bold text-brand-blue uppercase flex items-center gap-1.5">
+                <ChevronRight size={12} /> IPED Processing Jobs
+              </h3>
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                For full disk imaging and deep forensic analysis, create an IPED processing job. IPED (Digital Evidence Processor) is a Java-based forensic tool that can:
+              </p>
+              <ul className="text-[10px] text-slate-400 space-y-1 ml-4 mt-1 list-disc">
+                <li><span className="text-white font-semibold">Hash</span> — Compute hashes for all files in an evidence image or directory</li>
+                <li><span className="text-white font-semibold">Process</span> — Full forensic processing: file carving, metadata extraction, timeline generation</li>
+                <li><span className="text-white font-semibold">Triage</span> — Quick assessment: prioritize files by type, extract key artifacts</li>
+                <li><span className="text-white font-semibold">CSAM Scan</span> — Scan for known child exploitation material using PhotoDNA/hash matching</li>
+              </ul>
+              <p className="text-[10px] text-slate-500 mt-2">
+                IPED must be installed on the server with Java 11+. Configure the installation path in Admin &gt; System &gt; IPED Settings.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Main Content (scrollable) ─────────────────────── */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
