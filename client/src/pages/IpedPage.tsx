@@ -154,6 +154,8 @@ export default function IpedPage() {
     filePath: '', setName: '', category: 'known_bad', hashType: 'md5',
   });
   const [importSubmitting, setImportSubmitting] = useState(false);
+  const [availableHashSets, setAvailableHashSets] = useState<any[]>([]);
+  const [selectedAvailableSet, setSelectedAvailableSet] = useState('');
 
   // Review queue (Phase 3)
   const [flaggedHashes, setFlaggedHashes] = useState<any[]>([]);
@@ -545,7 +547,14 @@ export default function IpedPage() {
               <span className="text-[10px] text-slate-500">({hashSets.length})</span>
             </div>
             <button
-              onClick={() => setShowImportHashSet(true)}
+              onClick={() => {
+                setShowImportHashSet(true);
+                setSelectedAvailableSet('');
+                setImportData({ filePath: '', setName: '', category: 'known_bad', hashType: 'md5' });
+                apiFetch('/iped/hash-sets/available').then((res: any) => {
+                  setAvailableHashSets(res?.data || []);
+                }).catch(() => setAvailableHashSets([]));
+              }}
               className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded bg-brand-blue/10 text-brand-blue border border-brand-blue/20 hover:bg-brand-blue/20 transition-colors"
             >
               <Upload size={10} />
@@ -1243,18 +1252,91 @@ export default function IpedPage() {
               </button>
             </div>
             <div className="p-4 space-y-3">
+              {/* Quick-select from available sets */}
+              {availableHashSets.length > 0 && (
+                <div>
+                  <label className="text-[10px] text-slate-500 uppercase block mb-1">Select Hash Set</label>
+                  <select
+                    value={selectedAvailableSet}
+                    onChange={(e) => {
+                      const fileName = e.target.value;
+                      setSelectedAvailableSet(fileName);
+                      if (fileName) {
+                        const set = availableHashSets.find((s: any) => s.fileName === fileName);
+                        if (set) {
+                          setImportData({
+                            filePath: set.filePath,
+                            setName: set.displayName,
+                            category: set.category,
+                            hashType: set.hashType,
+                          });
+                        }
+                      } else {
+                        setImportData({ filePath: '', setName: '', category: 'known_bad', hashType: 'md5' });
+                      }
+                    }}
+                    className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-3 py-2 focus:outline-none focus:border-brand-blue/50"
+                  >
+                    <option value="">-- Select a hash set to import --</option>
+                    {availableHashSets.filter((s: any) => s.category === 'known_bad').length > 0 && (
+                      <optgroup label="Known Bad (Threat Detection)">
+                        {availableHashSets.filter((s: any) => s.category === 'known_bad').map((s: any) => (
+                          <option key={s.fileName} value={s.fileName}>
+                            {s.displayName} ({s.hashCount} hashes, {s.hashType.toUpperCase()})
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {availableHashSets.filter((s: any) => s.category === 'known_good').length > 0 && (
+                      <optgroup label="Known Good (Exclusion)">
+                        {availableHashSets.filter((s: any) => s.category === 'known_good').map((s: any) => (
+                          <option key={s.fileName} value={s.fileName}>
+                            {s.displayName} ({s.hashCount} hashes, {s.hashType.toUpperCase()})
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {availableHashSets.filter((s: any) => s.category === 'custom').length > 0 && (
+                      <optgroup label="Custom">
+                        {availableHashSets.filter((s: any) => s.category === 'custom').map((s: any) => (
+                          <option key={s.fileName} value={s.fileName}>
+                            {s.displayName} ({s.hashCount} hashes, {s.hashType.toUpperCase()})
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </select>
+                  {selectedAvailableSet && (() => {
+                    const s = availableHashSets.find((x: any) => x.fileName === selectedAvailableSet);
+                    return s?.description ? (
+                      <p className="text-[10px] text-slate-500 mt-1 italic">{s.description}</p>
+                    ) : null;
+                  })()}
+                </div>
+              )}
+              {/* Divider */}
+              {availableHashSets.length > 0 && (
+                <div className="flex items-center gap-2 text-[10px] text-slate-600">
+                  <div className="flex-1 border-t border-[#1e3048]" />
+                  <span>or enter manually</span>
+                  <div className="flex-1 border-t border-[#1e3048]" />
+                </div>
+              )}
               <div>
-                <label className="text-[10px] text-slate-500 uppercase block mb-1">File Path *</label>
+                <label className="text-[10px] text-slate-500 uppercase block mb-1">File Path {!selectedAvailableSet && '*'}</label>
                 <input
                   type="text"
                   value={importData.filePath}
-                  onChange={(e) => setImportData(d => ({ ...d, filePath: e.target.value }))}
+                  onChange={(e) => {
+                    setImportData(d => ({ ...d, filePath: e.target.value }));
+                    setSelectedAvailableSet('');
+                  }}
                   placeholder="/path/to/hashset.txt"
                   className="w-full text-xs bg-[#0d1520] border border-[#1e3048] text-slate-300 rounded px-3 py-2 focus:outline-none focus:border-brand-blue/50 font-mono placeholder-slate-600"
                 />
               </div>
               <div>
-                <label className="text-[10px] text-slate-500 uppercase block mb-1">Set Name *</label>
+                <label className="text-[10px] text-slate-500 uppercase block mb-1">Set Name {!selectedAvailableSet && '*'}</label>
                 <input
                   type="text"
                   value={importData.setName}
@@ -1290,21 +1372,51 @@ export default function IpedPage() {
                 </div>
               </div>
             </div>
-            <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-[#1e3048]">
-              <button
-                onClick={() => setShowImportHashSet(false)}
-                className="px-3 py-1.5 text-xs rounded bg-[#1a2636] text-slate-400 hover:text-white border border-[#1e3048] transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleImportHashSet}
-                disabled={importSubmitting}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-brand-blue text-white hover:bg-brand-blue/80 disabled:opacity-50 transition-colors"
-              >
-                {importSubmitting ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-                Import
-              </button>
+            <div className="flex items-center justify-between px-4 py-3 border-t border-[#1e3048]">
+              {availableHashSets.length > 0 ? (
+                <button
+                  onClick={async () => {
+                    if (!window.confirm(`Import all ${availableHashSets.length} hash sets?`)) return;
+                    setImportSubmitting(true);
+                    let imported = 0;
+                    for (const set of availableHashSets) {
+                      try {
+                        await apiFetch('/iped/hash-sets/import', {
+                          method: 'POST',
+                          body: JSON.stringify({ filePath: set.filePath, setName: set.displayName, category: set.category, hashType: set.hashType }),
+                        });
+                        imported++;
+                      } catch { /* skip failed */ }
+                    }
+                    setImportSubmitting(false);
+                    addToast(`Imported ${imported} of ${availableHashSets.length} hash sets`, 'success');
+                    setShowImportHashSet(false);
+                    fetchHashSets();
+                    fetchStatus();
+                  }}
+                  disabled={importSubmitting}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-emerald-600/20 text-emerald-400 border border-emerald-600/30 hover:bg-emerald-600/30 disabled:opacity-50 transition-colors"
+                >
+                  {importSubmitting ? <Loader2 size={12} className="animate-spin" /> : <Database size={12} />}
+                  Import All ({availableHashSets.length})
+                </button>
+              ) : <div />}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowImportHashSet(false)}
+                  className="px-3 py-1.5 text-xs rounded bg-[#1a2636] text-slate-400 hover:text-white border border-[#1e3048] transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleImportHashSet}
+                  disabled={importSubmitting}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-brand-blue text-white hover:bg-brand-blue/80 disabled:opacity-50 transition-colors"
+                >
+                  {importSubmitting ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                  Import
+                </button>
+              </div>
             </div>
           </div>
         </div>

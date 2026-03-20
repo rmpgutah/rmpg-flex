@@ -445,6 +445,52 @@ router.post('/hash-sets/import', requireRole('admin'), (req: Request, res: Respo
   }
 });
 
+// ── GET /hash-sets/available — List hash set files on disk ──────────
+router.get('/hash-sets/available', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const hashSetsDir = path.join(__dirname, '..', '..', 'hash-sets');
+    if (!fs.existsSync(hashSetsDir)) {
+      return res.json({ data: [] });
+    }
+    const files = fs.readdirSync(hashSetsDir).filter((f: string) =>
+      f.endsWith('.md5') || f.endsWith('.sha256') || f.endsWith('.sha1') || f.endsWith('.csv') || f.endsWith('.txt')
+    );
+    const sets = files.map((f: string) => {
+      const content = fs.readFileSync(path.join(hashSetsDir, f), 'utf-8');
+      const lines = content.split('\n');
+      // Parse metadata from comment headers
+      let source = '', category = 'custom', hashType = 'md5', description = '', name = f;
+      const hashLines = lines.filter(l => l.trim() && !l.startsWith('#'));
+      for (const line of lines) {
+        if (line.startsWith('# Source:')) source = line.replace('# Source:', '').trim();
+        if (line.startsWith('# Category:')) category = line.replace('# Category:', '').trim();
+        if (line.startsWith('# Hash Type:')) hashType = line.replace('# Hash Type:', '').trim().toLowerCase();
+        if (line.startsWith('# Description:')) description = line.replace('# Description:', '').trim();
+      }
+      // Derive display name from filename
+      const displayName = f.replace(/\.(md5|sha256|sha1|csv|txt)$/, '')
+        .replace(/-/g, ' ').replace(/_/g, ' ')
+        .split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      return {
+        fileName: f,
+        filePath: path.join(hashSetsDir, f),
+        displayName,
+        source,
+        category,
+        hashType,
+        description,
+        hashCount: hashLines.length,
+      };
+    });
+    res.json({ data: sets });
+  } catch (err: any) {
+    console.error('Error listing hash sets:', err?.message || err);
+    res.status(500).json({ error: 'Failed to list available hash sets' });
+  }
+});
+
 // ── POST /hash-sets/import-iped — Import into IPED native hash DB ──
 router.post('/hash-sets/import-iped', requireRole('admin'), async (req: Request, res: Response) => {
   try {
