@@ -74,6 +74,20 @@ const SPEECH_RATE = 0.95;   // slightly slower than default — clearer, more na
 const SPEECH_PITCH = 1.02;  // very slight pitch lift for authority/clarity
 const SPEECH_VOLUME = 0.92; // loud but not clipping
 
+/** Priority-based speech parameters — adjusts rate/pitch/volume for urgency level */
+interface PrioritySpeechParams {
+  rate: number;
+  pitch: number;
+  volume: number;
+}
+
+const PRIORITY_PARAMS: Record<string, PrioritySpeechParams> = {
+  P1: { rate: 1.1, pitch: 1.15, volume: 1.0 },
+  P2: { rate: 1.0, pitch: 1.05, volume: 0.95 },
+  P3: { rate: 0.95, pitch: 1.0, volume: 0.9 },
+  P4: { rate: 0.9, pitch: 0.98, volume: 0.85 },
+};
+
 // ─── Voice Selection ────────────────────────────────────────
 
 let cachedVoice: SpeechSynthesisVoice | null = null;
@@ -196,6 +210,8 @@ function markAnnounced(key: string): void {
 
 // ─── Speech Queue ───────────────────────────────────────────
 
+/** Active priority for the current phrase batch — affects speech rate/pitch/volume */
+let activePriority: string | undefined;
 let phraseQueue: VoicePhrase[] = [];
 let isSpeaking = false;
 
@@ -206,9 +222,13 @@ function speakPhrase(phrase: VoicePhrase): Promise<void> {
     const utterance = new SpeechSynthesisUtterance(phrase.text);
     const voice = selectFemaleVoice();
     if (voice) utterance.voice = voice;
-    utterance.rate = SPEECH_RATE;
-    utterance.pitch = SPEECH_PITCH;
-    utterance.volume = SPEECH_VOLUME;
+
+    // Apply priority-based speech parameters if set
+    const params = activePriority ? PRIORITY_PARAMS[activePriority] : undefined;
+    utterance.rate = params?.rate ?? SPEECH_RATE;
+    utterance.pitch = params?.pitch ?? SPEECH_PITCH;
+    utterance.volume = params?.volume ?? SPEECH_VOLUME;
+
     utterance.lang = 'en-US';
     utterance.onend = () => resolve();
     utterance.onerror = () => resolve(); // don't block queue on errors
@@ -229,11 +249,14 @@ async function processQueue(): Promise<void> {
     }
   }
 
+  activePriority = undefined;
   isSpeaking = false;
 }
 
-function enqueuePhrases(phrases: VoicePhrase[]): void {
+function enqueuePhrases(phrases: VoicePhrase[], priority?: string): void {
   if (phrases.length === 0) return;
+  // Set priority for this batch (first batch wins if queue is already running)
+  if (!isSpeaking && priority) activePriority = priority;
   phraseQueue.push(...phrases);
   processQueue().catch(() => { isSpeaking = false; });
 }
@@ -540,8 +563,9 @@ export async function announceNewCall(call: CallFlags & {
   if (wasRecentlyAnnounced(dedupKey)) return;
   markAnnounced(dedupKey);
 
-  // Play caution tone for new calls
-  await playToneAsync('caution');
+  // Priority-based tone selection: P1 gets alarm, P2 gets warning, P3/P4 get caution
+  const tone = call.priority === 'P1' ? 'alarm' : call.priority === 'P2' ? 'warning' : 'caution';
+  await playToneAsync(tone);
   await delay(TONE_GAP_MS);
 
   const phrases: VoicePhrase[] = [{ text: naturalPhrase('NEW CALL') }];
@@ -557,6 +581,105 @@ export async function announceNewCall(call: CallFlags & {
   const safetyPhrases = buildCallPhrases(call);
   if (safetyPhrases.length > 0) phrases.push(...safetyPhrases);
 
+  enqueuePhrases(phrases, call.priority);
+}
+
+// ─── Status / Unit / BOLO / Warrant Announcements ───────────
+
+/**
+ * Announce a call status change (dispatched, enroute, onscene, cleared, etc.).
+ * Plays an info tone then speaks the status label and call number.
+ */
+export async function announceStatusChange(call: any, newStatus: string): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const callNum = call?.call_number || call?.id || '';
+  const dedupKey = `status:${callNum}:${newStatus}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  const statusLabels: Record<string, string> = {
+    dispatched: 'DISPATCHED',
+    enroute: 'UNIT ENROUTE',
+    onscene: 'UNIT ON SCENE',
+    cleared: 'CALL CLEARED',
+    closed: 'CALL CLOSED',
+    pending: 'CALL PENDING',
+  };
+  const label = statusLabels[newStatus] || newStatus.toUpperCase();
+
+  await playToneAsync('info');
+  await delay(TONE_GAP_MS);
+  enqueuePhrases([{ text: `${label}. Call ${callNum}.` }]);
+}
+
+/**
+ * Announce units dispatched to a call.
+ * Speaks each unit call sign and the call number.
+ */
+export async function announceUnitDispatched(call: any, units?: any[]): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const callNum = call?.call_number || call?.id || '';
+  const unitNames = units?.map((u: any) => u.call_sign || u.callSign || u.name).filter(Boolean).join(', ') || '';
+  const dedupKey = `unitdispatch:${callNum}:${unitNames}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  await playToneAsync('info');
+  await delay(TONE_GAP_MS);
+  const phrases: VoicePhrase[] = [];
+  if (unitNames) {
+    phrases.push({ text: `Unit ${unitNames} dispatched to call ${callNum}.` });
+  } else {
+    phrases.push({ text: `Units dispatched to call ${callNum}.` });
+  }
+  enqueuePhrases(phrases);
+}
+
+/**
+ * Announce a new BOLO (Be On the Lookout) alert.
+ * Plays a warning tone then speaks the BOLO title/description.
+ */
+export async function announceBolo(data: any): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `bolo:${data.id || data.title || Date.now()}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  await playToneAsync('warning');
+  await delay(TONE_GAP_MS);
+
+  const description = data.title || data.description || 'Be on the lookout.';
+  enqueuePhrases([
+    { text: 'Attention. New BOLO alert.' },
+    { text: description },
+  ]);
+}
+
+/**
+ * Announce an active warrant hit from safety screening.
+ * Plays an alarm tone then speaks the subject name and warrant count.
+ */
+export async function announceWarrantHit(data: any): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const personName = data.personName || data.person_name || 'Unknown subject';
+  const dedupKey = `warrant:${personName}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  await playToneAsync('alarm');
+  await delay(TONE_GAP_MS);
+
+  const count = data.warrantCount || data.warrant_count || 0;
+  const phrases: VoicePhrase[] = [
+    { text: `Warning. Active warrant. ${personName}.` },
+  ];
+  if (count > 0) {
+    phrases.push({ text: `${count} active warrant${count > 1 ? 's' : ''}.` });
+  }
   enqueuePhrases(phrases);
 }
 
