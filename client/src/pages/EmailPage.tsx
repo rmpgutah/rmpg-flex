@@ -9,7 +9,7 @@ import {
   FolderPlus, Edit3, Trash, PanelLeftClose, PanelLeftOpen, Image,
   Clock, FileStack, Users, Printer, Bell, BellOff,
   Link2, Unlink, CalendarClock, Filter, SlidersHorizontal,
-  ExternalLink, Shield, Hash,
+  ExternalLink, Shield, Hash, Upload,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useWebSocket } from '../context/WebSocketContext';
@@ -1030,113 +1030,202 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
     if (e.key === 'Escape') { e.preventDefault(); onClose(); }
   };
 
+  const [isDragOver, setIsDragOver] = useState(false);
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault(); setIsDragOver(false);
+    const files = e.dataTransfer.files;
+    if (!files.length) return;
+    Array.from(files).forEach(file => {
+      if (file.size > 25 * 1024 * 1024) { setError(`${file.name} exceeds 25MB limit`); return; }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const parts = (reader.result as string).split(',');
+        const base64 = parts.length > 1 ? parts[1] : parts[0];
+        setFileAttachments(prev => [...prev, { name: file.name, contentType: file.type || 'application/octet-stream', contentBytes: base64, size: file.size }]);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const totalAttachmentSize = fileAttachments.reduce((sum, a) => sum + a.size, 0);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onKeyDown={handleKeyDown}>
-      <div className="bg-surface-base border border-border-subtle rounded w-full max-w-2xl mx-4 flex flex-col max-h-[80vh]">
-        <div className="flex items-center justify-between px-4 py-2 border-b border-border-subtle">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm" onKeyDown={handleKeyDown}>
+      <div
+        className={`bg-[#141e2b] border border-[#1e3048] rounded-t-lg sm:rounded-lg w-full max-w-2xl sm:mx-4 flex flex-col max-h-[95vh] sm:max-h-[85vh] shadow-2xl shadow-black/50 transition-all ${isDragOver ? 'ring-2 ring-brand-500 ring-offset-2 ring-offset-[#141e2b]' : ''}`}
+        onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
+        onDragLeave={() => setIsDragOver(false)}
+        onDrop={handleDrop}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#1e3048] bg-[#0d1520] rounded-t-lg">
           <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-            <Mail className="w-4 h-4 text-brand-400" />
-            {mode === 'new' ? 'New Email' : mode === 'reply' ? 'Reply' : mode === 'reply-all' ? 'Reply All' : 'Forward'}
+            {mode === 'reply' ? <Reply className="w-4 h-4 text-brand-400" /> :
+             mode === 'reply-all' ? <ReplyAll className="w-4 h-4 text-brand-400" /> :
+             mode === 'forward' ? <Forward className="w-4 h-4 text-brand-400" /> :
+             <Mail className="w-4 h-4 text-brand-400" />}
+            {mode === 'new' ? 'New Message' : mode === 'reply' ? 'Reply' : mode === 'reply-all' ? 'Reply All' : 'Forward'}
           </h3>
-          <button onClick={onClose} className="text-rmpg-500 hover:text-white"><X className="w-4 h-4" /></button>
+          <div className="flex items-center gap-1">
+            {draftStatus && <span className="text-[9px] text-green-500 italic mr-2">{draftStatus}</span>}
+            <button onClick={onClose} className="p-1 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors"><X className="w-4 h-4" /></button>
+          </div>
         </div>
 
-        <div className="p-4 space-y-2 flex-1 overflow-y-auto">
-          {error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded px-2 py-1">{error}</div>}
-
-          <ContactAutocompleteInput value={to} onChange={setTo} label="To" placeholder="email@example.com, ..." />
-
-          <div>
-            <div className="flex items-center gap-1 mb-0.5">
-              <label className="text-[10px] text-rmpg-400">CC</label>
-              {!showBcc && (
-                <button onClick={() => setShowBcc(true)} className="text-[9px] text-brand-400 hover:text-brand-300 ml-2">+ BCC</button>
-              )}
+        {/* Drag overlay */}
+        {isDragOver && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-brand-500/10 border-2 border-dashed border-brand-500 rounded-lg pointer-events-none">
+            <div className="text-center">
+              <Upload className="w-8 h-8 text-brand-400 mx-auto mb-2" />
+              <p className="text-sm text-brand-400 font-semibold">Drop files to attach</p>
             </div>
-            <ContactAutocompleteInput value={cc} onChange={setCc} placeholder="Optional CC recipients" />
           </div>
+        )}
+
+        {/* Recipients */}
+        <div className="px-4 pt-3 space-y-1.5">
+          {error && (
+            <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded px-3 py-1.5 flex items-center gap-2">
+              <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" /> {error}
+              <button onClick={() => setError('')} className="ml-auto text-red-500 hover:text-red-300"><X className="w-3 h-3" /></button>
+            </div>
+          )}
+
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-rmpg-500 w-6 text-right flex-shrink-0">To</span>
+            <div className="flex-1"><ContactAutocompleteInput value={to} onChange={setTo} placeholder="Recipients..." /></div>
+            <div className="flex items-center gap-1 text-[9px] flex-shrink-0">
+              <button onClick={() => setCc(cc || ' ')} className={`px-1.5 py-0.5 rounded transition-colors ${cc ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-500 hover:text-white'}`}>Cc</button>
+              <button onClick={() => { setShowBcc(!showBcc); if (!showBcc) setBcc(bcc || ' '); }} className={`px-1.5 py-0.5 rounded transition-colors ${showBcc ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-500 hover:text-white'}`}>Bcc</button>
+            </div>
+          </div>
+
+          {cc !== '' && (
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-rmpg-500 w-6 text-right flex-shrink-0">Cc</span>
+              <div className="flex-1"><ContactAutocompleteInput value={cc.trim()} onChange={setCc} placeholder="CC recipients..." /></div>
+            </div>
+          )}
 
           {showBcc && (
-            <ContactAutocompleteInput value={bcc} onChange={setBcc} label="BCC" placeholder="Hidden recipients" />
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-rmpg-500 w-6 text-right flex-shrink-0">Bcc</span>
+              <div className="flex-1"><ContactAutocompleteInput value={bcc.trim()} onChange={setBcc} placeholder="BCC recipients..." /></div>
+            </div>
           )}
 
-          <div>
-            <label className="text-[10px] text-rmpg-400 block mb-0.5">Subject</label>
-            <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Subject line" className="input-dark w-full text-xs" />
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-rmpg-500 w-6 text-right flex-shrink-0">Sub</span>
+            <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Subject"
+              className="flex-1 bg-transparent text-xs text-white border-0 outline-none placeholder:text-rmpg-600 py-1" />
           </div>
+        </div>
 
-          <div>
-            <label className="text-[10px] text-rmpg-400 block mb-0.5">Body</label>
-            <div className="flex items-center gap-0.5 mb-1">
-              <button type="button" onClick={() => textareaRef.current && insertFormat(textareaRef.current, '**', '**', 'bold text')}
-                className="p-1 text-rmpg-500 hover:text-white hover:bg-surface-raised rounded transition-colors" title="Bold"><Bold className="w-3.5 h-3.5" /></button>
-              <button type="button" onClick={() => textareaRef.current && insertFormat(textareaRef.current, '*', '*', 'italic text')}
-                className="p-1 text-rmpg-500 hover:text-white hover:bg-surface-raised rounded transition-colors" title="Italic"><Italic className="w-3.5 h-3.5" /></button>
-              <button type="button" onClick={() => textareaRef.current && insertFormat(textareaRef.current, '[', '](https://)', 'link text')}
-                className="p-1 text-rmpg-500 hover:text-white hover:bg-surface-raised rounded transition-colors" title="Link"><Link className="w-3.5 h-3.5" /></button>
-              <button type="button" onClick={() => fileInputRef.current?.click()}
-                className="p-1 text-rmpg-500 hover:text-white hover:bg-surface-raised rounded transition-colors" title="Attach file"><Paperclip className="w-3.5 h-3.5" /></button>
-              <button type="button" onClick={handleInlineImage}
-                className="p-1 text-rmpg-500 hover:text-white hover:bg-surface-raised rounded transition-colors" title="Insert image"><Image className="w-3.5 h-3.5" /></button>
-              <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFileSelect} />
-              <div className="flex-1" />
-              {/* Template picker */}
-              <div className="relative">
-                <button type="button" onClick={() => setShowTemplatePicker(!showTemplatePicker)}
-                  className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] text-rmpg-500 hover:text-white hover:bg-surface-raised rounded transition-colors" title="Insert template">
-                  <FileStack className="w-3 h-3" /> Template
-                </button>
-                {showTemplatePicker && <TemplatePicker onSelect={handleTemplateSelect} onClose={() => setShowTemplatePicker(false)} />}
-              </div>
-              <button type="button" onClick={() => setShowSignatureEditor(!showSignatureEditor)}
-                className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] text-rmpg-500 hover:text-white hover:bg-surface-raised rounded transition-colors" title="Edit signature">
-                <Settings2 className="w-3 h-3" /> Signature
-              </button>
-            </div>
-            <textarea ref={textareaRef} value={body} onChange={e => setBody(e.target.value)} rows={10}
-              className="input-dark w-full text-xs font-mono resize-y" placeholder="Type your message... (Ctrl+Enter to send)" />
+        <div className="border-t border-[#1e3048] mx-4 my-0" />
+
+        {/* Formatting toolbar */}
+        <div className="flex items-center gap-0.5 px-4 py-1">
+          <button type="button" onClick={() => textareaRef.current && insertFormat(textareaRef.current, '**', '**', 'bold text')}
+            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors" title="Bold (Ctrl+B)"><Bold className="w-3.5 h-3.5" /></button>
+          <button type="button" onClick={() => textareaRef.current && insertFormat(textareaRef.current, '*', '*', 'italic text')}
+            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors" title="Italic (Ctrl+I)"><Italic className="w-3.5 h-3.5" /></button>
+          <button type="button" onClick={() => textareaRef.current && insertFormat(textareaRef.current, '[', '](https://)', 'link text')}
+            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors" title="Insert link"><Link className="w-3.5 h-3.5" /></button>
+          <div className="w-px h-4 bg-rmpg-700 mx-1" />
+          <button type="button" onClick={() => fileInputRef.current?.click()}
+            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors" title="Attach file"><Paperclip className="w-3.5 h-3.5" /></button>
+          <button type="button" onClick={handleInlineImage}
+            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors" title="Insert inline image"><Image className="w-3.5 h-3.5" /></button>
+          <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFileSelect} />
+          <div className="flex-1" />
+          <div className="relative">
+            <button type="button" onClick={() => setShowTemplatePicker(!showTemplatePicker)}
+              className="flex items-center gap-1 px-2 py-1 text-[9px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors" title="Use template">
+              <FileStack className="w-3 h-3" /> Templates
+            </button>
+            {showTemplatePicker && <TemplatePicker onSelect={handleTemplateSelect} onClose={() => setShowTemplatePicker(false)} />}
           </div>
+          <button type="button" onClick={() => setShowSignatureEditor(!showSignatureEditor)}
+            className="flex items-center gap-1 px-2 py-1 text-[9px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors" title="Edit signature">
+            <Settings2 className="w-3 h-3" /> Sig
+          </button>
+        </div>
 
-          {/* Attachment chips */}
-          {fileAttachments.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {fileAttachments.map((att, idx) => (
-                <div key={idx} className="flex items-center gap-1 px-2 py-1 bg-surface-sunken border border-border-subtle rounded text-[10px] text-rmpg-300">
-                  <Paperclip className="w-3 h-3 text-rmpg-500" />
-                  <span className="truncate max-w-[120px]">{att.name}</span>
-                  <span className="text-rmpg-500">{formatSize(att.size)}</span>
-                  <button onClick={() => removeAttachment(idx)} className="text-rmpg-500 hover:text-red-400"><X className="w-3 h-3" /></button>
-                </div>
-              ))}
-            </div>
-          )}
+        {/* Body */}
+        <div className="flex-1 px-4 overflow-y-auto">
+          <textarea ref={textareaRef} value={body} onChange={e => setBody(e.target.value)} rows={12}
+            className="w-full bg-transparent text-xs text-rmpg-200 resize-none outline-none placeholder:text-rmpg-600 leading-relaxed"
+            placeholder="Write your message here...
 
-          {replyMessage && (mode === 'reply' || mode === 'reply-all') && (
-            <div className="text-[10px] text-rmpg-500 bg-surface-sunken border border-border-subtle rounded p-2">
-              <span className="text-rmpg-400">Replying to:</span> {replyMessage.fromName || replyMessage.fromAddress}<br />
-              <span className="text-rmpg-400">Subject:</span> {replyMessage.subject}<br />
-              <span className="text-rmpg-400 italic">Original message will be included automatically by the email server.</span>
-            </div>
-          )}
+Tip: **bold**, *italic*, [link text](url)
+Drag & drop files to attach • Ctrl+Enter to send" />
 
           {showSignatureEditor && <SignatureEditor onClose={() => setShowSignatureEditor(false)} />}
         </div>
 
-        <div className="flex items-center justify-between px-4 py-2 border-t border-border-subtle">
-          <div className="flex items-center gap-2">
-            <span className="text-[9px] text-rmpg-600">Signature auto-appended • **bold** *italic* [link](url)</span>
-            {draftStatus && <span className="text-[9px] text-green-600 italic">{draftStatus}</span>}
+        {/* Reply context */}
+        {replyMessage && (mode === 'reply' || mode === 'reply-all') && (
+          <div className="mx-4 mb-2 text-[10px] text-rmpg-500 bg-[#0d1520] border-l-2 border-l-brand-500/30 rounded p-2.5">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Reply className="w-3 h-3 text-brand-400" />
+              <span className="text-rmpg-400 font-medium">{replyMessage.fromName || replyMessage.fromAddress}</span>
+              <span className="text-rmpg-600">•</span>
+              <span className="text-rmpg-600">{formatDate(replyMessage.receivedAt)}</span>
+            </div>
+            <div className="text-rmpg-500 line-clamp-2">{replyMessage.bodyPreview}</div>
+          </div>
+        )}
+
+        {/* Attachments */}
+        {fileAttachments.length > 0 && (
+          <div className="mx-4 mb-2 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">
+                {fileAttachments.length} attachment{fileAttachments.length > 1 ? 's' : ''} ({formatSize(totalAttachmentSize)})
+              </span>
+              <button onClick={() => setFileAttachments([])} className="text-[9px] text-rmpg-500 hover:text-red-400">Remove all</button>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {fileAttachments.map((att, idx) => {
+                const ext = att.name.split('.').pop()?.toLowerCase() || '';
+                const isImage = ['jpg','jpeg','png','gif','webp'].includes(ext);
+                const isPdf = ext === 'pdf';
+                const fileColor = isImage ? '#06b6d4' : isPdf ? '#ef4444' : '#8b5cf6';
+                return (
+                  <div key={idx} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#0d1520] border border-[#1e3048] rounded-lg text-[10px] text-rmpg-300 group">
+                    <div className="w-5 h-5 rounded flex items-center justify-center text-[7px] font-bold uppercase"
+                      style={{ backgroundColor: fileColor + '15', color: fileColor }}>{ext.slice(0, 3)}</div>
+                    <span className="truncate max-w-[100px]">{att.name}</span>
+                    <span className="text-rmpg-600 text-[9px]">{formatSize(att.size)}</span>
+                    <button onClick={() => removeAttachment(idx)} className="text-rmpg-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"><X className="w-3 h-3" /></button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="flex items-center justify-between px-4 py-2.5 border-t border-[#1e3048] bg-[#0d1520] rounded-b-lg">
+          <div className="text-[9px] text-rmpg-600">
+            <span className="hidden sm:inline">Signature auto-appended • Markdown formatting supported</span>
+            <span className="sm:hidden">Ctrl+Enter to send</span>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={onClose} className="btn-secondary text-xs px-3 py-1">Cancel</button>
+            <button onClick={onClose} className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors">
+              Discard
+            </button>
             {mode === 'new' && (
               <button onClick={() => setShowScheduleModal(true)} disabled={sending}
-                className="btn-secondary text-xs px-3 py-1 flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5" /> Send Later
+                className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors flex items-center gap-1.5 disabled:opacity-40">
+                <Clock className="w-3.5 h-3.5" /> Later
               </button>
             )}
-            <button onClick={handleSend} disabled={sending} className="btn-primary text-xs px-4 py-1 flex items-center gap-1.5">
-              {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />} Send
+            <button onClick={handleSend} disabled={sending}
+              className="px-5 py-1.5 text-xs font-semibold bg-brand-500 hover:bg-brand-600 text-white rounded transition-colors flex items-center gap-1.5 shadow-sm shadow-brand-500/30 disabled:opacity-40">
+              {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+              {sending ? 'Sending...' : 'Send'}
             </button>
           </div>
         </div>
@@ -1302,26 +1391,32 @@ function InlineReply({ messageId, onSent }: { messageId: string; onSent: () => v
 
   if (!expanded) {
     return (
-      <div onClick={() => { setExpanded(true); setTimeout(() => inputRef.current?.focus(), 50); }}
-        className="mx-4 mb-3 px-3 py-2 border border-border-subtle rounded cursor-text text-xs text-rmpg-500 hover:border-brand-500/40 hover:text-rmpg-300 transition-colors">
-        Reply...
+      <div className="border-t border-[#1e3048] bg-[#0d1520]">
+        <div onClick={() => { setExpanded(true); setTimeout(() => inputRef.current?.focus(), 50); }}
+          className="mx-4 my-3 flex items-center gap-2 px-4 py-2.5 border border-[#1e3048] rounded-lg cursor-text text-xs text-rmpg-500 hover:border-brand-500/40 hover:text-rmpg-300 transition-all hover:shadow-lg hover:shadow-brand-500/5">
+          <Reply className="w-3.5 h-3.5 text-rmpg-600" />
+          <span>Click here to reply...</span>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="mx-4 mb-3 border border-border-subtle rounded bg-surface-base">
-      <textarea ref={inputRef} value={body} onChange={e => setBody(e.target.value)}
-        onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); handleSend(); } if (e.key === 'Escape') { setExpanded(false); setBody(''); } }}
-        rows={4} className="w-full bg-transparent text-xs text-white p-3 resize-none focus:outline-none placeholder:text-rmpg-500"
-        placeholder="Type your reply... (Ctrl+Enter to send, Esc to cancel)" autoFocus />
-      <div className="flex items-center justify-between px-3 py-1.5 border-t border-border-subtle/50">
-        <span className="text-[9px] text-rmpg-600">Signature auto-appended</span>
-        <div className="flex items-center gap-1.5">
-          <button onClick={() => { setExpanded(false); setBody(''); }} className="text-[10px] text-rmpg-500 hover:text-white px-2 py-0.5">Cancel</button>
-          <button onClick={handleSend} disabled={sending || !body.trim()} className="btn-primary text-[10px] px-3 py-0.5 flex items-center gap-1 disabled:opacity-40">
-            {sending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />} Send
-          </button>
+    <div className="border-t border-[#1e3048] bg-[#0d1520]">
+      <div className="mx-4 my-3 border border-[#1e3048] rounded-lg bg-[#141e2b] overflow-hidden focus-within:border-brand-500/40 transition-colors">
+        <textarea ref={inputRef} value={body} onChange={e => setBody(e.target.value)}
+          onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); handleSend(); } if (e.key === 'Escape') { setExpanded(false); setBody(''); } }}
+          rows={4} className="w-full bg-transparent text-xs text-rmpg-200 p-3 resize-none focus:outline-none placeholder:text-rmpg-600 leading-relaxed"
+          placeholder="Type your reply..." autoFocus />
+        <div className="flex items-center justify-between px-3 py-2 bg-[#0d1520]/50">
+          <span className="text-[9px] text-rmpg-600">Ctrl+Enter to send • Esc to cancel</span>
+          <div className="flex items-center gap-1.5">
+            <button onClick={() => { setExpanded(false); setBody(''); }} className="px-2.5 py-1 text-[10px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors">Cancel</button>
+            <button onClick={handleSend} disabled={sending || !body.trim()}
+              className="px-4 py-1 text-[10px] font-semibold bg-brand-500 hover:bg-brand-600 text-white rounded transition-colors flex items-center gap-1 disabled:opacity-40 shadow-sm shadow-brand-500/20">
+              {sending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />} Reply
+            </button>
+          </div>
         </div>
       </div>
     </div>
