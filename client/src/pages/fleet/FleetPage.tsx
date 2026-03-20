@@ -52,7 +52,8 @@ const VEHICLE_STATUSES: { value: FleetVehicleStatus; label: string }[] = [
 
 function getExpiryStatus(dateStr?: string): 'ok' | 'expiring' | 'expired' | 'none' {
   if (!dateStr) return 'none';
-  const exp = new Date(dateStr);
+  const normalized = dateStr.includes('T') ? dateStr : `${dateStr}T00:00:00`;
+  const exp = new Date(normalized);
   const now = new Date();
   if (exp < now) return 'expired';
   const thirtyDays = new Date();
@@ -360,7 +361,7 @@ export default function FleetPage() {
         gallons: parseFloat(fuelForm.gallons),
         cost_per_gallon: fuelForm.cost_per_gallon ? parseFloat(fuelForm.cost_per_gallon) : null,
         total_cost: fuelForm.total_cost ? parseFloat(fuelForm.total_cost) : null,
-        odometer_reading: fuelForm.odometer_reading ? parseInt(fuelForm.odometer_reading, 10) : null,
+        odometer_reading: fuelForm.odometer_reading ? parseFloat(fuelForm.odometer_reading) : null,
         fuel_type: fuelForm.fuel_type,
         station: fuelForm.station.trim() || null,
         notes: fuelForm.notes.trim() || null,
@@ -382,6 +383,7 @@ export default function FleetPage() {
   };
 
   const handleSaveInspection = async () => {
+    if (!inspectionForm.inspection_date) { addToast('Inspection date is required', 'warning'); return; }
     if (!inspectionForm.inspector_name.trim()) { addToast('Inspector name is required', 'warning'); return; }
     if (selectedId == null) return;
     setSaving(true);

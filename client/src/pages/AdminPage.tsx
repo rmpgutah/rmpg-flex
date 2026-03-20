@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Navigate } from 'react-router-dom';
 import {
   Settings,
   Users,
@@ -25,8 +26,10 @@ import {
   Fingerprint,
   Search,
   Mail,
+  FileText,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { useAuth } from '../context/AuthContext';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -233,12 +236,16 @@ const LS_ADMIN_TAB = 'rmpg_admin_tab';
 // ============================================================
 
 export default function AdminPage() {
+  const { user } = useAuth();
   const isMobile = useIsMobile();
   // Ref to suppress LiveSync refresh while a client inline edit is pending save
   const clientEditPendingRef = useRef(false);
 
+  // Client-side role guard — only admins can access this page
+  if (user?.role !== 'admin') return <Navigate to="/" replace />;
+
   // Restore active tab from URL ?tab= param or localStorage (default: 'users')
-  const VALID_TABS = ['users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'skiptracer', 'sessions', 'training', 'radio', 'offline', 'security', 'branding', 'email'];
+  const VALID_TABS = ['users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'iped', 'skiptracer', 'sessions', 'training', 'radio', 'offline', 'security', 'branding', 'email'];
   const [activeTab, setActiveTabState] = useState<TabId>(() => {
     try {
       // URL ?tab= param takes priority (used by Help → Training link)
@@ -649,6 +656,7 @@ export default function AdminPage() {
         { id: 'microbilt', label: 'Microbilt', icon: DatabaseZap },
         { id: 'clearpathgps', label: 'ClearPathGPS', icon: Navigation },
         { id: 'arrests', label: 'Arrest Records', icon: Fingerprint },
+        { id: 'iped', label: 'IPED', icon: FileText },
         { id: 'skiptracer', label: 'Skip Tracer', icon: Search },
         { id: 'email', label: 'Microsoft Email', icon: Mail },
         { id: 'training', label: 'Training', icon: GraduationCap },
@@ -934,30 +942,6 @@ export default function AdminPage() {
 
         {activeTab === 'security' && (
           <AdminSecurityTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
-        {activeTab === 'clearpathgps' && (
-          <AdminClearPathGpsTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
-        {activeTab === 'arrests' && (
-          <AdminArrestsTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
-        {activeTab === 'skiptracer' && (
-          <AdminSkipTracerTab
             LoadingSpinner={LoadingSpinner}
             error={error}
             setError={setError}

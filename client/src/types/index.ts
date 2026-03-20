@@ -62,6 +62,7 @@ export interface User {
   passwordExpiringSoon?: boolean;
   forcePasswordChange?: boolean;
   passwordChangedAt?: string;
+  archived_at?: string | null;
 }
 
 // --- Security Types ---
@@ -148,7 +149,8 @@ export interface Client {
   account_manager?: string;
   priority_client?: boolean;
   client_since?: string;
-  is_active: boolean;
+  status: string;
+  is_active?: boolean;
   notes?: string;
   created_at: string;
   updated_at: string;

@@ -500,8 +500,8 @@ export default function DispatchPage() {
       setUnits(mappedUnits);
       // If we had a selected call, update its reference
       setSelectedCall((prev) => {
-        if (!prev) return mappedCalls[0] || null;
-        return mappedCalls.find((c: CallForService) => c.id === prev.id) || mappedCalls[0] || null;
+        if (!prev) return null;
+        return mappedCalls.find((c: CallForService) => c.id === prev.id) || null;
       });
     } catch (err) {
       if (!options?.silent) {
@@ -624,6 +624,8 @@ export default function DispatchPage() {
     const unsubUnit = subscribe('unit_update', (msg: any) => {
       const data = msg.data || msg;
       if (data.action === 'unit_status_changed' && data.unit) {
+        setUnits((prev) => prev.map((u) => (String(u.id) === String(data.unit.id) ? { ...u, ...data.unit, id: String(data.unit.id) } : u)));
+      } else if (data.action === 'unit_updated' && data.unit) {
         setUnits((prev) => prev.map((u) => (String(u.id) === String(data.unit.id) ? { ...u, ...data.unit, id: String(data.unit.id) } : u)));
       } else if (data.action === 'unit_created' && data.unit) {
         setUnits((prev) => {
@@ -4650,6 +4652,10 @@ export default function DispatchPage() {
               case 'set_mileage':
                 // ML command — mileage logged via API, refresh data
                 fetchData();
+                break;
+              case 'premise_history':
+                // Navigate to records page; premise history lookup
+                navigate('/records');
                 break;
               case 'promote_incident':
               case 'le_notify':

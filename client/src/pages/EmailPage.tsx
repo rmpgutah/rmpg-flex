@@ -165,9 +165,9 @@ function ContactAutocompleteInput({
     fetchTimerRef.current = setTimeout(async () => {
       const gen = ++suggestGenRef.current;
       try {
-        const data = await apiFetch<ContactSuggestion[]>(`/email/contacts/search?q=${encodeURIComponent(query)}`);
+        const res = await apiFetch<{ data: ContactSuggestion[] } | ContactSuggestion[]>(`/email/contacts/search?q=${encodeURIComponent(query)}`);
         if (gen !== suggestGenRef.current) return;
-        setSuggestions(data || []);
+        setSuggestions(Array.isArray(res) ? res : (res as any).data || []);
         setShowSuggestions(true);
         setActiveIdx(-1);
       } catch { if (gen === suggestGenRef.current) setSuggestions([]); }
@@ -260,8 +260,8 @@ function TemplatePicker({ onSelect, onClose }: { onSelect: (template: EmailTempl
 
   useEffect(() => {
     let cancelled = false;
-    apiFetch<EmailTemplate[]>('/email/templates')
-      .then(data => { if (!cancelled) setTemplates(data || []); })
+    apiFetch<{ data: EmailTemplate[] } | EmailTemplate[]>('/email/templates')
+      .then(res => { if (!cancelled) setTemplates(Array.isArray(res) ? res : (res as any).data || []); })
       .catch((err) => { if (!cancelled) console.warn('[EmailPage] fetch templates failed:', err); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -452,8 +452,8 @@ function EmailIncidentLinks({ emailId, onSnackbar }: { emailId: string; onSnackb
 
   const fetchLinks = useCallback(async () => {
     try {
-      const data = await apiFetch<EmailLink[]>(`/email/links/${emailId}`);
-      setLinks(data || []);
+      const res = await apiFetch<{ data: EmailLink[] } | EmailLink[]>(`/email/links/${emailId}`);
+      setLinks(Array.isArray(res) ? res : (res as any).data || []);
     } catch { /* ignore */ }
   }, [emailId]);
 
@@ -589,8 +589,8 @@ function ScheduledEmailsPanel({ onSnackbar }: { onSnackbar: (msg: string, type?:
 
   const fetchScheduled = useCallback(async () => {
     try {
-      const data = await apiFetch<ScheduledEmail[]>('/email/scheduled');
-      setEmails(data || []);
+      const res = await apiFetch<{ data: ScheduledEmail[] } | ScheduledEmail[]>('/email/scheduled');
+      setEmails(Array.isArray(res) ? res : (res as any).data || []);
     } catch { /* ignore */ }
     finally { setLoading(false); }
   }, []);
@@ -1020,9 +1020,9 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
         body,
         attachments: fileAttachments.length > 0 ? fileAttachments : undefined,
       };
-      if (mode === 'reply' && replyMessage) { endpoint = `/email/messages/${replyMessage.id}/reply`; payload = { body }; }
-      else if (mode === 'reply-all' && replyMessage) { endpoint = `/email/messages/${replyMessage.id}/reply-all`; payload = { body }; }
-      else if (mode === 'forward' && replyMessage) { endpoint = `/email/messages/${replyMessage.id}/forward`; payload = { to: to.split(',').map(s => s.trim()), body }; }
+      if (mode === 'reply' && replyMessage) { endpoint = `/email/messages/${replyMessage.id}/reply`; payload = { body, attachments: fileAttachments.length > 0 ? fileAttachments : undefined }; }
+      else if (mode === 'reply-all' && replyMessage) { endpoint = `/email/messages/${replyMessage.id}/reply-all`; payload = { body, attachments: fileAttachments.length > 0 ? fileAttachments : undefined }; }
+      else if (mode === 'forward' && replyMessage) { endpoint = `/email/messages/${replyMessage.id}/forward`; payload = { to: to.split(',').map(s => s.trim()), body, attachments: fileAttachments.length > 0 ? fileAttachments : undefined }; }
 
       if (cc.trim() && (mode === 'new' || mode === 'forward')) payload.cc = cc.split(',').map((s: string) => s.trim());
       if (bcc.trim() && (mode === 'new' || mode === 'forward')) payload.bcc = bcc.split(',').map((s: string) => s.trim());
@@ -1526,8 +1526,8 @@ export default function EmailPage() {
       if (mod && e.key === 'n') { e.preventDefault(); setComposing('new'); return; }
       if (mod && e.shiftKey && e.key === 'R') { e.preventDefault(); if (fullMessage) setComposing('reply-all'); return; }
       if (mod && e.key === 'r') { e.preventDefault(); if (fullMessage) setComposing('reply'); return; }
-      if (mod && e.key === 'f') { e.preventDefault(); if (fullMessage) setComposing('forward'); return; }
-      if (e.key === 'Delete' || e.key === 'Backspace') { if (selectedMessage) { e.preventDefault(); handleDelete(selectedMessage); } return; }
+      if (mod && e.shiftKey && e.key === 'F') { e.preventDefault(); if (fullMessage) setComposing('forward'); return; }
+      if (e.key === 'Delete' || e.key === 'Backspace') { if (selectedMessage) { e.preventDefault(); if (window.confirm('Delete this email?')) handleDelete(selectedMessage); } return; }
       if (e.key === 'Escape') {
         if (contextMenu) { setContextMenu(null); return; }
         if (composing) { setComposing(null); return; }
@@ -1535,14 +1535,14 @@ export default function EmailPage() {
       }
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
-        const idx = selectedMessage ? messages.findIndex(m => m.id === selectedMessage.id) : -1;
+        const idx = selectedMessage ? filteredMessages.findIndex(m => m.id === selectedMessage.id) : -1;
         const next = e.key === 'ArrowDown' ? idx + 1 : idx - 1;
-        if (next >= 0 && next < messages.length) handleSelectMessage(messages[next]);
+        if (next >= 0 && next < filteredMessages.length) handleSelectMessage(filteredMessages[next]);
       }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [selectedMessage, fullMessage, composing, messages, contextMenu]); // eslint-disable-line
+  }, [selectedMessage, fullMessage, composing, filteredMessages, contextMenu]); // eslint-disable-line
 
   // Resize handler
   useEffect(() => {

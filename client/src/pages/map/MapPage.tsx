@@ -162,6 +162,7 @@ export default function MapPage() {
   const [playbackSpeed, setPlaybackSpeed] = useState(2);
   const playbackMarkerRef = useRef<any>(null);
   const playbackAnimRef = useRef<number | null>(null);
+  const playbackIdxRef = useRef(0);
 
   // Layers panel (left) collapsed/expanded
   const [layersPanelOpen, setLayersPanelOpen] = useState(true);
@@ -1282,7 +1283,7 @@ export default function MapPage() {
             dot.addListener('click', () => {
               const time = new Date(pt.time).toLocaleString();
               const locationRow = pt.road_name
-                ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Road</td><td style="color:#e0e0e0">${pt.road_name}${pt.intersection ? ` @ ${pt.intersection}` : ''}</td></tr>`
+                ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Road</td><td style="color:#e0e0e0">${escapeHtml(pt.road_name)}${pt.intersection ? ` @ ${escapeHtml(pt.intersection)}` : ''}</td></tr>`
                 : '';
               const html = `
                 <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:220px;line-height:1.6;background:#0a0e14;padding:10px 12px;border-radius:6px;border:1px solid #1e2a3a">
@@ -1336,6 +1337,9 @@ export default function MapPage() {
   // Trail Playback Animation
   // ============================================================
 
+  // Keep ref in sync with state so interval reads current value
+  useEffect(() => { playbackIdxRef.current = playbackIdx; }, [playbackIdx]);
+
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !mapLoaded || !isPlaying || playbackUnit == null) return;
@@ -1345,7 +1349,7 @@ export default function MapPage() {
 
     // Create or update playback marker
     if (!playbackMarkerRef.current) {
-      const pt = trail.points[playbackIdx] || trail.points[0];
+      const pt = trail.points[playbackIdxRef.current] || trail.points[0];
       playbackMarkerRef.current = new google.maps.Marker({
         position: { lat: pt.lat, lng: pt.lng },
         map,
@@ -1363,7 +1367,7 @@ export default function MapPage() {
       });
     }
 
-    let currentIdx = playbackIdx;
+    let currentIdx = playbackIdxRef.current;
     const step = () => {
       if (currentIdx >= trail.points.length) {
         setIsPlaying(false);

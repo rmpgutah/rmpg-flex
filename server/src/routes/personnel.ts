@@ -1200,7 +1200,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
   parentRouter.post('/personnel/credentials', authenticateToken, requireRole('admin', 'manager'), (req: Request, res: Response) => {
     try {
       const db = getDb();
-      const { officer_id, credential_type, credential_number, issued_date, expiry_date, notes } = req.body;
+      const { officer_id, credential_type, credential_number, issuing_authority, issued_date, expiry_date, notes } = req.body;
 
       if (!officer_id || !credential_type) {
         res.status(400).json({ error: 'officer_id and credential_type are required' });
@@ -1208,9 +1208,9 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       }
 
       const result = db.prepare(`
-        INSERT INTO credentials (officer_id, credential_type, credential_number, issued_date, expiry_date, notes)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(officer_id, credential_type, credential_number || null, issued_date || null, expiry_date || null, notes || null);
+        INSERT INTO credentials (officer_id, credential_type, credential_number, issuing_authority, issued_date, expiry_date, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(officer_id, credential_type, credential_number || null, issuing_authority || null, issued_date || null, expiry_date || null, notes || null);
 
       const credential = db.prepare('SELECT * FROM credentials WHERE id = ?').get(result.lastInsertRowid);
       res.status(201).json(credential);

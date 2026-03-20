@@ -134,6 +134,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
   const playbackMarkerRef = useRef<google.maps.Marker | null>(null);
   const playbackAnimRef = useRef<number | null>(null);
+  const playbackIdxRef = useRef(0);
 
   // ── Fetch available units on open ──
   useEffect(() => {
@@ -311,12 +312,15 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
     map.fitBounds(bounds, { top: 50, right: 50, bottom: 50, left: 360 });
   }, [map, clearMapObjects]);
 
+  // Keep ref in sync with state so interval reads current value
+  useEffect(() => { playbackIdxRef.current = playbackIdx; }, [playbackIdx]);
+
   // ── Playback animation ──
   useEffect(() => {
     if (!map || !mapLoaded || !isPlaying || !trail || trail.points.length === 0) return;
 
     if (!playbackMarkerRef.current) {
-      const pt = trail.points[playbackIdx] || trail.points[0];
+      const pt = trail.points[playbackIdxRef.current] || trail.points[0];
       playbackMarkerRef.current = new google.maps.Marker({
         position: { lat: pt.lat, lng: pt.lng },
         map,
@@ -334,7 +338,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
       });
     }
 
-    let currentIdx = playbackIdx;
+    let currentIdx = playbackIdxRef.current;
     const step = () => {
       if (currentIdx >= trail.points.length) {
         setIsPlaying(false);

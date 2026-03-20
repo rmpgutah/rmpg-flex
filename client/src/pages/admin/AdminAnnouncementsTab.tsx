@@ -56,7 +56,7 @@ const PRIORITY_COLORS: Record<string, string> = {
   critical: 'text-red-300 bg-red-900/50',
 };
 
-const ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'];
+const ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'];
 
 const emptyForm: {
   title: string; body: string; type: Announcement['type']; priority: Announcement['priority'];

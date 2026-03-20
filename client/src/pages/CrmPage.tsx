@@ -466,7 +466,7 @@ export default function CrmPage() {
                 <label className="field-label">Client</label>
                 <select className="input-dark w-full" value={String(taskForm.client_id || '')} onChange={e => setTaskForm(p => ({ ...p, client_id: e.target.value ? Number(e.target.value) as any : undefined }))}>
                   <option value="">No client</option>
-                  {clients.filter(c => c.is_active !== false).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {clients.filter(c => c.status !== 'inactive').map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
               <div>
@@ -505,7 +505,7 @@ export default function CrmPage() {
                 <label className="field-label">Client</label>
                 <select className="input-dark w-full" value={activityForm.client_id} onChange={e => setActivityForm(p => ({ ...p, client_id: e.target.value }))}>
                   <option value="">Select client...</option>
-                  {clients.filter(c => c.is_active !== false).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {clients.filter(c => c.status !== 'inactive').map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
               <div>
@@ -673,7 +673,7 @@ export default function CrmPage() {
                 <div className="text-xs font-medium text-rmpg-200">{c.name}</div>
                 <div className="text-[10px] text-rmpg-400 flex items-center gap-2 mt-0.5">
                   {c.contact_name && <span>{c.contact_name}</span>}
-                  {c.is_active === false && <span className="text-red-400">INACTIVE</span>}
+                  {c.status === 'inactive' && <span className="text-red-400">INACTIVE</span>}
                   {(c as any).priority_client && <span className="text-amber-400">PRIORITY</span>}
                 </div>
               </button>

@@ -213,9 +213,9 @@ export default function ServeAttemptModal({
         attempt_type: attemptType,
         result: attemptType === 'failed'
           ? (failedReason || 'other')
-          : 'served',
-        latitude: gps.latitude ?? undefined,
-        longitude: gps.longitude ?? undefined,
+          : attemptType === 'posting' ? 'posted' : 'served',
+        gps_lat: gps.latitude ?? undefined,
+        gps_lng: gps.longitude ?? undefined,
         gps_accuracy: gps.accuracy ?? undefined,
         address_verified: !showDistanceWarning,
         photo_ids: photos.map(p => p.id),

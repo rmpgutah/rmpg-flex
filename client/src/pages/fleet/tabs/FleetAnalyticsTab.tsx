@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  LineChart, Line, PieChart, Pie, Cell, Legend,
+  LineChart, Line, PieChart, Pie, Cell,
 } from 'recharts';
 import {
   BarChart3, Car, Fuel, Wrench, DollarSign, AlertTriangle, XCircle, Gauge,

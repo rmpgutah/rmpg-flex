@@ -70,6 +70,7 @@ export const ROLE_COLORS: Record<string, string> = {
   supervisor: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
   officer: 'bg-brand-900/50 text-brand-400 border border-brand-700/50',
   dispatcher: 'bg-blue-900/50 text-blue-400 border border-blue-700/50',
+  contract_manager: 'bg-violet-900/50 text-violet-400 border border-violet-700/50',
 };
 
 export const ACTION_COLORS: Record<string, string> = {

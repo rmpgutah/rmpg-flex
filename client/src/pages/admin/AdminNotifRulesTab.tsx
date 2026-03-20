@@ -50,7 +50,7 @@ const TRIGGER_EVENTS = [
   { value: 'vehicle_maintenance_due', label: 'Vehicle Service Due', desc: 'When a fleet vehicle needs maintenance' },
 ];
 
-const ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'];
+const ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'];
 
 const NOTIF_TYPE_ICONS: Record<string, React.ElementType> = {
   in_app: Smartphone,
