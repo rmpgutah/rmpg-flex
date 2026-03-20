@@ -51,6 +51,7 @@ import { useWebSocket } from '../context/WebSocketContext';
 import { apiFetch, OfflineUnauthorizedError } from '../hooks/useApi';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { usePresence } from '../hooks/usePresence';
+import { useDispatchVoiceAlerts } from '../hooks/useDispatchVoiceAlerts';
 import RmpgLogo from './RmpgLogo';
 import StatusBar from './StatusBar';
 import MenuBar from './MenuBar';
@@ -202,6 +203,7 @@ export default function Layout() {
 
   const gps = useGpsTracking();
   const presence = usePresence();
+  useDispatchVoiceAlerts(); // App-wide voice alerts for all dispatch events
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
   const isClientViewer = user?.role === 'client_viewer';
   const isContractManager = user?.role === 'contract_manager';
