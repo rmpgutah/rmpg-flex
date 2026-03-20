@@ -35,12 +35,13 @@ class AppUpdater {
     autoUpdater.allowDowngrade = false;
     autoUpdater.allowPrerelease = false;
 
-    // Point at GitHub Releases for auto-updates
-    // electron-updater will fetch latest.yml / latest-mac.yml from GitHub
+    // Point at the RMPG Flex VPS for auto-updates.
+    // The server dynamically generates latest.yml / latest-mac.yml at
+    // /updates/latest.yml with correct SHA-512 and version from whatever
+    // installer is currently in server/downloads/.
     autoUpdater.setFeedURL({
-      provider: 'github',
-      owner: 'rmpgutah',
-      repo: 'rmpg-flex',
+      provider: 'generic',
+      url: `${serverUrl}/updates`,
     });
 
     // ─── Event handlers ───────────────────────────────

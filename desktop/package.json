@@ -1,6 +1,6 @@
 {
   "name": "rmpg-flex-desktop",
-  "version": "5.5.0",
+  "version": "5.5.1",
   "description": "RMPG Flex CAD/RMS — Desktop Application",
   "author": "Rocky Mountain Protective Group",
   "license": "UNLICENSED",
@@ -73,7 +73,7 @@
     },
     "nsis": {
       "oneClick": false,
-      "perMachine": true,
+      "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "installerIcon": "../client/public/rmpg-seal.ico",
       "uninstallerIcon": "../client/public/rmpg-seal.ico",

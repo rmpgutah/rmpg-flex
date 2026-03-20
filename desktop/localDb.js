@@ -4,12 +4,34 @@
 // Stored at: app.getPath('userData')/rmpg-local.db
 // ============================================================
 
-const Database = require('better-sqlite3');
+// better-sqlite3 is a native module that requires a platform-specific
+// binary compiled for the exact Electron version. If it's unavailable
+// (e.g. Windows cross-compiled build missing the .node file), the app
+// falls back to online-only mode rather than crashing at startup.
+let Database = null;
+try {
+  Database = require('better-sqlite3');
+} catch (err) {
+  console.warn('[LOCAL-DB] better-sqlite3 not available — offline mode disabled:', err.message);
+}
+
 const path = require('path');
 const fs = require('fs');
 const { app } = require('electron');
 
 let db = null;
+
+// ─── Null-Object DB (used when better-sqlite3 is unavailable) ────────────────
+// Satisfies the full better-sqlite3 interface so callers never need to
+// null-check. All operations are silent no-ops that return safe empty values.
+const NULL_STMT = { run: () => ({}), get: () => null, all: () => [] };
+const NULL_DB = {
+  prepare:     () => NULL_STMT,
+  exec:        () => {},
+  pragma:      () => {},
+  transaction: (fn) => fn,  // returns the function so tx() still works
+  close:       () => {},
+};
 
 // ─── Public API ──────────────────────────────────────────────
 
@@ -19,6 +41,12 @@ function getLocalDb() {
 }
 
 function initLocalDb() {
+  if (!Database) {
+    console.warn('[LOCAL-DB] Native module unavailable — running in online-only mode (offline sync disabled)');
+    db = NULL_DB;
+    return null;
+  }
+
   const dbDir = app.getPath('userData');
   const dbPath = path.join(dbDir, 'rmpg-local.db');
 
@@ -47,6 +75,11 @@ function closeLocalDb() {
     db.close();
     db = null;
   }
+}
+
+// Returns true if the local DB is available and initialized
+function isLocalDbAvailable() {
+  return db !== null;
 }
 
 // ─── Mirror Tables (synced from server) ──────────────────────
@@ -421,13 +454,14 @@ function markQueueItem(id, status, serverResponse, error) {
 }
 
 function getQueueDepth() {
-  return db.prepare(`SELECT COUNT(*) as c FROM sync_queue WHERE status = 'pending'`).get().c;
+  return db.prepare(`SELECT COUNT(*) as c FROM sync_queue WHERE status = 'pending'`).get()?.c ?? 0;
 }
 
 module.exports = {
   initLocalDb,
   getLocalDb,
   closeLocalDb,
+  isLocalDbAvailable,
   upsertRow,
   replaceTable,
   deltaSync,
