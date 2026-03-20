@@ -255,7 +255,7 @@ export default function TrespassOrdersPage() {
       <PanelTitleBar icon={ShieldBan} title="TRESPASS ORDERS">
         <span className="text-[9px] font-mono text-rmpg-400">{totalCount} TOTAL</span>
         <span className="toolbar-separator" />
-        <ExportButton exportUrl="/trespass-orders?per_page=9999" exportFilename="trespass_orders_export.csv" />
+        <ExportButton exportUrl="/trespass-orders?per_page=200" exportFilename="trespass_orders_export.csv" />
         <button onClick={handleOpenNew} className="toolbar-btn">
           <Plus style={{ width: 11, height: 11 }} /> New Order
         </button>

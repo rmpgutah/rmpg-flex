@@ -115,12 +115,11 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
         if (config.session.enforceIpBinding && session.ip_address !== req.ip) {
           const action = config.session.ipChangeAction;
           if (action === 'invalidate') {
-            // Instead of immediately killing the session, update the session IP
-            // and allow through. This handles dynamic IPs (mobile, carrier NAT).
-            // The session is still bound to the same user-agent for theft detection.
-            db.prepare('UPDATE sessions SET ip_address = ?, last_used_at = ? WHERE session_id = ?')
-              .run(req.ip, new Date().toISOString(), decoded.sessionId);
-            // Allow through — IP updated to current
+            // Kill the session — IP address changed and policy requires invalidation
+            db.prepare('UPDATE sessions SET is_active = 0 WHERE session_id = ?')
+              .run(decoded.sessionId);
+            res.status(401).json({ error: 'Session invalidated: IP address changed', code: 'IP_CHANGED_INVALIDATED' });
+            return;
           } else if (action === 'reauth') {
             res.status(401).json({ error: 'Re-authentication required: IP address changed', code: 'IP_CHANGED_REAUTH' });
             return;

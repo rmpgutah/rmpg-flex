@@ -802,7 +802,7 @@ router.get('/:id/download-burned', validateParamId, (req: Request, res: Response
     req.headers['authorization'] = `Bearer ${req.query.token}`;
   }
   next();
-}, authenticateToken, (req: Request, res: Response) => {
+}, authenticateToken, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const video = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
@@ -876,7 +876,7 @@ router.get('/:id/thumbnail', validateParamId, (req: Request, res: Response, next
     req.headers['authorization'] = `Bearer ${req.query.token}`;
   }
   next();
-}, authenticateToken, (req: Request, res: Response) => {
+}, authenticateToken, requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const video = db.prepare('SELECT id, thumbnail_path FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;

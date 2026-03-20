@@ -333,7 +333,7 @@ export default function ColoradoDocPage() {
 
         {/* ── Right: Detail Panel ──────────────────────────── */}
         {selected && (
-          <div className="w-[380px] border-l border-[#1e3048] bg-[#141e2b] overflow-y-auto flex-shrink-0">
+          <div className="w-full lg:w-[380px] border-l border-[#1e3048] bg-[#141e2b] overflow-y-auto flex-shrink-0">
             <div className="p-3 border-b border-[#1e3048] flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <User size={14} className="text-blue-400" />

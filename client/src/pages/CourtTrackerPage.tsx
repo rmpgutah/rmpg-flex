@@ -23,29 +23,29 @@ import { isValidDate } from '../utils/validate';
 import { formatDate } from '../utils/dateUtils';
 
 const EVENT_TYPES: { value: CourtEventType; label: string }[] = [
-  { value: 'arraignment', label: 'Arraignment' }, { value: 'hearing', label: 'Hearing' },
+  { value: 'arraignment', label: 'Arraignment' }, { value: 'preliminary', label: 'Preliminary' },
   { value: 'trial', label: 'Trial' }, { value: 'sentencing', label: 'Sentencing' },
-  { value: 'motion', label: 'Motion' }, { value: 'subpoena', label: 'Subpoena' },
-  { value: 'continuance', label: 'Continuance' }, { value: 'disposition', label: 'Disposition' },
+  { value: 'hearing', label: 'Hearing' }, { value: 'motion', label: 'Motion' },
+  { value: 'review', label: 'Review' }, { value: 'other', label: 'Other' },
 ];
 
 const EVENT_TYPE_COLORS: Record<string, string> = {
   arraignment: 'bg-blue-900/50 text-blue-400 border-blue-700/50',
-  hearing: 'bg-cyan-900/50 text-cyan-400 border-cyan-700/50',
+  preliminary: 'bg-cyan-900/50 text-cyan-400 border-cyan-700/50',
   trial: 'bg-red-900/50 text-red-400 border-red-700/50',
   sentencing: 'bg-purple-900/50 text-purple-400 border-purple-700/50',
-  motion: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
-  subpoena: 'bg-orange-900/50 text-orange-400 border-orange-700/50',
-  continuance: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
-  disposition: 'bg-green-900/50 text-green-400 border-green-700/50',
+  hearing: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
+  motion: 'bg-orange-900/50 text-orange-400 border-orange-700/50',
+  review: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
+  other: 'bg-green-900/50 text-green-400 border-green-700/50',
 };
 
 const STATUS_COLORS: Record<string, string> = {
   scheduled: 'bg-blue-900/50 text-blue-400 border-blue-700/50',
-  confirmed: 'bg-green-900/50 text-green-400 border-green-700/50',
   continued: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
-  completed: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
-  cancelled: 'bg-red-900/50 text-red-400 border-red-700/50',
+  completed: 'bg-green-900/50 text-green-400 border-green-700/50',
+  cancelled: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
+  no_show: 'bg-red-900/50 text-red-400 border-red-700/50',
 };
 
 const OUTCOME_OPTIONS: { value: CourtOutcome; label: string }[] = [

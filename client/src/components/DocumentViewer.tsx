@@ -35,7 +35,7 @@ export default function DocumentViewer({
   type = 'auto',
 }: DocumentViewerProps) {
   // Validate src protocol to prevent javascript:/data: XSS
-  const safeSrc = /^(https?:|blob:|data:image\/|data:application\/pdf|\/)/i.test(src) ? src : '';
+  const safeSrc = /^(https?:|blob:|data:image\/(png|jpeg|jpg|gif|webp|bmp)|data:application\/pdf|\/)/i.test(src) ? src : '';
 
   const [zoom, setZoom] = useState(100);
   const [rotation, setRotation] = useState(0);

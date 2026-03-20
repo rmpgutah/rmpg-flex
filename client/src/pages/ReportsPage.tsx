@@ -191,6 +191,11 @@ function convertToCSV(data: any[], headers: string[]): string {
   return rows.join('\n');
 }
 
+function csvQ(val: string | number | undefined | null): string {
+  const s = String(val ?? '').replace(/\r\n/g, ' ').replace(/\n/g, ' ').replace(/"/g, '""');
+  return `"${s}"`;
+}
+
 function exportToCSV(
   incidentsData: IncidentsSummaryData | null,
   officerActivity: OfficerActivityData[],
@@ -206,20 +211,20 @@ function exportToCSV(
 
   // Summary section
   sections.push('SUMMARY STATISTICS');
-  sections.push('Metric,Value');
-  sections.push(`Total Calls,${stats.totalCalls}`);
-  sections.push(`Incidents Filed,${stats.incidentsFiled}`);
-  sections.push(`Avg Response Time,${stats.avgResponse}`);
-  sections.push(`SLA Met,${stats.slaMet}`);
-  sections.push(`Active Officers,${stats.activeOfficers}`);
+  sections.push(`${csvQ('Metric')},${csvQ('Value')}`);
+  sections.push(`${csvQ('Total Calls')},${csvQ(stats.totalCalls)}`);
+  sections.push(`${csvQ('Incidents Filed')},${csvQ(stats.incidentsFiled)}`);
+  sections.push(`${csvQ('Avg Response Time')},${csvQ(stats.avgResponse)}`);
+  sections.push(`${csvQ('SLA Met')},${csvQ(stats.slaMet)}`);
+  sections.push(`${csvQ('Active Officers')},${csvQ(stats.activeOfficers)}`);
   sections.push('');
 
   // Incidents by type
   if (incidentsData) {
     sections.push('INCIDENTS BY TYPE');
-    sections.push('Type,Count');
+    sections.push(`${csvQ('Type')},${csvQ('Count')}`);
     incidentsData.data.forEach(item => {
-      sections.push(`${formatGroupKey(item.group_key)},${item.count}`);
+      sections.push(`${csvQ(formatGroupKey(item.group_key))},${csvQ(item.count)}`);
     });
     sections.push('');
   }
@@ -227,16 +232,17 @@ function exportToCSV(
   // Officer activity
   if (officerActivity.length > 0) {
     sections.push('OFFICER ACTIVITY');
-    sections.push('Officer Name,Badge Number,Calls Responded,Incidents Written,Total Hours');
+    sections.push(`${csvQ('Officer Name')},${csvQ('Badge Number')},${csvQ('Calls Responded')},${csvQ('Incidents Written')},${csvQ('Total Hours')}`);
     officerActivity.forEach(officer => {
       sections.push(
-        `${officer.full_name},${officer.badge_number},${officer.calls_responded},${officer.incidents_written},${(Number(officer.total_hours) || 0).toFixed(1)}`
+        `${csvQ(officer.full_name)},${csvQ(officer.badge_number)},${csvQ(officer.calls_responded)},${csvQ(officer.incidents_written)},${csvQ((Number(officer.total_hours) || 0).toFixed(1))}`
       );
     });
   }
 
+  const bom = '\uFEFF';
   const csv = sections.join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8;' });
   const link = document.createElement('a');
   const url = URL.createObjectURL(blob);
 
@@ -292,7 +298,7 @@ export default function ReportsPage() {
 
         // Fetch all endpoints in parallel
         const [dashboard, incidents, responseTimes, officers] = await Promise.all([
-          apiFetch<DashboardData>('/reports/dashboard'),
+          apiFetch<DashboardData>(`/reports/dashboard?${dateParams.toString()}`),
           apiFetch<IncidentsSummaryData>(`/reports/incidents-summary?groupBy=type&${dateParams.toString()}`),
           apiFetch<ResponseTimesData>(`/reports/response-times?${dateParams.toString()}`),
           apiFetch<OfficerActivityData[]>(`/reports/officer-activity?${dateParams.toString()}`),

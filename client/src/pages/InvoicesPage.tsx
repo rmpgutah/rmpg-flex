@@ -182,6 +182,7 @@ export default function InvoicesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<InvoiceStatus | ''>('');
   const [filterClientId, setFilterClientId] = useState('');
   const [dateFrom, setDateFrom] = useState('');
@@ -252,7 +253,7 @@ export default function InvoicesPage() {
       if (filterClientId) params.set('client_id', filterClientId);
       if (dateFrom) params.set('date_from', dateFrom);
       if (dateTo) params.set('date_to', dateTo);
-      if (searchQuery.trim()) params.set('q', searchQuery.trim());
+      if (debouncedSearchQuery.trim()) params.set('q', debouncedSearchQuery.trim());
 
       const res = await apiFetch<{ data: Invoice[]; pagination: any }>(`/invoices?${params}`);
       setInvoices(res.data || []);
@@ -263,7 +264,7 @@ export default function InvoicesPage() {
     } finally {
       if (!options?.silent) setLoading(false);
     }
-  }, [page, filterStatus, filterClientId, dateFrom, dateTo, searchQuery]);
+  }, [page, filterStatus, filterClientId, dateFrom, dateTo, debouncedSearchQuery]);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -449,7 +450,10 @@ export default function InvoicesPage() {
   const handleSearchChange = (val: string) => {
     setSearchQuery(val);
     if (searchTimer.current) clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => setPage(1), 400);
+    searchTimer.current = setTimeout(() => {
+      setDebouncedSearchQuery(val);
+      setPage(1);
+    }, 400);
   };
 
   // ── Status action buttons for detail view ────────────────
@@ -1115,7 +1119,7 @@ export default function InvoicesPage() {
         />
         {(filterStatus || filterClientId || dateFrom || dateTo || searchQuery) && (
           <button
-            onClick={() => { setFilterStatus(''); setFilterClientId(''); setDateFrom(''); setDateTo(''); setSearchQuery(''); setPage(1); }}
+            onClick={() => { setFilterStatus(''); setFilterClientId(''); setDateFrom(''); setDateTo(''); setSearchQuery(''); setDebouncedSearchQuery(''); setPage(1); }}
             className="text-rmpg-500 hover:text-white text-[10px] flex items-center gap-0.5"
           >
             <X size={10} /> Clear

@@ -87,7 +87,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
   await loadPdfAssets();
   setActiveFormKey('invoice');
   setActiveCaseNumber(data.invoice_number);
-  setGenerationTimestamp(new Date().toLocaleString());
+  setGenerationTimestamp(new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }));
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -261,6 +261,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
 
   addTotal('Subtotal:', fmt(data.subtotal));
   if (data.discount_amount > 0) addTotal('Discount:', `-${fmt(data.discount_amount)}`, false, COLOR.AMOUNT_CREDIT);
+  if (data.tax_amount > 0) addTotal('Tax:', fmt(data.tax_amount));
   if (data.late_fee_amount > 0) addTotal('Late Fee:', fmt(data.late_fee_amount), false, COLOR.AMOUNT_DEBIT);
 
   doc.setDrawColor(...COLOR.BORDER_FIELD);
@@ -424,7 +425,7 @@ export function generatePrintableInvoiceHtml(data: InvoicePdfData): string {
       <div class="field-box"><div class="label">Issue Date</div><div class="value">${data.issue_date?.substring(0, 10) || '&mdash;'}</div></div>
       <div class="field-box"><div class="label">Due Date</div><div class="value">${data.due_date?.substring(0, 10) || '&mdash;'}</div></div>
       <div class="field-box"><div class="label">Terms</div><div class="value">${escHtml(data.payment_terms || 'Net 30')}</div></div>
-      <div class="field-box"><div class="label">Period</div><div class="value">${data.period_start?.substring(0, 10)} to ${data.period_end?.substring(0, 10)}</div></div>
+      <div class="field-box"><div class="label">Period</div><div class="value">${data.period_start?.substring(0, 10) || 'N/A'} to ${data.period_end?.substring(0, 10) || 'N/A'}</div></div>
     </div>
   </div>
 
@@ -458,6 +459,7 @@ export function generatePrintableInvoiceHtml(data: InvoicePdfData): string {
   <table class="totals">
     <tr><td style="text-align: right; color: #888;">Subtotal:</td><td style="text-align: right;">${fmt(data.subtotal)}</td></tr>
     ${data.discount_amount > 0 ? `<tr><td style="text-align: right; color: #00783c;">Discount:</td><td style="text-align: right; color: #00783c;">-${fmt(data.discount_amount)}</td></tr>` : ''}
+    ${data.tax_amount > 0 ? `<tr><td style="text-align: right; color: #888;">Tax:</td><td style="text-align: right;">${fmt(data.tax_amount)}</td></tr>` : ''}
     ${data.late_fee_amount > 0 ? `<tr><td style="text-align: right; color: #b40000;">Late Fee:</td><td style="text-align: right; color: #b40000;">${fmt(data.late_fee_amount)}</td></tr>` : ''}
     <tr class="total-row"><td style="text-align: right;">Total:</td><td style="text-align: right;">${fmt(data.total)}</td></tr>
     ${data.amount_paid > 0 ? `<tr><td style="text-align: right; color: #00783c;">Paid:</td><td style="text-align: right; color: #00783c;">-${fmt(data.amount_paid)}</td></tr>` : ''}

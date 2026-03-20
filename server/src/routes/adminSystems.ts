@@ -790,7 +790,7 @@ router.post('/retention/run', requireRole('admin'), (req: Request, res: Response
         if (policy.auto_delete) {
           const deleteResult = db.prepare(`
             DELETE FROM "${safeTable}"
-            WHERE created_at < date('now', '-' || ? || ' days')
+            WHERE created_at < datetime('now', 'localtime', '-' || ? || ' days')
           `).run(policy.retention_days);
           totalAffected += deleteResult.changes;
           if (deleteResult.changes > 0) {

@@ -488,7 +488,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
 
       {/* Modal */}
       <div
-        className="relative w-[520px] max-h-[80vh] flex flex-col"
+        className="relative w-full max-w-[520px] mx-4 max-h-[80vh] flex flex-col"
         style={{
           background: '#141e2b',
           border: '1px solid #3a5070',

@@ -244,7 +244,7 @@ export default function MobileDrawer({
       <div
         ref={drawerRef}
         className="absolute top-0 left-0 bottom-0 mobile-drawer open"
-        style={{ width: 'min(85vw, 320px)' }}
+        style={{ width: 'min(85vw, 320px)', paddingTop: 'env(safe-area-inset-top)' }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
@@ -304,7 +304,8 @@ export default function MobileDrawer({
           {/* Close button */}
           <button
             onClick={onClose}
-            className="flex items-center justify-center w-8 h-8 text-rmpg-400"
+            aria-label="Close menu"
+            className="flex items-center justify-center w-11 h-11 text-rmpg-400"
           >
             <X style={{ width: 18, height: 18 }} />
           </button>

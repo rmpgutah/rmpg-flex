@@ -22,6 +22,7 @@ import {
 import PanelTitleBar from '../components/PanelTitleBar';
 import EmptyState from '../components/EmptyState';
 import { apiFetch } from '../hooks/useApi';
+import { useAuth } from '../context/AuthContext';
 import { formatDate, formatDateTime } from '../utils/dateUtils';
 
 // ============================================================
@@ -70,15 +71,12 @@ interface Pagination {
 
 const EVENT_TYPES = [
   { value: 'arraignment', label: 'Arraignment' },
-  { value: 'preliminary_hearing', label: 'Preliminary Hearing' },
+  { value: 'preliminary', label: 'Preliminary' },
   { value: 'trial', label: 'Trial' },
   { value: 'sentencing', label: 'Sentencing' },
-  { value: 'motion_hearing', label: 'Motion Hearing' },
-  { value: 'status_conference', label: 'Status Conference' },
-  { value: 'plea_hearing', label: 'Plea Hearing' },
-  { value: 'probation_hearing', label: 'Probation Hearing' },
-  { value: 'appeal', label: 'Appeal' },
-  { value: 'subpoena', label: 'Subpoena' },
+  { value: 'hearing', label: 'Hearing' },
+  { value: 'motion', label: 'Motion' },
+  { value: 'review', label: 'Review' },
   { value: 'other', label: 'Other' },
 ];
 
@@ -86,24 +84,24 @@ const STATUSES = [
   { value: 'scheduled', label: 'Scheduled' },
   { value: 'continued', label: 'Continued' },
   { value: 'completed', label: 'Completed' },
-  { value: 'dismissed', label: 'Dismissed' },
-  { value: 'convicted', label: 'Convicted' },
+  { value: 'cancelled', label: 'Cancelled' },
+  { value: 'no_show', label: 'No Show' },
 ];
 
 const STATUS_COLORS: Record<string, string> = {
   scheduled: 'bg-blue-900/50 text-blue-400 border-blue-700/50',
   continued: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
   completed: 'bg-green-900/50 text-green-400 border-green-700/50',
-  dismissed: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
-  convicted: 'bg-red-900/50 text-red-400 border-red-700/50',
+  cancelled: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
+  no_show: 'bg-red-900/50 text-red-400 border-red-700/50',
 };
 
 const STATUS_ICONS: Record<string, React.ElementType> = {
   scheduled: Clock,
   continued: AlertTriangle,
   completed: CheckCircle,
-  dismissed: XCircle,
-  convicted: Scale,
+  cancelled: XCircle,
+  no_show: Scale,
 };
 
 const OUTCOMES = [
@@ -125,6 +123,9 @@ function eventTypeLabel(val: string): string {
 // ============================================================
 
 export default function CourtRecordsPage() {
+  const { user } = useAuth();
+  const canRecordOutcome = user && ['admin', 'manager', 'supervisor'].includes(user.role);
+
   // ── Data state ──
   const [events, setEvents] = useState<CourtEvent[]>([]);
   const [pagination, setPagination] = useState<Pagination>({ page: 1, limit: 50, total: 0, totalPages: 0 });
@@ -496,7 +497,7 @@ export default function CourtRecordsPage() {
                           </div>
 
                           {/* Action buttons */}
-                          {ev.status === 'scheduled' && !ev.outcome && (
+                          {canRecordOutcome && ev.status === 'scheduled' && !ev.outcome && (
                             <button
                               onClick={e => { e.stopPropagation(); setOutcomeData({ outcome: '', sentence: '', fine_amount: '', notes: ev.notes || '' }); setShowOutcomeModal(ev.id); }}
                               className="toolbar-btn toolbar-btn-primary text-[9px] mt-2"

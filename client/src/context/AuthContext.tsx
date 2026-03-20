@@ -872,6 +872,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const idleTimeoutMsRef = useRef(60 * 60 * 1000); // default 1 hour inactivity, updated from server
   const sessionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sessionStartRef = useRef<number | null>(null);
   const maxSessionMsRef = useRef(8 * 60 * 60 * 1000); // default 8 hours absolute max
 
   // Fetch session timeout config from server once authenticated
@@ -938,22 +939,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // ─── Absolute session duration timer ─────────────────
   // Forces logout after maxSessionHours regardless of activity.
   // Server also enforces this on refresh, but this gives a clean client UX.
+  // Uses sessionStartRef so that changes to the `user` object don't reset the timer.
   useEffect(() => {
     if (!user) {
       if (sessionTimerRef.current) clearTimeout(sessionTimerRef.current);
+      sessionStartRef.current = null;
       return;
     }
+
+    // Record session start once; never reset while user stays logged in
+    if (!sessionStartRef.current) {
+      sessionStartRef.current = Date.now();
+    }
+
+    const elapsed = Date.now() - sessionStartRef.current;
+    const remaining = Math.max(0, maxSessionMsRef.current - elapsed);
 
     sessionTimerRef.current = setTimeout(() => {
       console.warn('[Auth] Max session duration reached — auto-logout');
       sessionStorage.setItem('rmpg_session_expired', '1');
       logout();
-    }, maxSessionMsRef.current);
+    }, remaining);
 
     return () => {
       if (sessionTimerRef.current) clearTimeout(sessionTimerRef.current);
     };
-  }, [user, logout]);
+    // `user` is included only as a boolean gate (null vs non-null).
+    // sessionStartRef prevents the timer from resetting when the user
+    // object reference changes on token refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!user, logout]);
 
   // Cleanup on unmount
   useEffect(() => {

@@ -288,7 +288,7 @@ function DashboardTab({ records, requirements, officers }: {
     const officerCompliance = officers
       .filter(o => ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'].includes(o.role))
       .map(officer => {
-        const officerRecs = records.filter(r => r.officer_id === officer.id);
+        const officerRecs = records.filter(r => String(r.officer_id) === String(officer.id));
         const completedCourses = new Set(
           officerRecs.filter(r => r.status === 'completed').map(r => r.course_name)
         );

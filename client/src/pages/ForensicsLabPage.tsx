@@ -156,6 +156,7 @@ export default function ForensicsLabPage() {
   const [cases, setCases] = useState<ForensicCase[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchInput, setSearchInput] = useState('');
@@ -206,8 +207,9 @@ export default function ForensicsLabPage() {
       const res = await apiFetch<ListResponse>(`/forensics?${qs}`);
       setCases(res.data);
       setTotal(res.total);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load forensic cases:', err);
+      setError(err.message || 'Failed to load forensic cases');
     } finally {
       setLoading(false);
     }
@@ -221,8 +223,9 @@ export default function ForensicsLabPage() {
       const res = await apiFetch<ForensicCase>(`/forensics/${id}`);
       setSelectedCase(res);
       setEditing(false);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load case detail:', err);
+      setError(err.message || 'Failed to load case detail');
     } finally {
       setDetailLoading(false);
     }
@@ -263,8 +266,9 @@ export default function ForensicsLabPage() {
       });
       fetchCases();
       handleSelectCase(res);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Create case failed:', err);
+      alert(err.message || 'Failed to create case');
     } finally {
       setCreating(false);
     }
@@ -281,8 +285,9 @@ export default function ForensicsLabPage() {
       fetchDetail(selectedCase.id);
       fetchCases();
       setEditing(false);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Update case failed:', err);
+      alert(err.message || 'Failed to update case');
     } finally {
       setSaving(false);
     }
@@ -298,8 +303,9 @@ export default function ForensicsLabPage() {
       setShowAddExhibit(false);
       setExhibitForm({ description: '', item_type: '', condition_received: '', examination_requested: '', notes: '' });
       fetchDetail(selectedCase.id);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Add exhibit failed:', err);
+      alert(err.message || 'Failed to add exhibit');
     }
   };
 
@@ -313,8 +319,9 @@ export default function ForensicsLabPage() {
       setShowAddAnalysis(false);
       setAnalysisForm({ analysis_type: '', examiner_name: '', methodology: '', instruments_used: '', notes: '' });
       fetchDetail(selectedCase.id);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Add analysis failed:', err);
+      alert(err.message || 'Failed to add analysis');
     }
   };
 
@@ -433,6 +440,12 @@ export default function ForensicsLabPage() {
 
       {/* Case List */}
       <div className="flex-1 overflow-y-auto min-h-0">
+        {error && (
+          <div className="mx-3 mt-2 px-2 py-1.5 bg-red-900/30 border border-red-800/50 rounded text-red-400 text-xs flex items-center gap-1.5">
+            <AlertTriangle size={12} /> {error}
+            <button onClick={() => setError('')} className="ml-auto text-red-500 hover:text-red-300"><X size={10} /></button>
+          </div>
+        )}
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="animate-spin text-[#5a6a7a]" size={20} />

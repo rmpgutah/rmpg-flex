@@ -293,6 +293,7 @@ export default function IpedPage() {
   };
 
   const handleRemoveHashSet = async (name: string) => {
+    if (!window.confirm('Remove hash set "' + name + '"?')) return;
     try {
       await apiFetch(`/iped/hash-sets/${encodeURIComponent(name)}`, { method: 'DELETE' });
       addToast(`Hash set "${name}" removed`, 'success');

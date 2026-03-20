@@ -1968,8 +1968,8 @@ export interface VehicleTow {
 
 // --- Court & Legal Tracker ---
 
-export type CourtEventType = 'arraignment' | 'hearing' | 'trial' | 'sentencing' | 'motion' | 'subpoena' | 'continuance' | 'disposition';
-export type CourtEventStatus = 'scheduled' | 'continued' | 'completed' | 'cancelled' | 'missed';
+export type CourtEventType = 'arraignment' | 'preliminary' | 'trial' | 'sentencing' | 'hearing' | 'motion' | 'review' | 'other';
+export type CourtEventStatus = 'scheduled' | 'continued' | 'completed' | 'cancelled' | 'no_show';
 export type CourtOutcome = 'guilty' | 'not_guilty' | 'dismissed' | 'plea_deal' | 'deferred' | 'continued' | 'warrant_issued';
 
 export interface CourtEvent {

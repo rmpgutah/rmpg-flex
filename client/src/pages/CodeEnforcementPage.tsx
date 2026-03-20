@@ -63,7 +63,7 @@ const EMPTY_VIOLATION = {
 const EMPTY_TOW = {
   vehicle_year: '', vehicle_make: '', vehicle_model: '', vehicle_color: '',
   vehicle_plate: '', vehicle_vin: '', tow_from: '', tow_to: '',
-  tow_reason: 'parking_violation' as TowReason, tow_company: '', tow_fee: '', storage_fee: '', notes: '',
+  tow_reason: 'parking_violation' as TowReason, tow_company: '', tow_fee: '', storage_fee_daily: '', notes: '',
 };
 
 export default function CodeEnforcementPage() {
