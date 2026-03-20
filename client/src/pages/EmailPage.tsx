@@ -1872,7 +1872,7 @@ export default function EmailPage() {
             {folderCollapsed ? <PanelLeftOpen className="w-3.5 h-3.5" /> : <PanelLeftClose className="w-3.5 h-3.5" />}
           </button>
           {!folderCollapsed && (
-            <button onClick={() => setComposing('new')} className="btn-primary flex-1 text-xs py-1.5 flex items-center justify-center gap-1.5">
+            <button onClick={() => setComposing('new')} className="flex-1 text-xs py-1.5 flex items-center justify-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded transition-colors shadow-sm shadow-brand-500/20">
               <Plus className="w-3.5 h-3.5" /> Compose
             </button>
           )}
@@ -2081,53 +2081,97 @@ export default function EmailPage() {
                   <div key={thread.conversationId}>
                     {isMulti && (
                       <button onClick={() => toggleThread(thread.conversationId)}
-                        className="w-full flex items-center gap-1 px-3 py-0.5 text-[9px] text-rmpg-500 hover:text-rmpg-300 bg-surface-sunken/50 border-b border-border-subtle/30">
+                        className="w-full flex items-center gap-1.5 px-3 py-1 text-[9px] text-brand-400/70 hover:text-brand-400 bg-brand-500/5 border-b border-brand-500/10 transition-colors">
                         {isExpanded ? <ChevronDown className="w-2.5 h-2.5" /> : <ChevronRightIcon className="w-2.5 h-2.5" />}
-                        <MessageSquare className="w-2.5 h-2.5" /><span>{thread.messages.length} messages in thread</span>
+                        <MessageSquare className="w-2.5 h-2.5" />
+                        <span className="font-medium">{thread.messages.length} messages in conversation</span>
+                        {!isExpanded && <span className="text-rmpg-600 ml-auto">click to expand</span>}
                       </button>
                     )}
 
-                    {displayMessages.map(msg => (
+                    {displayMessages.map(msg => {
+                      // Generate consistent avatar color from sender
+                      const AVATAR_COLORS = ['#3b82f6','#8b5cf6','#06b6d4','#10b981','#f59e0b','#ef4444','#ec4899','#6366f1','#14b8a6','#f97316'];
+                      const senderKey = (msg.fromAddress || msg.fromName || '').toLowerCase();
+                      const avatarColor = AVATAR_COLORS[Math.abs([...senderKey].reduce((a, c) => a + c.charCodeAt(0), 0)) % AVATAR_COLORS.length];
+                      const avatarInitial = (msg.fromName || msg.fromAddress || '?').charAt(0).toUpperCase();
+
+                      return (
                       <div key={msg.id}
-                        className={`group relative px-3 py-2 cursor-pointer border-b border-border-subtle/50 transition-colors ${
-                          selectedMessage?.id === msg.id ? 'bg-brand-500/10 border-l-2 border-l-brand-500' : 'hover:bg-surface-base border-l-2 border-l-transparent'
+                        className={`group relative px-3 py-2.5 cursor-pointer border-b border-border-subtle/40 transition-all duration-150 ${
+                          selectedMessage?.id === msg.id
+                            ? 'bg-brand-500/10 border-l-[3px] border-l-brand-500'
+                            : msg.isRead
+                              ? 'hover:bg-surface-base/80 border-l-[3px] border-l-transparent'
+                              : 'bg-surface-base/30 hover:bg-surface-base/60 border-l-[3px] border-l-brand-400/50'
                         } ${isMulti && isExpanded && msg !== thread.latest ? 'pl-6' : ''}`}
                         onContextMenu={e => handleContextMenu(e, msg)}>
-                        <div className="flex items-start gap-1.5">
-                          <button onClick={e => { e.stopPropagation(); toggleSelectId(msg.id); }}
-                            className={`mt-0.5 flex-shrink-0 transition-opacity ${
-                              selectedIds.has(msg.id) ? 'opacity-100 text-brand-400' : 'opacity-0 group-hover:opacity-60 text-rmpg-500 hover:text-white'
-                            }`}>
-                            {selectedIds.has(msg.id) ? <CheckSquare className="w-3 h-3" /> : <Square className="w-3 h-3" />}
-                          </button>
+                        <div className="flex items-start gap-2.5">
+                          {/* Avatar / Select checkbox */}
+                          <div className="relative flex-shrink-0 mt-0.5">
+                            {selectedIds.has(msg.id) ? (
+                              <button onClick={e => { e.stopPropagation(); toggleSelectId(msg.id); }}
+                                className="w-8 h-8 rounded-full bg-brand-500 flex items-center justify-center">
+                                <CheckCircle className="w-4 h-4 text-white" />
+                              </button>
+                            ) : (
+                              <button onClick={e => { e.stopPropagation(); toggleSelectId(msg.id); }}
+                                className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold transition-all group-hover:ring-2 group-hover:ring-rmpg-600"
+                                style={{ backgroundColor: avatarColor + '20', color: avatarColor }}>
+                                {avatarInitial}
+                              </button>
+                            )}
+                            {!msg.isRead && !selectedIds.has(msg.id) && (
+                              <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-brand-400 border-2 border-surface-sunken" />
+                            )}
+                          </div>
 
                           <div className="flex-1 min-w-0" onClick={() => handleSelectMessage(msg)}>
                             <div className="flex items-center gap-1.5 mb-0.5">
-                              {!msg.isRead && <div className="w-1.5 h-1.5 rounded-full bg-brand-400 flex-shrink-0" />}
-                              <span className={`text-[11px] truncate flex-1 ${msg.isRead ? 'text-rmpg-300' : 'text-white font-semibold'}`}>{msg.fromName || msg.fromAddress}</span>
-                              {isMulti && !isExpanded && <span className="text-[8px] bg-rmpg-700 text-rmpg-300 px-1 rounded font-mono">{thread.messages.length}</span>}
-                              <span className="text-[9px] text-rmpg-500 flex-shrink-0">{formatDate(msg.receivedAt)}</span>
+                              <span className={`text-[11px] truncate flex-1 ${msg.isRead ? 'text-rmpg-300' : 'text-white font-semibold'}`}>
+                                {msg.fromName || msg.fromAddress}
+                              </span>
+                              {isMulti && !isExpanded && (
+                                <span className="text-[8px] bg-brand-500/15 text-brand-400 px-1.5 py-0.5 rounded-full font-mono font-bold">{thread.messages.length}</span>
+                              )}
+                              <span className="text-[9px] text-rmpg-500 flex-shrink-0 tabular-nums">{formatDate(msg.receivedAt)}</span>
                             </div>
-                            <div className={`text-[11px] truncate ${msg.isRead ? 'text-rmpg-400' : 'text-rmpg-200'}`}>{msg.subject}</div>
-                            <div className="text-[10px] text-rmpg-500 truncate mt-0.5">{msg.bodyPreview}</div>
-                            <div className="flex items-center gap-1 mt-0.5">
-                              {msg.hasAttachments && <Paperclip className="w-2.5 h-2.5 text-rmpg-500" />}
-                              {msg.isFlagged && <Flag className="w-2.5 h-2.5 text-yellow-400" />}
-                              {msg.importance === 'high' && <AlertTriangle className="w-2.5 h-2.5 text-red-400" />}
-                            </div>
+                            <div className={`text-[11px] truncate ${msg.isRead ? 'text-rmpg-400' : 'text-rmpg-100 font-medium'}`}>{msg.subject || '(no subject)'}</div>
+                            <div className="text-[10px] text-rmpg-500 truncate mt-0.5 leading-relaxed">{msg.bodyPreview}</div>
+                            {/* Indicator pills */}
+                            {(msg.hasAttachments || msg.isFlagged || msg.importance === 'high') && (
+                              <div className="flex items-center gap-1.5 mt-1">
+                                {msg.hasAttachments && (
+                                  <span className="inline-flex items-center gap-0.5 text-[8px] text-rmpg-400 bg-rmpg-700/50 px-1.5 py-0.5 rounded">
+                                    <Paperclip className="w-2.5 h-2.5" /> Attachment
+                                  </span>
+                                )}
+                                {msg.isFlagged && (
+                                  <span className="inline-flex items-center gap-0.5 text-[8px] text-yellow-400 bg-yellow-900/20 px-1.5 py-0.5 rounded">
+                                    <Flag className="w-2.5 h-2.5" /> Flagged
+                                  </span>
+                                )}
+                                {msg.importance === 'high' && (
+                                  <span className="inline-flex items-center gap-0.5 text-[8px] text-red-400 bg-red-900/20 px-1.5 py-0.5 rounded">
+                                    <AlertTriangle className="w-2.5 h-2.5" /> Important
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </div>
 
                           {/* Hover quick actions */}
-                          <div className="flex-shrink-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={e => { e.stopPropagation(); handleArchive(msg); }} className="p-0.5 text-rmpg-500 hover:text-white" title="Archive"><Archive className="w-3 h-3" /></button>
-                            <button onClick={e => { e.stopPropagation(); handleToggleRead(msg); }} className="p-0.5 text-rmpg-500 hover:text-white" title={msg.isRead ? 'Mark unread' : 'Mark read'}>
-                              {msg.isRead ? <MailOpen className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                          <div className="flex-shrink-0 flex flex-col items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={e => { e.stopPropagation(); handleArchive(msg); }} className="p-1 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded" title="Archive"><Archive className="w-3.5 h-3.5" /></button>
+                            <button onClick={e => { e.stopPropagation(); handleToggleRead(msg); }} className="p-1 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded" title={msg.isRead ? 'Mark unread' : 'Mark read'}>
+                              {msg.isRead ? <MailOpen className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                             </button>
-                            <button onClick={e => { e.stopPropagation(); handleDelete(msg); }} className="p-0.5 text-rmpg-500 hover:text-red-400" title="Delete"><Trash2 className="w-3 h-3" /></button>
+                            <button onClick={e => { e.stopPropagation(); handleDelete(msg); }} className="p-1 text-rmpg-500 hover:text-red-400 hover:bg-red-900/20 rounded" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
                           </div>
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 );
               })}
@@ -2148,54 +2192,105 @@ export default function EmailPage() {
         {fullMessage ? (
           <>
             {/* Message Header */}
-            <div className="px-4 py-3 border-b border-border-subtle bg-surface-base space-y-2">
-              <div className="flex items-center gap-2">
-                <button onClick={() => { setSelectedMessage(null); setFullMessage(null); setMobileView('list'); }} className="md:hidden p-1 text-rmpg-400 hover:text-white"><ChevronLeft className="w-4 h-4" /></button>
-                <h2 className="text-sm font-semibold text-white flex-1 truncate">{fullMessage.subject}</h2>
+            <div className="border-b border-border-subtle bg-surface-base">
+              {/* Subject + back button */}
+              <div className="flex items-center gap-2 px-4 pt-3 pb-2">
+                <button onClick={() => { setSelectedMessage(null); setFullMessage(null); setMobileView('list'); }} className="md:hidden p-1 text-rmpg-400 hover:text-white flex-shrink-0"><ChevronLeft className="w-4 h-4" /></button>
+                <h2 className="text-sm font-semibold text-white flex-1 truncate">{fullMessage.subject || '(no subject)'}</h2>
+                {fullMessage.importance === 'high' && (
+                  <span className="text-[8px] px-1.5 py-0.5 bg-red-900/20 text-red-400 rounded font-bold uppercase flex-shrink-0">Important</span>
+                )}
               </div>
 
-              <div className="flex items-center gap-2 text-[11px]">
-                <div className="w-7 h-7 rounded-full bg-brand-500/20 flex items-center justify-center text-brand-400 font-bold text-[10px] flex-shrink-0">
-                  {(fullMessage.fromName || fullMessage.fromAddress).charAt(0).toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-white font-medium">{fullMessage.fromName || fullMessage.fromAddress}</div>
-                  <div className="text-rmpg-500 text-[10px]">&lt;{fullMessage.fromAddress}&gt; • {new Date(fullMessage.receivedAt).toLocaleString()}</div>
-                  {fullMessage.toAddresses.length > 0 && <div className="text-rmpg-500 text-[10px] truncate">To: {fullMessage.toAddresses.map(a => a.name || a.email).join(', ')}</div>}
-                  {fullMessage.ccAddresses.length > 0 && <div className="text-rmpg-500 text-[10px] truncate">CC: {fullMessage.ccAddresses.map(a => a.name || a.email).join(', ')}</div>}
-                </div>
-              </div>
+              {/* Sender info with avatar */}
+              {(() => {
+                const senderKey = (fullMessage.fromAddress || '').toLowerCase();
+                const AVATAR_COLORS = ['#3b82f6','#8b5cf6','#06b6d4','#10b981','#f59e0b','#ef4444','#ec4899','#6366f1','#14b8a6','#f97316'];
+                const avatarColor = AVATAR_COLORS[Math.abs([...senderKey].reduce((a, c) => a + c.charCodeAt(0), 0)) % AVATAR_COLORS.length];
+                return (
+                  <div className="flex items-start gap-3 px-4 pb-2">
+                    <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 mt-0.5"
+                      style={{ backgroundColor: avatarColor + '20', color: avatarColor }}>
+                      {(fullMessage.fromName || fullMessage.fromAddress).charAt(0).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[12px] text-white font-semibold">{fullMessage.fromName || fullMessage.fromAddress}</span>
+                        <span className="text-[10px] text-rmpg-500">&lt;{fullMessage.fromAddress}&gt;</span>
+                      </div>
+                      <div className="text-[10px] text-rmpg-500 mt-0.5">
+                        {new Date(fullMessage.receivedAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                      </div>
+                      {fullMessage.toAddresses.length > 0 && (
+                        <div className="text-[10px] text-rmpg-500 mt-0.5 truncate">
+                          <span className="text-rmpg-600">To:</span> {fullMessage.toAddresses.map(a => a.name || a.email).join(', ')}
+                        </div>
+                      )}
+                      {fullMessage.ccAddresses.length > 0 && (
+                        <div className="text-[10px] text-rmpg-500 truncate">
+                          <span className="text-rmpg-600">CC:</span> {fullMessage.ccAddresses.map(a => a.name || a.email).join(', ')}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
 
-              {/* Action Buttons */}
-              <div className="flex items-center gap-1">
-                <button onClick={() => setComposing('reply')} className="btn-secondary text-[10px] px-2 py-0.5 flex items-center gap-1"><Reply className="w-3 h-3" /> Reply</button>
-                <button onClick={() => setComposing('reply-all')} className="btn-secondary text-[10px] px-2 py-0.5 flex items-center gap-1"><ReplyAll className="w-3 h-3" /> Reply All</button>
-                <button onClick={() => setComposing('forward')} className="btn-secondary text-[10px] px-2 py-0.5 flex items-center gap-1"><Forward className="w-3 h-3" /> Forward</button>
-                <button onClick={() => selectedMessage && handleArchive(selectedMessage)} className="btn-secondary text-[10px] px-2 py-0.5 flex items-center gap-1" title="Archive"><Archive className="w-3 h-3" /> Archive</button>
-                <div className="flex-1" />
+              {/* Action Bar */}
+              <div className="flex items-center gap-1 px-4 py-1.5 border-t border-border-subtle/50 bg-surface-sunken/30">
+                <button onClick={() => setComposing('reply')} className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium text-brand-400 bg-brand-500/10 hover:bg-brand-500/20 border border-brand-500/30 rounded transition-colors">
+                  <Reply className="w-3 h-3" /> Reply
+                </button>
+                <button onClick={() => setComposing('reply-all')} className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium text-rmpg-300 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors">
+                  <ReplyAll className="w-3 h-3" /> Reply All
+                </button>
+                <button onClick={() => setComposing('forward')} className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium text-rmpg-300 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors">
+                  <Forward className="w-3 h-3" /> Forward
+                </button>
+                <div className="w-px h-4 bg-rmpg-700 mx-1" />
+                <button onClick={() => selectedMessage && handleArchive(selectedMessage)} className="p-1.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors" title="Archive"><Archive className="w-3.5 h-3.5" /></button>
                 <MoveToFolderDropdown folders={folders} currentFolder={selectedFolder} onMove={handleMoveToFolder} />
-                <button onClick={() => selectedMessage && handleToggleRead(selectedMessage)} className="p-1 text-rmpg-500 hover:text-white" title="Toggle read">
+                <div className="flex-1" />
+                <button onClick={() => selectedMessage && handleToggleRead(selectedMessage)} className="p-1.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors" title="Toggle read">
                   {selectedMessage?.isRead ? <MailOpen className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                 </button>
-                <button onClick={() => selectedMessage && handleToggleFlag(selectedMessage)} className="p-1 text-rmpg-500 hover:text-yellow-400" title="Toggle flag">
-                  <Flag className={`w-3.5 h-3.5 ${selectedMessage?.isFlagged ? 'text-yellow-400 fill-yellow-400' : ''}`} />
+                <button onClick={() => selectedMessage && handleToggleFlag(selectedMessage)} className="p-1.5 hover:bg-rmpg-700/50 rounded transition-colors" title="Toggle flag">
+                  <Flag className={`w-3.5 h-3.5 ${selectedMessage?.isFlagged ? 'text-yellow-400 fill-yellow-400' : 'text-rmpg-400 hover:text-yellow-400'}`} />
                 </button>
-                <button onClick={() => fullMessage && printEmail(fullMessage, fullMessage.bodyHtml)} className="p-1 text-rmpg-500 hover:text-white" title="Print email"><Printer className="w-3.5 h-3.5" /></button>
-                <button onClick={() => selectedMessage && handleDelete(selectedMessage)} className="p-1 text-rmpg-500 hover:text-red-400" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                <button onClick={() => fullMessage && printEmail(fullMessage, fullMessage.bodyHtml)} className="p-1.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded transition-colors" title="Print"><Printer className="w-3.5 h-3.5" /></button>
+                <button onClick={() => selectedMessage && handleDelete(selectedMessage)} className="p-1.5 text-rmpg-400 hover:text-red-400 hover:bg-red-900/20 rounded transition-colors" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
               </div>
 
               {/* Attachments */}
               {attachments.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  {attachments.filter(a => !a.isInline).map(att => (
-                    <a key={att.id} href={`/api/email/messages/${selectedMessage!.id}/attachments/${att.id}`} target="_blank" rel="noopener"
-                      className="flex items-center gap-1.5 px-2 py-1 bg-surface-sunken border border-border-subtle rounded text-[10px] text-rmpg-300 hover:text-white hover:border-brand-500/40 transition-colors">
-                      <Paperclip className="w-3 h-3 text-rmpg-500" />
-                      <span className="truncate max-w-[150px]">{att.name}</span>
-                      <span className="text-rmpg-500">{formatSize(att.size)}</span>
-                      <Download className="w-3 h-3 text-rmpg-500" />
-                    </a>
-                  ))}
+                <div className="px-4 py-2 border-t border-border-subtle/50">
+                  <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1.5">
+                    Attachments ({attachments.filter(a => !a.isInline).length})
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {attachments.filter(a => !a.isInline).map(att => {
+                      const ext = att.name.split('.').pop()?.toLowerCase() || '';
+                      const isImage = ['jpg','jpeg','png','gif','webp','bmp'].includes(ext);
+                      const isPdf = ext === 'pdf';
+                      const isDoc = ['doc','docx','rtf','odt'].includes(ext);
+                      const isSheet = ['xls','xlsx','csv'].includes(ext);
+                      const fileColor = isImage ? '#06b6d4' : isPdf ? '#ef4444' : isDoc ? '#3b82f6' : isSheet ? '#10b981' : '#8b5cf6';
+                      return (
+                        <a key={att.id} href={`/api/email/messages/${selectedMessage!.id}/attachments/${att.id}`} target="_blank" rel="noopener"
+                          className="flex items-center gap-2 px-3 py-2 bg-surface-sunken border border-border-subtle rounded-lg text-[10px] text-rmpg-300 hover:text-white hover:border-brand-500/40 transition-all hover:shadow-lg group min-w-[140px]">
+                          <div className="w-8 h-8 rounded flex items-center justify-center text-[8px] font-bold uppercase flex-shrink-0"
+                            style={{ backgroundColor: fileColor + '15', color: fileColor }}>
+                            {ext.slice(0, 4)}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate max-w-[140px] text-[10px] font-medium">{att.name}</div>
+                            <div className="text-[9px] text-rmpg-500">{formatSize(att.size)}</div>
+                          </div>
+                          <Download className="w-3.5 h-3.5 text-rmpg-500 group-hover:text-brand-400 transition-colors flex-shrink-0" />
+                        </a>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 
