@@ -371,10 +371,12 @@ router.post('/', requireRole('admin', 'manager'), personnelCreateRateLimit, (req
 });
 
 // PUT /api/personnel/:id - Update user
-router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
+    const id = parseInt(String(req.params.id), 10);
+    if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid user ID' }); return; }
     const db = getDb();
-    const user = db.prepare('SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, status, archived_at FROM users WHERE id = ?').get(req.params.id) as any;
+    const user = db.prepare('SELECT id, username, full_name, first_name, last_name, email, role, badge_number, phone, status, archived_at FROM users WHERE id = ?').get(id) as any;
     if (!user) {
       res.status(404).json({ error: 'User not found' });
       return;
@@ -477,10 +479,12 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Reque
 });
 
 // DELETE /api/personnel/:id - Soft-delete (terminate) user
-router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
+    const id = parseInt(String(req.params.id), 10);
+    if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid user ID' }); return; }
     const db = getDb();
-    const user = db.prepare('SELECT id, username, full_name, status FROM users WHERE id = ?').get(req.params.id) as any;
+    const user = db.prepare('SELECT id, username, full_name, status FROM users WHERE id = ?').get(id) as any;
     if (!user) {
       res.status(404).json({ error: 'User not found' });
       return;
@@ -519,7 +523,7 @@ router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Re
 });
 
 // POST /api/personnel/:id/archive - Archive terminated user
-router.post('/:id/archive', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/:id/archive', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = db.prepare('SELECT id, full_name, status, archived_at FROM users WHERE id = ?').get(req.params.id) as any;
@@ -548,7 +552,7 @@ router.post('/:id/archive', validateParamId, requireRole('admin', 'manager'), (r
 });
 
 // POST /api/personnel/:id/unarchive
-router.post('/:id/unarchive', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/:id/unarchive', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const user = db.prepare('SELECT id, full_name, status, archived_at FROM users WHERE id = ?').get(req.params.id) as any;

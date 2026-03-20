@@ -1773,7 +1773,7 @@ export default function EmailPage() {
     ? messages.filter(msg => {
         if (searchFilters.sender) {
           const s = searchFilters.sender.toLowerCase();
-          if (!msg.fromName.toLowerCase().includes(s) && !msg.fromAddress.toLowerCase().includes(s)) return false;
+          if (!(msg.fromName || '').toLowerCase().includes(s) && !(msg.fromAddress || '').toLowerCase().includes(s)) return false;
         }
         if (searchFilters.hasAttachments && !msg.hasAttachments) return false;
         if (searchFilters.isFlagged && !msg.isFlagged) return false;
