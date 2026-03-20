@@ -345,7 +345,7 @@ export default function MdtPage() {
         method: 'POST',
         body: JSON.stringify({
           ...fiData,
-          location: fiData.location || (gps.latitude ? `${gps.latitude.toFixed(5)}, ${gps.longitude?.toFixed(5)}` : ''),
+          location: fiData.location || (gps.latitude && gps.longitude ? `${gps.latitude.toFixed(5)}, ${gps.longitude.toFixed(5)}` : ''),
           officer_id: localStorage.getItem('rmpg_user_id') || '',
           call_id: selectedCall?.id || undefined,
         }),
@@ -534,7 +534,7 @@ export default function MdtPage() {
           </div>
           {!isMobile && (
             <span className="text-[8px] text-rmpg-500 font-mono">
-              {gps.latitude ? `${gps.latitude.toFixed(4)}, ${gps.longitude?.toFixed(4)}` : 'NO GPS'}
+              {gps.latitude && gps.longitude ? `${gps.latitude.toFixed(4)}, ${gps.longitude.toFixed(4)}` : 'NO GPS'}
             </span>
           )}
         </div>

@@ -106,13 +106,14 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
 
       // Audit log: auto-created unit
       db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'unit_auto_created', 'unit', ?, ?, ?)
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+        VALUES (?, 'unit_auto_created', 'unit', ?, ?, ?, ?)
       `).run(
         req.user!.userId,
         unit.id,
         `Auto-created unit "${unit.call_sign}" via GPS tracking`,
         req.ip || 'unknown',
+        localNow(),
       );
     }
 
@@ -249,8 +250,12 @@ router.get('/gps/my-unit', requireRole('admin', 'manager', 'supervisor', 'office
 router.get('/gps/trail/:unitId', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const unitId = parseInt(req.params.unitId as string, 10);
-    if (isNaN(unitId)) { res.status(400).json({ error: 'Invalid unit ID' }); return; }
+    const rawUnitId = String(req.params.unitId);
+    const unitId = parseInt(rawUnitId, 10);
+    if (isNaN(unitId) || unitId < 1 || String(unitId) !== rawUnitId) {
+      res.status(400).json({ error: 'Invalid unit ID' });
+      return;
+    }
     const hours = Math.min(Math.max(parseInt(req.query.hours as string, 10) || 8, 1), 72);
 
     const rows = db.prepare(`

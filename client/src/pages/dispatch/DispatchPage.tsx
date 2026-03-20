@@ -34,6 +34,7 @@ import {
   Search,
   Building2,
   Terminal,
+  Briefcase,
 } from 'lucide-react';
 import type { CallForService, Unit, CallStatus, CallNote, UnitStatus } from '../../types';
 import CallCard from '../../components/CallCard';
@@ -61,6 +62,7 @@ import PrintRecordButton from '../../components/PrintRecordButton';
 import { useToast } from '../../components/ToastProvider';
 import { useWebSocket } from '../../context/WebSocketContext';
 import WarningTags from '../../components/WarningTags';
+import WarrantBadge from '../../components/WarrantBadge';
 import type { WarningTag } from '../../components/WarningTags';
 import FloatingSaveBar from '../../components/FloatingSaveBar';
 import CadCommandLine from '../../components/CadCommandLine';
@@ -96,7 +98,7 @@ export default function DispatchPage() {
   const { subscribe } = useWebSocket();
   const isMobile = useIsMobile();
   const { prefs: userPrefs } = useUserPreferences();
-  const { districts, sections, zones, beats, sectionLabels, zoneLabels, beatLabels } = useDistrictOptions();
+  const { districts, sections, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
   const [calls, setCalls] = useState<CallForService[]>([]);
   const recentlyCreatedIdsRef = useRef<Set<string | number>>(new Set()); // synchronous dedup for POST + WS race
   const [units, setUnits] = useState<Unit[]>([]);
@@ -148,6 +150,18 @@ export default function DispatchPage() {
   const [showCreatePersonModal, setShowCreatePersonModal] = useState(false);
   const [showCreateVehicleModal, setShowCreateVehicleModal] = useState(false);
   const [isCreatingRecord, setIsCreatingRecord] = useState(false);
+  const [serveLink, setServeLink] = useState<any>(null);
+  const [sendingToServe, setSendingToServe] = useState(false);
+
+  // Clean up search timers and abort controllers on unmount
+  useEffect(() => {
+    return () => {
+      if (personSearchTimerRef.current) clearTimeout(personSearchTimerRef.current);
+      if (vehicleSearchTimerRef.current) clearTimeout(vehicleSearchTimerRef.current);
+      if (personAbortRef.current) personAbortRef.current.abort();
+      if (vehicleAbortRef.current) vehicleAbortRef.current.abort();
+    };
+  }, []);
 
   // Close person/vehicle dropdowns on outside click
   useEffect(() => {
@@ -609,7 +623,15 @@ export default function DispatchPage() {
       announcePanicAlert(data.user_name || data.userName);
     });
 
-    return () => { unsubDispatch(); unsubUnit(); unsubPanic(); };
+    // Listen for warrant alerts on linked persons
+    const unsubWarrant = subscribe('call:warrant_alert', (msg: any) => {
+      const data = msg.data || msg;
+      addToast(`⚠️ WARRANT ALERT: ${data.personName} — ${data.warrantCount} active warrant(s) on call`, 'error');
+      // Refresh data so warrant badges appear immediately
+      fetchData({ silent: true });
+    });
+
+    return () => { unsubDispatch(); unsubUnit(); unsubPanic(); unsubWarrant(); };
   }, [subscribe, fetchData, addToast, setFilterTab]);
 
   // When switching to the archived tab, fetch archived calls if not loaded
@@ -752,7 +774,7 @@ export default function DispatchPage() {
 
   // Fetch linked incidents and activity when a call is selected
   useEffect(() => {
-    if (!selectedCall) { setLinkedIncidents([]); setActivityEntries([]); setCallWarnings([]); return; }
+    if (!selectedCall) { setLinkedIncidents([]); setActivityEntries([]); setCallWarnings([]); setServeLink(null); return; }
     let cancelled = false;
     setIsEditing(false);
     setShowAttachUnitDropdown(false);
@@ -774,6 +796,15 @@ export default function DispatchPage() {
         const warnings = await apiFetch<WarningTag[]>(`/dispatch/calls/${selectedCall.id}/warnings`);
         if (!cancelled) setCallWarnings(Array.isArray(warnings) ? warnings : []);
       } catch { if (!cancelled) setCallWarnings([]); }
+      // Fetch serve queue link for PSO calls
+      if (selectedCall.incident_type === 'pso_client_request') {
+        try {
+          const serveData = await apiFetch(`/dispatch/calls/${selectedCall.id}/serve-link`);
+          if (!cancelled) setServeLink(serveData);
+        } catch { if (!cancelled) setServeLink(null); }
+      } else {
+        if (!cancelled) setServeLink(null);
+      }
     })();
     return () => { cancelled = true; };
   }, [selectedCall?.id]);
@@ -2020,6 +2051,67 @@ export default function DispatchPage() {
                       {selectedCall.disposition && <div><span className="text-rmpg-400">Disposition:</span> {selectedCall.disposition}</div>}
                     </div>
 
+                    {/* Serve Queue Integration */}
+                    {(
+                      <div className="mt-2 pt-2 border-t border-rmpg-600">
+                        {serveLink ? (
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{
+                                background: serveLink.status === 'served' ? '#22c55e' : serveLink.status === 'failed' ? '#ef4444' : '#f59e0b'
+                              }} />
+                              <span className="text-[10px] font-bold text-rmpg-300 uppercase">Serve Queue</span>
+                              <span className="text-[10px] font-mono text-cyan-400">
+                                {serveLink.attempt_count}/{serveLink.max_attempts} attempts
+                              </span>
+                              <span className="text-[10px] font-mono px-1 rounded" style={{
+                                background: serveLink.status === 'served' ? '#22c55e20' : serveLink.status === 'failed' ? '#dc262620' : '#f59e0b20',
+                                color: serveLink.status === 'served' ? '#4ade80' : serveLink.status === 'failed' ? '#f87171' : '#fbbf24',
+                              }}>
+                                {serveLink.status?.toUpperCase()}
+                              </span>
+                            </div>
+                            <button
+                              className="text-[10px] text-blue-400 hover:text-blue-300 underline"
+                              onClick={() => window.open('/serve', '_blank')}
+                            >
+                              View in Process Server
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            className="w-full py-2 px-3 text-xs font-semibold rounded flex items-center justify-center gap-2 transition-colors"
+                            style={{
+                              background: sendingToServe ? '#374151' : '#7c3aed20',
+                              border: '1px solid #7c3aed50',
+                              color: sendingToServe ? '#9ca3af' : '#a78bfa',
+                            }}
+                            disabled={sendingToServe}
+                            onClick={async () => {
+                              setSendingToServe(true);
+                              try {
+                                const result = await apiFetch(`/dispatch/calls/${selectedCall.id}/send-to-serve`, {
+                                  method: 'POST',
+                                  body: JSON.stringify({}),
+                                });
+                                if (result) {
+                                  setServeLink(result);
+                                  addToast('Sent to Serve Queue', 'success');
+                                }
+                              } catch (err: any) {
+                                addToast(`Failed: ${err?.message || 'Unknown error'}`, 'error');
+                              } finally {
+                                setSendingToServe(false);
+                              }
+                            }}
+                          >
+                            <Briefcase style={{ width: 14, height: 14 }} />
+                            {sendingToServe ? 'Sending...' : 'Send to Serve Queue'}
+                          </button>
+                        )}
+                      </div>
+                    )}
+
                     {/* Visit History (mobile) */}
                     {selectedCall.visit_history && selectedCall.visit_history.length > 0 && (
                       <div className="mt-3 pt-2 border-t border-rmpg-600">
@@ -2534,6 +2626,34 @@ export default function DispatchPage() {
                         <RotateCcw style={{ width: 10, height: 10 }} /> Return Visit
                       </button>
                     )}
+                    {/* Send to Serve Queue — PSO calls */}
+                    {selectedCall.incident_type === 'pso_client_request' && !serveLink && (
+                      <button
+                        className="toolbar-btn"
+                        style={{ background: '#7c3aed20', borderColor: '#7c3aed50', color: '#a78bfa' }}
+                        disabled={sendingToServe}
+                        onClick={async () => {
+                          setSendingToServe(true);
+                          try {
+                            const result = await apiFetch(`/dispatch/calls/${selectedCall.id}/send-to-serve`, {
+                              method: 'POST',
+                              body: JSON.stringify({}),
+                            });
+                            if (result) {
+                              setServeLink(result);
+                              addToast('Sent to Serve Queue', 'success');
+                            }
+                          } catch (err: any) {
+                            addToast(`Failed: ${err?.message || 'Unknown error'}`, 'error');
+                          } finally {
+                            setSendingToServe(false);
+                          }
+                        }}
+                        title="Send this process service to the serve queue"
+                      >
+                        <Briefcase style={{ width: 10, height: 10 }} /> {sendingToServe ? 'Sending...' : 'Serve Queue'}
+                      </button>
+                    )}
                     {/* Revert status button — go back one step */}
                     {!isEditing && ['dispatched', 'enroute', 'onscene', 'cleared', 'closed'].includes(selectedCall.status) && (
                       <button
@@ -3033,12 +3153,8 @@ export default function DispatchPage() {
                       <MapPin className="w-3 h-3" /> Location Details
                     </label>
                     {isEditing ? (() => {
-                      const filteredZones = editData.section_id
-                        ? Array.from(new Set(districts.filter(d => d.section_id === editData.section_id).map(d => d.zone_id))).sort()
-                        : zones;
-                      const filteredBeats = editData.zone_id
-                        ? Array.from(new Set(districts.filter(d => d.zone_id === editData.zone_id).map(d => d.beat_id))).sort()
-                        : beats;
+                      const filteredZones = zonesForSection(editData.section_id);
+                      const filteredBeats = beatsForZone(editData.zone_id);
                       return (
                         <div className="space-y-2 mt-1">
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -3079,7 +3195,7 @@ export default function DispatchPage() {
                                 setEditData(prev => ({ ...prev, beat_id: beatVal, dispatch_code: match?.dispatch_code || '' }));
                               }}>
                                 <option value="">— Select —</option>
-                                {filteredBeats.map(b => <option key={b} value={b}>{beatLabels.get(b) || b}</option>)}
+                                {filteredBeats.map(b => <option key={b} value={b}>{getBeatLabel(editData.zone_id, b)}</option>)}
                               </select>
                             </div>
                             <div>
@@ -3102,7 +3218,7 @@ export default function DispatchPage() {
                         )}
                         {selectedCall.section_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Sec:</span> {selectedCall.section_id} — {sectionLabels.get(selectedCall.section_id) || ''}</span>}
                         {selectedCall.zone_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Zone:</span> {selectedCall.zone_id} — {zoneLabels.get(selectedCall.zone_id) || ''}</span>}
-                        {selectedCall.beat_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Beat:</span> {beatLabels.get(selectedCall.beat_id) || selectedCall.beat_id}</span>}
+                        {selectedCall.beat_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Beat:</span> {getBeatLabel(selectedCall.zone_id || '', selectedCall.beat_id)}</span>}
                         {selectedCall.latitude != null && selectedCall.longitude != null && (
                           <span className="text-rmpg-400 font-mono text-[9px]">
                             GPS: {Number(selectedCall.latitude).toFixed(5)}, {Number(selectedCall.longitude).toFixed(5)}
@@ -3153,8 +3269,9 @@ export default function DispatchPage() {
                             <div className="flex flex-wrap gap-1 mb-1">
                               {callPersons.map((cp: any) => (
                                 <span key={cp.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono bg-rmpg-700 border border-rmpg-500 rounded text-rmpg-200">
-                                  <span className="text-brand-gold-500 uppercase text-[7px] font-black">{(cp.role || '').replace('_', ' ')}</span>
+                                  <span className="text-brand-gold-500 uppercase text-[7px] font-black">{(cp.role || '').replace(/_/g, ' ')}</span>
                                   {cp.last_name}, {cp.first_name}
+                                  <WarrantBadge flags={cp.flags} size="sm" />
                                   {cp.dob && <span className="text-rmpg-500">DOB:{cp.dob}</span>}
                                   <button onClick={() => unlinkPersonFromCall(selectedCall.id, cp.id)} className="text-red-500 hover:text-red-300 ml-0.5" title="Remove">&times;</button>
                                 </span>
@@ -3269,6 +3386,7 @@ export default function DispatchPage() {
                               <div key={cp.id} className="flex items-center gap-2 px-2 py-1 bg-rmpg-800/60 border border-rmpg-700 rounded text-[10px]">
                                 <span className="text-brand-gold-500 uppercase text-[7px] font-black px-1 py-px bg-rmpg-700 rounded">{(cp.role || '').replace(/_/g, ' ')}</span>
                                 <span className="text-white font-semibold">{cp.last_name}, {cp.first_name}</span>
+                                <WarrantBadge flags={cp.flags} size="sm" />
                                 {cp.dob && <span className="text-rmpg-400">DOB: {cp.dob}</span>}
                                 {cp.race && <span className="text-rmpg-500">{cp.race}</span>}
                                 {cp.sex && <span className="text-rmpg-500">{cp.sex}</span>}

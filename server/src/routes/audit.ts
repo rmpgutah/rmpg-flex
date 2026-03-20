@@ -3,6 +3,8 @@ import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { sendCsv } from '../utils/csvExport';
 import { localNow } from '../utils/timeUtils';
+import { escapeLike } from '../middleware/sanitize';
+import { exportRateLimit } from '../middleware/rateLimiter';
 
 const router = Router();
 
@@ -23,7 +25,7 @@ router.get('/logs', (req: Request, res: Response) => {
       limit = '100'
     } = req.query;
 
-    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
     const limitNum = Math.min(500, Math.max(1, parseInt(limit as string, 10) || 100));
     const offset = (pageNum - 1) * limitNum;
 
@@ -59,8 +61,8 @@ router.get('/logs', (req: Request, res: Response) => {
     }
 
     if (search) {
-      conditions.push('al.details LIKE ?');
-      params.push(`%${search}%`);
+      conditions.push("al.details LIKE ? ESCAPE '\\'");
+      params.push(`%${escapeLike(search as string)}%`);
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -104,7 +106,7 @@ router.get('/logs', (req: Request, res: Response) => {
         totalPages
       }
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching audit logs:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to fetch audit logs' });
   }
@@ -127,6 +129,10 @@ router.get('/stats', (req: Request, res: Response) => {
     `).get() as any;
     const entriesToday = todayRow?.total || 0;
 
+    // Compute 30-day cutoff once for reuse
+    const d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T00:00:00`;
+
     // Top actions (last 30 days)
     const topActions = db.prepare(`
       SELECT action, COUNT(*) as count
@@ -135,7 +141,7 @@ router.get('/stats', (req: Request, res: Response) => {
       GROUP BY action
       ORDER BY count DESC
       LIMIT 10
-    `).all((() => { const d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T00:00:00`; })());
+    `).all(thirtyDaysAgo);
 
     // Top users (last 30 days)
     const topUsers = db.prepare(`
@@ -150,7 +156,7 @@ router.get('/stats', (req: Request, res: Response) => {
       GROUP BY u.full_name, u.badge_number
       ORDER BY count DESC
       LIMIT 10
-    `).all((() => { const d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T00:00:00`; })());
+    `).all(thirtyDaysAgo);
 
     res.json({
       totalEntries,
@@ -158,14 +164,14 @@ router.get('/stats', (req: Request, res: Response) => {
       topActions,
       topUsers
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching audit stats:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to fetch audit statistics' });
   }
 });
 
 // GET /api/audit/export - Export audit log as CSV
-router.get('/export', (req: Request, res: Response) => {
+router.get('/export', exportRateLimit, (req: Request, res: Response) => {
   try {
     const {
       action,
@@ -202,8 +208,8 @@ router.get('/export', (req: Request, res: Response) => {
       params.push(endDate);
     }
     if (search) {
-      conditions.push('al.details LIKE ?');
-      params.push(`%${search}%`);
+      conditions.push("al.details LIKE ? ESCAPE '\\'");
+      params.push(`%${escapeLike(search as string)}%`);
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';

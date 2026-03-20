@@ -1,9 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { validateParamId } from '../middleware/sanitize';
 import { parseDeviceName, createSecurityNotification } from '../utils/deviceFingerprint';
 import { isPasswordExpired, isPasswordExpiringSoon } from '../utils/passwordExpiry';
-import { getBlockedIps } from '../middleware/rateLimiter';
+import { getBlockedIps, unblockIp } from '../middleware/rateLimiter';
 import { localNow } from '../utils/timeUtils';
 
 const router = Router();
@@ -61,7 +62,7 @@ router.get('/login-history', authenticateToken, (req: Request, res: Response) =>
     const db = getDb();
     const userId = req.user!.userId;
     const limit = Math.min(parseInt(String(req.query.limit || '50'), 10), 200);
-    const offset = parseInt(String(req.query.offset || '0'), 10);
+    const offset = Math.max(0, Math.min(parseInt(String(req.query.offset || '0'), 10), 10000));
 
     const userRow = db.prepare('SELECT username FROM users WHERE id = ?')
       .get(userId) as { username: string } | undefined;
@@ -116,7 +117,7 @@ router.get('/trusted-devices', authenticateToken, (req: Request, res: Response) 
 
 
 // ─── DELETE /api/auth/security/trusted-devices/:id ───
-router.delete('/trusted-devices/:id', authenticateToken, (req: Request, res: Response) => {
+router.delete('/trusted-devices/:id', validateParamId, authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const deviceId = parseInt(req.params.id as string, 10);
@@ -151,7 +152,7 @@ router.get('/notifications', authenticateToken, (req: Request, res: Response) =>
   try {
     const db = getDb();
     const limit = Math.min(parseInt(String(req.query.limit || '50'), 10), 200);
-    const offset = parseInt(String(req.query.offset || '0'), 10);
+    const offset = Math.max(0, Math.min(parseInt(String(req.query.offset || '0'), 10), 10000));
 
     const rows = db.prepare(`
       SELECT id, event_type, title, details, ip_address, device_info, is_read, created_at
@@ -174,7 +175,7 @@ router.get('/notifications', authenticateToken, (req: Request, res: Response) =>
 
 
 // ─── PUT /api/auth/security/notifications/:id/read ───
-router.put('/notifications/:id/read', authenticateToken, (req: Request, res: Response) => {
+router.put('/notifications/:id/read', validateParamId, authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const notifId = parseInt(req.params.id as string, 10);
@@ -219,22 +220,45 @@ router.get('/blocked-ips', authenticateToken, requireRole('admin'), (_req: Reque
   }
 });
 
+// ─── POST /api/auth/security/unblock-ip ──────────────
+// Admin-only endpoint to unblock a specific IP or all IPs
+router.post('/unblock-ip', authenticateToken, requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const { ip } = req.body || {};
+    const count = unblockIp(ip || undefined);
+    const msg = ip ? `Unblocked IP ${ip}` : `Unblocked all ${count} IPs`;
+    console.log(`[Security] ${msg} — by ${req.user!.username}`);
+    res.json({ success: true, message: msg, unblocked: count });
+  } catch (error: any) {
+    console.error('Unblock IP error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ─── GET /api/auth/security/recent-threats ──────────────
 // Admin-only endpoint showing recent login failures grouped by IP
 router.get('/recent-threats', authenticateToken, requireRole('admin'), (_req: Request, res: Response) => {
   try {
     const db = getDb();
+    // Compute 24-hours-ago in local time with timezone offset (matching localNow() format)
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const offsetMin = cutoff.getTimezoneOffset();
+    const sign = offsetMin <= 0 ? '+' : '-';
+    const absOffset = Math.abs(offsetMin);
+    const cutoffStr = `${cutoff.getFullYear()}-${pad(cutoff.getMonth() + 1)}-${pad(cutoff.getDate())}T${pad(cutoff.getHours())}:${pad(cutoff.getMinutes())}:${pad(cutoff.getSeconds())}${sign}${pad(Math.floor(absOffset / 60))}:${pad(absOffset % 60)}`;
+
     const threats = db.prepare(`
       SELECT ip_address, COUNT(*) as attempts,
         GROUP_CONCAT(DISTINCT username) as targeted_accounts,
         MAX(created_at) as last_attempt
       FROM login_attempts
-      WHERE success = 0 AND created_at > datetime('now', 'localtime', '-24 hours')
+      WHERE success = 0 AND created_at > ?
       GROUP BY ip_address
       HAVING attempts >= 3
       ORDER BY attempts DESC
       LIMIT 50
-    `).all();
+    `).all(cutoffStr);
     res.json(threats);
   } catch (error: any) {
     console.error('Recent threats error:', error?.message || 'Unknown error');

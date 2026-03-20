@@ -6,7 +6,7 @@
 // All searches are logged server-side for audit trail.
 // ============================================================
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   Search, User, MapPin, Phone, Mail, Loader2, ChevronRight,
   AlertCircle, ExternalLink, Copy, CheckCircle2, Hash,
@@ -30,10 +30,13 @@ const SEARCH_MODES: { id: SearchMode; label: string; icon: React.ElementType; co
 // Clipboard copy helper
 function useCopyToClipboard() {
   const [copied, setCopied] = useState<string | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
   const copy = useCallback((text: string, label: string) => {
     navigator.clipboard.writeText(text);
     setCopied(label);
-    setTimeout(() => setCopied(null), 1500);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setCopied(null), 1500);
   }, []);
   return { copied, copy };
 }

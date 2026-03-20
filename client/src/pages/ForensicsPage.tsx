@@ -96,19 +96,22 @@ function SeedSelector({ onSelect, loading }: {
   const [searching, setSearching] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const searchGenRef = useRef(0);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (query.trim().length < 2) { setResults([]); setShowDropdown(false); return; }
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
+      const gen = ++searchGenRef.current;
       setSearching(true);
       try {
         const data = await apiFetch<SearchResult[]>(`/connections/search?q=${encodeURIComponent(query.trim())}`);
+        if (gen !== searchGenRef.current) return;
         setResults(data || []);
         setShowDropdown(true);
-      } catch { setResults([]); }
-      finally { setSearching(false); }
+      } catch { if (gen === searchGenRef.current) setResults([]); }
+      finally { if (gen === searchGenRef.current) setSearching(false); }
     }, 300);
     return () => clearTimeout(debounceRef.current);
   }, [query]);

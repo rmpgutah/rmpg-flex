@@ -103,14 +103,14 @@ router.put('/config/:county', requireRole('admin'), (req: Request, res: Response
 
     const success = updateCountyConfig(county, updates);
     if (!success) {
-      return res.status(404).json({ error: `County not found: ${county}` });
+      return res.status(404).json({ error: 'County not found' });
     }
 
     auditLog(req, 'jail_roster_config_updated', 'jail_roster', 0,
       `Jail roster config updated for ${county}: ${JSON.stringify(updates)}`);
     broadcastAdminUpdate({ type: 'jail_roster_config_updated', county });
 
-    res.json({ success: true, message: `Config updated for ${county}` });
+    res.json({ success: true, message: 'Config updated' });
   } catch (err) {
     console.error('[Jail Roster API] Error updating config:', (err as Error).message);
     res.status(500).json({ error: 'Failed to update config' });
@@ -144,13 +144,13 @@ router.post('/reset-errors/:county', requireRole('admin'), (req: Request, res: R
     const county = req.params.county as string;
     const success = resetCountyErrors(county);
     if (!success) {
-      return res.status(404).json({ error: `County not found: ${county}` });
+      return res.status(404).json({ error: 'County not found' });
     }
 
     auditLog(req, 'jail_roster_errors_reset', 'jail_roster', 0,
       `Circuit breaker reset for ${county}`);
 
-    res.json({ success: true, message: `Error counter reset for ${county}` });
+    res.json({ success: true, message: 'Error counter reset' });
   } catch (err) {
     console.error('[Jail Roster API] Error resetting errors:', (err as Error).message);
     res.status(500).json({ error: 'Failed to reset errors' });

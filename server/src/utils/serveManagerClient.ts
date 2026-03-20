@@ -99,8 +99,17 @@ export async function smFetch<T = any>(
 
   const { method = 'GET', body, params } = options;
 
-  if (endpoint.includes('..')) throw new ServeManagerError('Invalid endpoint path', 400);
-  let url = `${SM_BASE_URL}${endpoint.startsWith('/') ? endpoint : '/' + endpoint}`;
+  // Validate endpoint path: block traversal, protocol switching, and SSRF vectors
+  if (endpoint.includes('..') || endpoint.includes('//') || endpoint.includes('\\')) {
+    throw new ServeManagerError('Invalid endpoint path', 400);
+  }
+  const sanitizedEndpoint = endpoint.startsWith('/') ? endpoint : '/' + endpoint;
+  // Verify the constructed URL stays within the ServeManager domain
+  const parsedUrl = new URL(sanitizedEndpoint, SM_BASE_URL);
+  if (!parsedUrl.origin.includes('servemanager.com')) {
+    throw new ServeManagerError('Invalid endpoint — must target ServeManager API', 400);
+  }
+  let url = parsedUrl.toString();
   if (params && Object.keys(params).length > 0) {
     const sp = new URLSearchParams();
     for (const [k, v] of Object.entries(params)) {
@@ -122,6 +131,7 @@ export async function smFetch<T = any>(
     fetchOpts.body = JSON.stringify({ data: body });
   }
 
+  fetchOpts.signal = AbortSignal.timeout(15_000);
   const response = await fetch(url, fetchOpts);
 
   if (!response.ok) {

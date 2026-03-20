@@ -14,6 +14,7 @@ import { getDb } from '../models/database';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { validateParamId } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
 import { auditLog } from '../utils/auditLogger';
 import {
@@ -219,7 +220,7 @@ router.post('/jobs', requireRole('admin', 'manager'), async (req: Request, res: 
         outputPath: outputPath || path.join(inputPath, '../iped-output'),
         profile,
         jobType,
-        createdBy: userId,
+        createdBy: userId!,
       }).catch(err => {
         console.error(`[IPED] Job ${jobId} failed:`, err?.message || err);
       });
@@ -234,10 +235,10 @@ router.post('/jobs', requireRole('admin', 'manager'), async (req: Request, res: 
 });
 
 // ── GET /jobs — List processing jobs ────────────────────────
-router.get('/jobs', (req: Request, res: Response) => {
+router.get('/jobs', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
+    const page = Math.min(10000, Math.max(1, parseInt(req.query.page as string, 10) || 1));
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string, 10) || 20));
     const offset = (page - 1) * limit;
     const status = (req.query.status as string || '').trim();
@@ -271,7 +272,7 @@ router.get('/jobs', (req: Request, res: Response) => {
 });
 
 // ── GET /jobs/:id — Job details ─────────────────────────────
-router.get('/jobs/:id', (req: Request, res: Response) => {
+router.get('/jobs/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const id = parseInt(req.params.id as string, 10);
@@ -301,7 +302,7 @@ router.get('/jobs/:id', (req: Request, res: Response) => {
 });
 
 // ── POST /jobs/:id/cancel — Cancel running job ──────────────
-router.post('/jobs/:id/cancel', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.post('/jobs/:id/cancel', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
@@ -324,12 +325,21 @@ router.post('/hash/compute', requireRole('admin', 'manager'), async (req: Reques
     }
 
     let targetPath = filePath;
+    // Validate user-supplied filePath doesn't traverse outside expected directories
+    if (filePath && (filePath.includes('..') || filePath.includes('\0'))) {
+      return res.status(400).json({ error: 'Invalid file path' });
+    }
     if (attachmentId && !filePath) {
       const db = getDb();
       const att = db.prepare('SELECT file_path FROM attachments WHERE id = ?').get(attachmentId) as any;
       if (!att) return res.status(404).json({ error: 'Attachment not found' });
       const uploadsDir = process.env.RMPG_UPLOADS_DIR || path.resolve(process.cwd(), 'uploads');
       targetPath = path.join(uploadsDir, att.file_path);
+      // Prevent path traversal — ensure resolved path stays within uploads directory
+      const resolved = path.resolve(targetPath);
+      if (!resolved.startsWith(path.resolve(uploadsDir))) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
     }
 
     if (!fs.existsSync(targetPath)) {
@@ -464,7 +474,7 @@ router.delete('/hash-sets/:name', requireRole('admin'), (req: Request, res: Resp
 // ── IPED Web API Proxy Routes ───────────────────────────────
 
 // List processed cases
-router.get('/cases', async (_req: Request, res: Response) => {
+router.get('/cases', requireRole('admin', 'manager'), async (_req: Request, res: Response) => {
   try {
     const data = await proxyIpedApi('/cases');
     res.json(data);
@@ -475,10 +485,10 @@ router.get('/cases', async (_req: Request, res: Response) => {
 });
 
 // Search within a case
-router.get('/cases/:caseId/search', async (req: Request, res: Response) => {
+router.get('/cases/:caseId/search', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
   try {
     const query = req.query.q as string || '';
-    const data = await proxyIpedApi(`/cases/${req.params.caseId}/search?q=${encodeURIComponent(query)}`);
+    const data = await proxyIpedApi(`/cases/${encodeURIComponent(String(req.params.caseId))}/search?q=${encodeURIComponent(query)}`);
     res.json(data);
   } catch (err: any) {
     console.error('[IPED] Search error:', err?.message || err);
@@ -487,9 +497,9 @@ router.get('/cases/:caseId/search', async (req: Request, res: Response) => {
 });
 
 // Get file metadata
-router.get('/cases/:caseId/file/:fileId', async (req: Request, res: Response) => {
+router.get('/cases/:caseId/file/:fileId', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
   try {
-    const data = await proxyIpedApi(`/cases/${req.params.caseId}/file/${req.params.fileId}`);
+    const data = await proxyIpedApi(`/cases/${encodeURIComponent(String(req.params.caseId))}/file/${encodeURIComponent(String(req.params.fileId))}`);
     res.json(data);
   } catch (err: any) {
     console.error('[IPED] File metadata error:', err?.message || err);
@@ -498,9 +508,9 @@ router.get('/cases/:caseId/file/:fileId', async (req: Request, res: Response) =>
 });
 
 // Get file thumbnail
-router.get('/cases/:caseId/file/:fileId/thumb', async (req: Request, res: Response) => {
+router.get('/cases/:caseId/file/:fileId/thumb', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
   try {
-    const data = await proxyIpedApi(`/cases/${req.params.caseId}/file/${req.params.fileId}/thumb`);
+    const data = await proxyIpedApi(`/cases/${encodeURIComponent(String(req.params.caseId))}/file/${encodeURIComponent(String(req.params.fileId))}/thumb`);
     res.json(data);
   } catch (err: any) {
     console.error('[IPED] File thumbnail error:', err?.message || err);

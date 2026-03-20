@@ -22,6 +22,7 @@
 
 import { getDb } from '../models/database';
 import { localNow } from './timeUtils';
+import { escapeLike } from '../middleware/sanitize';
 import crypto from 'crypto';
 import config from '../config';
 
@@ -565,12 +566,12 @@ export function searchArrestsCache(name: string): {
       SELECT ar.*, GROUP_CONCAT(acl.linked_type || ':' || acl.linked_id || ':' || acl.match_confidence, '|') as cross_link_data
       FROM arrest_records ar
       LEFT JOIN arrest_cross_links acl ON acl.arrest_record_id = ar.id
-      WHERE UPPER(ar.last_name) = UPPER(?) OR UPPER(ar.first_name) = UPPER(?) OR UPPER(ar.full_name) LIKE ?
+      WHERE UPPER(ar.last_name) = UPPER(?) OR UPPER(ar.first_name) = UPPER(?) OR UPPER(ar.full_name) LIKE ? ESCAPE '\\'
       GROUP BY ar.id
       ORDER BY ar.booking_date DESC
       LIMIT 25
     `;
-    params = [parts[0], parts[0], `%${parts[0]}%`];
+    params = [parts[0], parts[0], `%${escapeLike(parts[0])}%`];
   } else {
     // Two+ names — try FIRST LAST and LAST FIRST
     const a = parts[0], b = parts[parts.length - 1];
@@ -580,12 +581,12 @@ export function searchArrestsCache(name: string): {
       LEFT JOIN arrest_cross_links acl ON acl.arrest_record_id = ar.id
       WHERE (UPPER(ar.first_name) = UPPER(?) AND UPPER(ar.last_name) = UPPER(?))
          OR (UPPER(ar.first_name) = UPPER(?) AND UPPER(ar.last_name) = UPPER(?))
-         OR (UPPER(ar.full_name) LIKE ? AND UPPER(ar.full_name) LIKE ?)
+         OR (UPPER(ar.full_name) LIKE ? ESCAPE '\\' AND UPPER(ar.full_name) LIKE ? ESCAPE '\\')
       GROUP BY ar.id
       ORDER BY ar.booking_date DESC
       LIMIT 25
     `;
-    params = [a, b, b, a, `%${a}%`, `%${b}%`];
+    params = [a, b, b, a, `%${escapeLike(a)}%`, `%${escapeLike(b)}%`];
   }
 
   const rows = db.prepare(query).all(...params) as any[];

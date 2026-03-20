@@ -10,6 +10,7 @@ import { Router, Request, Response } from 'express';
 import { authenticateToken as authenticate, requireRole } from '../middleware/auth';
 import { getDb } from '../models/database';
 import { auditLog } from '../utils/auditLogger';
+import { validateParamId, escapeLike } from '../middleware/sanitize';
 import { localNow, localToday } from '../utils/timeUtils';
 
 const router = Router();
@@ -21,8 +22,8 @@ function generateProposalNumber(db: ReturnType<typeof getDb>): string {
   const prefix = `PROP-${year}-`;
 
   const row = db.prepare(
-    "SELECT proposal_number FROM crm_proposals WHERE proposal_number LIKE ? ORDER BY proposal_number DESC LIMIT 1"
-  ).get(`${prefix}%`) as { proposal_number: string } | undefined;
+    "SELECT proposal_number FROM crm_proposals WHERE proposal_number LIKE ? ESCAPE '\\' ORDER BY proposal_number DESC LIMIT 1"
+  ).get(`${escapeLike(prefix)}%`) as { proposal_number: string } | undefined;
 
   let nextNum = 1;
   if (row) {
@@ -55,9 +56,11 @@ router.get('/proposals', requireRole('admin', 'manager', 'contract_manager'), (r
     const params: any[] = [];
 
     if (stage) {
-      const stages = (stage as string).split(',');
-      sql += ` AND p.stage IN (${stages.map(() => '?').join(',')})`;
-      params.push(...stages);
+      const stages = (stage as string).split(',').filter(Boolean);
+      if (stages.length > 0) {
+        sql += ` AND p.stage IN (${stages.map(() => '?').join(',')})`;
+        params.push(...stages);
+      }
     }
     if (lead_id) {
       sql += ' AND p.lead_id = ?';
@@ -87,7 +90,7 @@ router.get('/proposals', requireRole('admin', 'manager', 'contract_manager'), (r
 });
 
 // ── Get Single Proposal ─────────────────────────────────────
-router.get('/proposals/:id', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.get('/proposals/:id', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -144,8 +147,10 @@ router.post('/proposals', requireRole('admin', 'manager', 'contract_manager'), (
       let finalScope = scope_of_work || null;
       let finalTerms = terms || null;
       let finalMonthly: number | null = monthly_value != null ? Number(monthly_value) : null;
+      if (finalMonthly != null && (isNaN(finalMonthly) || !isFinite(finalMonthly))) finalMonthly = null;
       let finalBilling = billing_frequency || 'monthly';
       let finalContractMonths: number | null = contract_length_months != null ? Number(contract_length_months) : null;
+      if (finalContractMonths != null && (isNaN(finalContractMonths) || !isFinite(finalContractMonths))) finalContractMonths = null;
 
       if (template_type && !scope_of_work && !terms) {
         const template = db.prepare(
@@ -163,6 +168,7 @@ router.post('/proposals', requireRole('admin', 'manager', 'contract_manager'), (
 
       // Calculate total_value if not provided — guard against null multiplication
       let finalTotal: number | null = total_value != null ? Number(total_value) : null;
+      if (finalTotal != null && (isNaN(finalTotal) || !isFinite(finalTotal))) finalTotal = null;
       if (finalTotal == null && finalMonthly != null && finalContractMonths != null) {
         finalTotal = finalMonthly * finalContractMonths;
       }
@@ -204,7 +210,7 @@ router.post('/proposals', requireRole('admin', 'manager', 'contract_manager'), (
         db.prepare('UPDATE crm_leads SET proposal_id = ?, updated_at = ? WHERE id = ?').run(proposalId, now, lead_id);
       }
 
-      auditLog(req, 'CREATE', 'crm_proposals' as any, proposalId, `Created proposal ${proposalNumber}: ${title.trim()}`);
+      auditLog(req, 'CREATE', 'crm_proposals', proposalId, `Created proposal ${proposalNumber}: ${title.trim()}`);
 
       const proposal = db.prepare(`
         SELECT p.*, l.business_name as lead_name, c.name as client_name
@@ -226,7 +232,7 @@ router.post('/proposals', requireRole('admin', 'manager', 'contract_manager'), (
 });
 
 // ── Update Proposal ─────────────────────────────────────────
-router.put('/proposals/:id', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.put('/proposals/:id', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -266,7 +272,7 @@ router.put('/proposals/:id', requireRole('admin', 'manager', 'contract_manager')
     params.push(id);
 
     db.prepare(`UPDATE crm_proposals SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-    auditLog(req, 'UPDATE', 'crm_proposals' as any, String(id), `Updated proposal ${existing.proposal_number}`);
+    auditLog(req, 'UPDATE', 'crm_proposals', String(id), `Updated proposal ${existing.proposal_number}`);
 
     const proposal = db.prepare(`
       SELECT p.*, l.business_name as lead_name, c.name as client_name
@@ -284,7 +290,7 @@ router.put('/proposals/:id', requireRole('admin', 'manager', 'contract_manager')
 });
 
 // ── Delete Proposal ─────────────────────────────────────────
-router.delete('/proposals/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.delete('/proposals/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -299,7 +305,7 @@ router.delete('/proposals/:id', requireRole('admin', 'manager'), (req: Request, 
     db.prepare('UPDATE crm_leads SET proposal_id = NULL WHERE proposal_id = ?').run(id);
 
     db.prepare('DELETE FROM crm_proposals WHERE id = ?').run(id);
-    auditLog(req, 'DELETE', 'crm_proposals' as any, String(id), `Deleted proposal ${existing.proposal_number}`);
+    auditLog(req, 'DELETE', 'crm_proposals', String(id), `Deleted proposal ${existing.proposal_number}`);
     res.json({ success: true });
   } catch (err: any) {
     console.error('CRM proposals error:', err?.message || err);
@@ -308,7 +314,7 @@ router.delete('/proposals/:id', requireRole('admin', 'manager'), (req: Request, 
 });
 
 // ── Update Proposal Stage ───────────────────────────────────
-router.put('/proposals/:id/stage', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+router.put('/proposals/:id/stage', validateParamId, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -361,7 +367,7 @@ router.put('/proposals/:id/stage', requireRole('admin', 'manager', 'contract_man
     params.push(id);
     db.prepare(`UPDATE crm_proposals SET ${updates.join(', ')} WHERE id = ?`).run(...params);
 
-    auditLog(req, 'UPDATE', 'crm_proposals' as any, String(id),
+    auditLog(req, 'UPDATE', 'crm_proposals', String(id),
       `Proposal ${existing.proposal_number} stage: ${existing.stage} → ${stage}`);
 
     // If accepted and linked to a lead, update lead stage
@@ -425,7 +431,7 @@ router.post('/proposal-templates', requireRole('admin'), (req: Request, res: Res
     );
 
     const templateId = Number(result.lastInsertRowid);
-    auditLog(req, 'CREATE', 'crm_proposals' as any, templateId, `Created proposal template: ${name.trim()}`);
+    auditLog(req, 'CREATE', 'crm_proposals', templateId, `Created proposal template: ${name.trim()}`);
 
     const template = db.prepare('SELECT * FROM crm_proposal_templates WHERE id = ?').get(templateId);
     res.json(template);
@@ -435,7 +441,7 @@ router.post('/proposal-templates', requireRole('admin'), (req: Request, res: Res
   }
 });
 
-router.put('/proposal-templates/:id', requireRole('admin'), (req: Request, res: Response) => {
+router.put('/proposal-templates/:id', validateParamId, requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -472,7 +478,7 @@ router.put('/proposal-templates/:id', requireRole('admin'), (req: Request, res: 
     params.push(id);
 
     db.prepare(`UPDATE crm_proposal_templates SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-    auditLog(req, 'UPDATE', 'crm_proposals' as any, String(id), `Updated proposal template: ${existing.name}`);
+    auditLog(req, 'UPDATE', 'crm_proposals', String(id), `Updated proposal template: ${existing.name}`);
 
     const template = db.prepare('SELECT * FROM crm_proposal_templates WHERE id = ?').get(id);
     res.json(template);
@@ -482,7 +488,7 @@ router.put('/proposal-templates/:id', requireRole('admin'), (req: Request, res: 
   }
 });
 
-router.delete('/proposal-templates/:id', requireRole('admin'), (req: Request, res: Response) => {
+router.delete('/proposal-templates/:id', validateParamId, requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { id } = req.params;
@@ -496,7 +502,7 @@ router.delete('/proposal-templates/:id', requireRole('admin'), (req: Request, re
     // Soft delete
     const now = localNow();
     db.prepare('UPDATE crm_proposal_templates SET is_active = 0, updated_at = ? WHERE id = ?').run(now, id);
-    auditLog(req, 'DELETE', 'crm_proposals' as any, String(id), `Soft-deleted proposal template: ${existing.name}`);
+    auditLog(req, 'DELETE', 'crm_proposals', String(id), `Soft-deleted proposal template: ${existing.name}`);
     res.json({ success: true });
   } catch (err: any) {
     console.error('CRM proposals error:', err?.message || err);

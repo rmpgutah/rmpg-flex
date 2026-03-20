@@ -192,6 +192,14 @@ export default function MapPage() {
   const addressMarkerRef = useRef<any>(null);
   const addressDismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Clean up address search/dismiss timers on unmount
+  useEffect(() => {
+    return () => {
+      if (addressSearchTimer.current) clearTimeout(addressSearchTimer.current);
+      if (addressDismissTimer.current) clearTimeout(addressDismissTimer.current);
+    };
+  }, []);
+
   // GPS own-position
   const gps = useGpsTracking();
   const selfMarkerRef = useRef<any>(null);
@@ -444,6 +452,7 @@ export default function MapPage() {
     // Auto-retry with exponential backoff if the script fails to load
     // (e.g. server restart, brief network blip, slow vehicle WiFi).
     let cancelled = false;
+    let pendingOnlineListener: (() => void) | null = null;
     const MAX_RETRIES = 8;
     const RETRY_DELAYS = [2000, 4000, 8000, 12000, 16000, 20000, 25000, 30000]; // ms
     let dismissObserver: MutationObserver | null = null;
@@ -459,7 +468,11 @@ export default function MapPage() {
         disableDefaultUI: true,
         zoomControl: false,
         styles: DARK_MAP_STYLE,
-        backgroundColor: '#060c14',
+        backgroundColor: '#0a1220',
+        // Force raster rendering — vector tiles (WebGL) ignore JSON styles,
+        // causing black/unstyled map areas at certain zoom levels.
+        renderingType: 'RASTER' as any,
+        isFractionalZoomEnabled: false,
         // 'greedy' allows single-finger pan on mobile/tablet — critical for
         // in-vehicle use where two-finger gestures are awkward while driving.
         gestureHandling: 'greedy',
@@ -562,11 +575,13 @@ export default function MapPage() {
         devWarn('[MapPage] Device offline — pausing retries until connectivity returns');
         const onBack = () => {
           window.removeEventListener('online', onBack);
+          pendingOnlineListener = null;
           if (!cancelled) {
             devLog('[MapPage] Back online — resuming map load');
             attemptLoad(attempt); // resume at same attempt count (don't penalize for offline time)
           }
         };
+        pendingOnlineListener = onBack;
         window.addEventListener('online', onBack);
         return;
       }
@@ -608,6 +623,7 @@ export default function MapPage() {
 
     return () => {
       cancelled = true; // Stop any pending retries
+      if (pendingOnlineListener) { window.removeEventListener('online', pendingOnlineListener); pendingOnlineListener = null; }
       unsubOnline();
       if (dismissTimer) clearTimeout(dismissTimer);
       if (dismissObserver) dismissObserver.disconnect();

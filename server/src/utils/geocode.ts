@@ -3,6 +3,31 @@ import { broadcastDispatchUpdate } from './websocket';
 
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
 
+// ─── In-memory LRU geocode cache ─────────────────────────
+const geocodeCache = new Map<string, { lat: number; lng: number }>();
+const MAX_CACHE = 2000;
+
+function cacheKey(address: string): string {
+  return address.trim().toLowerCase();
+}
+
+function cacheSet(address: string, lat: number, lng: number): void {
+  const key = cacheKey(address);
+  geocodeCache.set(key, { lat, lng });
+  // Evict oldest half when over limit
+  if (geocodeCache.size > MAX_CACHE) {
+    const keys = [...geocodeCache.keys()];
+    const evictCount = Math.floor(MAX_CACHE / 2);
+    for (let i = 0; i < evictCount; i++) {
+      geocodeCache.delete(keys[i]);
+    }
+  }
+}
+
+function cacheGet(address: string): { lat: number; lng: number } | undefined {
+  return geocodeCache.get(cacheKey(address));
+}
+
 interface GeocodeResult {
   latitude: number;
   longitude: number;
@@ -15,14 +40,21 @@ interface GeocodeResult {
 export async function geocodeAddress(address: string): Promise<GeocodeResult | null> {
   if (!GOOGLE_MAPS_API_KEY || !address.trim()) return null;
 
+  // Check cache first
+  const cached = cacheGet(address);
+  if (cached) {
+    return { latitude: cached.lat, longitude: cached.lng };
+  }
+
   try {
     const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${GOOGLE_MAPS_API_KEY}`;
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
     if (!res.ok) return null;
 
     const data = await res.json();
     if (data.status === 'OK' && data.results?.length > 0) {
       const loc = data.results[0].geometry.location;
+      cacheSet(address, loc.lat, loc.lng);
       return { latitude: loc.lat, longitude: loc.lng };
     }
     return null;
@@ -41,7 +73,7 @@ export async function reverseGeocodeAddress(lat: number, lng: number): Promise<s
 
   try {
     const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${GOOGLE_MAPS_API_KEY}`;
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
     if (!res.ok) return null;
 
     const data = await res.json();
@@ -75,7 +107,7 @@ export async function reverseGeocodeDetailed(lat: number, lng: number): Promise<
 
   try {
     const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&result_type=street_address|route|intersection&key=${GOOGLE_MAPS_API_KEY}`;
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
     if (!res.ok) return null;
 
     const data = await res.json();
@@ -144,4 +176,88 @@ export function geocodeCallIfNeeded(callId: number, address: string, lat: any, l
   }).catch(err => {
     console.warn(`[geocode] Failed to geocode call ${callId}:`, err?.message || err);
   });
+}
+
+// ─── Batch Geocode Ungeocoded Calls ───────────────────────
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
+ * Find all calls_for_service that have an address but no lat/lng,
+ * geocode them one at a time with a 1-second delay between requests.
+ */
+export async function batchGeocodeUngeocoded(): Promise<{ success: number; failed: number }> {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT id, call_number, location_address
+    FROM calls_for_service
+    WHERE (latitude IS NULL OR longitude IS NULL)
+      AND location_address IS NOT NULL
+      AND length(location_address) > 2
+  `).all() as { id: number; call_number: string; location_address: string }[];
+
+  if (rows.length === 0) {
+    console.log('[Geocoder] Batch: no ungeocoded calls found');
+    return { success: 0, failed: 0 };
+  }
+
+  console.log(`[Geocoder] Batch: starting — ${rows.length} calls to geocode`);
+  let success = 0;
+  let failed = 0;
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    try {
+      const result = await geocodeAddress(row.location_address);
+      if (result) {
+        db.prepare('UPDATE calls_for_service SET latitude = ?, longitude = ? WHERE id = ?')
+          .run(result.latitude, result.longitude, row.id);
+        success++;
+        console.log(`[Geocoder] Batch: ${i + 1}/${rows.length} — geocoded "${row.location_address}" → ${result.latitude},${result.longitude}`);
+
+        // Broadcast so map updates in real-time
+        const updatedCall = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(row.id);
+        if (updatedCall) {
+          broadcastDispatchUpdate({ action: 'call_updated', call: updatedCall });
+        }
+      } else {
+        failed++;
+        console.warn(`[Geocoder] Batch: ${i + 1}/${rows.length} — FAILED "${row.location_address}" (no result)`);
+      }
+    } catch (err: any) {
+      failed++;
+      console.warn(`[Geocoder] Batch: ${i + 1}/${rows.length} — ERROR "${row.location_address}": ${err?.message}`);
+    }
+
+    // Rate-limit: 1 request per second (conservative for Google free tier)
+    if (i < rows.length - 1) {
+      await sleep(1000);
+    }
+  }
+
+  console.log(`[Geocoder] Batch complete: ${success} success, ${failed} failed out of ${rows.length}`);
+  return { success, failed };
+}
+
+// ─── Scheduled Geocode Sweep ──────────────────────────────
+
+/**
+ * Runs batchGeocodeUngeocoded() 60 seconds after startup,
+ * then every 30 minutes to catch newly created calls that failed initial geocoding.
+ */
+export function scheduleGeocodeSweep(): void {
+  console.log('[Geocoder] Sweep scheduler started — first run in 60s, then every 30m');
+
+  setTimeout(() => {
+    batchGeocodeUngeocoded().catch(err =>
+      console.error('[Geocoder] Sweep error:', err?.message)
+    );
+
+    const interval = setInterval(() => {
+      batchGeocodeUngeocoded().catch(err =>
+        console.error('[Geocoder] Sweep error:', err?.message)
+      );
+    }, 30 * 60 * 1000); // every 30 minutes
+
+    interval.unref();
+  }, 60 * 1000); // 60-second startup delay
 }

@@ -55,6 +55,7 @@ import { useToast } from '../components/ToastProvider';
 import FloatingSaveBar from '../components/FloatingSaveBar';
 import { formatDate, formatDateTime } from '../utils/dateUtils';
 import { useIsMobile } from '../hooks/useIsMobile';
+import WarrantBadge from '../components/WarrantBadge';
 
 // ============================================================
 // Backend -> Frontend mapping
@@ -62,6 +63,10 @@ import { useIsMobile } from '../hooks/useIsMobile';
 
 function mapDbIncident(row: any): Incident & Record<string, any> {
   return {
+    // Spread all DB columns first so flags, PSO fields, contract_id,
+    // section/zone/beat, etc. flow through without explicit listing
+    ...row,
+    // Override fields that need type coercion or renaming
     id: String(row.id),
     incident_number: row.incident_number ?? '',
     call_id: row.call_id ?? undefined,
@@ -86,7 +91,7 @@ function mapDbIncident(row: any): Incident & Record<string, any> {
     approved_at: row.approved_at ?? undefined,
     created_at: row.created_at ?? new Date().toISOString(),
     updated_at: row.updated_at ?? new Date().toISOString(),
-    // New extended fields
+    // Extended fields with defaults
     occurred_date: row.occurred_date ?? '',
     occurred_time: row.occurred_time ?? '',
     end_date: row.end_date ?? '',
@@ -98,9 +103,28 @@ function mapDbIncident(row: any): Incident & Record<string, any> {
     damage_estimate: row.damage_estimate ?? '',
     damage_description: row.damage_description ?? '',
     weapons_involved: row.weapons_involved ?? '',
+    // Boolean coercion for flag fields (SQLite stores as 0/1)
     alcohol_involved: row.alcohol_involved === 1 || row.alcohol_involved === true,
     drugs_involved: row.drugs_involved === 1 || row.drugs_involved === true,
     domestic_violence: row.domestic_violence === 1 || row.domestic_violence === true,
+    injuries_reported: row.injuries_reported === 1 || row.injuries_reported === true,
+    mental_health_crisis: row.mental_health_crisis === 1 || row.mental_health_crisis === true,
+    juvenile_involved: row.juvenile_involved === 1 || row.juvenile_involved === true,
+    felony_in_progress: row.felony_in_progress === 1 || row.felony_in_progress === true,
+    officer_safety_caution: row.officer_safety_caution === 1 || row.officer_safety_caution === true,
+    k9_requested: row.k9_requested === 1 || row.k9_requested === true,
+    ems_requested: row.ems_requested === 1 || row.ems_requested === true,
+    fire_requested: row.fire_requested === 1 || row.fire_requested === true,
+    hazmat: row.hazmat === 1 || row.hazmat === true,
+    gang_related: row.gang_related === 1 || row.gang_related === true,
+    evidence_collected: row.evidence_collected === 1 || row.evidence_collected === true,
+    body_camera_active: row.body_camera_active === 1 || row.body_camera_active === true,
+    photos_taken: row.photos_taken === 1 || row.photos_taken === true,
+    trespass_issued: row.trespass_issued === 1 || row.trespass_issued === true,
+    vehicle_pursuit: row.vehicle_pursuit === 1 || row.vehicle_pursuit === true,
+    foot_pursuit: row.foot_pursuit === 1 || row.foot_pursuit === true,
+    le_notified: row.le_notified === 1 || row.le_notified === true,
+    supervisor_notified: row.supervisor_notified === 1 || row.supervisor_notified === true,
     disposition: row.disposition ?? '',
     zone_beat: row.zone_beat ?? '',
     responding_le_agency: row.responding_le_agency ?? '',
@@ -936,6 +960,8 @@ export default function IncidentsPage() {
       beat_id: inc?.beat_id,
       disposition: inc?.disposition,
       zone_beat: inc?.zone_beat,
+      dispatch_code: inc?.dispatch_code,
+      source: inc?.source,
       // Dates / times
       occurred_date: inc?.occurred_date,
       occurred_time: inc?.occurred_time,
@@ -977,8 +1003,15 @@ export default function IncidentsPage() {
       // LE coordination
       responding_le_agency: inc?.responding_le_agency,
       le_case_number: inc?.le_case_number,
-      // Process Service fields (from linked call)
+      // PSO / Process Service fields
       pso_service_type: inc?.pso_service_type,
+      pso_attempt_number: inc?.pso_attempt_number,
+      pso_requestor_name: inc?.pso_requestor_name,
+      pso_requestor_phone: inc?.pso_requestor_phone,
+      pso_requestor_email: inc?.pso_requestor_email,
+      pso_billing_code: inc?.pso_billing_code,
+      pso_authorization: inc?.pso_authorization,
+      contract_id: inc?.contract_id,
       process_service_type: inc?.process_service_type,
       process_served_to: inc?.process_served_to,
       process_served_address: inc?.process_served_address,
@@ -1027,6 +1060,24 @@ export default function IncidentsPage() {
         storage_location: e.storage_location,
       })),
       attachment_images: attachmentImages.length > 0 ? attachmentImages : undefined,
+      // Geo coordinates
+      latitude: inc?.latitude,
+      longitude: inc?.longitude,
+      // Linked call details
+      call_created_at: inc?.call_created_at,
+      call_type: inc?.call_type,
+      caller_name: inc?.caller_name,
+      caller_phone: inc?.caller_phone,
+      // Supplement reports (attached to this incident)
+      supplements: detailSupplements.map((sup: any) => ({
+        report_number: sup.report_number || '',
+        report_type: sup.report_type || sup.type || '',
+        subject: sup.subject || '',
+        narrative: sup.narrative || '',
+        author_name: sup.author_name || '',
+        status: sup.status || '',
+        created_at: sup.created_at || '',
+      })),
     } as any;
 
     // Fetch officer's digital signature for PDF embedding
@@ -1035,9 +1086,29 @@ export default function IncidentsPage() {
       if (sigRes?.signature) pdfData._officerSignature = sigRes.signature;
     } catch { /* proceed without signature */ }
 
-    // Fetch GPS breadcrumb trail (via linked call_id)
+    // Fetch call notes from dispatch (for pre-narrative details)
     const callId = (selectedIncident as any)?.call_id;
     if (callId) {
+      try {
+        const callDetail = await apiFetch<any>(`/dispatch/calls/${callId}`);
+        if (callDetail) {
+          if (callDetail.caller_name) pdfData.caller_name = callDetail.caller_name;
+          if (callDetail.caller_phone) pdfData.caller_phone = callDetail.caller_phone;
+          // Build call notes from dispatch notes
+          if (callDetail.notes?.length > 0) {
+            pdfData.call_notes = callDetail.notes.map((n: any) =>
+              `[${n.timestamp ? new Date(n.timestamp).toLocaleString() : ''}] ${n.author || 'System'}: ${n.text || ''}`
+            ).join('\n');
+          }
+          // Inherit lat/lng from call if incident doesn't have them
+          if (pdfData.latitude == null && callDetail.latitude != null) {
+            pdfData.latitude = callDetail.latitude;
+            pdfData.longitude = callDetail.longitude;
+          }
+        }
+      } catch { /* call detail optional */ }
+
+      // Fetch GPS breadcrumb trail (via linked call_id)
       try {
         const trail = await apiFetch<{
           points: any[];
@@ -1115,17 +1186,33 @@ export default function IncidentsPage() {
         )}
 
         {/* Flags (always visible, no collapse) */}
-        {(inc.alcohol_involved || inc.drugs_involved || inc.domestic_violence) && (
-          <div className="flex items-center gap-2 mb-3">
-            {inc.alcohol_involved && (
-              <span className="badge-pill bg-amber-900/40 text-amber-300 border border-amber-700/40">Alcohol</span>
-            )}
-            {inc.drugs_involved && (
-              <span className="badge-pill bg-purple-900/40 text-purple-300 border border-purple-700/40">Drugs</span>
-            )}
-            {inc.domestic_violence && (
-              <span className="badge-pill bg-red-900/40 text-red-300 border border-red-700/40">Domestic Violence</span>
-            )}
+        {(inc.alcohol_involved || inc.drugs_involved || inc.domestic_violence || inc.felony_in_progress ||
+          inc.officer_safety_caution || inc.mental_health_crisis || inc.injuries_reported || inc.juvenile_involved ||
+          inc.gang_related || inc.hazmat || inc.body_camera_active || inc.evidence_collected || inc.photos_taken ||
+          inc.vehicle_pursuit || inc.foot_pursuit || inc.le_notified || inc.supervisor_notified ||
+          inc.k9_requested || inc.ems_requested || inc.fire_requested || inc.trespass_issued) && (
+          <div className="flex flex-wrap items-center gap-1.5 mb-3">
+            {inc.alcohol_involved && <span className="px-2 py-0.5 bg-amber-900/40 text-amber-300 text-[10px] uppercase font-bold border border-amber-700/40">Alcohol</span>}
+            {inc.drugs_involved && <span className="px-2 py-0.5 bg-purple-900/40 text-purple-300 text-[10px] uppercase font-bold border border-purple-700/40">Drugs</span>}
+            {inc.domestic_violence && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">DV</span>}
+            {inc.felony_in_progress && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Felony IP</span>}
+            {inc.officer_safety_caution && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Ofc Safety</span>}
+            {inc.mental_health_crisis && <span className="px-2 py-0.5 bg-blue-900/40 text-blue-300 text-[10px] uppercase font-bold border border-blue-700/40">Mental Health</span>}
+            {inc.injuries_reported && <span className="px-2 py-0.5 bg-orange-900/40 text-orange-300 text-[10px] uppercase font-bold border border-orange-700/40">Injuries</span>}
+            {inc.juvenile_involved && <span className="px-2 py-0.5 bg-cyan-900/40 text-cyan-300 text-[10px] uppercase font-bold border border-cyan-700/40">Juvenile</span>}
+            {inc.gang_related && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Gang</span>}
+            {inc.hazmat && <span className="px-2 py-0.5 bg-yellow-900/40 text-yellow-300 text-[10px] uppercase font-bold border border-yellow-700/40">HAZMAT</span>}
+            {inc.body_camera_active && <span className="px-2 py-0.5 bg-green-900/40 text-green-300 text-[10px] uppercase font-bold border border-green-700/40">BWC</span>}
+            {inc.evidence_collected && <span className="px-2 py-0.5 bg-green-900/40 text-green-300 text-[10px] uppercase font-bold border border-green-700/40">Evidence</span>}
+            {inc.photos_taken && <span className="px-2 py-0.5 bg-green-900/40 text-green-300 text-[10px] uppercase font-bold border border-green-700/40">Photos</span>}
+            {inc.trespass_issued && <span className="px-2 py-0.5 bg-amber-900/40 text-amber-300 text-[10px] uppercase font-bold border border-amber-700/40">Trespass</span>}
+            {inc.vehicle_pursuit && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Veh Pursuit</span>}
+            {inc.foot_pursuit && <span className="px-2 py-0.5 bg-red-900/40 text-red-300 text-[10px] uppercase font-bold border border-red-700/40">Foot Pursuit</span>}
+            {inc.k9_requested && <span className="px-2 py-0.5 bg-blue-900/40 text-blue-300 text-[10px] uppercase font-bold border border-blue-700/40">K9</span>}
+            {inc.ems_requested && <span className="px-2 py-0.5 bg-blue-900/40 text-blue-300 text-[10px] uppercase font-bold border border-blue-700/40">EMS</span>}
+            {inc.fire_requested && <span className="px-2 py-0.5 bg-orange-900/40 text-orange-300 text-[10px] uppercase font-bold border border-orange-700/40">Fire</span>}
+            {inc.le_notified && <span className="px-2 py-0.5 bg-blue-900/40 text-blue-300 text-[10px] uppercase font-bold border border-blue-700/40">LE Notified</span>}
+            {inc.supervisor_notified && <span className="px-2 py-0.5 bg-blue-900/40 text-blue-300 text-[10px] uppercase font-bold border border-blue-700/40">Supvr</span>}
           </div>
         )}
 
@@ -1389,6 +1476,7 @@ export default function IncidentsPage() {
                         {lp.role.replace(/_/g, ' ')}
                       </span>
                       <span className="text-sm text-white font-medium">{lp.last_name}, {lp.first_name}</span>
+                      <WarrantBadge flags={lp.flags || '[]'} size="sm" />
                       {lp.dob && <span className="text-[11px] text-rmpg-400">DOB: {lp.dob}</span>}
                       {flags.map((f, i) => (
                         <span key={i} className="badge-pill bg-red-900/40 text-red-400">

@@ -126,11 +126,13 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       const map = new google.maps.Map(mapContainerRef.current, {
         center,
         zoom: MINI_ZOOM,
+        renderingType: 'RASTER' as any,
         styles: DARK_MAP_STYLE,
         disableDefaultUI: true,
         zoomControl: true,
         zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_TOP },
         gestureHandling: 'cooperative',
+        backgroundColor: '#0a1220',
       });
       mapRef.current = map;
       registerMapInstance(map);

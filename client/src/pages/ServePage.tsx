@@ -5,6 +5,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { escapeHtml } from '../utils/sanitize';
 import {
   Plus, RefreshCw, MapPin, BarChart3, List, Map as MapIcon,
   Briefcase, Calendar, Route, Navigation, Loader2, X,
@@ -18,6 +19,7 @@ import ServeAttemptModal from '../components/serve/ServeAttemptModal';
 import ServeRoutePlanner from '../components/serve/ServeRoutePlanner';
 import ServeSkipTracePanel from '../components/serve/ServeSkipTracePanel';
 import FormModal from '../components/FormModal';
+import { useToast } from '../components/ToastProvider';
 import type { ServeJob, ServeAttemptData, ServeSkipAddress } from '../types';
 
 // ─── Constants ──────────────────────────────────────────────────────────
@@ -73,6 +75,7 @@ interface StatsSummary {
 export default function ServePage() {
   const isMobile = useIsMobile();
   const { subscribe } = useWebSocket();
+  const { addToast } = useToast();
 
   // ── Core state ──────────────────────────────────────────────────────
   const [selectedDate, setSelectedDate] = useState(() => formatDate(new Date()));
@@ -81,6 +84,7 @@ export default function ServePage() {
 
   // ── Data ────────────────────────────────────────────────────────────
   const [jobs, setJobs] = useState<ServeJob[]>([]);
+  const [linkedCalls, setLinkedCalls] = useState<Record<number, any>>({});
   const [stats, setStats] = useState<StatsSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -141,13 +145,31 @@ export default function ServePage() {
     setLoading(true);
     try {
       const data = await apiFetch<ServeJob[]>(`/api/process-server?date=${selectedDate}`);
-      setJobs(data || []);
+      const fetchedJobs = data || [];
+      setJobs(fetchedJobs);
+
+      // Fetch linked dispatch calls for jobs that have call_id
+      const jobsWithCalls = fetchedJobs.filter((j: any) => j.call_id);
+      if (jobsWithCalls.length > 0) {
+        const callMap: Record<number, any> = {};
+        await Promise.all(
+          jobsWithCalls.map(async (j: any) => {
+            try {
+              const call = await apiFetch(`/api/dispatch/calls/${j.call_id}`);
+              if (call) callMap[j.id] = call;
+            } catch {}
+          })
+        );
+        setLinkedCalls(callMap);
+      } else {
+        setLinkedCalls({});
+      }
     } catch {
-      // silently fail — user can retry
+      addToast('Failed to load serve jobs', 'error');
     } finally {
       setLoading(false);
     }
-  }, [selectedDate]);
+  }, [selectedDate, addToast]);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -188,11 +210,11 @@ export default function ServePage() {
       await apiFetch('/api/process-server/sync-from-sm', { method: 'POST' });
       refreshJobs();
     } catch {
-      // sync failed
+      addToast('Failed to sync from ServeManager', 'error');
     } finally {
       setSyncing(false);
     }
-  }, [refreshJobs]);
+  }, [refreshJobs, addToast]);
 
   const handleNavigate = useCallback((jobId: number) => {
     const job = jobs.find(j => j.id === jobId);
@@ -219,9 +241,9 @@ export default function ServePage() {
       });
       refreshJobs();
     } catch {
-      // flag failed
+      addToast('Failed to flag address', 'error');
     }
-  }, [refreshJobs]);
+  }, [refreshJobs, addToast]);
 
   const handleAttemptSubmit = useCallback(async (data: ServeAttemptData) => {
     if (!attemptJob) return { dueDiligenceComplete: false, attemptNumber: 0, jobStatus: 'pending' };
@@ -249,8 +271,8 @@ export default function ServePage() {
         body: JSON.stringify({ orderedIds: orderedJobIds }),
       });
       refreshJobs();
-    } catch {
-      // reorder failed — local state still updated
+    } catch (err: any) {
+      console.warn('[Serve] Route reorder failed — local state still updated:', err?.message);
     }
   }, [refreshJobs]);
 
@@ -324,11 +346,11 @@ export default function ServePage() {
       setEditJob(null);
       refreshJobs();
     } catch {
-      // error
+      addToast(editJob ? 'Failed to update job' : 'Failed to create job', 'error');
     } finally {
       setFormSubmitting(false);
     }
-  }, [formData, editJob, selectedDate, resetForm, refreshJobs]);
+  }, [formData, editJob, selectedDate, resetForm, refreshJobs, addToast]);
 
   const handleFormChange = useCallback((field: string, value: string | number) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -369,22 +391,21 @@ export default function ServePage() {
     loadGoogleMaps(GMAPS_API_KEY).then(() => {
       if (cancelled || !mapContainerRef.current) return;
 
-      // If map already exists, just update markers
-      if (mapRef.current) {
-        updateMapMarkers();
-        return;
-      }
+      // If map already exists, the separate mapReady effect will handle marker updates
+      if (mapRef.current) return;
 
       const center = { lat: 40.7608, lng: -111.891 }; // SLC default
       const map = new google.maps.Map(mapContainerRef.current, {
         center,
         zoom: 11,
+        renderingType: 'RASTER' as any,
         styles: DARK_MAP_STYLE,
         disableDefaultUI: true,
         zoomControl: true,
         mapTypeControl: false,
         streetViewControl: false,
         fullscreenControl: false,
+        backgroundColor: '#0a1220',
       });
 
       mapRef.current = map;
@@ -440,9 +461,9 @@ export default function ServePage() {
           .filter(Boolean).join(', ');
         infoWindowRef.current?.setContent(`
           <div style="color:#fff;background:#141e2b;padding:8px 12px;border-radius:4px;min-width:180px;font-family:system-ui;">
-            <div style="font-weight:600;font-size:13px;margin-bottom:4px;">${job.recipient_name}</div>
-            <div style="font-size:11px;color:#8a9aaa;">${fullAddr || 'No address'}</div>
-            <div style="font-size:10px;color:#6b7280;margin-top:4px;text-transform:uppercase;">${job.status.replace('_', ' ')} &middot; ${job.document_type}</div>
+            <div style="font-weight:600;font-size:13px;margin-bottom:4px;">${escapeHtml(job.recipient_name)}</div>
+            <div style="font-size:11px;color:#8a9aaa;">${escapeHtml(fullAddr) || 'No address'}</div>
+            <div style="font-size:10px;color:#6b7280;margin-top:4px;text-transform:uppercase;">${escapeHtml(job.status.replace(/_/g, ' '))} &middot; ${escapeHtml(job.document_type)}</div>
           </div>
         `);
         infoWindowRef.current?.open(mapRef.current!, marker);
@@ -593,7 +614,7 @@ export default function ServePage() {
                   <Briefcase size={24} className="text-rmpg-600 mb-2" />
                   <p className="text-sm text-rmpg-400">
                     {statusFilter !== 'all'
-                      ? `No ${statusFilter.replace('_', ' ')} jobs for this date.`
+                      ? `No ${statusFilter.replace(/_/g, ' ')} jobs for this date.`
                       : 'No jobs for today. Sync from ServeManager or add manually.'
                     }
                   </p>
@@ -603,6 +624,7 @@ export default function ServePage() {
                   <ServeJobCard
                     key={job.id}
                     job={job}
+                    linkedCall={linkedCalls[job.id] || null}
                     onAttempt={(id) => {
                       const j = jobs.find(jj => jj.id === id);
                       if (j) setAttemptJob(j);

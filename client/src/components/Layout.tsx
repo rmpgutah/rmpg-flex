@@ -26,15 +26,11 @@ import {
   Lock,
   ChevronDown,
   Shield,
-  Menu,
-  X,
   Calendar,
   Briefcase,
   Package,
   TrendingUp,
-  Landmark,
   Construction,
-  Truck,
   ClipboardCheck,
   UserX,
   Gavel,
@@ -58,7 +54,8 @@ import { usePresence } from '../hooks/usePresence';
 import RmpgLogo from './RmpgLogo';
 import StatusBar from './StatusBar';
 import MenuBar from './MenuBar';
-// Sidebar removed — navigation moved to top icon toolbar
+import Sidebar from './Sidebar';
+import ModuleTileBar from './ModuleTileBar';
 import ErrorBoundary from './ErrorBoundary';
 import NotificationCenter from './NotificationCenter';
 import PanicButton from './PanicButton';
@@ -149,14 +146,14 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/forensics', icon: Microscope, label: 'Forensic Lab' },
     { path: '/cases', icon: Briefcase, label: 'Case Management' },
   ]},
-  { path: '/warrants', icon: AlertTriangle, label: 'Enforce', group: 'records', shortcut: 'F7', newWindow: true, children: [
-    { path: '/warrants', icon: AlertTriangle, label: 'Warrants', newWindow: true },
-    { path: '/citations', icon: FileWarning, label: 'Citations', newWindow: true },
-    { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders', newWindow: true },
-    { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement', newWindow: true },
-    { path: '/court', icon: Gavel, label: 'Court Tracker', newWindow: true },
-    { path: '/offender-registry', icon: UserX, label: 'Offender Registry', newWindow: true },
-    { path: '/serve', icon: Briefcase, label: 'Process Server', newWindow: true },
+  { path: '/warrants', icon: AlertTriangle, label: 'Enforce', group: 'records', shortcut: 'F7', children: [
+    { path: '/warrants', icon: AlertTriangle, label: 'Warrants' },
+    { path: '/citations', icon: FileWarning, label: 'Citations' },
+    { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders' },
+    { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement' },
+    { path: '/court', icon: Gavel, label: 'Court Tracker' },
+    { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
+    { path: '/serve', icon: Briefcase, label: 'Process Server' },
   ]},
   { path: '/personnel', icon: Users, label: 'Personnel', group: 'records', shortcut: 'F8', children: [
     { path: '/personnel', icon: Users, label: 'Personnel' },
@@ -278,15 +275,22 @@ export default function Layout() {
   const [setupLastName, setSetupLastName] = useState('');
   const [setupSaving, setSetupSaving] = useState(false);
   const [setupError, setSetupError] = useState('');
-  const nameSetupDone = useRef(false);
+  const nameSetupDone = useRef(
+    () => {
+      try { return localStorage.getItem('rmpg_name_setup_done') === '1'; } catch { return false; }
+    }
+  );
 
   useEffect(() => {
-    if (!user || nameSetupDone.current) return;
+    if (!user || nameSetupDone.current()) return;
+    // Only prompt if user genuinely has no name set (first login)
     if (!user.first_name?.trim() || !user.last_name?.trim()) {
       setNameSetupOpen(true);
       setSetupFirstName(user.first_name || '');
       setSetupLastName(user.last_name || '');
     } else {
+      // User has a name — mark as done so we never prompt again
+      try { localStorage.setItem('rmpg_name_setup_done', '1'); } catch {}
       setNameSetupOpen(false);
     }
   }, [user]);
@@ -305,8 +309,8 @@ export default function Layout() {
         method: 'PUT',
         body: JSON.stringify({ first_name: fn, last_name: ln }),
       });
-      // Mark as done BEFORE refreshUser to prevent the useEffect from re-opening
-      nameSetupDone.current = true;
+      // Mark as done persistently — never prompt again after first save
+      try { localStorage.setItem('rmpg_name_setup_done', '1'); } catch {}
       setNameSetupOpen(false);
       // Fire-and-forget — don't await so the modal closes immediately
       refreshUser();
@@ -539,7 +543,7 @@ export default function Layout() {
   const isMacElectron = isElectron && (window as any).electron?.platform === 'darwin';
 
   return (
-    <div className="flex flex-col h-screen text-white overflow-hidden" style={{ background: '#141e2b' }}>
+    <div className="flex flex-col h-screen text-white overflow-hidden" style={{ background: 'var(--surface-base)' }}>
       {/* Auto-Update Banner (Electron only) */}
       {isElectron && <UpdateBanner />}
 
@@ -679,9 +683,29 @@ export default function Layout() {
                 <span className="text-[10px] font-bold tracking-[0.2em] leading-none" style={{ color: '#3b8ad4' }}>FLEX</span>
               </div>
             </div>
-            {/* Page title */}
+            {/* Back/Forward + Page title */}
             <div className="flex items-center gap-1.5">
               <div className="w-px h-6" style={{ background: '#2a3e58' }} />
+              <button
+                type="button"
+                onClick={handleNavBack}
+                disabled={!canGoBack}
+                className="toolbar-btn"
+                title="Back (Alt+←)"
+                style={{ padding: '2px 3px', opacity: canGoBack ? 1 : 0.3 }}
+              >
+                <ChevronLeft style={{ width: 14, height: 14 }} />
+              </button>
+              <button
+                type="button"
+                onClick={handleNavForward}
+                disabled={!canGoForward}
+                className="toolbar-btn"
+                title="Forward (Alt+→)"
+                style={{ padding: '2px 3px', opacity: canGoForward ? 1 : 0.3 }}
+              >
+                <ChevronRight style={{ width: 14, height: 14 }} />
+              </button>
               <span className="text-[11px] font-mono font-bold tracking-wider text-rmpg-400">
                 {pageTitle.toUpperCase()}
               </span>
@@ -709,8 +733,8 @@ export default function Layout() {
                 className="flex items-center gap-1 px-2 py-0.5 panel-inset cursor-pointer transition-colors bg-surface-sunken hover:bg-rmpg-800"
               >
                 <Phone style={{ width: 9, height: 9 }} className="text-red-500" />
-                <span className="text-[9px] font-mono font-bold text-rmpg-400">CALLS:</span>
-                <span className="text-[9px] font-mono font-bold text-white">{activeCallCount}</span>
+                <span className="text-[10px] font-mono font-bold text-rmpg-400">CALLS:</span>
+                <span className="text-[10px] font-mono font-bold text-white">{activeCallCount}</span>
               </button>
 
               {/* BOLO Indicator */}
@@ -721,7 +745,7 @@ export default function Layout() {
                   style={{ background: 'rgba(220, 38, 38, 0.25)', border: '1px solid #991b1b' }}
                 >
                   <span className="led-dot led-red animate-led-blink" />
-                  <span className="text-[9px] font-mono font-bold" style={{ color: '#ef7a7a' }}>
+                  <span className="text-[10px] font-mono font-bold" style={{ color: '#ef7a7a' }}>
                     BOLO: {activeBOLOs}
                   </span>
                 </button>
@@ -741,7 +765,7 @@ export default function Layout() {
               <div className="flex items-center gap-1 px-1.5 py-0.5 panel-inset bg-surface-sunken">
                 <span className={`led-dot ${isConnected ? 'led-green' : 'led-red animate-led-blink'}`} />
                 <Users style={{ width: 9, height: 9 }} className="text-rmpg-500" />
-                <span className="text-[9px] font-mono font-bold text-rmpg-300">{presence.count}</span>
+                <span className="text-[10px] font-mono font-bold text-rmpg-300">{presence.count}</span>
               </div>
 
               {/* Notifications */}
@@ -824,16 +848,16 @@ export default function Layout() {
                     <div className="text-xs font-bold text-white">
                       {user?.first_name} {user?.last_name}
                     </div>
-                    <div className="text-[9px] font-mono text-rmpg-500">
+                    <div className="text-[10px] font-mono text-rmpg-500">
                       {user?.email}
                     </div>
                     <div className="flex items-center gap-2 mt-1">
                       {user?.badge_number && (
-                        <span className="text-[9px] font-mono px-1.5 py-0.5 bg-surface-overlay text-rmpg-400 border border-rmpg-800">
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 bg-surface-overlay text-rmpg-400 border border-rmpg-800">
                           {user.badge_number}
                         </span>
                       )}
-                      <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 bg-brand-900/20 text-brand-300 border border-brand-800/40">
+                      <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 bg-brand-900/20 text-brand-300 border border-brand-800/40">
                         {toDisplayLabel(user?.role || '')}
                       </span>
                     </div>
@@ -883,10 +907,10 @@ export default function Layout() {
             flexShrink: 0,
           }}
         >
-          <span className="text-[9px] font-bold uppercase tracking-widest text-green-500">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-green-500">
             Contract Manager View — ICU Investigations
           </span>
-          <span className="text-[8px] font-mono px-1.5 py-0.5 bg-amber-900/30 text-amber-400 border border-amber-800/40">
+          <span className="text-[9px] font-mono px-1.5 py-0.5 bg-amber-900/30 text-amber-400 border border-amber-800/40">
             DEMO DATA
           </span>
         </div>
@@ -1172,16 +1196,28 @@ export default function Layout() {
       />
 
       {/* ============================================================ */}
+      {/* MODULE TILE BAR — Spillman Flex module launcher ribbon        */}
+      {/* ============================================================ */}
+      {!isMobile && (
+        <ModuleTileBar
+          items={TOOLBAR_NAV}
+          isAdmin={isAdmin}
+          isClientViewer={isClientViewer}
+          isContractManager={isContractManager}
+          activeCallCount={activeCallCount}
+          emailUnreadCount={emailUnreadCount}
+          activeBOLOs={activeBOLOs}
+        />
+      )}
+
+      {/* ============================================================ */}
       {/* MAIN CONTENT AREA — Full width (no sidebar)                  */}
       {/* ============================================================ */}
-      <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* Page Content (recessed panel) */}
-        <main className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter" key={location.pathname} style={{ background: '#1a2636' }}>
-          <ErrorBoundary>
-            <Outlet />
-          </ErrorBoundary>
-        </main>
-      </div>
+      <main className="flex-1 overflow-auto min-h-0 panel-inset app-grid-bg animate-page-enter" key={location.pathname}>
+        <ErrorBoundary>
+          <Outlet />
+        </ErrorBoundary>
+      </main>
 
       {/* Mobile Bottom Navigation */}
       {isMobile && (

@@ -98,6 +98,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
   const [imageUploading, setImageUploading] = useState(false);
   const [imageDragOver, setImageDragOver] = useState(false);
   const justUploadedImage = useRef(false); // Guards against useEffect resetting profileImage after upload
+  const logoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // User Preferences
   const [prefs, setPrefs] = useState<UserPreferences | null>(null);
@@ -158,6 +159,11 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
       }
     }
   }, [isOpen, user, initialTab]);
+
+  // Cleanup logout timer on unmount
+  useEffect(() => {
+    return () => { if (logoutTimerRef.current) clearTimeout(logoutTimerRef.current); };
+  }, []);
 
   // Fetch digital signature + profile image on profile tab open
   useEffect(() => {
@@ -378,7 +384,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
         body: JSON.stringify({ currentPassword, newPassword }),
       });
       setPwMsg({ type: 'success', text: result.message || 'Password changed. You will be logged out.' });
-      setTimeout(() => logout(), 2500);
+      logoutTimerRef.current = setTimeout(() => logout(), 2500);
     } catch (err: any) {
       setPwMsg({ type: 'error', text: err?.message || 'Failed to change password' });
     } finally {
@@ -390,7 +396,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
     try {
       await apiFetch(`/auth/sessions/${sessionId}`, { method: 'DELETE' });
       setSessions(prev => prev.filter(s => s.session_id !== sessionId));
-    } catch { /* silent */ }
+    } catch { setSecurityMsg({ type: 'error', text: 'Failed to revoke session' }); }
   };
 
   // ── 2FA Handlers ─────────────────────────────────
@@ -689,7 +695,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                         {imageUploading ? 'Uploading...' : 'Drop image here or click to browse'}
                       </div>
                       <div className="text-[9px] mt-0.5" style={{ color: '#3a4e60' }}>
-                        JPG, PNG, WebP — max 2MB
+                        JPG, PNG, WebP — max 10MB
                       </div>
                     </div>
                     {profileImage && (

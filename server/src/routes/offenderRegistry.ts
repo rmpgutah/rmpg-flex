@@ -9,6 +9,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
+import { escapeLike, validateParamId, validateNumericParams } from '../middleware/sanitize';
 
 const router = Router();
 router.use(authenticateToken);
@@ -65,8 +66,8 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     if (alert_type) { where += ' AND oa.alert_type = ?'; params.push(alert_type); }
     if (severity) { where += ' AND oa.severity = ?'; params.push(severity); }
     if (search) {
-      where += ' AND (p.first_name LIKE ? OR p.last_name LIKE ? OR oa.description LIKE ?)';
-      const s = `%${search}%`; params.push(s, s, s);
+      where += " AND (p.first_name LIKE ? ESCAPE '\\' OR p.last_name LIKE ? ESCAPE '\\' OR oa.description LIKE ? ESCAPE '\\')";
+      const s = `%${escapeLike(String(search))}%`; params.push(s, s, s);
     }
 
     const total = (db.prepare(`
@@ -98,7 +99,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
 
 // ─── GET /check/:personId ────────────────────────────────
 // Quick check: all active alerts for a specific person
-router.get('/check/:personId', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/check/:personId', validateNumericParams('personId'), requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const alerts = db.prepare(`
@@ -110,7 +111,7 @@ router.get('/check/:personId', requireRole('admin', 'manager', 'supervisor', 'of
 });
 
 // ─── GET /:id ────────────────────────────────────────────
-router.get('/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const row = db.prepare(`
@@ -158,7 +159,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor'), (req: Request, r
 });
 
 // ─── PUT /:id ────────────────────────────────────────────
-router.put('/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();
@@ -190,7 +191,7 @@ router.put('/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request,
 });
 
 // ─── PUT /:id/clear ──────────────────────────────────────
-router.put('/:id/clear', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+router.put('/:id/clear', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const now = localNow();

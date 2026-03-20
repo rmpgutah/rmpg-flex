@@ -58,7 +58,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
 
       // Legacy escalation logic — guard against missing/invalid created_at
       const createdTime = call.created_at ? new Date(call.created_at).getTime() : NaN;
-      const diffMin = Number.isFinite(createdTime) ? Math.floor((Date.now() - createdTime) / 60000) : 0;
+      const diffMin = Number.isFinite(createdTime) ? Math.floor((Date.now() - createdTime) / 60000) : -1;
       const isPending = call.status === 'pending';
       setShouldEscalate(isPending && (
         (call.priority === 'P3' && diffMin >= 20) ||

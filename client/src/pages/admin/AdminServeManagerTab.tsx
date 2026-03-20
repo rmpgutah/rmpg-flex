@@ -73,7 +73,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
     try {
       const res = await apiFetch<{ data: SMSyncLogEntry[] }>('/servemanager/sync/log');
       setSyncLog(res.data);
-    } catch { /* ignore */ }
+    } catch (e) { console.error('Failed to fetch sync log:', e); }
   }, []);
 
   const fetchJobs = useCallback(async () => {
@@ -101,7 +101,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
       setPollerTargetClient(data.target_client);
       setPollerAutoCreate(data.auto_create_calls);
       setPollerDirty(false);
-    } catch { /* ignore if not configured yet */ }
+    } catch (e) { console.error('Failed to fetch poller status:', e); }
   }, []);
 
   useEffect(() => { fetchStatus(); fetchSyncLog(); }, [fetchStatus, fetchSyncLog]);

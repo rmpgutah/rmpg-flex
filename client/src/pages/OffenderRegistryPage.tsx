@@ -227,6 +227,7 @@ export default function OffenderRegistryPage() {
   const [personResults, setPersonResults] = useState<any[]>([]);
   const [selectedPerson, setSelectedPerson] = useState<any>(null);
   const personSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const personSearchGenRef = useRef(0);
 
   const fetchAlerts = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
@@ -241,7 +242,7 @@ export default function OffenderRegistryPage() {
       setAlerts(res.data || []);
       setTotalPages(res.pagination?.totalPages || 1);
       setTotalCount(res.pagination?.total || 0);
-    } catch { /* silent */ } finally { setLoading(false); }
+    } catch { addToast('Failed to load offender alerts', 'error'); } finally { setLoading(false); }
   }, [page, searchQuery, filterType, filterSeverity]);
 
   const fetchStats = useCallback(async () => {
@@ -257,10 +258,12 @@ export default function OffenderRegistryPage() {
     if (personSearch.length < 2) { setPersonResults([]); return; }
     if (personSearchTimer.current) clearTimeout(personSearchTimer.current);
     personSearchTimer.current = setTimeout(async () => {
+      const gen = ++personSearchGenRef.current;
       try {
         const res = await apiFetch<{ data: any[] }>(`/records/persons?search=${encodeURIComponent(personSearch)}&per_page=8`);
+        if (gen !== personSearchGenRef.current) return;
         setPersonResults(res.data || []);
-      } catch { setPersonResults([]); }
+      } catch { if (gen === personSearchGenRef.current) setPersonResults([]); }
     }, 300);
     return () => { if (personSearchTimer.current) clearTimeout(personSearchTimer.current); };
   }, [personSearch]);

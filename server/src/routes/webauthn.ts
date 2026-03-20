@@ -26,6 +26,7 @@ import config from '../config';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { localNow } from '../utils/timeUtils';
+import { validateParamId } from '../middleware/sanitize';
 
 const router = Router();
 
@@ -113,7 +114,7 @@ router.get('/credentials', authenticateToken, (req: Request, res: Response) => {
 
 // ─── POST /api/auth/webauthn/register-options ───────
 // Generate registration options — user must be authenticated
-router.post('/register-options', authenticateToken, async (req: Request, res: Response) => {
+router.post('/register-options', authenticateToken, mfaRateLimit, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.userId;
     const db = getDb();
@@ -164,7 +165,7 @@ router.post('/register-options', authenticateToken, async (req: Request, res: Re
 
 // ─── POST /api/auth/webauthn/register-verify ────────
 // Verify registration response and store credential
-router.post('/register-verify', authenticateToken, async (req: Request, res: Response) => {
+router.post('/register-verify', authenticateToken, mfaRateLimit, async (req: Request, res: Response) => {
   try {
     const { challengeId, response: regResponse, name } = req.body as {
       challengeId: string;
@@ -259,7 +260,7 @@ router.post('/register-verify', authenticateToken, async (req: Request, res: Res
 
 // ─── DELETE /api/auth/webauthn/credentials/:id ──────
 // Remove a registered security key
-router.delete('/credentials/:id', authenticateToken, (req: Request, res: Response) => {
+router.delete('/credentials/:id', validateParamId, authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const credId = parseInt(req.params.id as string, 10);
@@ -487,9 +488,11 @@ router.post('/authenticate-verify', mfaRateLimit, async (req: Request, res: Resp
     };
 
     // ── Check if password change is required before issuing final tokens ──
+    let _pwExpired = false;
+    try { _pwExpired = isPasswordExpired(user.password_changed_at); } catch { /* fail open */ }
     const needsPasswordChange = user.must_change_password === 1
       || user.force_password_change === 1
-      || isPasswordExpired(user.password_changed_at);
+      || _pwExpired;
 
     if (needsPasswordChange) {
       const pwTempToken = generateTempToken(payload, ['password_change']);

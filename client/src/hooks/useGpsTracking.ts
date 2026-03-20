@@ -151,6 +151,7 @@ function haversineMeters(
   lat1: number, lng1: number,
   lat2: number, lng2: number,
 ): number {
+  if (!Number.isFinite(lat1) || !Number.isFinite(lng1) || !Number.isFinite(lat2) || !Number.isFinite(lng2)) return Infinity;
   const R = 6371000; // Earth radius in meters
   const toRad = (deg: number) => (deg * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);
@@ -290,9 +291,10 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
 
   // Fetch the user's assigned unit on mount
   useEffect(() => {
+    let cancelled = false;
     apiFetch<{ id: number; call_sign: string; status: string; gps_source?: string } | null>('/dispatch/gps/my-unit')
       .then((unit) => {
-        if (unit) {
+        if (unit && !cancelled) {
           unitIdRef.current = unit.id;
           setState((prev) => ({ ...prev, unitCallSign: unit.call_sign, unitId: unit.id }));
           gpsSourceRef.current = unit.gps_source || 'browser';
@@ -301,12 +303,14 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       .catch(() => {
         // User may not have a unit assigned — that's fine, GPS still mandatory
       });
+    return () => { cancelled = true; };
   }, []);
 
   // ─── Batch send ───────────────────────────────────────────
   // Drains the queue and POSTs all collected points to the server.
   // On failure, persists points to localStorage so they survive page reloads.
   const isSendingRef = useRef(false);
+  const mountedRef = useRef(true);
   const sendBatch = useCallback(async () => {
     // Guard against concurrent sends (interval can fire while await is pending)
     if (isSendingRef.current) return;
@@ -341,7 +345,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         if (needsUnitFetch) {
           apiFetch<{ id: number; call_sign: string; status: string } | null>('/dispatch/gps/my-unit')
             .then((unit) => {
-              if (unit) {
+              if (unit && mountedRef.current) {
                 unitIdRef.current = unit.id;
                 setState((p) => ({ ...p, unitCallSign: unit.call_sign, unitId: unit.id }));
               }
@@ -770,6 +774,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   useEffect(() => {
     startTracking();
     return () => {
+      mountedRef.current = false;
       // Flush remaining points and clean up all timers/watchers
       cleanupTracking(true);
     };
@@ -804,9 +809,9 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       console.log(`[GPS] Network changed: ${prevType} → ${newType} (${newConnType})`);
       setState((prev) => ({ ...prev, connectionType: newConnType }));
 
-      // Flush any queued points before restarting
+      // Flush any queued points before restarting (fire-and-forget; restart waits 1s anyway)
       if (queueRef.current.length > 0) {
-        sendBatch();
+        sendBatch().catch((e) => console.warn('[GPS] sendBatch on network change failed:', e));
       }
 
       // Restart watchPosition to force re-acquisition on the new network

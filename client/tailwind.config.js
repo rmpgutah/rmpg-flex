@@ -12,14 +12,14 @@ export default {
   theme: {
     borderRadius: {
       none: '0',
-      sm: '1px',
-      DEFAULT: '2px',
-      md: '2px',
-      lg: '2px',
-      xl: '2px',
-      '2xl': '2px',
-      '3xl': '2px',
-      full: '2px',
+      sm: '2px',
+      DEFAULT: '4px',
+      md: '4px',
+      lg: '6px',
+      xl: '8px',
+      '2xl': '10px',
+      '3xl': '12px',
+      full: '9999px',
     },
     extend: {
       fontFamily: {
@@ -27,8 +27,8 @@ export default {
         mono: ['Consolas', 'Courier New', 'monospace'],
       },
       fontSize: {
-        'micro':   ['9px',  { lineHeight: '12px', letterSpacing: '0.04em' }],
-        'label':   ['10px', { lineHeight: '14px', letterSpacing: '0.05em' }],
+        'micro':   ['10px', { lineHeight: '14px', letterSpacing: '0.04em' }],
+        'label':   ['11px', { lineHeight: '16px', letterSpacing: '0.05em' }],
         'caption': ['11px', { lineHeight: '16px' }],
         'body-sm': ['12px', { lineHeight: '18px' }],
         'body':    ['13px', { lineHeight: '20px' }],
@@ -39,9 +39,9 @@ export default {
       colors: {
         // ── Surface tokens (CSS variable backed) ──────────
         surface: {
-          base:    'var(--surface-base)',     // #141e2b
-          raised:  'var(--surface-raised)',   // #1a2636
-          sunken:  'var(--surface-sunken)',   // #0d1520
+          base:    'var(--surface-base)',     // #0f1722
+          raised:  'var(--surface-raised)',   // #141e2b
+          sunken:  'var(--surface-sunken)',   // #0a1019
           overlay: 'var(--surface-overlay)',  // #0a1018
           deep:    'var(--surface-deep)',     // #060c14
         },

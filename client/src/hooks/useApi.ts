@@ -125,7 +125,7 @@ export function useApi<T = unknown>(options?: UseApiOptions) {
     isLoading: false,
   });
 
-  const getToken = () => localStorage.getItem('rmpg_token');
+  const getToken = () => { try { return localStorage.getItem('rmpg_token'); } catch { return null; } };
 
   const request = useCallback(
     async (
@@ -139,6 +139,7 @@ export function useApi<T = unknown>(options?: UseApiOptions) {
       const token = getToken();
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
         ...customHeaders,
       };
 
@@ -228,7 +229,8 @@ async function tryRefreshToken(): Promise<string | null> {
 
   _refreshPromise = (async () => {
     try {
-      const refreshToken = localStorage.getItem('rmpg_refresh_token');
+      let refreshToken: string | null = null;
+      try { refreshToken = localStorage.getItem('rmpg_refresh_token'); } catch { /* ignore */ }
       if (!refreshToken) return null;
 
       // AbortController timeout prevents infinite lock on hung requests
@@ -237,7 +239,7 @@ async function tryRefreshToken(): Promise<string | null> {
 
       const res = await fetch('/api/auth/refresh', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
         body: JSON.stringify({ refreshToken }),
         signal: controller.signal,
       }).finally(() => clearTimeout(timeout));
@@ -258,9 +260,9 @@ async function tryRefreshToken(): Promise<string | null> {
           if (!state.isOnline) return null;
         } catch { /* fall through */ }
       }
-      localStorage.removeItem('rmpg_token');
-      localStorage.removeItem('rmpg_refresh_token');
-      localStorage.removeItem('rmpg_session_id');
+      try { localStorage.removeItem('rmpg_token'); } catch { /* ignore */ }
+      try { localStorage.removeItem('rmpg_refresh_token'); } catch { /* ignore */ }
+      try { localStorage.removeItem('rmpg_session_id'); } catch { /* ignore */ }
       window.location.href = '/login';
       return null;
     } catch {
@@ -342,7 +344,8 @@ export async function apiFetch<T>(
   }
 
   // ─── Normal online fetch path ──────────────────────────
-  const token = localStorage.getItem('rmpg_token');
+  let token: string | null = null;
+  try { token = localStorage.getItem('rmpg_token'); } catch { /* ignore */ }
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'X-Requested-With': 'XMLHttpRequest',
@@ -386,7 +389,8 @@ export async function apiUploadFiles(
   entityType?: string,
   entityId?: string | number,
 ): Promise<any[]> {
-  const token = localStorage.getItem('rmpg_token');
+  let token: string | null = null;
+  try { token = localStorage.getItem('rmpg_token'); } catch { /* ignore */ }
   const formData = new FormData();
 
   for (const file of files) {

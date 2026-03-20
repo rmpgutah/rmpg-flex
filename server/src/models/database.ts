@@ -3,7 +3,7 @@ import bcryptjs from 'bcryptjs';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { migrateIncidentNumbers } from '../utils/caseNumbers';
+import { migrateIncidentNumbers, generateCaseNumber } from '../utils/caseNumbers';
 import crypto from 'crypto';
 import { localNow } from '../utils/timeUtils';
 import { seedAllStatutes } from '../seeds/seedAllStatutes';
@@ -40,10 +40,33 @@ export function initDatabase(): Database.Database {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
 
+  // Security pragmas — prevent recovery of deleted PII and schema manipulation
+  db.pragma('secure_delete = ON');        // Overwrite deleted data with zeros (CJIS compliance)
+  db.pragma('trusted_schema = OFF');      // Reject untrusted schema extensions (SQL injection defense)
+  db.pragma('cell_size_check = ON');      // Detect corrupt/oversized cells before they cause issues
+
   // Performance pragmas — session-level, reset on reconnection
   db.pragma('busy_timeout = 5000');       // Wait 5s on lock instead of instant SQLITE_BUSY
   db.pragma('mmap_size = 268435456');     // 256MB memory-mapped I/O for faster reads
   db.pragma('cache_size = -64000');       // 64MB page cache (negative = kilobytes)
+
+  // Set default timeout for all database operations — prevents slow query DoS
+  // better-sqlite3 runs synchronously, but this limits CPU time per statement
+  db.defaultSafeIntegers(false);         // Return JS numbers, not BigInt (security: prevents unexpected type coercion)
+
+  // Run integrity check on startup — detect corruption early
+  try {
+    const integrityResult = db.pragma('integrity_check') as { integrity_check: string }[];
+    if (integrityResult.length > 0 && integrityResult[0].integrity_check !== 'ok') {
+      console.error('╔═══════════════════════════════════════════════════════════╗');
+      console.error('║  WARNING: Database integrity check FAILED!               ║');
+      console.error('║  The database may be corrupted. Back up immediately.     ║');
+      console.error('╚═══════════════════════════════════════════════════════════╝');
+      console.error('Integrity results:', integrityResult.slice(0, 10));
+    }
+  } catch (e) {
+    console.warn('[DB] Integrity check failed to run:', (e as Error).message);
+  }
 
   createTables();
   migrateSchema();
@@ -1715,6 +1738,10 @@ function migrateSchema(): void {
   addCol('sessions', 'device_fingerprint', 'TEXT');
   addCol('sessions', 'device_name', 'TEXT');
   addCol('sessions', 'ua_hash', 'TEXT');  // User-agent hash for session binding
+  addCol('sessions', 'previous_token_hash', 'TEXT'); // Previous refresh token hash for reuse detection
+
+  // ── ACTIVITY_LOG — tamper-evident integrity hash ──
+  addCol('activity_log', 'log_hash', 'TEXT');         // HMAC-SHA256 chain hash for tamper detection
 
   // ── USERS — Digital Signature (PNG base64 data URL) ──
   addCol('users', 'digital_signature', 'TEXT');            // base64 data:image/png;base64,... stored per officer
@@ -2867,6 +2894,20 @@ function migrateSchema(): void {
   // on maps. WiFi/IP points have reduced accuracy vs hardware GPS.
   addCol('gps_breadcrumbs', 'source', "TEXT DEFAULT 'unknown'");
 
+  // ── PSO fields on incidents (auto-filled from dispatch call on generation) ──
+  addCol('incidents', 'pso_service_type', 'TEXT');
+  addCol('incidents', 'pso_attempt_number', 'INTEGER');
+  addCol('incidents', 'pso_requestor_name', 'TEXT');
+  addCol('incidents', 'pso_requestor_phone', 'TEXT');
+  addCol('incidents', 'pso_requestor_email', 'TEXT');
+  addCol('incidents', 'pso_billing_code', 'TEXT');
+  addCol('incidents', 'pso_authorization', 'TEXT');
+  addCol('incidents', 'process_service_type', 'TEXT');
+  addCol('incidents', 'process_served_to', 'TEXT');
+  addCol('incidents', 'process_served_address', 'TEXT');
+  addCol('incidents', 'process_service_result', 'TEXT');
+  addCol('incidents', 'process_attempts', 'INTEGER');
+
   // ── Backfill case numbers for dispatch calls that don't have one ──
   try {
     const callsWithoutCase = db.prepare(
@@ -2892,7 +2933,6 @@ function migrateSchema(): void {
         daily_activity: 'admin', special_event: 'admin', training_exercise: 'admin',
       };
 
-      const { generateCaseNumber } = require('../utils/caseNumbers');
       const backfillTx = db.transaction(() => {
         for (const call of callsWithoutCase) {
           const caseType = INCIDENT_TO_CASE_TYPE[call.incident_type] || 'general';
@@ -3002,6 +3042,8 @@ function migrateSchema(): void {
         beat_descriptor TEXT
       )
     `);
+    // Beat must be unique within its zone+section; zone_id is inherently unique within a section
+    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_district_beat_unique ON dispatch_districts (section_id, zone_id, beat_id)`);
   } catch { /* already exists */ }
 
   // Seed dispatch_districts — delete & reseed to pick up expanded coverage
@@ -3055,6 +3097,14 @@ function migrateSchema(): void {
   addCol('calls_for_service', 'contract_id', 'TEXT');
   addCol('incidents', 'contract_id', 'TEXT');
 
+  // ── Process Service served-at timestamp on incidents ──
+  addCol('incidents', 'process_served_at', 'TEXT');
+
+  // ── Original 3 flags that were only on calls — ensure they exist on incidents too ──
+  addCol('incidents', 'injuries_reported', 'INTEGER DEFAULT 0');
+  addCol('incidents', 'le_notified', 'INTEGER DEFAULT 0');
+  addCol('incidents', 'supervisor_notified', 'INTEGER DEFAULT 0');
+
   // ── Additional operational flags for calls and incidents ──
   const flagTables = ['calls_for_service', 'incidents'] as const;
   for (const tbl of flagTables) {
@@ -3099,6 +3149,7 @@ function migrateSchema(): void {
 
   // ── Section/Zone/Beat columns for record types ──────────
   // Citations
+  addCol('citations', 'call_id', 'INTEGER REFERENCES calls_for_service(id)');
   addCol('citations', 'section_id', 'TEXT');
   addCol('citations', 'zone_id', 'TEXT');
   addCol('citations', 'beat_id', 'TEXT');
@@ -3268,6 +3319,16 @@ function migrateSchema(): void {
   addCol('dashcam_videos', 'cpg_thumbnail_url', 'TEXT');
   addCol('dashcam_videos', 'linked_dashcam_event_id', 'INTEGER');
   addCol('dashcam_videos', 'cpg_gps_track', 'TEXT');           // JSON array of {lat,lng,speed,altitude,timestamp} points
+
+  // ── DASHCAM overlay + burn + thumbnail columns ──
+  addCol('dashcam_videos', 'overlay_status', "TEXT DEFAULT 'none'");
+  addCol('dashcam_videos', 'overlay_error', 'TEXT');
+  addCol('dashcam_videos', 'processed_file_path', 'TEXT');
+  addCol('dashcam_videos', 'thumbnail_path', 'TEXT');
+  addCol('dashcam_videos', 'burned_file_path', 'TEXT');
+  addCol('dashcam_videos', 'burn_status', "TEXT DEFAULT 'none'");
+  addCol('dashcam_videos', 'burn_error', 'TEXT');
+  addCol('dashcam_videos', 'burn_progress', 'INTEGER DEFAULT 0');
 
   // ── CPG_DEVICE_MAPPINGS — media sync state ──
   addCol('cpg_device_mappings', 'last_media_synced_at', 'TEXT');
@@ -3698,31 +3759,31 @@ function migrateSchema(): void {
 
       // ── Texas ──
       ['tx_harris_warrants', 'Harris County, TX Warrants', 'https://www.harriscountyso.org/Warrants/WarrantSearch', 'html', 'TX', 'tx_harris', 1, 120],
-      ['tx_dallas_warrants', 'Dallas County, TX Warrants', 'https://www.dallascounty.org/departments/sheriff/warrants.php', 'html', 'TX', 'tx_dallas', 1, 120],
+      ['tx_dallas_warrants', 'Dallas County, TX Warrants', 'https://www.dallascounty.org/departments/sheriff/warrants.php', 'html', 'TX', 'tx_dallas', 0, 120],
       ['tx_bexar_warrants', 'Bexar County, TX Warrants', 'https://www.bexar.org/3044/Warrants', 'html', 'TX', 'tx_bexar', 1, 120],
-      ['tx_tarrant_warrants', 'Tarrant County, TX Warrants', 'https://www.tarrantcounty.com/en/criminal-district-attorney/Most-Wanted.html', 'html', 'TX', 'tx_tarrant', 1, 120],
-      ['tx_travis_warrants', 'Travis County, TX Warrants', 'https://www.tcsheriff.org/warrants', 'html', 'TX', 'tx_travis', 1, 120],
-      ['tx_el_paso_warrants', 'El Paso County, TX Warrants', 'https://www.epcounty.com/sheriff/warrants.htm', 'html', 'TX', 'tx_el_paso', 1, 120],
+      ['tx_tarrant_warrants', 'Tarrant County, TX Warrants', 'https://www.tarrantcounty.com/en/criminal-district-attorney/Most-Wanted.html', 'html', 'TX', 'tx_tarrant', 0, 120],
+      ['tx_travis_warrants', 'Travis County, TX Warrants', 'https://www.tcsheriff.org/warrants', 'html', 'TX', 'tx_travis', 0, 120],
+      ['tx_el_paso_warrants', 'El Paso County, TX Warrants', 'https://www.epcounty.com/sheriff/warrants.htm', 'html', 'TX', 'tx_el_paso', 0, 120],
 
       // ── Vermont ──
-      ['vt_chittenden_warrants', 'Chittenden County, VT Warrants', 'https://www.burlingtonvt.gov/police/most-wanted', 'html', 'VT', 'vt_chittenden', 1, 120],
+      ['vt_chittenden_warrants', 'Chittenden County, VT Warrants', 'https://www.burlingtonvt.gov/police/most-wanted', 'html', 'VT', 'vt_chittenden', 0, 120],
 
       // ── Virginia ──
-      ['va_fairfax_warrants', 'Fairfax County, VA Warrants', 'https://www.fairfaxcounty.gov/police/wanted', 'html', 'VA', 'va_fairfax', 1, 120],
-      ['va_virginia_beach_warrants', 'Virginia Beach, VA Warrants', 'https://www.vbgov.com/government/departments/police/Pages/Most-Wanted.aspx', 'html', 'VA', 'va_virginia_beach', 1, 120],
+      ['va_fairfax_warrants', 'Fairfax County, VA Warrants', 'https://www.fairfaxcounty.gov/police/wanted', 'html', 'VA', 'va_fairfax', 0, 120],
+      ['va_virginia_beach_warrants', 'Virginia Beach, VA Warrants', 'https://www.vbgov.com/government/departments/police/Pages/Most-Wanted.aspx', 'html', 'VA', 'va_virginia_beach', 0, 120],
 
       // ── Washington ──
-      ['wa_king_warrants', 'King County, WA Warrants', 'https://kingcounty.gov/en/dept/sheriff/about/most-wanted', 'html', 'WA', 'wa_king', 1, 120],
-      ['wa_spokane_warrants', 'Spokane County, WA Warrants', 'https://www.spokanesheriff.org/warrants/', 'html', 'WA', 'wa_spokane', 1, 120],
-      ['wa_clark_warrants', 'Clark County, WA Warrants', 'https://clark.wa.gov/sheriff/warrants', 'html', 'WA', 'wa_clark', 1, 120],
-      ['wa_pierce_warrants', 'Pierce County, WA Warrants', 'https://www.piercecountywa.gov/1024/Most-Wanted', 'html', 'WA', 'wa_pierce', 1, 120],
+      ['wa_king_warrants', 'King County, WA Warrants', 'https://kingcounty.gov/en/dept/sheriff/about/most-wanted', 'html', 'WA', 'wa_king', 0, 120],
+      ['wa_spokane_warrants', 'Spokane County, WA Warrants', 'https://www.spokanesheriff.org/warrants/', 'html', 'WA', 'wa_spokane', 0, 120],
+      ['wa_clark_warrants', 'Clark County, WA Warrants', 'https://clark.wa.gov/sheriff/warrants', 'html', 'WA', 'wa_clark', 0, 120],
+      ['wa_pierce_warrants', 'Pierce County, WA Warrants', 'https://www.piercecountywa.gov/1024/Most-Wanted', 'html', 'WA', 'wa_pierce', 0, 120],
 
       // ── West Virginia ──
       ['wv_kanawha_warrants', 'Kanawha County, WV Warrants', 'https://www.kanawhasheriff.us/warrants/', 'html', 'WV', 'wv_kanawha', 1, 120],
 
       // ── Wisconsin ──
-      ['wi_milwaukee_warrants', 'Milwaukee County, WI Warrants', 'https://county.milwaukee.gov/EN/Sheriff/Warrants', 'html', 'WI', 'wi_milwaukee', 1, 120],
-      ['wi_dane_warrants', 'Dane County, WI Warrants', 'https://sheriff.countyofdane.com/warrants', 'html', 'WI', 'wi_dane', 1, 120],
+      ['wi_milwaukee_warrants', 'Milwaukee County, WI Warrants', 'https://county.milwaukee.gov/EN/Sheriff/Warrants', 'html', 'WI', 'wi_milwaukee', 0, 120],
+      ['wi_dane_warrants', 'Dane County, WI Warrants', 'https://sheriff.countyofdane.com/warrants', 'html', 'WI', 'wi_dane', 0, 120],
 
       // ── Arrest Record Extraction — extracts warrant-based bookings from existing arrest_records ──
       ['arrest_extract_all', 'Warrant Extraction (All Arrest Records)', null, 'arrest_extract', 'ALL', null, 1, 60],
@@ -3805,6 +3866,23 @@ function migrateSchema(): void {
   // ── MULTI-STATE JAIL ROSTER — add state columns ──────────────
   addCol('jail_roster_config', 'state', "TEXT DEFAULT 'UT'");
   addCol('arrest_records', 'state', "TEXT DEFAULT 'UT'");
+
+  // ── WARRANT SYSTEM REDESIGN — universal scanner fields ──
+  addCol('warrants', 'source', "TEXT DEFAULT 'manual'");
+  addCol('warrants', 'external_warrant_id', 'TEXT');
+  addCol('warrants', 'external_source_key', 'TEXT');
+  addCol('warrants', 'auto_created', 'INTEGER DEFAULT 0');
+
+  try {
+    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_warrants_external_id ON warrants(external_warrant_id) WHERE external_warrant_id IS NOT NULL');
+  } catch { /* already exists */ }
+
+  // ── ARREST RECORDS — columns needed by warrant scraper extraction ──
+  addCol('arrest_records', 'gender', 'TEXT');
+  addCol('arrest_records', 'race', 'TEXT');
+  addCol('arrest_records', 'bail_amount', 'TEXT');
+  addCol('arrest_records', 'booking_number', 'TEXT');
+  addCol('arrest_records', 'agency', 'TEXT');
 
   // Backfill state='UT' on existing scraper records
   try {
@@ -4014,6 +4092,47 @@ function migrateSchema(): void {
   addCol('calls_for_service', 'pso_service_windows', 'TEXT'); // JSON: { early_morning: bool, daytime: bool, evening: bool, weekend: bool }
   addCol('call_visit_history', 'time_window', 'TEXT');  // early_morning | daytime | evening
   addCol('call_visit_history', 'is_weekend', 'INTEGER DEFAULT 0');
+
+  // ── SERVE QUEUE — dispatch integration ─────────────────
+  addCol('serve_queue', 'call_id', 'INTEGER REFERENCES calls_for_service(id)');
+  try { db.exec("CREATE INDEX IF NOT EXISTS idx_serve_queue_call ON serve_queue(call_id)"); } catch {}
+
+  // ── Backfill dispatch_code from S/Z/B IDs on all calls ────────
+  // Ensures dispatch_code always matches current section_id/zone_id/beat_id
+  // Uses a single UPDATE...FROM to avoid N+1 queries during startup
+  try {
+    // Backfill calls that have a matching dispatch_districts row
+    const result1 = db.prepare(`
+      UPDATE calls_for_service SET
+        dispatch_code = dd.dispatch_code,
+        section_name = dd.section_name,
+        zone_name = dd.zone_name,
+        beat_name = dd.beat_name,
+        beat_descriptor = dd.beat_descriptor
+      FROM dispatch_districts dd
+      WHERE calls_for_service.section_id = dd.section_id
+        AND calls_for_service.zone_id = dd.zone_id
+        AND calls_for_service.beat_id = dd.beat_id
+        AND (calls_for_service.dispatch_code IS NULL OR calls_for_service.dispatch_code != dd.dispatch_code)
+    `).run();
+    // Backfill calls with no matching district — use fallback S-Z/B format
+    const result2 = db.prepare(`
+      UPDATE calls_for_service SET
+        dispatch_code = section_id || '-' || zone_id || '/' || beat_id
+      WHERE section_id IS NOT NULL AND zone_id IS NOT NULL AND beat_id IS NOT NULL
+        AND dispatch_code IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM dispatch_districts dd
+          WHERE dd.section_id = calls_for_service.section_id
+            AND dd.zone_id = calls_for_service.zone_id
+            AND dd.beat_id = calls_for_service.beat_id
+        )
+    `).run();
+    const backfilled = result1.changes + result2.changes;
+    if (backfilled > 0) console.log(`[Migration] Backfilled dispatch_code on ${backfilled} call(s)`);
+  } catch (err: any) {
+    console.warn('[Migration] dispatch_code backfill warning:', err?.message);
+  }
 
   console.log('Schema migration completed.');
 }
@@ -4653,6 +4772,7 @@ function createIndexes(): void {
     CREATE TABLE IF NOT EXISTS serve_queue (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       sm_job_id INTEGER,
+      call_id INTEGER REFERENCES calls_for_service(id),
       officer_id INTEGER REFERENCES users(id),
       serve_date TEXT NOT NULL,
       recipient_name TEXT NOT NULL,
@@ -4683,6 +4803,7 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_serve_queue_officer ON serve_queue(officer_id, serve_date);
     CREATE INDEX IF NOT EXISTS idx_serve_queue_status ON serve_queue(status);
     CREATE INDEX IF NOT EXISTS idx_serve_queue_sm ON serve_queue(sm_job_id);
+    CREATE INDEX IF NOT EXISTS idx_serve_queue_call ON serve_queue(call_id);
 
     CREATE TABLE IF NOT EXISTS serve_attempts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -4751,7 +4872,7 @@ function seedData(): void {
   const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number };
   if (userCount.count === 0) {
     const randomPassword = crypto.randomBytes(16).toString('hex');
-    const hash = (pw: string) => bcryptjs.hashSync(pw, 10);
+    const hash = (pw: string) => bcryptjs.hashSync(pw, 12);
     db.prepare(`
       INSERT INTO users (username, password_hash, full_name, email, role, badge_number, phone, status, must_change_password, password_changed_at, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 1, ?, ?, ?)
@@ -4769,8 +4890,8 @@ function seedData(): void {
       console.log('╚══════════════════════════════════════════════════╝');
       console.log('');
     } catch {
-      // If file write fails (e.g. read-only filesystem), log password as fallback
-      console.log(`[SECURITY] Initial admin password: ${randomPassword} — change on first login`);
+      // If file write fails, log only that it failed — never log passwords
+      console.error('[SECURITY] Could not write initial credentials file. Run with write access to server/data/ to generate credentials.');
     }
   }
 

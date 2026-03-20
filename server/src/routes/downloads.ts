@@ -60,6 +60,13 @@ function isVersionLessThan(a: string, b: string): boolean {
   return a3 < b3;
 }
 
+/** Escape a value for safe YAML interpolation. */
+function escapeYaml(val: string | number): string {
+  const s = String(val);
+  if (/[:\n'"{}[\]#&*!|>%@`]/.test(s)) return `'${s.replace(/'/g, "''")}'`;
+  return s;
+}
+
 /** Format bytes into human-readable size. */
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return bytes + ' B';
@@ -248,12 +255,12 @@ export function mountDownloadFileRoute(app: any) {
       const releaseDate = info.win.releaseDate || new Date().toISOString(); // UTC is correct for electron-updater
 
       const yaml = [
-        `version: ${info.win.version}`,
+        `version: ${escapeYaml(info.win.version)}`,
         `files:`,
-        `  - url: ${info.win.filename}`,
+        `  - url: ${escapeYaml(info.win.filename)}`,
         `    sha512: ${sha512}`,
         `    size: ${info.win.bytes}`,
-        `path: ${info.win.filename}`,
+        `path: ${escapeYaml(info.win.filename)}`,
         `sha512: ${sha512}`,
         `releaseDate: '${releaseDate}'`,
       ].join('\n');
@@ -281,12 +288,12 @@ export function mountDownloadFileRoute(app: any) {
       const releaseDate = info.mac.releaseDate || new Date().toISOString(); // UTC is correct for electron-updater
 
       const yaml = [
-        `version: ${info.mac.version}`,
+        `version: ${escapeYaml(info.mac.version)}`,
         `files:`,
-        `  - url: ${info.mac.filename}`,
+        `  - url: ${escapeYaml(info.mac.filename)}`,
         `    sha512: ${sha512}`,
         `    size: ${info.mac.bytes}`,
-        `path: ${info.mac.filename}`,
+        `path: ${escapeYaml(info.mac.filename)}`,
         `sha512: ${sha512}`,
         `releaseDate: '${releaseDate}'`,
       ].join('\n');
@@ -327,6 +334,19 @@ export function mountDownloadFileRoute(app: any) {
       return;
     }
 
+    // Symlink protection: resolve the real path and verify it's still within DOWNLOADS_DIR
+    try {
+      const realPath = await fsp.realpath(filePath);
+      const relative = path.relative(DOWNLOADS_DIR, realPath);
+      if (relative.startsWith('..') || path.isAbsolute(relative)) {
+        res.status(403).json({ error: 'Access denied' });
+        return;
+      }
+    } catch {
+      res.status(404).json({ error: 'File not found' });
+      return;
+    }
+
     // Determine MIME type
     let mimeType = 'application/octet-stream';
     if (safeName.endsWith('.dmg')) mimeType = 'application/x-apple-diskimage';
@@ -347,11 +367,12 @@ export function mountDownloadFileRoute(app: any) {
     }
 
     const stream = fs.createReadStream(filePath);
-    stream.on('error', (err) => {
+    stream.once('error', (err) => {
       console.error('File stream error:', err);
       if (!res.headersSent) res.status(500).json({ error: 'Failed to stream file' });
       else res.destroy();
     });
+    res.on('error', () => { stream.destroy(); });
     stream.pipe(res);
   };
 

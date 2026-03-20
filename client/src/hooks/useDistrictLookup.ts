@@ -4,7 +4,7 @@
 // via the 3Tier dispatch districts system
 // ============================================================
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { apiFetch } from './useApi';
 
 export interface DistrictInfo {
@@ -49,22 +49,52 @@ export function useDistrictOptions() {
     return () => { cancelled = true; };
   }, []);
 
-  // Unique sections, zones, beats for dropdown options
-  const sections = Array.from(new Set(districts.map(d => d.section_id))).sort();
-  const zones = Array.from(new Set(districts.map(d => d.zone_id))).sort();
-  const beats = Array.from(new Set(districts.map(d => d.beat_id))).sort();
+  // Unique sections for top-level dropdown
+  const sections = useMemo(() => Array.from(new Set(districts.map(d => d.section_id))).sort(), [districts]);
 
-  // Rich labels: zone_id → zone_name, beat_id → beat_name
-  const zoneLabels = new Map<string, string>();
-  const beatLabels = new Map<string, string>();
-  const sectionLabels = new Map<string, string>();
-  for (const d of districts) {
-    sectionLabels.set(d.section_id, d.section_name);
-    zoneLabels.set(d.zone_id, d.zone_name);
-    beatLabels.set(d.beat_id, `${d.beat_name}${d.beat_descriptor ? ' — ' + d.beat_descriptor : ''}`);
-  }
+  // Global fallbacks (all zones, all beats) — used when no parent is selected
+  const zones = useMemo(() => Array.from(new Set(districts.map(d => d.zone_id))).sort(), [districts]);
+  const beats = useMemo(() => Array.from(new Set(districts.map(d => d.beat_id))).sort(), [districts]);
 
-  return { districts, sections, zones, beats, sectionLabels, zoneLabels, beatLabels, loading };
+  // Cascading helpers: zones scoped to section, beats scoped to zone
+  const zonesForSection = useCallback((sectionId: string) => {
+    if (!sectionId) return zones;
+    return Array.from(new Set(districts.filter(d => d.section_id === sectionId).map(d => d.zone_id))).sort();
+  }, [districts, zones]);
+
+  const beatsForZone = useCallback((zoneId: string) => {
+    if (!zoneId) return beats;
+    return Array.from(new Set(districts.filter(d => d.zone_id === zoneId).map(d => d.beat_id))).sort();
+  }, [districts, beats]);
+
+  // Labels: section/zone are globally unique, but beat labels must be scoped by zone
+  const sectionLabels = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const d of districts) m.set(d.section_id, d.section_name);
+    return m;
+  }, [districts]);
+
+  const zoneLabels = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const d of districts) m.set(d.zone_id, d.zone_name);
+    return m;
+  }, [districts]);
+
+  // Beat labels keyed as "zoneId:beatId" to avoid collisions across zones
+  const beatLabels = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const d of districts) {
+      m.set(`${d.zone_id}:${d.beat_id}`, `${d.beat_name}${d.beat_descriptor ? ' — ' + d.beat_descriptor : ''}`);
+    }
+    return m;
+  }, [districts]);
+
+  // Helper to get a beat label with proper zone scoping
+  const getBeatLabel = useCallback((zoneId: string, beatId: string) => {
+    return beatLabels.get(`${zoneId}:${beatId}`) || beatId;
+  }, [beatLabels]);
+
+  return { districts, sections, zones, beats, sectionLabels, zoneLabels, beatLabels, zonesForSection, beatsForZone, getBeatLabel, loading };
 }
 
 /**

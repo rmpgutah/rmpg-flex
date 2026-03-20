@@ -155,52 +155,53 @@ export const GlobalSearch: React.FC = () => {
       clearTimeout(searchTimeoutRef.current);
     }
 
+    let cancelled = false;
     searchTimeoutRef.current = setTimeout(async () => {
       try {
         const searchPromises = [
-          apiFetch<any[]>(`/records/persons?search=${encodeURIComponent(query)}`)
-            .then((data) =>
-              (Array.isArray(data) ? data : []).map((item) => ({
+          apiFetch<any>(`/records/persons?search=${encodeURIComponent(query)}`)
+            .then((resp) =>
+              (Array.isArray(resp?.data) ? resp.data : Array.isArray(resp) ? resp : []).slice(0, 10).map((item: any) => ({
                 id: item.id,
                 type: 'person' as EntityType,
-                primaryText: `${item.firstName} ${item.lastName}`,
-                secondaryText: item.dateOfBirth || 'No DOB',
+                primaryText: `${item.first_name || ''} ${item.last_name || ''}`.trim(),
+                secondaryText: item.dob || 'No DOB',
               }))
             )
             .catch(() => []),
-          apiFetch<any[]>(`/records/vehicles?search=${encodeURIComponent(query)}`)
-            .then((data) =>
-              (Array.isArray(data) ? data : []).map((item) => ({
+          apiFetch<any>(`/records/vehicles?search=${encodeURIComponent(query)}`)
+            .then((resp) =>
+              (Array.isArray(resp?.data) ? resp.data : Array.isArray(resp) ? resp : []).slice(0, 10).map((item: any) => ({
                 id: item.id,
                 type: 'vehicle' as EntityType,
-                primaryText: item.plate || 'No Plate',
-                secondaryText: `${item.make} ${item.model}`,
+                primaryText: item.plate_number || 'No Plate',
+                secondaryText: `${item.make || ''} ${item.model || ''}`.trim(),
               }))
             )
             .catch(() => []),
-          apiFetch<any[]>(`/incidents?search=${encodeURIComponent(query)}`)
-            .then((data) =>
-              (Array.isArray(data) ? data : []).map((item) => ({
+          apiFetch<any>(`/incidents?search=${encodeURIComponent(query)}`)
+            .then((resp) =>
+              (Array.isArray(resp?.data) ? resp.data : Array.isArray(resp) ? resp : []).slice(0, 10).map((item: any) => ({
                 id: item.id,
                 type: 'incident' as EntityType,
-                primaryText: item.incidentNumber || `Incident #${item.id}`,
-                secondaryText: item.type || 'Unknown Type',
+                primaryText: item.incident_number || `Incident #${item.id}`,
+                secondaryText: item.incident_type || 'Unknown Type',
               }))
             )
             .catch(() => []),
-          apiFetch<any[]>(`/dispatch/calls?search=${encodeURIComponent(query)}`)
-            .then((data) =>
-              (Array.isArray(data) ? data : []).map((item) => ({
+          apiFetch<any>(`/dispatch/calls?search=${encodeURIComponent(query)}`)
+            .then((resp) =>
+              (Array.isArray(resp?.data) ? resp.data : Array.isArray(resp) ? resp : []).slice(0, 10).map((item: any) => ({
                 id: item.id,
                 type: 'call' as EntityType,
-                primaryText: item.callNumber || `Call #${item.id}`,
-                secondaryText: item.address || 'No Address',
+                primaryText: item.call_number || `Call #${item.id}`,
+                secondaryText: item.location_address || item.address || 'No Address',
               }))
             )
             .catch(() => []),
-          apiFetch<any[]>(`/comms/bolos?search=${encodeURIComponent(query)}`)
-            .then((data) =>
-              (Array.isArray(data) ? data : []).map((item) => ({
+          apiFetch<any>(`/comms/bolos?search=${encodeURIComponent(query)}`)
+            .then((resp) =>
+              (Array.isArray(resp?.data) ? resp.data : Array.isArray(resp) ? resp : []).slice(0, 10).map((item: any) => ({
                 id: item.id,
                 type: 'bolo' as EntityType,
                 primaryText: item.subject || 'BOLO',
@@ -211,7 +212,7 @@ export const GlobalSearch: React.FC = () => {
           // Warrants search
           apiFetch<any>(`/warrants?subject_name=${encodeURIComponent(query)}&per_page=10`)
             .then((resp) =>
-              (resp.data || resp || []).map((item: any) => ({
+              (Array.isArray(resp?.data) ? resp.data : Array.isArray(resp) ? resp : []).map((item: any) => ({
                 id: item.id,
                 type: 'warrant' as EntityType,
                 primaryText: item.warrant_number || `Warrant #${item.id}`,
@@ -252,18 +253,21 @@ export const GlobalSearch: React.FC = () => {
         ];
 
         const allResults = await Promise.all(searchPromises);
+        if (cancelled) return;
         const flatResults = allResults.flat();
         setResults(flatResults);
         setSelectedIndex(0);
       } catch (error) {
+        if (cancelled) return;
         console.error('Search failed:', error);
         setResults([]);
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     }, 300);
 
     return () => {
+      cancelled = true;
       if (searchTimeoutRef.current) {
         clearTimeout(searchTimeoutRef.current);
       }

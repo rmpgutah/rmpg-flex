@@ -125,10 +125,13 @@ export default function EvidencePropertyPage() {
         ...(filterType ? { type: filterType } : {}),
       });
       const res = await apiFetch<{ data: any[]; pagination: any }>(`/records/evidence?${params}`);
-      setItems(res.data || []);
+      const newItems = res.data || [];
+      setItems(newItems);
       setTotalPages(res.pagination?.totalPages || 1);
       setTotalCount(res.pagination?.total || 0);
-    } catch { /* silent */ } finally { setLoading(false); }
+      // Keep selected item in sync with refreshed data
+      setSelected((prev: any) => prev ? newItems.find((i: any) => i.id === prev.id) || null : null);
+    } catch { addToast('Failed to load evidence items', 'error'); } finally { setLoading(false); }
   }, [page, searchQuery, filterStatus, filterType]);
 
   const fetchStats = useCallback(async () => {

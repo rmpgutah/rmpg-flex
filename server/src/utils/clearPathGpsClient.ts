@@ -449,14 +449,19 @@ export async function getFleetLatest(): Promise<CpgFleetEvent[]> {
   return data.items || [];
 }
 
-/** Fetch event history for a specific device. */
+/** Fetch event history for a specific device.
+ *  ClearPathGPS API expects `from`/`to` as epoch milliseconds. */
 export async function getDeviceHistory(
   deviceId: string,
   from: string,
   to: string
 ): Promise<CpgFleetEvent[]> {
+  // Convert ISO strings to epoch milliseconds — the API rejects string dates
+  const fromMs = new Date(from).getTime();
+  const toMs = new Date(to).getTime();
+  if (isNaN(fromMs) || isNaN(toMs)) return [];
   const data = await cpgFetch<CpgPaginatedResponse<CpgFleetEvent>>(
-    `/events/device/${encodeURIComponent(deviceId)}?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&hasValidGPS=true&pageSize=1000`
+    `/events/device/${encodeURIComponent(deviceId)}?from=${fromMs}&to=${toMs}&hasValidGPS=true&pageSize=1000`
   );
   return data.items || [];
 }

@@ -13,6 +13,7 @@ import {
   testConnection, getApiKey, encryptApiKey,
   ServeManagerError,
 } from '../utils/serveManagerClient';
+import { escapeLike, validateParamId, validateNumericParams } from '../middleware/sanitize';
 
 const router = Router();
 router.use(authenticateToken);
@@ -90,14 +91,21 @@ function initSmTables(): void {
   `);
 }
 
-try { initSmTables(); } catch (err) { console.error('[ServeManager] Table init failed:', err); }
+// Lazy init — tables are created on first request, after initDatabase() has run
+let smTablesReady = false;
+function ensureSmTables(): void {
+  if (smTablesReady) return;
+  initSmTables();
+  smTablesReady = true;
+}
+router.use((_req, _res, next) => { try { ensureSmTables(); } catch (err) { console.error('[ServeManager] Table init failed:', err); } next(); });
 
 // ============================================================
 // Helpers
 // ============================================================
 
 function ensureTables(): void {
-  try { initSmTables(); } catch { /* ignore */ }
+  try { ensureSmTables(); } catch { /* ignore */ }
 }
 
 function requireApiKey(_req: Request, res: Response): boolean {
@@ -343,8 +351,8 @@ router.get('/jobs', requireRole('admin', 'manager', 'supervisor', 'officer'), as
     const pArr: any[] = [];
 
     if (q) {
-      const like = `%${q}%`;
-      conditions.push('(sm_job_number LIKE ? OR recipient_name LIKE ? OR client_company_name LIKE ? OR client_job_number LIKE ?)');
+      const like = `%${escapeLike(String(q))}%`;
+      conditions.push("(sm_job_number LIKE ? ESCAPE '\\' OR recipient_name LIKE ? ESCAPE '\\' OR client_company_name LIKE ? ESCAPE '\\' OR client_job_number LIKE ? ESCAPE '\\')");
       pArr.push(like, like, like, like);
     }
     if (status) { conditions.push('job_status = ?'); pArr.push(status); }
@@ -369,7 +377,7 @@ router.get('/jobs', requireRole('admin', 'manager', 'supervisor', 'officer'), as
 });
 
 // GET /jobs/:id
-router.get('/jobs/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), async (req: Request, res: Response) => {
+router.get('/jobs/:id', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer'), async (req: Request, res: Response) => {
   try {
     if (!requireApiKey(req, res)) return;
     ensureTables();
@@ -422,7 +430,7 @@ router.post('/jobs', requireRole('admin', 'manager'), async (req: Request, res: 
 });
 
 // PUT /jobs/:id — update on SM
-router.put('/jobs/:id', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+router.put('/jobs/:id', validateParamId, requireRole('admin', 'manager'), async (req: Request, res: Response) => {
   try {
     if (!requireApiKey(req, res)) return;
     const now = localNow();
@@ -444,7 +452,7 @@ router.put('/jobs/:id', requireRole('admin', 'manager'), async (req: Request, re
 });
 
 // POST /jobs/:id/cancel
-router.post('/jobs/:id/cancel', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+router.post('/jobs/:id/cancel', validateParamId, requireRole('admin', 'manager'), async (req: Request, res: Response) => {
   try {
     if (!requireApiKey(req, res)) return;
     const now = localNow();
@@ -479,7 +487,7 @@ router.post('/jobs/:id/cancel', requireRole('admin', 'manager'), async (req: Req
 // ============================================================
 
 // GET /jobs/:jobId/attempts
-router.get('/jobs/:jobId/attempts', requireRole('admin', 'manager', 'supervisor', 'officer'), async (req: Request, res: Response) => {
+router.get('/jobs/:jobId/attempts', validateNumericParams('jobId'), requireRole('admin', 'manager', 'supervisor', 'officer'), async (req: Request, res: Response) => {
   try {
     if (!requireApiKey(req, res)) return;
     ensureTables();
@@ -533,7 +541,7 @@ router.post('/attempts', requireRole('admin', 'manager'), async (req: Request, r
 // ============================================================
 
 // POST /jobs/:jobId/notes
-router.post('/jobs/:jobId/notes', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+router.post('/jobs/:jobId/notes', validateNumericParams('jobId'), requireRole('admin', 'manager'), async (req: Request, res: Response) => {
   try {
     if (!requireApiKey(req, res)) return;
     const result = await smPost(`/jobs/${req.params.jobId}/notes`, { type: 'note', ...req.body });
@@ -704,7 +712,7 @@ router.get('/sync/log', requireRole('admin', 'manager'), (req: Request, res: Res
 // ============================================================
 
 // PUT /jobs/:id/link — link SM job to local warrant/call
-router.put('/jobs/:id/link', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.put('/jobs/:id/link', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     ensureTables();
     const db = getDb();

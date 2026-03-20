@@ -208,7 +208,7 @@ export function useVehiclesTab(props: VehiclesTabProps): VehiclesTabState {
   useEffect(() => {
     if (!selectedVehicle) { setVehicleAlerts([]); return; }
     const alerts: RecordAlert[] = [];
-    const flagsLower = selectedVehicle.flags.map(f => f.toLowerCase());
+    const flagsLower = selectedVehicle.flags.map(f => (typeof f === 'object' ? f.type : f).toLowerCase());
     if (flagsLower.some(f => f.includes('stolen'))) {
       alerts.push({ type: 'flag', priority: 'critical', title: 'STOLEN VEHICLE', description: 'Vehicle reported stolen — do not approach alone' });
     }
@@ -380,11 +380,14 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
               <div className="flex flex-col items-end gap-1">
                 {v.flags.length > 0 && (
                   <div className="flex gap-1">
-                    {v.flags.slice(0, 2).map((flag, fi) => (
-                      <span key={`${flag}-${fi}`} className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-semibold border ${FLAG_COLORS[String(flag)] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
-                        {String(flag)}
-                      </span>
-                    ))}
+                    {v.flags.slice(0, 2).map((flag, i) => {
+                      const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
+                      return (
+                        <span key={`${label}-${i}`} className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-semibold border ${FLAG_COLORS[label] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
+                          {label}
+                        </span>
+                      );
+                    })}
                   </div>
                 )}
                 <div className="record-actions flex items-center gap-1">
@@ -458,11 +461,14 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
         {/* Flags */}
         {selectedVehicle.flags.length > 0 && (
           <div className="flex flex-wrap gap-2 mt-1">
-            {selectedVehicle.flags.map((flag, fi) => (
-              <span key={`${flag}-${fi}`} className={`inline-flex items-center px-2 py-0.5 text-[10px] font-semibold border ${FLAG_COLORS[String(flag)] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
-                {String(flag)}
-              </span>
-            ))}
+            {selectedVehicle.flags.map((flag, i) => {
+              const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
+              return (
+                <span key={`${label}-${i}`} className={`inline-flex items-center px-2 py-0.5 text-[10px] font-semibold border ${FLAG_COLORS[label] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
+                  {label}
+                </span>
+              );
+            })}
           </div>
         )}
       </div>

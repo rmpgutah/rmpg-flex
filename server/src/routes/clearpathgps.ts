@@ -7,6 +7,7 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { validateParamId } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
 import { auditLog } from '../utils/auditLogger';
 import { broadcastAdminUpdate, broadcastFleetUpdate } from '../utils/websocket';
@@ -164,7 +165,8 @@ router.put('/enable', requireRole('admin'), (req: Request, res: Response) => {
     setConfigValue(CONFIG_KEYS.enabled, String(enabled), false);
 
     if (poll_interval_seconds != null) {
-      const interval = Math.max(15, Math.min(300, parseInt(poll_interval_seconds, 10) || 30));
+      const parsed = parseInt(poll_interval_seconds, 10);
+      const interval = Math.max(15, Math.min(300, isNaN(parsed) ? 30 : parsed));
       setConfigValue(CONFIG_KEYS.pollInterval, String(interval), false);
     }
 
@@ -287,7 +289,7 @@ router.post('/mappings', requireRole('admin'), (req: Request, res: Response) => 
 // ============================================================
 // DELETE /api/clearpathgps/mappings/:id — remove mapping
 // ============================================================
-router.delete('/mappings/:id', requireRole('admin'), (req: Request, res: Response) => {
+router.delete('/mappings/:id', validateParamId, requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const mapping = db.prepare(
@@ -478,7 +480,7 @@ router.get('/dashcam-events/by-officer/:officerId', requireRole('admin', 'manage
 // ============================================================
 // GET /api/clearpathgps/dashcam-events/:id — single event detail
 // ============================================================
-router.get('/dashcam-events/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+router.get('/dashcam-events/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const event = db.prepare(`

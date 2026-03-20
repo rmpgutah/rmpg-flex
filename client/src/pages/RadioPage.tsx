@@ -167,7 +167,6 @@ export default function RadioPage() {
     try {
       // Fetch audio with JWT auth header (new Audio(url) can't set headers)
       const token = localStorage.getItem('rmpg_token');
-      console.log('[Radio Playback] Fetching audio for entry', entryId, '| token:', token ? 'present' : 'MISSING');
       const res = await fetch(`/api/comms/radio/audio/${entryId}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
@@ -176,7 +175,6 @@ export default function RadioPage() {
         throw new Error(`HTTP ${res.status}`);
       }
       const blob = await res.blob();
-      console.log('[Radio Playback] Got blob:', blob.size, 'bytes, type:', blob.type);
       const blobUrl = URL.createObjectURL(blob);
       blobUrlRef.current = blobUrl;
 
@@ -198,7 +196,6 @@ export default function RadioPage() {
       };
       audioRef.current = audio;
       await audio.play();
-      console.log('[Radio Playback] Playing audio for entry', entryId);
       setPlayingId(entryId);
     } catch (err) {
       console.error('[Radio Playback] Failed:', err);
