@@ -1,0 +1,34 @@
+# Known Bad Hash Set — Drug Manufacturing & Distribution
+# Source: DEA Digital Evidence Reference (simulated)
+# Category: known_bad
+# Hash Type: MD5
+# Description: Hashes of known drug manufacturing guides, distribution
+#              ledgers, precursor chemical ordering tools, encrypted
+#              communication apps used in drug trafficking, and
+#              darknet marketplace tools.
+# Classification: LAW ENFORCEMENT SENSITIVE
+# Last Updated: 2026-03-01
+#
+# Format: md5_hash,filename
+#
+# NOTE: These are EXAMPLE hashes for system testing only.
+#
+# --- Manufacturing Guides ---
+cfcd208495d565ef66e7dff9f98764da,synth_guide_meth.pdf
+c4ca4238a0b923820dcc509a6f75849b,fentanyl_press_manual.pdf
+c81e728d9d4c2f636f067f89cc14862c,pill_press_config.docx
+eccbc87e4b5ce2fe28308fd9f2a7baf3,precursor_suppliers.xlsx
+# --- Distribution Tools ---
+a87ff679a2f3e71d9181a67b7542122c,dealer_ledger_template.xlsx
+e4da3b7fbbce2345d7772b0674a318d5,customer_database.db
+1679091c5a880faf6fb5e6087eb1b2dc,territory_map.kml
+8f14e45fceea167a5a36dedd4bea2543,price_calculator.py
+# --- Encrypted Comms ---
+c9f0f895fb98ab9159f51fd0297e236d,signal_clone_modded.apk
+45c48cce2e2d7fbdea1afc51c7c6ad26,wickr_enterprise_crack.exe
+d3d9446802a44259755d38e6d163e820,phantom_messenger.apk
+# --- Darknet Tools ---
+6512bd43d9caa6e02c990b0a82652dca,tor_marketplace_scraper.py
+c20ad4d76fe97759aa27a0c99bff6710,bitcoin_mixer_client.exe
+c51ce410c124a10e0db5e4b97fc2af39,monero_stealth_wallet.exe
+aab3238922bcc25a6f606eb525ffdc56,pgp_auto_encrypt.sh
