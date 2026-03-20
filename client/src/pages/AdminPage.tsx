@@ -197,6 +197,7 @@ function mapClientRowToClient(row: ClientRow & Record<string, any>): Client & { 
     account_manager: row.account_manager || undefined,
     priority_client: !!row.priority_client,
     client_since: row.client_since || undefined,
+    status: row.status || 'active',
     is_active: row.status === 'active',
     notes: row.notes,
     property_count: row.property_count,

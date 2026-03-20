@@ -1517,6 +1517,22 @@ export default function EmailPage() {
     return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
   }, [searchInput, search, selectedFolder, fetchMessages]);
 
+  // Apply client-side search filters (declared before keyboard shortcuts that reference it)
+  const filteredMessages = hasActiveFilters(searchFilters)
+    ? messages.filter(msg => {
+        if (searchFilters.sender) {
+          const s = searchFilters.sender.toLowerCase();
+          if (!msg.fromName.toLowerCase().includes(s) && !msg.fromAddress.toLowerCase().includes(s)) return false;
+        }
+        if (searchFilters.hasAttachments && !msg.hasAttachments) return false;
+        if (searchFilters.isFlagged && !msg.isFlagged) return false;
+        if (searchFilters.unreadOnly && msg.isRead) return false;
+        if (searchFilters.dateFrom && msg.receivedAt < searchFilters.dateFrom) return false;
+        if (searchFilters.dateTo && msg.receivedAt > searchFilters.dateTo + 'T23:59:59') return false;
+        return true;
+      })
+    : messages;
+
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -1767,22 +1783,6 @@ export default function EmailPage() {
 
   // Top-level folders only (no parentFolderId, or parentFolderId points to root)
   const topLevelFolders = sortedFolders.filter(f => !f.parentFolderId || WELL_KNOWN_FOLDERS.includes(f.displayName));
-
-  // Apply client-side search filters
-  const filteredMessages = hasActiveFilters(searchFilters)
-    ? messages.filter(msg => {
-        if (searchFilters.sender) {
-          const s = searchFilters.sender.toLowerCase();
-          if (!msg.fromName.toLowerCase().includes(s) && !msg.fromAddress.toLowerCase().includes(s)) return false;
-        }
-        if (searchFilters.hasAttachments && !msg.hasAttachments) return false;
-        if (searchFilters.isFlagged && !msg.isFlagged) return false;
-        if (searchFilters.unreadOnly && msg.isRead) return false;
-        if (searchFilters.dateFrom && msg.receivedAt < searchFilters.dateFrom) return false;
-        if (searchFilters.dateTo && msg.receivedAt > searchFilters.dateTo + 'T23:59:59') return false;
-        return true;
-      })
-    : messages;
 
   const threads = groupByConversation(filteredMessages);
   const unreadCount = messages.filter(m => !m.isRead).length;

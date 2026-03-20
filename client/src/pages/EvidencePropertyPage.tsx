@@ -208,7 +208,7 @@ export default function EvidencePropertyPage() {
       setHashLoading(true);
       setVerifyResults(null);
       apiFetch(`/iped/hash/results?evidenceId=${selected.id}`)
-        .then(res => setHashResults(Array.isArray(res) ? res : res?.data || []))
+        .then((res: any) => setHashResults(Array.isArray(res) ? res : res?.data || []))
         .catch(() => setHashResults([]))
         .finally(() => setHashLoading(false));
     }
@@ -811,7 +811,7 @@ export default function EvidencePropertyPage() {
                               });
                               addToast('Hash job started', 'success');
                               // Refresh hash results
-                              const res = await apiFetch(`/iped/hash/results?evidenceId=${selected.id}`);
+                              const res: any = await apiFetch(`/iped/hash/results?evidenceId=${selected.id}`);
                               setHashResults(Array.isArray(res) ? res : res?.data || []);
                             } catch {
                               addToast('Failed to start hash job', 'error');

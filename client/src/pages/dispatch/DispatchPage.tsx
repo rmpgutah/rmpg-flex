@@ -331,7 +331,7 @@ export default function DispatchPage() {
 
   // ── Refs for unmount auto-save (avoids stale closures in cleanup) ──
   const callDetailRef = useRef<HTMLDivElement>(null);
-  const prevSelectedCallIdRef = useRef<number | null>(null);
+  const prevSelectedCallIdRef = useRef<string | null>(null);
   const pendingWsCallRef = useRef<CallForService | null>(null); // queued WS update while editing
   const isEditingRef = useRef(isEditing);
   const editDataRef = useRef(editData);

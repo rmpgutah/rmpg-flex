@@ -2432,7 +2432,7 @@ export interface ServeAttempt {
   officer_id: number;
   attempt_number: number;
   attempt_type: 'personal' | 'substitute' | 'posting' | 'failed';
-  result: 'served' | 'no_answer' | 'refused' | 'wrong_address' | 'moved' | 'other';
+  result: 'served' | 'posted' | 'no_answer' | 'refused' | 'wrong_address' | 'moved' | 'other';
   latitude: number | null;
   longitude: number | null;
   gps_accuracy: number | null;
@@ -2452,6 +2452,8 @@ export interface ServeAttemptData {
   result: ServeAttempt['result'];
   latitude?: number;
   longitude?: number;
+  gps_lat?: number;
+  gps_lng?: number;
   gps_accuracy?: number;
   address_verified?: boolean;
   person_served_name?: string;
