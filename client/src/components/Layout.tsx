@@ -115,6 +115,14 @@ const PAGE_TITLES: Record<string, string> = {
   '/training-docs': 'Training Documents',
   '/serve': 'Process Server',
   '/admin': 'Admin',
+  '/body-cameras': 'Body Cameras',
+  '/dash-cameras': 'Dash Cameras',
+  '/arrest-records': 'Arrest Records',
+  '/court-records': 'Court Records',
+  '/skiptracer-v2': 'Skip Tracer',
+  '/digital-forensics': 'Digital Forensics',
+  '/colorado-doc': 'Colorado DOC Search',
+  '/invoices': 'Invoices',
 };
 
 // Nav items — items with `children` render a dropdown menu in the toolbar
