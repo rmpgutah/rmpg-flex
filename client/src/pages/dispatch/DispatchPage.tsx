@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useId, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useId, useMemo, startTransition } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus,
@@ -90,6 +90,7 @@ import {
 } from '../../utils/callOptions';
 import PersonFormModal, { type PersonFormData } from '../../components/PersonFormModal';
 import VehicleFormModal, { type VehicleFormData } from '../../components/VehicleFormModal';
+import { DebouncedInput, DebouncedTextarea } from '../../components/DebouncedInput';
 
 export default function DispatchPage() {
   const unitModalTitleId = useId();
@@ -545,8 +546,16 @@ export default function DispatchPage() {
       .catch((err) => { console.warn('[DispatchPage] fetch properties list failed:', err); });
   }, [fetchData]);
 
-  // Live sync — auto-refresh when any device modifies dispatch data (silent to avoid unmounting UI)
-  const silentRefresh = useCallback(() => fetchData({ silent: true }), [fetchData]);
+  // Live sync — debounced auto-refresh prevents rapid API calls from multiple WebSocket events
+  const silentRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const silentRefresh = useCallback(() => {
+    if (silentRefreshTimer.current) clearTimeout(silentRefreshTimer.current);
+    silentRefreshTimer.current = setTimeout(() => {
+      fetchData({ silent: true });
+      silentRefreshTimer.current = null;
+    }, 300);
+  }, [fetchData]);
+  useEffect(() => () => { if (silentRefreshTimer.current) clearTimeout(silentRefreshTimer.current); }, []);
   useLiveSync('dispatch', silentRefresh);
 
   // ── WebSocket: real-time dispatch updates & panic auto-dispatch ──
@@ -1595,7 +1604,12 @@ export default function DispatchPage() {
   };
 
   const updateEditField = useCallback((field: string, value: any) => {
-    setEditData((prev) => ({ ...prev, [field]: value }));
+    // Use startTransition so text input state updates are non-blocking —
+    // React will yield to user keystrokes before committing the re-render
+    // of this 4,600+ line component tree
+    startTransition(() => {
+      setEditData((prev) => ({ ...prev, [field]: value }));
+    });
   }, []);
 
   // ── Dispatch alarm interval — check overdue calls every 5s ──
@@ -2344,11 +2358,12 @@ export default function DispatchPage() {
               Archive Cleared
             </button>
           )}
-          <input
+          <DebouncedInput
             type="text"
             placeholder="Search calls..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={setSearchQuery}
+            debounceMs={200}
             className="input-dark text-xs flex-1"
             style={{ minWidth: '100px', maxWidth: '160px' }}
           />

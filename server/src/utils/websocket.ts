@@ -1617,6 +1617,12 @@ function handlePrivateCallDecline(clientId: string, callId: string, autoDecline 
   const call = activeCalls.get(callId);
   if (!call || call.status !== 'ringing') return;
 
+  // Authorization: only the intended receiver (or auto-decline timer) can decline
+  if (!autoDecline && clientId !== call.receiverClientId) {
+    console.warn(`[PrivateCall] Unauthorized decline attempt: ${clientId} tried to decline call ${callId} intended for ${call.receiverClientId}`);
+    return;
+  }
+
   // Clear auto-decline timer
   if (call.declineTimer) clearTimeout(call.declineTimer);
 

@@ -914,6 +914,19 @@ try {
           console.log(`[Notification Cleanup] Purged ${notifResult.changes} old security notifications`);
         }
       } catch { /* table may not exist */ }
+
+      // Purge old GPS breadcrumbs — keep 14 days, prevents unbounded table growth
+      // Officers uploading 1s-interval GPS create ~86K rows/day per officer
+      try {
+        const gpsDb = getDb();
+        const gpsResult = gpsDb.prepare(`
+          DELETE FROM gps_breadcrumbs
+          WHERE recorded_at < datetime('now', 'localtime', '-14 days')
+        `).run();
+        if (gpsResult.changes > 0) {
+          console.log(`[GPS Cleanup] Purged ${gpsResult.changes} old breadcrumbs (>14 days)`);
+        }
+      } catch (e) { console.error('[GPS Cleanup] Failed:', e); }
     }, 60 * 60 * 1000).unref();
 
     // Start patrol monitor for missed scan alerts

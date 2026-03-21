@@ -1809,11 +1809,12 @@ router.post('/2fa/setup/verify', authenticateAnyToken, mfaRateLimit, (req: Reque
       return;
     }
 
-    // Atomic replay protection — check AND mark in one step to prevent race conditions
-    if (checkAndMarkTotpCode(userId, code)) {
-      res.status(401).json({ error: 'This code has already been used. Please wait for the next code.' });
-      return;
-    }
+    // Skip replay protection during SETUP verification — this is the first-ever use
+    // of this TOTP secret, so replay risk is minimal. Enforcing it here causes false
+    // "already used" errors when the client double-submits (auto-submit + onComplete race).
+    // Instead, just mark the code so subsequent login attempts within the same window
+    // won't re-use it.
+    markTotpCodeUsed(userId, code);
 
     // Mark as verified
     db.prepare('UPDATE user_totp_secrets SET is_verified = 1, updated_at = ? WHERE id = ?')
@@ -2628,8 +2629,8 @@ router.post('/reset-password', passwordRateLimit, async (req: Request, res: Resp
     // Set password expiry
     setPasswordExpiry(record.user_id);
 
-    // Invalidate all existing sessions for security
-    db.prepare("DELETE FROM sessions WHERE user_id = ?").run(record.user_id);
+    // Invalidate all existing sessions for security (preserve audit trail)
+    db.prepare('UPDATE sessions SET is_active = 0 WHERE user_id = ?').run(record.user_id);
 
     // Audit log
     const user = db.prepare("SELECT username FROM users WHERE id = ?").get(record.user_id) as any;
