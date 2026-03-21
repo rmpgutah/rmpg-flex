@@ -73,7 +73,7 @@
     },
     "nsis": {
       "oneClick": false,
-      "perMachine": true,
+      "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "installerIcon": "../client/public/rmpg-seal.ico",
       "uninstallerIcon": "../client/public/rmpg-seal.ico",
