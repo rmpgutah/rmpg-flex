@@ -1679,6 +1679,12 @@ function migrateSchema(): void {
   addCol('time_entries', 'break_start', 'TEXT');
   addCol('time_entries', 'break_minutes', 'REAL NOT NULL DEFAULT 0');
 
+  // ── TIME ENTRIES — edit audit tracking ──────────────
+  addCol('time_entries', 'notes', 'TEXT');
+  addCol('time_entries', 'edit_reason', 'TEXT');
+  addCol('time_entries', 'edited_by', 'INTEGER');
+  addCol('time_entries', 'edited_at', 'TEXT');
+
   // ── PATROL CHECKPOINTS — officer assignment + location text ───
   addCol('patrol_checkpoints', 'assigned_officer_id', 'INTEGER');
   addCol('patrol_checkpoints', 'location_description', 'TEXT');
@@ -3114,6 +3120,20 @@ function createIndexes(): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_health_log_integration ON integration_health_log(integration_id, checked_at);
+
+    CREATE TABLE IF NOT EXISTS time_entry_edits (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      time_entry_id INTEGER NOT NULL REFERENCES time_entries(id) ON DELETE CASCADE,
+      edited_by INTEGER NOT NULL REFERENCES users(id),
+      edited_by_name TEXT NOT NULL,
+      edit_type TEXT NOT NULL CHECK(edit_type IN ('clock_in_changed','clock_out_changed','deleted','notes_changed','break_adjusted')),
+      old_value TEXT,
+      new_value TEXT,
+      reason TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_time_entry_edits_entry ON time_entry_edits(time_entry_id);
   `);
 }
 

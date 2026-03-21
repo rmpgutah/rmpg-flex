@@ -590,8 +590,25 @@ export interface TimeEntry {
   total_hours?: number;
   status: 'clocked_in' | 'clocked_out' | 'on_break' | 'edited';
   notes?: string;
+  edit_reason?: string;
+  edited_by?: number;
+  edited_by_name?: string;
+  edited_at?: string;
+  edit_count?: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface TimeEntryEdit {
+  id: number;
+  time_entry_id: number;
+  edited_by: number;
+  edited_by_name: string;
+  edit_type: 'clock_in_changed' | 'clock_out_changed' | 'deleted' | 'notes_changed' | 'break_adjusted';
+  old_value: string | null;
+  new_value: string | null;
+  reason: string | null;
+  created_at: string;
 }
 
 export interface Credential {
