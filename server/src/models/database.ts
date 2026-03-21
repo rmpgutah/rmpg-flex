@@ -991,6 +991,83 @@ function createTables(): void {
     CREATE INDEX IF NOT EXISTS idx_officer_equipment_status ON officer_equipment(status);
     CREATE INDEX IF NOT EXISTS idx_officer_equipment_type ON officer_equipment(equipment_type);
 
+    -- ── HR Console ─────────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS leave_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      officer_id INTEGER NOT NULL,
+      type TEXT NOT NULL DEFAULT 'vacation' CHECK(type IN ('vacation','sick','personal','bereavement','training','unpaid')),
+      start_date TEXT NOT NULL,
+      end_date TEXT NOT NULL,
+      hours_requested REAL NOT NULL DEFAULT 0,
+      reason TEXT,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','denied','cancelled')),
+      reviewed_by INTEGER,
+      reviewed_at TEXT,
+      review_notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (officer_id) REFERENCES users(id),
+      FOREIGN KEY (reviewed_by) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS leave_balances (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      officer_id INTEGER NOT NULL,
+      year INTEGER NOT NULL,
+      vacation_total REAL NOT NULL DEFAULT 80,
+      vacation_used REAL NOT NULL DEFAULT 0,
+      sick_total REAL NOT NULL DEFAULT 40,
+      sick_used REAL NOT NULL DEFAULT 0,
+      personal_total REAL NOT NULL DEFAULT 24,
+      personal_used REAL NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (officer_id) REFERENCES users(id),
+      UNIQUE(officer_id, year)
+    );
+
+    CREATE TABLE IF NOT EXISTS disciplinary_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      officer_id INTEGER NOT NULL,
+      type TEXT NOT NULL DEFAULT 'verbal_warning' CHECK(type IN ('verbal_warning','written_warning','suspension','termination','commendation','counseling')),
+      severity TEXT NOT NULL DEFAULT 'minor' CHECK(severity IN ('minor','moderate','major','critical')),
+      incident_date TEXT NOT NULL,
+      description TEXT NOT NULL,
+      action_taken TEXT,
+      follow_up_date TEXT,
+      follow_up_notes TEXT,
+      status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','closed','appealed')),
+      issued_by INTEGER NOT NULL,
+      witness TEXT,
+      attachments TEXT DEFAULT '[]',
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (officer_id) REFERENCES users(id),
+      FOREIGN KEY (issued_by) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS performance_reviews (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      officer_id INTEGER NOT NULL,
+      reviewer_id INTEGER NOT NULL,
+      review_period_start TEXT NOT NULL,
+      review_period_end TEXT NOT NULL,
+      review_date TEXT,
+      type TEXT NOT NULL DEFAULT 'annual' CHECK(type IN ('annual','probationary','quarterly','improvement_plan')),
+      overall_rating INTEGER CHECK(overall_rating BETWEEN 1 AND 5),
+      categories TEXT DEFAULT '{}',
+      strengths TEXT,
+      areas_for_improvement TEXT,
+      goals TEXT,
+      officer_comments TEXT,
+      status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','submitted','acknowledged','completed')),
+      acknowledged_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (officer_id) REFERENCES users(id),
+      FOREIGN KEY (reviewer_id) REFERENCES users(id)
+    );
+
     -- ── Two-Factor Authentication ─────────────────────────
     CREATE TABLE IF NOT EXISTS user_totp_secrets (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

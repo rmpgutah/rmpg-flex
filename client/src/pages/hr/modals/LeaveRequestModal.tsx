@@ -1,275 +1,214 @@
 // ============================================================
 // RMPG Flex — Leave Request Modal
-// Create new leave requests or review pending ones (HR view)
+// Submit or edit a leave/PTO request
 // ============================================================
 
-import React, { useState, useEffect } from 'react';
-import { X, CalendarOff, Check, XCircle } from 'lucide-react';
-import { apiFetch } from '../../../hooks/useApi';
+import { useState, useEffect, useMemo } from 'react';
+import { CalendarDays } from 'lucide-react';
+import FormModal from '../../../components/FormModal';
+import type { LeaveRequest, LeaveType } from '../../../types';
 
-interface LeaveType {
-  id: number;
-  name: string;
-  code: string;
+interface LeaveRequestModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSubmit: (data: LeaveFormData) => Promise<void>;
+  editRequest?: LeaveRequest | null;
 }
 
-interface LeaveRequest {
-  id: number;
-  user_id: string;
-  employee_name?: string;
-  leave_type_id: number;
-  leave_type_name?: string;
+export interface LeaveFormData {
+  type: LeaveType;
   start_date: string;
   end_date: string;
   hours_requested: number;
   reason: string;
-  status: string;
-  reviewer_notes?: string;
-  created_at: string;
 }
 
-interface LeaveRequestModalProps {
-  onClose: () => void;
-  onSaved: () => void;
-  /** If provided, we're reviewing an existing request (HR view) */
-  request?: LeaveRequest | null;
-  /** If true, show review controls instead of create form */
-  reviewMode?: boolean;
+const LEAVE_TYPES: { value: LeaveType; label: string }[] = [
+  { value: 'vacation', label: 'Vacation' },
+  { value: 'sick', label: 'Sick' },
+  { value: 'personal', label: 'Personal' },
+  { value: 'bereavement', label: 'Bereavement' },
+  { value: 'training', label: 'Training' },
+  { value: 'unpaid', label: 'Unpaid' },
+];
+
+/** Count business days between two date strings (inclusive of both endpoints). */
+function countBusinessDays(startStr: string, endStr: string): number {
+  if (!startStr || !endStr) return 0;
+  const start = new Date(startStr + 'T00:00:00');
+  const end = new Date(endStr + 'T00:00:00');
+  if (isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) return 0;
+  let count = 0;
+  const cur = new Date(start);
+  while (cur <= end) {
+    const day = cur.getDay();
+    if (day !== 0 && day !== 6) count++;
+    cur.setDate(cur.getDate() + 1);
+  }
+  return count;
 }
 
-export default function LeaveRequestModal({ onClose, onSaved, request, reviewMode }: LeaveRequestModalProps) {
-  const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
-  const [leaveTypeId, setLeaveTypeId] = useState<number>(request?.leave_type_id || 0);
-  const [startDate, setStartDate] = useState(request?.start_date || '');
-  const [endDate, setEndDate] = useState(request?.end_date || '');
-  const [hoursRequested, setHoursRequested] = useState<number>(request?.hours_requested || 8);
-  const [reason, setReason] = useState(request?.reason || '');
-  const [reviewerNotes, setReviewerNotes] = useState(request?.reviewer_notes || '');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+export default function LeaveRequestModal({
+  isOpen,
+  onClose,
+  onSubmit,
+  editRequest,
+}: LeaveRequestModalProps) {
+  const [type, setType] = useState<LeaveType>('vacation');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [hours, setHours] = useState(0);
+  const [hoursManual, setHoursManual] = useState(false);
+  const [reason, setReason] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
+  // Populate from editRequest when opening
   useEffect(() => {
-    apiFetch<LeaveType[]>('/hr/leave-types').then(setLeaveTypes).catch(() => {});
-  }, []);
+    if (!isOpen) return;
+    if (editRequest) {
+      setType(editRequest.type);
+      setStartDate(editRequest.start_date);
+      setEndDate(editRequest.end_date);
+      setHours(editRequest.hours_requested);
+      setHoursManual(false);
+      setReason(editRequest.reason || '');
+    } else {
+      setType('vacation');
+      setStartDate('');
+      setEndDate('');
+      setHours(0);
+      setHoursManual(false);
+      setReason('');
+    }
+    setSubmitting(false);
+  }, [isOpen, editRequest]);
 
+  // Auto-calculate hours from dates unless user has overridden
+  const autoHours = useMemo(() => countBusinessDays(startDate, endDate) * 8, [startDate, endDate]);
   useEffect(() => {
-    if (leaveTypes.length > 0 && !leaveTypeId) {
-      setLeaveTypeId(leaveTypes[0].id);
-    }
-  }, [leaveTypes, leaveTypeId]);
+    if (!hoursManual) setHours(autoHours);
+  }, [autoHours, hoursManual]);
 
-  const handleSubmit = async () => {
-    if (!leaveTypeId || !startDate || !endDate || !reason.trim()) {
-      setError('Please fill in all required fields.');
-      return;
+  const isDirty = useMemo(() => {
+    if (editRequest) {
+      return (
+        type !== editRequest.type ||
+        startDate !== editRequest.start_date ||
+        endDate !== editRequest.end_date ||
+        hours !== editRequest.hours_requested ||
+        reason !== (editRequest.reason || '')
+      );
     }
-    setSaving(true);
-    setError('');
+    return !!(type !== 'vacation' || startDate || endDate || hours || reason);
+  }, [type, startDate, endDate, hours, reason, editRequest]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!startDate || !endDate) return;
+    setSubmitting(true);
     try {
-      await apiFetch('/hr/leave-requests', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          leave_type_id: leaveTypeId,
-          start_date: startDate,
-          end_date: endDate,
-          hours_requested: hoursRequested,
-          reason: reason.trim(),
-        }),
-      });
-      onSaved();
-    } catch (err: any) {
-      setError(err.message || 'Failed to submit request');
+      await onSubmit({ type, start_date: startDate, end_date: endDate, hours_requested: hours, reason });
     } finally {
-      setSaving(false);
+      setSubmitting(false);
     }
   };
 
-  const handleReview = async (action: 'approved' | 'denied') => {
-    if (!request) return;
-    setSaving(true);
-    setError('');
-    try {
-      await apiFetch(`/hr/leave-requests/${request.id}/review`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          status: action,
-          reviewer_notes: reviewerNotes.trim(),
-        }),
-      });
-      onSaved();
-    } catch (err: any) {
-      setError(err.message || 'Failed to process review');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const inputClass = 'w-full bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:outline-none';
-  const labelClass = 'block text-xs text-rmpg-400 mb-1';
+  const inputClass =
+    'w-full bg-[#0d1520] border border-[#1e3048] text-white text-xs px-3 py-2 rounded-sm focus:outline-none focus:border-brand-500 transition-colors';
+  const labelClass = 'block text-xs font-medium text-rmpg-300 mb-1';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div className="bg-[#141e2b] border border-[#1e3048] rounded-sm w-full max-w-lg mx-4 max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
-        {/* Header */}
-        <div className="px-4 py-2 border-b border-[#1e3048] flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <CalendarOff className="w-4 h-4 text-brand-400" />
-            <h3 className="text-sm font-semibold text-white">
-              {reviewMode ? 'Review Leave Request' : 'Request Time Off'}
-            </h3>
-          </div>
-          <button onClick={onClose} className="text-rmpg-500 hover:text-white">
-            <X className="w-4 h-4" />
-          </button>
+    <FormModal
+      isOpen={isOpen}
+      onClose={onClose}
+      onSubmit={handleSubmit}
+      title={editRequest ? 'Edit Leave Request' : 'Request Time Off'}
+      icon={CalendarDays}
+      submitLabel={editRequest ? 'Update Request' : 'Submit Request'}
+      isSubmitting={submitting}
+      isDirty={isDirty}
+      maxWidth="max-w-lg"
+    >
+      {/* Leave Type */}
+      <div>
+        <label className={labelClass}>Leave Type</label>
+        <select
+          value={type}
+          onChange={e => setType(e.target.value as LeaveType)}
+          className={inputClass}
+        >
+          {LEAVE_TYPES.map(lt => (
+            <option key={lt.value} value={lt.value}>{lt.label}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Dates */}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className={labelClass}>Start Date</label>
+          <input
+            type="date"
+            value={startDate}
+            onChange={e => setStartDate(e.target.value)}
+            required
+            className={inputClass}
+          />
         </div>
-
-        {/* Body */}
-        <div className="p-4 space-y-3">
-          {error && (
-            <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-sm px-2 py-1.5">
-              {error}
-            </div>
-          )}
-
-          {reviewMode && request ? (
-            <>
-              {/* Review mode — show request details */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <span className={labelClass}>Employee</span>
-                  <p className="text-xs text-white">{request.employee_name || 'N/A'}</p>
-                </div>
-                <div>
-                  <span className={labelClass}>Leave Type</span>
-                  <p className="text-xs text-white">{request.leave_type_name || 'N/A'}</p>
-                </div>
-                <div>
-                  <span className={labelClass}>Start Date</span>
-                  <p className="text-xs text-white">{request.start_date}</p>
-                </div>
-                <div>
-                  <span className={labelClass}>End Date</span>
-                  <p className="text-xs text-white">{request.end_date}</p>
-                </div>
-                <div>
-                  <span className={labelClass}>Hours Requested</span>
-                  <p className="text-xs text-white">{request.hours_requested}</p>
-                </div>
-                <div>
-                  <span className={labelClass}>Status</span>
-                  <p className="text-xs text-white capitalize">{request.status}</p>
-                </div>
-              </div>
-              <div>
-                <span className={labelClass}>Reason</span>
-                <p className="text-xs text-white bg-[#0d1520] border border-[#1e3048] rounded-sm px-2 py-1.5 whitespace-pre-wrap">
-                  {request.reason}
-                </p>
-              </div>
-              <div>
-                <label className={labelClass}>Review Notes</label>
-                <textarea
-                  value={reviewerNotes}
-                  onChange={e => setReviewerNotes(e.target.value)}
-                  className={`${inputClass} h-20 resize-none`}
-                  placeholder="Optional notes for the employee..."
-                />
-              </div>
-            </>
-          ) : (
-            <>
-              {/* Create mode */}
-              <div>
-                <label className={labelClass}>Leave Type *</label>
-                <select
-                  value={leaveTypeId}
-                  onChange={e => setLeaveTypeId(Number(e.target.value))}
-                  className={inputClass}
-                >
-                  {leaveTypes.map(lt => (
-                    <option key={lt.id} value={lt.id}>{lt.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={labelClass}>Start Date *</label>
-                  <input
-                    type="date"
-                    value={startDate}
-                    onChange={e => setStartDate(e.target.value)}
-                    className={inputClass}
-                  />
-                </div>
-                <div>
-                  <label className={labelClass}>End Date *</label>
-                  <input
-                    type="date"
-                    value={endDate}
-                    onChange={e => setEndDate(e.target.value)}
-                    className={inputClass}
-                  />
-                </div>
-              </div>
-              <div>
-                <label className={labelClass}>Hours Requested *</label>
-                <input
-                  type="number"
-                  value={hoursRequested}
-                  onChange={e => setHoursRequested(Number(e.target.value))}
-                  min={0}
-                  step={0.5}
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <label className={labelClass}>Reason *</label>
-                <textarea
-                  value={reason}
-                  onChange={e => setReason(e.target.value)}
-                  className={`${inputClass} h-20 resize-none`}
-                  placeholder="Reason for time off..."
-                />
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="px-4 py-2 border-t border-[#1e3048] flex justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-1.5 text-xs text-rmpg-400 hover:text-white">
-            Cancel
-          </button>
-          {reviewMode && request?.status === 'requested' ? (
-            <>
-              <button
-                onClick={() => handleReview('denied')}
-                disabled={saving}
-                className="px-3 py-1.5 text-xs bg-red-600 text-white rounded-sm hover:bg-red-700 disabled:opacity-50 flex items-center gap-1"
-              >
-                <XCircle className="w-3 h-3" /> Deny
-              </button>
-              <button
-                onClick={() => handleReview('approved')}
-                disabled={saving}
-                className="px-3 py-1.5 text-xs bg-green-600 text-white rounded-sm hover:bg-green-700 disabled:opacity-50 flex items-center gap-1"
-              >
-                <Check className="w-3 h-3" /> Approve
-              </button>
-            </>
-          ) : !reviewMode ? (
-            <button
-              onClick={handleSubmit}
-              disabled={saving}
-              className="px-3 py-1.5 text-xs bg-brand-500 text-white rounded-sm hover:bg-brand-600 disabled:opacity-50"
-            >
-              {saving ? 'Submitting...' : 'Submit Request'}
-            </button>
-          ) : null}
+        <div>
+          <label className={labelClass}>End Date</label>
+          <input
+            type="date"
+            value={endDate}
+            onChange={e => setEndDate(e.target.value)}
+            min={startDate || undefined}
+            required
+            className={inputClass}
+          />
         </div>
       </div>
-    </div>
+
+      {/* Hours */}
+      <div>
+        <label className={labelClass}>Hours Requested</label>
+        <input
+          type="number"
+          value={hours}
+          onChange={e => {
+            setHours(Number(e.target.value));
+            setHoursManual(true);
+          }}
+          min={0}
+          step={1}
+          className={inputClass}
+        />
+        {autoHours > 0 && (
+          <p className="text-xs text-rmpg-500 mt-1">
+            Auto-calculated: {countBusinessDays(startDate, endDate)} business day{countBusinessDays(startDate, endDate) !== 1 ? 's' : ''} x 8 hrs = {autoHours} hrs
+            {hoursManual && (
+              <button
+                type="button"
+                onClick={() => { setHoursManual(false); setHours(autoHours); }}
+                className="ml-2 text-brand-400 hover:text-brand-300 underline"
+              >
+                reset
+              </button>
+            )}
+          </p>
+        )}
+      </div>
+
+      {/* Reason */}
+      <div>
+        <label className={labelClass}>Reason</label>
+        <textarea
+          value={reason}
+          onChange={e => setReason(e.target.value)}
+          rows={3}
+          placeholder="Optional — provide context for your request"
+          className={inputClass + ' resize-none'}
+        />
+      </div>
+    </FormModal>
   );
 }
