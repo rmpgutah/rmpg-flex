@@ -4530,6 +4530,17 @@ function migrateSchema(): void {
   addCol('serve_queue', 'call_id', 'INTEGER REFERENCES calls_for_service(id)');
   try { db.exec("CREATE INDEX IF NOT EXISTS idx_serve_queue_call ON serve_queue(call_id)"); } catch {}
 
+  // ─── OVERWATCH CRM ENHANCEMENTS ─────────────────────────────────────────────
+  addCol('properties', 'risk_level', "TEXT DEFAULT 'low'");
+  addCol('crm_proposals', 'stage_entered_at', 'TEXT');
+  addCol('crm_tasks', 'auto_created_by', 'TEXT');
+  addCol('invoices', 'is_recurring', 'INTEGER DEFAULT 0');
+  addCol('invoices', 'recurrence_interval', 'TEXT');
+  addCol('invoices', 'recurrence_anchor', 'TEXT');
+
+  try { db.exec(`CREATE TABLE IF NOT EXISTS crm_proposal_versions (id TEXT PRIMARY KEY, proposal_id TEXT NOT NULL, version_num INTEGER NOT NULL, snapshot TEXT NOT NULL, edited_by TEXT, edited_at TEXT)`); } catch {}
+  try { db.exec(`CREATE TABLE IF NOT EXISTS crm_payments (id TEXT PRIMARY KEY, invoice_id TEXT NOT NULL, amount REAL NOT NULL, paid_at TEXT, method TEXT, reference TEXT, recorded_by TEXT)`); } catch {}
+
   // ── Backfill dispatch_code from S/Z/B IDs on all calls ────────
   // Ensures dispatch_code always matches current section_id/zone_id/beat_id
   // Uses a single UPDATE...FROM to avoid N+1 queries during startup
