@@ -628,7 +628,7 @@ export default function EvidencePropertyPage() {
                       const actionDef = CHAIN_ACTIONS.find(a => a.value === entry.action);
                       const ActionIcon = actionDef?.icon || ArrowRightLeft;
                       return (
-                        <div key={idx} className="panel-beveled p-3 flex gap-3">
+                        <div key={`${entry.action}-${entry.timestamp}-${entry.user_id}`} className="panel-beveled p-3 flex gap-3">
                           <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center bg-surface-sunken border border-rmpg-700 rounded">
                             <ActionIcon style={{ width: 14, height: 14 }} className="text-brand-400" />
                           </div>

@@ -830,7 +830,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
                     <div className="text-[9px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Recent Sync Log</div>
                     <div className="space-y-0.5 max-h-[150px] overflow-y-auto">
                       {scraperStatus.recent_syncs.slice(0, 10).map((sync: any, idx: number) => (
-                        <div key={idx} className="flex items-center gap-2 text-[9px] px-2 py-1 rounded-sm bg-surface-base">
+                        <div key={`${sync.county}-${sync.synced_at}`} className="flex items-center gap-2 text-[9px] px-2 py-1 rounded-sm bg-surface-base">
                           <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${sync.status === 'success' ? 'bg-green-500' : 'bg-red-500'}`} />
                           <span className="text-rmpg-400 w-14">{sync.county}</span>
                           <span className="text-rmpg-500">{sync.synced_at?.split(' ')[1]?.substring(0, 5) || sync.synced_at}</span>

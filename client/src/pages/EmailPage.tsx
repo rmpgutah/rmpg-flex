@@ -1192,7 +1192,7 @@ Drag & drop files to attach • Ctrl+Enter to send" />
                 const isPdf = ext === 'pdf';
                 const fileColor = isImage ? '#06b6d4' : isPdf ? '#ef4444' : '#8b5cf6';
                 return (
-                  <div key={idx} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#0d1520] border border-[#1e3048] rounded-lg text-[10px] text-rmpg-300 group">
+                  <div key={`${att.name}-${att.size}`} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#0d1520] border border-[#1e3048] rounded-lg text-[10px] text-rmpg-300 group">
                     <div className="w-5 h-5 rounded flex items-center justify-center text-[7px] font-bold uppercase"
                       style={{ backgroundColor: fileColor + '15', color: fileColor }}>{ext.slice(0, 3)}</div>
                     <span className="truncate max-w-[100px]">{att.name}</span>

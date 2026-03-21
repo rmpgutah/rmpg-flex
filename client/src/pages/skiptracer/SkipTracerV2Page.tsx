@@ -1521,7 +1521,7 @@ export default function SkipTracerV2Page() {
             <DossierSection title="Licenses" icon={Award} count={selected.licenses!.length}>
               <DataTable headers={['Type', 'Number', 'State', 'Status', 'Expires', 'Source']}>
                 {selected.licenses!.map((l, i) => (
-                  <tr key={i} className="hover:bg-white/5">
+                  <tr key={`${l.type}-${l.number}-${l.state}`} className="hover:bg-white/5">
                     <td className="px-2 py-1.5 text-white">{l.type || '—'}</td>
                     <td className="px-2 py-1.5 text-[#c0ccdd] font-mono">{l.number || '—'}</td>
                     <td className="px-2 py-1.5 text-[#c0ccdd]">{l.state || '—'}</td>
@@ -1543,7 +1543,7 @@ export default function SkipTracerV2Page() {
             <DossierSection title="Vehicles" icon={Car} count={selected.vehicles!.length}>
               <DataTable headers={['Vehicle', 'Plate', 'VIN', 'Source']}>
                 {selected.vehicles!.map((v, i) => (
-                  <tr key={i} className="hover:bg-white/5">
+                  <tr key={`${v.vin || ''}-${v.plate || ''}-${i}`} className="hover:bg-white/5">
                     <td className="px-2 py-1.5 text-white">{[v.year, v.make, v.model, v.color].filter(Boolean).join(' ') || '—'}</td>
                     <td className="px-2 py-1.5 text-[#c0ccdd] font-mono">{v.plate ? `${v.plate}${v.plateState ? ` (${v.plateState})` : ''}` : '—'}</td>
                     <td className="px-2 py-1.5 text-[#8899aa] font-mono">{v.vin || '—'}</td>
@@ -1618,7 +1618,7 @@ export default function SkipTracerV2Page() {
                     {events.map((ev, i) => {
                       const color = categoryColor(ev.category);
                       return (
-                        <div key={i} className="relative">
+                        <div key={`${ev.category}-${ev.label}-${ev.date}-${i}`} className="relative">
                           {/* Dot on the line */}
                           <div
                             className="absolute -left-6 top-1 w-[12px] h-[12px] rounded-full border-2 flex-shrink-0"

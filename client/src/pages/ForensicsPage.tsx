@@ -718,7 +718,7 @@ function DetailPanel({ node, edges, allNodes, onExpandNode }: {
         {metaFields.length > 0 && (
           <div className="space-y-0.5 mt-2">
             {metaFields.map((f, i) => (
-              <div key={i} className="flex items-baseline gap-2 text-[9px]">
+              <div key={f.label} className="flex items-baseline gap-2 text-[9px]">
                 <span className="text-rmpg-500 uppercase tracking-wider w-16 shrink-0">{f.label}</span>
                 <span className="text-rmpg-300 font-mono truncate">{f.value}</span>
               </div>
@@ -754,7 +754,7 @@ function DetailPanel({ node, edges, allNodes, onExpandNode }: {
                 <div className="border-t border-rmpg-700">
                   {items.map(({ edge, otherNode }, idx) => (
                     <button
-                      key={idx}
+                      key={`${otherNode.type}-${otherNode.entityId}`}
                       onClick={() => onExpandNode(otherNode.type, otherNode.entityId, otherNode.label)}
                       className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-rmpg-800/30 text-left transition-colors"
                     >

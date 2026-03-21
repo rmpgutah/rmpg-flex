@@ -152,7 +152,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor'), (req: Request, r
       VALUES (?, 'create', 'offender_alert', ?, ?, ?, ?)`).run(
       req.user!.userId, result.lastInsertRowid, JSON.stringify({ person_id, alert_type, severity }), req.ip || 'unknown', now);
 
-    auditLog(req, 'CREATE' as any, 'offender_alert' as any, result.lastInsertRowid, `Created ${severity} ${alert_type} alert for person ${person_id}`);
+    auditLog(req, 'CREATE' as any, 'offender_alert' as any, Number(result.lastInsertRowid), `Created ${severity} ${alert_type} alert for person ${person_id}`);
     res.status(201).json({ data: { id: result.lastInsertRowid } });
   } catch (error: any) {
     console.error('Create offender alert error:', error?.message || 'Unknown error');

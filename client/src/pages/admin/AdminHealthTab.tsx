@@ -231,7 +231,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
                 {expandedVersions.has(entry.version) && (
                   <div className="px-3 pb-2 space-y-1 bg-surface-sunken/50">
                     {entry.changes.map((change, i) => (
-                      <div key={i} className="flex items-start gap-2 py-0.5">
+                      <div key={`${change.type}-${change.description}`} className="flex items-start gap-2 py-0.5">
                         <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase border shrink-0 mt-0.5 ${changeTypeBadge(change.type)}`}>
                           {toDisplayLabel(change.type)}
                         </span>
@@ -398,7 +398,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
                   Network
                 </div>
                 {host.network.filter(n => !n.internal).map((iface, i) => (
-                  <div key={i} className="mb-1 last:mb-0">
+                  <div key={iface.ip} className="mb-1 last:mb-0">
                     <div className="text-[11px] font-mono font-bold text-rmpg-200">{iface.ip}</div>
                     <div className="text-[9px] text-rmpg-500">{iface.name} — {iface.mac}</div>
                   </div>

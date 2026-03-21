@@ -318,7 +318,7 @@ export default function SkipTracerPage() {
 
                 return (
                   <button
-                    key={idx}
+                    key={personId || `result-${idx}`}
                     onClick={() => setSelected(person)}
                     className={`w-full text-left px-3 py-2 border-b border-rmpg-800 transition-all ${
                       isActive
@@ -489,7 +489,7 @@ function renderArraySection(
         {title} ({items.length})
       </div>
       {items.map((item: any, idx: number) => (
-        <div key={idx} className="pl-3 border-l-2 py-1 space-y-0.5" style={{ borderColor: color + '40' }}>
+        <div key={typeof item === 'string' ? item : `${title}-${idx}`} className="pl-3 border-l-2 py-1 space-y-0.5" style={{ borderColor: color + '40' }}>
           {typeof item === 'string' ? (
             <div className="flex items-center gap-1">
               <span className="text-[11px] text-rmpg-200 font-mono">{item}</span>

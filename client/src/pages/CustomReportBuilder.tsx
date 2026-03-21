@@ -338,7 +338,7 @@ export default function CustomReportBuilder() {
                 </thead>
                 <tbody>
                   {results.map((row, i) => (
-                    <tr key={i} className="border-b border-rmpg-800/30 hover:bg-rmpg-800/20">
+                    <tr key={`row-${i}`} className="border-b border-rmpg-800/30 hover:bg-rmpg-800/20">
                       {resultColumns.map(col => (
                         <td key={col} className="px-2 py-1 text-rmpg-200 font-mono max-w-48 truncate">
                           {String(row[col] ?? '')}

@@ -146,7 +146,7 @@ export default function ScheduleTab({ officers, schedules, weekMonday, onWeekCha
               const isToday = ymd === todayYMD;
               return (
                 <div
-                  key={i}
+                  key={ymd}
                   className={`cascade-item p-2 text-center border-b border-rmpg-700 bg-gradient-to-b from-rmpg-800 to-surface-sunken ${
                     isToday ? 'schedule-today border-brand-500' : ''
                   }`}

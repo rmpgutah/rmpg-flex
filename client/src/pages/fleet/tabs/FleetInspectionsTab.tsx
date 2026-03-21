@@ -186,7 +186,7 @@ export default function FleetInspectionsTab({ inspections, onNewInspection, onEd
                           {category}
                         </div>
                         {(insp.items || []).filter(i => i.category === category).map((item, idx) => (
-                          <div key={idx} className="flex items-center gap-2 px-3 py-1 border-t border-rmpg-700">
+                          <div key={item.item} className="flex items-center gap-2 px-3 py-1 border-t border-rmpg-700">
                             {ITEM_STATUS_ICON[item.status]}
                             <span className="text-[10px] text-rmpg-300 flex-1">{item.item}</span>
                             {item.notes && <span className="text-[9px] text-rmpg-500 italic">{item.notes}</span>}

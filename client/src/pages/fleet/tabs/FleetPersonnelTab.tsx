@@ -259,7 +259,7 @@ export default function FleetPersonnelTab({
                 { icon: <Clock className="w-2.5 h-2.5" />, label: 'Shift Pref', value: officer.shift_preference },
                 { icon: <Calendar className="w-2.5 h-2.5" />, label: 'Hire Date', value: officer.hire_date ? formatMilitary(officer.hire_date) : null },
               ].filter(f => f.value).map((field, i) => (
-                <div key={i} className="flex items-center gap-2 text-[10px]">
+                <div key={field.label} className="flex items-center gap-2 text-[10px]">
                   <span className="text-rmpg-500 flex-shrink-0">{field.icon}</span>
                   <span className="text-rmpg-500 w-16 flex-shrink-0">{field.label}</span>
                   <span className="text-rmpg-200 font-mono truncate">{field.value}</span>

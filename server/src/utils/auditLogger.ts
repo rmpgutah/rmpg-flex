@@ -217,6 +217,7 @@ export type AuditAction =
   | 'BLOCK'
   | 'EXPORT'
   | 'ADMIN_PASSWORD_RESET'
+  | 'LOGIN'
   | 'MOVE_EMAIL'
   | 'CANCEL_EMAIL';
 
@@ -279,6 +280,10 @@ export type AuditEntityType =
   | 'offline_secret'
   | 'user_preferences'
   | 'ofac_screening'
+  | 'case'
+  | 'patrol_checkpoint'
+  | 'invoice_line_item'
+  | 'scheduled_email'
   | 'property'
   | 'record_link'
   | 'criminal_history'
@@ -288,6 +293,8 @@ export type AuditEntityType =
   | 'code_violation'
   | 'vehicle_tow'
   | 'attachment'
+  | 'case'
+  | 'case_note'
   | 'company_documents'
   | 'users'
   | 'scheduled_email'

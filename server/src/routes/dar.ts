@@ -261,7 +261,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, 'create', 'dar', ?, ?, ?, ?)`).run(req.user!.userId, result.lastInsertRowid, JSON.stringify({ dar_number }), req.ip || 'unknown', now);
 
-    auditLog(req, 'CREATE' as any, 'dar' as any, result.lastInsertRowid, `Created DAR ${dar_number} for ${shift_date}`);
+    auditLog(req, 'CREATE' as any, 'dar' as any, Number(result.lastInsertRowid), `Created DAR ${dar_number} for ${shift_date}`);
     res.status(201).json({ data: { id: result.lastInsertRowid, dar_number } });
   } catch (error: any) {
     console.error('Create DAR error:', error?.message || 'Unknown error');

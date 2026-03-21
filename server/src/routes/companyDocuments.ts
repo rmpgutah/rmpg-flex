@@ -119,7 +119,7 @@ router.post('/', requireRole('admin', 'manager'), (req: Request, res: Response) 
     `).get(result.lastInsertRowid);
     if (!doc) { res.status(500).json({ error: 'Failed to retrieve created document' }); return; }
 
-    auditLog(req, 'CREATE' as any, 'company_document' as any, result.lastInsertRowid, `Created company document: ${title}`);
+    auditLog(req, 'CREATE', 'company_documents', Number(result.lastInsertRowid), `Created company document: ${title}`);
     res.status(201).json(doc || { id: result.lastInsertRowid });
   } catch (error: any) {
     console.error('Create company document error:', error?.message || 'Unknown error');
@@ -181,7 +181,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager'), (req: Reque
       WHERE d.id = ?
     `).get(id);
 
-    auditLog(req, 'UPDATE' as any, 'company_document' as any, id, `Updated company document ${id}`);
+    auditLog(req, 'UPDATE' as any, 'company_documents', id, `Updated company document ${id}`);
     res.json(doc);
   } catch (error: any) {
     console.error('Update company document error:', error?.message || 'Unknown error');
@@ -221,7 +221,7 @@ router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Re
     }
 
     db.prepare('DELETE FROM company_documents WHERE id = ?').run(id);
-    auditLog(req, 'DELETE' as any, 'company_document' as any, id, `Deleted company document: ${doc.title}`);
+    auditLog(req, 'DELETE' as any, 'company_documents', id, `Deleted company document: ${doc.title}`);
     res.json({ message: 'Document deleted' });
   } catch (error: any) {
     console.error('Delete company document error:', error?.message || 'Unknown error');

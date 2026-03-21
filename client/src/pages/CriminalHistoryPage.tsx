@@ -322,7 +322,7 @@ export default function CriminalHistoryPage() {
                     </div>
                     <div className="flex flex-wrap gap-1">
                       {cautionFlags.map((flag, i) => (
-                        <span key={i} className="text-[9px] font-bold uppercase px-1.5 py-0.5 bg-red-900/50 text-red-300 border border-red-700/50">
+                        <span key={flag} className="text-[9px] font-bold uppercase px-1.5 py-0.5 bg-red-900/50 text-red-300 border border-red-700/50">
                           {flag}
                         </span>
                       ))}
