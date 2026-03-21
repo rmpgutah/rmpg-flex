@@ -72,10 +72,32 @@ async function extractDashcamDuration(filePath: string): Promise<number | null> 
 
 const router = Router();
 
-// Promote query-string token to Authorization header for <video> streaming only
-router.use((req: Request, _res: Response, next: NextFunction) => {
-  if (!req.headers['authorization'] && req.query.token && /\/(stream|download|thumbnail)/.test(req.path)) {
-    req.headers['authorization'] = `Bearer ${req.query.token}`;
+// Accept HMAC signed access or legacy query-string token for <video>/<img> streaming
+router.use((req: Request, res: Response, next: NextFunction) => {
+  if (/\/(stream|download|thumbnail)/.test(req.path)) {
+    // Prefer HMAC signed access (no JWT in URL)
+    if (!req.headers['authorization'] && typeof req.query.sig === 'string') {
+      const { verifyResourceAccess } = require('../utils/signedAccess');
+      const idMatch = req.path.match(/\/(\d+)\/(stream|download|thumbnail)/);
+      const resourceId = idMatch?.[1];
+      if (resourceId) {
+        const exp = parseInt(req.query.exp as string, 10);
+        const nonce = req.query.nonce as string | undefined;
+        if (verifyResourceAccess('dashcam', resourceId, req.query.sig as string, exp, nonce)) {
+          req.user = { userId: 0, username: 'signed-access', role: 'viewer', fullName: 'Signed Access' };
+          next();
+          return;
+        }
+        res.status(403).json({ error: 'Invalid or expired signature' });
+        return;
+      }
+    }
+    // Legacy: promote ?token= to Authorization header
+    if (!req.headers['authorization'] && req.query.token) {
+      const { logLegacyTokenUsage } = require('../utils/signedAccess');
+      logLegacyTokenUsage('fleet/media');
+      req.headers['authorization'] = `Bearer ${req.query.token}`;
+    }
   }
   next();
 });

@@ -7,6 +7,7 @@ import { createSecurityNotification, parseDeviceName } from '../utils/deviceFing
 import { sendNotificationEmail } from '../utils/emailSender';
 import { setPasswordExpiry } from '../utils/passwordExpiry';
 import { rateLimit } from '../middleware/rateLimiter';
+import { validatePassword, getPasswordPolicyDescription } from '../middleware/validatePassword';
 
 const router = Router();
 
@@ -77,6 +78,35 @@ router.post('/clients', (req: Request, res: Response) => {
     if (!name) {
       res.status(400).json({ error: 'name is required' });
       return;
+    }
+
+    // Validate contract dates: end must be after start
+    if (contract_start && contract_end && contract_end < contract_start) {
+      res.status(400).json({ error: 'contract_end must be after contract_start' });
+      return;
+    }
+
+    // Validate financial fields
+    if (contract_value !== undefined && contract_value !== null) {
+      const cv = parseFloat(contract_value);
+      if (isNaN(cv) || cv < 0) {
+        res.status(400).json({ error: 'contract_value must be a non-negative number' });
+        return;
+      }
+    }
+    if (discount_percent !== undefined && discount_percent !== null) {
+      const dp = parseFloat(discount_percent);
+      if (isNaN(dp) || dp < 0 || dp > 100) {
+        res.status(400).json({ error: 'discount_percent must be between 0 and 100' });
+        return;
+      }
+    }
+    if (late_fee_percent !== undefined && late_fee_percent !== null) {
+      const lf = parseFloat(late_fee_percent);
+      if (isNaN(lf) || lf < 0 || lf > 100) {
+        res.status(400).json({ error: 'late_fee_percent must be between 0 and 100' });
+        return;
+      }
     }
 
     const result = db.prepare(`
@@ -995,6 +1025,18 @@ router.post('/users/:id/reset-password', requireRole('admin'), (req: Request, re
       res.status(400).json({ error: 'Password must be at least 8 characters' });
       return;
     }
+
+    // Validate password against full policy (not just length)
+    const pwValidation = validatePassword(password.trim());
+    if (!pwValidation.valid) {
+      res.status(400).json({
+        error: 'Password does not meet requirements',
+        requirementsFailed: pwValidation.errors.length,
+        policy: getPasswordPolicyDescription(),
+      });
+      return;
+    }
+
     const ip = String(req.ip || 'unknown');
 
     const user = db.prepare('SELECT id, username, full_name, password_expiry_exempt FROM users WHERE id = ?').get(userId) as any;

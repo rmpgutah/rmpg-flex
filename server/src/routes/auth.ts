@@ -2593,10 +2593,14 @@ router.post('/reset-password', passwordRateLimit, async (req: Request, res: Resp
       return res.status(400).json({ error: 'This reset link has expired' });
     }
 
-    // Validate password against policy
+    // Validate password against policy (don't leak specific requirement failures)
     const policyResult = validatePassword(password);
     if (!policyResult.valid) {
-      return res.status(400).json({ error: policyResult.errors.join('. ') });
+      return res.status(400).json({
+        error: 'Password does not meet requirements',
+        requirementsFailed: policyResult.errors.length,
+        policy: getPasswordPolicyDescription(),
+      });
     }
 
     // Check password history
@@ -2638,6 +2642,38 @@ router.post('/reset-password', passwordRateLimit, async (req: Request, res: Resp
     res.json({ success: true, message: 'Password has been reset. You can now log in.' });
   } catch (error: any) {
     console.error('Reset password error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── POST /api/auth/sign-urls — Generate HMAC-signed URLs for media resources ──
+import { signResourceAccess } from '../utils/signedAccess';
+
+const signUrlsRateLimit = (() => {
+  try {
+    const { rateLimit } = require('../middleware/rateLimiter');
+    return rateLimit({ windowMs: 60 * 1000, maxRequests: 30, keyGenerator: (req: any) => `sign-urls:${req.user?.userId || req.ip || 'unknown'}` });
+  } catch { return (_req: any, _res: any, next: any) => next(); }
+})();
+
+router.post('/sign-urls', authenticateToken, signUrlsRateLimit, (req: Request, res: Response) => {
+  try {
+    const { resources } = req.body;
+    if (!Array.isArray(resources) || resources.length === 0) { res.status(400).json({ error: 'resources array is required' }); return; }
+    if (resources.length > 50) { res.status(400).json({ error: 'Maximum 50 resources per request' }); return; }
+
+    const ALLOWED_TYPES = new Set(['file', 'dashcam', 'bodycam', 'training']);
+    const signed: Record<string, { sig: string; exp: number; nonce: string }> = {};
+    for (const r of resources) {
+      if (!r.type || !r.id) continue;
+      if (!ALLOWED_TYPES.has(String(r.type))) continue;
+      if (!/^[\w-]+$/.test(String(r.id))) continue;
+      const key = `${r.type}:${r.id}`;
+      signed[key] = signResourceAccess(String(r.type), String(r.id));
+    }
+    res.json({ signed });
+  } catch (error: any) {
+    console.error('Sign URLs error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

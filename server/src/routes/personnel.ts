@@ -13,6 +13,7 @@ import { rateLimit } from '../middleware/rateLimiter';
 import { localNow, localToday, dateToLocalYMD } from '../utils/timeUtils';
 import { queueOverlayProcessing, type BodyCamOverlayConfig } from '../utils/videoOverlay';
 import { validateEmail, validatePhone, validateBadgeNumber, validateAll } from '../utils/inputValidation';
+import { validatePassword, getPasswordPolicyDescription } from '../middleware/validatePassword';
 import { validateParamId, validateNumericParams } from '../middleware/sanitize';
 import { auditLog } from '../utils/auditLogger';
 
@@ -332,6 +333,17 @@ router.post('/', requireRole('admin', 'manager'), personnelCreateRateLimit, (req
       return;
     }
 
+    // Validate password against policy requirements
+    const pwValidation = validatePassword(password);
+    if (!pwValidation.valid) {
+      res.status(400).json({
+        error: 'Password does not meet requirements',
+        requirementsFailed: pwValidation.errors.length,
+        policy: getPasswordPolicyDescription(),
+      });
+      return;
+    }
+
     const passwordHash = bcryptjs.hashSync(password, 12);
 
     // Derive first_name/last_name from full_name if not provided
@@ -455,6 +467,16 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
     // ── Admin password reset (not in updatableFields — needs bcrypt) ──
     const passwordChanged = !!(req.body.password && typeof req.body.password === 'string' && req.body.password.trim());
     if (passwordChanged) {
+      // Validate password against policy requirements
+      const pwValidation = validatePassword(req.body.password.trim());
+      if (!pwValidation.valid) {
+        res.status(400).json({
+          error: 'Password does not meet requirements',
+          requirementsFailed: pwValidation.errors.length,
+          policy: getPasswordPolicyDescription(),
+        });
+        return;
+      }
       const hash = bcryptjs.hashSync(req.body.password.trim(), 12);
       setClauses.push('password_hash = ?');
       setValues.push(hash);
