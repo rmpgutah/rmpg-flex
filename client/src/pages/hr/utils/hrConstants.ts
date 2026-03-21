@@ -1,10 +1,11 @@
-import { LayoutDashboard, CalendarDays, Shield, Star } from 'lucide-react';
+import { LayoutDashboard, CalendarDays, Shield, Star, DollarSign } from 'lucide-react';
 
 export const HR_TABS = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { key: 'leave', label: 'Leave / PTO', icon: CalendarDays },
   { key: 'disciplinary', label: 'Disciplinary', icon: Shield },
   { key: 'reviews', label: 'Reviews', icon: Star },
+  { key: 'payroll', label: 'Payroll', icon: DollarSign },
 ] as const;
 
 export type HRTab = typeof HR_TABS[number]['key'];

@@ -686,4 +686,351 @@ router.delete('/reviews/:id', validateParamId, requireRole('admin'), (req: Reque
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// Payroll — Pay Periods, Pay Rates, Payroll Entries
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── Pay Periods ─────────────────────────────────────────────────────────────
+
+router.get('/payroll/periods', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { status, year } = req.query;
+    let where = 'WHERE 1=1';
+    const params: any[] = [];
+    if (status) { where += ' AND pp.status = ?'; params.push(status); }
+    if (year) { where += ' AND pp.start_date >= ? AND pp.start_date < ?'; params.push(`${year}-01-01`, `${Number(year)+1}-01-01`); }
+
+    const periods = db.prepare(`
+      SELECT pp.*, u.full_name as created_by_name,
+        (SELECT COUNT(*) FROM hr_payroll_entries pe WHERE pe.pay_period_id = pp.id) as entry_count,
+        (SELECT COALESCE(SUM(pe.gross_pay), 0) FROM hr_payroll_entries pe WHERE pe.pay_period_id = pp.id) as total_gross,
+        (SELECT COALESCE(SUM(pe.net_pay), 0) FROM hr_payroll_entries pe WHERE pe.pay_period_id = pp.id) as total_net
+      FROM hr_pay_periods pp
+      LEFT JOIN users u ON u.id = pp.created_by
+      ${where}
+      ORDER BY pp.start_date DESC
+    `).all(...params);
+
+    res.json(periods);
+  } catch (error: any) {
+    console.error('[HR] Payroll periods error:', error?.message);
+    res.status(500).json({ error: 'Failed to fetch pay periods' });
+  }
+});
+
+router.post('/payroll/periods', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { name, start_date, end_date, pay_date } = req.body;
+    if (!start_date || !end_date || !pay_date) return res.status(400).json({ error: 'start_date, end_date, and pay_date are required' });
+
+    const userId = (req as any).user?.id;
+    const result = db.prepare(
+      `INSERT INTO hr_pay_periods (name, start_date, end_date, pay_date, status, created_by) VALUES (?, ?, ?, ?, 'open', ?)`
+    ).run(name || `Pay Period ${start_date} - ${end_date}`, start_date, end_date, pay_date, userId);
+
+    const period = db.prepare('SELECT * FROM hr_pay_periods WHERE id = ?').get(result.lastInsertRowid);
+    auditLog(req, 'CREATE' as any, 'hr_pay_period' as any, result.lastInsertRowid, `Created pay period: ${start_date} to ${end_date}`);
+    res.json(period);
+  } catch (error: any) {
+    console.error('[HR] Create pay period error:', error?.message);
+    res.status(500).json({ error: 'Failed to create pay period' });
+  }
+});
+
+router.put('/payroll/periods/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = Number(req.params.id);
+    const existing = db.prepare('SELECT * FROM hr_pay_periods WHERE id = ?').get(id) as any;
+    if (!existing) return res.status(404).json({ error: 'Pay period not found' });
+
+    const { name, start_date, end_date, pay_date, status } = req.body;
+    const updates: string[] = [];
+    const params: any[] = [];
+    if (name !== undefined) { updates.push('name = ?'); params.push(name); }
+    if (start_date) { updates.push('start_date = ?'); params.push(start_date); }
+    if (end_date) { updates.push('end_date = ?'); params.push(end_date); }
+    if (pay_date) { updates.push('pay_date = ?'); params.push(pay_date); }
+    if (status) { updates.push('status = ?'); params.push(status); }
+    if (!updates.length) return res.status(400).json({ error: 'No fields to update' });
+
+    params.push(id);
+    db.prepare(`UPDATE hr_pay_periods SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+
+    const updated = db.prepare('SELECT * FROM hr_pay_periods WHERE id = ?').get(id);
+    auditLog(req, 'UPDATE' as any, 'hr_pay_period' as any, id, `Updated pay period`);
+    res.json(updated);
+  } catch (error: any) {
+    console.error('[HR] Update pay period error:', error?.message);
+    res.status(500).json({ error: 'Failed to update pay period' });
+  }
+});
+
+router.delete('/payroll/periods/:id', validateParamId, requireRole('admin'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = Number(req.params.id);
+    const existing = db.prepare('SELECT * FROM hr_pay_periods WHERE id = ?').get(id) as any;
+    if (!existing) return res.status(404).json({ error: 'Pay period not found' });
+    if (existing.status !== 'open') return res.status(400).json({ error: 'Can only delete open pay periods' });
+
+    db.prepare('DELETE FROM hr_payroll_entries WHERE pay_period_id = ?').run(id);
+    db.prepare('DELETE FROM hr_pay_periods WHERE id = ?').run(id);
+
+    auditLog(req, 'DELETE' as any, 'hr_pay_period' as any, id, `Deleted pay period: ${existing.name}`);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('[HR] Delete pay period error:', error?.message);
+    res.status(500).json({ error: 'Failed to delete pay period' });
+  }
+});
+
+// ─── Pay Rates ───────────────────────────────────────────────────────────────
+
+router.get('/payroll/rates', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { user_id } = req.query;
+    let where = 'WHERE pr.end_date IS NULL'; // Only active rates
+    const params: any[] = [];
+    if (user_id) { where += ' AND pr.user_id = ?'; params.push(Number(user_id)); }
+
+    const rates = db.prepare(`
+      SELECT pr.*, u.full_name as officer_name, cb.full_name as created_by_name
+      FROM hr_pay_rates pr
+      JOIN users u ON u.id = pr.user_id
+      LEFT JOIN users cb ON cb.id = pr.created_by
+      ${where}
+      ORDER BY u.full_name, pr.effective_date DESC
+    `).all(...params);
+
+    res.json(rates);
+  } catch (error: any) {
+    console.error('[HR] Pay rates error:', error?.message);
+    res.status(500).json({ error: 'Failed to fetch pay rates' });
+  }
+});
+
+router.post('/payroll/rates', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { user_id, pay_type, rate, overtime_rate, holiday_rate, effective_date, notes } = req.body;
+    if (!user_id || !pay_type || rate === undefined || !effective_date) {
+      return res.status(400).json({ error: 'user_id, pay_type, rate, and effective_date are required' });
+    }
+
+    const userId = (req as any).user?.id;
+
+    // Close any existing active rate for this user
+    db.prepare(`UPDATE hr_pay_rates SET end_date = ? WHERE user_id = ? AND end_date IS NULL`).run(effective_date, user_id);
+
+    const result = db.prepare(`
+      INSERT INTO hr_pay_rates (user_id, pay_type, rate, overtime_rate, holiday_rate, effective_date, notes, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(user_id, pay_type, rate, overtime_rate ?? 1.5, holiday_rate ?? 1.5, effective_date, notes || null, userId);
+
+    const newRate = db.prepare('SELECT pr.*, u.full_name as officer_name FROM hr_pay_rates pr JOIN users u ON u.id = pr.user_id WHERE pr.id = ?').get(result.lastInsertRowid);
+    auditLog(req, 'CREATE' as any, 'hr_pay_rate' as any, result.lastInsertRowid, `Set pay rate for user ${user_id}: ${pay_type} $${rate}`);
+    res.json(newRate);
+  } catch (error: any) {
+    console.error('[HR] Create pay rate error:', error?.message);
+    res.status(500).json({ error: 'Failed to create pay rate' });
+  }
+});
+
+// ─── Payroll Entries ─────────────────────────────────────────────────────────
+
+router.get('/payroll/entries', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { pay_period_id, user_id } = req.query;
+    if (!pay_period_id) return res.status(400).json({ error: 'pay_period_id is required' });
+
+    let where = 'WHERE pe.pay_period_id = ?';
+    const params: any[] = [Number(pay_period_id)];
+    if (user_id) { where += ' AND pe.user_id = ?'; params.push(Number(user_id)); }
+
+    const entries = db.prepare(`
+      SELECT pe.*, u.full_name as officer_name, u.badge_number,
+        pr.pay_type, pr.rate as hourly_rate,
+        ab.full_name as approved_by_name
+      FROM hr_payroll_entries pe
+      JOIN users u ON u.id = pe.user_id
+      LEFT JOIN hr_pay_rates pr ON pr.id = pe.pay_rate_id
+      LEFT JOIN users ab ON ab.id = pe.approved_by
+      ${where}
+      ORDER BY u.full_name
+    `).all(...params);
+
+    res.json(entries);
+  } catch (error: any) {
+    console.error('[HR] Payroll entries error:', error?.message);
+    res.status(500).json({ error: 'Failed to fetch payroll entries' });
+  }
+});
+
+router.post('/payroll/entries', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { pay_period_id, user_id, regular_hours, overtime_hours, holiday_hours, pto_hours, sick_hours, other_hours, other_hours_description, notes } = req.body;
+    if (!pay_period_id || !user_id) return res.status(400).json({ error: 'pay_period_id and user_id are required' });
+
+    // Find active pay rate
+    const payRate = db.prepare(`
+      SELECT * FROM hr_pay_rates WHERE user_id = ? AND end_date IS NULL ORDER BY effective_date DESC LIMIT 1
+    `).get(user_id) as any;
+
+    const rate = payRate?.rate ?? 0;
+    const otMult = payRate?.overtime_rate ?? 1.5;
+    const holMult = payRate?.holiday_rate ?? 1.5;
+
+    const regHrs = regular_hours ?? 0;
+    const otHrs = overtime_hours ?? 0;
+    const holHrs = holiday_hours ?? 0;
+
+    const basePay = regHrs * rate;
+    const overtimePay = otHrs * rate * otMult;
+    const holidayPay = holHrs * rate * holMult;
+    const grossPay = basePay + overtimePay + holidayPay;
+
+    const now = localNow();
+    const result = db.prepare(`
+      INSERT INTO hr_payroll_entries (
+        user_id, pay_period_id, pay_rate_id, regular_hours, overtime_hours, holiday_hours,
+        pto_hours, sick_hours, other_hours, other_hours_description,
+        base_pay, overtime_pay, holiday_pay, gross_pay, total_deductions, net_pay,
+        status, notes, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'draft', ?, ?, ?)
+    `).run(
+      user_id, pay_period_id, payRate?.id ?? null,
+      regHrs, otHrs, holHrs,
+      pto_hours ?? 0, sick_hours ?? 0, other_hours ?? 0, other_hours_description || null,
+      basePay, overtimePay, holidayPay, grossPay, grossPay,
+      notes || null, now, now
+    );
+
+    const entry = db.prepare(`
+      SELECT pe.*, u.full_name as officer_name FROM hr_payroll_entries pe JOIN users u ON u.id = pe.user_id WHERE pe.id = ?
+    `).get(result.lastInsertRowid);
+
+    auditLog(req, 'CREATE' as any, 'hr_payroll_entry' as any, result.lastInsertRowid, `Payroll entry for user ${user_id}, gross: $${grossPay.toFixed(2)}`);
+    res.json(entry);
+  } catch (error: any) {
+    console.error('[HR] Create payroll entry error:', error?.message);
+    res.status(500).json({ error: 'Failed to create payroll entry' });
+  }
+});
+
+router.put('/payroll/entries/:id', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = Number(req.params.id);
+    const existing = db.prepare('SELECT * FROM hr_payroll_entries WHERE id = ?').get(id) as any;
+    if (!existing) return res.status(404).json({ error: 'Payroll entry not found' });
+    if (existing.status === 'approved') return res.status(400).json({ error: 'Cannot edit approved entries' });
+
+    const { regular_hours, overtime_hours, holiday_hours, pto_hours, sick_hours, other_hours, other_hours_description, notes, status } = req.body;
+
+    // Recalculate pay
+    const payRate = existing.pay_rate_id
+      ? db.prepare('SELECT * FROM hr_pay_rates WHERE id = ?').get(existing.pay_rate_id) as any
+      : null;
+
+    const rate = payRate?.rate ?? 0;
+    const otMult = payRate?.overtime_rate ?? 1.5;
+    const holMult = payRate?.holiday_rate ?? 1.5;
+
+    const regHrs = regular_hours ?? existing.regular_hours;
+    const otHrs = overtime_hours ?? existing.overtime_hours;
+    const holHrs = holiday_hours ?? existing.holiday_hours;
+
+    const basePay = regHrs * rate;
+    const overtimePay = otHrs * rate * otMult;
+    const holidayPay = holHrs * rate * holMult;
+    const grossPay = basePay + overtimePay + holidayPay;
+
+    const now = localNow();
+    const userId = (req as any).user?.id;
+
+    db.prepare(`
+      UPDATE hr_payroll_entries SET
+        regular_hours = ?, overtime_hours = ?, holiday_hours = ?,
+        pto_hours = ?, sick_hours = ?, other_hours = ?, other_hours_description = ?,
+        base_pay = ?, overtime_pay = ?, holiday_pay = ?, gross_pay = ?, net_pay = ?,
+        status = ?, notes = ?,
+        approved_by = CASE WHEN ? = 'approved' THEN ? ELSE approved_by END,
+        approved_at = CASE WHEN ? = 'approved' THEN ? ELSE approved_at END,
+        updated_at = ?
+      WHERE id = ?
+    `).run(
+      regHrs, otHrs, holHrs,
+      pto_hours ?? existing.pto_hours, sick_hours ?? existing.sick_hours,
+      other_hours ?? existing.other_hours, other_hours_description ?? existing.other_hours_description,
+      basePay, overtimePay, holidayPay, grossPay, grossPay,
+      status ?? existing.status, notes ?? existing.notes,
+      status, userId, status, now, now, id
+    );
+
+    const updated = db.prepare(`
+      SELECT pe.*, u.full_name as officer_name FROM hr_payroll_entries pe JOIN users u ON u.id = pe.user_id WHERE pe.id = ?
+    `).get(id);
+
+    auditLog(req, 'UPDATE' as any, 'hr_payroll_entry' as any, id, `Updated payroll entry, gross: $${grossPay.toFixed(2)}`);
+    res.json(updated);
+  } catch (error: any) {
+    console.error('[HR] Update payroll entry error:', error?.message);
+    res.status(500).json({ error: 'Failed to update payroll entry' });
+  }
+});
+
+// ─── Auto-populate period ────────────────────────────────────────────────────
+
+router.post('/payroll/periods/:id/populate', validateParamId, requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = Number(req.params.id);
+    const period = db.prepare('SELECT * FROM hr_pay_periods WHERE id = ?').get(id) as any;
+    if (!period) return res.status(404).json({ error: 'Pay period not found' });
+    if (period.status !== 'open') return res.status(400).json({ error: 'Can only populate open pay periods' });
+
+    // Get all active employees with pay rates
+    const activeUsers = db.prepare(`
+      SELECT u.id, u.full_name, pr.id as pay_rate_id, pr.rate, pr.pay_type
+      FROM users u
+      LEFT JOIN hr_pay_rates pr ON pr.user_id = u.id AND pr.end_date IS NULL
+      WHERE u.status = 'active' AND u.archived_at IS NULL
+      ORDER BY u.full_name
+    `).all() as any[];
+
+    // Don't duplicate existing entries
+    const existing = db.prepare('SELECT user_id FROM hr_payroll_entries WHERE pay_period_id = ?').all(id) as any[];
+    const existingIds = new Set(existing.map(e => e.user_id));
+
+    const now = localNow();
+    let created = 0;
+    const insert = db.prepare(`
+      INSERT INTO hr_payroll_entries (
+        user_id, pay_period_id, pay_rate_id,
+        regular_hours, overtime_hours, holiday_hours, pto_hours, sick_hours, other_hours,
+        base_pay, overtime_pay, holiday_pay, gross_pay, total_deductions, net_pay,
+        status, created_at, updated_at
+      ) VALUES (?, ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 'draft', ?, ?)
+    `);
+
+    for (const user of activeUsers) {
+      if (existingIds.has(user.id)) continue;
+      insert.run(user.id, id, user.pay_rate_id ?? null, now, now);
+      created++;
+    }
+
+    auditLog(req, 'CREATE' as any, 'hr_payroll_entry' as any, id, `Auto-populated ${created} entries for pay period ${period.name}`);
+    res.json({ success: true, created, total: activeUsers.length });
+  } catch (error: any) {
+    console.error('[HR] Populate pay period error:', error?.message);
+    res.status(500).json({ error: 'Failed to populate pay period' });
+  }
+});
+
 export default router;
