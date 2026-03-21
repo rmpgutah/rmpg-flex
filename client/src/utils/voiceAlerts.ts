@@ -79,11 +79,11 @@ const PRIORITY_URGENCY: Record<string, number> = {
   PANIC: 0, P1: 1, P2: 2, P3: 3, P4: 4, INFO: 5,
 };
 
-/** User-configurable speed presets — natural conversational pace, not rushed */
+/** User-configurable speed presets — deliberate, human pace */
 const SPEED_PRESETS: Record<string, number> = {
-  slow: 0.88,
-  normal: 0.98,
-  fast: 1.12,
+  slow: 0.85,
+  normal: 0.95,
+  fast: 1.08,
 };
 
 /** Base speech configuration */
@@ -102,12 +102,12 @@ function getSpeechVolume(): number {
 }
 
 /**
- * Female dispatcher pitch — natural female range, not artificially lowered.
- * 0.88 was too robotic. 0.94 sits in the natural alto register — confident
- * and direct without sounding synthesized. Real dispatchers don't sound
- * artificially deep — they sound like calm, practiced professionals.
+ * Female dispatcher pitch — natural female register.
+ * 0.96 is a confident, natural female voice that doesn't sound forced.
+ * Combined with rate 0.95, she sounds like a real person relaying information
+ * with practiced calm — not a computer reading a database.
  */
-const SPEECH_PITCH = 0.94;
+const SPEECH_PITCH = 0.96;
 
 /** Priority-based speech parameters — adjusts rate/pitch/volume for urgency level */
 interface PrioritySpeechParams {
@@ -792,38 +792,75 @@ export async function announcePanicAlert(officerName?: string): Promise<void> {
   enqueuePhrases(phrases, 'PANIC');
 }
 
-/** Extended call data for full dispatch readout */
+/** Extended call data — mirrors CallForService for full dispatch readout */
 interface DispatchCallData extends CallFlags {
   call_number?: string;
   incident_type?: string;
   location?: string;
   priority?: string;
+  // Caller
   caller_name?: string;
   caller_phone?: string;
+  caller_relationship?: string;
+  // Narrative
   narrative?: string;
+  description?: string;
   comments?: string;
-  suspect_description?: string;
-  vehicle_description?: string;
-  vehicle_plate?: string;
-  num_subjects?: number;
-  reporting_party?: string;
+  // Location detail
+  cross_street?: string;
+  location_building?: string;
+  location_floor?: string;
+  location_room?: string;
   apartment?: string;
   business_name?: string;
+  property_name?: string;
+  client_name?: string;
+  zone_name?: string;
+  beat_name?: string;
+  beat_descriptor?: string;
+  section_name?: string;
+  // Subject/vehicle
+  suspect_description?: string;
+  subject_description?: string;
+  vehicle_description?: string;
+  vehicle_plate?: string;
+  direction_of_travel?: string;
+  num_subjects?: number;
+  num_victims?: number;
+  // Scene
+  scene_safety?: string;
+  weather_conditions?: string;
+  lighting_conditions?: string;
+  // Operational
+  reporting_party?: string;
   assigned_units?: string[];
+  juvenile_involved?: boolean;
+  fire_requested?: boolean;
+  le_notified?: boolean;
+  le_agency?: string;
+  source?: string;
 }
 
 /**
- * Announce a dispatch event with full call details in natural speech.
+ * Announce a dispatch event like a real human dispatcher would.
  *
- * Uses complete sentences instead of comma-separated lists.
- * Sounds like a real person reading information, not a computer parsing fields.
+ * Natural conversational flow with contractions, transitions, and
+ * contextual detail. Every available field is read — officers in the
+ * field depend on this information.
  *
  * Example:
- * "Dispatch on call 42. We have a domestic violence, priority one.
- *  Location is 500 South State Street, apartment 204, at the Marriott. Zone 3.
- *  Caller reports a male subject striking a female. Two subjects on scene.
- *  Suspect is a white male wearing a red shirt, approximately 30 years old.
- *  Be advised — prior D.V. at this location. Caution, armed subject reported."
+ * "Dispatch on call 42. We've got a domestic violence, priority one.
+ *  You're going to 500 South State Street, apartment 204, that's the Marriott.
+ *  Cross street's going to be 500 East. You're in Zone 3, Beat Alpha.
+ *  Caller says there's a male subject hitting a female in the parking lot.
+ *  Your reporting party is Jane Smith, she's the neighbor. She's still on the line.
+ *  We've got two subjects and one victim on scene.
+ *  Your suspect's a white male, red shirt, about 30 years old, last seen heading southbound.
+ *  There's a black Honda Civic in the lot, plate Alpha Bravo Charlie 1 2 3.
+ *  Adam-12 and Baker-7 are responding.
+ *  Just so you know, it's dark out there with rain.
+ *  Be advised, there's a juvenile involved.
+ *  Caution, armed subject reported. Prior D.V. at this location."
  */
 export async function announceDispatchEvent(call: DispatchCallData): Promise<void> {
   if (!isVoiceEnabled() || !isSpeechAvailable()) return;
@@ -839,87 +876,131 @@ export async function announceDispatchEvent(call: DispatchCallData): Promise<voi
 
   const phrases: VoicePhrase[] = [];
 
-  // ── Sentence 1: What call ──
+  // ── Opening ──
   let opening = 'Dispatch';
   if (call.call_number) opening += ` on call ${shortCallNumber(call.call_number)}`;
   phrases.push({ text: opening + '.' });
 
-  // ── Sentence 2: What type + priority ──
+  // ── What type ──
   if (call.incident_type) {
-    let typeLine = `We have a ${formatIncidentType(call.incident_type)}`;
+    let typeLine = `We've got a ${formatIncidentType(call.incident_type)}`;
     if (call.priority) typeLine += `, ${call.priority}`;
     phrases.push({ text: typeLine + '.' });
   }
 
-  // ── Sentence 3: Where ──
+  // ── Where — full location with building/floor/room detail ──
   if (call.location) {
-    let locLine = `Location is ${call.location}`;
+    let locLine = `You're going to ${call.location}`;
     if (call.apartment) locLine += `, apartment ${call.apartment}`;
-    if (call.business_name) locLine += `, at ${call.business_name}`;
-    phrases.push({ text: locLine + '.' });
-
-    if (call.cross_street) {
-      phrases.push({ text: `Cross street is ${call.cross_street}.` });
+    else if (call.location_room) locLine += `, room ${call.location_room}`;
+    if (call.location_floor) locLine += `, ${ordinal(call.location_floor)} floor`;
+    if (call.location_building) locLine += `, ${call.location_building} building`;
+    if (call.business_name || call.property_name || call.client_name) {
+      const name = call.business_name || call.property_name || call.client_name;
+      locLine += `, that's the ${name}`;
     }
-  }
-  if (call.zone || call.beat) {
-    const zbParts: string[] = [];
-    if (call.zone) zbParts.push(`Zone ${call.zone}`);
-    if (call.beat) zbParts.push(`Beat ${call.beat}`);
-    phrases.push({ text: zbParts.join(', ') + '.' });
+    phrases.push({ text: locLine + '.' });
   }
 
-  // ── Sentence 4: What happened (narrative) ──
-  if (call.narrative || call.comments) {
-    const narr = truncateForSpeech(call.narrative || call.comments || '', 140);
-    phrases.push({ text: narr.endsWith('.') ? narr : narr + '.' });
+  if (call.cross_street) {
+    phrases.push({ text: `Cross street's going to be ${call.cross_street}.` });
   }
 
-  // ── Sentence 5: Who called ──
+  // ── Zone / Beat / Section ──
+  const areaParts: string[] = [];
+  if (call.zone_name || call.zone) areaParts.push(`Zone ${call.zone_name || call.zone}`);
+  if (call.beat_name || call.beat) areaParts.push(`Beat ${call.beat_name || call.beat}`);
+  if (call.section_name) areaParts.push(`${call.section_name} section`);
+  if (areaParts.length > 0) {
+    phrases.push({ text: `You're in ${areaParts.join(', ')}.` });
+  }
+
+  // ── Narrative — the story ──
+  const narr = call.narrative || call.description || call.comments || '';
+  if (narr) {
+    const cleaned = truncateForSpeech(narr, 180);
+    // Use "Caller says" or "We're told" to make it conversational
+    const callerVerb = call.source === 'phone' ? 'Caller says' :
+                       call.source === 'walk_in' ? 'Walk-in reports' :
+                       call.source === 'officer' ? 'Officer reports' : 'We\'re told';
+    phrases.push({ text: `${callerVerb} ${cleaned.charAt(0).toLowerCase()}${cleaned.slice(1)}${cleaned.endsWith('.') ? '' : '.'}` });
+  }
+
+  // ── Who called ──
   if (call.caller_name && call.caller_name !== 'Anonymous') {
-    phrases.push({ text: `Reporting party is ${call.caller_name}.` });
+    let rpLine = `Your reporting party is ${call.caller_name}`;
+    if (call.caller_relationship) rpLine += `, ${call.caller_relationship}`;
+    if (call.caller_phone) rpLine += `. Callback number is ${formatPhone(call.caller_phone)}`;
+    phrases.push({ text: rpLine + '.' });
   } else if (call.reporting_party) {
     phrases.push({ text: `Reporting party is ${call.reporting_party}.` });
   }
 
-  // ── Sentence 6: How many people ──
-  if (call.num_subjects && call.num_subjects > 1) {
-    phrases.push({ text: `${call.num_subjects} subjects reported on scene.` });
+  // ── How many people ──
+  if (call.num_subjects || call.num_victims) {
+    const parts: string[] = [];
+    if (call.num_subjects) parts.push(`${call.num_subjects} subject${call.num_subjects > 1 ? 's' : ''}`);
+    if (call.num_victims) parts.push(`${call.num_victims} victim${call.num_victims > 1 ? 's' : ''}`);
+    phrases.push({ text: `We've got ${parts.join(' and ')} on scene.` });
   }
 
-  // ── Sentence 7: Who to look for ──
-  if (call.suspect_description) {
-    phrases.push({ text: `Suspect is described as ${call.suspect_description}.` });
+  // ── Suspect description ──
+  const suspDesc = call.suspect_description || call.subject_description;
+  if (suspDesc) {
+    let suspLine = `Your suspect's described as ${suspDesc}`;
+    if (call.direction_of_travel) suspLine += `, last seen heading ${call.direction_of_travel}`;
+    phrases.push({ text: suspLine + '.' });
   }
 
-  // ── Sentence 8: What vehicle ──
+  // ── Vehicle ──
   if (call.vehicle_description || call.vehicle_plate) {
-    let vLine = call.vehicle_description ? `Vehicle is a ${call.vehicle_description}` : 'Vehicle';
+    let vLine = call.vehicle_description ? `There's a ${call.vehicle_description}` : 'Vehicle';
     if (call.vehicle_plate) vLine += `, plate ${spellOutPlate(call.vehicle_plate)}`;
+    if (call.direction_of_travel && !suspDesc) vLine += `, last seen heading ${call.direction_of_travel}`;
     phrases.push({ text: vLine + '.' });
   }
 
-  // ── Sentence 9: Who's responding ──
+  // ── Who's responding ──
   if (call.assigned_units && call.assigned_units.length > 0) {
-    const unitList = call.assigned_units.join(' and ');
+    const unitList = call.assigned_units.length <= 2
+      ? call.assigned_units.join(' and ')
+      : call.assigned_units.slice(0, -1).join(', ') + ', and ' + call.assigned_units[call.assigned_units.length - 1];
     phrases.push({ text: `${unitList} responding.` });
   }
 
-  // ── Sentence 10: Safety warnings (last = remembered) ──
+  // ── Scene conditions ──
+  if (call.lighting_conditions || call.weather_conditions) {
+    const conds: string[] = [];
+    if (call.lighting_conditions) conds.push(`it's ${call.lighting_conditions.toLowerCase()}`);
+    if (call.weather_conditions) conds.push(call.weather_conditions.toLowerCase());
+    phrases.push({ text: `Just so you know, ${conds.join(' with ')}.` });
+  }
+  if (call.scene_safety) {
+    phrases.push({ text: `Scene safety note: ${call.scene_safety}.` });
+  }
+
+  // ── Additional flags as human sentences ──
+  if (call.juvenile_involved) {
+    phrases.push({ text: 'Be advised, there\'s a juvenile involved.' });
+  }
+  if (call.fire_requested) {
+    phrases.push({ text: 'Fire department has been requested.' });
+  }
+  if (call.le_notified && call.le_agency) {
+    phrases.push({ text: `${call.le_agency} has been notified.` });
+  }
+
+  // ── Safety flags (last = sticks in memory) ──
   const safetyPhrases = buildCallPhrases(call);
-  if (safetyPhrases.length > 0) {
-    // Read each safety flag as its own sentence for weight
-    for (const sp of safetyPhrases) {
-      phrases.push(sp);
-    }
+  for (const sp of safetyPhrases) {
+    phrases.push(sp);
   }
 
   enqueuePhrases(phrases, call.priority);
 }
 
 /**
- * Announce a new call in natural speech.
- * P1/P2 get full detail. P3/P4 stay brief.
+ * Announce a new call — full human readout for P1/P2, brief for P3/P4.
  */
 export async function announceNewCall(call: DispatchCallData): Promise<void> {
   if (!isVoiceEnabled() || !isSpeechAvailable()) return;
@@ -933,15 +1014,16 @@ export async function announceNewCall(call: DispatchCallData): Promise<void> {
   await delay(TONE_GAP_MS);
 
   const phrases: VoicePhrase[] = [];
+  const isHighPriority = call.priority === 'P1' || call.priority === 'P2';
 
   // ── Opening ──
   let opening = 'New call coming in';
-  if (call.call_number) opening += `, call number ${shortCallNumber(call.call_number)}`;
+  if (call.call_number) opening += `, number ${shortCallNumber(call.call_number)}`;
   phrases.push({ text: opening + '.' });
 
-  // ── Type + priority ──
+  // ── Type ──
   if (call.incident_type) {
-    let typeLine = formatIncidentType(call.incident_type);
+    let typeLine = `It's a ${formatIncidentType(call.incident_type)}`;
     if (call.priority) typeLine += `, ${call.priority}`;
     phrases.push({ text: typeLine + '.' });
   }
@@ -950,36 +1032,69 @@ export async function announceNewCall(call: DispatchCallData): Promise<void> {
   if (call.location) {
     let locLine = call.location;
     if (call.apartment) locLine += `, apartment ${call.apartment}`;
-    if (call.business_name) locLine += `, at ${call.business_name}`;
+    else if (call.location_room) locLine += `, room ${call.location_room}`;
+    if (call.location_floor) locLine += `, ${ordinal(call.location_floor)} floor`;
+    if (call.business_name || call.property_name || call.client_name) {
+      locLine += `, at the ${call.business_name || call.property_name || call.client_name}`;
+    }
     phrases.push({ text: locLine + '.' });
   }
-  if (call.zone || call.beat) {
-    const zbParts: string[] = [];
-    if (call.zone) zbParts.push(`Zone ${call.zone}`);
-    if (call.beat) zbParts.push(`Beat ${call.beat}`);
-    phrases.push({ text: zbParts.join(', ') + '.' });
+
+  if (isHighPriority && call.cross_street) {
+    phrases.push({ text: `Cross street is ${call.cross_street}.` });
   }
 
-  // ── Detail (P1/P2 only) ──
-  if (call.priority === 'P1' || call.priority === 'P2') {
-    if (call.narrative || call.comments) {
-      const narr = truncateForSpeech(call.narrative || call.comments || '', 120);
-      phrases.push({ text: narr.endsWith('.') ? narr : narr + '.' });
+  // Zone/Beat
+  const areaParts: string[] = [];
+  if (call.zone_name || call.zone) areaParts.push(`Zone ${call.zone_name || call.zone}`);
+  if (call.beat_name || call.beat) areaParts.push(`Beat ${call.beat_name || call.beat}`);
+  if (areaParts.length > 0) {
+    phrases.push({ text: areaParts.join(', ') + '.' });
+  }
+
+  // ── Detail (P1/P2 get the full story) ──
+  if (isHighPriority) {
+    const narr = call.narrative || call.description || call.comments || '';
+    if (narr) {
+      const cleaned = truncateForSpeech(narr, 150);
+      const verb = call.source === 'phone' ? 'Caller says' :
+                   call.source === 'officer' ? 'Officer reports' : 'We\'re told';
+      phrases.push({ text: `${verb} ${cleaned.charAt(0).toLowerCase()}${cleaned.slice(1)}${cleaned.endsWith('.') ? '' : '.'}` });
     }
-    if (call.suspect_description) {
-      phrases.push({ text: `Suspect is described as ${call.suspect_description}.` });
+
+    if (call.caller_name && call.caller_name !== 'Anonymous') {
+      let rpLine = `Reporting party is ${call.caller_name}`;
+      if (call.caller_relationship) rpLine += `, the ${call.caller_relationship}`;
+      if (call.caller_phone) rpLine += `. Callback is ${formatPhone(call.caller_phone)}`;
+      phrases.push({ text: rpLine + '.' });
     }
+
+    if (call.num_subjects || call.num_victims) {
+      const ppl: string[] = [];
+      if (call.num_subjects) ppl.push(`${call.num_subjects} subject${call.num_subjects > 1 ? 's' : ''}`);
+      if (call.num_victims) ppl.push(`${call.num_victims} victim${call.num_victims > 1 ? 's' : ''}`);
+      phrases.push({ text: `${ppl.join(' and ')} on scene.` });
+    }
+
+    const suspDesc = call.suspect_description || call.subject_description;
+    if (suspDesc) {
+      let suspLine = `Suspect's described as ${suspDesc}`;
+      if (call.direction_of_travel) suspLine += `, last seen heading ${call.direction_of_travel}`;
+      phrases.push({ text: suspLine + '.' });
+    }
+
     if (call.vehicle_description) {
-      let vLine = `Vehicle is a ${call.vehicle_description}`;
+      let vLine = `There's a ${call.vehicle_description}`;
       if (call.vehicle_plate) vLine += `, plate ${spellOutPlate(call.vehicle_plate)}`;
       phrases.push({ text: vLine + '.' });
     }
-    if (call.num_subjects && call.num_subjects > 1) {
-      phrases.push({ text: `${call.num_subjects} subjects on scene.` });
+
+    if (call.juvenile_involved) {
+      phrases.push({ text: 'Be advised, juvenile involved.' });
     }
   }
 
-  // ── Safety flags (each as own sentence) ──
+  // ── Safety flags ──
   const safetyPhrases = buildCallPhrases(call);
   for (const sp of safetyPhrases) {
     phrases.push(sp);
@@ -1378,6 +1493,38 @@ function formatIncidentType(type: string): string {
 function shortCallNumber(num: string): string {
   // Strip leading prefix (CFS-, year-, etc.) and leading zeros
   return num.replace(/^[A-Z]+-/i, '').replace(/^\d{4}-?0*/, '') || num;
+}
+
+/**
+ * Convert floor number to ordinal: "1" → "first", "2" → "second", "3" → "third", "12" → "12th".
+ */
+function ordinal(floor: string): string {
+  const n = parseInt(floor, 10);
+  if (isNaN(n)) return floor;
+  const words: Record<number, string> = {
+    1: 'first', 2: 'second', 3: 'third', 4: 'fourth', 5: 'fifth',
+    6: 'sixth', 7: 'seventh', 8: 'eighth', 9: 'ninth', 10: 'tenth',
+  };
+  if (words[n]) return words[n];
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
+/**
+ * Format phone number for natural speech.
+ * "8015551234" → "801, 555, 1234"
+ * Dispatchers read phone numbers in groups with pauses.
+ */
+function formatPhone(phone: string): string {
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length === 10) {
+    return `${digits.slice(0, 3)}, ${digits.slice(3, 6)}, ${digits.slice(6)}`;
+  }
+  if (digits.length === 11 && digits[0] === '1') {
+    return `${digits.slice(1, 4)}, ${digits.slice(4, 7)}, ${digits.slice(7)}`;
+  }
+  return phone; // return as-is if non-standard
 }
 
 /**
