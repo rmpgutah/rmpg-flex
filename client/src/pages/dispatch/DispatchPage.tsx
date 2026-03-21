@@ -867,6 +867,15 @@ export default function DispatchPage() {
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   }), [calls, archivedCalls, filterTab, searchQuery, userPrefs?.dispatch_sort, userPrefs?.dispatch_show_cleared]);
 
+  // Live ref populated after handlers are declared below; see kbHandlersRef.current = {...}
+  // after handleClearWithDisposition. The ref is initialized here (hook call order) but
+  // assigned later in the same render pass so the useEffect closure always picks up the
+  // current version without needing the handlers in the dep array.
+  const kbHandlersRef = useRef<{
+    handleStatusChange: (callId: string, newStatus: CallStatus, extraBody?: Record<string, any>) => void;
+    handleClearWithDisposition: (callId: string) => void;
+  } | null>(null);
+
   // Keyboard shortcuts for dispatch power users
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -922,28 +931,28 @@ export default function DispatchPage() {
       // D - Dispatch selected call
       if ((e.key === 'd' || e.key === 'D') && selectedCall && selectedCall.status === 'pending') {
         e.preventDefault();
-        handleStatusChange(selectedCall.id, 'dispatched');
+        kbHandlersRef.current?.handleStatusChange(selectedCall.id, 'dispatched');
         return;
       }
 
       // E - Enroute
       if ((e.key === 'e' || e.key === 'E') && selectedCall && selectedCall.status === 'dispatched') {
         e.preventDefault();
-        handleStatusChange(selectedCall.id, 'enroute');
+        kbHandlersRef.current?.handleStatusChange(selectedCall.id, 'enroute');
         return;
       }
 
       // O - On scene
       if ((e.key === 'o' || e.key === 'O') && selectedCall && selectedCall.status === 'enroute') {
         e.preventDefault();
-        handleStatusChange(selectedCall.id, 'onscene');
+        kbHandlersRef.current?.handleStatusChange(selectedCall.id, 'onscene');
         return;
       }
 
       // C - Clear call (opens disposition prompt)
       if ((e.key === 'c' || e.key === 'C') && selectedCall && ['dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
         e.preventDefault();
-        handleClearWithDisposition(selectedCall.id);
+        kbHandlersRef.current?.handleClearWithDisposition(selectedCall.id);
         return;
       }
 
@@ -1114,6 +1123,10 @@ export default function DispatchPage() {
   const handleClearWithDisposition = (callId: string) => {
     setDispositionPromptCallId(callId);
   };
+
+  // Assign live handlers to the keyboard shortcut ref now that both are declared.
+  // This runs every render so the effect closure always calls the current version.
+  kbHandlersRef.current = { handleStatusChange, handleClearWithDisposition };
 
   const handleConfirmClear = async (disposition: string, createIncident?: boolean) => {
     if (!dispositionPromptCallId) return;
