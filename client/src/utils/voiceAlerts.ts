@@ -380,20 +380,62 @@ function speakPhrase(phrase: VoicePhrase): Promise<void> {
     const params = activePriority ? PRIORITY_PARAMS[activePriority] : undefined;
 
     // ── Micro-variation for human realism ──
-    // Real humans don't speak at exactly the same rate/pitch every sentence.
-    // Adding ±2% rate and ±1.5% pitch variation per phrase prevents the
-    // uncanny "every sentence sounds identical" TTS effect.
-    // Uses a deterministic seed (phrase counter) so it's consistent per phrase
-    // but different between phrases.
+    // Real dispatchers vary their delivery phrase-to-phrase — speed shifts,
+    // pitch rises on questions and safety warnings, drops at statement ends.
+    // We simulate this with overlapping sine waves at different frequencies
+    // to create organic-sounding variation that never exactly repeats.
     phraseCounter++;
-    const rateJitter = 1.0 + (Math.sin(phraseCounter * 2.7) * 0.02);    // ±2%
-    const pitchJitter = Math.sin(phraseCounter * 1.9) * 0.015;           // ±1.5%
 
-    // Longer sentences get slightly slower (natural human tendency)
-    const lengthFactor = spokenText.length > 80 ? 0.97 : spokenText.length > 50 ? 0.985 : 1.0;
+    // ±5% rate variation (wider than before — humans vary significantly)
+    const rateJitter = 1.0
+      + (Math.sin(phraseCounter * 2.7) * 0.03)     // primary wave ±3%
+      + (Math.sin(phraseCounter * 4.3) * 0.02);     // secondary wave ±2%
 
-    const finalRate = (params ? baseRate * params.rateMultiplier : baseRate) * rateJitter * lengthFactor;
-    const finalPitch = SPEECH_PITCH + (params?.pitchOffset ?? 0) + pitchJitter;
+    // ±3% pitch variation (two overlapping waves for organic feel)
+    const pitchJitter =
+      (Math.sin(phraseCounter * 1.9) * 0.02)        // primary ±2%
+      + (Math.sin(phraseCounter * 3.1) * 0.01);     // secondary ±1%
+
+    // Longer sentences get progressively slower (natural human tendency —
+    // we slow down to maintain clarity on complex information)
+    const len = spokenText.length;
+    const lengthFactor = len > 120 ? 0.94 : len > 80 ? 0.96 : len > 50 ? 0.98 : 1.0;
+
+    // ── Emphasis detection ──
+    // Certain phrase content should be delivered differently:
+    // - Safety/warning phrases: slightly slower + higher pitch (alert tone)
+    // - Suspect/vehicle descriptions: slower (officers writing it down)
+    // - Closing phrases ("Use caution"): lower pitch, authoritative
+    const lowerText = spokenText.toLowerCase();
+    let emphasisRate = 1.0;
+    let emphasisPitch = 0;
+
+    if (lowerText.includes('be advised') || lowerText.includes('caution') ||
+        lowerText.includes('safety') || lowerText.includes('weapon') ||
+        lowerText.includes('armed') || lowerText.includes('dangerous')) {
+      emphasisRate = 0.92;   // slow down for emphasis
+      emphasisPitch = 0.04;  // slight rise — urgency
+    } else if (lowerText.includes('suspect') || lowerText.includes('described as') ||
+               lowerText.includes('plate') || lowerText.includes('vehicle')) {
+      emphasisRate = 0.94;   // slow for description readout
+      emphasisPitch = 0;
+    } else if (lowerText.includes('use caution') || lowerText.includes('copy') ||
+               lowerText.startsWith('that\'s all')) {
+      emphasisRate = 0.96;
+      emphasisPitch = -0.03; // terminal drop — finality
+    }
+
+    // ── Terminal falling intonation ──
+    // Declarative sentences naturally end with pitch dropping.
+    // Questions rise. We detect sentence type and adjust.
+    const isQuestion = spokenText.trim().endsWith('?');
+    const terminalPitch = isQuestion ? 0.04 : -0.02;  // rise for questions, fall for statements
+
+    const finalRate = (params ? baseRate * params.rateMultiplier : baseRate)
+      * rateJitter * lengthFactor * emphasisRate;
+    const finalPitch = SPEECH_PITCH
+      + (params?.pitchOffset ?? 0)
+      + pitchJitter + emphasisPitch + terminalPitch;
 
     utterance.rate = Math.max(0.5, Math.min(2.0, finalRate));
     utterance.pitch = Math.max(0.5, Math.min(2.0, finalPitch));
@@ -415,10 +457,37 @@ async function processQueue(): Promise<void> {
     activePriority = batch.priority;
     lastAnnouncement = { phrases: batch.phrases, priority: batch.priority, timestamp: Date.now() };
 
-    for (const phrase of batch.phrases) {
+    for (let i = 0; i < batch.phrases.length; i++) {
+      const phrase = batch.phrases[i];
       await speakPhrase(phrase);
-      if (batch.phrases.indexOf(phrase) < batch.phrases.length - 1) {
-        await delay(PHRASE_GAP_MS);
+
+      if (i < batch.phrases.length - 1) {
+        // ── Variable phrase gaps — like a real dispatcher keying the mic ──
+        // Longer pause before safety/advisory content (dramatic beat)
+        // Shorter pause between routine sequential details
+        const nextText = batch.phrases[i + 1]?.text?.toLowerCase() || '';
+        const thisText = phrase.text.toLowerCase();
+
+        let gap = PHRASE_GAP_MS;
+
+        // Longer beat before safety/warning blocks
+        if (nextText.includes('safety') || nextText.includes('be advised') ||
+            nextText.includes('armed') || nextText.includes('weapon') ||
+            nextText.includes('caution')) {
+          gap = PHRASE_GAP_MS * 1.6;  // ~800ms dramatic pause
+        }
+        // Slightly longer after location (let it sink in before narrative)
+        else if (thisText.includes('you\'re going to') || thisText.includes('cross street')) {
+          gap = PHRASE_GAP_MS * 1.3;  // ~650ms
+        }
+        // Shorter between sequential facts (zone → narrative flows faster)
+        else if (thisText.includes('zone') || thisText.includes('beat')) {
+          gap = PHRASE_GAP_MS * 0.8;  // ~400ms
+        }
+
+        // Add ±10% random variation to gaps (humans aren't metronomes)
+        const gapJitter = 1.0 + (Math.sin(i * 3.7 + phraseCounter) * 0.1);
+        await delay(Math.round(gap * gapJitter));
       }
     }
 
@@ -661,7 +730,21 @@ function improvePronounciation(text: string): string {
     .replace(/\band\b/g, ', and')
     .replace(/,\s*,/g, ',')  // clean double commas
     // ── Numbers — pause around street numbers ──
-    .replace(/(\d{3,5})\s+(South|North|East|West)/g, '$1, $2');
+    .replace(/(\d{3,5})\s+(South|North|East|West)/g, '$1, $2')
+    // ── Breathing pauses — insert micro-pauses at natural break points ──
+    // Real dispatchers pause briefly before key details. We add short pauses
+    // using periods + spaces which TTS engines interpret as brief stops.
+    .replace(/\.\s+Your suspect/g, '.. Your suspect')   // dramatic pause before suspect info
+    .replace(/\.\s+Safety/g, '.. Safety')                // pause before safety block
+    .replace(/\.\s+Be advised/g, '.. Be advised')        // pause before advisories
+    .replace(/\.\s+There's a/g, '.. There\'s a')         // pause before vehicle/weapon
+    // ── Emphasis markers — capitalize key phrases for slight TTS stress ──
+    .replace(/\barmed\b/gi, 'ARMED')
+    .replace(/\bdangerous\b/gi, 'DANGEROUS')
+    .replace(/\bweapon\b/gi, 'WEAPON')
+    .replace(/\bpanic\b/gi, 'PANIC')
+    .replace(/\bshots fired\b/gi, 'SHOTS FIRED')
+    .replace(/\bofficer down\b/gi, 'OFFICER DOWN');
 
   // ── Auto-spell any remaining ALL-CAPS acronyms (2+ letters) ──
   // "PSO" → "P.S.O.", "RMPG" → "R.M.P.G.", etc.
