@@ -39,9 +39,9 @@ export default function HRPage() {
       case 'leave':
         return <LeaveTab />;
       case 'disciplinary':
-        return <DisciplinaryTab />;
+        return <DisciplinaryTab userRole={userRole} userId={Number(userId)} />;
       case 'reviews':
-        return <ReviewsTab />;
+        return <ReviewsTab userRole={userRole} userId={userId} />;
       default:
         return null;
     }
