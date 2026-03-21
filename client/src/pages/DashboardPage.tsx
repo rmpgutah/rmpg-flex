@@ -23,10 +23,12 @@ import type { DashboardStats, ActivityLogEntry, BOLO } from '../types';
 import StatsCard from '../components/StatsCard';
 import ActivityFeed from '../components/ActivityFeed';
 import PanelTitleBar from '../components/PanelTitleBar';
+import IntegrationHub from '../components/IntegrationHub';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
 import { StatsCardSkeleton, CardSkeleton } from '../components/Skeleton';
 import { apiFetch } from '../hooks/useApi';
+import { useAuth } from '../context/AuthContext';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 
@@ -188,6 +190,7 @@ export default function DashboardPage() {
   const [activeWarrants, setActiveWarrants] = useState(0);
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const { user } = useAuth();
 
   const fetchDashboardData = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) { setLoading(true); setError(null); }
@@ -653,6 +656,11 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      {/* Integration Hub — admin/manager only */}
+      {user && (user.role === 'admin' || user.role === 'manager') && (
+        <IntegrationHub onSetupClick={(id) => navigate(`/admin?tab=${id}`)} />
+      )}
     </div>
   );
 }
