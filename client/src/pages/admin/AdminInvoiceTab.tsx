@@ -56,6 +56,7 @@ function formatCurrency(n: number | undefined | null): string {
 // ============================================================
 
 export default function AdminInvoiceTab({ clientId, clientName, client }: AdminInvoiceTabProps) {
+  const { addToast } = useToast();
   const [view, setView] = useState<'list' | 'detail' | 'create'>('list');
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [selectedInvoice, setSelectedInvoice] = useState<InvoiceDetail | null>(null);
@@ -242,7 +243,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         method: 'PUT',
         body: JSON.stringify({ internal_notes: notes }),
       });
-    } catch (e) { console.error('Failed to save invoice notes:', e); }
+    } catch (e) { console.error('Failed to save invoice notes:', e); addToast('Failed to save notes', 'error'); }
   };
 
   // ─── Render Stats Bar ─────────────────────────────
@@ -703,7 +704,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                 setPdfBlobUrl(blobUrl);
                 setPdfViewerOpen(true);
               } catch (e: any) {
-                console.error('Invoice preview error:', e);
+                console.error('Invoice preview error:', e); addToast('Failed to generate preview', 'error');
                 setError(e.message || 'Preview failed');
               }
             }}
@@ -721,7 +722,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                 const doc = await generateInvoicePdf(res.data.invoice);
                 doc.save(`${inv.invoice_number}.pdf`);
               } catch (e: any) {
-                console.error('Invoice PDF error:', e);
+                console.error('Invoice PDF error:', e); addToast('Failed to generate PDF', 'error');
                 setError(e.message || 'PDF generation failed');
               }
             }}
@@ -751,7 +752,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                   setError('Pop-up blocked — please allow pop-ups for this site');
                 }
               } catch (e: any) {
-                console.error('Invoice print error:', e);
+                console.error('Invoice print error:', e); addToast('Failed to print invoice', 'error');
                 setError(e?.message || 'Print failed');
               }
             }}

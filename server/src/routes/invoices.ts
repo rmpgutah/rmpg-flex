@@ -11,6 +11,7 @@ import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { escapeLike, validateParamId } from '../middleware/sanitize';
 import { localNow, localToday } from '../utils/timeUtils';
+import { auditLog } from '../utils/auditLogger';
 
 const router = Router();
 router.use(authenticateToken);
@@ -336,10 +337,7 @@ router.post('/', requireRole('admin', 'manager', 'contract_manager'), (req: Requ
       notes || '', internal_notes || '', user.userId, now, now
     );
 
-    // Activity log
-    db.prepare(
-      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(user.userId, 'invoice_created', 'invoice', result.lastInsertRowid, `Created invoice ${invoice_number} for client ${client.name}`, req.ip || 'unknown', now);
+    auditLog(req, 'CREATE', 'invoice', result.lastInsertRowid as number, `Created invoice ${invoice_number} for client ${client.name}`);
 
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(result.lastInsertRowid);
     if (!invoice) { res.status(500).json({ error: 'Failed to retrieve created invoice' }); return; }
@@ -613,9 +611,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'contract_ma
       recalculateInvoiceTotals(String(req.params.id));
     }
 
-    db.prepare(
-      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(user.userId, 'invoice_updated', 'invoice', req.params.id, `Updated invoice ${invoice.invoice_number}`, req.ip || 'unknown', now);
+    auditLog(req, 'UPDATE', 'invoice', parseInt(String(req.params.id), 10), `Updated invoice ${invoice.invoice_number}`);
 
     const updated = db.prepare(`
       SELECT i.*, c.name as client_name FROM invoices i
@@ -677,9 +673,7 @@ router.put('/:id/status', validateParamId, requireRole('admin', 'manager'), (req
     // Recalculate client aggregates
     recalculateInvoiceTotals(String(req.params.id));
 
-    db.prepare(
-      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(user.userId, 'invoice_status_changed', 'invoice', req.params.id, `Status: ${invoice.status} → ${status}`, req.ip || 'unknown', now);
+    auditLog(req, 'UPDATE', 'invoice', parseInt(String(req.params.id), 10), `Status: ${invoice.status} → ${status}`);
 
     const updated = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id);
     res.json({ data: updated });
@@ -779,10 +773,8 @@ router.delete('/:id/line-items/:itemId', validateParamId, requireRole('admin', '
     db.prepare('DELETE FROM invoice_line_items WHERE id = ?').run(req.params.itemId);
     recalculateInvoiceTotals(String(req.params.id));
 
-    db.prepare(
-      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(req.user!.userId, 'line_item_deleted', 'invoice', req.params.id,
-      `Deleted line item #${req.params.itemId} from invoice #${req.params.id}`, req.ip || 'unknown', localNow());
+    auditLog(req, 'DELETE', 'invoice_line_item', parseInt(String(req.params.itemId), 10),
+      `Deleted line item #${req.params.itemId} from invoice #${req.params.id}`);
 
     res.json({ success: true });
   } catch (error: any) {
@@ -825,9 +817,7 @@ router.post('/:id/payments', validateParamId, requireRole('admin', 'manager'), (
       }
     }
 
-    db.prepare(
-      'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(user.userId, 'payment_recorded', 'invoice', req.params.id, `Payment of $${amount} recorded on invoice ${invoice.invoice_number}`, req.ip || 'unknown', now);
+    auditLog(req, 'CREATE', 'payment', parseInt(String(req.params.id), 10), `Payment of $${amount} recorded on invoice ${invoice.invoice_number}`);
 
     const payment = db.prepare(`
       SELECT p.*, u.full_name as recorded_by_name
@@ -869,9 +859,7 @@ router.delete('/:id/payments/:paymentId', validateParamId, requireRole('admin', 
         }
       }
 
-      db.prepare(
-        'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-      ).run(user.userId, 'payment_reversed', 'invoice', req.params.id, `Payment of $${payment.amount} reversed on invoice ${updated?.invoice_number || req.params.id}`, req.ip || 'unknown', now);
+      auditLog(req, 'DELETE', 'payment', parseInt(String(req.params.id), 10), `Payment of $${payment.amount} reversed on invoice ${updated?.invoice_number || req.params.id}`);
     })();
 
     res.json({ success: true });

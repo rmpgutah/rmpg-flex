@@ -149,9 +149,9 @@ router.post('/', requireRole('admin', 'manager', 'supervisor'), (req: Request, r
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, 'create', 'offender_alert', ?, ?, ?, ?)`).run(
-      req.user!.userId, result.lastInsertRowid, JSON.stringify({ person_id, alert_type, severity }), req.ip || 'unknown', now);
+      req.user!.userId, Number(result.lastInsertRowid), JSON.stringify({ person_id, alert_type, severity }), req.ip || 'unknown', now);
 
-    res.status(201).json({ data: { id: result.lastInsertRowid } });
+    res.status(201).json({ data: { id: Number(result.lastInsertRowid) } });
   } catch (error: any) {
     console.error('Create offender alert error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Internal server error' });

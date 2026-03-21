@@ -762,7 +762,7 @@ export default function ArrestRecordsPage() {
             {charges.length > 0 ? (
               <div className="space-y-0.5 mb-2">
                 {charges.map((ch, i) => (
-                  <div key={i} className="text-[9px] text-amber-300 bg-amber-950/20 px-2 py-1 rounded-sm">
+                  <div key={`charge-${ch}-${i}`} className="text-[9px] text-amber-300 bg-amber-950/20 px-2 py-1 rounded-sm">
                     {ch}
                   </div>
                 ))}

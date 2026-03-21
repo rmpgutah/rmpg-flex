@@ -302,7 +302,7 @@ export default function PersonIntelPanel() {
                             </div>
                             <div className="space-y-1">
                               {result.courtRecords.slice(0, 10).map((cr: any, i: number) => (
-                                <div key={i} className="bg-rmpg-800/60 border border-rmpg-600/50 rounded px-3 py-1.5 text-xs flex items-center justify-between">
+                                <div key={`court-${cr.case_number || i}`} className="bg-rmpg-800/60 border border-rmpg-600/50 rounded px-3 py-1.5 text-xs flex items-center justify-between">
                                   <div>
                                     <span className="font-bold text-white">{cr.case_number || 'N/A'}</span>
                                     <span className="text-rmpg-400 ml-2">{cr.court_name || ''}</span>

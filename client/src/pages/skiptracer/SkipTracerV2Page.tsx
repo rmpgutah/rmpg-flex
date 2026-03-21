@@ -1299,7 +1299,7 @@ export default function SkipTracerV2Page() {
                   const fullAddr = [addr, a.city, a.state, a.zip].filter(Boolean).join(', ');
                   const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(fullAddr)}`;
                   return (
-                    <tr key={i} className="hover:bg-white/5">
+                    <tr key={`addr-${addr}-${i}`} className="hover:bg-white/5">
                       <td className="px-2 py-1.5 text-white">{addr}</td>
                       <td className="px-2 py-1.5 text-[#c0ccdd]">{a.city || '—'}</td>
                       <td className="px-2 py-1.5 text-[#c0ccdd]">{a.state || '—'}</td>
@@ -1330,7 +1330,7 @@ export default function SkipTracerV2Page() {
             <DossierSection title="Phone Numbers" icon={Phone} count={selected.phones!.length}>
               <DataTable headers={['Number', 'Type', 'Carrier', 'Status', 'Source', '']}>
                 {selected.phones!.map((p, i) => (
-                  <tr key={i} className="hover:bg-white/5">
+                  <tr key={`phone-${p.number}-${i}`} className="hover:bg-white/5">
                     <td className="px-2 py-1.5 text-white font-mono">{p.number}</td>
                     <td className="px-2 py-1.5 text-[#c0ccdd] text-[9px] uppercase">{p.type || '—'}</td>
                     <td className="px-2 py-1.5 text-[#8899aa]">{p.carrier || '—'}</td>
@@ -1363,7 +1363,7 @@ export default function SkipTracerV2Page() {
                   {selected.emails!.map((e, i) => {
                     const emailAddr = e.email || e.address || '';
                     return (
-                      <div key={i} className="flex items-center gap-2 text-[11px] font-mono">
+                      <div key={`email-${emailAddr}-${i}`} className="flex items-center gap-2 text-[11px] font-mono">
                         <Mail size={11} className="text-[#556677]" />
                         <span className="text-white">{emailAddr}</span>
                         <SourceBadge source={e.source} />
@@ -1384,7 +1384,7 @@ export default function SkipTracerV2Page() {
                 <div className="space-y-1">
                   <div className="text-[9px] font-bold text-[#556677] uppercase tracking-wider mb-1">Social Profiles</div>
                   {selected.socialProfiles!.map((sp, i) => (
-                    <div key={i} className="flex items-center gap-2 text-[11px]">
+                    <div key={`social-${sp.platform}-${sp.username}-${i}`} className="flex items-center gap-2 text-[11px]">
                       <Globe size={11} className="text-[#556677]" />
                       <span className="text-[#8899aa] font-bold text-[10px] uppercase">{sp.platform}</span>
                       <a href={sp.url} target="_blank" rel="noopener noreferrer" className="text-[#60a5fa] hover:underline font-mono truncate">
@@ -1403,7 +1403,7 @@ export default function SkipTracerV2Page() {
             <DossierSection title="Associates & Relatives" icon={Users} count={selected.associates!.length}>
               <DataTable headers={['Name', 'Relationship', 'Phone', 'Source', '']}>
                 {selected.associates!.map((a, i) => (
-                  <tr key={i} className="hover:bg-white/5">
+                  <tr key={`assoc-${a.name}-${i}`} className="hover:bg-white/5">
                     <td className="px-2 py-1.5">
                       <button onClick={() => searchAssociate(a.name)} className="text-[#60a5fa] hover:underline font-mono flex items-center gap-1">
                         {a.name} <Search size={9} className="text-[#445566]" />
@@ -1426,7 +1426,7 @@ export default function SkipTracerV2Page() {
             <DossierSection title="Court & Criminal" icon={Scale} count={selected.courtRecords!.length}>
               <DataTable headers={['Case #', 'Court', 'Type', 'Charge', 'Date', 'Status', 'Source', '']}>
                 {selected.courtRecords!.map((c, i) => (
-                  <tr key={i} className="hover:bg-white/5">
+                  <tr key={`court-${c.caseNumber}-${i}`} className="hover:bg-white/5">
                     <td className="px-2 py-1.5 text-white font-mono">{c.caseNumber || '—'}</td>
                     <td className="px-2 py-1.5 text-[#c0ccdd] max-w-[120px] truncate" title={c.court}>{c.court || '—'}</td>
                     <td className="px-2 py-1.5 text-[#c0ccdd]">{c.caseType || c.type || '—'}</td>
@@ -1459,7 +1459,7 @@ export default function SkipTracerV2Page() {
             <DossierSection title="Custody / Booking" icon={Shield} count={selected.custodyRecords!.length}>
               <div className="space-y-2">
                 {selected.custodyRecords!.map((c, i) => (
-                  <div key={i} className="p-2 border border-red-900/30 bg-red-950/10 rounded-sm text-[11px]">
+                  <div key={`custody-${c.facility}-${i}`} className="p-2 border border-red-900/30 bg-red-950/10 rounded-sm text-[11px]">
                     <div className="flex items-center gap-2 text-red-300 font-bold">
                       <Shield size={12} /> {c.facility || 'Unknown Facility'}
                       {c.facilityState && <span className="text-[9px] text-[#8899aa] font-normal">({c.facilityState})</span>}
@@ -1482,7 +1482,7 @@ export default function SkipTracerV2Page() {
             <DossierSection title="Property Records" icon={Home} count={selected.propertyRecords!.length}>
               <DataTable headers={['Address', 'Type', 'Value', 'Owner', 'Source']}>
                 {selected.propertyRecords!.map((p, i) => (
-                  <tr key={i} className="hover:bg-white/5">
+                  <tr key={`prop-${p.address}-${i}`} className="hover:bg-white/5">
                     <td className="px-2 py-1.5 text-white">{[p.address, p.city, p.state, p.zip].filter(Boolean).join(', ')}</td>
                     <td className="px-2 py-1.5 text-[#c0ccdd]">{p.propertyType || '—'}</td>
                     <td className="px-2 py-1.5 text-green-400 font-mono">{p.marketValue ? `$${p.marketValue.toLocaleString()}` : '—'}</td>
@@ -1499,7 +1499,7 @@ export default function SkipTracerV2Page() {
             <DossierSection title="Business & Employment" icon={Building2} count={selected.businesses!.length}>
               <DataTable headers={['Business', 'Role', 'Status', 'Reg #', 'Jurisdiction', 'Source']}>
                 {selected.businesses!.map((b, i) => (
-                  <tr key={i} className="hover:bg-white/5">
+                  <tr key={`biz-${b.name}-${i}`} className="hover:bg-white/5">
                     <td className="px-2 py-1.5 text-white">{b.name}</td>
                     <td className="px-2 py-1.5 text-[#c0ccdd]">{b.role || '—'}</td>
                     <td className="px-2 py-1.5">

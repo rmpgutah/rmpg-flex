@@ -99,7 +99,7 @@ router.get('/violations/:id', validateParamId, (req: Request, res: Response) => 
     const row = db.prepare('SELECT * FROM code_violations WHERE id = ?').get(req.params.id);
     if (!row) return res.status(404).json({ error: 'Violation not found' });
     res.json({ data: row });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { console.error('Code enforcement error:', error?.message || error); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.post('/violations', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
@@ -172,7 +172,7 @@ router.put('/violations/:id', validateParamId, requireRole('admin', 'manager', '
     db.prepare(`UPDATE code_violations SET ${updates.join(', ')} WHERE id = ?`).run(...params);
     auditLog(req, 'UPDATE', 'code_violation', String(req.params.id), `Updated code enforcement violation #${req.params.id}`);
     res.json({ data: { id: parseInt(req.params.id as string, 10) } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { console.error('Code enforcement error:', error?.message || error); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.put('/violations/:id/status', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
@@ -195,7 +195,7 @@ router.put('/violations/:id/status', validateParamId, requireRole('admin', 'mana
 
     auditLog(req, 'UPDATE', 'code_violation', String(req.params.id), `Changed violation #${req.params.id} status`);
     res.json({ data: { id: parseInt(req.params.id as string, 10), status } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { console.error('Code enforcement error:', error?.message || error); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ════════════════════════════════════════════════════════
@@ -221,7 +221,7 @@ router.get('/tows', (req: Request, res: Response) => {
     const total = (db.prepare(`SELECT COUNT(*) as count FROM vehicle_tows ${where}`).get(...params) as any)?.count || 0;
     const rows = db.prepare(`SELECT * FROM vehicle_tows ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(...params, limitNum, offset);
     res.json({ data: rows, pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { console.error('Code enforcement error:', error?.message || error); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.get('/tows/:id', validateParamId, (req: Request, res: Response) => {
@@ -230,7 +230,7 @@ router.get('/tows/:id', validateParamId, (req: Request, res: Response) => {
     const row = db.prepare('SELECT * FROM vehicle_tows WHERE id = ?').get(req.params.id);
     if (!row) return res.status(404).json({ error: 'Tow not found' });
     res.json({ data: row });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { console.error('Code enforcement error:', error?.message || error); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.post('/tows', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
@@ -293,7 +293,7 @@ router.put('/tows/:id', validateParamId, requireRole('admin', 'manager', 'superv
     db.prepare(`UPDATE vehicle_tows SET ${updates.join(', ')} WHERE id = ?`).run(...params);
     auditLog(req, 'UPDATE', 'vehicle_tow', String(req.params.id), `Updated tow record #${req.params.id}`);
     res.json({ data: { id: parseInt(req.params.id as string, 10) } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { console.error('Code enforcement error:', error?.message || error); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.put('/tows/:id/status', validateParamId, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
@@ -316,7 +316,7 @@ router.put('/tows/:id/status', validateParamId, requireRole('admin', 'manager', 
 
     auditLog(req, 'UPDATE', 'vehicle_tow', String(req.params.id), `Changed tow #${req.params.id} status`);
     res.json({ data: { id: parseInt(req.params.id as string, 10), status } });
-  } catch (error: any) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (error: any) { console.error('Code enforcement error:', error?.message || error); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 export default router;

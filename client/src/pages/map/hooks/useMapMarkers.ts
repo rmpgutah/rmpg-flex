@@ -11,6 +11,7 @@ import {
 } from '../utils/mapMarkerBuilders';
 import { UNIT_STATUS_COLORS, PRIORITY_COLORS } from '../utils/mapConstants';
 import type { MapUnit as Unit, ActiveCall, MapProperty as Property } from '../utils/mapConstants';
+import { useMarkerAnimation } from './useMarkerAnimation';
 
 interface UseMapMarkersParams {
   mapInstanceRef: React.MutableRefObject<google.maps.Map | null>;
@@ -47,6 +48,13 @@ export function useMapMarkers({
   gps,
 }: UseMapMarkersParams) {
   const selfMarkerRef = useRef<any>(null);
+  const unitMarkerMapRef = useRef<Map<string, any>>(new Map());
+  const { animateMarkerTo, cancelAnimation, cleanupAll: cleanupAnimations } = useMarkerAnimation();
+
+  // Cleanup animations on unmount
+  useEffect(() => {
+    return () => { cleanupAnimations(); };
+  }, [cleanupAnimations]);
 
   // Helper: create a marker using AdvancedMarkerElement or OverlayView fallback
   const createMarker = useCallback((opts: {
@@ -87,15 +95,47 @@ export function useMapMarkers({
     const map = mapInstanceRef.current;
     if (!map || !mapLoaded) return;
 
-    // Clear existing markers
-    markersRef.current.forEach((m) => removeMarker(m));
+    // Clear existing non-unit markers, and track which units are still present
+    const prevUnitMarkers = unitMarkerMapRef.current;
+    const nextUnitIds = new Set<string>();
+
+    // Remove non-unit markers (incidents, properties)
+    markersRef.current.forEach((m) => {
+      // Unit markers are tracked separately; skip them during bulk removal
+      if (m._rmpgUnitId) return;
+      removeMarker(m);
+    });
     markersRef.current = [];
     infoWindowRef.current?.close();
 
-    // Add unit markers
+    // Add / update unit markers with smooth position animation
     if (layers.units) {
       units.forEach((unit) => {
         if (unit.latitude != null && unit.longitude != null) {
+          nextUnitIds.add(unit.call_sign);
+          const existingMarker = prevUnitMarkers.get(unit.call_sign);
+
+          if (existingMarker) {
+            // Update content (status may have changed)
+            const newContent = buildUnitMarkerContent(unit.call_sign, unit.status, unit.gps_source);
+            if (typeof existingMarker.updateContent === 'function') {
+              existingMarker.updateContent(newContent);
+            } else {
+              existingMarker.content = newContent;
+            }
+
+            // Animate position change
+            animateMarkerTo(unit.call_sign, unit.latitude, unit.longitude, (lat, lng) => {
+              if (typeof existingMarker.updatePosition === 'function') {
+                existingMarker.updatePosition(lat, lng);
+              } else {
+                existingMarker.position = { lat, lng };
+              }
+            });
+
+            markersRef.current.push(existingMarker);
+          } else {
+            // Create new unit marker
           const content = buildUnitMarkerContent(unit.call_sign, unit.status, unit.gps_source);
           const statusColor = UNIT_STATUS_COLORS[unit.status];
           const location = unit.current_call_location || 'No active assignment';
@@ -143,9 +183,30 @@ export function useMapMarkers({
             },
           });
 
+          marker._rmpgUnitId = unit.call_sign;
+          unitMarkerMapRef.current.set(unit.call_sign, marker);
           markersRef.current.push(marker);
+          }
         }
       });
+    }
+
+    // Remove unit markers for units no longer present
+    prevUnitMarkers.forEach((marker, callSign) => {
+      if (!nextUnitIds.has(callSign)) {
+        removeMarker(marker);
+        cancelAnimation(callSign);
+        unitMarkerMapRef.current.delete(callSign);
+      }
+    });
+
+    // If units layer is off, clear all unit markers
+    if (!layers.units) {
+      prevUnitMarkers.forEach((marker, callSign) => {
+        removeMarker(marker);
+        cancelAnimation(callSign);
+      });
+      unitMarkerMapRef.current.clear();
     }
 
     // Add incident markers
@@ -351,7 +412,7 @@ export function useMapMarkers({
         }
       });
     }
-  }, [layers, units, calls, properties, mapLoaded, createMarker, removeMarker, mapInstanceRef, markersRef, infoWindowRef]);
+  }, [layers, units, calls, properties, mapLoaded, createMarker, removeMarker, animateMarkerTo, cancelAnimation, mapInstanceRef, markersRef, infoWindowRef]);
 
   // Route Button Click Handler (delegated from info window HTML)
   useEffect(() => {
@@ -405,5 +466,5 @@ export function useMapMarkers({
     }
   }, [gps.isTracking, gps.latitude, gps.longitude, gps.accuracy, gps.heading, gps.unitCallSign, mapLoaded, createMarker, removeMarker, mapInstanceRef]);
 
-  return { createMarker, removeMarker };
+  return { createMarker, removeMarker, animateMarkerTo, cancelAnimation };
 }

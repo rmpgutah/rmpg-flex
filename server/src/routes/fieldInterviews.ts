@@ -88,6 +88,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
       pagination: { page: pageNum, per_page: perPage, total, totalPages: Math.ceil(total / perPage) },
     });
   } catch (err: any) {
+    console.error('Field interview error:', err?.message || err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -108,6 +109,7 @@ router.get('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
     if (!row) return res.status(404).json({ error: 'Field interview not found' });
     res.json(row);
   } catch (err: any) {
+    console.error('Field interview error:', err?.message || err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -237,6 +239,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req:
 
     res.status(201).json(created);
   } catch (err: any) {
+    console.error('Field interview error:', err?.message || err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -296,6 +299,7 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
 
     res.json(updated);
   } catch (err: any) {
+    console.error('Field interview error:', err?.message || err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -311,6 +315,7 @@ router.post('/:id/archive', validateParamId, requireRole('admin', 'manager', 'su
 
     res.json({ success: true });
   } catch (err: any) {
+    console.error('Field interview error:', err?.message || err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -326,6 +331,7 @@ router.post('/:id/unarchive', validateParamId, requireRole('admin', 'manager', '
 
     res.json({ success: true });
   } catch (err: any) {
+    console.error('Field interview error:', err?.message || err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -341,6 +347,7 @@ router.delete('/:id', validateParamId, requireRole('admin', 'manager'), (req: Re
 
     res.json({ success: true });
   } catch (err: any) {
+    console.error('Field interview error:', err?.message || err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

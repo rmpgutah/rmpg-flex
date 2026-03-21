@@ -571,7 +571,7 @@ export default function SexOffenderRegistryPage() {
           <DetailSection title="Addresses" icon={<MapPin size={12} />}>
             <div className="space-y-2">
               {addrs.map((a, i) => (
-                <div key={i} className="flex items-start gap-2 text-[11px]">
+                <div key={`${a.type}-${a.street}-${i}`} className="flex items-start gap-2 text-[11px]">
                   <span className="text-rmpg-500 flex-shrink-0 w-14 uppercase text-[9px] font-bold mt-0.5"
                     style={{ color: a.type === 'home' ? '#4ade80' : a.type === 'work' ? '#60a5fa' : a.type === 'school' ? '#c084fc' : '#fbbf24' }}>
                     {a.type}
@@ -595,7 +595,7 @@ export default function SexOffenderRegistryPage() {
           <DetailSection title="Offenses" icon={<FileText size={12} />}>
             <div className="space-y-2">
               {offs.map((o, i) => (
-                <div key={i} className="p-2 rounded-sm" style={{ background: '#0d1520', border: '1px solid #1e3048' }}>
+                <div key={`${o.statute}-${o.case_number || i}`} className="p-2 rounded-sm" style={{ background: '#0d1520', border: '1px solid #1e3048' }}>
                   <div className="flex items-center gap-2">
                     <span className="text-red-400 text-[11px] font-mono font-bold">{o.statute}</span>
                     {o.date && <span className="text-[10px] text-rmpg-500">{formatDate(o.date)}</span>}
@@ -664,7 +664,7 @@ export default function SexOffenderRegistryPage() {
           <DetailSection title="Vehicles" icon={<Car size={12} />}>
             <div className="space-y-1">
               {vehs.map((v, i) => (
-                <div key={i} className="flex items-center gap-2 text-[11px] text-rmpg-300">
+                <div key={`${v.plate || ''}-${v.make || ''}-${i}`} className="flex items-center gap-2 text-[11px] text-rmpg-300">
                   <Car size={11} className="text-rmpg-500" />
                   <span>{[v.year, v.color, v.make, v.model].filter(Boolean).join(' ')}</span>
                   {v.plate && <span className="font-mono text-amber-400">{v.state || ''} {v.plate}</span>}
@@ -706,7 +706,7 @@ export default function SexOffenderRegistryPage() {
             return conds.length > 0 ? (
               <div className="space-y-0.5">
                 {conds.map((c, i) => (
-                  <div key={i} className="flex items-start gap-1.5 text-[11px] text-rmpg-400">
+                  <div key={`${c}-${i}`} className="flex items-start gap-1.5 text-[11px] text-rmpg-400">
                     <span className="text-rmpg-600 mt-0.5">•</span> {c}
                   </div>
                 ))}

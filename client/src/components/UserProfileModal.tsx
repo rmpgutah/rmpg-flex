@@ -794,8 +794,8 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   <div className="font-bold text-[9px] uppercase tracking-wider mb-1" style={{ color: '#8a9aaa' }}>
                     Password Requirements
                   </div>
-                  {pwPolicy.map((rule, i) => (
-                    <div key={i}>• {rule}</div>
+                  {pwPolicy.map((rule) => (
+                    <div key={rule}>• {rule}</div>
                   ))}
                 </div>
               )}
