@@ -63,6 +63,7 @@ import { useToast } from '../../components/ToastProvider';
 import { useWebSocket } from '../../context/WebSocketContext';
 import WarningTags from '../../components/WarningTags';
 import WarrantBadge from '../../components/WarrantBadge';
+import WarrantAlertBanner, { type WarrantAlert } from '../../components/WarrantAlertBanner';
 import type { WarningTag } from '../../components/WarningTags';
 import FloatingSaveBar from '../../components/FloatingSaveBar';
 import CadCommandLine from '../../components/CadCommandLine';
@@ -99,6 +100,7 @@ export default function DispatchPage() {
   const isMobile = useIsMobile();
   const { prefs: userPrefs } = useUserPreferences();
   const { districts, sections, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
+  const [warrantAlerts, setWarrantAlerts] = useState<WarrantAlert[]>([]);
   const [calls, setCalls] = useState<CallForService[]>([]);
   const recentlyCreatedIdsRef = useRef<Set<string | number>>(new Set()); // synchronous dedup for POST + WS race
   const [units, setUnits] = useState<Unit[]>([]);
@@ -627,14 +629,24 @@ export default function DispatchPage() {
       } catch { /* non-fatal — alert UI may not update but dispatch continues */ }
     });
 
-    // Listen for warrant alerts on linked persons
+    // Listen for warrant alerts — show persistent banner
     const unsubWarrant = subscribe('call:warrant_alert', (msg: any) => {
       try {
         const data = msg.data || msg;
-        addToast(`⚠️ WARRANT ALERT: ${data.personName} — ${data.warrantCount} active warrant(s) on call`, 'error');
+        const alert: WarrantAlert = {
+          id: `${Date.now()}-${Math.random()}`,
+          callId: data.callId,
+          callNumber: data.callNumber,
+          personName: data.personName || 'Unknown',
+          severity: data.severity || null,
+          charge: data.charge || data.warrantType || null,
+          source: data.source || null,
+          receivedAt: Date.now(),
+        };
+        setWarrantAlerts(prev => [alert, ...prev].slice(0, 5));
         // Refresh data so warrant badges appear immediately
         fetchData({ silent: true });
-      } catch { /* non-fatal — warrant toast is advisory */ }
+      } catch { /* non-fatal — warrant banner is advisory */ }
     });
 
     return () => { unsubDispatch(); unsubUnit(); unsubPanic(); unsubWarrant(); };
@@ -4504,6 +4516,15 @@ export default function DispatchPage() {
         onClose={() => setShowCreateVehicleModal(false)}
         onSubmit={handleCreateVehicleFromDispatch}
         isSubmitting={isCreatingRecord}
+      />
+
+      <WarrantAlertBanner
+        alerts={warrantAlerts}
+        onDismiss={id => setWarrantAlerts(prev => prev.filter(a => a.id !== id))}
+        onViewCall={callId => {
+          const call = calls.find(c => c.id === callId || String(c.id) === String(callId));
+          if (call) setSelectedCall(call);
+        }}
       />
     </div>
   );

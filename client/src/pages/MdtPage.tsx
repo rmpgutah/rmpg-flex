@@ -37,6 +37,7 @@ import StatusBadge from '../components/StatusBadge';
 import PremiseHistory from '../components/PremiseHistory';
 import NcicQueryPanel from '../components/NcicQueryPanel';
 import { formatDateTime } from '../utils/dateUtils';
+import WarrantAlertBanner, { type WarrantAlert } from '../components/WarrantAlertBanner';
 
 // ── Quick Status Buttons ────────────────────────────────────
 
@@ -234,6 +235,7 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
 export default function MdtPage() {
   const isMobile = useIsMobile();
   const gps = useGpsTracking();
+  const [warrantAlerts, setWarrantAlerts] = useState<WarrantAlert[]>([]);
   const [myUnit, setMyUnit] = useState<Unit | null>(null);
   const [myCalls, setMyCalls] = useState<CallForService[]>([]);
   const [pendingCalls, setPendingCalls] = useState<CallForService[]>([]);
@@ -424,7 +426,23 @@ export default function MdtPage() {
         fetchData();
       }
     });
-    return () => { unsubDispatch(); unsubUnit(); };
+    const unsubWarrant = subscribe('call:warrant_alert', (msg: any) => {
+      try {
+        const data = msg.data || msg;
+        const alert: WarrantAlert = {
+          id: `${Date.now()}-${Math.random()}`,
+          callId: data.callId,
+          callNumber: data.callNumber,
+          personName: data.personName || 'Unknown',
+          severity: data.severity || null,
+          charge: data.charge || data.warrantType || null,
+          source: data.source || null,
+          receivedAt: Date.now(),
+        };
+        setWarrantAlerts(prev => [alert, ...prev].slice(0, 5));
+      } catch {}
+    });
+    return () => { unsubDispatch(); unsubUnit(); unsubWarrant(); };
   }, [subscribe, fetchData, gps.unitId]);
 
   // ── Unit Status Change ──
@@ -981,6 +999,11 @@ export default function MdtPage() {
           )}
         </div>
       </div>
+
+      <WarrantAlertBanner
+        alerts={warrantAlerts}
+        onDismiss={id => setWarrantAlerts(prev => prev.filter(a => a.id !== id))}
+      />
     </div>
   );
 }
