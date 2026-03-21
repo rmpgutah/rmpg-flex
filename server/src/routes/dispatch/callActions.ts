@@ -918,8 +918,10 @@ router.post('/calls/:id/persons', validateParamId, requireRole('admin', 'manager
 // PUT /api/dispatch/calls/:id/persons/:linkId — Update person link role/notes
 router.put('/calls/:id/persons/:linkId', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
+    const linkId = parseInt(String(req.params.linkId), 10);
+    if (isNaN(linkId)) return res.status(400).json({ error: 'Invalid link ID' });
     const db = getDb();
-    const link = db.prepare('SELECT * FROM call_persons WHERE id = ? AND call_id = ?').get(req.params.linkId, req.params.id) as any;
+    const link = db.prepare('SELECT * FROM call_persons WHERE id = ? AND call_id = ?').get(linkId, req.params.id) as any;
     if (!link) return res.status(404).json({ error: 'Person link not found' });
 
     const setClauses: string[] = [];
@@ -955,9 +957,11 @@ router.put('/calls/:id/persons/:linkId', validateParamId, requireRole('admin', '
 // DELETE /api/dispatch/calls/:id/persons/:linkId — Unlink person from call
 router.delete('/calls/:id/persons/:linkId', validateParamId, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
+    const linkId = parseInt(String(req.params.linkId), 10);
+    if (isNaN(linkId)) return res.status(400).json({ error: 'Invalid link ID' });
     const db = getDb();
     const link = db.prepare('SELECT cp.*, p.first_name, p.last_name FROM call_persons cp LEFT JOIN persons p ON cp.person_id = p.id WHERE cp.id = ? AND cp.call_id = ?')
-      .get(req.params.linkId, req.params.id) as any;
+      .get(linkId, req.params.id) as any;
     if (!link) return res.status(404).json({ error: 'Person link not found' });
 
     const call = db.prepare('SELECT call_number FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -1200,7 +1204,7 @@ router.post('/calls/:id/send-to-serve', validateParamId, requireRole('admin', 'm
     const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(id);
 
     auditLog(req, 'CREATE', 'serve_queue', String(id), `Sent dispatch call ${call.call_number} to serve queue for ${recipientName}`);
-    broadcast('serve', 'serve_created', job);
+    broadcast('serve', 'serve:created', job);
 
     // Also update the call's activity log
     try {

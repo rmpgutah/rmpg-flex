@@ -10,6 +10,7 @@ import {
   ChevronDown, ChevronUp, Trash2,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { localToday } from '../../../utils/dateUtils';
 import PanelTitleBar from '../../../components/PanelTitleBar';
 
 // ─── Types ─────────────────────────────────────────────────
@@ -148,7 +149,6 @@ function PayPeriodsTab() {
     try {
       await apiFetch('/hr/payroll/periods', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       });
       setShowCreate(false);
@@ -162,7 +162,6 @@ function PayPeriodsTab() {
     try {
       await apiFetch(`/hr/payroll/periods/${id}/status`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),
       });
       loadPeriods();
@@ -283,7 +282,7 @@ function PayrollTab() {
   const [calculating, setCalculating] = useState(false);
 
   useEffect(() => {
-    apiFetch<PayPeriod[]>('/hr/payroll/periods').then(setPeriods).catch(() => {});
+    apiFetch<PayPeriod[]>('/hr/payroll/periods').then(setPeriods).catch(err => console.warn('[HR] Failed to load data:', err));
   }, []);
 
   const loadEntries = useCallback(async (periodId: number) => {
@@ -306,7 +305,6 @@ function PayrollTab() {
     try {
       await apiFetch(`/hr/payroll/entries/calculate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pay_period_id: selectedPeriod }),
       });
       loadEntries(selectedPeriod);
@@ -327,7 +325,6 @@ function PayrollTab() {
     try {
       await apiFetch(`/hr/payroll/entries/bulk-approve`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pay_period_id: selectedPeriod }),
       });
       loadEntries(selectedPeriod);
@@ -481,11 +478,11 @@ function PayRatesTab() {
   useEffect(() => { loadRates(); }, [loadRates]);
 
   useEffect(() => {
-    apiFetch<{ id: string; full_name: string }[]>('/hr/employees').then(setEmployees).catch(() => {});
+    apiFetch<{ id: string; full_name: string }[]>('/hr/employees').then(setEmployees).catch(err => console.warn('[HR] Failed to load data:', err));
   }, []);
 
   const startCreate = () => {
-    setFormData({ user_id: '', rate_type: 'hourly', hourly_rate: 0, overtime_multiplier: 1.5, effective_date: new Date().toISOString().split('T')[0] });
+    setFormData({ user_id: '', rate_type: 'hourly', hourly_rate: 0, overtime_multiplier: 1.5, effective_date: localToday() });
     setEditingId(null);
     setShowCreate(true);
   };
@@ -509,13 +506,11 @@ function PayRatesTab() {
       if (editingId) {
         await apiFetch(`/hr/payroll/rates/${editingId}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(formData),
         });
       } else {
         await apiFetch('/hr/payroll/rates', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(formData),
         });
       }
@@ -690,7 +685,7 @@ function DeductionsTab() {
   useEffect(() => { loadDeductions(); }, [loadDeductions]);
 
   useEffect(() => {
-    apiFetch<{ id: string; full_name: string }[]>('/hr/employees').then(setEmployees).catch(() => {});
+    apiFetch<{ id: string; full_name: string }[]>('/hr/employees').then(setEmployees).catch(err => console.warn('[HR] Failed to load data:', err));
   }, []);
 
   const startCreate = () => {
@@ -719,13 +714,11 @@ function DeductionsTab() {
       if (editingId) {
         await apiFetch(`/hr/payroll/deductions/${editingId}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(formData),
         });
       } else {
         await apiFetch('/hr/payroll/deductions', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(formData),
         });
       }
@@ -740,7 +733,6 @@ function DeductionsTab() {
     try {
       await apiFetch(`/hr/payroll/deductions/${d.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...d, is_active: !d.is_active }),
       });
       loadDeductions();

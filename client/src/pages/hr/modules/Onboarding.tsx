@@ -190,13 +190,11 @@ function ChecklistsTab() {
       if (editingChecklist) {
         await apiFetch(`/hr/onboarding/checklists/${editingChecklist.id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
       } else {
         await apiFetch('/hr/onboarding/checklists', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
       }
@@ -211,7 +209,6 @@ function ChecklistsTab() {
     try {
       await apiFetch(`/hr/onboarding/checklists/${cl.id}/toggle`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_active: !cl.is_active }),
       });
       loadChecklists();
@@ -427,8 +424,8 @@ function ProgressTab() {
   const [requiresAck, setRequiresAck] = useState(false);
 
   useEffect(() => {
-    apiFetch<{ id: string; full_name: string; badge_number?: string }[]>('/hr/employees').then(setEmployees).catch(() => {});
-    apiFetch<Checklist[]>('/hr/onboarding/checklists?active=true').then(setAvailableChecklists).catch(() => {});
+    apiFetch<{ id: string; full_name: string; badge_number?: string }[]>('/hr/employees').then(setEmployees).catch(err => console.warn('[HR] Failed to load data:', err));
+    apiFetch<Checklist[]>('/hr/onboarding/checklists?active=true').then(setAvailableChecklists).catch(err => console.warn('[HR] Failed to load data:', err));
   }, []);
 
   const loadEmployeeData = useCallback(async (userId: string) => {
@@ -453,7 +450,6 @@ function ProgressTab() {
     try {
       await apiFetch(`/hr/onboarding/progress/${assignmentId}/tasks/${taskId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ completed }),
       });
       if (selectedEmployee) loadEmployeeData(selectedEmployee);
@@ -466,7 +462,6 @@ function ProgressTab() {
     try {
       await apiFetch('/hr/onboarding/assign', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: selectedEmployee, checklist_id: assignChecklistId }),
       });
       setShowAssign(false);

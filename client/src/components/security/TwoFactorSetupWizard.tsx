@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Shield, QrCode, Keyboard, Copy, Check, AlertTriangle, RefreshCw } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
+import { apiFetch } from '../../hooks/useApi';
 import BackupCodesDisplay from './BackupCodesDisplay';
 
 type WizardStep = 'intro' | 'scan' | 'verify' | 'backup' | 'complete';
@@ -11,7 +11,6 @@ interface Props {
 }
 
 export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
-  const { token } = useAuth();
   const [step, setStep] = useState<WizardStep>('intro');
   const [qrDataUri, setQrDataUri] = useState('');
   const [manualKey, setManualKey] = useState('');
@@ -26,20 +25,12 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/auth/2fa/setup', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Setup failed');
+      const data = await apiFetch<any>('/auth/2fa/setup', { method: 'POST' });
       setQrDataUri(data.qrCodeDataUri);
       setManualKey(data.manualKey);
       setStep('scan');
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Setup failed');
     }
     setLoading(false);
   };
@@ -49,20 +40,14 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/auth/2fa/setup/verify', {
+      const data = await apiFetch<any>('/auth/2fa/setup/verify', {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({ token: verifyCode }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Verification failed');
       setBackupCodes(data.backupCodes);
       setStep('backup');
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Verification failed');
       setVerifyCode('');
     }
     setLoading(false);

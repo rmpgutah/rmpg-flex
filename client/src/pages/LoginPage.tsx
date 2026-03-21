@@ -16,7 +16,7 @@ import PasswordStrengthMeter from '../components/security/PasswordStrengthMeter'
 import BackupCodesDisplay from '../components/security/BackupCodesDisplay';
 
 const APP_VERSION: string =
-  typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '5.3.9';
+  typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0';
 const BUILD_TIME: string =
   typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : '';
 
@@ -159,15 +159,19 @@ export default function LoginPage() {
     return () => clearTimeout(timer);
   }, [loginStep]);
 
-  // Auto-submit TOTP when 6 digits entered (with ref guard to prevent double-submit)
-  const totpSubmittedRef = useRef(false);
+  // Synchronous guard to prevent double-submit from concurrent triggers
+  // (useEffect auto-submit, onComplete callback, and form onSubmit can all fire
+  // before React's batched setLoginBusy(true) takes effect)
+  const totpSubmittingRef = useRef(false);
+
+  // Auto-submit TOTP when 6 digits entered
   useEffect(() => {
     const trimmed = totpCode.replace(/\s/g, '');
-    if (trimmed.length === 6 && loginStep === 'verify_2fa' && !loginBusy && !totpSubmittedRef.current) {
-      totpSubmittedRef.current = true;
-      handleTotpSubmit(trimmed);
+    if (trimmed.length === 6 && loginStep === 'verify_2fa' && !loginBusy && !totpSubmittingRef.current) {
+      totpSubmittingRef.current = true;
+      handleTotpSubmit(trimmed).finally(() => { totpSubmittingRef.current = false; });
     }
-    if (trimmed.length < 6) totpSubmittedRef.current = false;
+    if (trimmed.length < 6) totpSubmittingRef.current = false;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [totpCode, loginStep, loginBusy]);
 
@@ -247,13 +251,18 @@ export default function LoginPage() {
     }
   };
 
+  const setupSubmittingRef = useRef(false);
   const handleConfirmSetup = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (setupSubmittingRef.current) return;
+    setupSubmittingRef.current = true;
     clearError();
     try {
       await confirmSetup2FA(setupCode);
     } catch {
       setSetupCode('');
+    } finally {
+      setupSubmittingRef.current = false;
     }
   };
 
@@ -662,7 +671,10 @@ export default function LoginPage() {
                 onSubmit={(e) => {
                   e.preventDefault();
                   const trimmed = totpCode.replace(/\s/g, '');
-                  if (trimmed.length === 6 && !loginBusy) handleTotpSubmit(trimmed);
+                  if (trimmed.length === 6 && !loginBusy && !totpSubmittingRef.current) {
+                    totpSubmittingRef.current = true;
+                    handleTotpSubmit(trimmed).finally(() => { totpSubmittingRef.current = false; });
+                  }
                 }}
                 className="space-y-4 login-step-enter"
               >
@@ -678,7 +690,6 @@ export default function LoginPage() {
                 <TotpCodeInput
                   value={totpCode}
                   onChange={setTotpCode}
-                  onComplete={handleTotpSubmit}
                   disabled={loginBusy}
                   error={!!error}
                 />

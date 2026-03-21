@@ -125,7 +125,7 @@ router.post('/leave-types', requireRole(...HR_FULL_ROLES), (req: Request, res: R
       VALUES (?, ?, ?, ?, ?, ?, 1, ?)
     `).run(name, description || null, default_hours_per_year || 0, accrual_rate || 0, max_carryover || 0, requires_approval ?? 1, localNow());
 
-    const id = result.lastInsertRowid;
+    const id = Number(result.lastInsertRowid);
     auditLog(req, 'CREATE', 'system_config', id, `Created leave type: ${name}`);
     broadcast('hr', 'hr:updated', { type: 'leave_type', action: 'created', id });
     res.status(201).json({ success: true, id });
@@ -256,7 +256,7 @@ router.post('/leave-balances', requireRole(...HR_FULL_ROLES), (req: Request, res
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(user_id, leave_type_id, year, allocated_hours || 0, used_hours || 0, adjustment_hours || 0, notes || null, localNow(), localNow());
 
-    const id = result.lastInsertRowid;
+    const id = Number(result.lastInsertRowid);
     auditLog(req, 'CREATE', 'users', id, `Created leave balance for user #${user_id}, type #${leave_type_id}, year ${year}`);
     broadcast('hr', 'hr:updated', { type: 'leave_balance', action: 'created', id });
     res.status(201).json({ success: true, id });
@@ -393,7 +393,7 @@ router.post('/leave-requests', (req: Request, res: Response) => {
       VALUES (?, ?, ?, ?, ?, ?, 'requested', ?, ?)
     `).run(userId, leave_type_id, start_date, end_date, hours_requested, reason || null, localNow(), localNow());
 
-    const id = result.lastInsertRowid;
+    const id = Number(result.lastInsertRowid);
     auditLog(req, 'CREATE', 'users', id, `Created leave request: ${hours_requested}hrs from ${start_date} to ${end_date}`);
     broadcast('hr', 'hr:updated', { type: 'leave_request', action: 'created', id, user_id: userId });
     res.status(201).json({ success: true, id });
@@ -522,7 +522,7 @@ router.post('/review-cycles', requireRole(...HR_FULL_ROLES), (req: Request, res:
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(name, description || null, start_date, end_date, review_type || 'annual', status || 'planned', localNow(), localNow());
 
-    const id = result.lastInsertRowid;
+    const id = Number(result.lastInsertRowid);
     auditLog(req, 'CREATE', 'system_config', id, `Created review cycle: ${name}`);
     broadcast('hr', 'hr:updated', { type: 'review_cycle', action: 'created', id });
     res.status(201).json({ success: true, id });
@@ -635,7 +635,7 @@ router.post('/reviews', requireRole(...HR_READ_ROLES), (req: Request, res: Respo
       localNow(), localNow()
     );
 
-    const id = result.lastInsertRowid;
+    const id = Number(result.lastInsertRowid);
     auditLog(req, 'CREATE', 'users', id, `Created performance review for user #${user_id}`);
     broadcast('hr', 'hr:updated', { type: 'review', action: 'created', id, user_id });
     res.status(201).json({ success: true, id });
@@ -769,7 +769,7 @@ router.post('/goals', requireRole(...HR_READ_ROLES), (req: Request, res: Respons
       localNow(), localNow()
     );
 
-    const id = result.lastInsertRowid;
+    const id = Number(result.lastInsertRowid);
     auditLog(req, 'CREATE', 'users', id, `Created goal "${title}" for user #${user_id}`);
     broadcast('hr', 'hr:updated', { type: 'goal', action: 'created', id, user_id });
     res.status(201).json({ success: true, id });
@@ -883,7 +883,7 @@ router.post('/disciplinary', requireRole(...HR_FULL_ROLES), (req: Request, res: 
       req.user!.userId, status || 'active', localNow(), localNow()
     );
 
-    const id = result.lastInsertRowid;
+    const id = Number(result.lastInsertRowid);
     auditLog(req, 'CREATE', 'users', id, `Created disciplinary action (${action_type}) for user #${user_id}`);
     broadcast('hr', 'hr:updated', { type: 'disciplinary', action: 'created', id, user_id });
     res.status(201).json({ success: true, id });
@@ -989,7 +989,7 @@ router.post('/grievances', (req: Request, res: Response) => {
       VALUES (?, ?, ?, ?, ?, ?, 'filed', ?, ?)
     `).run(grievanceNumber, userId, subject, description, category || 'general', against_user_id || null, localNow(), localNow());
 
-    const id = result.lastInsertRowid;
+    const id = Number(result.lastInsertRowid);
     auditLog(req, 'CREATE', 'users', id, `Filed grievance ${grievanceNumber}: ${subject}`);
     broadcast('hr', 'hr:updated', { type: 'grievance', action: 'created', id, grievance_number: grievanceNumber });
     res.status(201).json({ success: true, id, grievance_number: grievanceNumber });
@@ -1072,7 +1072,7 @@ router.post('/onboarding/checklists', requireRole(...HR_FULL_ROLES), (req: Reque
 
     const txn = db.transaction(() => {
       const result = insertChecklist.run(name, description || null, role_target || null, now, now);
-      const checklistId = result.lastInsertRowid;
+      const checklistId = Number(result.lastInsertRowid);
 
       if (Array.isArray(tasks) && tasks.length > 0) {
         for (const task of tasks) {
@@ -1331,7 +1331,7 @@ router.post('/documents', requireRole(...HR_FULL_ROLES), (req: Request, res: Res
       VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
     `).run(user_id, document_type, title, file_id || null, expires_at || null, notes || null, req.user!.userId, localNow(), localNow());
 
-    const id = result.lastInsertRowid;
+    const id = Number(result.lastInsertRowid);
     auditLog(req, 'CREATE', 'company_documents', id, `Uploaded document "${title}" for user #${user_id}`);
     broadcast('hr', 'hr:updated', { type: 'document', action: 'created', id, user_id });
     res.status(201).json({ success: true, id });
@@ -1423,7 +1423,7 @@ router.post('/documents/:id/acknowledge', validateParamId, (req: Request, res: R
       VALUES (?, ?, ?)
     `).run(id, userId, localNow());
 
-    const ackId = result.lastInsertRowid;
+    const ackId = Number(result.lastInsertRowid);
     auditLog(req, 'UPDATE', 'company_documents', id, `User #${userId} acknowledged document #${id}`);
     broadcast('hr', 'hr:updated', { type: 'document_ack', action: 'created', document_id: id, user_id: userId });
     res.status(201).json({ success: true, id: ackId });
@@ -1502,7 +1502,7 @@ router.post('/pay-rates', requireRole(...HR_FULL_ROLES), (req: Request, res: Res
         VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)
       `).run(user_id, pay_type, rate, effective_date, notes || null, req.user!.userId, now, now);
 
-      return result.lastInsertRowid;
+      return Number(result.lastInsertRowid);
     });
 
     const id = txn();
@@ -1578,7 +1578,7 @@ router.post('/pay-periods', requireRole(...HR_FULL_ROLES), (req: Request, res: R
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(start_date, end_date, pay_date, status || 'open', localNow(), localNow());
 
-    const id = result.lastInsertRowid;
+    const id = Number(result.lastInsertRowid);
     auditLog(req, 'CREATE', 'system_config', id, `Created pay period: ${start_date} to ${end_date}, pay date ${pay_date}`);
     broadcast('hr', 'hr:updated', { type: 'pay_period', action: 'created', id });
     res.status(201).json({ success: true, id });
@@ -1776,7 +1776,7 @@ router.post('/payroll', requireRole(...HR_FULL_ROLES), (req: Request, res: Respo
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)
       `).run(pay_period_id, user_id, regular_hours || 0, overtime_hours || 0, gross_pay || 0, total_deductions || 0, net_pay || 0, notes || null, now, now);
 
-      const id = result.lastInsertRowid;
+      const id = Number(result.lastInsertRowid);
       auditLog(req, 'CREATE', 'users', id, `Created payroll entry for user #${user_id}, period #${pay_period_id}`);
       broadcast('hr', 'hr:updated', { type: 'payroll', action: 'created', id });
       res.status(201).json({ success: true, id, updated: false });
@@ -1858,7 +1858,7 @@ router.post('/deductions', requireRole(...HR_FULL_ROLES), (req: Request, res: Re
       VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
     `).run(user_id, name, deduction_type, calculation_type, amount, effective_date || null, end_date || null, notes || null, localNow(), localNow());
 
-    const id = result.lastInsertRowid;
+    const id = Number(result.lastInsertRowid);
     auditLog(req, 'CREATE', 'users', id, `Created deduction "${name}" (${calculation_type}: ${amount}) for user #${user_id}`);
     broadcast('hr', 'hr:updated', { type: 'deduction', action: 'created', id, user_id });
     res.status(201).json({ success: true, id });

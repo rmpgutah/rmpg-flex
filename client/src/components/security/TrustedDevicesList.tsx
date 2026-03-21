@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Monitor, Smartphone, Tablet, Globe, Trash2, RefreshCw, Shield } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
+import { apiFetch } from '../../hooks/useApi';
 import type { TrustedDevice } from '../../types';
 
 function deviceIcon(name: string) {
@@ -35,31 +35,25 @@ function daysUntil(dateStr: string): string {
 }
 
 export default function TrustedDevicesList() {
-  const { token } = useAuth();
   const [devices, setDevices] = useState<TrustedDevice[]>([]);
   const [loading, setLoading] = useState(true);
   const [revoking, setRevoking] = useState<number | null>(null);
 
   const fetchDevices = useCallback(async () => {
     try {
-      const res = await fetch('/api/auth/security/trusted-devices', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) setDevices(await res.json());
+      const data = await apiFetch<TrustedDevice[]>('/auth/security/trusted-devices');
+      setDevices(data);
     } catch { /* ignore */ }
     setLoading(false);
-  }, [token]);
+  }, []);
 
   useEffect(() => { fetchDevices(); }, [fetchDevices]);
 
   const revokeDevice = async (id: number) => {
     setRevoking(id);
     try {
-      const res = await fetch(`/api/auth/security/trusted-devices/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}`, 'X-Requested-With': 'XMLHttpRequest' },
-      });
-      if (res.ok) setDevices(prev => prev.filter(d => d.id !== id));
+      await apiFetch(`/auth/security/trusted-devices/${id}`, { method: 'DELETE' });
+      setDevices(prev => prev.filter(d => d.id !== id));
     } catch { /* ignore */ }
     setRevoking(null);
   };

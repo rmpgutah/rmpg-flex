@@ -56,7 +56,7 @@ export default function GrievanceModal({ onClose, onSaved, grievance }: Grievanc
   const [error, setError] = useState('');
 
   useEffect(() => {
-    apiFetch<UserOption[]>('/hr/employees').then(setUsers).catch(() => {});
+    apiFetch<UserOption[]>('/hr/employees').then(setUsers).catch(err => console.warn('[HR] Failed to load data:', err));
   }, []);
 
   const handleSubmit = async () => {
@@ -77,13 +77,11 @@ export default function GrievanceModal({ onClose, onSaved, grievance }: Grievanc
       if (grievance?.id) {
         await apiFetch(`/hr/grievances/${grievance.id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
       } else {
         await apiFetch('/hr/grievances', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
       }

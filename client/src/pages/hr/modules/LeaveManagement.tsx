@@ -126,7 +126,6 @@ function RequestsTab() {
     try {
       await apiFetch(`/hr/leave-requests/${id}/review`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: action, reviewer_notes: '' }),
       });
       loadRequests();
@@ -334,7 +333,6 @@ function BalancesTab() {
     try {
       await apiFetch('/hr/leave-balances/adjust', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user_id: adjustModal.userId,
           leave_type_id: adjustModal.leaveTypeId,
@@ -501,13 +499,11 @@ function TypesTab() {
       if (editingId) {
         await apiFetch(`/hr/leave-types/${editingId}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(formData),
         });
       } else {
         await apiFetch('/hr/leave-types', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(formData),
         });
       }
@@ -522,7 +518,6 @@ function TypesTab() {
     try {
       await apiFetch(`/hr/leave-types/${lt.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...lt, is_active: !lt.is_active }),
       });
       loadTypes();

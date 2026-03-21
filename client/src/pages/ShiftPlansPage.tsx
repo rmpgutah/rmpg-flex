@@ -417,8 +417,8 @@ export default function ShiftPlansPage() {
                           <td className="px-4 py-2">
                             {a.officerNames.length > 0 ? (
                               <div className="flex flex-wrap gap-1">
-                                {a.officerNames.map((name, i) => (
-                                  <span key={i} className="text-[9px] font-mono px-1 py-px bg-blue-900/30 text-blue-400 border border-blue-800/50">
+                                {a.officerNames.map((name) => (
+                                  <span key={name} className="text-[9px] font-mono px-1 py-px bg-blue-900/30 text-blue-400 border border-blue-800/50">
                                     {name}
                                   </span>
                                 ))}
@@ -430,8 +430,8 @@ export default function ShiftPlansPage() {
                           <td className="px-4 py-2">
                             {a.unitCallSigns.length > 0 ? (
                               <div className="flex flex-wrap gap-1">
-                                {a.unitCallSigns.map((cs, i) => (
-                                  <span key={i} className="text-[9px] font-mono px-1 py-px bg-green-900/30 text-green-400 border border-green-800/50">
+                                {a.unitCallSigns.map((cs) => (
+                                  <span key={cs} className="text-[9px] font-mono px-1 py-px bg-green-900/30 text-green-400 border border-green-800/50">
                                     {cs}
                                   </span>
                                 ))}

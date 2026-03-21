@@ -10,6 +10,17 @@ import { localNow } from '../utils/timeUtils';
 const JWT_ISSUER = 'rmpg-flex';
 const JWT_AUDIENCE = 'rmpg-flex-api';
 
+/**
+ * All valid user roles — single source of truth.
+ * Must match the CHECK constraint in the users table schema.
+ */
+export const ALL_VALID_ROLES = [
+  'admin', 'manager', 'supervisor', 'officer', 'dispatcher',
+  'contract_manager', 'human_resources', 'client_viewer',
+] as const;
+
+export type ValidRole = typeof ALL_VALID_ROLES[number];
+
 export interface JwtPayload {
   userId: number;
   username: string;

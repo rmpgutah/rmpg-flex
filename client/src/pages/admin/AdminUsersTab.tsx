@@ -49,7 +49,7 @@ interface UserSession {
   last_used_at: string;
 }
 
-const ALL_ROLES: UserRole[] = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager'];
+const ALL_ROLES: UserRole[] = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager', 'human_resources', 'client_viewer'];
 
 const ROLE_COLORS: Record<UserRole, string> = {
   admin: 'bg-red-900/50 text-red-400 border-red-700/50',
@@ -59,6 +59,7 @@ const ROLE_COLORS: Record<UserRole, string> = {
   dispatcher: 'bg-green-900/50 text-green-400 border-green-700/50',
   client_viewer: 'bg-teal-900/50 text-teal-400 border-teal-700/50',
   contract_manager: 'bg-orange-900/50 text-orange-400 border-orange-700/50',
+  human_resources: 'bg-pink-900/50 text-pink-400 border-pink-700/50',
 };
 
 type UserStatus = 'active' | 'inactive' | 'terminated';
@@ -388,7 +389,7 @@ export default function AdminUsersTab({
                     onClick={() => {
                       if (window.confirm(`Reset 2FA for ${selectedUser.first_name} ${selectedUser.last_name}? They will need to set up 2FA again.`))
                         apiFetch(`/admin/users/${selectedUser.id}/totp`, { method: 'DELETE' })
-                          .then(() => { (selectedUser as any).totp_enabled = false; setSelectedUser({ ...selectedUser }); })
+                          .then(() => { setSelectedUser({ ...selectedUser, totp_enabled: false } as any); })
                           .catch((err) => { console.warn('[AdminUsersTab] reset 2FA failed:', err); alert('Failed to reset 2FA: ' + (err?.message || 'Unknown error')); });
                     }}
                     className="toolbar-btn text-amber-400 hover:text-amber-300 hover:bg-amber-900/30"
@@ -525,8 +526,8 @@ export default function AdminUsersTab({
                   <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">Certifications & Training</h3>
                   {selectedUser.certifications ? (
                     <div className="flex flex-wrap gap-2">
-                      {selectedUser.certifications.split(',').map((cert, i) => (
-                        <span key={i} className="px-2 py-1 bg-brand-900/30 text-brand-300 text-[10px] font-medium border border-brand-700/40">
+                      {selectedUser.certifications.split(',').map((cert) => (
+                        <span key={cert.trim()} className="px-2 py-1 bg-brand-900/30 text-brand-300 text-[10px] font-medium border border-brand-700/40">
                           {cert.trim()}
                         </span>
                       ))}

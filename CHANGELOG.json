@@ -1,6 +1,22 @@
 {
-  "version": "5.5.0",
+  "version": "5.6.0",
   "changelog": [
+    {
+      "version": "5.6.0",
+      "date": "2026-03-20",
+      "type": "minor",
+      "summary": "Large file upload/download with progress tracking, chunked parallel uploads, HTTP/2",
+      "changes": [
+        { "type": "feature", "description": "Chunked parallel uploads (8 workers x 25MB) for files up to 3GB" },
+        { "type": "feature", "description": "Real-time upload/download progress bars with speed, ETA, and size display (GB/MB)" },
+        { "type": "feature", "description": "HTTP 206 Range-based resumable downloads for all file routes" },
+        { "type": "enhancement", "description": "HTTP/2 enabled via nginx for multiplexed transfers" },
+        { "type": "enhancement", "description": "Gzip compression for API responses" },
+        { "type": "enhancement", "description": "Kernel TCP tuning for high-throughput file transfers" },
+        { "type": "fix", "description": "Installer downloads now support pause/resume via Range requests" },
+        { "type": "fix", "description": "nginx client_max_body_size raised from 200MB to 3.5GB" }
+      ]
+    },
     {
       "version": "5.3.9",
       "date": "2026-02-28",

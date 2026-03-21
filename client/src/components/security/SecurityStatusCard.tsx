@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Shield, Key, Monitor, Clock, Bell, RefreshCw, AlertTriangle } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
+import { apiFetch } from '../../hooks/useApi';
 import type { SecurityStatus } from '../../types';
 
 interface StatusItem {
@@ -16,19 +16,16 @@ function ledClass(status: string): string {
 }
 
 export default function SecurityStatusCard() {
-  const { token } = useAuth();
   const [status, setStatus] = useState<SecurityStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch('/api/auth/security/status', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) setStatus(await res.json());
+      const data = await apiFetch<SecurityStatus>('/auth/security/status');
+      setStatus(data);
     } catch { /* ignore */ }
     setLoading(false);
-  }, [token]);
+  }, []);
 
   useEffect(() => { fetchStatus(); }, [fetchStatus]);
 

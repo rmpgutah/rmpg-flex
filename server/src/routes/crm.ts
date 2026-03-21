@@ -117,11 +117,11 @@ router.get('/tasks', requireRole('admin', 'manager', 'contract_manager'), (req: 
         params.push(...statuses);
       }
     }
-    if (client_id) { sql += ' AND t.client_id = ?'; params.push(client_id); }
-    if (assigned_to) { sql += ' AND t.assigned_to = ?'; params.push(assigned_to); }
+    if (client_id) { const cid = parseInt(String(client_id), 10); if (!isNaN(cid)) { sql += ' AND t.client_id = ?'; params.push(cid); } }
+    if (assigned_to) { const aid = parseInt(String(assigned_to), 10); if (!isNaN(aid)) { sql += ' AND t.assigned_to = ?'; params.push(aid); } }
     if (due_before) { sql += ' AND t.due_date <= ?'; params.push(due_before); }
 
-    sql += ' ORDER BY CASE t.priority WHEN \'urgent\' THEN 0 WHEN \'high\' THEN 1 WHEN \'normal\' THEN 2 ELSE 3 END, t.due_date ASC NULLS LAST, t.created_at DESC';
+    sql += ` ORDER BY CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, COALESCE(t.due_date, '9999-12-31') ASC, t.created_at DESC`;
 
     res.json(db.prepare(sql).all(...params));
   } catch (err: any) {
@@ -141,9 +141,12 @@ router.post('/tasks', requireRole('admin', 'manager', 'contract_manager'), (req:
       INSERT INTO crm_tasks (client_id, property_id, title, description, task_type, priority, status, due_date, assigned_to, notes, created_by, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
     `).run(
-      client_id || null, property_id || null, title.trim(), description || null,
+      client_id ? parseInt(String(client_id), 10) || null : null,
+      property_id ? parseInt(String(property_id), 10) || null : null,
+      title.trim(), description || null,
       task_type || 'follow_up', priority || 'normal', due_date || null,
-      assigned_to || null, notes || null, req.user?.userId || null, now, now,
+      assigned_to ? parseInt(String(assigned_to), 10) || null : null,
+      notes || null, req.user?.userId || null, now, now,
     );
 
     const taskId = Number(result.lastInsertRowid);

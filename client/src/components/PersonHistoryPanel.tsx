@@ -165,19 +165,23 @@ export default function PersonHistoryPanel({
 
   useEffect(() => {
     if (!personId) return;
+    let cancelled = false;
     setLoading(true);
     setError(null);
     apiFetch<SystemHistoryResponse>(`/records/persons/${personId}/system-history`)
       .then((result) => {
+        if (cancelled) return;
         setData(result);
         // Auto-expand warrants section if there are active warrants
         if (result.summary.active_warrants > 0) setWarrantsOpen(true);
       })
       .catch((err) => {
+        if (cancelled) return;
         setError(err instanceof Error ? err.message : 'Failed to load system history');
         setData(null);
       })
-      .finally(() => setLoading(false));
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [personId]);
 
   // ── Summary Badges ─────────────────────────────

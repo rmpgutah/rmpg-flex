@@ -1188,7 +1188,7 @@ export default function MapPage() {
       badge_number: string; points: TrailPoint[];
     }
 
-    let retryTimeout: ReturnType<typeof setTimeout>;
+    let retryTimeout: ReturnType<typeof setTimeout> | null = null;
 
     const fetchTrails = async () => {
       breadcrumbLinesRef.current.forEach((l) => l.setMap(null));
@@ -1321,7 +1321,7 @@ export default function MapPage() {
     const interval = setInterval(fetchTrails, 15000);
     return () => {
       clearInterval(interval);
-      clearTimeout(retryTimeout);
+      if (retryTimeout) clearTimeout(retryTimeout);
       // Clean up polylines, markers, and arrows on unmount to prevent memory leaks
       breadcrumbLinesRef.current.forEach((l) => l.setMap(null));
       breadcrumbLinesRef.current = [];
@@ -1401,6 +1401,8 @@ export default function MapPage() {
         playbackAnimRef.current = null;
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps — playbackTrails intentionally omitted;
+    // including it would restart the animation every 15s when trail data refreshes
   }, [isPlaying, playbackUnit, playbackSpeed, mapLoaded]);
 
   // Cleanup playback marker when playback unit changes or stops

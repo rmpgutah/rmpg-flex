@@ -48,7 +48,7 @@ export default function ForcePasswordChangeModal() {
         if (data?.rules?.minLength) setMinLength(data.rules.minLength);
         if (data?.rules?.requireSpecial !== undefined) setRequireSpecial(data.rules.requireSpecial);
       })
-      .catch(() => {});
+      .catch(err => console.warn('Failed to load data:', err));
   }, []);
 
   // Live policy validation — rules fetched dynamically from server

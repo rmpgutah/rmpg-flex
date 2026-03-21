@@ -154,7 +154,6 @@ function ActionsTab() {
     try {
       await apiFetch(`/hr/disciplinary-actions/${id}/status`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       });
       loadActions();
@@ -363,7 +362,7 @@ function GrievancesTab() {
   useEffect(() => { loadGrievances(); }, [loadGrievances]);
 
   useEffect(() => {
-    apiFetch<{ id: string; full_name: string }[]>('/hr/employees').then(setEmployees).catch(() => {});
+    apiFetch<{ id: string; full_name: string }[]>('/hr/employees').then(setEmployees).catch(err => console.warn('[HR] Failed to load data:', err));
   }, []);
 
   const handleModalSaved = () => {
@@ -376,7 +375,6 @@ function GrievancesTab() {
     try {
       await apiFetch(`/hr/grievances/${assignModal}/assign`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ assigned_to_id: assignTo }),
       });
       setAssignModal(null);
@@ -390,7 +388,6 @@ function GrievancesTab() {
     try {
       await apiFetch(`/hr/grievances/${resolveModal}/resolve`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ resolution: resolution.trim() }),
       });
       setResolveModal(null);

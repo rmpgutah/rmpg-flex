@@ -1484,9 +1484,29 @@ export type WSMessageType =
   | 'serve:created'
   | 'serve:updated'
   | 'serve:attempt'
+  | 'serve_sync'
+  | 'serve_reordered'
   | 'call:warrant_alert'
   // Dashcam
-  | 'dashcam_burn_progress';
+  | 'dashcam_burn_progress'
+  | 'dashcam_uploaded'
+  | 'dashcam_updated'
+  | 'dashcam_deleted'
+  | 'dashcam_linked'
+  | 'dashcam_unlinked'
+  // Trespass Orders
+  | 'trespass_order_created'
+  | 'trespass_order_updated'
+  | 'trespass_order_served'
+  | 'trespass_order_lifted'
+  | 'trespass_order_violated'
+  // Field Interviews
+  | 'fi_created'
+  | 'fi_updated'
+  // Warrants
+  | 'warrant'
+  // HR
+  | 'hr:updated';
 
 export interface WSMessage {
   type: WSMessageType;

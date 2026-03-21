@@ -2,6 +2,11 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import type { User } from '../types';
 import { resetVoiceState } from '../utils/voiceAlerts';
 
+/** Strip HTML tags from server error messages to prevent XSS in UI display. */
+function sanitizeErrorMsg(msg: string): string {
+  return msg.replace(/<[^>]*>/g, '').slice(0, 200);
+}
+
 export type LoginStep =
   | 'username'
   | 'password'
@@ -135,12 +140,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(() => { try { return localStorage.getItem(TOKEN_KEY); } catch { return null; } });
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, _setErrorRaw] = useState<string | null>(null);
+  const setError = useCallback((msg: string | null) => _setErrorRaw(msg ? sanitizeErrorMsg(msg) : null), []);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isRefreshingRef = useRef(false);
   const refreshFailCountRef = useRef(0);
 
-  const clearError = useCallback(() => setError(null), []);
+  const clearError = useCallback(() => _setErrorRaw(null), []);
 
   // Schedule token refresh based on access token expiry
   const scheduleRefresh = useCallback((accessToken: string) => {
@@ -232,6 +238,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try { localStorage.removeItem(TOKEN_KEY); } catch { /* ignore */ }
     try { localStorage.removeItem(REFRESH_TOKEN_KEY); } catch { /* ignore */ }
     try { localStorage.removeItem(SESSION_ID_KEY); } catch { /* ignore */ }
+    // Clear signed URL cache (resource signatures are tied to this session)
+    try { import('../utils/signedUrls').then(m => m.clearSignedUrlCache()); } catch { /* ignore */ }
     if (refreshTimerRef.current) {
       clearTimeout(refreshTimerRef.current);
       refreshTimerRef.current = null;

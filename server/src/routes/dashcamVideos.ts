@@ -379,12 +379,27 @@ router.delete('/:id', validateParamId, authenticateToken, requireRole('admin'), 
 // GET /api/fleet/dashcam-videos/:id/stream — Stream with Range
 // ============================================================
 router.get('/:id/stream', validateParamId, (req: Request, res: Response, next) => {
-  // Accept token from query string for <video> elements (can't set Authorization header)
+  // Prefer HMAC signed access (no JWT in URL), fall back to legacy ?token= during migration
+  if (!req.headers['authorization'] && typeof req.query.sig === 'string') {
+    const { verifyResourceAccess } = require('../utils/signedAccess');
+    const exp = parseInt(req.query.exp as string, 10);
+    const nonce = req.query.nonce as string | undefined;
+    if (verifyResourceAccess('dashcam', req.params.id, req.query.sig as string, exp, nonce)) {
+      req.user = { userId: 0, username: 'signed-access', role: 'viewer', fullName: 'Signed Access' };
+      next();
+      return;
+    }
+    res.status(403).json({ error: 'Invalid or expired signature' });
+    return;
+  }
+  // Legacy: Accept token from query string for <video> elements (can't set Authorization header)
   if (!req.headers['authorization'] && typeof req.query.token === 'string' && req.query.token.length < 2048) {
+    const { logLegacyTokenUsage } = require('../utils/signedAccess');
+    logLegacyTokenUsage('dashcam/stream');
     req.headers['authorization'] = `Bearer ${req.query.token}`;
   }
   next();
-}, authenticateToken, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+}, authenticateToken, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'viewer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const video = db.prepare('SELECT * FROM dashcam_videos WHERE id = ?').get(req.params.id) as any;
@@ -798,7 +813,22 @@ router.post('/:id/burn', validateParamId, authenticateToken, requireRole('admin'
 // GET /api/fleet/dashcam-videos/:id/download-burned — Download burned copy
 // ============================================================
 router.get('/:id/download-burned', validateParamId, (req: Request, res: Response, next) => {
+  // Prefer HMAC signed access, fall back to legacy ?token=
+  if (!req.headers['authorization'] && typeof req.query.sig === 'string') {
+    const { verifyResourceAccess } = require('../utils/signedAccess');
+    const exp = parseInt(req.query.exp as string, 10);
+    const nonce = req.query.nonce as string | undefined;
+    if (verifyResourceAccess('dashcam', req.params.id, req.query.sig as string, exp, nonce)) {
+      req.user = { userId: 0, username: 'signed-access', role: 'viewer', fullName: 'Signed Access' };
+      next();
+      return;
+    }
+    res.status(403).json({ error: 'Invalid or expired signature' });
+    return;
+  }
   if (!req.headers['authorization'] && typeof req.query.token === 'string' && req.query.token.length < 2048) {
+    const { logLegacyTokenUsage } = require('../utils/signedAccess');
+    logLegacyTokenUsage('dashcam/download-burned');
     req.headers['authorization'] = `Bearer ${req.query.token}`;
   }
   next();
@@ -872,7 +902,22 @@ router.get('/:id/download-burned', validateParamId, (req: Request, res: Response
 // GET /api/fleet/dashcam-videos/:id/thumbnail — Serve thumbnail
 // ============================================================
 router.get('/:id/thumbnail', validateParamId, (req: Request, res: Response, next) => {
+  // Prefer HMAC signed access, fall back to legacy ?token=
+  if (!req.headers['authorization'] && typeof req.query.sig === 'string') {
+    const { verifyResourceAccess } = require('../utils/signedAccess');
+    const exp = parseInt(req.query.exp as string, 10);
+    const nonce = req.query.nonce as string | undefined;
+    if (verifyResourceAccess('dashcam', req.params.id, req.query.sig as string, exp, nonce)) {
+      req.user = { userId: 0, username: 'signed-access', role: 'viewer', fullName: 'Signed Access' };
+      next();
+      return;
+    }
+    res.status(403).json({ error: 'Invalid or expired signature' });
+    return;
+  }
   if (!req.headers['authorization'] && typeof req.query.token === 'string' && req.query.token.length < 2048) {
+    const { logLegacyTokenUsage } = require('../utils/signedAccess');
+    logLegacyTokenUsage('dashcam/thumbnail');
     req.headers['authorization'] = `Bearer ${req.query.token}`;
   }
   next();
@@ -899,6 +944,8 @@ router.get('/:id/thumbnail', validateParamId, (req: Request, res: Response, next
     res.set('Content-Type', 'image/jpeg');
     res.set('Cache-Control', 'private, max-age=3600');
     res.set('X-Content-Type-Options', 'nosniff');
+    res.set('Referrer-Policy', 'no-referrer');
+    res.set('Cross-Origin-Resource-Policy', 'same-origin');
     fs.createReadStream(filePath).pipe(res);
   } catch (error: any) {
     console.error('Get thumbnail error:', error?.message || 'Unknown error');

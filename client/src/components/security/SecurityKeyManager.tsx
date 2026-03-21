@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Usb, Plus, Trash2, RefreshCw, Shield, Fingerprint } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
+import { apiFetch } from '../../hooks/useApi';
 
 interface WebAuthnCredential {
   id: number;
@@ -40,7 +40,6 @@ function transportLabel(transports: string[]): string {
 }
 
 export default function SecurityKeyManager() {
-  const { token } = useAuth();
   const [credentials, setCredentials] = useState<WebAuthnCredential[]>([]);
   const [loading, setLoading] = useState(true);
   const [registering, setRegistering] = useState(false);
@@ -52,13 +51,11 @@ export default function SecurityKeyManager() {
 
   const fetchCredentials = useCallback(async () => {
     try {
-      const res = await fetch('/api/auth/webauthn/credentials', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) setCredentials(await res.json());
+      const data = await apiFetch<any[]>('/auth/webauthn/credentials');
+      setCredentials(data);
     } catch { /* ignore */ }
     setLoading(false);
-  }, [token]);
+  }, []);
 
   useEffect(() => { fetchCredentials(); }, [fetchCredentials]);
 
@@ -69,43 +66,21 @@ export default function SecurityKeyManager() {
 
     try {
       // 1. Get registration options
-      const optionsRes = await fetch('/api/auth/webauthn/register-options', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!optionsRes.ok) {
-        const errData = await optionsRes.json().catch(() => ({}));
-        throw new Error(errData.error || 'Failed to get registration options');
-      }
-
-      const { options, challengeId } = await optionsRes.json();
+      const { options, challengeId } = await apiFetch<any>('/auth/webauthn/register-options', { method: 'POST' });
 
       // 2. Prompt browser WebAuthn dialog
       const { startRegistration } = await import('@simplewebauthn/browser');
       const regResponse = await startRegistration({ optionsJSON: options });
 
       // 3. Verify with server
-      const verifyRes = await fetch('/api/auth/webauthn/register-verify', {
+      await apiFetch('/auth/webauthn/register-verify', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
         body: JSON.stringify({
           challengeId,
           response: regResponse,
           name: newKeyName.trim() || 'Security Key',
         }),
       });
-
-      if (!verifyRes.ok) {
-        const errData = await verifyRes.json().catch(() => ({}));
-        throw new Error(errData.error || 'Registration failed');
-      }
 
       setSuccess('Security key registered successfully');
       setNewKeyName('');
@@ -135,19 +110,11 @@ export default function SecurityKeyManager() {
     setRevoking(id);
     setError(null);
     try {
-      const res = await fetch(`/api/auth/webauthn/credentials/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}`, 'X-Requested-With': 'XMLHttpRequest' },
-      });
-      if (res.ok) {
-        setCredentials(prev => prev.filter(c => c.id !== id));
-        setSuccess('Security key removed');
-      } else {
-        const errData = await res.json().catch(() => ({}));
-        setError(errData.error || 'Failed to remove key');
-      }
-    } catch {
-      setError('Failed to remove security key');
+      await apiFetch(`/auth/webauthn/credentials/${id}`, { method: 'DELETE' });
+      setCredentials(prev => prev.filter(c => c.id !== id));
+      setSuccess('Security key removed');
+    } catch (err: any) {
+      setError(err?.message || 'Failed to remove key');
     }
     setRevoking(null);
   };

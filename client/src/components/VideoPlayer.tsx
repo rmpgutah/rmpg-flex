@@ -71,9 +71,12 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
 
   const classLabel = (cls: string) => cls.replace(/_/g, ' ').toUpperCase();
 
-  const headers = getAuthHeaders();
-  const token = headers['Authorization']?.replace('Bearer ', '') || '';
-  const streamUrl = `${apiBase}/personnel/bodycam-videos/${video.id}/stream?token=${encodeURIComponent(token)}`;
+  // Use signed URL params (pre-fetched by parent) or fall back to legacy token
+  const signedQuery = (video as any)._signedQuery || (() => {
+    const token = getAuthHeaders()['Authorization']?.replace('Bearer ', '') || '';
+    return `token=${encodeURIComponent(token)}`;
+  })();
+  const streamUrl = `${apiBase}/personnel/bodycam-videos/${video.id}/stream?${signedQuery}`;
 
   const toggleFullscreen = () => {
     if (!containerRef.current) return;

@@ -1135,24 +1135,11 @@ export default function DispatchPage() {
       // Auto-create incident report if checkbox was checked
       if (createIncident) {
         try {
-          const token = localStorage.getItem('rmpg_token');
-          const incRes = await fetch(`/api/dispatch/calls/${callId}/generate-incident`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Requested-With': 'XMLHttpRequest',
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-          });
-          if (incRes.ok) {
-            navigate('/incidents');
-          } else {
-            const errData = await incRes.json().catch(() => ({}));
-            addToast(errData.error || 'Failed to create incident report', 'error');
-          }
-        } catch (err) {
+          await apiFetch(`/dispatch/calls/${callId}/generate-incident`, { method: 'POST' });
+          navigate('/incidents');
+        } catch (err: any) {
           console.error('Failed to promote call to incident:', err);
-          addToast('Failed to create incident report from call', 'error');
+          addToast(err?.message || 'Failed to create incident report from call', 'error');
         }
       }
     } catch (err: any) {
@@ -1282,35 +1269,18 @@ export default function DispatchPage() {
     if (!selectedCall) return;
     setIsGenerating(true);
     try {
-      // Direct fetch to preserve full error response (apiFetch wraps errors in plain Error)
-      const token = localStorage.getItem('rmpg_token');
-      const res = await fetch(`/api/dispatch/calls/${selectedCall.id}/generate-incident`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      });
-
-      if (res.status === 409) {
-        // Incident already exists — navigate to it
-        addToast('An incident report already exists for this call', 'info');
-        navigate('/incidents');
-        return;
-      }
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || errData.message || `Request failed with status ${res.status}`);
-      }
-
-      const incident = await res.json();
+      const incident = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/generate-incident`, { method: 'POST' });
       addToast(`Incident ${incident.incident_number || ''} created`, 'success');
       navigate('/incidents');
     } catch (err: any) {
-      console.error('Failed to generate incident:', err);
-      addToast(err?.message || 'Failed to generate incident report', 'error');
+      // 409 = incident already exists — treat as info, not error
+      if (err?.message?.includes('already exists')) {
+        addToast('An incident report already exists for this call', 'info');
+        navigate('/incidents');
+      } else {
+        console.error('Failed to generate incident:', err);
+        addToast(err?.message || 'Failed to generate incident report', 'error');
+      }
     } finally {
       setIsGenerating(false);
     }
@@ -2166,7 +2136,7 @@ export default function DispatchPage() {
                                 const parent = (selectedCall as any).parentCall;
                                 const found = calls.find(c => c.id === parent.id);
                                 if (found) setSelectedCall(found);
-                                else apiFetch(`/api/dispatch/calls/${parent.id}`).then((d: any) => { if (d) setSelectedCall(mapDbCall(d)); }).catch(() => {});
+                                else apiFetch(`/dispatch/calls/${parent.id}`).then((d: any) => { if (d) setSelectedCall(mapDbCall(d)); }).catch(() => addToast('Failed to load parent call', 'error'));
                               }}
                             >
                               <span className="font-bold text-amber-300">PARENT:</span> <span className="font-mono text-blue-400">{(selectedCall as any).parentCall.call_number}</span> <span className="text-rmpg-300">{((selectedCall as any).parentCall.status || '').toUpperCase()}</span>
@@ -2179,7 +2149,7 @@ export default function DispatchPage() {
                               onClick={() => {
                                 const found = calls.find(c => c.id === child.id);
                                 if (found) setSelectedCall(found);
-                                else apiFetch(`/api/dispatch/calls/${child.id}`).then((d: any) => { if (d) setSelectedCall(mapDbCall(d)); }).catch(() => {});
+                                else apiFetch(`/dispatch/calls/${child.id}`).then((d: any) => { if (d) setSelectedCall(mapDbCall(d)); }).catch(() => addToast('Failed to load follow-up call', 'error'));
                               }}
                             >
                               <span className="font-bold text-cyan-300">FOLLOW-UP:</span> <span className="font-mono text-blue-400">{child.call_number}</span> <span className="text-rmpg-300">{(child.status || '').toUpperCase()}</span>
@@ -3863,9 +3833,9 @@ export default function DispatchPage() {
                               if (found) {
                                 setSelectedCall(found);
                               } else {
-                                apiFetch(`/api/dispatch/calls/${parent.id}`).then((data: any) => {
+                                apiFetch(`/dispatch/calls/${parent.id}`).then((data: any) => {
                                   if (data) setSelectedCall(mapDbCall(data));
-                                }).catch(() => {});
+                                }).catch(() => addToast('Failed to load parent call', 'error'));
                               }
                             }}
                           >
@@ -3893,9 +3863,9 @@ export default function DispatchPage() {
                             if (found) {
                               setSelectedCall(found);
                             } else {
-                              apiFetch(`/api/dispatch/calls/${child.id}`).then((data: any) => {
+                              apiFetch(`/dispatch/calls/${child.id}`).then((data: any) => {
                                 if (data) setSelectedCall(mapDbCall(data));
-                              }).catch(() => {});
+                              }).catch(() => addToast('Failed to load follow-up call', 'error'));
                             }
                           }}
                         >

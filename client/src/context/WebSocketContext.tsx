@@ -64,7 +64,9 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     try {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const host = window.location.host;
-      const ws = new WebSocket(`${protocol}//${host}/ws?token=${token}`);
+      // Message-based auth — token sent AFTER connection opens (not in URL).
+      // URL tokens are visible in server logs and browser history.
+      const ws = new WebSocket(`${protocol}//${host}/ws`);
 
       // Connection timeout — if the socket hasn't opened in 10s, kill it and retry.
       // Without this, a stalled TCP handshake can hang the socket indefinitely.
@@ -89,6 +91,10 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
           clearTimeout(connectTimeoutRef.current);
           connectTimeoutRef.current = null;
         }
+
+        // Authenticate via message (not URL token) — server expects { type: 'authenticate', token }
+        ws.send(JSON.stringify({ type: 'authenticate', token }));
+
         setIsConnected(true);
         setConnectionLost(false);
         reconnectDelayRef.current = WS_RECONNECT_DELAY;

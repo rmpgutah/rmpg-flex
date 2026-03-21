@@ -2,12 +2,14 @@
 // RMPG Flex — Training & Docs: Company Policies, SOPs, Manuals
 // ============================================================
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   BookOpen, Plus, Search, FileText, ExternalLink, Download, Trash2,
   Edit2, Loader2, X, Upload, Link as LinkIcon, Star, Eye, EyeOff,
-  FileVideo, FileSpreadsheet, FileImage, File,
+  FileVideo, FileSpreadsheet, FileImage, File, Printer,
+  ClipboardList, User, Car, Building2, FileWarning, MessageSquare,
 } from 'lucide-react';
+import { BLANK_FORMS, downloadBlankForm, type BlankFormType } from '../utils/blankFormPdfGenerator';
 import { useAuth } from '../context/AuthContext';
 import {
   apiFetchCompanyDocuments,
@@ -17,6 +19,7 @@ import {
   apiUploadFiles,
 } from '../hooks/useApi';
 import { authUrl } from '../components/FileAttachments';
+import { useLiveSync } from '../hooks/useLiveSync';
 import type { CompanyDocCategory } from '../types';
 
 // ── Category config ─────────────────────────────────────────
@@ -58,6 +61,68 @@ function formatFileSize(bytes?: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+// ── Blank Field Forms Grid ───────────────────────────────────
+
+const BLANK_FORM_ICONS: Record<BlankFormType, React.ReactNode> = {
+  incident: <ClipboardList className="w-5 h-5 text-red-400" />,
+  person: <User className="w-5 h-5 text-blue-400" />,
+  vehicle: <Car className="w-5 h-5 text-green-400" />,
+  property: <Building2 className="w-5 h-5 text-amber-400" />,
+  citation: <FileWarning className="w-5 h-5 text-orange-400" />,
+  field_interview: <MessageSquare className="w-5 h-5 text-purple-400" />,
+};
+
+function BlankFormsGrid() {
+  const [generating, setGenerating] = useState<BlankFormType | null>(null);
+
+  const handleDownload = async (formType: BlankFormType) => {
+    try {
+      setGenerating(formType);
+      await downloadBlankForm(formType);
+    } catch (err) {
+      console.error('Failed to generate blank form:', err);
+    } finally {
+      setGenerating(null);
+    }
+  };
+
+  return (
+    <div className="mx-3 mt-3">
+      <div className="panel-beveled p-3 bg-surface-base">
+        <div className="flex items-center gap-2 mb-2">
+          <Printer className="w-4 h-4 text-brand-400" />
+          <h2 className="text-[11px] font-bold text-rmpg-200 uppercase tracking-wider">
+            Blank Field Forms
+          </h2>
+          <span className="text-[9px] text-rmpg-500 ml-1">Print &amp; fill out by hand</span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+          {BLANK_FORMS.map((form) => (
+            <button
+              key={form.type}
+              onClick={() => handleDownload(form.type)}
+              disabled={generating !== null}
+              className="panel-inset p-2.5 flex flex-col items-center gap-1.5 hover:bg-rmpg-800/50 transition-colors group disabled:opacity-50"
+            >
+              {generating === form.type ? (
+                <Loader2 className="w-5 h-5 text-brand-400 animate-spin" />
+              ) : (
+                BLANK_FORM_ICONS[form.type]
+              )}
+              <span className="text-[10px] font-medium text-rmpg-300 group-hover:text-rmpg-100 text-center leading-tight">
+                {form.label}
+              </span>
+              <span className="text-[8px] text-rmpg-600 flex items-center gap-0.5">
+                <Download className="w-2.5 h-2.5" /> PDF
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ──────────────────────────────────────────
 export default function TrainingDocsPage() {
   const { user } = useAuth();
@@ -83,6 +148,7 @@ export default function TrainingDocsPage() {
   }, [category]);
 
   useEffect(() => { loadDocuments(); }, [loadDocuments]);
+  useLiveSync('admin', loadDocuments);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return documents;
@@ -114,9 +180,12 @@ export default function TrainingDocsPage() {
       return;
     }
     if (doc.file_id) {
-      // Use JWT token fallback for download (signatures are not available from this endpoint)
-      const token = localStorage.getItem('rmpg_token') || '';
-      window.open(`/api/uploads/${doc.file_id}/download?token=${encodeURIComponent(token)}`, '_blank', 'noopener,noreferrer');
+      // Use signed URL for download (avoids JWT token in URL query params)
+      import('../utils/signedUrls').then(({ buildSignedUrl }) => {
+        buildSignedUrl(`/api/uploads/${doc.file_id}/download`, 'file', doc.file_id).then(url => {
+          window.open(url, '_blank', 'noopener,noreferrer');
+        });
+      });
     }
   };
 
@@ -173,6 +242,9 @@ export default function TrainingDocsPage() {
           </button>
         ))}
       </div>
+
+      {/* Blank Field Forms — shown when Forms tab is active */}
+      {(category === 'form' || category === 'all') && <BlankFormsGrid />}
 
       {/* Document List */}
       <div className="flex-1 overflow-y-auto p-3 space-y-2">

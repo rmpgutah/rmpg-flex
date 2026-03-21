@@ -833,6 +833,10 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.text(data.contract_id || '', LAYOUT.PAGE_MARGIN + 3, barY + 16);
     }
 
+    // Reset font state after custom district column rendering
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
     y = barY + barH + 2;
   }
 
@@ -932,8 +936,10 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
     doc.text('DESCRIPTION', lx, y);
     y += 3.5;
-    doc.setFont('helvetica', 'normal');
     y = addFormattedText(doc, data.description || '', lx, y, ffw);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
     y += SPACING.MD;
     y = addThreeColumnFields(doc, [
       { label: '# Subjects', value: data.num_subjects != null ? String(data.num_subjects) : '' },
@@ -1105,6 +1111,8 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
       { const yL = addFieldPair(doc, 'Served At', data.process_served_at || '', lx, y, hfw);
         const yR = addFieldPair(doc, 'Result', (data.process_service_result || '').replace(/_/g, ' ').toUpperCase(), rx, y, hfw);
         y = Math.max(yL, yR); }
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -1298,10 +1306,11 @@ function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
 
     if (step > 1) {
-      doc.setFontSize(5);
+      doc.setFontSize(FONT.SIZE_SMALL_META);
       doc.setTextColor(...COLOR.TEXT_TERTIARY);
-      doc.text(`Showing ${sampled.length} of ${trail.points.length} breadcrumb points (sampled every ${step} points)`, lx, y + 1);
+      doc.text(`Showing ${sampled.length} of ${trail.points.length} breadcrumb points (sampled every ${step} points)`, lx, y + 1, { maxWidth: ffw });
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       y += SPACING.MD;
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);

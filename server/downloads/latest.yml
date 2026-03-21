@@ -1,8 +1,8 @@
 version: 5.6.0
 files:
   - url: RMPG-Flex-Setup-5.6.0.exe
-    sha512: Sht4y696JjjlstjdOVmfpgltMRcXiGS65Y4XIqbvzYGjZ2+bafkfWBS91P/SbmSFPYtOTEhpBHq66d2CGjPokw==
-    size: 89118362
+    sha512: e2f7KidgzX9pn5G2iD2cFrDfEDKwTmyAhG+9jnaHpH/z9jh1nhdHSivFH0Gfa9SsbUEqDk6Ulk6yxd2yqRGTCw==
+    size: 89118268
 path: RMPG-Flex-Setup-5.6.0.exe
-sha512: Sht4y696JjjlstjdOVmfpgltMRcXiGS65Y4XIqbvzYGjZ2+bafkfWBS91P/SbmSFPYtOTEhpBHq66d2CGjPokw==
-releaseDate: '2026-03-20T00:11:41.228Z'
+sha512: e2f7KidgzX9pn5G2iD2cFrDfEDKwTmyAhG+9jnaHpH/z9jh1nhdHSivFH0Gfa9SsbUEqDk6Ulk6yxd2yqRGTCw==
+releaseDate: '2026-03-20T20:40:52.072Z'

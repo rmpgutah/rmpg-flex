@@ -157,9 +157,15 @@ async function fetchCompanyDetails(
 }
 
 function getDateNMonthsAgo(n: number): string {
-  const d = new Date();
-  d.setMonth(d.getMonth() - n);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const now = new Date();
+  const day = now.getDate();
+  // Set day to 1 first to avoid month overflow (e.g., Mar 31 → setMonth(Feb) → Mar 3)
+  now.setDate(1);
+  now.setMonth(now.getMonth() - n);
+  // Clamp day to the target month's max days
+  const maxDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  now.setDate(Math.min(day, maxDay));
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
 
 /**

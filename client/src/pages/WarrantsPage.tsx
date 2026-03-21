@@ -1396,7 +1396,7 @@ export default function WarrantsPage() {
               {isMobile && selectedWarrant && (
                 <button onClick={() => setSelectedWarrant(null)} className="toolbar-btn text-[9px]" style={isMobile ? { minHeight: 44 } : undefined}>&larr; Back</button>
               )}
-              <PrintRecordButton recordType="warrant" recordData={selectedWarrant} identifier={selectedWarrant?.warrant_number} entityType="warrant" entityId={selectedWarrant?.id} label="Print" />
+              {selectedWarrant && <PrintRecordButton recordType="warrant" recordData={selectedWarrant} identifier={selectedWarrant.warrant_number} entityType="warrant" entityId={selectedWarrant.id} label="Print" />}
               {selectedWarrant && !selectedWarrant.archived_at && (
                 <>
                   {selectedWarrant.status === 'active' && (

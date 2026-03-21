@@ -4,21 +4,39 @@
 // Stored at: app.getPath('userData')/rmpg-local.db
 // ============================================================
 
-const Database = require('better-sqlite3');
+let Database;
+try {
+  Database = require('better-sqlite3');
+} catch (err) {
+  console.error('[LOCAL-DB] Failed to load better-sqlite3:', err.message);
+  console.error('[LOCAL-DB] Offline mode will be unavailable — app will run in online-only mode.');
+  Database = null;
+}
+
 const path = require('path');
 const fs = require('fs');
 const { app } = require('electron');
 
 let db = null;
+let offlineUnavailable = false;
 
 // ─── Public API ──────────────────────────────────────────────
 
 function getLocalDb() {
-  if (!db) throw new Error('Local DB not initialized. Call initLocalDb() first.');
+  if (!db) {
+    if (offlineUnavailable) return null; // graceful degradation — online-only mode
+    throw new Error('Local DB not initialized. Call initLocalDb() first.');
+  }
   return db;
 }
 
 function initLocalDb() {
+  if (!Database) {
+    console.warn('[LOCAL-DB] better-sqlite3 not available — running in online-only mode');
+    offlineUnavailable = true;
+    return null;
+  }
+
   const dbDir = app.getPath('userData');
   const dbPath = path.join(dbDir, 'rmpg-local.db');
 
@@ -27,7 +45,14 @@ function initLocalDb() {
   }
 
   console.log('[LOCAL-DB] Initializing at:', dbPath);
-  db = new Database(dbPath);
+  try {
+    db = new Database(dbPath);
+  } catch (err) {
+    console.error('[LOCAL-DB] Failed to open database:', err.message);
+    console.warn('[LOCAL-DB] Running in online-only mode');
+    offlineUnavailable = true;
+    return null;
+  }
 
   // Performance pragmas
   db.pragma('journal_mode = WAL');
@@ -39,6 +64,10 @@ function initLocalDb() {
 
   console.log('[LOCAL-DB] Ready');
   return db;
+}
+
+function isOfflineAvailable() {
+  return db !== null && !offlineUnavailable;
 }
 
 function closeLocalDb() {
@@ -408,7 +437,23 @@ function createLocalTables() {
 
 // ─── Helper: Upsert a row into a mirror table ────────────────
 
+// Whitelist of valid table names to prevent SQL injection via dynamic table names
+const VALID_TABLES = new Set([
+  'users', 'clients', 'properties', 'calls_for_service', 'units', 'incidents',
+  'time_entries', 'persons', 'vehicles_records', 'gps_breadcrumbs', 'citations',
+  'field_interviews', 'evidence_property', 'sync_queue', 'pin_sessions',
+  'pin_attempts', 'sync_metadata', 'local_config',
+]);
+
+function assertValidTable(tableName) {
+  if (!VALID_TABLES.has(tableName)) {
+    throw new Error(`[LOCAL-DB] Invalid table name: ${tableName}`);
+  }
+}
+
 function upsertRow(tableName, row) {
+  if (!db) return;
+  assertValidTable(tableName);
   const columns = Object.keys(row);
   const placeholders = columns.map(() => '?').join(', ');
   const updates = columns
@@ -429,6 +474,8 @@ function upsertRow(tableName, row) {
 // Processes in chunks to avoid blocking the event loop on large datasets
 
 function replaceTable(tableName, rows) {
+  if (!db) return;
+  assertValidTable(tableName);
   const CHUNK = 100;
   db.prepare(`DELETE FROM ${tableName}`).run();
 
@@ -449,6 +496,8 @@ function replaceTable(tableName, rows) {
 // Processes in chunks to avoid blocking the event loop
 
 function deltaSync(tableName, rows) {
+  if (!db) return;
+  assertValidTable(tableName);
   const CHUNK = 100;
   const now = new Date().toISOString();
 
@@ -471,6 +520,7 @@ function deltaSync(tableName, rows) {
 // ─── Sync Metadata ───────────────────────────────────────────
 
 function updateSyncMeta(tableName, rowCount) {
+  if (!db) return;
   db.prepare(`
     INSERT INTO sync_metadata (table_name, last_pull_at, row_count)
     VALUES (?, ?, ?)
@@ -479,6 +529,9 @@ function updateSyncMeta(tableName, rowCount) {
 }
 
 function getSyncMeta(tableName) {
+  if (!db) return {
+    table_name: tableName, last_pull_at: null, last_push_at: null, row_count: 0,
+  };
   return db.prepare('SELECT * FROM sync_metadata WHERE table_name = ?').get(tableName) || {
     table_name: tableName,
     last_pull_at: null,
@@ -490,11 +543,13 @@ function getSyncMeta(tableName) {
 // ─── Local Config ────────────────────────────────────────────
 
 function getConfig(key) {
+  if (!db) return null;
   const row = db.prepare('SELECT value FROM local_config WHERE key = ?').get(key);
   return row ? row.value : null;
 }
 
 function setConfig(key, value) {
+  if (!db) return;
   db.prepare(`
     INSERT INTO local_config (key, value, updated_at)
     VALUES (?, ?, ?)
@@ -505,6 +560,7 @@ function setConfig(key, value) {
 // ─── Sync Queue ──────────────────────────────────────────────
 
 function enqueue(method, endpoint, body, localId, tableName) {
+  if (!db) return;
   db.prepare(`
     INSERT INTO sync_queue (method, endpoint, body, local_id, table_name, created_at)
     VALUES (?, ?, ?, ?, ?, ?)
@@ -512,12 +568,14 @@ function enqueue(method, endpoint, body, localId, tableName) {
 }
 
 function getPendingQueue(limit = 50) {
+  if (!db) return [];
   return db.prepare(
     `SELECT * FROM sync_queue WHERE status = 'pending' ORDER BY created_at ASC LIMIT ?`
   ).all(limit);
 }
 
 function markQueueItem(id, status, serverResponse, error) {
+  if (!db) return;
   db.prepare(`
     UPDATE sync_queue
     SET status = ?, server_response = ?, error = ?, attempts = attempts + 1, last_attempt_at = ?
@@ -526,6 +584,7 @@ function markQueueItem(id, status, serverResponse, error) {
 }
 
 function getQueueDepth() {
+  if (!db) return 0;
   return db.prepare(`SELECT COUNT(*) as c FROM sync_queue WHERE status = 'pending'`).get().c;
 }
 
@@ -533,6 +592,7 @@ module.exports = {
   initLocalDb,
   getLocalDb,
   closeLocalDb,
+  isOfflineAvailable,
   upsertRow,
   replaceTable,
   deltaSync,

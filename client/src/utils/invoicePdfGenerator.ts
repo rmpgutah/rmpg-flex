@@ -174,10 +174,16 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       for (let i = 0; i < items.length; i++) {
-        // Page break check — re-draw headers on new page
+        const item = items[i];
+
+        // Dynamic row height for multi-line descriptions — compute BEFORE page break check
+        const descLines = doc.splitTextToSize(item.description || '', cols[0].w - 2);
+        const rowHeight = Math.max(descLines.length * LAYOUT.LINE_HEIGHT, LAYOUT.LINE_HEIGHT) + 1;
+
+        // Page break check — use actual row height instead of hardcoded 8mm
         const prevPage = doc.getNumberOfPages();
         const prevY = y;
-        y = checkPageBreak(doc, y, 8);
+        y = checkPageBreak(doc, y, rowHeight + 2);
         if (doc.getNumberOfPages() > prevPage) {
           // Close segment on previous page
           tableSegments[tableSegments.length - 1].bottom = prevY;
@@ -187,12 +193,6 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
           doc.setFont('helvetica', 'normal');
           doc.setFontSize(FONT.SIZE_FIELD_VALUE);
         }
-
-        const item = items[i];
-
-        // Dynamic row height for multi-line descriptions
-        const descLines = doc.splitTextToSize(item.description || '', cols[0].w - 2);
-        const rowHeight = Math.max(descLines.length * LAYOUT.LINE_HEIGHT, LAYOUT.LINE_HEIGHT) + 1;
 
         // Alternating shading with dynamic height
         if (i % 2 === 0) {

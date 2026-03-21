@@ -14,7 +14,14 @@ import {
   Eye,
   ZoomIn,
 } from 'lucide-react';
-import { apiUploadFiles, apiFetchAttachments, apiDeleteAttachment } from '../hooks/useApi';
+import {
+  apiFetch,
+  apiUploadFileWithProgress,
+  apiDownloadFileWithProgress,
+  apiFetchAttachments,
+  apiDeleteAttachment,
+  type UploadProgressInfo,
+} from '../hooks/useApi';
 import ConfirmDialog from './ConfirmDialog';
 
 interface Attachment {
@@ -69,15 +76,8 @@ export function authUrl(path: string, sig?: string, exp?: number, nonce?: string
  */
 async function fetchFreshSignature(fileId: string): Promise<{ sig: string; exp: number; nonce?: string } | null> {
   try {
-    const token = localStorage.getItem(TOKEN_KEY);
-    if (!token) return null;
-    const res = await fetch(`/api/uploads/sign/${fileId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return { sig: data.sig, exp: data.exp, nonce: data.nonce };
-    }
+    const data = await apiFetch<{ sig: string; exp: number; nonce?: string }>(`/uploads/sign/${fileId}`);
+    return data;
   } catch { /* silent */ }
   return null;
 }
@@ -85,8 +85,31 @@ async function fetchFreshSignature(fileId: string): Promise<{ sig: string; exp: 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
+
+function formatSpeed(bps: number): string {
+  if (bps <= 0) return '--';
+  if (bps < 1024 * 1024) return `${(bps / 1024).toFixed(1)} KB/s`;
+  return `${(bps / (1024 * 1024)).toFixed(1)} MB/s`;
+}
+
+function formatEta(sec: number): string {
+  if (sec <= 0 || !isFinite(sec)) return '--';
+  if (sec < 60) return `${Math.ceil(sec)}s`;
+  if (sec < 3600) return `${Math.floor(sec / 60)}m ${Math.ceil(sec % 60)}s`;
+  return `${Math.floor(sec / 3600)}h ${Math.ceil((sec % 3600) / 60)}m`;
+}
+
+interface TransferState {
+  id: string; name: string; size: number; dir: 'up' | 'down';
+  status: 'active' | 'done' | 'error'; loaded: number; total: number;
+  percent: number; speed: number; eta: number; error: string;
+  abort: (() => void) | null; startTime: number;
+}
+
+let _xferId = 0;
 
 function getFileIcon(mime: string) {
   if (mime.startsWith('image/')) return Image;
@@ -114,12 +137,41 @@ export default function FileAttachments({
 }: FileAttachmentsProps) {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
+  const [transfers, setTransfers] = useState<TransferState[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const speedRef = useRef<Map<string, { loaded: number; time: number }[]>>(new Map());
+  const hasActiveUploads = transfers.some((t) => t.dir === 'up' && t.status === 'active');
+
+  const updateXfer = useCallback((id: string, patch: Partial<TransferState>) => {
+    setTransfers((prev) => prev.map((t) => t.id === id ? { ...t, ...patch } : t));
+  }, []);
+
+  const getSpeedEta = useCallback((id: string, loaded: number, total: number) => {
+    const now = performance.now();
+    let s = speedRef.current.get(id);
+    if (!s) { s = []; speedRef.current.set(id, s); }
+    s.push({ loaded, time: now });
+    while (s.length > 1 && s[0].time < now - 5000) s.shift();
+    if (s.length < 2) return { speed: 0, eta: 0 };
+    const elapsed = (now - s[0].time) / 1000;
+    const speed = elapsed > 0 ? (loaded - s[0].loaded) / elapsed : 0;
+    return { speed, eta: speed > 0 ? (total - loaded) / speed : 0 };
+  }, []);
+
+  // Auto-clear finished transfers after 5s
+  useEffect(() => {
+    const done = transfers.filter((t) => t.status === 'done' || t.status === 'error');
+    if (!done.length) return;
+    const timer = setTimeout(() => {
+      setTransfers((prev) => prev.filter((t) => t.status === 'active'));
+      done.forEach((t) => speedRef.current.delete(t.id));
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [transfers]);
 
   const fetchFiles = useCallback(async () => {
     try {
@@ -140,18 +192,50 @@ export default function FileAttachments({
   const handleUpload = async (files: FileList | File[]) => {
     const fileArray = Array.from(files);
     if (fileArray.length === 0) return;
-
-    setUploading(true);
     setError(null);
-    try {
-      await apiUploadFiles(fileArray, entityType, entityId);
-      await fetchFiles();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed');
-    } finally {
-      setUploading(false);
+
+    const newXfers: TransferState[] = fileArray.map((f) => ({
+      id: `xfer-${++_xferId}`, name: f.name, size: f.size, dir: 'up' as const,
+      status: 'active' as const, loaded: 0, total: f.size, percent: 0,
+      speed: 0, eta: 0, error: '', abort: null, startTime: Date.now(),
+    }));
+    setTransfers((prev) => [...prev, ...newXfers]);
+
+    for (let i = 0; i < fileArray.length; i++) {
+      const file = fileArray[i];
+      const tid = newXfers[i].id;
+      try {
+        const { promise, abort } = apiUploadFileWithProgress(file, entityType, entityId, (info: UploadProgressInfo) => {
+          const { speed, eta } = getSpeedEta(tid, info.loaded, info.total);
+          updateXfer(tid, { loaded: info.loaded, total: info.total, percent: info.percent, speed, eta });
+        });
+        updateXfer(tid, { abort });
+        await promise;
+        updateXfer(tid, { status: 'done', percent: 100, loaded: file.size });
+      } catch (err) {
+        updateXfer(tid, { status: 'error', error: err instanceof Error ? err.message : 'Upload failed' });
+      }
     }
+    await fetchFiles();
   };
+
+  const handleDownloadWithProgress = useCallback((att: Attachment) => {
+    const tid = `xfer-${++_xferId}`;
+    const url = authUrl(`/api/uploads/${att.file_id}/download`, att.access_sig, att.access_exp, att.access_nonce);
+    setTransfers((prev) => [...prev, {
+      id: tid, name: att.original_name, size: att.file_size, dir: 'down' as const,
+      status: 'active' as const, loaded: 0, total: att.file_size, percent: 0,
+      speed: 0, eta: 0, error: '', abort: null, startTime: Date.now(),
+    }]);
+    const { promise, abort } = apiDownloadFileWithProgress(url, att.original_name, (info: UploadProgressInfo) => {
+      const { speed, eta } = getSpeedEta(tid, info.loaded, info.total);
+      updateXfer(tid, { loaded: info.loaded, total: info.total, percent: info.percent, speed, eta });
+    });
+    updateXfer(tid, { abort });
+    promise
+      .then(() => updateXfer(tid, { status: 'done', percent: 100, loaded: att.file_size }))
+      .catch((err) => updateXfer(tid, { status: 'error', error: err instanceof Error ? err.message : 'Download failed' }));
+  }, [updateXfer, getSpeedEta]);
 
   const handleDelete = async (fileId: string) => {
     try {
@@ -190,8 +274,7 @@ export default function FileAttachments({
     if (attachment.mime_type.startsWith('image/') || attachment.mime_type === 'application/pdf') {
       setPreviewAttachment(attachment);
     } else {
-      // Direct download for non-previewable files
-      window.open(authUrl(`/api/uploads/${attachment.file_id}/download`, attachment.access_sig, attachment.access_exp, attachment.access_nonce), '_blank');
+      handleDownloadWithProgress(attachment);
     }
   };
 
@@ -219,18 +302,56 @@ export default function FileAttachments({
         </div>
       )}
 
+      {/* ── Active Transfers ── */}
+      {transfers.length > 0 && (
+        <div className="space-y-1">
+          {transfers.map((t) => (
+            <div key={t.id} className="px-2 py-1.5 bg-rmpg-900/80 border border-rmpg-700 space-y-1">
+              <div className="flex items-center gap-1.5">
+                <span className={`text-[10px] ${t.dir === 'up' ? 'text-brand-400' : 'text-blue-400'}`}>{t.dir === 'up' ? '\u2191' : '\u2193'}</span>
+                <span className="text-[11px] text-gray-200 truncate flex-1">{t.name}</span>
+                {t.status === 'active' && t.abort && (
+                  <button onClick={() => { t.abort?.(); updateXfer(t.id, { status: 'error', error: 'Cancelled' }); }}
+                    className="p-0.5 hover:bg-rmpg-700 text-rmpg-400 hover:text-red-400"><X className="w-3 h-3" /></button>
+                )}
+                {t.status === 'done' && <span className="text-green-400 text-[10px]">Done</span>}
+                {t.status === 'error' && <span className="text-red-400 text-[10px]">Failed</span>}
+              </div>
+              <div className="h-1.5 bg-rmpg-800 overflow-hidden">
+                <div className={`h-full transition-all duration-300 ${t.status === 'error' ? 'bg-red-500' : t.status === 'done' ? 'bg-green-500' : t.dir === 'up' ? 'bg-brand-500' : 'bg-blue-500'}`}
+                  style={{ width: `${t.percent}%` }} />
+              </div>
+              {t.status === 'active' && (
+                <div className="flex items-center gap-2 text-[10px] text-rmpg-300 font-mono">
+                  <span>{formatFileSize(t.loaded)} / {formatFileSize(t.total)}</span>
+                  <span className="text-rmpg-500">|</span>
+                  <span>{t.percent}%</span>
+                  <span className="text-rmpg-500">|</span>
+                  <span>{formatSpeed(t.speed)}</span>
+                  <span className="text-rmpg-500">|</span>
+                  <span>{formatEta(t.eta)}</span>
+                </div>
+              )}
+              {t.status === 'error' && t.error && (
+                <p className="text-[10px] text-red-400 truncate">{t.error}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Upload Zone */}
       {!readOnly && (
         <div
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
-          onClick={() => fileInputRef.current?.click()}
+          onClick={() => !hasActiveUploads && fileInputRef.current?.click()}
           className={`
-            border-2 border-dashed cursor-pointer transition-all p-3 text-center
-            ${dragOver
-              ? 'border-brand-500 bg-brand-900/20'
-              : 'border-rmpg-600 hover:border-rmpg-400 hover:bg-rmpg-800/30'
+            border-2 border-dashed transition-all p-3 text-center
+            ${hasActiveUploads ? 'border-rmpg-700 opacity-50 cursor-not-allowed' :
+              dragOver ? 'border-brand-500 bg-brand-900/20 cursor-pointer'
+              : 'border-rmpg-600 hover:border-rmpg-400 hover:bg-rmpg-800/30 cursor-pointer'
             }
           `}
         >
@@ -240,17 +361,18 @@ export default function FileAttachments({
             multiple
             className="hidden"
             onChange={handleFileInput}
-            accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.mp4,.mov,.avi,.mp3,.wav,.ogg"
+            accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.mp4,.mov,.avi,.webm,.mkv,.mp3,.wav,.ogg"
           />
-          {uploading ? (
+          {hasActiveUploads ? (
             <div className="flex items-center justify-center gap-2 text-brand-400 text-xs">
               <Loader2 className="w-4 h-4 animate-spin" />
-              Uploading...
+              Upload in progress...
             </div>
           ) : (
-            <div className="flex items-center justify-center gap-2 text-rmpg-300 text-xs">
-              <Upload className="w-4 h-4" />
+            <div className="flex flex-col items-center justify-center gap-1 text-rmpg-300 text-xs">
+              <Upload className="w-5 h-5" />
               {dragOver ? 'Drop files here' : 'Click or drag files to upload'}
+              <span className="text-[10px] text-rmpg-500">Photos, videos, documents up to 3 GB</span>
             </div>
           )}
         </div>
@@ -352,16 +474,13 @@ export default function FileAttachments({
                           <Eye className="w-3.5 h-3.5" />
                         </button>
                       )}
-                      <a
-                        href={authUrl(`/api/uploads/${att.file_id}/download`, att.access_sig, att.access_exp, att.access_nonce)}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDownloadWithProgress(att); }}
                         className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-green-400 transition-colors"
-                        title="Download"
-                        onClick={(e) => e.stopPropagation()}
+                        title={`Download (${formatFileSize(att.file_size)})`}
                       >
                         <Download className="w-3.5 h-3.5" />
-                      </a>
+                      </button>
                       {!readOnly && (
                         <button
                           onClick={() => setDeleteTarget({ id: att.file_id, name: att.original_name })}

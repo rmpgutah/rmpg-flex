@@ -105,6 +105,9 @@ function addCenteredTitle(doc: jsPDF, title: string, y: number, fontSize = 14): 
   doc.setFontSize(fontSize);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   doc.text(title, pageWidth / 2, y, { align: 'center' });
+  // Reset font state so callers don't inherit bold/large size
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   return y + fontSize * 0.5 + SPACING.LG;
 }
 
@@ -168,6 +171,7 @@ function addNotarySection(doc: jsPDF, y: number): number {
   doc.text('DATE', lineX1, ny + 3);
 
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   return y + boxH + SPACING.SECTION_GAP;
 }
 
@@ -543,13 +547,16 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
 
   // ── Signature Block ──
   y = checkPageBreak(doc, y, SPACING.SIGNATURE_BOX_H + SPACING.LG);
+  const sigDate = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
   y = addSignatureBlock(doc, 'Process Server Signature', lx, y, ffw, data.signature ? {
     signatureImage: data.signature,
     printedName: data.serverName,
     badgeNumber: data.serverBadge,
+    date: sigDate,
   } : {
     printedName: data.serverName,
     badgeNumber: data.serverBadge,
+    date: sigDate,
   });
   y += SPACING.SECTION_GAP;
 

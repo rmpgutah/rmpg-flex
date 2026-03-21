@@ -256,6 +256,9 @@ function authenticateTokenOrQuery(req: Request, res: Response, next: NextFunctio
 
   // ── 3. Legacy ?token= query parameter (for img/iframe/a tags) ──
   const queryToken = typeof req.query.token === 'string' ? req.query.token : null;
+  if (queryToken) {
+    try { const { logLegacyTokenUsage } = require('../utils/signedAccess'); logLegacyTokenUsage('uploads'); } catch { /* ignore */ }
+  }
 
   const token = headerToken || queryToken;
 

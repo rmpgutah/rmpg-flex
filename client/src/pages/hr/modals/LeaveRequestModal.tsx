@@ -49,7 +49,7 @@ export default function LeaveRequestModal({ onClose, onSaved, request, reviewMod
   const [error, setError] = useState('');
 
   useEffect(() => {
-    apiFetch<LeaveType[]>('/hr/leave-types').then(setLeaveTypes).catch(() => {});
+    apiFetch<LeaveType[]>('/hr/leave-types').then(setLeaveTypes).catch(err => console.warn('[HR] Failed to load data:', err));
   }, []);
 
   useEffect(() => {
@@ -68,7 +68,6 @@ export default function LeaveRequestModal({ onClose, onSaved, request, reviewMod
     try {
       await apiFetch('/hr/leave-requests', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           leave_type_id: leaveTypeId,
           start_date: startDate,
@@ -92,7 +91,6 @@ export default function LeaveRequestModal({ onClose, onSaved, request, reviewMod
     try {
       await apiFetch(`/hr/leave-requests/${request.id}/review`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           status: action,
           reviewer_notes: reviewerNotes.trim(),

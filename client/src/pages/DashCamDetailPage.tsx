@@ -19,6 +19,7 @@ import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
 import { DARK_MAP_STYLE } from '../utils/googleMapsLoader';
+import { getSignedParams, buildSignedQuerySync } from '../utils/signedUrls';
 
 // ── GPS Track Types ─────────────────────────────────────────
 
@@ -286,8 +287,14 @@ export default function DashCamDetailPage() {
   };
 
   const apiBase = window.location.origin + '/api';
-  const token = localStorage.getItem('rmpg_token') || '';
-  const streamUrl = video ? `${apiBase}/fleet/dashcam-videos/${video.id}/stream?token=${encodeURIComponent(token)}` : '';
+  const [signedParams, setSignedParams] = useState<{ sig: string; exp: number; nonce: string } | null>(null);
+  useEffect(() => {
+    if (video?.id) {
+      getSignedParams('dashcam', String(video.id)).then(setSignedParams);
+    }
+  }, [video?.id]);
+  const signedQuery = buildSignedQuerySync(signedParams);
+  const streamUrl = video ? `${apiBase}/fleet/dashcam-videos/${video.id}/stream?${signedQuery}` : '';
 
   // ── Data Fetching ────────────────────────────
 
@@ -1105,7 +1112,7 @@ export default function DashCamDetailPage() {
             </a>
 
             {video.burned_file_path && (
-              <a href={`${apiBase}/fleet/dashcam-videos/${video.id}/download-burned?token=${encodeURIComponent(token)}`}
+              <a href={`${apiBase}/fleet/dashcam-videos/${video.id}/download-burned?${signedQuery}`}
                 download
                 className="toolbar-btn-primary text-[10px] w-full py-1.5 flex items-center justify-center gap-1.5 no-underline">
                 <Download className="w-3.5 h-3.5" /> Download Burned

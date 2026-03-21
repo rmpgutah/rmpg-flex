@@ -73,9 +73,8 @@ export default function ModuleTileBar({
   const handleNavigate = useCallback(
     (path: string, newWindow?: boolean, externalUrl?: string) => {
       if (externalUrl) {
-        const token = localStorage.getItem('rmpg_token') || '';
-        const sep = externalUrl.includes('?') ? '&' : '?';
-        window.open(`${externalUrl}${sep}token=${encodeURIComponent(token)}`, '_blank');
+        // Don't embed JWT token in external URLs — external sites don't need our auth token
+        window.open(externalUrl, '_blank', 'noopener,noreferrer');
         return;
       }
       if (newWindow) {

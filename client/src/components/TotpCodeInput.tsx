@@ -9,14 +9,14 @@ import React, { useRef, useCallback, useEffect } from 'react';
 interface TotpCodeInputProps {
   value: string;
   onChange: (value: string) => void;
-  onComplete: (code: string) => void;
+  onComplete?: (code: string) => void;
   disabled?: boolean;
   error?: boolean;
 }
 
 export default function TotpCodeInput({ value, onChange, onComplete, disabled, error }: TotpCodeInputProps) {
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
-  const digits = value.padEnd(6, '').slice(0, 6).split('');
+  const digits = value.padEnd(6, ' ').slice(0, 6).split('');
 
   // Focus first input on mount and when value is cleared (retry after error)
   useEffect(() => {
@@ -39,7 +39,7 @@ export default function TotpCodeInput({ value, onChange, onComplete, disabled, e
     }
 
     // Auto-submit when all 6 digits entered
-    if (newValue.replace(/\s/g, '').length === 6) {
+    if (newValue.replace(/\s/g, '').length === 6 && onComplete) {
       setTimeout(() => onComplete(newValue.trim()), 50);
     }
   }, [digits, onChange, onComplete]);
@@ -73,7 +73,7 @@ export default function TotpCodeInput({ value, onChange, onComplete, disabled, e
       const focusIdx = Math.min(pasted.length, 5);
       inputRefs.current[focusIdx]?.focus();
 
-      if (pasted.length === 6) {
+      if (pasted.length === 6 && onComplete) {
         setTimeout(() => onComplete(pasted), 50);
       }
     }

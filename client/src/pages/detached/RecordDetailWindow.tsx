@@ -19,20 +19,26 @@ export default function RecordDetailWindow() {
 
   useEffect(() => {
     if (!type || !id) return;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
     (async () => {
       try {
         const endpoint = type === 'person' ? `/records/persons/${id}` : `/records/vehicles/${id}`;
         const data = await apiFetch<any>(endpoint);
+        if (cancelled) return;
         setRecord(data);
         document.title = type === 'person'
           ? `${data?.last_name || 'Unknown'}, ${data?.first_name || ''} — RMPG Flex`
           : `${data?.plate_number || 'Vehicle'} — RMPG Flex`;
       } catch (err: any) {
+        if (cancelled) return;
         setError(err.message || 'Failed to load record');
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
+    return () => { cancelled = true; };
   }, [type, id]);
 
   if (loading) {

@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken, requireRole } from '../middleware/auth';
+import { authenticateToken, requireRole, ALL_VALID_ROLES } from '../middleware/auth';
 import { validateParamId } from '../middleware/sanitize';
 import { localNow } from '../utils/timeUtils';
 import { createSecurityNotification, parseDeviceName } from '../utils/deviceFingerprint';
@@ -1097,7 +1097,7 @@ router.put('/users/:id/role', rateLimit({ maxRequests: 5, windowMs: 60000 }), re
     const { role } = req.body;
     const ip = String(req.ip || 'unknown');
 
-    const validRoles = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager', 'human_resources'];
+    const validRoles = ALL_VALID_ROLES as readonly string[];
     if (!role || !validRoles.includes(role)) {
       res.status(400).json({ error: 'Invalid role' });
       return;

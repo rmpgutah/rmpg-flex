@@ -8,7 +8,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import { getDb } from '../models/database';
-import { authenticateToken, requireRole } from '../middleware/auth';
+import { authenticateToken, requireRole, ALL_VALID_ROLES } from '../middleware/auth';
 import { rateLimit } from '../middleware/rateLimiter';
 import { localNow, localToday, dateToLocalYMD } from '../utils/timeUtils';
 import { queueOverlayProcessing, type BodyCamOverlayConfig } from '../utils/videoOverlay';
@@ -21,9 +21,12 @@ const execFileAsync = promisify(execFile);
 /** Extract video duration using ffprobe. Returns seconds or null if ffmpeg not available. */
 async function extractVideoDuration(filePath: string): Promise<number | null> {
   try {
+    // Validate path is within expected upload directory to prevent argument injection
+    const resolved = path.resolve(filePath);
+    // Use '--' to prevent ffprobe from interpreting filenames starting with '-' as options
     const { stdout } = await execFileAsync(
       'ffprobe',
-      ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', filePath],
+      ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', '--', resolved],
       { timeout: 30000 }
     );
     const seconds = parseFloat(stdout.trim());
@@ -112,6 +115,8 @@ router.use((req: Request, res: Response, next: NextFunction) => {
     }
     // Legacy: promote ?token= to Authorization header
     if (!req.headers['authorization'] && req.query.token) {
+      const { logLegacyTokenUsage } = require('../utils/signedAccess');
+      logLegacyTokenUsage('personnel/bodycam');
       req.headers['authorization'] = `Bearer ${req.query.token}`;
     }
   }
@@ -314,7 +319,7 @@ router.post('/', requireRole('admin', 'manager'), personnelCreateRateLimit, (req
     }
 
     // Validate role against allowlist
-    const VALID_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager', 'human_resources'];
+    const VALID_ROLES = ALL_VALID_ROLES as readonly string[];
     if (!VALID_ROLES.includes(role)) {
       res.status(400).json({ error: 'Invalid role' });
       return;
@@ -412,7 +417,7 @@ router.put('/:id', requireRole('admin', 'manager'), (req: Request, res: Response
     }
 
     // Validate role against allowlist if provided
-    const VALID_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher', 'contract_manager', 'human_resources'];
+    const VALID_ROLES = ALL_VALID_ROLES as readonly string[];
     if (req.body.role && !VALID_ROLES.includes(req.body.role)) {
       res.status(400).json({ error: 'Invalid role' });
       return;
@@ -2660,8 +2665,11 @@ export function mountScheduleRoutes(parentRouter: Router): void {
           `).get(videoId);
 
           // Fire-and-forget: extract actual duration with ffprobe and update DB
-          const fullFilePath = path.resolve(BODYCAM_DIR, relativePath);
-          extractVideoDuration(fullFilePath).then((probedDuration) => {
+          const fullFilePath = path.resolve(BODYCAM_DIR, path.normalize(relativePath));
+          const relCheck = path.relative(BODYCAM_DIR, fullFilePath);
+          if (relCheck.startsWith('..') || path.isAbsolute(relCheck)) {
+            console.warn('[bodycam] Path traversal blocked:', relativePath);
+          } else extractVideoDuration(fullFilePath).then((probedDuration) => {
             if (probedDuration != null) {
               try {
                 const dbInner = getDb();
@@ -2751,7 +2759,9 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       let updated = 0;
       let sizeFixed = 0;
       for (const vid of videos) {
-        const fullPath = path.resolve(BODYCAM_DIR, vid.file_path);
+        const fullPath = path.resolve(BODYCAM_DIR, path.normalize(vid.file_path));
+        const rel = path.relative(BODYCAM_DIR, fullPath);
+        if (rel.startsWith('..') || path.isAbsolute(rel)) continue;
         if (!fs.existsSync(fullPath)) continue;
         // Verify / fix file_size from actual file
         const stat = fs.statSync(fullPath);
@@ -2820,6 +2830,8 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       return;
     }
     if (!req.headers['authorization'] && req.query.token) {
+      const { logLegacyTokenUsage } = require('../utils/signedAccess');
+      logLegacyTokenUsage('personnel/bodycam-stream');
       req.headers['authorization'] = `Bearer ${req.query.token}`;
     }
     next();

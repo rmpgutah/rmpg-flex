@@ -88,7 +88,6 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
     try {
       await apiFetch('/email/admin/credentials', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ clientId, clientSecret, tenantId }),
       });
       setClientId(''); setClientSecret(''); setTenantId('');
@@ -143,7 +142,6 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
     try {
       await apiFetch('/email/admin/enable', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled: !status?.enabled }),
       });
       await fetchStatus();
@@ -157,7 +155,6 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
     try {
       await apiFetch('/email/admin/enable', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pollInterval: seconds }),
       });
       await fetchStatus();
@@ -172,7 +169,6 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
       if (smtpPassword) reqBody.password = smtpPassword;
       await apiFetch('/email/admin/smtp-settings', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(reqBody),
       });
       setSmtpPassword('');

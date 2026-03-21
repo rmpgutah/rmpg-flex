@@ -28,6 +28,7 @@ import { useAuth } from '../context/AuthContext';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useWebSocket } from '../context/WebSocketContext';
 import { useNavigate } from 'react-router-dom';
+import { batchSignResources, buildSignedQuerySync } from '../utils/signedUrls';
 import usePersistedState from '../hooks/usePersistedState';
 
 const PAGE_SIZE = 25;
@@ -125,6 +126,7 @@ export default function DashCamerasPage() {
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [units, setUnits] = useState<any[]>([]);
+  const [signedMap, setSignedMap] = useState<Map<string, { sig: string; exp: number; nonce: string }>>(new Map());
 
   // ── Data Fetching ────────────────────────
   const fetchVideos = useCallback(async () => {
@@ -135,8 +137,13 @@ export default function DashCamerasPage() {
       });
       if (search.trim()) params.set('search', search.trim());
       const data = await apiFetch<any>(`/fleet/dashcam-videos?${params}`);
-      setVideos(Array.isArray(data?.videos) ? data.videos : []);
+      const vids = Array.isArray(data?.videos) ? data.videos : [];
+      setVideos(vids);
       setTotal(data?.total || 0);
+      // Pre-sign URLs for all videos (thumbnails, streams, downloads)
+      if (vids.length > 0) {
+        batchSignResources(vids.map((v: any) => ({ type: 'dashcam', id: String(v.id) }))).then(setSignedMap);
+      }
     } catch (err: any) {
       addToast(err?.message || 'Failed to load videos', 'error');
     } finally {
@@ -169,7 +176,7 @@ export default function DashCamerasPage() {
         setSelectedVideo(prev => prev ? { ...prev, burn_progress: data.progress, burn_status: data.status || prev.burn_status } : null);
       }
     };
-    const unsub = subscribe('fleet:dashcam_burn_progress' as any, handler);
+    const unsub = subscribe('dashcam_burn_progress', handler);
     return () => unsub();
   }, [selectedVideo?.id, subscribe]);
 
@@ -290,7 +297,7 @@ export default function DashCamerasPage() {
               <div className="relative aspect-video bg-surface-sunken overflow-hidden group">
                 {(v.thumbnail_path || v.cpg_thumbnail_url) ? (
                   <img src={v.thumbnail_path
-                    ? `${apiBase}/fleet/dashcam-videos/${v.id}/thumbnail?token=${encodeURIComponent(localStorage.getItem('rmpg_token') || '')}`
+                    ? `${apiBase}/fleet/dashcam-videos/${v.id}/thumbnail?${buildSignedQuerySync(signedMap.get(`dashcam:${v.id}`) || null)}`
                     : v.cpg_thumbnail_url!} alt={v.title}
                     className="w-full h-full object-cover" />
                 ) : (
@@ -462,7 +469,7 @@ export default function DashCamerasPage() {
           controls autoPlay key={selectedVideo.id}
           className="w-full"
           style={{ maxHeight: '320px' }}
-          src={`${apiBase}/fleet/dashcam-videos/${selectedVideo.id}/stream?token=${encodeURIComponent(localStorage.getItem('rmpg_token') || '')}`}
+          src={`${apiBase}/fleet/dashcam-videos/${selectedVideo.id}/stream?${buildSignedQuerySync(signedMap.get(`dashcam:${selectedVideo.id}`) || null)}`}
         />
         {/* Camera channel overlay */}
         {selectedVideo.cpg_channel && (
@@ -661,7 +668,7 @@ export default function DashCamerasPage() {
                 ) : selectedVideo.burn_status === 'complete' ? (
                   <div className="flex items-center gap-1.5">
                     <a
-                      href={`${apiBase}/fleet/dashcam-videos/${selectedVideo.id}/download-burned?token=${encodeURIComponent(localStorage.getItem('rmpg_token') || '')}`}
+                      href={`${apiBase}/fleet/dashcam-videos/${selectedVideo.id}/download-burned?${buildSignedQuerySync(signedMap.get(`dashcam:${selectedVideo.id}`) || null)}`}
                       download
                       className="toolbar-btn text-[9px] px-2.5 py-1 flex items-center gap-1 text-green-400"
                     >
@@ -911,7 +918,7 @@ export default function DashCamerasPage() {
       <DashCamVideoPlayer
         isOpen={!!playingVideo}
         onClose={() => setPlayingVideo(null)}
-        video={playingVideo}
+        video={playingVideo ? { ...playingVideo, _signedQuery: buildSignedQuerySync(signedMap.get(`dashcam:${playingVideo.id}`) || null) } as any : null}
         apiBase={apiBase}
         getAuthHeaders={getAuthHeaders}
         onEditVideo={canManage ? (v) => { setPlayingVideo(null); setEditingVideo(v); } : undefined}

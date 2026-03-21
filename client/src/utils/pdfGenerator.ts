@@ -307,6 +307,7 @@ export function addReportHeader(
 
   // ── Reset drawing state ────────────────────────────────
   doc.setFont('helvetica', 'normal');
+  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
 
@@ -758,12 +759,13 @@ export function addSignatureBlock(
     doc.setFontSize(7);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     const valY = row2Y + infoRowH - 1.5;
-    if (sigData!.printedName) doc.text(sigData!.printedName, x + SPACING.MD, valY);
-    if (sigData!.badgeNumber) doc.text(sigData!.badgeNumber, x + colW + SPACING.MD, valY);
+    const sigCellMaxW = colW - SPACING.MD * 2;
+    if (sigData!.printedName) doc.text(sigData!.printedName, x + SPACING.MD, valY, { maxWidth: sigCellMaxW });
+    if (sigData!.badgeNumber) doc.text(sigData!.badgeNumber, x + colW + SPACING.MD, valY, { maxWidth: sigCellMaxW });
     const now = new Date();
     const pad2 = (n: number) => String(n).padStart(2, '0');
     const dateStr = sigData!.date || `${pad2(now.getMonth() + 1)}/${pad2(now.getDate())}/${now.getFullYear()} ${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`;
-    doc.text(dateStr, x + colW * 2 + SPACING.MD, valY);
+    doc.text(dateStr, x + colW * 2 + SPACING.MD, valY, { maxWidth: sigCellMaxW });
   }
 
   // Outer border
@@ -773,6 +775,8 @@ export function addSignatureBlock(
 
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   return y + totalH + SPACING.SM;
 }
 
@@ -859,7 +863,6 @@ export function addPageFooter(doc: jsPDF, pageNum: number, totalPages: number, f
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
 
-  const accentRgb = hexToRgb(brand.accent_color);
   const primaryRgb = hexToRgb(brand.primary_color);
 
   // Accent bar at footer top (thin primary color line)
@@ -1719,10 +1722,12 @@ function addGpsActivityLogSection(doc: jsPDF, data: IncidentData, y: number, pri
     y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
 
     if (step > 1) {
-      doc.setFontSize(5);
+      doc.setFontSize(FONT.SIZE_SMALL_META);
       doc.setTextColor(...COLOR.TEXT_TERTIARY);
-      doc.text(`Showing ${sampled.length} of ${trail.points.length} breadcrumb points (sampled every ${step} points)`, lx, y + 1);
+      const ffw = getFullFieldWidth(doc);
+      doc.text(`Showing ${sampled.length} of ${trail.points.length} breadcrumb points (sampled every ${step} points)`, lx, y + 1, { maxWidth: ffw });
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       y += SPACING.MD;
     }
   } else {
@@ -2241,27 +2246,6 @@ function generateAccidentReport(doc: jsPDF, data: IncidentData) {
     y,
   });
 
-  // Incident Info
-  { const sec = openAutoSection(doc, 'Incident Information', y); y = sec.contentY;
-    y = addFieldPair(doc, 'Location', data.location, lx, y, ffw);
-    y = addThreeColumnFields(doc, [
-      { label: 'Date', value: data.occurred_date || '' },
-      { label: 'Time', value: data.occurred_time || '' },
-      { label: 'Officer', value: data.officer_name },
-    ], y);
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
-
-  // Road Conditions
-  { const sec = openAutoSection(doc, 'Conditions', y); y = sec.contentY;
-    y = addThreeColumnFields(doc, [
-      { label: 'Road Conditions', value: data.road_conditions || '' },
-      { label: 'Traffic Control', value: data.traffic_control || '' },
-      { label: 'Weather', value: data.weather_conditions || '' },
-    ], y);
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
-
   // Flags
   { const sec = openAutoSection(doc, 'Flags', y); y = sec.contentY;
     let flagX = lx;
@@ -2350,8 +2334,6 @@ function generateMedicalReport(doc: jsPDF, data: IncidentData) {
   const ffw = getFullFieldWidth(doc);
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
-  const gridX = getGridStartX();
-  const gridW = getGridContentWidth(doc);
 
   const persons = data.linked_persons || [];
   const patient = persons[0] || { first_name: '', last_name: '', dob: '' };
@@ -2425,8 +2407,6 @@ function generateUseOfForceReport(doc: jsPDF, data: IncidentData) {
   const ffw = getFullFieldWidth(doc);
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
-  const gridX = getGridStartX();
-  const gridW = getGridContentWidth(doc);
 
   const persons = data.linked_persons || [];
   const subj = persons[0] || { first_name: '', last_name: '', dob: '' };
@@ -2516,8 +2496,6 @@ function generateDailyActivityReport(doc: jsPDF, data: IncidentData) {
   const hfw = getHalfFieldWidth(doc);
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
-  const gridX = getGridStartX();
-  const gridW = getGridContentWidth(doc);
 
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
@@ -2597,6 +2575,8 @@ function generateDailyActivityReport(doc: jsPDF, data: IncidentData) {
     doc.line(LAYOUT.PAGE_MARGIN + 98, tableTopY, LAYOUT.PAGE_MARGIN + 98, y - 2);
 
     doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(FONT.SIZE_FIELD_VALUE);
     y += SPACING.MD;
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -2648,27 +2628,8 @@ function generateArrestReport(doc: jsPDF, data: IncidentData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Subject Details
+  // Subject Details (NIBRS grid format)
   const subjectStartY = y;
-  { const sec = openAutoSection(doc, 'Subject Details', y); y = sec.contentY;
-    const persons = data.linked_persons || [];
-    if (persons.length > 0) {
-      const subj = persons[0];
-      y = addThreeColumnFields(doc, [
-        { label: 'Last Name', value: subj.last_name || '' },
-        { label: 'First Name', value: subj.first_name || '' },
-        { label: 'DOB', value: subj.dob || '' },
-      ], y);
-    } else {
-      y = addThreeColumnFields(doc, [
-        { label: 'Last Name', value: '' },
-        { label: 'First Name', value: '' },
-        { label: 'DOB', value: '' },
-      ], y);
-    }
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
-
   y = drawFormGrid(doc, [
     { cells: [
       { label: '9. SUBJECT LAST NAME', value: subj.last_name || '', ratio: 2, valueBold: true },
@@ -2710,48 +2671,10 @@ function generateArrestReport(doc: jsPDF, data: IncidentData) {
   y += SPACING.SECTION_GAP;
 
   // ═══════════════════════════════════════════════════════════
-  // CHARGES — charges table
+  // CHARGES — charges table (NIBRS grid format)
   // ═══════════════════════════════════════════════════════════
   const chargesStartY = y;
   y = checkPageBreak(doc, y, 30, data.priority);
-  { const sec = openAutoSection(doc, 'Flags', y); y = sec.contentY;
-    let flagX = lx;
-    flagX = addCheckboxField(doc, 'Alcohol', !!data.alcohol_involved, flagX, y);
-    flagX = addCheckboxField(doc, 'Drugs', !!data.drugs_involved, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'DV', !!data.domestic_violence, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'Gang', !!data.gang_related, flagX + SPACING.SM, y);
-    if (data.weapons_involved) {
-      addCheckboxField(doc, 'Weapons: ' + data.weapons_involved, true, flagX + SPACING.SM, y);
-    } else {
-      addCheckboxField(doc, 'Weapons', false, flagX + SPACING.SM, y);
-    }
-    y += SPACING.LG; flagX = lx;
-    flagX = addCheckboxField(doc, 'Felony IP', !!data.felony_in_progress, flagX, y);
-    flagX = addCheckboxField(doc, 'Ofc Safety', !!data.officer_safety_caution, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'Veh Pursuit', !!data.vehicle_pursuit, flagX + SPACING.SM, y);
-    flagX = addCheckboxField(doc, 'Foot Pursuit', !!data.foot_pursuit, flagX + SPACING.SM, y);
-    addCheckboxField(doc, 'BWC Active', !!data.body_camera_active, flagX + SPACING.SM, y);
-    y += SPACING.LG; flagX = lx;
-    flagX = addCheckboxField(doc, 'Evidence', !!data.evidence_collected, flagX, y);
-    flagX = addCheckboxField(doc, 'Photos', !!data.photos_taken, flagX + SPACING.SM, y);
-    addCheckboxField(doc, 'LE Notified', !!data.le_notified, flagX + SPACING.SM, y);
-    y += SPACING.XL;
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
-
-  // Charges table
-  { const sec = openAutoSection(doc, 'Charges', y); y = sec.contentY;
-    const colPositions = [lx, LAYOUT.PAGE_MARGIN + 90, LAYOUT.PAGE_MARGIN + 130];
-    const tableHeaders = [
-      { label: 'CHARGE', x: colPositions[0] },
-      { label: 'CODE', x: colPositions[1] },
-      { label: 'CLASS', x: colPositions[2] },
-    ];
-    const emptyRows: string[][] = [['', '', ''], ['', '', ''], ['', '', ''], ['', '', '']];
-    y = addTableWithShading(doc, tableHeaders, emptyRows, y, colPositions);
-    y += SPACING.MD;
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
 
   const chargeColPositions = [gridX, gridX + gridW * 0.55, gridX + gridW * 0.8];
   const chargeHeaders = [
@@ -2766,37 +2689,10 @@ function generateArrestReport(doc: jsPDF, data: IncidentData) {
   y += SPACING.SECTION_GAP;
 
   // ═══════════════════════════════════════════════════════════
-  // PROPERTY — personal property inventory + codes
+  // PROPERTY — personal property inventory (NIBRS grid format)
   // ═══════════════════════════════════════════════════════════
   const propStartY = y;
   y = checkPageBreak(doc, y, 30, data.priority);
-  { const sec = openAutoSection(doc, 'Miranda Advisement', y); y = sec.contentY;
-    doc.setFontSize(FONT.SIZE_TABLE_BODY);
-    doc.setFont('helvetica', 'normal');
-    doc.text('You have the right to remain silent. Anything you say can and will be used against you in a court of law.', lx, y);
-    y += 4;
-    doc.text('You have the right to an attorney. If you cannot afford an attorney, one will be appointed for you.', lx, y);
-    y += SPACING.XL;
-    { const yL = addFieldPair(doc, 'Miranda Given At', '', lx, y, hfw);
-      const yR = addFieldPair(doc, 'Waived / Invoked', '', rx, y, hfw);
-      y = Math.max(yL, yR); }
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
-
-  // Personal Property Inventory
-  y = checkPageBreak(doc, y, 30, data.priority);
-  { const sec = openAutoSection(doc, 'Personal Property Inventory', y); y = sec.contentY;
-    const colPositions = [lx, LAYOUT.PAGE_MARGIN + 20, LAYOUT.PAGE_MARGIN + 120];
-    const tableHeaders = [
-      { label: 'ITEM #', x: colPositions[0] },
-      { label: 'DESCRIPTION', x: colPositions[1] },
-      { label: 'DISPOSITION', x: colPositions[2] },
-    ];
-    const emptyRows: string[][] = [['', '', ''], ['', '', ''], ['', '', ''], ['', '', '']];
-    y = addTableWithShading(doc, tableHeaders, emptyRows, y, colPositions);
-    y += SPACING.MD;
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
-  }
 
   const propColPositions = [gridX, gridX + 15, gridX + gridW - 30];
   const propHeaders = [

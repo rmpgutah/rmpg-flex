@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   TrendingUp, Plus, Star, RefreshCw, Filter, Edit2,
-  ChevronDown, ChevronUp, Calendar, Target, CheckCircle, Clock,
+  ChevronDown, ChevronUp, Calendar, Target, CheckCircle, Clock, Check,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import PanelTitleBar from '../../../components/PanelTitleBar';
@@ -313,7 +313,6 @@ function CyclesTab() {
     try {
       await apiFetch('/hr/review-cycles', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       });
       setShowCreate(false);
@@ -328,7 +327,6 @@ function CyclesTab() {
     try {
       await apiFetch(`/hr/review-cycles/${cycle.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       });
       loadCycles();
@@ -466,14 +464,13 @@ function GoalsTab() {
   useEffect(() => { loadGoals(); }, [loadGoals]);
 
   useEffect(() => {
-    apiFetch<{ id: string; full_name: string }[]>('/hr/employees').then(setEmployees).catch(() => {});
+    apiFetch<{ id: string; full_name: string }[]>('/hr/employees').then(setEmployees).catch(err => console.warn('[HR] Failed to load data:', err));
   }, []);
 
   const handleUpdateProgress = async (goalId: number) => {
     try {
       await apiFetch(`/hr/goals/${goalId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ progress: editProgress }),
       });
       setEditingGoalId(null);
@@ -487,7 +484,6 @@ function GoalsTab() {
     try {
       await apiFetch('/hr/goals', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newGoal),
       });
       setShowCreate(false);
@@ -501,7 +497,6 @@ function GoalsTab() {
     try {
       await apiFetch(`/hr/goals/${goalId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'completed', progress: 100 }),
       });
       loadGoals();

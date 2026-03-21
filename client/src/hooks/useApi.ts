@@ -383,7 +383,7 @@ export async function apiFetch<T>(
   return res.json();
 }
 
-// Upload files via FormData (multipart)
+// Upload files via FormData (multipart) — no progress tracking (legacy)
 export async function apiUploadFiles(
   files: File[],
   entityType?: string,
@@ -416,6 +416,173 @@ export async function apiUploadFiles(
   }
 
   return res.json();
+}
+
+// ─── Progress-tracked upload with chunked parallel workers ────
+export interface UploadProgressInfo {
+  loaded: number;
+  total: number;
+  percent: number;
+}
+
+const CHUNK_THRESHOLD = 10 * 1024 * 1024; // 10MB — most files benefit from parallel chunked upload
+const CHUNK_SIZE = 25 * 1024 * 1024;      // 25MB chunks — less overhead per chunk
+const PARALLEL_WORKERS = 8;               // 8 parallel workers for max throughput
+
+function _getToken(): string | null {
+  try { return localStorage.getItem('rmpg_token'); } catch { return null; }
+}
+
+function _authHeaders(): Record<string, string> {
+  const token = _getToken();
+  const h: Record<string, string> = { 'X-Requested-With': 'XMLHttpRequest' };
+  if (token) h['Authorization'] = `Bearer ${token}`;
+  return h;
+}
+
+/** Upload a single chunk with XHR progress tracking */
+function _uploadChunk(
+  uploadId: string, idx: number, blob: Blob,
+  onDelta?: (bytes: number) => void,
+): { promise: Promise<void>; abort: () => void } {
+  const xhr = new XMLHttpRequest();
+  let last = 0;
+  const promise = new Promise<void>((resolve, reject) => {
+    xhr.open('POST', `/api/uploads/chunked/${uploadId}/${idx}`);
+    xhr.timeout = 600000; // 10 min per 25MB chunk
+    for (const [k, v] of Object.entries(_authHeaders())) xhr.setRequestHeader(k, v);
+    xhr.upload.onprogress = (ev) => {
+      if (ev.lengthComputable && onDelta) { const d = ev.loaded - last; last = ev.loaded; onDelta(d); }
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        if (onDelta) { const r = blob.size - last; if (r > 0) onDelta(r); }
+        resolve();
+      } else {
+        let msg = `Chunk ${idx} failed (${xhr.status})`;
+        try { const r = JSON.parse(xhr.responseText); if (r.error) msg = r.error; } catch { /* */ }
+        reject(new Error(msg));
+      }
+    };
+    xhr.onerror = () => reject(new Error(`Network error on chunk ${idx}`));
+    xhr.ontimeout = () => reject(new Error(`Chunk ${idx} timed out`));
+    const fd = new FormData(); fd.append('chunk', blob, `chunk-${idx}`);
+    xhr.send(fd);
+  });
+  return { promise, abort: () => xhr.abort() };
+}
+
+/**
+ * Upload a file with real-time progress. Auto-selects chunked parallel upload for files >50MB.
+ */
+export function apiUploadFileWithProgress(
+  file: File, entityType?: string, entityId?: string | number,
+  onProgress?: (info: UploadProgressInfo) => void,
+): { promise: Promise<any>; abort: () => void } {
+  if (file.size <= CHUNK_THRESHOLD) return _uploadSmall(file, entityType, entityId, onProgress);
+
+  let aborted = false;
+  const xhrs: Array<{ abort: () => void }> = [];
+
+  const promise = (async () => {
+    const token = _getToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    const initRes = await fetch('/api/uploads/chunked/init', {
+      method: 'POST', headers,
+      body: JSON.stringify({ fileName: file.name, fileSize: file.size, mimeType: file.type, totalChunks, entityType, entityId: entityId ? String(entityId) : undefined }),
+    });
+    if (!initRes.ok) { const e = await initRes.json().catch(() => ({})); throw new Error(e.error || 'Init failed'); }
+    const { uploadId } = await initRes.json();
+
+    let totalLoaded = 0;
+    const queue: number[] = Array.from({ length: totalChunks }, (_, i) => i);
+
+    const worker = async () => {
+      while (queue.length > 0 && !aborted) {
+        const idx = queue.shift()!;
+        const start = idx * CHUNK_SIZE;
+        const blob = file.slice(start, Math.min(start + CHUNK_SIZE, file.size));
+        const { promise: p, abort: a } = _uploadChunk(uploadId, idx, blob, (d) => {
+          totalLoaded += d;
+          onProgress?.({ loaded: Math.min(totalLoaded, file.size), total: file.size, percent: Math.round((Math.min(totalLoaded, file.size) / file.size) * 100) });
+        });
+        xhrs.push({ abort: a });
+        try { await p; } catch {
+          if (aborted) return;
+          // Retry once
+          totalLoaded -= blob.size;
+          const { promise: r, abort: ra } = _uploadChunk(uploadId, idx, blob, (d) => {
+            totalLoaded += d;
+            onProgress?.({ loaded: Math.min(totalLoaded, file.size), total: file.size, percent: Math.round((Math.min(totalLoaded, file.size) / file.size) * 100) });
+          });
+          xhrs.push({ abort: ra });
+          await r;
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: PARALLEL_WORKERS }, () => worker()));
+    if (aborted) throw new Error('Upload cancelled');
+
+    const finalRes = await fetch(`/api/uploads/chunked/${uploadId}/finalize`, { method: 'POST', headers });
+    if (!finalRes.ok) { const e = await finalRes.json().catch(() => ({})); throw new Error(e.error || 'Finalize failed'); }
+    return finalRes.json();
+  })();
+
+  return { promise, abort: () => { aborted = true; xhrs.forEach((x) => { try { x.abort(); } catch { /* */ } }); } };
+}
+
+function _uploadSmall(
+  file: File, entityType?: string, entityId?: string | number,
+  onProgress?: (info: UploadProgressInfo) => void,
+): { promise: Promise<any>; abort: () => void } {
+  const xhr = new XMLHttpRequest();
+  const fd = new FormData();
+  fd.append('files', file);
+  if (entityType) fd.append('entity_type', entityType);
+  if (entityId) fd.append('entity_id', String(entityId));
+
+  const promise = new Promise<any>((resolve, reject) => {
+    xhr.open('POST', '/api/uploads');
+    xhr.timeout = 1800000;
+    for (const [k, v] of Object.entries(_authHeaders())) xhr.setRequestHeader(k, v);
+    xhr.upload.onprogress = (ev) => { if (ev.lengthComputable) onProgress?.({ loaded: ev.loaded, total: ev.total, percent: Math.round((ev.loaded / ev.total) * 100) }); };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) { try { resolve(JSON.parse(xhr.responseText)); } catch { resolve([]); } }
+      else { let m = `Upload failed (${xhr.status})`; try { const r = JSON.parse(xhr.responseText); if (r.error) m = r.error; } catch { /* */ } reject(new Error(m)); }
+    };
+    xhr.onerror = () => reject(new Error('Network error'));
+    xhr.ontimeout = () => reject(new Error('Upload timed out'));
+    xhr.send(fd);
+  });
+  return { promise, abort: () => xhr.abort() };
+}
+
+/** Download a file with progress tracking. */
+export function apiDownloadFileWithProgress(
+  url: string, fileName: string,
+  onProgress?: (info: UploadProgressInfo) => void,
+): { promise: Promise<void>; abort: () => void } {
+  const xhr = new XMLHttpRequest();
+  const promise = new Promise<void>((resolve, reject) => {
+    xhr.open('GET', url);
+    xhr.responseType = 'blob';
+    xhr.timeout = 1800000;
+    xhr.onprogress = (ev) => { if (ev.lengthComputable) onProgress?.({ loaded: ev.loaded, total: ev.total, percent: Math.round((ev.loaded / ev.total) * 100) }); };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        const a = document.createElement('a'); a.href = URL.createObjectURL(xhr.response as Blob);
+        a.download = fileName; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        URL.revokeObjectURL(a.href); resolve();
+      } else reject(new Error(`Download failed (${xhr.status})`));
+    };
+    xhr.onerror = () => reject(new Error('Network error'));
+    xhr.ontimeout = () => reject(new Error('Download timed out'));
+    xhr.send();
+  });
+  return { promise, abort: () => xhr.abort() };
 }
 
 // Fetch attachments for an entity

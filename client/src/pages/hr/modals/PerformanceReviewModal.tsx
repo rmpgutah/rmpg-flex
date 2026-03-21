@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, TrendingUp, Star } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { localToday } from '../../../utils/dateUtils';
 
 interface UserOption {
   id: string;
@@ -43,7 +44,7 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
   const [cycles, setCycles] = useState<ReviewCycle[]>([]);
   const [employeeId, setEmployeeId] = useState(review?.employee_id || '');
   const [cycleId, setCycleId] = useState<number | null>(review?.cycle_id || null);
-  const [reviewDate, setReviewDate] = useState(review?.review_date || new Date().toISOString().split('T')[0]);
+  const [reviewDate, setReviewDate] = useState(review?.review_date || localToday());
   const [overallRating, setOverallRating] = useState(review?.overall_rating || 0);
   const [strengths, setStrengths] = useState(review?.strengths || '');
   const [areasForImprovement, setAreasForImprovement] = useState(review?.areas_for_improvement || '');
@@ -53,8 +54,8 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
   const [error, setError] = useState('');
 
   useEffect(() => {
-    apiFetch<UserOption[]>('/hr/employees').then(setUsers).catch(() => {});
-    apiFetch<ReviewCycle[]>('/hr/review-cycles').then(setCycles).catch(() => {});
+    apiFetch<UserOption[]>('/hr/employees').then(setUsers).catch(err => console.warn('[HR] Failed to load data:', err));
+    apiFetch<ReviewCycle[]>('/hr/review-cycles').then(setCycles).catch(err => console.warn('[HR] Failed to load data:', err));
   }, []);
 
   const handleSubmit = async () => {
@@ -78,13 +79,11 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
       if (review?.id) {
         await apiFetch(`/hr/performance-reviews/${review.id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
       } else {
         await apiFetch('/hr/performance-reviews', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
       }

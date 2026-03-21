@@ -355,25 +355,66 @@ export function mountDownloadFileRoute(app: any) {
     else if (safeName.endsWith('.yml') || safeName.endsWith('.yaml')) mimeType = 'text/yaml';
     else if (safeName.endsWith('.blockmap')) mimeType = 'application/octet-stream';
 
-    res.setHeader('Content-Type', mimeType);
-    res.setHeader('Content-Length', stat.size);
+    const fileSize = stat.size;
+
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Cache-Control', 'private, no-cache');
+    res.setHeader('Accept-Ranges', 'bytes');
 
     // Only set download disposition for actual installers
+    let disposition = '';
     if (safeName.endsWith('.dmg') || safeName.endsWith('.exe') || safeName.endsWith('.apk')) {
       const sanitized = safeName.replace(/[\r\n\0"]/g, '_');
-      res.setHeader('Content-Disposition', `attachment; filename="${sanitized}"`);
+      disposition = `attachment; filename="${sanitized}"`;
     }
 
-    const stream = fs.createReadStream(filePath);
-    stream.once('error', (err) => {
-      console.error('File stream error:', err);
-      if (!res.headersSent) res.status(500).json({ error: 'Failed to stream file' });
-      else res.destroy();
-    });
-    res.on('error', () => { stream.destroy(); });
-    stream.pipe(res);
+    // ── Range request support (resumable downloads, electron-updater) ──
+    const range = req.headers.range;
+
+    if (range) {
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+      if (isNaN(start) || isNaN(end) || start < 0 || end >= fileSize || start > end) {
+        res.writeHead(416, { 'Content-Range': `bytes */${fileSize}` });
+        res.end();
+        return;
+      }
+
+      const chunkSize = end - start + 1;
+      res.writeHead(206, {
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Content-Length': chunkSize,
+        'Content-Type': mimeType,
+        'Cache-Control': 'private, no-cache',
+        ...(disposition ? { 'Content-Disposition': disposition } : {}),
+      });
+
+      const stream = fs.createReadStream(filePath, { start, end, highWaterMark: 1024 * 1024 });
+      stream.once('error', (err) => {
+        console.error('File stream error:', err?.message);
+        res.destroy();
+      });
+      res.on('error', () => { stream.destroy(); });
+      stream.pipe(res);
+    } else {
+      // Full file download
+      res.writeHead(200, {
+        'Content-Length': fileSize,
+        'Content-Type': mimeType,
+        'Cache-Control': 'private, no-cache',
+        ...(disposition ? { 'Content-Disposition': disposition } : {}),
+      });
+
+      const stream = fs.createReadStream(filePath, { highWaterMark: 1024 * 1024 });
+      stream.once('error', (err) => {
+        console.error('File stream error:', err?.message);
+        if (!res.headersSent) res.status(500).json({ error: 'Failed to stream file' });
+        else res.destroy();
+      });
+      res.on('error', () => { stream.destroy(); });
+      stream.pipe(res);
+    }
   };
 
   // Mount on both paths — electron-updater uses /updates/, download page uses /downloads/

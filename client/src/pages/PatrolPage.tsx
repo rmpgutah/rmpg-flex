@@ -414,13 +414,11 @@ const PatrolPage: React.FC = () => {
       if (editingCheckpoint) {
         await apiFetch(`/patrol/checkpoints/${editingCheckpoint.id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
       } else {
         await apiFetch('/patrol/checkpoints', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
       }

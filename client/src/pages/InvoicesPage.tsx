@@ -30,6 +30,7 @@ import {
   Eye,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { useLiveSync } from '../hooks/useLiveSync';
 import { useAuth } from '../context/AuthContext';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { localToday, formatDate } from '../utils/dateUtils';
@@ -295,6 +296,7 @@ export default function InvoicesPage() {
   useEffect(() => { fetchInvoices(); }, [fetchInvoices]);
   useEffect(() => { fetchStats(); }, [fetchStats]);
   useEffect(() => { fetchClients(); }, [fetchClients]);
+  useLiveSync('admin', useCallback(() => { fetchInvoices({ silent: true }); fetchStats(); }, [fetchInvoices, fetchStats]));
 
   // ── Actions ──────────────────────────────────────────────
 
@@ -308,7 +310,6 @@ export default function InvoicesPage() {
     try {
       const res = await apiFetch<{ data: Invoice }>('/invoices', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(createForm),
       });
       // Switch to detail view of the new invoice
@@ -329,7 +330,6 @@ export default function InvoicesPage() {
     try {
       await apiFetch(`/invoices/${invoiceId}/status`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       });
       await fetchDetail(invoiceId);
@@ -362,7 +362,6 @@ export default function InvoicesPage() {
     try {
       await apiFetch(`/invoices/${selectedInvoice.id}/payments`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...paymentForm, amount: parseFloat(paymentForm.amount) }),
       });
       await fetchDetail(selectedInvoice.id);
@@ -398,7 +397,6 @@ export default function InvoicesPage() {
     try {
       await apiFetch(`/invoices/${selectedInvoice.id}/line-items`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...lineItemForm,
           quantity: parseFloat(lineItemForm.quantity) || 1,

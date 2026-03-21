@@ -2642,4 +2642,53 @@ router.post('/reset-password', passwordRateLimit, async (req: Request, res: Resp
   }
 });
 
+// ─── POST /api/auth/sign-urls — Generate HMAC-signed URLs for media resources ──
+// Replaces the insecure pattern of passing JWT tokens in URL query parameters.
+// Signed URLs are resource-specific, time-limited, and read-only.
+import { signResourceAccess } from '../utils/signedAccess';
+
+// Rate limit: 30 requests per minute per user (enough for page loads with many resources)
+const signUrlsRateLimit = (() => {
+  try {
+    const { rateLimit } = require('../middleware/rateLimiter');
+    return rateLimit({
+      windowMs: 60 * 1000,
+      maxRequests: 30,
+      keyGenerator: (req: any) => `sign-urls:${req.user?.userId || req.ip || 'unknown'}`,
+    });
+  } catch { return (_req: any, _res: any, next: any) => next(); }
+})();
+
+router.post('/sign-urls', authenticateToken, signUrlsRateLimit, (req: Request, res: Response) => {
+  try {
+    const { resources } = req.body;
+    if (!Array.isArray(resources) || resources.length === 0) {
+      res.status(400).json({ error: 'resources array is required' });
+      return;
+    }
+    if (resources.length > 50) {
+      res.status(400).json({ error: 'Maximum 50 resources per request' });
+      return;
+    }
+
+    // Whitelist allowed resource types to prevent signing arbitrary resources
+    const ALLOWED_TYPES = new Set(['file', 'dashcam', 'bodycam', 'training']);
+
+    const signed: Record<string, { sig: string; exp: number; nonce: string }> = {};
+    for (const r of resources) {
+      if (!r.type || !r.id) continue;
+      if (!ALLOWED_TYPES.has(String(r.type))) continue;
+      // Validate ID is alphanumeric (no path traversal characters)
+      if (!/^[\w-]+$/.test(String(r.id))) continue;
+      const key = `${r.type}:${r.id}`;
+      signed[key] = signResourceAccess(String(r.type), String(r.id));
+    }
+
+    res.json({ signed });
+  } catch (error: any) {
+    console.error('Sign URLs error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

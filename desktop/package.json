@@ -8,6 +8,8 @@
   "main": "main.js",
   "scripts": {
     "start": "electron . --dev",
+    "postinstall": "electron-rebuild -f -w better-sqlite3",
+    "rebuild": "electron-rebuild -f -w better-sqlite3",
     "build:win": "electron-builder --win",
     "build:mac": "electron-builder --mac",
     "build:all": "electron-builder --mac --win"
@@ -33,8 +35,16 @@
       "connectivityMonitor.js",
       "pinManager.js",
       "offlineRouter.js",
-      "syncManager.js"
+      "syncManager.js",
+      "node_modules/better-sqlite3/**/*",
+      "node_modules/bindings/**/*",
+      "node_modules/file-uri-to-path/**/*",
+      "node_modules/prebuild-install/**/*"
     ],
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**/*"
+    ],
+    "npmRebuild": true,
     "extraResources": [
       {
         "from": "../client/public/rmpg-seal.png",
@@ -96,6 +106,7 @@
     "electron-updater": "^6.8.3"
   },
   "devDependencies": {
+    "@electron/rebuild": "^3.7.1",
     "electron": "^33.0.0",
     "electron-builder": "^25.0.0"
   }

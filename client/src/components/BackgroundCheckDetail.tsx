@@ -44,10 +44,13 @@ export default function BackgroundCheckDetail({ searchId, onClose }: BackgroundC
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
     apiFetch<BackgroundCheckData>(`/microbilt/background/${searchId}`)
-      .then(setData)
-      .catch(() => setData({ found: false }))
-      .finally(() => setLoading(false));
+      .then(d => { if (!cancelled) setData(d); })
+      .catch(() => { if (!cancelled) setData({ found: false }); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [searchId]);
 
   const records = data?.search?.response_data?.records || [];
