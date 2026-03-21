@@ -1612,23 +1612,57 @@ export default function DispatchPage() {
     });
   }, []);
 
-  // ── Dispatch alarm interval — check overdue calls every 5s ──
-  const alarmPlayedRef = useRef<Set<string>>(new Set());
+  // ── Dispatch timer alarm — escalating tones + voice for overdue calls ──
+  // Tracks which severity level was already announced per call to avoid repeats
+  const timerAlarmsRef = useRef<Map<string, string>>(new Map()); // callId → last severity played
   useEffect(() => {
     const check = () => {
       const activeCalls = calls.filter(c => isActiveStatus(c.status));
       for (const c of activeCalls) {
         const state = getTimerState(c);
-        if (state.isOverdue && !alarmPlayedRef.current.has(c.id)) {
-          alarmPlayedRef.current.add(c.id);
-          playTone('alarm');
-          break; // One alarm at a time
+        const lastPlayed = timerAlarmsRef.current.get(c.id);
+        const callNum = c.call_number || c.id;
+        const incType = c.incident_type ? c.incident_type.replace(/_/g, ' ') : '';
+        const loc = c.location || '';
+
+        // Stale: pending > 3 min with no units assigned
+        if (c.status === 'pending' && state.elapsed > 180 && (c.assigned_units || []).length === 0 && lastPlayed !== 'stale') {
+          timerAlarmsRef.current.set(c.id, 'stale');
+          playTone('stale_call');
+          break;
+        }
+
+        // Warning severity (approaching limit)
+        if (state.severity === 'warning' && lastPlayed !== 'warning' && lastPlayed !== 'critical' && lastPlayed !== 'overdue') {
+          timerAlarmsRef.current.set(c.id, 'warning');
+          playTone('timer_soft');
+          break;
+        }
+
+        // Critical severity (at limit)
+        if (state.severity === 'critical' && lastPlayed !== 'critical' && lastPlayed !== 'overdue') {
+          timerAlarmsRef.current.set(c.id, 'critical');
+          playTone('timer_urgent');
+          break;
+        }
+
+        // Overdue (past limit)
+        if (state.isOverdue && lastPlayed !== 'overdue') {
+          timerAlarmsRef.current.set(c.id, 'overdue');
+          playTone('timer_critical');
+          // Voice announcement for overdue calls
+          import('../../utils/voiceAlerts').then(({ announceAllUnits }) => {
+            const elapsed = state.formatted;
+            announceAllUnits(`Call ${callNum.replace(/^[A-Z]+-/i, '').replace(/^\d{4}-?0*/, '')}${incType ? ', ' + incType : ''}, has been active for ${elapsed} and is now overdue${loc ? ', at ' + loc.split(',')[0] : ''}`);
+          });
+          break;
         }
       }
-      // Clean up resolved overdue flags
+
+      // Clean up resolved calls
       const activeIds = new Set(activeCalls.map(c => c.id));
-      for (const id of alarmPlayedRef.current) {
-        if (!activeIds.has(id)) alarmPlayedRef.current.delete(id);
+      for (const id of timerAlarmsRef.current.keys()) {
+        if (!activeIds.has(id)) timerAlarmsRef.current.delete(id);
       }
     };
     check();
