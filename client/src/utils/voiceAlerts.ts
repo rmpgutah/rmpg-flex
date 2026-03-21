@@ -364,78 +364,244 @@ let lastAnnouncement: { phrases: VoicePhrase[]; priority: string; timestamp: num
 /** Phrase counter — used for micro-variation seeding */
 let phraseCounter = 0;
 
-function speakPhrase(phrase: VoicePhrase): Promise<void> {
-  return new Promise((resolve) => {
-    if (!isSpeechAvailable()) { resolve(); return; }
+// ─── Radio Static Underlay ──────────────────────────────────
+// Optional very-light radio static hiss during speech that gives
+// the unmistakable "dispatch radio" atmosphere. Barely audible (3%)
+// so it's more felt than heard. Uses continuous filtered white noise.
 
-    // Run pronunciation improvements on the text before speaking
-    const spokenText = improvePronounciation(phrase.text);
-    const utterance = new SpeechSynthesisUtterance(spokenText);
+let staticCtx: AudioContext | null = null;
+let staticSource: AudioBufferSourceNode | null = null;
+let staticGain: GainNode | null = null;
+
+function startRadioStatic(): void {
+  try {
+    if (staticCtx) return;  // Already playing
+    const radioFx = localStorage.getItem('rmpg-radio-fx');
+    if (radioFx === 'false') return;  // User disabled it
+
+    staticCtx = new AudioContext();
+    if (staticCtx.state === 'suspended') staticCtx.resume();
+
+    // 2-second looping noise buffer
+    const sr = staticCtx.sampleRate;
+    const len = sr * 2;
+    const buf = staticCtx.createBuffer(1, len, sr);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) {
+      d[i] = (Math.random() * 2 - 1);
+    }
+
+    staticSource = staticCtx.createBufferSource();
+    staticSource.buffer = buf;
+    staticSource.loop = true;
+
+    // Bandpass — radio frequency character (600-2800 Hz)
+    const bp = staticCtx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 1600;
+    bp.Q.value = 0.6;
+
+    // Highpass — remove low rumble
+    const hp = staticCtx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 500;
+
+    staticGain = staticCtx.createGain();
+    staticGain.gain.value = 0.03;  // 3% — barely perceptible
+
+    staticSource.connect(bp);
+    bp.connect(hp);
+    hp.connect(staticGain);
+    staticGain.connect(staticCtx.destination);
+
+    // Fade in over 200ms
+    staticGain.gain.setValueAtTime(0, staticCtx.currentTime);
+    staticGain.gain.linearRampToValueAtTime(0.03, staticCtx.currentTime + 0.2);
+
+    staticSource.start();
+  } catch {
+    // Audio context unavailable — skip silently
+  }
+}
+
+function stopRadioStatic(): void {
+  try {
+    if (staticGain && staticCtx) {
+      // Fade out over 300ms
+      const now = staticCtx.currentTime;
+      staticGain.gain.setValueAtTime(staticGain.gain.value, now);
+      staticGain.gain.linearRampToValueAtTime(0, now + 0.3);
+      setTimeout(() => {
+        staticSource?.stop();
+        staticCtx?.close().catch(() => {});
+        staticCtx = null;
+        staticSource = null;
+        staticGain = null;
+      }, 400);
+    }
+  } catch {
+    staticCtx = null;
+    staticSource = null;
+    staticGain = null;
+  }
+}
+
+/**
+ * Play a subtle radio PTT (push-to-talk) click between phrases.
+ * This simulates the distinctive "click-hiss" sound of a dispatch radio
+ * mic being released and re-keyed. Extremely subtle (15% volume) so it
+ * registers subliminally — the listener's brain categorizes the speech
+ * as "radio dispatch" without consciously hearing individual clicks.
+ *
+ * Technique: A 12ms burst of filtered white noise (bandpass 800-3000 Hz)
+ * with a sharp attack and fast exponential decay. This mimics the
+ * electromagnetic pop of a relay switching.
+ */
+async function playRadioClick(): Promise<void> {
+  try {
+    const ctx = new AudioContext();
+    if (ctx.state === 'suspended') await ctx.resume();
+
+    const duration = 0.012;  // 12ms — barely perceptible
+    const now = ctx.currentTime;
+
+    // White noise buffer
+    const bufferSize = Math.ceil(ctx.sampleRate * duration);
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * 0.6;
+    }
+
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+
+    // Bandpass filter — radio frequency character (800-3000 Hz)
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = 1800;
+    filter.Q.value = 0.8;
+
+    // Gain envelope — sharp attack, fast decay
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.15, now);  // 15% volume — subliminal
+    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+    source.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+
+    source.start(now);
+    source.stop(now + duration);
+
+    // Clean up after playback
+    setTimeout(() => ctx.close().catch(() => {}), 50);
+  } catch {
+    // Audio context unavailable — silently skip
+  }
+}
+
+/**
+ * Speak a single clause (sub-sentence fragment) with computed prosody.
+ * This is the lowest-level speech function — one utterance, no splitting.
+ */
+function speakClause(
+  text: string,
+  clauseIndex: number,
+  totalClauses: number,
+  phrasePosition: 'first' | 'middle' | 'last' | 'only',
+): Promise<void> {
+  return new Promise((resolve) => {
+    if (!isSpeechAvailable() || !text.trim()) { resolve(); return; }
+
+    const utterance = new SpeechSynthesisUtterance(text);
     const voice = selectFemaleVoice();
     if (voice) utterance.voice = voice;
 
-    // Apply priority-based speech parameters combined with user preferences
     const baseRate = getSpeechRate();
     const baseVolume = getSpeechVolume();
     const params = activePriority ? PRIORITY_PARAMS[activePriority] : undefined;
 
-    // ── Micro-variation for human realism ──
-    // Real dispatchers vary their delivery phrase-to-phrase — speed shifts,
-    // pitch rises on questions and safety warnings, drops at statement ends.
-    // We simulate this with overlapping sine waves at different frequencies
-    // to create organic-sounding variation that never exactly repeats.
-    phraseCounter++;
-
-    // ±5% rate variation (wider than before — humans vary significantly)
+    // ── Organic variation — triple sine overlay ──
+    // Three waves at irrational frequency ratios create quasi-random
+    // variation that never exactly repeats across any 100-phrase window.
+    const seed = phraseCounter + clauseIndex * 0.37;
     const rateJitter = 1.0
-      + (Math.sin(phraseCounter * 2.7) * 0.03)     // primary wave ±3%
-      + (Math.sin(phraseCounter * 4.3) * 0.02);     // secondary wave ±2%
+      + (Math.sin(seed * 2.7) * 0.025)       // ±2.5%
+      + (Math.sin(seed * 4.3) * 0.015)       // ±1.5%
+      + (Math.sin(seed * 7.1) * 0.01);       // ±1% (high-frequency texture)
 
-    // ±3% pitch variation (two overlapping waves for organic feel)
     const pitchJitter =
-      (Math.sin(phraseCounter * 1.9) * 0.02)        // primary ±2%
-      + (Math.sin(phraseCounter * 3.1) * 0.01);     // secondary ±1%
+      (Math.sin(seed * 1.9) * 0.018)          // ±1.8%
+      + (Math.sin(seed * 3.1) * 0.012)        // ±1.2%
+      + (Math.sin(seed * 5.7) * 0.005);       // ±0.5% (shimmer)
 
-    // Longer sentences get progressively slower (natural human tendency —
-    // we slow down to maintain clarity on complex information)
-    const len = spokenText.length;
-    const lengthFactor = len > 120 ? 0.94 : len > 80 ? 0.96 : len > 50 ? 0.98 : 1.0;
+    // ── Length-based pacing ──
+    const len = text.length;
+    const lengthFactor = len > 100 ? 0.93 : len > 70 ? 0.95 : len > 40 ? 0.97 : 1.0;
 
     // ── Emphasis detection ──
-    // Certain phrase content should be delivered differently:
-    // - Safety/warning phrases: slightly slower + higher pitch (alert tone)
-    // - Suspect/vehicle descriptions: slower (officers writing it down)
-    // - Closing phrases ("Use caution"): lower pitch, authoritative
-    const lowerText = spokenText.toLowerCase();
+    const lower = text.toLowerCase();
     let emphasisRate = 1.0;
     let emphasisPitch = 0;
 
-    if (lowerText.includes('be advised') || lowerText.includes('caution') ||
-        lowerText.includes('safety') || lowerText.includes('weapon') ||
-        lowerText.includes('armed') || lowerText.includes('dangerous')) {
-      emphasisRate = 0.92;   // slow down for emphasis
-      emphasisPitch = 0.04;  // slight rise — urgency
-    } else if (lowerText.includes('suspect') || lowerText.includes('described as') ||
-               lowerText.includes('plate') || lowerText.includes('vehicle')) {
-      emphasisRate = 0.94;   // slow for description readout
-      emphasisPitch = 0;
-    } else if (lowerText.includes('use caution') || lowerText.includes('copy') ||
-               lowerText.startsWith('that\'s all')) {
-      emphasisRate = 0.96;
-      emphasisPitch = -0.03; // terminal drop — finality
+    if (lower.includes('be advised') || lower.includes('caution') ||
+        lower.includes('safety') || lower.includes('weapon') ||
+        lower.includes('armed') || lower.includes('dangerous') ||
+        lower.includes('shots fired') || lower.includes('officer down')) {
+      emphasisRate = 0.90;    // noticeably slower
+      emphasisPitch = 0.05;   // raised pitch — alert
+    } else if (lower.includes('suspect') || lower.includes('described as') ||
+               lower.includes('plate') || lower.includes('vehicle') ||
+               lower.includes('callback') || lower.includes('reach them')) {
+      emphasisRate = 0.93;    // deliberate readout pace
+      emphasisPitch = 0.01;
+    } else if (lower.includes('use caution') || lower.includes('copy') ||
+               lower.startsWith('that\'s all')) {
+      emphasisRate = 0.95;
+      emphasisPitch = -0.04;  // authoritative terminal drop
     }
 
-    // ── Terminal falling intonation ──
-    // Declarative sentences naturally end with pitch dropping.
-    // Questions rise. We detect sentence type and adjust.
-    const isQuestion = spokenText.trim().endsWith('?');
-    const terminalPitch = isQuestion ? 0.04 : -0.02;  // rise for questions, fall for statements
+    // ── Positional pitch contour ──
+    // First phrase in a batch: slightly higher pitch (attention-getting, "listen up")
+    // Middle phrases: neutral baseline
+    // Last phrase: pitch drops further (finality, "end of transmission")
+    let positionalPitch = 0;
+    if (phrasePosition === 'first') positionalPitch = 0.03;
+    else if (phrasePosition === 'last') positionalPitch = -0.03;
+
+    // ── Clause-position pitch arc ──
+    // Within a multi-clause sentence, pitch rises slightly through the middle
+    // clauses then falls on the final clause (natural sentence melody).
+    let clausePitch = 0;
+    if (totalClauses > 1) {
+      const progress = clauseIndex / (totalClauses - 1);  // 0 → 1
+      // Inverted parabola: rises in middle, falls at end
+      clausePitch = (-4 * (progress - 0.4) * (progress - 0.4) + 0.64) * 0.025;
+    }
+
+    // ── Terminal intonation ──
+    const trimmed = text.trim();
+    const isQuestion = trimmed.endsWith('?');
+    const isExclamation = trimmed.endsWith('!');
+    const terminalPitch = isQuestion ? 0.05 : isExclamation ? 0.02 : -0.02;
+
+    // ── Clause-position rate ──
+    // First clause of a sentence is slightly slower (establishing),
+    // middle clauses flow faster, final clause slows for clarity
+    let clauseRate = 1.0;
+    if (totalClauses > 1) {
+      if (clauseIndex === 0) clauseRate = 0.97;           // establishing
+      else if (clauseIndex === totalClauses - 1) clauseRate = 0.96;  // final — clear
+      else clauseRate = 1.02;                               // middle — flowing
+    }
 
     const finalRate = (params ? baseRate * params.rateMultiplier : baseRate)
-      * rateJitter * lengthFactor * emphasisRate;
+      * rateJitter * lengthFactor * emphasisRate * clauseRate;
     const finalPitch = SPEECH_PITCH
       + (params?.pitchOffset ?? 0)
-      + pitchJitter + emphasisPitch + terminalPitch;
+      + pitchJitter + emphasisPitch + terminalPitch
+      + positionalPitch + clausePitch;
 
     utterance.rate = Math.max(0.5, Math.min(2.0, finalRate));
     utterance.pitch = Math.max(0.5, Math.min(2.0, finalPitch));
@@ -448,9 +614,62 @@ function speakPhrase(phrase: VoicePhrase): Promise<void> {
   });
 }
 
+/** Intra-clause gap — tiny pause between comma-separated clauses (simulates breath) */
+const CLAUSE_GAP_MS = 130;
+
+/**
+ * Speak a full phrase by splitting it into clauses at natural break points
+ * (commas, semicolons, em-dashes). Each clause gets its own utterance with
+ * independently computed prosody, which dramatically improves TTS naturalness.
+ *
+ * Why: TTS engines produce far better prosody on short 5-15 word segments
+ * than on 30+ word sentences. By splitting at punctuation and speaking each
+ * clause separately with a 130ms "breath" gap, we get:
+ *   - Better word-level stress and rhythm per clause
+ *   - Natural pitch arcs within each clause
+ *   - Breathing-like pauses that sound human
+ *   - Independent rate/pitch variation per clause
+ */
+async function speakPhrase(
+  phrase: VoicePhrase,
+  phrasePosition: 'first' | 'middle' | 'last' | 'only' = 'middle',
+): Promise<void> {
+  if (!isSpeechAvailable()) return;
+
+  const spokenText = improvePronounciation(phrase.text);
+  phraseCounter++;
+
+  // Split at commas, semicolons, em-dashes, and colons — but keep each
+  // clause as a meaningful fragment. Filter out empty strings.
+  const clauses = spokenText
+    .split(/(?<=[,;:—–])\s+/)
+    .map(c => c.trim())
+    .filter(c => c.length > 0);
+
+  // If the sentence is short enough (< 50 chars), speak it whole —
+  // splitting very short phrases makes them sound choppy.
+  if (clauses.length <= 1 || spokenText.length < 50) {
+    await speakClause(spokenText, 0, 1, phrasePosition);
+    return;
+  }
+
+  for (let i = 0; i < clauses.length; i++) {
+    await speakClause(clauses[i], i, clauses.length, phrasePosition);
+    if (i < clauses.length - 1) {
+      // Variable clause gap — slightly longer after longer clauses
+      const clauseLen = clauses[i].length;
+      const gapMultiplier = clauseLen > 60 ? 1.3 : clauseLen > 30 ? 1.1 : 1.0;
+      await delay(Math.round(CLAUSE_GAP_MS * gapMultiplier));
+    }
+  }
+}
+
 async function processQueue(): Promise<void> {
   if (isSpeaking) return;
   isSpeaking = true;
+
+  // Start radio static underlay — gives the "dispatch radio" atmosphere
+  startRadioStatic();
 
   while (phraseQueue.length > 0) {
     const batch = phraseQueue.shift()!;
@@ -459,12 +678,17 @@ async function processQueue(): Promise<void> {
 
     for (let i = 0; i < batch.phrases.length; i++) {
       const phrase = batch.phrases[i];
-      await speakPhrase(phrase);
+
+      // Determine position in batch for pitch contour
+      const position: 'first' | 'middle' | 'last' | 'only' =
+        batch.phrases.length === 1 ? 'only' :
+        i === 0 ? 'first' :
+        i === batch.phrases.length - 1 ? 'last' : 'middle';
+
+      await speakPhrase(phrase, position);
 
       if (i < batch.phrases.length - 1) {
         // ── Variable phrase gaps — like a real dispatcher keying the mic ──
-        // Longer pause before safety/advisory content (dramatic beat)
-        // Shorter pause between routine sequential details
         const nextText = batch.phrases[i + 1]?.text?.toLowerCase() || '';
         const thisText = phrase.text.toLowerCase();
 
@@ -473,21 +697,33 @@ async function processQueue(): Promise<void> {
         // Longer beat before safety/warning blocks
         if (nextText.includes('safety') || nextText.includes('be advised') ||
             nextText.includes('armed') || nextText.includes('weapon') ||
-            nextText.includes('caution')) {
-          gap = PHRASE_GAP_MS * 1.6;  // ~800ms dramatic pause
+            nextText.includes('caution') || nextText.includes('shots fired')) {
+          gap = PHRASE_GAP_MS * 1.8;  // ~900ms dramatic pause
         }
-        // Slightly longer after location (let it sink in before narrative)
-        else if (thisText.includes('you\'re going to') || thisText.includes('cross street')) {
-          gap = PHRASE_GAP_MS * 1.3;  // ~650ms
+        // Topic transition: location → narrative (let address register)
+        else if (thisText.includes('you\'re going to') || thisText.includes('cross street') ||
+                 thisText.includes('apartment') || thisText.includes('building')) {
+          gap = PHRASE_GAP_MS * 1.4;  // ~700ms
         }
-        // Shorter between sequential facts (zone → narrative flows faster)
+        // Topic transition: narrative → caller info
+        else if ((thisText.includes('caller says') || thisText.includes('we\'re told')) &&
+                 (nextText.includes('reporting party') || nextText.includes('reach them'))) {
+          gap = PHRASE_GAP_MS * 1.3;
+        }
+        // Shorter between sequential facts (zone → beat flows faster)
         else if (thisText.includes('zone') || thisText.includes('beat')) {
-          gap = PHRASE_GAP_MS * 0.8;  // ~400ms
+          gap = PHRASE_GAP_MS * 0.8;
         }
 
-        // Add ±10% random variation to gaps (humans aren't metronomes)
-        const gapJitter = 1.0 + (Math.sin(i * 3.7 + phraseCounter) * 0.1);
+        // ±12% random variation (wider — humans are variable)
+        const gapJitter = 1.0 + (Math.sin(i * 3.7 + phraseCounter * 1.3) * 0.12);
         await delay(Math.round(gap * gapJitter));
+
+        // ── Subtle radio PTT click between phrases ──
+        // Simulates the push-to-talk mic release/re-key that real dispatch
+        // radios produce. Very quiet (15% volume) so it's subliminal —
+        // the listener feels "radio" without consciously hearing clicks.
+        await playRadioClick();
       }
     }
 
@@ -496,6 +732,9 @@ async function processQueue(): Promise<void> {
       await delay(PHRASE_GAP_MS);
     }
   }
+
+  // Fade out radio static underlay
+  stopRadioStatic();
 
   activePriority = undefined;
   isSpeaking = false;
