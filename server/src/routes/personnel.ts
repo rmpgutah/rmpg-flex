@@ -115,6 +115,7 @@ router.get('/', (req: Request, res: Response) => {
         u.emergency_contact_name, u.emergency_contact_phone, u.emergency_contact_relationship,
         u.employee_id, u.certifications, u.notes, u.profile_image,
         u.login_count, u.last_login_at,
+        u.totp_enabled, u.totp_exempt,
         u.created_at, u.updated_at,
         un.call_sign as unit_call_sign
       FROM users u
@@ -786,6 +787,40 @@ export function mountScheduleRoutes(parentRouter: Router): void {
     }
   });
 
+  // POST /api/personnel/time/batch-clock-in - Clock in multiple officers at once
+  parentRouter.post('/personnel/time/batch-clock-in', authenticateToken, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const { officer_ids } = req.body;
+      if (!Array.isArray(officer_ids) || officer_ids.length === 0) {
+        res.status(400).json({ error: 'officer_ids array is required' });
+        return;
+      }
+
+      const results: { officer_id: number; success: boolean; error?: string }[] = [];
+
+      for (const officerId of officer_ids) {
+        const existing = db.prepare("SELECT id FROM time_entries WHERE officer_id = ? AND status IN ('active', 'on_break')").get(officerId);
+        if (existing) {
+          results.push({ officer_id: officerId, success: false, error: 'Already clocked in' });
+          continue;
+        }
+
+        db.prepare('INSERT INTO time_entries (officer_id, clock_in, status) VALUES (?, datetime("now","localtime"), "active")').run(officerId);
+
+        db.prepare("INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'clock_in', 'time_entry', ?, ?, ?)")
+          .run(req.user!.userId, officerId, `Batch clock-in for officer ${officerId}`, req.ip || 'unknown');
+
+        results.push({ officer_id: officerId, success: true });
+      }
+
+      res.json({ results, clocked_in: results.filter(r => r.success).length, skipped: results.filter(r => !r.success).length });
+    } catch (error: any) {
+      console.error('Batch clock-in error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   // GET /api/personnel/credentials/:officerId
   parentRouter.get('/personnel/credentials/:officerId', authenticateToken, (req: Request, res: Response) => {
     try {
@@ -809,7 +844,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
   parentRouter.get('/personnel/time', authenticateToken, (req: Request, res: Response) => {
     try {
       const db = getDb();
-      const { status, date } = req.query;
+      const { status, date, start_date, end_date } = req.query;
 
       let whereClause = 'WHERE 1=1';
       const params: any[] = [];
@@ -822,6 +857,14 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         whereClause += ' AND DATE(t.clock_in) = ?';
         params.push(date);
       }
+      if (start_date) {
+        whereClause += ' AND DATE(t.clock_in) >= ?';
+        params.push(start_date);
+      }
+      if (end_date) {
+        whereClause += ' AND DATE(t.clock_in) <= ?';
+        params.push(end_date);
+      }
 
       if (req.user!.role === 'officer') {
         whereClause += ' AND t.officer_id = ?';
@@ -829,12 +872,14 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       }
 
       const entries = db.prepare(`
-        SELECT t.*, u.full_name as officer_name, u.badge_number
+        SELECT t.*, u.full_name as officer_name, u.badge_number,
+          (SELECT COUNT(*) FROM time_entry_edits WHERE time_entry_id = t.id) as edit_count,
+          (SELECT u2.full_name FROM users u2 WHERE u2.id = t.edited_by) as edited_by_name
         FROM time_entries t
         LEFT JOIN users u ON t.officer_id = u.id
         ${whereClause}
         ORDER BY t.clock_in DESC
-        LIMIT 100
+        LIMIT 500
       `).all(...params);
 
       res.json(entries);
@@ -849,15 +894,22 @@ export function mountScheduleRoutes(parentRouter: Router): void {
     try {
       const db = getDb();
       const entry = db.prepare('SELECT * FROM time_entries WHERE id = ?').get(req.params.id) as any;
-      if (!entry) {
-        res.status(404).json({ error: 'Time entry not found' });
-        return;
-      }
+      if (!entry) { res.status(404).json({ error: 'Time entry not found' }); return; }
 
-      const { clock_in, clock_out } = req.body;
-      if (!clock_in) {
-        res.status(400).json({ error: 'clock_in is required' });
-        return;
+      const { clock_in, clock_out, reason, notes } = req.body;
+      if (!clock_in) { res.status(400).json({ error: 'clock_in is required' }); return; }
+      if (!reason) { res.status(400).json({ error: 'reason is required for edits' }); return; }
+
+      const editorName = (db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any)?.full_name || 'Unknown';
+
+      // Log individual field changes to audit table
+      if (entry.clock_in !== clock_in) {
+        db.prepare('INSERT INTO time_entry_edits (time_entry_id, edited_by, edited_by_name, edit_type, old_value, new_value, reason) VALUES (?,?,?,?,?,?,?)')
+          .run(entry.id, req.user!.userId, editorName, 'clock_in_changed', entry.clock_in, clock_in, reason);
+      }
+      if ((entry.clock_out || '') !== (clock_out || '')) {
+        db.prepare('INSERT INTO time_entry_edits (time_entry_id, edited_by, edited_by_name, edit_type, old_value, new_value, reason) VALUES (?,?,?,?,?,?,?)')
+          .run(entry.id, req.user!.userId, editorName, 'clock_out_changed', entry.clock_out || null, clock_out || null, reason);
       }
 
       // Recalculate total hours
@@ -869,23 +921,22 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         if (totalHours < 0) totalHours = 0;
       }
 
-      const newStatus = clock_out ? 'completed' : 'active';
-
       db.prepare(`
-        UPDATE time_entries SET clock_in = ?, clock_out = ?, total_hours = ?, status = 'edited'
+        UPDATE time_entries SET clock_in = ?, clock_out = ?, total_hours = ?, status = 'edited',
+          notes = COALESCE(?, notes), edit_reason = ?, edited_by = ?, edited_at = datetime('now','localtime')
         WHERE id = ?
-      `).run(clock_in, clock_out || null, totalHours, req.params.id);
+      `).run(clock_in, clock_out || null, totalHours, notes || null, reason, req.user!.userId, req.params.id);
 
       db.prepare(`
         INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
         VALUES (?, 'time_entry_edited', 'time_entry', ?, ?, ?)
-      `).run(req.user!.userId, req.params.id, `Edited time entry for officer ${entry.officer_id}`, req.ip || 'unknown');
+      `).run(req.user!.userId, req.params.id, `Edited time entry for officer ${entry.officer_id}: ${reason}`, req.ip || 'unknown');
 
       const updated = db.prepare(`
-        SELECT t.*, u.full_name as officer_name, u.badge_number
-        FROM time_entries t
-        LEFT JOIN users u ON t.officer_id = u.id
-        WHERE t.id = ?
+        SELECT t.*, u.full_name as officer_name, u.badge_number,
+          (SELECT COUNT(*) FROM time_entry_edits WHERE time_entry_id = t.id) as edit_count,
+          (SELECT u2.full_name FROM users u2 WHERE u2.id = t.edited_by) as edited_by_name
+        FROM time_entries t LEFT JOIN users u ON t.officer_id = u.id WHERE t.id = ?
       `).get(req.params.id);
 
       res.json(updated);
@@ -905,6 +956,12 @@ export function mountScheduleRoutes(parentRouter: Router): void {
         return;
       }
 
+      const editorName = (db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.user!.userId) as any)?.full_name || 'Unknown';
+      db.prepare('INSERT INTO time_entry_edits (time_entry_id, edited_by, edited_by_name, edit_type, old_value, new_value, reason) VALUES (?,?,?,?,?,?,?)')
+        .run(entry.id, req.user!.userId, editorName, 'deleted',
+          JSON.stringify({ clock_in: entry.clock_in, clock_out: entry.clock_out, total_hours: entry.total_hours, officer_id: entry.officer_id }),
+          null, 'Deleted by ' + editorName);
+
       db.prepare('DELETE FROM time_entries WHERE id = ?').run(req.params.id);
 
       db.prepare(`
@@ -915,6 +972,20 @@ export function mountScheduleRoutes(parentRouter: Router): void {
       res.json({ success: true, id: req.params.id });
     } catch (error: any) {
       console.error('Delete time entry error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/personnel/time/:id/history - Edit history for a time entry
+  parentRouter.get('/personnel/time/:id/history', authenticateToken, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const edits = db.prepare(
+        'SELECT * FROM time_entry_edits WHERE time_entry_id = ? ORDER BY created_at DESC'
+      ).all(req.params.id);
+      res.json(edits);
+    } catch (error: any) {
+      console.error('Get time entry history error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
