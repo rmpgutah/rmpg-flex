@@ -290,13 +290,20 @@ router.get('/contacts', requireRole('admin', 'manager', 'contract_manager'), (re
 
     if (search) {
       sql += " AND (p.first_name || ' ' || p.last_name LIKE ? ESCAPE '\\' OR p.phone LIKE ? ESCAPE '\\' OR p.email LIKE ? ESCAPE '\\')";
-      const q = `%${escapeLike(String(search))}%`;
+      const q = `%${escapeLike(String(search).trim())}%`;
       params.push(q, q, q);
     }
     if (relationship) { sql += ' AND cp.relationship = ?'; params.push(relationship); }
     if (client_id) { sql += ' AND cp.client_id = ?'; params.push(client_id); }
 
     sql += ' ORDER BY c.name, p.last_name, p.first_name';
+
+    // Pagination
+    const limit = Math.min(Math.max(1, parseInt(req.query.limit as string, 10) || 50), 500);
+    const offset = Math.max(0, parseInt(req.query.offset as string, 10) || 0);
+    sql += ' LIMIT ? OFFSET ?';
+    params.push(limit, offset);
+
     res.json(db.prepare(sql).all(...params));
   } catch (err: any) {
     console.error('CRM error:', err.message);

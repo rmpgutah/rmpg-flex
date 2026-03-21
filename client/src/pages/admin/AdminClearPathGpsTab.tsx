@@ -152,7 +152,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
       setStatus(data);
       setPollInterval(data.poll_interval_seconds || 30);
     } catch (err) {
-      console.error('Failed to fetch ClearPathGPS status:', err);
+      console.error('Failed to fetch ClearPathGPS status:', err); setError('Failed to load GPS status');
     } finally {
       setLoading(false);
     }
@@ -163,7 +163,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
     try {
       const data = await apiFetch<{ mappings: CpgMapping[] }>('/clearpathgps/mappings');
       setMappings(data.mappings || []);
-    } catch (e) { console.error('Failed to fetch GPS mappings:', e); }
+    } catch (e) { console.error('Failed to fetch GPS mappings:', e); setError('Failed to load GPS mappings'); }
   }, []);
 
   // ── Fetch units ──
@@ -179,7 +179,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
     try {
       const data = await apiFetch<{ history_backfill: boolean }>('/clearpathgps/settings');
       setHistoryBackfill(data.history_backfill);
-    } catch (e) { console.error('Failed to fetch GPS settings:', e); }
+    } catch (e) { console.error('Failed to fetch GPS settings:', e); setError('Failed to load GPS settings'); }
   }, []);
 
   // ── Fetch dashcam events ──
@@ -189,7 +189,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
       const data = await apiFetch<{ events: DashcamEvent[]; total: number }>('/clearpathgps/dashcam-events?limit=50');
       setDashcamEvents(data.events || []);
       setDashcamTotal(data.total || 0);
-    } catch (e) { console.error('Failed to fetch dashcam events:', e); }
+    } catch (e) { console.error('Failed to fetch dashcam events:', e); setError('Failed to load dashcam events'); }
     finally { setLoadingDashcam(false); }
   }, []);
 

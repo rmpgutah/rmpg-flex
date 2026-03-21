@@ -80,7 +80,7 @@ router.get('/calls', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
     }
     if (search) {
       whereClause += " AND (c.call_number LIKE ? ESCAPE '\\' OR c.call_type LIKE ? ESCAPE '\\' OR c.location_address LIKE ? ESCAPE '\\' OR c.narrative LIKE ? ESCAPE '\\')";
-      const s = `%${escapeLike(String(search))}%`;
+      const s = `%${escapeLike(String(search).trim())}%`;
       params.push(s, s, s, s);
     }
 

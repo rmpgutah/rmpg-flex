@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Shield, Key, Monitor, Clock, Bell, RefreshCw, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import type { SecurityStatus } from '../../types';
@@ -93,6 +93,37 @@ export default function SecurityStatusCard() {
   // Overall score
   const score = computeScore(status);
 
+  // Numeric security score (0-100)
+  const numericScore = (() => {
+    let s = 0;
+    if (status.totpEnabled) s += 30;
+    if (status.backupCodesRemaining >= 5) s += 20;
+    else if (status.backupCodesRemaining > 0) s += 10;
+    if (!status.passwordExpired) s += 20;
+    if (!status.passwordExpiringSoon) s += 10;
+    if (status.trustedDevices > 0) s += 10;
+    if (status.unreadSecurityNotifications === 0) s += 10;
+    return Math.min(s, 100);
+  })();
+
+  // Animated score count-up
+  const [displayScore, setDisplayScore] = useState(0);
+  const animRef = useRef<ReturnType<typeof requestAnimationFrame> | null>(null);
+  useEffect(() => {
+    const start = performance.now();
+    const duration = 800;
+    const animate = (now: number) => {
+      const elapsed = now - start;
+      const progress = Math.min(elapsed / duration, 1);
+      // Ease-out
+      const eased = 1 - (1 - progress) ** 3;
+      setDisplayScore(Math.round(eased * numericScore));
+      if (progress < 1) animRef.current = requestAnimationFrame(animate);
+    };
+    animRef.current = requestAnimationFrame(animate);
+    return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
+  }, [numericScore]);
+
   return (
     <div className="panel-beveled" style={{ background: '#141e2b' }}>
       {/* Header */}
@@ -102,6 +133,9 @@ export default function SecurityStatusCard() {
           <span>Security Overview</span>
         </div>
         <div className="flex items-center gap-1.5">
+          <span className="text-[11px] font-bold font-mono tabular-nums" style={{ color: score.color }}>
+            {displayScore}%
+          </span>
           <span className={ledClass(score.led)} />
           <span
             className="text-[9px] font-bold uppercase tracking-wider"

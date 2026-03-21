@@ -30,6 +30,7 @@ import {
   MessageSquare,
   Send,
   AlertTriangle,
+  Flame,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
@@ -152,6 +153,7 @@ export default function LeadsTab() {
   const [filterSearch, setFilterSearch] = useState('');
   const [filterScoreMin, setFilterScoreMin] = useState<string>('');
   const [filterService, setFilterService] = useState<string>('');
+  const [filterHotLeads, setFilterHotLeads] = useState(false);
 
   // ── Detail panel editing ────────────────────────────
   const [editNotes, setEditNotes] = useState('');
@@ -217,6 +219,13 @@ export default function LeadsTab() {
 
   // ── Pipeline summary totals ─────────────────────────
   const pipelineTotal = useMemo(() => pipelineSummary.reduce((s, p) => s + p.count, 0), [pipelineSummary]);
+
+  // ── Hot leads filter (activity in last 7 days) ─────
+  const displayLeads = useMemo(() => {
+    if (!filterHotLeads) return leads;
+    const sevenDaysAgo = Date.now() - 7 * 86400000;
+    return leads.filter(l => new Date(l.updated_at).getTime() >= sevenDaysAgo);
+  }, [leads, filterHotLeads]);
 
   // ── Actions ─────────────────────────────────────────
   const handleStageChange = async (leadId: number | string, stage: PipelineStage) => {
@@ -344,10 +353,10 @@ export default function LeadsTab() {
   };
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === leads.length) {
+    if (selectedIds.size === displayLeads.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(leads.map(l => l.id)));
+      setSelectedIds(new Set(displayLeads.map(l => l.id)));
     }
   };
 
@@ -418,6 +427,12 @@ export default function LeadsTab() {
           <option value="60">60+</option>
           <option value="80">80+</option>
         </select>
+        <button
+          onClick={() => setFilterHotLeads(!filterHotLeads)}
+          className={`text-xs font-bold px-3 py-1.5 rounded-sm flex items-center gap-1 border ${filterHotLeads ? 'bg-orange-600/20 border-orange-500 text-orange-400' : 'bg-[#0d1520] border-rmpg-700 text-rmpg-300 hover:border-rmpg-600'}`}
+        >
+          <Flame className="w-3.5 h-3.5" /> Hot Leads
+        </button>
         <button
           onClick={() => setShowCreateModal(true)}
           className="bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold px-3 py-1.5 rounded-sm flex items-center gap-1"
@@ -492,7 +507,7 @@ export default function LeadsTab() {
             <div className="flex items-center justify-center h-32">
               <Loader2 className="w-5 h-5 text-brand-400 animate-spin" />
             </div>
-          ) : leads.length === 0 ? (
+          ) : displayLeads.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-32 text-rmpg-400 text-sm">
               <Target className="w-6 h-6 mb-2 opacity-50" />
               No leads found
@@ -503,7 +518,7 @@ export default function LeadsTab() {
                 <tr className="bg-[#0d1520] border-b border-rmpg-700 sticky top-0 z-10">
                   <th className="text-[10px] text-rmpg-400 uppercase tracking-wider px-2 py-1.5 text-left w-8">
                     <button onClick={toggleSelectAll} className="text-rmpg-400 hover:text-white">
-                      {selectedIds.size === leads.length && leads.length > 0 ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
+                      {selectedIds.size === displayLeads.length && displayLeads.length > 0 ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
                     </button>
                   </th>
                   <th className="text-[10px] text-rmpg-400 uppercase tracking-wider px-2 py-1.5 text-left w-14">Score</th>
@@ -517,7 +532,7 @@ export default function LeadsTab() {
                 </tr>
               </thead>
               <tbody>
-                {leads.map(lead => (
+                {displayLeads.map(lead => (
                   <tr
                     key={lead.id}
                     onClick={() => setSelectedLead(lead)}

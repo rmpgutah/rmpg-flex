@@ -9,6 +9,7 @@ import {
   FileVideo, FileSpreadsheet, FileImage, File,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../components/ToastProvider';
 import {
   apiFetchCompanyDocuments,
   apiCreateCompanyDocument,
@@ -61,10 +62,12 @@ function formatFileSize(bytes?: number) {
 // ── Main component ──────────────────────────────────────────
 export default function TrainingDocsPage() {
   const { user } = useAuth();
+  const { addToast } = useToast();
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
 
   const [documents, setDocuments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState('');
   const [category, setCategory] = useState<CompanyDocCategory | 'all'>('all');
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -73,10 +76,13 @@ export default function TrainingDocsPage() {
   const loadDocuments = useCallback(async () => {
     try {
       setLoading(true);
+      setFetchError('');
       const data = await apiFetchCompanyDocuments(category !== 'all' ? category : undefined);
       setDocuments(data || []);
-    } catch (err) {
-      console.error('Failed to load documents:', err);
+    } catch (err: any) {
+      const msg = err?.message || 'Failed to load documents';
+      setFetchError(msg);
+      console.error('Failed to load documents:', err); addToast('Failed to load documents', 'error');
     } finally {
       setLoading(false);
     }
@@ -98,7 +104,7 @@ export default function TrainingDocsPage() {
       await apiDeleteCompanyDocument(doc.id);
       loadDocuments();
     } catch (err) {
-      console.error('Delete failed:', err);
+      console.error('Delete failed:', err); addToast('Failed to delete document', 'error');
     }
   };
 
@@ -158,6 +164,8 @@ export default function TrainingDocsPage() {
           )}
         </div>
       </div>
+
+      {fetchError && <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded text-red-400 text-xs">{fetchError}</div>}
 
       {/* Category Tabs */}
       <div className="panel-inset mx-3 mt-3 p-1.5 flex items-center gap-1 flex-wrap flex-shrink-0">

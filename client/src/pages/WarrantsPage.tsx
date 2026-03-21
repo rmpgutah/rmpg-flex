@@ -929,7 +929,7 @@ export default function WarrantsPage() {
                 : <><PlayCircle className="w-3 h-3" /> Run Scan Now</>
               }
             </button>
-            <button onClick={() => { fetchCoverage(); fetchWatchRuns(); }} className="toolbar-btn text-[9px]" title="Refresh">
+            <button onClick={() => { fetchCoverage(); fetchWatchRuns(); }} className="toolbar-btn text-[9px]" title="Refresh" aria-label="Refresh">
               <RotateCcw className="w-3 h-3" />
             </button>
           </>
@@ -1027,7 +1027,7 @@ export default function WarrantsPage() {
                 }}
               />
               {dashSearch && (
-                <button onClick={() => setDashSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white">
+                <button onClick={() => setDashSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white" aria-label="Clear search">
                   <X className="w-3.5 h-3.5" />
                 </button>
               )}
@@ -1261,7 +1261,7 @@ export default function WarrantsPage() {
             {error && (
               <div className="px-3 py-2 bg-red-900/30 border-b border-red-700/50 text-red-300 text-xs flex items-center gap-2">
                 <AlertTriangle className="w-3 h-3" /> {error}
-                <button onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-300"><X className="w-3 h-3" /></button>
+                <button onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-300" aria-label="Dismiss error"><X className="w-3 h-3" /></button>
               </div>
             )}
 
@@ -2032,7 +2032,7 @@ export default function WarrantsPage() {
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
                 <User className="w-4 h-4 text-brand-400" /> Person Warrant Profile
               </h2>
-              <button onClick={() => setPersonProfileOpen(false)} className="text-rmpg-400 hover:text-white">
+              <button onClick={() => setPersonProfileOpen(false)} className="text-rmpg-400 hover:text-white" aria-label="Close person profile">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -2183,7 +2183,7 @@ export default function WarrantsPage() {
           <div className={`panel-beveled ${isMobile ? 'w-full h-full' : 'w-[550px] max-h-[85vh]'} overflow-auto bg-surface-base`}>
             <div className="flex items-center justify-between p-4 border-b border-rmpg-600">
               <h2 id={warrantFormTitleId} className="text-sm font-bold text-white">{editingWarrant ? 'Edit Warrant' : 'New Warrant'}</h2>
-              <button onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
+              <button onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white" aria-label="Close warrant form"><X className="w-4 h-4" /></button>
             </div>
             <form onSubmit={handleSubmit} className="p-4 space-y-4">
               {/* Type + Offense Level */}
@@ -2344,7 +2344,7 @@ export default function WarrantsPage() {
           <div className={`panel-beveled ${isMobile ? 'w-full mx-4' : 'w-[400px]'} bg-surface-base`}>
             <div className="flex items-center justify-between p-4 border-b border-rmpg-600">
               <h2 id={serveTitleId} className="text-sm font-bold text-white">Serve Warrant</h2>
-              <button onClick={() => setServeModalOpen(false)} className="text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
+              <button onClick={() => setServeModalOpen(false)} className="text-rmpg-400 hover:text-white" aria-label="Close serve modal"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-4 space-y-4">
               <p className="text-xs text-rmpg-300">

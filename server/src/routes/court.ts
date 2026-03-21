@@ -67,12 +67,24 @@ router.get('/events', requireRole('admin', 'manager', 'supervisor', 'officer', '
       }
       where += ' AND e.event_type = ?'; params.push(event_type);
     }
-    if (date_from) { where += ' AND e.event_date >= ?'; params.push(date_from); }
-    if (date_to) { where += ' AND e.event_date <= ?'; params.push(date_to); }
+    // Validate date format (YYYY-MM-DD) before using in queries
+    const dateRx = /^\d{4}-\d{2}-\d{2}$/;
+    if (date_from) {
+      if (!dateRx.test(String(date_from)) || isNaN(new Date(String(date_from)).getTime())) {
+        res.status(400).json({ error: 'date_from must be in YYYY-MM-DD format' }); return;
+      }
+      where += ' AND e.event_date >= ?'; params.push(date_from);
+    }
+    if (date_to) {
+      if (!dateRx.test(String(date_to)) || isNaN(new Date(String(date_to)).getTime())) {
+        res.status(400).json({ error: 'date_to must be in YYYY-MM-DD format' }); return;
+      }
+      where += ' AND e.event_date <= ?'; params.push(date_to);
+    }
     if (officer_id) { where += ' AND EXISTS (SELECT 1 FROM json_each(e.officers_required) WHERE value = ?)'; params.push(Number(officer_id)); }
     if (search) {
       where += " AND (e.event_number LIKE ? ESCAPE '\\' OR e.defendant_name LIKE ? ESCAPE '\\' OR e.court_case_number LIKE ? ESCAPE '\\' OR e.court_name LIKE ? ESCAPE '\\')";
-      const s = `%${escapeLike(String(search))}%`; params.push(s, s, s, s);
+      const s = `%${escapeLike(String(search).trim())}%`; params.push(s, s, s, s);
     }
 
     const total = (db.prepare(`SELECT COUNT(*) as count FROM court_events e ${where}`).get(...params) as any)?.count || 0;
@@ -162,6 +174,12 @@ router.post('/events', requireRole('admin', 'manager', 'supervisor', 'officer'),
       defendant_person_id, defendant_name, prosecutor, defense_attorney,
       officers_required, notes } = req.body;
     if (!event_type || !event_date) return res.status(400).json({ error: 'Event type and date required' });
+
+    // Validate event_date format
+    const dateRx = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRx.test(String(event_date)) || isNaN(new Date(String(event_date)).getTime())) {
+      return res.status(400).json({ error: 'event_date must be in YYYY-MM-DD format' });
+    }
 
     // Validate event_type against allowed values
     const VALID_EVENT_TYPES = ['arraignment', 'preliminary', 'trial', 'sentencing', 'hearing', 'motion', 'review', 'other'];

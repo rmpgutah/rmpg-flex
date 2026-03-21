@@ -19,6 +19,7 @@ import {
   Copy,
   Map as MapIcon,
   Download,
+  FileText,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { exportToCsv } from '../utils/csvExport';
@@ -556,6 +557,14 @@ const PatrolPage: React.FC = () => {
         {activeTab === 'scans' && (
           <>
             <ExportButton exportUrl="/patrol/scans/export?format=csv" exportFilename="patrol_scans_export.csv" />
+            <button
+              onClick={() => window.print()}
+              className="toolbar-btn"
+              title="Export patrol log as PDF (print)"
+              disabled={scans.length === 0}
+            >
+              <FileText className="w-3.5 h-3.5" /> PDF
+            </button>
             <button
               onClick={() => exportToCsv('patrol_scans_filtered.csv', scans, [
                 { key: 'scanned_at', label: 'Timestamp' },

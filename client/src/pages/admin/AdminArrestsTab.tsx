@@ -7,6 +7,7 @@ import {
   Globe, Shield, Activity, RotateCcw,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { useToast } from '../../components/ToastProvider';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -109,7 +110,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
       const data = await apiFetch<ArrestStatus>('/arrests/status');
       setStatus(data);
     } catch (err) {
-      console.error('Failed to fetch arrest status:', err);
+      console.error('Failed to fetch arrest status:', err); setError('Failed to load arrest status');
     } finally { setLoading(false); }
   }, []);
 
@@ -128,7 +129,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
         setRecords(data.records || []);
         setRecordsTotal(data.total || 0);
       }
-    } catch (e) { console.error('Failed to fetch arrest records:', e); }
+    } catch (e) { console.error('Failed to fetch arrest records:', e); setError('Failed to load arrest records'); }
     finally { setRecordsLoading(false); }
   }, []);
 
@@ -137,7 +138,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
     try {
       const data = await apiFetch<any>('/jail-roster/status');
       setScraperStatus(data);
-    } catch (e) { console.error('Failed to fetch scraper status:', e); }
+    } catch (e) { console.error('Failed to fetch scraper status:', e); setError('Failed to load scraper status'); }
     finally { setScraperLoading(false); }
   }, []);
 

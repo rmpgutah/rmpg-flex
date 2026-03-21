@@ -107,7 +107,7 @@ router.get('/', authenticateToken, (req: Request, res: Response) => {
     if (unit_id) { query += ' AND v.unit_id = ?'; params.push(unit_id); }
     if (case_number) { query += ' AND v.case_number = ?'; params.push(case_number); }
     if (search) {
-      const q = `%${escapeLike(String(search))}%`;
+      const q = `%${escapeLike(String(search).trim())}%`;
       query += " AND (v.title LIKE ? ESCAPE '\\' OR v.case_number LIKE ? ESCAPE '\\' OR v.address LIKE ? ESCAPE '\\' OR COALESCE(fv.vehicle_number, fv_unit.vehicle_number) LIKE ? ESCAPE '\\' OR u.call_sign LIKE ? ESCAPE '\\')";
       params.push(q, q, q, q, q);
     }

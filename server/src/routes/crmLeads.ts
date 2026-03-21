@@ -69,7 +69,7 @@ router.get('/leads', requireRole('admin', 'manager', 'contract_manager'), (req: 
     }
     if (search) {
       sql += " AND (l.business_name LIKE ? ESCAPE '\\' OR l.contact_name LIKE ? ESCAPE '\\' OR l.address LIKE ? ESCAPE '\\' OR l.city LIKE ? ESCAPE '\\')";
-      const q = `%${escapeLike(String(search))}%`;
+      const q = `%${escapeLike(String(search).trim())}%`;
       params.push(q, q, q, q);
     }
     if (date_from) {
@@ -143,6 +143,22 @@ router.post('/leads', requireRole('admin', 'manager', 'contract_manager'), (req:
 
     if (!business_name?.trim()) {
       res.status(400).json({ error: 'business_name is required' });
+      return;
+    }
+
+    // Validate estimated_value if provided
+    if (estimated_value !== undefined && estimated_value !== null) {
+      const ev = parseFloat(estimated_value);
+      if (isNaN(ev) || ev < 0) {
+        res.status(400).json({ error: 'estimated_value must be a non-negative number' });
+        return;
+      }
+    }
+
+    // Validate pipeline_stage if provided
+    const VALID_STAGES = ['new', 'contacted', 'qualified', 'proposal', 'negotiation', 'won', 'lost', 'dismissed'];
+    if (pipeline_stage && !VALID_STAGES.includes(pipeline_stage)) {
+      res.status(400).json({ error: `Invalid pipeline_stage. Must be one of: ${VALID_STAGES.join(', ')}` });
       return;
     }
 

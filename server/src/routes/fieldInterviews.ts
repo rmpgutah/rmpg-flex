@@ -56,7 +56,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     if (officer_id) { where += ' AND fi.officer_id = ?'; params.push(officer_id); }
     if (search) {
       where += ` AND ((fi.subject_first_name || ' ' || fi.subject_last_name) LIKE ? ESCAPE '\\' OR fi.fi_number LIKE ? ESCAPE '\\' OR fi.location LIKE ? ESCAPE '\\' OR fi.narrative LIKE ? ESCAPE '\\')`;
-      const s = `%${escapeLike(String(search))}%`;
+      const s = `%${escapeLike(String(search).trim())}%`;
       params.push(s, s, s, s);
     }
     if (archived === 'true') {

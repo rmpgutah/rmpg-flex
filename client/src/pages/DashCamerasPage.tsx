@@ -109,6 +109,7 @@ export default function DashCamerasPage() {
   const [videos, setVideos] = useState<DashCamVideo[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState('');
   const [search, setSearch] = useState('');
   const [classFilter, setClassFilter] = useState('all');
   const [sourceFilter, setSourceFilter] = useState('all');
@@ -129,6 +130,7 @@ export default function DashCamerasPage() {
   // ── Data Fetching ────────────────────────
   const fetchVideos = useCallback(async () => {
     try {
+      setFetchError('');
       const params = new URLSearchParams({
         limit: String(PAGE_SIZE),
         offset: String(page * PAGE_SIZE),
@@ -138,7 +140,9 @@ export default function DashCamerasPage() {
       setVideos(Array.isArray(data?.videos) ? data.videos : []);
       setTotal(data?.total || 0);
     } catch (err: any) {
-      addToast(err?.message || 'Failed to load videos', 'error');
+      const msg = err?.message || 'Failed to load videos';
+      setFetchError(msg);
+      addToast(msg, 'error');
     } finally {
       setLoading(false);
     }
@@ -740,6 +744,8 @@ export default function DashCamerasPage() {
           </button>
         )}
       </PanelTitleBar>
+
+      {fetchError && <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded text-red-400 text-xs">{fetchError}</div>}
 
       {/* ── Stats Strip ──────────────────── */}
       <div className="panel-inset flex items-center h-8 overflow-x-auto flex-shrink-0"

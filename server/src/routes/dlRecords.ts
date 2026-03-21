@@ -31,7 +31,7 @@ router.get('/', requireRole('admin', 'manager', 'officer', 'supervisor'), (req: 
 
     if (search) {
       where = "WHERE full_name LIKE ? ESCAPE '\\' OR dl_number LIKE ? ESCAPE '\\' OR dl_state LIKE ? ESCAPE '\\'";
-      const term = `%${escapeLike(String(search))}%`;
+      const term = `%${escapeLike(String(search).trim())}%`;
       params.push(term, term, term);
     }
 

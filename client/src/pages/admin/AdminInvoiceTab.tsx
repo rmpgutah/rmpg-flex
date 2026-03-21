@@ -5,6 +5,7 @@ import {
   CreditCard, Calendar, ChevronRight, Edit, Zap, Eye,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { useToast } from '../../components/ToastProvider';
 import { toDisplayLabel } from '../../utils/formatters';
 import type { Invoice, InvoiceDetail, InvoiceLineItem, Payment, InvoiceStats, Client } from '../../types';
 import DocumentViewer from '../../components/DocumentViewer';

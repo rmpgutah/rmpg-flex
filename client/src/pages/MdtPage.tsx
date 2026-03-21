@@ -70,7 +70,6 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
   const { addToast } = useToast();
   const [messages, setMessages] = useState<MdtMessage[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [warrantAlerts, setWarrantAlerts] = useState<WarrantAlert[]>([]);
   const [composeText, setComposeText] = useState('');
   const [composeChannel, setComposeChannel] = useState<'dispatch' | 'broadcast'>('dispatch');
   const [composePriority, setComposePriority] = useState<'routine' | 'urgent' | 'emergency'>('routine');
@@ -255,6 +254,7 @@ export default function MdtPage() {
   const [showFiForm, setShowFiForm] = useState(false);
   const [fiData, setFiData] = useState({ subject_name: '', location: '', reason: '', narrative: '' });
   const [fiSubmitting, setFiSubmitting] = useState(false);
+  const [warrantAlerts, setWarrantAlerts] = useState<WarrantAlert[]>([]);
 
   // Error toast auto-dismiss
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

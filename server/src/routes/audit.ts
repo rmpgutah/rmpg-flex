@@ -62,7 +62,7 @@ router.get('/logs', (req: Request, res: Response) => {
 
     if (search) {
       conditions.push("al.details LIKE ? ESCAPE '\\'");
-      params.push(`%${escapeLike(search as string)}%`);
+      params.push(`%${escapeLike((search as string).trim())}%`);
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -209,7 +209,7 @@ router.get('/export', exportRateLimit, (req: Request, res: Response) => {
     }
     if (search) {
       conditions.push("al.details LIKE ? ESCAPE '\\'");
-      params.push(`%${escapeLike(search as string)}%`);
+      params.push(`%${escapeLike((search as string).trim())}%`);
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';

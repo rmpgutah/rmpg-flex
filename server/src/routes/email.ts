@@ -381,7 +381,7 @@ router.get('/messages', async (req: Request, res: Response) => {
 
     if (search) {
       conditions.push("(subject LIKE ? ESCAPE '\\' OR from_address LIKE ? ESCAPE '\\' OR from_name LIKE ? ESCAPE '\\' OR body_preview LIKE ? ESCAPE '\\')");
-      const term = `%${escapeLike(String(search))}%`;
+      const term = `%${escapeLike(String(search).trim())}%`;
       params.push(term, term, term, term);
     }
 

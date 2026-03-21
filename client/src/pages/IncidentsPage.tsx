@@ -1133,6 +1133,7 @@ export default function IncidentsPage() {
           onClick={() => openIncidentWindow(selectedIncident.id)}
           className="toolbar-btn"
           title="Open in new window"
+          aria-label="Open in new window"
         >
           <ExternalLink className="w-3.5 h-3.5" />
         </button>
@@ -1166,6 +1167,7 @@ export default function IncidentsPage() {
             setIsEditing(false);
           }}
           className="p-1 hover:bg-rmpg-700 text-rmpg-300"
+          aria-label="Close incident detail"
         >
           <X className="w-4 h-4" />
         </button>
@@ -1487,6 +1489,7 @@ export default function IncidentsPage() {
                         onClick={() => handleUnlinkPerson(lp.person_id)}
                         className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-red-900/30 text-rmpg-400 hover:text-red-400 transition-all"
                         title="Unlink person"
+                        aria-label="Unlink person"
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
@@ -1537,6 +1540,7 @@ export default function IncidentsPage() {
                       onClick={() => handleUnlinkVehicle(lv.vehicle_id)}
                       className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-red-900/30 text-rmpg-400 hover:text-red-400 transition-all"
                       title="Unlink vehicle"
+                      aria-label="Unlink vehicle"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -2010,7 +2014,7 @@ export default function IncidentsPage() {
               <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">
                 Custody Action — {custodyTransfer.evidenceNumber}
               </h3>
-              <button onClick={() => setCustodyTransfer(null)} className="text-rmpg-400 hover:text-white">
+              <button onClick={() => setCustodyTransfer(null)} className="text-rmpg-400 hover:text-white" aria-label="Close custody transfer">
                 <X className="w-4 h-4" />
               </button>
             </div>

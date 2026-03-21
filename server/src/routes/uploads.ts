@@ -165,7 +165,7 @@ function verifyMagicBytes(filePath: string, ext: string): boolean {
   }
 }
 
-const MAX_FILE_SIZE = 3 * 1024 * 1024 * 1024; // 3GB
+const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
 
 // Configure multer storage
 const storage = multer.diskStorage({
@@ -554,7 +554,7 @@ router.post('/chunked/init', uploadRateLimit, (req: Request, res: Response) => {
   try {
     const { fileName, fileSize, mimeType, totalChunks, entityType, entityId } = req.body;
     if (!fileName || !fileSize || !totalChunks) { res.status(400).json({ error: 'fileName, fileSize, totalChunks required' }); return; }
-    if (fileSize > MAX_FILE_SIZE) { res.status(400).json({ error: 'File too large (max 3 GB)' }); return; }
+    if (fileSize > MAX_FILE_SIZE) { res.status(400).json({ error: 'File too large (max 100 MB)' }); return; }
     if (entityType && !ALLOWED_ENTITY_TYPES.has(entityType)) { res.status(400).json({ error: 'Invalid entity_type' }); return; }
     const ext = path.extname(fileName).toLowerCase();
     if (BLOCKED_EXTENSIONS.has(ext)) { res.status(400).json({ error: `File type "${ext}" not allowed` }); return; }

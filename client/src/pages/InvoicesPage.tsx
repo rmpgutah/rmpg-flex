@@ -603,8 +603,9 @@ export default function InvoicesPage() {
   const DetailPanel = () => {
     if (detailLoading) {
       return (
-        <div className="flex-1 flex items-center justify-center">
+        <div className="flex-1 flex items-center justify-center gap-2">
           <Loader2 size={20} className="animate-spin text-brand-400" />
+          <span className="text-xs text-rmpg-400">Loading invoice details...</span>
         </div>
       );
     }
@@ -1008,7 +1009,7 @@ export default function InvoicesPage() {
             {/* List */}
             <div className="flex-1 overflow-y-auto">
               {loading ? (
-                <div className="flex items-center justify-center h-32"><Loader2 size={20} className="animate-spin text-brand-400" /></div>
+                <div className="flex items-center justify-center gap-2 h-32"><Loader2 size={20} className="animate-spin text-brand-400" /><span className="text-xs text-rmpg-400">Loading invoices...</span></div>
               ) : error ? (
                 <div className="p-4 text-red-400 text-xs">{error}</div>
               ) : invoices.length === 0 ? (
@@ -1138,7 +1139,7 @@ export default function InvoicesPage() {
         <div className="flex flex-col w-[55%] border-r border-[#1e3048] overflow-hidden">
           <div className="flex-1 overflow-y-auto">
             {loading ? (
-              <div className="flex items-center justify-center h-32"><Loader2 size={20} className="animate-spin text-brand-400" /></div>
+              <div className="flex items-center justify-center gap-2 h-32"><Loader2 size={20} className="animate-spin text-brand-400" /><span className="text-xs text-rmpg-400">Loading invoices...</span></div>
             ) : invoices.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-32 text-rmpg-500 text-xs">
                 <FileText size={20} className="mb-2 opacity-40" />

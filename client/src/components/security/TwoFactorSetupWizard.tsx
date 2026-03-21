@@ -100,6 +100,28 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
         ))}
       </div>
 
+      {/* Step indicator dots */}
+      <div className="flex items-center justify-center gap-3">
+        {(['intro', 'scan', 'verify', 'backup'] as WizardStep[]).map((s, i) => {
+          const stepIdx = ['intro', 'scan', 'verify', 'backup'].indexOf(step);
+          const labels = ['Setup', 'Scan', 'Verify', 'Backup'];
+          return (
+            <div key={s} className="flex flex-col items-center gap-0.5">
+              <div
+                className="w-2.5 h-2.5 rounded-full transition-all duration-300"
+                style={{
+                  background: stepIdx === i ? '#1a5a9e' : stepIdx > i ? '#22c55e' : '#1e3048',
+                  boxShadow: stepIdx === i ? '0 0 6px rgba(26,90,158,0.5)' : 'none',
+                }}
+              />
+              <span className="text-[8px] font-mono uppercase tracking-wider" style={{ color: stepIdx >= i ? '#8a9aaa' : '#4b5563' }}>
+                {labels[i]}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
       {/* Step: Intro */}
       {step === 'intro' && (
         <div className="space-y-4">

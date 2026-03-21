@@ -81,7 +81,7 @@ router.get('/violations', (req: Request, res: Response) => {
     if (severity) { where += ' AND severity = ?'; params.push(severity); }
     if (search) {
       where += " AND (violation_number LIKE ? ESCAPE '\\' OR location LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\' OR violator_name LIKE ? ESCAPE '\\')";
-      const s = `%${escapeLike(String(search))}%`; params.push(s, s, s, s);
+      const s = `%${escapeLike(String(search).trim())}%`; params.push(s, s, s, s);
     }
 
     const total = (db.prepare(`SELECT COUNT(*) as count FROM code_violations ${where}`).get(...params) as any)?.count || 0;
@@ -215,7 +215,7 @@ router.get('/tows', (req: Request, res: Response) => {
     if (status) { where += ' AND status = ?'; params.push(status); }
     if (search) {
       where += " AND (tow_number LIKE ? ESCAPE '\\' OR vehicle_plate LIKE ? ESCAPE '\\' OR tow_from LIKE ? ESCAPE '\\' OR tow_company LIKE ? ESCAPE '\\')";
-      const s = `%${escapeLike(String(search))}%`; params.push(s, s, s, s);
+      const s = `%${escapeLike(String(search).trim())}%`; params.push(s, s, s, s);
     }
 
     const total = (db.prepare(`SELECT COUNT(*) as count FROM vehicle_tows ${where}`).get(...params) as any)?.count || 0;

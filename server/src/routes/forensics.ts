@@ -97,7 +97,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: 
     if (examiner) { where += ' AND fc.assigned_examiner_id = ?'; params.push(examiner); }
     if (search) {
       where += ` AND (fc.lab_case_number LIKE ? ESCAPE '\\' OR fc.title LIKE ? ESCAPE '\\' OR fc.synopsis LIKE ? ESCAPE '\\' OR fc.requesting_officer_name LIKE ? ESCAPE '\\')`;
-      const s = `%${escapeLike(String(search))}%`;
+      const s = `%${escapeLike(String(search).trim())}%`;
       params.push(s, s, s, s);
     }
 

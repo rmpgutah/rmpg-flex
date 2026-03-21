@@ -7,6 +7,7 @@
 import React, { useState, useCallback } from 'react';
 import { Search, AlertTriangle, User, Shield, Calendar, MapPin, FileText, ChevronRight, Scale } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { useToast } from '../components/ToastProvider';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { toDisplayLabel } from '../utils/formatters';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -40,6 +41,7 @@ interface HistoryEntry {
 }
 
 export default function CriminalHistoryPage() {
+  const { addToast } = useToast();
   const isMobile = useIsMobile();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchType, setSearchType] = useState<'name' | 'dob' | 'dl'>('name');

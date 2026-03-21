@@ -67,7 +67,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     if (severity) { where += ' AND oa.severity = ?'; params.push(severity); }
     if (search) {
       where += " AND (p.first_name LIKE ? ESCAPE '\\' OR p.last_name LIKE ? ESCAPE '\\' OR oa.description LIKE ? ESCAPE '\\')";
-      const s = `%${escapeLike(String(search))}%`; params.push(s, s, s);
+      const s = `%${escapeLike(String(search).trim())}%`; params.push(s, s, s);
     }
 
     const total = (db.prepare(`

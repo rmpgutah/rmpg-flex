@@ -240,13 +240,14 @@ export default function ShiftPlansPage() {
             {plansForDate.length === 0 ? (
               <div className="flex items-center justify-center h-full text-rmpg-500 text-[10px]">
                 <div className="text-center">
-                  <Calendar className="w-8 h-8 mx-auto mb-2 text-rmpg-600" />
-                  <p>No shift plans for this date</p>
+                  <Shield className="w-8 h-8 mx-auto mb-2 text-rmpg-600" />
+                  <p className="text-sm text-rmpg-400 font-semibold">No shift plans for this date</p>
+                  <p className="text-[9px] text-rmpg-600 mt-1">Create a new shift plan to assign officers and units to areas</p>
                   <button
                     onClick={() => setShowCreateForm(true)}
-                    className="text-blue-400 hover:text-blue-300 text-[10px] mt-2"
+                    className="flex items-center gap-1 mx-auto mt-3 px-3 py-1 text-[9px] font-bold uppercase tracking-wider bg-blue-900/50 text-blue-400 border border-blue-700/50 hover:bg-blue-800/50 transition-colors"
                   >
-                    + Create one
+                    <Plus style={{ width: 10, height: 10 }} /> Create Shift Plan
                   </button>
                 </div>
               </div>

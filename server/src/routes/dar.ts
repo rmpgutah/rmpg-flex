@@ -66,8 +66,8 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: 
     }
     if (status) { where += ' AND d.status = ?'; params.push(status); }
     if (property_id) { where += ' AND d.property_id = ?'; params.push(property_id); }
-    if (date_from) { where += ' AND d.shift_date >= ?'; params.push(date_from); }
-    if (date_to) { where += ' AND d.shift_date <= ?'; params.push(date_to); }
+    if (effectiveDateFrom) { where += ' AND d.shift_date >= ?'; params.push(effectiveDateFrom); }
+    if (effectiveDateTo) { where += ' AND d.shift_date <= ?'; params.push(effectiveDateTo); }
     if (search) {
       where += " AND (d.dar_number LIKE ? ESCAPE '\\' OR d.officer_name LIKE ? ESCAPE '\\' OR d.property_name LIKE ? ESCAPE '\\' OR d.activities_narrative LIKE ? ESCAPE '\\')";
       const s = `%${escapeLike(String(search).trim())}%`; params.push(s, s, s, s);

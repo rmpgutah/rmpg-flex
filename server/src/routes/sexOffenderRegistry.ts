@@ -66,7 +66,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
     if (risk_level) { where += ' AND s.risk_level = ?'; params.push(risk_level); }
     if (search) {
       where += " AND (s.first_name LIKE ? ESCAPE '\\' OR s.last_name LIKE ? ESCAPE '\\' OR s.registry_id LIKE ? ESCAPE '\\' OR s.aliases LIKE ? ESCAPE '\\')";
-      const s2 = `%${escapeLike(String(search))}%`; params.push(s2, s2, s2, s2);
+      const s2 = `%${escapeLike(String(search).trim())}%`; params.push(s2, s2, s2, s2);
     }
 
     const total = (db.prepare(`SELECT COUNT(*) as count FROM sex_offender_registry s ${where}`).get(...params) as any)?.count || 0;

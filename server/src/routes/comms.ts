@@ -238,7 +238,7 @@ router.get('/bolos', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
     }
     if (search) {
       whereClause += " AND (b.subject LIKE ? ESCAPE '\\' OR b.description LIKE ? ESCAPE '\\')";
-      const s = `%${escapeLike(String(search))}%`;
+      const s = `%${escapeLike(String(search).trim())}%`;
       params.push(s, s);
     }
 
@@ -670,7 +670,7 @@ router.get('/radio/transcripts', requireRole('admin', 'manager', 'supervisor', '
     }
     if (search) {
       whereClause += " AND rt.transcript LIKE ? ESCAPE '\\'";
-      params.push(`%${escapeLike(search as string)}%`);
+      params.push(`%${escapeLike((search as string).trim())}%`);
     }
     if (from) {
       whereClause += ' AND rt.transmitted_at >= ?';

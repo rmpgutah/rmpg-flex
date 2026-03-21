@@ -3429,7 +3429,7 @@ export default function DispatchPage() {
                                   <span className="text-brand-gold-500 uppercase text-[7px] font-black">{(cv.role || '').replace(/_/g, ' ')}</span>
                                   {[cv.color, cv.year, cv.make, cv.model].filter(Boolean).join(' ')}
                                   {cv.plate_number && <span className="text-brand-400 ml-0.5">PLT:{cv.plate_number}</span>}
-                                  <button onClick={() => unlinkVehicleFromCall(selectedCall.id, cv.id)} className="text-red-500 hover:text-red-300 ml-0.5" title="Remove">&times;</button>
+                                  <button onClick={() => unlinkVehicleFromCall(selectedCall.id, cv.id)} className="text-red-500 hover:text-red-300 ml-0.5" title="Remove" aria-label="Remove linked vehicle">&times;</button>
                                 </span>
                               ))}
                             </div>
