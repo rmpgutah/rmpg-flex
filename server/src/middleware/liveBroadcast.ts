@@ -38,6 +38,18 @@ const PATH_TO_CHANNEL: Record<string, string> = {
   '/api/reports': 'incidents',
   '/api/company-documents': 'training',
   '/api/skiptracer': 'skiptracer',
+  '/api/jail-roster': 'records',
+  '/api/field-interviews': 'records',
+  '/api/trespass-orders': 'records',
+  '/api/dl-records': 'records',
+  '/api/colorado-doc': 'records',
+  '/api/evidence': 'records',
+  '/api/email': 'admin',
+  '/api/crm': 'admin',
+  '/api/hr': 'admin',
+  '/api/audit': 'admin',
+  '/api/connections': 'admin',
+  '/api/clearpathgps': 'fleet',
 };
 
 // Methods that mutate data

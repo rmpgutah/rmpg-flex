@@ -290,7 +290,9 @@ export type AuditEntityType =
   | 'attachment'
   | 'company_documents'
   | 'users'
-  | 'scheduled_email';
+  | 'scheduled_email'
+  | 'invoice_line_item'
+  | 'patrol_checkpoint';
 
 // ─── Audit Log Integrity ─────────────────────────────────
 // Each log entry includes an HMAC hash of its contents, chained to the previous
@@ -348,7 +350,7 @@ export function auditLog(
   req: Request,
   action: AuditAction,
   entityType: AuditEntityType,
-  entityId: string | number,
+  entityId: string | number | bigint,
   details: string,
 ): void {
   try {
@@ -383,7 +385,7 @@ export function auditLog(
 export function auditLogSystem(
   action: AuditAction,
   entityType: AuditEntityType,
-  entityId: string | number,
+  entityId: string | number | bigint,
   details: string,
 ): void {
   try {
