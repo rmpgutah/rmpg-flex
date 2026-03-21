@@ -361,9 +361,23 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
           }
 
           const { first, middle, last } = splitName(fullName);
-          const charges = r.charges || r.Charges || r.CHARGES || r.offense || r.Offense || '';
-          const chargesJson = Array.isArray(charges) ? JSON.stringify(charges)
-            : typeof charges === 'string' && charges ? JSON.stringify([charges]) : '[]';
+          const rawCharges = r.charges || r.Charges || r.CHARGES || r.offense || r.Offense || '';
+          let chargesJson: string;
+          if (Array.isArray(rawCharges)) {
+            chargesJson = JSON.stringify(rawCharges);
+          } else if (typeof rawCharges === 'string' && rawCharges.trim()) {
+            // Check if it's already valid JSON array — avoid double-encoding
+            try {
+              const parsed = JSON.parse(rawCharges);
+              chargesJson = Array.isArray(parsed) ? rawCharges : JSON.stringify([rawCharges]);
+            } catch {
+              // Split on semicolons or commas to create a proper array from CSV text
+              const parts = rawCharges.includes(';') ? rawCharges.split(';') : [rawCharges];
+              chargesJson = JSON.stringify(parts.map((c: string) => c.trim()).filter(Boolean));
+            }
+          } else {
+            chargesJson = '[]';
+          }
 
           insert.run(
             `csv-${Date.now()}-${i}-${crypto.randomBytes(3).toString('hex')}`,
@@ -396,9 +410,16 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
           imported++;
         } catch (rowErr: any) {
           skipped++;
-          // Log full error server-side for debugging; return generic message to client
+          // Log full error server-side for debugging
           console.error(`[Arrests Import] Row ${i + 1} error:`, rowErr.message);
-          if (errors.length < 5) errors.push(`Row ${i + 1}: Import failed`);
+          // Return sanitized but useful error details (up to 10 rows)
+          if (errors.length < 10) {
+            const rowName = r.full_name || r.name || `Row ${i + 1}`;
+            const reason = rowErr.message?.includes('UNIQUE constraint') ? 'Duplicate record'
+              : rowErr.message?.includes('NOT NULL') ? 'Missing required field'
+              : 'Import failed';
+            errors.push(`Row ${i + 1} (${rowName}): ${reason}`);
+          }
         }
       }
     });
@@ -406,7 +427,7 @@ router.post('/import-csv', requireRole('admin', 'manager'), (req: Request, res: 
     importTx();
 
     auditLog(req, 'arrest_imported', 'arrest_record', 0,
-      `CSV import: ${imported} of ${records.length} records (county: ${county || 'unknown'})`);
+      `CSV import: ${imported} imported, ${skipped} skipped of ${records.length} total (county: ${county || 'unknown'}, agency: ${agency || 'unknown'})${errors.length > 0 ? ` — Errors: ${errors.join('; ')}` : ''}`);
     broadcastRecordUpdate({ type: 'arrest_imported', imported, total: records.length });
 
     // Run cross-linking on all new records
@@ -621,13 +642,15 @@ router.get('/recent', requireRole('admin', 'manager', 'supervisor', 'officer', '
 });
 
 // ── GET /sync-status ────────────────────────────────────────
-router.get('/sync-status', (_req: Request, res: Response) => {
+// Restricted to admin/manager — exposes sync config details (enabled counties, errors)
+router.get('/sync-status', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
   try { res.json(getArrestSyncStatus()); }
   catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── GET /usage ──────────────────────────────────────────────
-router.get('/usage', (_req: Request, res: Response) => {
+// Restricted to admin/manager — exposes API usage stats
+router.get('/usage', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
   try { res.json(getArrestUsageStats()); }
   catch (err: any) { console.error(err); res.status(500).json({ error: 'Internal server error' }); }
 });

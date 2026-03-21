@@ -270,7 +270,7 @@ router.get('/watch/log', requireRole('admin', 'manager', 'supervisor', 'officer'
   try {
     const db = getDb();
     const { event, person_id, page = '1', limit = '50' } = req.query;
-    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.min(1000, Math.max(1, parseInt(page as string, 10) || 1));
     const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
@@ -748,6 +748,25 @@ router.put('/:id', validateParamId, requireRole('dispatcher', 'supervisor', 'adm
       }
     }
 
+    // Reject direct status changes via PUT — use dedicated endpoints (/serve, /recall, etc.)
+    if (req.body.status !== undefined) {
+      res.status(400).json({ error: 'Status cannot be changed directly. Use the dedicated serve/recall endpoints.' });
+      return;
+    }
+
+    // Validate charge_description length to prevent database bloat
+    if (req.body.charge_description && req.body.charge_description.length > 5000) {
+      res.status(400).json({ error: 'charge_description exceeds 5000 character limit' });
+      return;
+    }
+
+    // Validate type enum if provided
+    const VALID_WARRANT_TYPES = ['arrest', 'bench', 'search', 'civil', 'other'];
+    if (req.body.type && !VALID_WARRANT_TYPES.includes(req.body.type)) {
+      res.status(400).json({ error: `Invalid warrant type. Must be one of: ${VALID_WARRANT_TYPES.join(', ')}` });
+      return;
+    }
+
     // Build dynamic SET clause — only update fields explicitly provided
     const bodyKeys = Object.keys(req.body);
     const warrantFields: Record<string, (v: any) => any> = {
@@ -758,7 +777,6 @@ router.put('/:id', validateParamId, requireRole('dispatcher', 'supervisor', 'adm
       charge_description: v => v || null,
       bail_amount: v => v ?? null,
       offense_level: v => v ?? null,
-      status: v => v || null,
       expires_at: v => v ?? null,
       notes: v => v ?? null,
       statute_id: v => v || null,
@@ -793,7 +811,15 @@ router.put('/:id', validateParamId, requireRole('dispatcher', 'supervisor', 'adm
       WHERE w.id = ?
     `).get(req.params.id) as any;
 
-    auditLog(req, 'warrant_updated', 'warrant', String(req.params.id), `Updated warrant #${req.params.id}`);
+    // Log which fields changed with old/new values for audit trail
+    const changedFields: string[] = [];
+    for (const [field] of Object.entries(warrantFields)) {
+      if (bodyKeys.includes(field) && warrant[field] !== req.body[field]) {
+        changedFields.push(`${field}: "${warrant[field] ?? ''}" → "${req.body[field] ?? ''}"`);
+      }
+    }
+    auditLog(req, 'warrant_updated', 'warrant', String(req.params.id),
+      `Updated warrant #${req.params.id}${changedFields.length > 0 ? ` — ${changedFields.join(', ')}` : ''}`);
 
     res.json(updated);
   } catch (error: any) {
@@ -960,7 +986,7 @@ router.get('/scraped/search', requireRole('admin', 'manager', 'supervisor', 'off
       return;
     }
 
-    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.min(1000, Math.max(1, parseInt(page as string, 10) || 1));
     const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 

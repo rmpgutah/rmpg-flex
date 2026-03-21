@@ -156,7 +156,7 @@ router.get('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispat
       date_to,
     } = req.query;
 
-    const pageNum = Math.min(10000, Math.max(1, parseInt(page as string, 10) || 1));
+    const pageNum = Math.min(1000, Math.max(1, parseInt(page as string, 10) || 1));
     const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
@@ -407,6 +407,44 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
       return;
     }
 
+    // Validate enums on update just like we do on create
+    try {
+      if (req.body.type !== undefined) validateEnum(req.body.type, VALID_CITATION_TYPES, 'type');
+      if (req.body.status !== undefined) validateEnum(req.body.status, VALID_CITATION_STATUSES, 'status');
+      if (req.body.offense_level !== undefined && req.body.offense_level !== null) {
+        validateEnum(req.body.offense_level, VALID_OFFENSE_LEVELS, 'offense_level');
+      }
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+
+    // Validate fine_amount range
+    if (req.body.fine_amount !== undefined && req.body.fine_amount !== null) {
+      const amount = parseFloat(req.body.fine_amount);
+      if (isNaN(amount) || amount < 0 || amount > 999999.99) {
+        res.status(400).json({ error: 'fine_amount must be between 0 and 999999.99' });
+        return;
+      }
+    }
+
+    // Enforce valid status transitions
+    const VALID_STATUS_TRANSITIONS: Record<string, string[]> = {
+      issued: ['paid', 'contested', 'dismissed', 'warrant_issued', 'voided'],
+      paid: ['voided'],
+      contested: ['paid', 'dismissed', 'warrant_issued', 'voided'],
+      dismissed: ['voided'],
+      warrant_issued: ['paid', 'dismissed', 'voided'],
+      voided: [], // terminal state
+    };
+    if (req.body.status !== undefined && req.body.status !== citation.status) {
+      const allowed = VALID_STATUS_TRANSITIONS[citation.status] || [];
+      if (!allowed.includes(req.body.status)) {
+        res.status(400).json({ error: `Cannot transition citation from '${citation.status}' to '${req.body.status}'. Allowed: ${allowed.join(', ') || 'none'}` });
+        return;
+      }
+    }
+
     const fields: string[] = [];
     const values: any[] = [];
     const bodyKeys = Object.keys(req.body);
@@ -459,7 +497,13 @@ router.put('/:id', validateParamId, requireRole('admin', 'manager', 'supervisor'
       db.prepare(`UPDATE citations SET ${fields.join(', ')} WHERE id = ?`).run(...values);
     }
 
-    auditLog(req, 'citation_updated', 'citation', Number(req.params.id), `Updated citation ${citation.citation_number}`);
+    // Log detailed changes for audit trail
+    const citChanges: string[] = [];
+    if (req.body.status && req.body.status !== citation.status) citChanges.push(`status: ${citation.status} → ${req.body.status}`);
+    if (req.body.fine_amount !== undefined && req.body.fine_amount !== citation.fine_amount) citChanges.push(`fine: ${citation.fine_amount ?? 'none'} → ${req.body.fine_amount ?? 'none'}`);
+    if (req.body.type && req.body.type !== citation.type) citChanges.push(`type: ${citation.type} → ${req.body.type}`);
+    auditLog(req, 'citation_updated', 'citation', Number(req.params.id),
+      `Updated citation ${citation.citation_number}${citChanges.length > 0 ? ` — ${citChanges.join(', ')}` : ''}`);
 
     const updated = db.prepare('SELECT * FROM citations WHERE id = ?').get(req.params.id);
     res.json({ data: updated });

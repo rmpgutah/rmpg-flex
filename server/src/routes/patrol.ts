@@ -76,7 +76,19 @@ router.post('/checkpoints', requireRole('admin', 'manager', 'supervisor'), (req:
       res.status(404).json({ error: 'Property not found' });
       return;
     }
-    const qr_code = crypto.randomUUID();
+    // Generate unique QR code with collision check
+    let qr_code: string;
+    let attempts = 0;
+    do {
+      qr_code = crypto.randomUUID();
+      const existing = db.prepare('SELECT id FROM patrol_checkpoints WHERE qr_code = ?').get(qr_code);
+      if (!existing) break;
+      attempts++;
+    } while (attempts < 5);
+    if (attempts >= 5) {
+      res.status(500).json({ error: 'Failed to generate unique QR code' });
+      return;
+    }
 
     const checkpoint = db.transaction(() => {
       const result = db.prepare(`
@@ -197,20 +209,26 @@ router.delete('/checkpoints/:id', validateParamId, requireRole('admin', 'manager
       return;
     }
 
-    db.prepare('DELETE FROM patrol_checkpoints WHERE id = ?').run(id);
+    // Cascade: delete associated scans first, then the checkpoint
+    const scanCount = (db.prepare('SELECT COUNT(*) as c FROM patrol_scans WHERE checkpoint_id = ?').get(id) as any)?.c || 0;
 
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
-      VALUES (?, 'checkpoint_deleted', 'patrol_checkpoint', ?, ?, ?, ?)
-    `).run(
-      req.user!.userId,
-      id,
-      `Deleted checkpoint: ${existing.name}`,
-      req.ip || 'unknown',
-      localNow()
-    );
+    db.transaction(() => {
+      db.prepare('DELETE FROM patrol_scans WHERE checkpoint_id = ?').run(id);
+      db.prepare('DELETE FROM patrol_checkpoints WHERE id = ?').run(id);
 
-    res.json({ message: 'Checkpoint deleted successfully' });
+      db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+        VALUES (?, 'checkpoint_deleted', 'patrol_checkpoint', ?, ?, ?, ?)
+      `).run(
+        req.user!.userId,
+        id,
+        `Deleted checkpoint: ${existing.name} (${scanCount} associated scans also removed)`,
+        req.ip || 'unknown',
+        localNow()
+      );
+    })();
+
+    res.json({ message: `Checkpoint deleted successfully${scanCount > 0 ? ` (${scanCount} scan records removed)` : ''}` });
   } catch (error: any) {
     console.error('Error deleting checkpoint:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to delete checkpoint' });
