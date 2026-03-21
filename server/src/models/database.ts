@@ -894,6 +894,170 @@ function createTables(): void {
     CREATE INDEX IF NOT EXISTS idx_radio_transcripts_user ON radio_transcripts(user_id);
     CREATE INDEX IF NOT EXISTS idx_radio_transcripts_time ON radio_transcripts(transmitted_at);
 
+    -- ═══ Dash Cameras ══════════════════════════════════════
+
+    -- Dash cameras — mounted in fleet vehicles
+    CREATE TABLE IF NOT EXISTS dash_cameras (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      vehicle_id INTEGER NOT NULL,
+      camera_id TEXT NOT NULL UNIQUE,
+      make TEXT,
+      model TEXT,
+      firmware_version TEXT,
+      storage_capacity_gb INTEGER DEFAULT 32,
+      channel_count INTEGER DEFAULT 2,
+      status TEXT NOT NULL DEFAULT 'available' CHECK(status IN ('available','installed','maintenance','damaged','lost')),
+      condition TEXT NOT NULL DEFAULT 'good' CHECK(condition IN ('good','fair','poor')),
+      installed_at TEXT,
+      removed_at TEXT,
+      notes TEXT,
+      created_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_dash_cameras_vehicle ON dash_cameras(vehicle_id);
+    CREATE INDEX IF NOT EXISTS idx_dash_cameras_status ON dash_cameras(status);
+
+    -- Dash camera video footage
+    CREATE TABLE IF NOT EXISTS dashcam_videos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      camera_id INTEGER NOT NULL,
+      vehicle_id INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      file_size INTEGER NOT NULL DEFAULT 0,
+      duration_seconds INTEGER,
+      mime_type TEXT DEFAULT 'video/mp4',
+      recorded_at TEXT,
+      case_number TEXT,
+      classification TEXT DEFAULT 'routine' CHECK(classification IN ('routine','evidence','flagged','restricted')),
+      retention_status TEXT DEFAULT 'active',
+      gps_lat REAL,
+      gps_lon REAL,
+      notes TEXT,
+      uploaded_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (camera_id) REFERENCES dash_cameras(id),
+      FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_dashcam_videos_camera ON dashcam_videos(camera_id);
+    CREATE INDEX IF NOT EXISTS idx_dashcam_videos_vehicle ON dashcam_videos(vehicle_id);
+    CREATE INDEX IF NOT EXISTS idx_dashcam_videos_case ON dashcam_videos(case_number);
+
+    -- ═══ ClearPathGPS Integration ══════════════════════════
+
+    -- ClearPathGPS synced vehicle data
+    CREATE TABLE IF NOT EXISTS cpgps_vehicles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cpgps_id TEXT UNIQUE NOT NULL,
+      vehicle_id INTEGER,
+      name TEXT,
+      vin TEXT,
+      make TEXT,
+      model TEXT,
+      year INTEGER,
+      license_plate TEXT,
+      device_serial TEXT,
+      last_lat REAL,
+      last_lon REAL,
+      last_speed REAL,
+      last_heading REAL,
+      last_reported_at TEXT,
+      odometer REAL,
+      engine_hours REAL,
+      raw_json TEXT,
+      synced_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_cpgps_vehicles_vehicle ON cpgps_vehicles(vehicle_id);
+
+    -- ClearPathGPS trip history
+    CREATE TABLE IF NOT EXISTS cpgps_trips (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cpgps_vehicle_id TEXT NOT NULL,
+      vehicle_id INTEGER,
+      trip_start TEXT,
+      trip_end TEXT,
+      start_lat REAL,
+      start_lon REAL,
+      end_lat REAL,
+      end_lon REAL,
+      start_address TEXT,
+      end_address TEXT,
+      distance_miles REAL,
+      max_speed REAL,
+      avg_speed REAL,
+      idle_duration_seconds INTEGER,
+      drive_duration_seconds INTEGER,
+      raw_json TEXT,
+      synced_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_cpgps_trips_vehicle ON cpgps_trips(cpgps_vehicle_id);
+    CREATE INDEX IF NOT EXISTS idx_cpgps_trips_start ON cpgps_trips(trip_start);
+
+    -- ClearPathGPS location breadcrumbs
+    CREATE TABLE IF NOT EXISTS cpgps_locations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cpgps_vehicle_id TEXT NOT NULL,
+      vehicle_id INTEGER,
+      lat REAL,
+      lon REAL,
+      speed REAL,
+      heading REAL,
+      reported_at TEXT NOT NULL,
+      address TEXT,
+      ignition_on INTEGER,
+      raw_json TEXT,
+      synced_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_cpgps_locations_vehicle ON cpgps_locations(cpgps_vehicle_id);
+    CREATE INDEX IF NOT EXISTS idx_cpgps_locations_time ON cpgps_locations(reported_at);
+
+    -- ClearPathGPS alerts
+    CREATE TABLE IF NOT EXISTS cpgps_alerts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cpgps_vehicle_id TEXT NOT NULL,
+      vehicle_id INTEGER,
+      alert_type TEXT,
+      severity TEXT,
+      message TEXT,
+      triggered_at TEXT,
+      lat REAL,
+      lon REAL,
+      raw_json TEXT,
+      synced_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_cpgps_alerts_vehicle ON cpgps_alerts(cpgps_vehicle_id);
+    CREATE INDEX IF NOT EXISTS idx_cpgps_alerts_time ON cpgps_alerts(triggered_at);
+
+    -- ClearPathGPS sync log
+    CREATE TABLE IF NOT EXISTS cpgps_sync_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sync_type TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'running',
+      records_fetched INTEGER DEFAULT 0,
+      records_stored INTEGER DEFAULT 0,
+      oldest_record TEXT,
+      newest_record TEXT,
+      error_message TEXT,
+      started_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      completed_at TEXT
+    );
+
     -- ═══ Offline Support ═══════════════════════════════════
 
     -- Pre-shared secrets for offline PIN generation (one per user)
@@ -1295,6 +1459,7 @@ function migrateSchema(): void {
   addCol('users', 'totp_enabled', 'INTEGER DEFAULT 0');    // 0 = disabled, 1 = enabled
   addCol('users', 'totp_backup_codes', 'TEXT');            // JSON array of bcrypt-hashed one-time codes
   addCol('users', 'totp_pending_secret', 'TEXT');          // Temp secret during enrollment (before verify)
+  addCol('users', 'totp_exempt', 'INTEGER DEFAULT 0');     // 1 = exempt from mandatory 2FA even if role requires it
 
   // ── USERS — Password history & expiry ─────────────────
   addCol('users', 'password_history', 'TEXT');             // JSON array of previous bcrypt hashes
@@ -2907,6 +3072,48 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_iped_imports_case ON iped_imports(forensic_case_id);
     CREATE INDEX IF NOT EXISTS idx_iped_imports_iped ON iped_imports(iped_case_id);
     CREATE INDEX IF NOT EXISTS idx_iped_imports_type ON iped_imports(import_type);
+  `);
+
+  // ── Forensic Hash Sets ───────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS forensic_hash_sets (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      name          TEXT NOT NULL,
+      set_type      TEXT NOT NULL CHECK(set_type IN ('nsrl','projectvic','custom','known_good','known_bad')),
+      description   TEXT,
+      hash_count    INTEGER DEFAULT 0,
+      source_file   TEXT,
+      version       TEXT,
+      imported_by   INTEGER REFERENCES users(id),
+      imported_by_name TEXT,
+      created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS forensic_hash_entries (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      hash_set_id   INTEGER NOT NULL REFERENCES forensic_hash_sets(id) ON DELETE CASCADE,
+      hash_value    TEXT NOT NULL,
+      hash_type     TEXT NOT NULL CHECK(hash_type IN ('md5','sha1','sha256')),
+      file_name     TEXT,
+      file_size     INTEGER,
+      category      TEXT,
+      UNIQUE(hash_set_id, hash_value, hash_type)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_hash_entries_value ON forensic_hash_entries(hash_value);
+    CREATE INDEX IF NOT EXISTS idx_hash_entries_set ON forensic_hash_entries(hash_set_id);
+
+    CREATE TABLE IF NOT EXISTS integration_health_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      integration_id TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('healthy','degraded','error')),
+      response_time_ms INTEGER,
+      error_message TEXT,
+      checked_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_health_log_integration ON integration_health_log(integration_id, checked_at);
   `);
 }
 

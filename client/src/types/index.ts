@@ -690,6 +690,145 @@ export interface BodyCamVideo {
   camera_serial?: string;
 }
 
+// --- Dash Camera ---
+
+export type DashCameraStatus = 'available' | 'installed' | 'maintenance' | 'damaged' | 'lost';
+
+export interface DashCamera {
+  id: number;
+  vehicle_id: number;
+  camera_id: string;
+  make: string;
+  model: string;
+  firmware_version: string;
+  storage_capacity_gb: number;
+  channel_count: number;
+  status: DashCameraStatus;
+  condition: string;
+  installed_at: string;
+  removed_at: string;
+  notes: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  vehicle_number?: string;
+  vehicle_make?: string;
+  vehicle_model?: string;
+  vehicle_year?: number;
+}
+
+export interface DashCamVideo {
+  id: number;
+  camera_id: number;
+  vehicle_id: number;
+  title: string;
+  file_path: string;
+  file_size: number;
+  duration_seconds: number;
+  mime_type: string;
+  recorded_at: string;
+  case_number: string;
+  classification: VideoClassification;
+  retention_status: string;
+  gps_lat: number | null;
+  gps_lon: number | null;
+  notes: string;
+  uploaded_by: string;
+  created_at: string;
+  updated_at: string;
+  camera_serial?: string;
+  vehicle_number?: string;
+}
+
+// --- ClearPathGPS ---
+
+export interface CpgpsVehicle {
+  id: number;
+  cpgps_id: string;
+  vehicle_id: number | null;
+  name: string;
+  vin: string;
+  make: string;
+  model: string;
+  year: number;
+  license_plate: string;
+  device_serial: string;
+  last_lat: number | null;
+  last_lon: number | null;
+  last_speed: number | null;
+  last_heading: number | null;
+  last_reported_at: string;
+  odometer: number | null;
+  engine_hours: number | null;
+  synced_at: string;
+  created_at: string;
+  fleet_vehicle_number?: string;
+  fleet_make?: string;
+  fleet_model?: string;
+  fleet_year?: number;
+}
+
+export interface CpgpsTrip {
+  id: number;
+  cpgps_vehicle_id: string;
+  vehicle_id: number | null;
+  trip_start: string;
+  trip_end: string;
+  start_lat: number | null;
+  start_lon: number | null;
+  end_lat: number | null;
+  end_lon: number | null;
+  start_address: string;
+  end_address: string;
+  distance_miles: number | null;
+  max_speed: number | null;
+  avg_speed: number | null;
+  idle_duration_seconds: number | null;
+  drive_duration_seconds: number | null;
+  synced_at: string;
+  created_at: string;
+}
+
+export interface CpgpsLocation {
+  id: number;
+  cpgps_vehicle_id: string;
+  vehicle_id: number | null;
+  lat: number | null;
+  lon: number | null;
+  speed: number | null;
+  heading: number | null;
+  reported_at: string;
+  address: string;
+  ignition_on: number | null;
+}
+
+export interface CpgpsAlert {
+  id: number;
+  cpgps_vehicle_id: string;
+  vehicle_id: number | null;
+  alert_type: string;
+  severity: string;
+  message: string;
+  triggered_at: string;
+  lat: number | null;
+  lon: number | null;
+  synced_at: string;
+  created_at: string;
+}
+
+export interface CpgpsSyncLog {
+  id: number;
+  sync_type: string;
+  status: string;
+  records_fetched: number;
+  records_stored: number;
+  oldest_record: string;
+  newest_record: string;
+  error_message: string;
+  started_at: string;
+  completed_at: string;
+}
+
 // --- Equipment ---
 
 export type EquipmentType = 'radio' | 'body_camera' | 'firearm' | 'taser' | 'baton' | 'handcuffs' | 'vest' | 'badge' | 'id_card' | 'keys' | 'flashlight' | 'vehicle_key' | 'laptop' | 'phone' | 'other';
@@ -1841,6 +1980,36 @@ export interface IpedConnectionStatus {
   hasApiKey: boolean;
 }
 
+// --- Forensic Hash Sets ---
+
+export type HashSetType = 'nsrl' | 'projectvic' | 'custom' | 'known_good' | 'known_bad';
+
+export interface ForensicHashSet {
+  id: number;
+  name: string;
+  set_type: HashSetType;
+  description?: string;
+  hash_count: number;
+  source_file?: string;
+  version?: string;
+  imported_by?: number;
+  imported_by_name?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HashCheckResult {
+  hash_value: string;
+  matches: {
+    set_id: number;
+    set_name: string;
+    set_type: HashSetType;
+    hash_type: string;
+    file_name?: string;
+    category?: string;
+  }[];
+}
+
 // --- Code Enforcement ---
 
 export type ViolationType = 'noise' | 'property_maintenance' | 'zoning' | 'signage' | 'health' | 'fire' | 'nuisance' | 'other';
@@ -2035,4 +2204,36 @@ export interface CompanyDocument {
   file_name?: string;
   file_size?: number;
   mime_type?: string;
+}
+
+// ─── Integration Hub ─────────────────────────────────────────
+
+export type IntegrationId = 'clearpathgps' | 'servemanager' | 'microbilt' | 'iped';
+
+export type IntegrationHealth = 'healthy' | 'degraded' | 'error' | 'unconfigured';
+
+export interface IntegrationStatus {
+  id: IntegrationId;
+  name: string;
+  description: string;
+  configured: boolean;
+  connected: boolean;
+  lastSync: string | null;
+  lastError: string | null;
+  lastHealthCheck: string | null;
+  health: IntegrationHealth;
+  syncing: boolean;
+  syncProgress: number | null;
+  uptimePercent: number | null;
+  stats: Record<string, number>;
+}
+
+export interface IntegrationHealthAlert {
+  integrationId: IntegrationId;
+  integrationName: string;
+  previousHealth: IntegrationHealth;
+  currentHealth: IntegrationHealth;
+  error: string | null;
+  timestamp: string;
+  consecutiveFailures: number;
 }
