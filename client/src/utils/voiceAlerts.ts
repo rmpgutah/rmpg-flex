@@ -361,6 +361,9 @@ let isSpeaking = false;
 /** Last announced batch — for repeat functionality */
 let lastAnnouncement: { phrases: VoicePhrase[]; priority: string; timestamp: number } | null = null;
 
+/** Phrase counter — used for micro-variation seeding */
+let phraseCounter = 0;
+
 function speakPhrase(phrase: VoicePhrase): Promise<void> {
   return new Promise((resolve) => {
     if (!isSpeechAvailable()) { resolve(); return; }
@@ -375,8 +378,25 @@ function speakPhrase(phrase: VoicePhrase): Promise<void> {
     const baseRate = getSpeechRate();
     const baseVolume = getSpeechVolume();
     const params = activePriority ? PRIORITY_PARAMS[activePriority] : undefined;
-    utterance.rate = params ? baseRate * params.rateMultiplier : baseRate;
-    utterance.pitch = SPEECH_PITCH + (params?.pitchOffset ?? 0);
+
+    // ── Micro-variation for human realism ──
+    // Real humans don't speak at exactly the same rate/pitch every sentence.
+    // Adding ±2% rate and ±1.5% pitch variation per phrase prevents the
+    // uncanny "every sentence sounds identical" TTS effect.
+    // Uses a deterministic seed (phrase counter) so it's consistent per phrase
+    // but different between phrases.
+    phraseCounter++;
+    const rateJitter = 1.0 + (Math.sin(phraseCounter * 2.7) * 0.02);    // ±2%
+    const pitchJitter = Math.sin(phraseCounter * 1.9) * 0.015;           // ±1.5%
+
+    // Longer sentences get slightly slower (natural human tendency)
+    const lengthFactor = spokenText.length > 80 ? 0.97 : spokenText.length > 50 ? 0.985 : 1.0;
+
+    const finalRate = (params ? baseRate * params.rateMultiplier : baseRate) * rateJitter * lengthFactor;
+    const finalPitch = SPEECH_PITCH + (params?.pitchOffset ?? 0) + pitchJitter;
+
+    utterance.rate = Math.max(0.5, Math.min(2.0, finalRate));
+    utterance.pitch = Math.max(0.5, Math.min(2.0, finalPitch));
     utterance.volume = params ? baseVolume * params.volumeMultiplier : baseVolume;
 
     utterance.lang = 'en-US';
@@ -565,9 +585,9 @@ function naturalPhrase(text: string): string {
  * that TTS engines mispronounce.
  */
 function improvePronounciation(text: string): string {
-  return text
-    // Spell out abbreviations TTS often botches
-    .replace(/\bSt\b(?!\.)/g, 'Street')    // "500 South St" → "500 South Street" (for speech only)
+  let result = text
+    // ── Street suffixes — expand for TTS clarity ──
+    .replace(/\bSt\b(?!\.)/g, 'Street')
     .replace(/\bAve\b(?!\.)/g, 'Avenue')
     .replace(/\bBlvd\b(?!\.)/g, 'Boulevard')
     .replace(/\bDr\b(?!\.)/g, 'Drive')
@@ -575,30 +595,75 @@ function improvePronounciation(text: string): string {
     .replace(/\bLn\b(?!\.)/g, 'Lane')
     .replace(/\bPl\b(?!\.)/g, 'Place')
     .replace(/\bCir\b(?!\.)/g, 'Circle')
-    // Highway/Interstate
+    .replace(/\bPkwy\b/gi, 'Parkway')
+    .replace(/\bTrl\b/gi, 'Trail')
+    .replace(/\bWay\b/gi, 'Way')
+    .replace(/\bRd\b(?!\.)/g, 'Road')
+    // ── Highway designators ──
     .replace(/\bI-(\d+)\b/g, 'Interstate $1')
     .replace(/\bSR-(\d+)\b/g, 'State Route $1')
     .replace(/\bUS-(\d+)\b/g, 'U.S. $1')
     .replace(/\bHwy\b/gi, 'Highway')
-    // Directions — TTS needs full words for natural delivery
+    // ── Compass directions ──
     .replace(/\bNB\b/g, 'northbound')
     .replace(/\bSB\b/g, 'southbound')
     .replace(/\bEB\b/g, 'eastbound')
     .replace(/\bWB\b/g, 'westbound')
-    // Common dispatch codes
+    .replace(/\bN\.?\s/g, 'North ')
+    .replace(/\bS\.?\s/g, 'South ')
+    .replace(/\bE\.?\s/g, 'East ')
+    .replace(/\bW\.?\s/g, 'West ')
+    // ── Dispatch codes / abbreviations ──
     .replace(/\bP1\b/g, 'Priority one')
     .replace(/\bP2\b/g, 'Priority two')
     .replace(/\bP3\b/g, 'Priority three')
     .replace(/\bP4\b/g, 'Priority four')
     .replace(/\b10-4\b/g, 'ten four')
+    .replace(/\b10-(\d+)\b/g, 'ten $1')
     .replace(/\bDV\b/g, 'D.V.')
     .replace(/\bDUI\b/g, 'D.U.I.')
+    .replace(/\bDWI\b/g, 'D.W.I.')
     .replace(/\bEMS\b/g, 'E.M.S.')
     .replace(/\bBOLO\b/g, 'B.O.L.O.')
     .replace(/\bAPB\b/g, 'A.P.B.')
     .replace(/\bVIN\b/g, 'V.I.N.')
-    // Numbers — add slight pauses around street numbers for clarity
+    .replace(/\bDOA\b/g, 'D.O.A.')
+    .replace(/\bAKA\b/g, 'A.K.A.')
+    .replace(/\bOUI\b/g, 'O.U.I.')
+    .replace(/\bCPR\b/g, 'C.P.R.')
+    .replace(/\bSLC\b/g, 'Salt Lake City')
+    .replace(/\bUT\b/g, 'Utah')
+    .replace(/\bDOB\b/g, 'date of birth')
+    .replace(/\bSSN\b/g, 'social security number')
+    .replace(/\bLKA\b/g, 'last known address')
+    // ── Age / physical descriptions ──
+    .replace(/\bW\/M\b/gi, 'white male')
+    .replace(/\bW\/F\b/gi, 'white female')
+    .replace(/\bB\/M\b/gi, 'Black male')
+    .replace(/\bB\/F\b/gi, 'Black female')
+    .replace(/\bH\/M\b/gi, 'Hispanic male')
+    .replace(/\bH\/F\b/gi, 'Hispanic female')
+    .replace(/\bA\/M\b/gi, 'Asian male')
+    .replace(/\bA\/F\b/gi, 'Asian female')
+    .replace(/\bYOA\b/gi, 'years old')
+    .replace(/\byoa\b/gi, 'years old')
+    .replace(/\bapprox\.?\s/gi, 'approximately ')
+    .replace(/\bunk\b/gi, 'unknown')
+    // ── Time formats ──
+    .replace(/(\d{1,2}):(\d{2}):(\d{2})/g, (_, h, m, s) => {
+      const hours = parseInt(h);
+      const mins = parseInt(m);
+      const secs = parseInt(s);
+      if (hours > 0) return `${hours} hour${hours > 1 ? 's' : ''}, ${mins} minute${mins !== 1 ? 's' : ''}`;
+      return `${mins} minute${mins !== 1 ? 's' : ''} and ${secs} second${secs !== 1 ? 's' : ''}`;
+    })
+    // ── Natural pauses — add commas before conjunctions in long phrases ──
+    .replace(/\band\b/g, ', and')
+    .replace(/,\s*,/g, ',')  // clean double commas
+    // ── Numbers — pause around street numbers ──
     .replace(/(\d{3,5})\s+(South|North|East|West)/g, '$1, $2');
+
+  return result;
 }
 
 // ─── Phrase Builders ────────────────────────────────────────

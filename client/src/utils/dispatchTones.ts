@@ -255,8 +255,20 @@ const PROFILES: Record<ToneType, ToneProfile> = {
 };
 
 /**
- * Play a dispatch alert tone.
- * Returns a handle to stop the tone early (optional).
+ * Play a dispatch alert tone with rich audio processing.
+ *
+ * Audio chain: Oscillator(s) → StepGain → Filter → Compressor → MasterGain → Destination
+ *
+ * Each tone step gets:
+ * - A fundamental oscillator at the profile's waveform type
+ * - An overtone oscillator at 2x frequency (sine, 30% amplitude) for warmth
+ * - A sub-bass oscillator at 0.5x frequency (sine, 15% amplitude) for body
+ * - Low-pass filter to remove harsh high-frequency content
+ * - Smooth gain envelope with attack/release curves (not abrupt on/off)
+ * - Dynamic compressor to prevent clipping and even out volume
+ *
+ * This produces tones that sound like professional dispatch console hardware
+ * rather than raw browser oscillators.
  */
 export function playTone(tone: ToneType): { stop: () => void } | null {
   if (!isSoundEnabled()) return null;
@@ -266,31 +278,87 @@ export function playTone(tone: ToneType): { stop: () => void } | null {
     const profile = PROFILES[tone];
     const now = ctx.currentTime;
 
+    // ── Audio processing chain ──
+    // Compressor → smooths peaks, prevents clipping, adds "radio" character
+    const compressor = ctx.createDynamicsCompressor();
+    compressor.threshold.value = -24;
+    compressor.knee.value = 12;
+    compressor.ratio.value = 4;
+    compressor.attack.value = 0.003;
+    compressor.release.value = 0.15;
+    compressor.connect(ctx.destination);
+
     // Master gain
     const masterGain = ctx.createGain();
     masterGain.gain.value = profile.gain;
-    masterGain.connect(ctx.destination);
+    masterGain.connect(compressor);
+
+    // Low-pass filter — removes harsh harmonics, warms the tone
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 3500; // Cut above 3.5kHz — radio-like warmth
+    filter.Q.value = 0.7;
+    filter.connect(masterGain);
 
     const oscillators: OscillatorNode[] = [];
+    const ATTACK = 0.015;  // 15ms attack — snappy but click-free
+    const RELEASE = 0.04;  // 40ms release — smooth tail
 
     for (const step of profile.steps) {
+      // ── Fundamental oscillator ──
       const osc = ctx.createOscillator();
       osc.type = profile.type;
       osc.frequency.value = step.freq;
 
-      // Per-step gain envelope (fade in / out to prevent clicks)
       const stepGain = ctx.createGain();
       stepGain.gain.setValueAtTime(0, now + step.start);
-      stepGain.gain.linearRampToValueAtTime(1, now + step.start + 0.01);
-      stepGain.gain.setValueAtTime(1, now + step.start + step.dur - 0.01);
-      stepGain.gain.linearRampToValueAtTime(0, now + step.start + step.dur);
+      stepGain.gain.linearRampToValueAtTime(1, now + step.start + ATTACK);
+      stepGain.gain.setValueAtTime(1, now + step.start + step.dur - RELEASE);
+      stepGain.gain.exponentialRampToValueAtTime(0.001, now + step.start + step.dur);
 
       osc.connect(stepGain);
-      stepGain.connect(masterGain);
-
+      stepGain.connect(filter);
       osc.start(now + step.start);
-      osc.stop(now + step.start + step.dur);
+      osc.stop(now + step.start + step.dur + 0.05);
       oscillators.push(osc);
+
+      // ── Overtone (2nd harmonic) — adds brightness/presence ──
+      if (step.freq < 1500) { // Only add harmonics for lower fundamentals
+        const overtone = ctx.createOscillator();
+        overtone.type = 'sine';
+        overtone.frequency.value = step.freq * 2;
+
+        const otGain = ctx.createGain();
+        otGain.gain.setValueAtTime(0, now + step.start);
+        otGain.gain.linearRampToValueAtTime(0.25, now + step.start + ATTACK);
+        otGain.gain.setValueAtTime(0.25, now + step.start + step.dur - RELEASE);
+        otGain.gain.exponentialRampToValueAtTime(0.001, now + step.start + step.dur);
+
+        overtone.connect(otGain);
+        otGain.connect(filter);
+        overtone.start(now + step.start);
+        overtone.stop(now + step.start + step.dur + 0.05);
+        oscillators.push(overtone);
+      }
+
+      // ── Sub-bass (0.5x) — adds body/weight to alarm tones ──
+      if (step.freq >= 400 && (profile.type === 'sawtooth' || profile.type === 'square')) {
+        const sub = ctx.createOscillator();
+        sub.type = 'sine';
+        sub.frequency.value = step.freq * 0.5;
+
+        const subGain = ctx.createGain();
+        subGain.gain.setValueAtTime(0, now + step.start);
+        subGain.gain.linearRampToValueAtTime(0.12, now + step.start + ATTACK * 2);
+        subGain.gain.setValueAtTime(0.12, now + step.start + step.dur - RELEASE);
+        subGain.gain.exponentialRampToValueAtTime(0.001, now + step.start + step.dur);
+
+        sub.connect(subGain);
+        subGain.connect(filter);
+        sub.start(now + step.start);
+        sub.stop(now + step.start + step.dur + 0.05);
+        oscillators.push(sub);
+      }
     }
 
     return {
@@ -304,20 +372,18 @@ export function playTone(tone: ToneType): { stop: () => void } | null {
       },
     };
   } catch {
-    // AudioContext not available (e.g. no user gesture yet)
     return null;
   }
 }
 
 /**
  * Play a tone and return a promise that resolves when the tone completes.
- * Useful for awaiting tone completion before subsequent actions.
  */
 export function playToneAsync(tone: ToneType): Promise<void> {
   const profile = PROFILES[tone];
   const totalDuration = Math.max(...profile.steps.map(s => s.start + s.dur));
   playTone(tone);
-  return new Promise(resolve => setTimeout(resolve, totalDuration * 1000 + 50));
+  return new Promise(resolve => setTimeout(resolve, totalDuration * 1000 + 80));
 }
 
 export type { ToneType };
